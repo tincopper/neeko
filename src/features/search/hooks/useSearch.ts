@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFileStore } from '@/features/file/store';
 import { useSearchStore } from '@/features/search/store/searchStore';
 import type { SearchFileGroup, SearchOptions } from '@/shared/types/search';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 const DEBOUNCE_MS = 300;
 
@@ -49,7 +50,7 @@ function filterFilesByName(files: string[], query: string): SearchFileGroup[] {
  * File name matches are displayed first, followed by content matches.
  */
 export function useSearch(
-  projectId: string | null,
+  projectId: ProjectId | null,
   showToast: ShowToastFn,
   options: SearchOptions = {},
 ) {

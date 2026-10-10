@@ -2,6 +2,7 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 
 import type { AgentConfig } from '@/shared/types';
 import { getAgentIconSrc as getPresetIconSrc } from '@/shared/utils/agents';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /** Information about a model supported by an agent. */
 export interface ModelInfo {
@@ -54,7 +55,7 @@ export function removeAgent(agentId: string): Promise<void> {
   return invoke<void>('remove_agent', { agentId });
 }
 
-export function setProjectAgents(projectId: string, agentIds: string[]): Promise<void> {
+export function setProjectAgents(projectId: ProjectId, agentIds: string[]): Promise<void> {
   return invoke<void>('set_project_agents', { projectId, agentIds });
 }
 
@@ -64,7 +65,7 @@ export function setProjectAgents(projectId: string, agentIds: string[]): Promise
  */
 export function checkAgentsInstalled(
   agentIds?: string[],
-  projectId?: string | null,
+  projectId?: ProjectId | null,
 ): Promise<Record<string, boolean>> {
   return invoke<Record<string, boolean>>('check_agents_installed', {
     agentIds,

@@ -8,7 +8,7 @@ import { useProjectStore, selectStatus } from '@/shared/store/projectStore';
 import { activeWorkspaceKeyOf } from '@/shared/store/workspaceStore';
 import type { GitChangedEvent, GitStatusSnapshot } from '@/shared/types';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
-import { parseWorkspaceKey } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { getGitBranchInfo } from '../api/gitApi';
 import { createDebouncedStatusRefresh, refreshWorkspaceStatus } from '../utils/gitStatus';
@@ -16,7 +16,7 @@ import { createDebouncedStatusRefresh, refreshWorkspaceStatus } from '../utils/g
 /** 拉取某单元的分支清单 / 工作树清单（status 快照不携带这些）。
  *  ahead/behind 不再从这里取 —— 它由权威快照 `git-status-snapshot` 单通道携带（见下方 handler）。 */
 function refreshUnitBranchInfo(workspaceKey: string): void {
-  const { projectId, worktreePath } = parseWorkspaceKey(workspaceKey);
+  const { projectId, worktreePath } = WorkspaceSession.fromKeyOrId(workspaceKey);
   const store = useProjectStore.getState();
   const project = store.projects.find((p) => p.id === projectId);
   if (!project || project.git_info === null) return;

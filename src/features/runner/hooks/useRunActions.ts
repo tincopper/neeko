@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ContextMenuItem } from '@/shared/components/ContextMenu';
 import { Bug, Play } from '@/shared/components/icons';
 import { useOverlayStore } from '@/shared/store/overlayStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { debugTarget, runTarget } from '../exec/launch';
 import { runnerFor } from '../languages';
@@ -34,7 +35,7 @@ export interface RunMenuState {
 }
 
 interface UseRunActionsParams {
-  projectId: string;
+  projectId: ProjectId;
   filePath: string;
   projectPath: string | null;
 }

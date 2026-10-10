@@ -11,12 +11,14 @@
  *
  * 纯函数、零依赖：不 import React / store，故可被 selector、hook 与快照恢复共用。
  */
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 import type { DapSessionInfo } from './types';
 
 /** 会话是否属于该（激活）项目 —— 任一侧缺失即不可见。 */
 export function isSessionVisibleFor(
   session: DapSessionInfo | null,
-  projectId: string | null,
+  projectId: ProjectId | null,
 ): boolean {
   return !!session && !!projectId && session.projectId === projectId;
 }

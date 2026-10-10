@@ -1,5 +1,5 @@
 import { useEditorStore } from '@/shared/store/editorStore';
-import { isMainCheckout, parseWorkspaceKey } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession, isMainCheckout } from '@/shared/utils/workspaceRef';
 
 import {
   destroyRemoteCache,
@@ -21,7 +21,7 @@ import {
  * cache key，清理也不得拿 NUL 形态直接做前缀（永不命中 = PTY 泄漏）。
  */
 function terminalSpacePrefix(tabKey: string): string {
-  const { projectId, worktreePath } = parseWorkspaceKey(tabKey);
+  const { projectId, worktreePath } = WorkspaceSession.fromKeyOrId(tabKey);
   return worktreePath === null ? projectId : `${projectId}:wt:${worktreePath}`;
 }
 
@@ -92,7 +92,7 @@ export function cleanupTerminalsForTabKey(tabKey: string): void {
     return;
   }
 
-  const { projectId } = parseWorkspaceKey(tabKey);
+  const { projectId } = WorkspaceSession.fromKeyOrId(tabKey);
   const wslRe = new RegExp(`^wsl:[^:]+:${escapeRegExp(projectId)}(?::|$)`);
   const remoteRe = new RegExp(`^remote:[^:]+:${escapeRegExp(projectId)}(?::|$)`);
 

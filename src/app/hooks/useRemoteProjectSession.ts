@@ -3,10 +3,11 @@ import { useCallback, useMemo } from 'react';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AuthMethod, Project, RemoteEntrySession } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export interface RemoteProjectProp {
   entryId: string;
-  projectId: string;
+  projectId: ProjectId;
   projectName: string;
   projectPath: string;
   host: string;

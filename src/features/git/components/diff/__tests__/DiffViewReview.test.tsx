@@ -4,9 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { DiffSource } from '@/shared/types/git';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import DiffView from '../DiffView';
 import type { DiffResult } from '../types';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 // 捕获 sendToTerminal 调用（agent 终端写入）
 const sendToTerminal = vi.hoisted(() => vi.fn());
@@ -30,7 +36,10 @@ vi.mock('@/shared/hooks/useGitRefresh', () => ({
   useGitRefresh: () => {},
 }));
 
-const DIFF_SOURCE: DiffSource = { type: 'local', projectId: 'p1' };
+const DIFF_SOURCE: DiffSource = {
+  workspace: WorkspaceSession.of('p1', null),
+  revision: { type: 'worktree' },
+};
 
 const diffResult: DiffResult = {
   hunks: [
@@ -48,11 +57,11 @@ const diffResult: DiffResult = {
 function seedAgentTab() {
   useEditorStore.setState({
     tabs: {
-      p1: {
+      [mkSession('p1').key]: {
         tabs: [
           {
             id: 'agent-tab',
-            projectId: 'p1',
+            scope: { kind: 'workspace', session: mkSession('p1') },
             title: 'opencode',
             order: 0,
             data: { kind: 'terminal', agentId: 'opencode', status: 'Idle' },

@@ -4,6 +4,7 @@ import { useEditorAgentActions } from '@/shared/hooks/useEditorAgentActions';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { buildDiffMessage } from '@/shared/utils/agentPrompt';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { capDiffText, hunksToDiffText, hunksToSelectedDiffText } from './diffText';
 import type { CommitFileChange, DiffHunk, DiffResult } from './types';
@@ -17,7 +18,7 @@ function getProjectIdFromTab(): string | null {
 }
 
 interface UseDiffReviewParams {
-  projectId?: string;
+  projectId?: ProjectId;
   /** 是否 combined 模式（与 DiffViewProps 一致，可为 undefined）。 */
   combined?: boolean;
   filePath: string;
@@ -117,7 +118,7 @@ export function useDiffReview({
 
   const sendReview = useCallback(
     (message: string, clearOnSuccess: boolean) => {
-      const sent = sendToAgent(currentProjectId, message);
+      const sent = sendToAgent(currentProjectId as ProjectId, message);
       if (sent) {
         if (clearOnSuccess) clearSelection();
         return;

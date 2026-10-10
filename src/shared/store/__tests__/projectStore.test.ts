@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FileChange, GitInfo, GitStatusSnapshot } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 import { createProject } from '@/testing/factories';
 
 import type * as projectStoreModule from '../projectStore';
@@ -43,9 +43,9 @@ const gitInfo = (overrides: Partial<GitInfo> = {}): GitInfo => ({
   ...overrides,
 });
 
-const MAIN = workspaceKeyOf('p1');
-const WT_A = workspaceKeyOf('p1', '/wt/a');
-const WT_B = workspaceKeyOf('p1', '/wt/b');
+const MAIN = WorkspaceSession.of('p1', null).key;
+const WT_A = WorkspaceSession.of('p1', '/wt/a').key;
+const WT_B = WorkspaceSession.of('p1', '/wt/b').key;
 
 function snapshot(
   opts: Pick<GitStatusSnapshot, 'version'> & Partial<Omit<GitStatusSnapshot, 'version'>>,
@@ -53,7 +53,7 @@ function snapshot(
   const projectId = opts.project_id ?? 'p1';
   const worktreePath = opts.worktree_path ?? null;
   return {
-    workspace_key: opts.workspace_key ?? workspaceKeyOf(projectId, worktreePath),
+    workspace_key: opts.workspace_key ?? WorkspaceSession.of(projectId, worktreePath ?? null).key,
     version: opts.version,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -153,7 +153,7 @@ describe('applyStatus — per-workspace version gate（槽位按 WorkspaceKey �
     store().applyStatus(snapshot({ version: 10, project_id: 'p1' }));
     store().applyStatus(snapshot({ version: 1, project_id: 'p2' }));
 
-    expect(store().statuses[workspaceKeyOf('p2')]?.version).toBe(1);
+    expect(store().statuses[WorkspaceSession.of('p2', null).key]?.version).toBe(1);
   });
 
   it('门控拒旧时主仓投影同样不发生（不会用陈旧分支改写 git_info）', () => {

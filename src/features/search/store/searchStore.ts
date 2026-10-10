@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { runSearch, stopSearch } from '@/features/search/api/searchApi';
 import type { SearchFileGroup, SearchOptions } from '@/shared/types/search';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /** Lifecycle of the active search run. */
 export type SearchStatus = 'idle' | 'running' | 'error';
@@ -34,9 +35,9 @@ interface SearchState {
   status: SearchStatus;
   error: string | null;
 
-  run: (projectId: string, query: string, options: SearchOptions) => Promise<void>;
+  run: (projectId: ProjectId, query: string, options: SearchOptions) => Promise<void>;
   /** Fetch the next page of the current query. */
-  next: (projectId: string) => Promise<void>;
+  next: (projectId: ProjectId) => Promise<void>;
   /** Cancel the in-flight request. */
   stop: () => Promise<void>;
   /** Reset to pristine idle state. */

@@ -5,9 +5,15 @@ import { describe, it, expect, vi } from 'vitest';
 
 import type { AgentConfig } from '@/shared/types';
 import type { Tab } from '@/shared/types/tab';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import TabItem from '../TabItem';
 import { renderEditorTabLeading } from '../TabItemLeading';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 function renderTabItem(tab: Tab, agents: AgentConfig[] = []) {
   return render(
@@ -70,7 +76,7 @@ describe('TabItem browser favicon', () => {
   it('有 favicon 时显示网站图标而非 Globe', () => {
     const browserTab: Tab = {
       id: 'tab-b1',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'GitHub',
       order: 0,
       data: {
@@ -91,7 +97,7 @@ describe('TabItem browser favicon', () => {
   it('无 favicon 时回退到 Globe 图标', () => {
     const browserTab: Tab = {
       id: 'tab-b2',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'Browser',
       order: 0,
       data: { kind: 'browser', url: '' },

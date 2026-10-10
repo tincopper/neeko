@@ -84,7 +84,7 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
 
   // ── Selection → AI toolbar actions ──
   const { sendToAgent, pending, clearPending } = useEditorAgentActions();
-  const currentProjectIdForToolbar = tab.projectId;
+  const currentProjectIdForToolbar = tab.workspace.projectId;
 
   /**
    * 代码动作消息的构造（唯一实现）：选区工具栏与诊断 AI 动作共用。
@@ -174,8 +174,8 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
   // B1：agent 自己通过工具改文件，宿主只把诊断上下文（行范围 + 消息）传过去。
   // 有 agent 终端直接发；没有则自动创建并补发 —— 点击必须"有反应"（不能静默 no-op）。
   const aiActionIdentity = useMemo(
-    () => editorIdentityOfTab(tab.projectId, tab.filePath),
-    [tab.projectId, tab.filePath],
+    () => editorIdentityOfTab(tab.workspace.projectId, tab.filePath),
+    [tab.workspace.projectId, tab.filePath],
   );
   // 派发经 ref 读最新闭包（依赖项随渲染变化）
   const runDiagnosticActionRef = useRef<(req: AiActionRequest) => boolean>(() => false);

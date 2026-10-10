@@ -3,13 +3,13 @@
  * No React / store deps — unit-tested in isolation.
  */
 
-import type { WorkspaceSession } from '@/shared/types/workspace';
+import type { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 export interface NavLocation {
-  projectId: string;
+  projectId: ProjectId;
   tabKey: string;
   filePath: string;
-  /** 本位置所属的Workspace 地址（`worktreePath === null` = 主 checkout）；前进/后退读取时直接用。 */
+  /** 本位置所属的 Workspace 地址（`worktreePath === null` = 主 checkout）；前进/后退读取时直接用。历史条目均来自 file tab（必属某 Workspace），恒非空。 */
   workspace: WorkspaceSession;
   /** 1-based line (matches navigateGoal). */
   line: number;

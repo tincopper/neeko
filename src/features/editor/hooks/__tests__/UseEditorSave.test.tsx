@@ -5,17 +5,23 @@ import { AppProvider } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileTab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 import { createProject } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
 import { useEditorSave } from '../useEditorSave';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 const mockInvoke = vi.mocked(invoke);
 
 function makeFileTab(overrides?: Partial<FileTab>): FileTab {
   return {
     id: 'tab-1',
-    projectId: 'test-project-id',
+    workspace: mkSession('test-project-id'),
     filePath: 'index.html',
     fileName: 'index.html',
     content: { path: 'index.html', content: '<html></html>', size: 15, is_binary: false },
@@ -96,7 +102,6 @@ function seedStoreFileTab(options: { content: string; isDirty: boolean }): void 
         tabs: [
           {
             id: TAB_ID,
-            projectId: 'test-project-id',
             title: 'index.html',
             order: 0,
             data: {

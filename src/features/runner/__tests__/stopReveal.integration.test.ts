@@ -23,7 +23,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileContent } from '@/shared/types';
 import { sourceIdentityOf } from '@/shared/utils/fileRef';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 import { deferred, flushMicrotasks } from '@/testing/async';
 import { createStackFrame } from '@/testing/factories';
 
@@ -59,8 +59,8 @@ vi.mock('../api/debugApi', async (importOriginal) => ({
 const PROJECT = '/repo';
 const A_PATH = `${PROJECT}/src/A.java`;
 const B_PATH = `${PROJECT}/src/B.java`;
-const A_TAB = `${workspaceKeyOf('p1', null)}:${A_PATH}`;
-const B_TAB = `${workspaceKeyOf('p1', null)}:${B_PATH}`;
+const A_TAB = `${WorkspaceSession.of('p1', null).key}:${A_PATH}`;
+const B_TAB = `${WorkspaceSession.of('p1', null).key}:${B_PATH}`;
 
 function content(path: string, body = 'x'): FileContent {
   return { path, content: body, size: body.length, is_binary: false };
@@ -85,16 +85,18 @@ function virtualFrame(id: number, reference: number, name: string, line: number)
 }
 
 function activeTabId(): string | null {
-  return useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]?.activeTabId ?? null;
+  return useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key]?.activeTabId ?? null;
 }
 
 function openTabIds(): string[] {
-  return (useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]?.tabs ?? []).map((t) => t.id);
+  return (useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key]?.tabs ?? []).map(
+    (t) => t.id,
+  );
 }
 
 /** 已打开 file tab 的 `data.filePath`（= tab 身份；FileEditor 由它算 absFilePath）。 */
 function openTabPaths(): string[] {
-  return (useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]?.tabs ?? [])
+  return (useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key]?.tabs ?? [])
     .filter((t) => t.data.kind === 'file')
     .map((t) => (t.data.kind === 'file' ? t.data.filePath : ''));
 }
@@ -263,7 +265,7 @@ describe('停点跳转链交错（issue #13 症状）', () => {
     const { location } = useDebugStore.getState();
     expect(location).toEqual({ identity: A_PATH, line: 10, column: 0 });
     // 位置身份就是 tab 身份：不存在「同一份源码两种身份」的分叉。
-    expect(openTabIds()).toEqual([`${workspaceKeyOf('p1', null)}:${location!.identity}`]);
+    expect(openTabIds()).toEqual([`${WorkspaceSession.of('p1', null).key}:${location!.identity}`]);
   });
 
   it('[T3-tab] 适配器虚拟源码：tab 身份即停点身份，编辑器单参数即可命中', async () => {

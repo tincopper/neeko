@@ -11,6 +11,7 @@ import type {
   SlashResource,
   AgentCapabilities,
 } from '@/shared/types/mcpServer';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 // ─── DTOs (mirror src-tauri/src/skill/commands.rs PromptDtoOut) ─────────────
 
@@ -41,7 +42,7 @@ function dtoToPrompt(dto: PromptDto): PromptResource {
     slash: dto.slash,
     tags: dto.tags,
     scope: dto.scope as 'global' | 'project',
-    projectId: dto.project_id,
+    projectId: dto.project_id as ProjectId,
     kind: dto.kind,
     favorite: dto.favorite,
     usageCount: dto.usage_count,
@@ -121,7 +122,7 @@ export async function recordPromptUsage(id: string): Promise<void> {
 /** Resolve a slash command to a prompt (project scope overrides global). */
 export async function resolveSlashPrompt(
   slash: string,
-  projectId?: string | null,
+  projectId?: ProjectId | null,
 ): Promise<PromptResource | null> {
   const dto = await invoke<PromptDto | null>('resolve_slash_prompt', {
     slash,
@@ -168,7 +169,7 @@ function dtoToMcpServer(dto: McpServerDto): McpServer {
     env: dto.env,
     transport: dto.transport as 'stdio' | 'sse' | 'http',
     scope: dto.scope as 'global' | 'project',
-    projectId: dto.project_id,
+    projectId: dto.project_id as ProjectId,
     sourceRegistry: dto.source_registry,
     sourceRef: dto.source_ref,
     tags: dto.tags,
@@ -410,24 +411,27 @@ export async function setMcpServerAgentToggle(
 
 // ─── MCP Project Bindings ─────────────────────────────────────────────────────
 
-export async function getProjectMcpTagGroups(projectId: string): Promise<McpTagGroup[]> {
+export async function getProjectMcpTagGroups(projectId: ProjectId): Promise<McpTagGroup[]> {
   const dtos = await invoke<McpTagGroupDto[]>('get_project_mcp_tag_groups_cmd', { projectId });
   return dtos.map(dtoToMcpTagGroup);
 }
 
 export async function setProjectMcpTagGroups(
-  projectId: string,
+  projectId: ProjectId,
   tagGroupIds: string[],
 ): Promise<void> {
   await invoke('set_project_mcp_tag_groups_cmd', { projectId, tagGroupIds });
 }
 
-export async function addProjectMcpTagGroup(projectId: string, tagGroupId: string): Promise<void> {
+export async function addProjectMcpTagGroup(
+  projectId: ProjectId,
+  tagGroupId: string,
+): Promise<void> {
   await invoke('add_project_mcp_tag_group_cmd', { projectId, tagGroupId });
 }
 
 export async function removeProjectMcpTagGroup(
-  projectId: string,
+  projectId: ProjectId,
   tagGroupId: string,
 ): Promise<void> {
   await invoke('remove_project_mcp_tag_group_cmd', { projectId, tagGroupId });
@@ -438,7 +442,7 @@ export async function getAllProjectMcpTagGroupCounts(): Promise<Array<[string, n
 }
 
 export async function applyProjectMcpServers(
-  projectId: string,
+  projectId: ProjectId,
   projectPath: string,
 ): Promise<void> {
   await invoke('apply_project_mcp_servers_cmd', { projectId, projectPath });
@@ -586,7 +590,7 @@ export function fetchMcpRegistryServer(name: string): Promise<McpRegistryServerD
 
 export async function resolveSlashResource(
   slash: string,
-  projectId?: string | null,
+  projectId?: ProjectId | null,
 ): Promise<SlashResource | null> {
   const dto = await invoke<{
     kind: string;

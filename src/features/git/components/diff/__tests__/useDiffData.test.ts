@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FileChangedEvent } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/project';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import type { DiffResult } from '../types';
 import { useDiffData } from '../useDiffData';
@@ -68,7 +69,10 @@ function makeDiff(content: string): DiffResult {
 }
 
 // 稳定的 diffSource 引用（避免每次 render 生成新 key）
-const DIFF_SOURCE = { type: 'local', projectId: 'p1' } as const;
+const DIFF_SOURCE = {
+  workspace: WorkspaceSession.of('p1', null),
+  revision: { type: 'worktree' },
+} as const;
 
 describe('useDiffData refresh signals', () => {
   beforeEach(() => {
@@ -102,7 +106,10 @@ describe('useDiffData refresh signals', () => {
     const { result } = renderHook(() =>
       useDiffData({
         projectId: 'p1',
-        diffSource: { type: 'stash', projectId: 'p1', selector: 'stash@{0}' },
+        diffSource: {
+          workspace: WorkspaceSession.of('p1', null),
+          revision: { type: 'stash', selector: 'stash@{0}' },
+        },
         filePath: 'src/a.ts',
         commands: stashCommands,
       }),

@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { getResumeCommand } from '../api/conversationApi';
 
@@ -9,7 +10,7 @@ export interface ResumeData {
   resumeCommand: string[] | null; // null = no native resume support
 }
 
-export function useConversationResume(projectId: string | null) {
+export function useConversationResume(projectId: ProjectId | null) {
   const [isResuming, setIsResuming] = useState(false);
 
   const prepareResume = useCallback(

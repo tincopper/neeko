@@ -6,7 +6,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileChange, GitStatusSnapshot } from '@/shared/types';
-import { workspaceKeyOf, type WorkspaceKey } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession, type WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 const PROJECT = 'project-1';
 const OTHER_PROJECT = 'project-2';
@@ -21,7 +21,7 @@ function statusOf(
   entries: FileChange[] = [],
 ): GitStatusSnapshot {
   return {
-    workspace_key: workspaceKeyOf(projectId, worktreePath),
+    workspace_key: WorkspaceSession.of(projectId, worktreePath ?? null).key,
     version: 1,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -41,7 +41,7 @@ function seededKeys(): string[] {
 
 /** 单元切换会移动编辑器激活 tab 指针 —— 给某单元建一个带激活 tab 的 tab 空间。 */
 function seedTabSpace(projectId: string, worktreePath: string | null, activeTabId: string): void {
-  const key = workspaceKeyOf(projectId, worktreePath);
+  const key = WorkspaceSession.of(projectId, worktreePath ?? null).key;
   useEditorStore.setState((state) => ({
     tabs: { ...state.tabs, [key]: { tabs: [], activeTabId } },
   }));
@@ -164,15 +164,17 @@ describe('useWorkspaceState', () => {
       result.current.activateWorkspace(PROJECT, WT_A, 'feature-a');
     });
     seedStatus(PROJECT, WT_A, 'feature-a');
-    expect(seededKeys()).toContain(workspaceKeyOf(PROJECT, WT_A));
+    expect(seededKeys()).toContain(WorkspaceSession.of(PROJECT, WT_A ?? null).key);
 
     act(() => {
       result.current.activateWorkspace(PROJECT, WT_B, 'feature-b');
     });
 
     // 旧单元此后没有生产者 → 槽位必须为空（未挂载 = 未知），渲染侧走 unknown 分支
-    expect(useProjectStore.getState().statuses[workspaceKeyOf(PROJECT, WT_A)]).toBeUndefined();
-    expect(seededKeys()).not.toContain(workspaceKeyOf(PROJECT, WT_A));
+    expect(
+      useProjectStore.getState().statuses[WorkspaceSession.of(PROJECT, WT_A ?? null).key],
+    ).toBeUndefined();
+    expect(seededKeys()).not.toContain(WorkspaceSession.of(PROJECT, WT_A ?? null).key);
   });
 
   it('从主仓切到 worktree 时作废主仓槽位；反向亦然', () => {
@@ -184,14 +186,18 @@ describe('useWorkspaceState', () => {
     act(() => {
       result.current.activateWorkspace(PROJECT, WT_A, 'feature-a');
     });
-    expect(useProjectStore.getState().statuses[workspaceKeyOf(PROJECT, null)]).toBeUndefined();
+    expect(
+      useProjectStore.getState().statuses[WorkspaceSession.of(PROJECT, null).key],
+    ).toBeUndefined();
 
     seedStatus(PROJECT, WT_A, 'feature-a');
     act(() => {
       result.current.activateWorkspace(PROJECT, null);
     });
     expect(result.current.activeCheckoutPath).toBeNull();
-    expect(useProjectStore.getState().statuses[workspaceKeyOf(PROJECT, WT_A)]).toBeUndefined();
+    expect(
+      useProjectStore.getState().statuses[WorkspaceSession.of(PROJECT, WT_A ?? null).key],
+    ).toBeUndefined();
   });
 
   it('重复激活同一单元不作废自己的槽位（否则每次点列表都会闪一下空态）', () => {
@@ -206,7 +212,9 @@ describe('useWorkspaceState', () => {
       result.current.activateWorkspace(PROJECT, WT_A, 'feature-a');
     });
 
-    expect(useProjectStore.getState().statuses[workspaceKeyOf(PROJECT, WT_A)]).toBeDefined();
+    expect(
+      useProjectStore.getState().statuses[WorkspaceSession.of(PROJECT, WT_A ?? null).key],
+    ).toBeDefined();
   });
 
   it('clearActiveWorkspace 回到主仓并作废当前单元槽位', () => {
@@ -223,7 +231,9 @@ describe('useWorkspaceState', () => {
 
     expect(result.current.activeCheckoutPath).toBeNull();
     expect(result.current.activeCheckoutBranch).toBe('');
-    expect(useProjectStore.getState().statuses[workspaceKeyOf(PROJECT, WT_A)]).toBeUndefined();
+    expect(
+      useProjectStore.getState().statuses[WorkspaceSession.of(PROJECT, WT_A ?? null).key],
+    ).toBeUndefined();
   });
 
   it('activateWorkspace 把编辑器激活 tab 指针移到目标单元的 tab 空间', () => {
@@ -294,10 +304,10 @@ describe('useWorkspaceState', () => {
     });
 
     const liveKeys = seededKeys();
-    expect(liveKeys).toContain(workspaceKeyOf(OTHER_PROJECT, WT_B));
-    expect(liveKeys).toContain(workspaceKeyOf(OTHER_PROJECT, null));
+    expect(liveKeys).toContain(WorkspaceSession.of(OTHER_PROJECT, WT_B ?? null).key);
+    expect(liveKeys).toContain(WorkspaceSession.of(OTHER_PROJECT, null).key);
     // 只有 PROJECT 自己的历史单元被作废
-    expect(liveKeys).not.toContain(workspaceKeyOf(PROJECT, null));
+    expect(liveKeys).not.toContain(WorkspaceSession.of(PROJECT, null).key);
   });
 
   it('markWorkspaceOpened / clearActiveWorkspace 只作用于目标项目', () => {
@@ -319,7 +329,9 @@ describe('useWorkspaceState', () => {
       activeBranch: 'feature-b',
     });
     expect(
-      useProjectStore.getState().statuses[workspaceKeyOf(OTHER_PROJECT, WT_B) as WorkspaceKey],
+      useProjectStore.getState().statuses[
+        WorkspaceSession.of(OTHER_PROJECT, WT_B ?? null).key as WorkspaceKey
+      ],
     ).toBeDefined();
   });
 });

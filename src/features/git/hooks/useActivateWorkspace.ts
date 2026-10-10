@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import { activeWorkspaceKeyOf, useWorkspaceStore } from '@/shared/store/workspaceStore';
-import { workspaceKeyLabel, workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession, workspaceKeyLabel } from '@/shared/utils/workspaceRef';
 
 import { activateWorkspace } from '../api/gitApi';
 
@@ -30,7 +30,7 @@ export type ActivateOutcome = 'mounted' | 'stale' | 'skipped' | 'failed';
  * 让日志文件被判成二进制（实测过）。
  */
 export function useActivateWorkspace(
-  projectId: string | null,
+  projectId: ProjectId | null,
 ): (path: string | null) => Promise<ActivateOutcome> {
   return useCallback(
     async (path: string | null) => {
@@ -38,7 +38,7 @@ export function useActivateWorkspace(
       const store = useProjectStore.getState();
       const project = store.projects.find((p) => p.id === projectId);
       if (!project || project.git_info === null) return 'skipped';
-      const key = workspaceKeyOf(projectId, path);
+      const key = WorkspaceSession.of(projectId, path ?? null).key;
       try {
         const snapshot = await activateWorkspace(projectId, path);
         // 快照自带 workspace_key；只接受仍然指向当前视图的结果（切换竞态下丢弃迟到响应）

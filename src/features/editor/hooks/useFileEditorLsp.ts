@@ -59,10 +59,17 @@ export function useFileEditorLsp({
       bindJdtLinkNav(navigateToLocation, {
         projectPath,
         tabKey,
-        projectId: tab.projectId,
+        projectId: tab.workspace.projectId,
         filePath: tab.filePath,
       }),
-    [bindJdtLinkNav, navigateToLocation, projectPath, tabKey, tab.projectId, tab.filePath],
+    [
+      bindJdtLinkNav,
+      navigateToLocation,
+      projectPath,
+      tabKey,
+      tab.workspace.projectId,
+      tab.filePath,
+    ],
   );
 
   // Cmd/Ctrl 按住 → 链接高亮光标；显式跳转进行中 → loading 光标（冷启动 server 握手时给出可感知反馈）

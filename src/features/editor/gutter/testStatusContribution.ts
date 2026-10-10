@@ -26,6 +26,7 @@ import {
   useTestResultsStore,
   type TestCaseStatusInfo,
 } from '@/features/runner/store/testResults';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import type { GutterContribution, GutterHit, GutterLineContext } from './contribution';
 import { runAtLine, runLinesOf } from './runContribution';
@@ -101,7 +102,7 @@ export const testStatusTheme = EditorView.theme({
 });
 
 export interface TestStatusContributionOptions {
-  projectId: string;
+  projectId: ProjectId;
   /** 与 TestActionContext.filePath 同源（相对项目/worktree 根）。 */
   filePath: string;
 }

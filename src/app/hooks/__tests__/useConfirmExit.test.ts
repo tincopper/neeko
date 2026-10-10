@@ -6,8 +6,14 @@ import { confirmAppExit } from '@/features/settings/api/settingsApi';
 import { APP_CLOSE_REQUESTED_EVENT } from '@/shared/events';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useConfirmExit } from '../useConfirmExit';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 vi.mock('@/features/settings/api/settingsApi', () => ({
   confirmAppExit: vi.fn(),
@@ -24,7 +30,7 @@ function makeFileTab(
 ): Tab {
   return {
     id,
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title,
     order: 0,
     data: {
@@ -71,8 +77,8 @@ describe('useConfirmExit', () => {
 
   it('reports no unsaved files when no dirty tabs exist', () => {
     const { result } = renderHook(() => useConfirmExit());
-    useEditorStore.getState().addTab('p1', makeFileTab('a', 'a.ts'));
-    useEditorStore.getState().addTab('p1', makeFileTab('b', 'b.ts', { isDirty: false }));
+    useEditorStore.getState().addTab(makeFileTab('a', 'a.ts'));
+    useEditorStore.getState().addTab(makeFileTab('b', 'b.ts', { isDirty: false }));
 
     act(() => {
       registeredCloseHandler()({ payload: undefined });
@@ -83,11 +89,11 @@ describe('useConfirmExit', () => {
 
   it('collects names of dirty file tabs when backend requests close', () => {
     const { result } = renderHook(() => useConfirmExit());
-    useEditorStore.getState().addTab('p1', makeFileTab('a', 'a.ts', { isDirty: true }));
-    useEditorStore.getState().addTab('p1', makeFileTab('b', 'b.ts', { isDirty: false }));
+    useEditorStore.getState().addTab(makeFileTab('a', 'a.ts', { isDirty: true }));
+    useEditorStore.getState().addTab(makeFileTab('b', 'b.ts', { isDirty: false }));
     useEditorStore
       .getState()
-      .addTab('p1', makeFileTab('u', 'Untitled-1', { isDirty: true, isUntitled: true }));
+      .addTab(makeFileTab('u', 'Untitled-1', { isDirty: true, isUntitled: true }));
 
     act(() => {
       registeredCloseHandler()({ payload: undefined });

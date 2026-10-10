@@ -3,8 +3,7 @@ import { useMemo } from 'react';
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
-import type { WorkspaceSession } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 import {
@@ -63,11 +62,8 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
       onSessionReady: () => {},
       setupFileLinks: (term) => {
         if (projectPath) {
-          const tabWorkspace: WorkspaceSession = {
-            projectId,
-            worktreePath: activeCheckoutPath ?? null,
-          };
-          const tabKey = workspaceKeyOf(tabWorkspace.projectId, tabWorkspace.worktreePath);
+          const tabWorkspace = WorkspaceSession.of(projectId, activeCheckoutPath ?? null);
+          const tabKey = tabWorkspace.key;
           setupTerminalLinks(term, { projectPath, tabKey, workspace: tabWorkspace, showToast });
         }
       },

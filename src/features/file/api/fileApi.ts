@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { DirTreeResult, FileContent, WorkspaceSession } from '@/shared/types';
+import { DirTreeResult, FileContent } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 export function revealInFileManager(path: string): Promise<void> {
   return invoke<void>('reveal_in_file_manager', { path });

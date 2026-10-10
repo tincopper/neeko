@@ -14,6 +14,8 @@ import { useEffect } from 'react';
 import { sendToTerminal } from '@/features/terminal';
 import { INSERT_TO_AGENT_INPUT_EVENT } from '@/shared/events';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 // ---------------------------------------------------------------------------
 // Module-level state
@@ -21,12 +23,12 @@ import { useEditorStore } from '@/shared/store/editorStore';
 
 interface DragPayload {
   path: string;
-  projectId: string;
+  projectId: ProjectId;
 }
 
 let pendingDrag: DragPayload | null = null;
 
-export function setDragFile(path: string, projectId: string): void {
+export function setDragFile(path: string, projectId: ProjectId): void {
   pendingDrag = { path, projectId };
 }
 
@@ -52,7 +54,7 @@ export function useFileDrop(): void {
       }
 
       // Priority 2: find the currently active tab for this project
-      const entry = useEditorStore.getState().tabs[projectId];
+      const entry = useEditorStore.getState().tabs[activeWorkspaceSession(projectId).key];
       if (!entry) return;
 
       const activeTab = entry.tabs.find((t) => t.id === entry.activeTabId);

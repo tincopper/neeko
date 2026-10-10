@@ -3,6 +3,7 @@ import { useNotificationStore } from '@/shared/store/notificationStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { FileContent } from '@/shared/types';
 import { isJdtUri } from '@/shared/utils/jdt';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { readClassFileContents } from '../jdt/jdtUtils';
 
@@ -67,7 +68,7 @@ export function showNavigationFailure(reason: 'outside-root' | 'read-failed'): v
 }
 
 export async function loadDefinitionTargetContent(
-  projectId: string,
+  projectId: ProjectId,
   projectPath: string,
   languageId: string,
   uri: string,

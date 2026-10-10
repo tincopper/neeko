@@ -3,7 +3,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Square, ChevronDown, Bug } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { useDebugSessionLifecycle } from '../hooks/useDebugSessionLifecycle';
 import { useVisibleDebugSession } from '../hooks/useVisibleDebugSession';
@@ -14,8 +16,8 @@ import DebugRunDropdown from './DebugRunDropdown';
 import LaunchConfigDialog from './LaunchConfigDialog';
 
 /** Active editor file path for ${file} / ${fileDirname} expansion. */
-function getActiveEditorFile(projectId: string): string | null {
-  const projectTabs = useEditorStore.getState().tabs[projectId];
+function getActiveEditorFile(projectId: ProjectId): string | null {
+  const projectTabs = useEditorStore.getState().tabs[activeWorkspaceSession(projectId).key];
   if (!projectTabs) return null;
   const active = projectTabs.tabs.find((t) => t.id === projectTabs.activeTabId);
   if (active?.data.kind === 'file') return active.data.filePath;

@@ -8,6 +8,7 @@ import type {
   SkillView,
   AgentSkillGroup,
 } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   getManagedSkills,
@@ -107,15 +108,15 @@ interface SkillStoreActions {
   syncTagGroup: (tagGroupId: string) => Promise<void>;
 
   // Project bindings
-  loadProjectTagGroups: (projectId: string) => Promise<void>;
+  loadProjectTagGroups: (projectId: ProjectId) => Promise<void>;
   setProjectTagGroups: (
-    projectId: string,
+    projectId: ProjectId,
     tagGroupIds: string[],
     projectPath?: string,
   ) => Promise<void>;
-  applyProjectSkills: (projectId: string) => Promise<void>;
+  applyProjectSkills: (projectId: ProjectId) => Promise<void>;
   /** Auto apply on project switch — install only, no remove; deduped. */
-  applyProjectSkillsOnSelect: (projectId: string | null) => Promise<void>;
+  applyProjectSkillsOnSelect: (projectId: ProjectId | null) => Promise<void>;
   refreshProjectSkillCounts: () => Promise<void>;
   /** Bulk refresh bound tag-group counts for all projects. */
   refreshProjectTagGroupCounts: () => Promise<void>;
@@ -327,7 +328,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   // ── Project bindings ──
 
-  loadProjectTagGroups: async (projectId: string) => {
+  loadProjectTagGroups: async (projectId: ProjectId) => {
     set({ projectBindingsLoading: true });
     try {
       const projectTagGroups = await getProjectTagGroupsApi(projectId);
@@ -339,7 +340,11 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     }
   },
 
-  setProjectTagGroups: async (projectId: string, tagGroupIds: string[], projectPath?: string) => {
+  setProjectTagGroups: async (
+    projectId: ProjectId,
+    tagGroupIds: string[],
+    projectPath?: string,
+  ) => {
     await setProjectTagGroupsApi(projectId, tagGroupIds, projectPath);
     await get().loadProjectTagGroups(projectId);
     set((state) => {
@@ -354,7 +359,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
       );
   },
 
-  applyProjectSkills: async (projectId: string) => {
+  applyProjectSkills: async (projectId: ProjectId) => {
     set({ applyingProjectId: projectId });
     try {
       await applyProjectSkillsApi(projectId);
@@ -365,7 +370,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     }
   },
 
-  applyProjectSkillsOnSelect: async (projectId: string | null) => {
+  applyProjectSkillsOnSelect: async (projectId: ProjectId | null) => {
     if (!projectId) return;
     const { lastAppliedProjectId, applyingProjectId } = get();
     if (applyingProjectId === projectId || lastAppliedProjectId === projectId) {

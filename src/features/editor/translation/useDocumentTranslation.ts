@@ -4,6 +4,7 @@ import { useEditorContext } from '@/shared/contexts';
 import { agentCapabilities } from '@/shared/types/agent';
 import { isMarkdownFile } from '@/shared/utils/codemirror';
 import { isHtmlFile, isTxtFile } from '@/shared/utils/fileTree';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { splitHtmlBlocks, splitMarkdownBlocks, splitTextBlocks } from './blocks';
 import {
@@ -36,7 +37,7 @@ export function isTranslatableFile(filePath: string): boolean {
 export interface UseDocumentTranslationParams {
   filePath: string;
   content: string;
-  projectId: string;
+  projectId: ProjectId;
   /** 设置中的默认项（AppConfig.translation） */
   defaultAgentId?: string;
   defaultModelId?: string;

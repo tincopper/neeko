@@ -6,7 +6,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Project } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 import { Input, Button, Separator } from '@/ui';
 
 import { setProjectAgents, listAgents } from '../../agent/api/agentApi';
@@ -25,7 +25,7 @@ import ProjectOverridesSection from './ProjectOverridesSection';
 import ProjectTasksSection from './ProjectTasksSection';
 
 interface ProjectPanelProps {
-  projectId: string;
+  projectId: ProjectId;
   customIdes: { name: string; command: string }[];
   onProjectRemoved: () => void;
 }
@@ -93,7 +93,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
       // 激活的 worktree 单元同样失效。两份作废各一次：主仓槽在此显式作废
       // （`clearActiveWorkspace` 只覆盖 worktree 那一个槽，激活态为主仓时它本就无事可做），
       // worktree 槽随该 mutator **单点**发生 —— 调用方不重复补刀。
-      useProjectStore.getState().invalidateStatus(workspaceKeyOf(projectId, null));
+      useProjectStore.getState().invalidateStatus(WorkspaceSession.of(projectId, null).key);
       useWorkspaceStore.getState().clearActiveWorkspace(projectId);
     }
   }, [projectId]);

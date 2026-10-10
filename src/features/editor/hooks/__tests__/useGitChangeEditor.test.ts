@@ -4,7 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
-import { parseWorkspaceKey, workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { fileLineChangesField } from '../../git-change';
 import { useGitChangeEditor } from '../useGitChangeEditor';
@@ -60,12 +60,12 @@ const FILE_PATH = '/repo/src/a.ts';
 const REPO_REL_PATH = 'src/a.ts';
 const WORKTREE = null;
 /** 本 tab 所属Workspace（主仓）的身份 —— VCS 事件按它定址，不按 project_id。 */
-const MAIN_KEY = workspaceKeyOf(PROJECT_ID, WORKTREE);
-const OTHER_UNIT_KEY = workspaceKeyOf(PROJECT_ID, '/repo/.wt/other');
-const OTHER_PROJECT_KEY = workspaceKeyOf('p2', null);
+const MAIN_KEY = WorkspaceSession.of(PROJECT_ID, WORKTREE ?? null).key;
+const OTHER_UNIT_KEY = WorkspaceSession.of(PROJECT_ID, '/repo/.wt/other').key;
+const OTHER_PROJECT_KEY = WorkspaceSession.of('p2', null).key;
 
 function snapshotPayload(version: number, workspaceKey = MAIN_KEY) {
-  const { projectId, worktreePath } = parseWorkspaceKey(workspaceKey);
+  const { projectId, worktreePath } = WorkspaceSession.fromKeyOrId(workspaceKey);
   return {
     workspace_key: workspaceKey,
     version,
@@ -79,14 +79,17 @@ function snapshotPayload(version: number, workspaceKey = MAIN_KEY) {
 
 /** `git-changed` 现载荷是对象（旧形态是裸 projectId 字符串，缺单元维度）。 */
 function gitChangedPayload(workspaceKey: string) {
-  return { workspace_key: workspaceKey, project_id: parseWorkspaceKey(workspaceKey).projectId };
+  return {
+    workspace_key: workspaceKey,
+    project_id: WorkspaceSession.fromKeyOrId(workspaceKey).projectId,
+  };
 }
 
 /** `file-changed` 载荷：paths 相对**该单元工作树根**。 */
 function fileChangedPayload(workspaceKey: string, paths: string[]) {
   return {
     workspace_key: workspaceKey,
-    project_id: parseWorkspaceKey(workspaceKey).projectId,
+    project_id: WorkspaceSession.fromKeyOrId(workspaceKey).projectId,
     paths,
   };
 }
@@ -411,7 +414,7 @@ describe('useGitChangeEditor — 事件刷新 + 生命周期', () => {
     mocks.getFileDiff.mockResolvedValue(resolveAddedDiff());
 
     const wt = '/repo/.wt/feature';
-    const wtKey = workspaceKeyOf(PROJECT_ID, wt);
+    const wtKey = WorkspaceSession.of(PROJECT_ID, wt ?? null).key;
     const editorViewRef = { current: null as EditorView | null };
     const { unmount } = renderHook(() =>
       useGitChangeEditor({

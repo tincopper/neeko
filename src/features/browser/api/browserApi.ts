@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 interface BrowserBounds {
   x: number;
   y: number;
@@ -77,6 +79,6 @@ export function browserStopPicker(label: string): Promise<void> {
   return invoke<void>('browser_stop_picker', { label });
 }
 
-export function openInDefaultBrowser(url: string, projectId?: string): Promise<void> {
+export function openInDefaultBrowser(url: string, projectId?: ProjectId): Promise<void> {
   return invoke<void>('open_in_default_browser', { url, projectId });
 }

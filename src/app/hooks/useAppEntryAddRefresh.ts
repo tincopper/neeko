@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 interface WslEntryAddHandler {
   (entry: WSLEntrySession): Promise<void>;
@@ -11,10 +12,10 @@ interface RemoteEntryAddHandler {
 
 interface UseAppEntryAddRefreshParams {
   handleWSLEntryAdd: WslEntryAddHandler;
-  wslActionsWrap: { handleRefreshGit: (distro: string, projectId: string) => void };
+  wslActionsWrap: { handleRefreshGit: (distro: string, projectId: ProjectId) => void };
   handleRemoteEntryAdd: RemoteEntryAddHandler;
   remoteAuthStore: { has: (id: string) => boolean };
-  remoteActionsWrap: { handleRefreshGit: (entryId: string, projectId: string) => void };
+  remoteActionsWrap: { handleRefreshGit: (entryId: string, projectId: ProjectId) => void };
 }
 
 /**

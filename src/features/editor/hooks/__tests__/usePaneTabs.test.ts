@@ -2,6 +2,7 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Tab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import type { EditorGroupLayoutResult } from '../useEditorGroupLayout';
 import { usePaneTabs } from '../usePaneTabs';
@@ -9,7 +10,7 @@ import { usePaneTabs } from '../usePaneTabs';
 function fileTab(id: string, projectId = 'p1'): Tab {
   return {
     id,
-    projectId,
+    scope: { kind: 'workspace', session: WorkspaceSession.of(projectId, null) },
     title: id,
     order: 0,
     data: {

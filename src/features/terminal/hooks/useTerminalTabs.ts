@@ -2,7 +2,10 @@ import { useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 import { useEditorStore } from '@/shared/store/editorStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from '@/shared/types';
+import { requireTabWorkspaceSession } from '@/shared/utils/tabIdentity';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { MAX_TERMINAL_TABS, generateTerminalTabId } from '../api/taskTerminal';
 import { closeAllEditorTabs, closeEditorTab } from '../components/terminalTabCleanup';
@@ -20,7 +23,7 @@ function isTerminalTab(tab: Tab): tab is Tab & { data: TerminalTabData } {
 function tabToTerminalTab(tab: Tab & { data: TerminalTabData }): TerminalTab {
   return {
     id: tab.id,
-    projectId: tab.projectId,
+    projectId: requireTabWorkspaceSession(tab).projectId,
     agentId: tab.data.agentId,
     title: tab.title,
     status: tab.data.status,
@@ -79,15 +82,16 @@ export function useTerminalTabs() {
   );
 
   const ensureDefaultTab = useCallback(
-    (projectId: string, agentId?: string | null, agentName?: string): string => {
+    (projectId: ProjectId, agentId?: string | null, agentName?: string): string => {
       const state = useEditorStore.getState();
-      const existing = state.tabs[projectId];
+      // 配额与既有 tab 检查按 store 键（= tab.scope 推导键）寻址，与 addTab 落键同形
+      const existing = state.tabs[activeWorkspaceSession(projectId).key];
       const terminalTabs = existing?.tabs.filter(isTerminalTab) ?? [];
 
       if (terminalTabs.length > 0) {
         // Backfill agentId only on the sole auto-created terminal tab
         if (agentId && terminalTabs.length === 1 && terminalTabs[0].data.agentId === null) {
-          state.updateTab(projectId, terminalTabs[0].id, {
+          state.updateTab(activeWorkspaceSession(projectId).key, terminalTabs[0].id, {
             agentId,
             title: agentName ?? agentId,
           });
@@ -106,7 +110,7 @@ export function useTerminalTabs() {
       const tabId = generateTabId();
       const defaultTab: Tab = {
         id: tabId,
-        projectId,
+        scope: { kind: 'workspace', session: activeWorkspaceSession(projectId) },
         title: agentName ?? agentId ?? 'Terminal',
         order: existing?.tabs.length ?? 0,
         data: {
@@ -116,24 +120,26 @@ export function useTerminalTabs() {
         },
       };
 
-      state.addTab(projectId, defaultTab);
-      state.activateTab(projectId, tabId);
+      state.addTab(defaultTab);
+      // 激活键 = tab 空间键（session.key），不是裸 projectId —— 否则 worktree 下激活错单元
+      state.activateTab(activeWorkspaceSession(projectId).key, tabId);
       return tabId;
     },
     [],
   );
 
   const addTab = useCallback(
-    (projectId: string, agentId?: string | null, agentName?: string): TerminalTab | null => {
+    (projectId: ProjectId, agentId?: string | null, agentName?: string): TerminalTab | null => {
       const state = useEditorStore.getState();
-      const existing = state.tabs[projectId];
+      // 配额与既有 tab 检查按 store 键（= tab.scope 推导键）寻址，与 addTab 落键同形
+      const existing = state.tabs[activeWorkspaceSession(projectId).key];
       const terminalCount = (existing?.tabs ?? []).filter(isTerminalTab).length;
       if (terminalCount >= MAX_TERMINAL_TABS) return null;
 
       const tabId = generateTabId();
       const newTab: Tab = {
         id: tabId,
-        projectId,
+        scope: { kind: 'workspace', session: activeWorkspaceSession(projectId) },
         title: agentName ?? agentId ?? `Terminal ${terminalCount + 1}`,
         order: existing?.tabs.length ?? 0,
         data: {
@@ -143,8 +149,8 @@ export function useTerminalTabs() {
         },
       };
 
-      state.addTab(projectId, newTab);
-      state.activateTab(projectId, tabId);
+      state.addTab(newTab);
+      state.activateTab(activeWorkspaceSession(projectId).key, tabId);
 
       return {
         id: tabId,
@@ -189,7 +195,7 @@ export function useTerminalTabs() {
   );
 
   const handleAgentClick = useCallback(
-    (projectId: string, agent: AgentConfig): TerminalTab | null => {
+    (projectId: ProjectId, agent: AgentConfig): TerminalTab | null => {
       // Always create a new tab when clicking an agent
       return addTab(projectId, agent.id, agent.name);
     },

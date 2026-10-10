@@ -138,7 +138,7 @@ function FileEditorView({
           <TranslationView
             filePath={tab.filePath}
             content={currentContent}
-            projectId={tab.projectId}
+            projectId={tab.workspace.projectId}
             enabled
           />
         ) : showPreview ? (

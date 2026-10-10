@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 interface GitProjectRef {
-  id: string;
+  id: ProjectId;
   git_info?: unknown;
 }
 interface WslEntryLike {
@@ -18,8 +20,8 @@ interface UseAppInitialGitRefreshParams {
   wslEntries: WslEntryLike[];
   remoteEntries: RemoteEntryLike[];
   remoteAuthStore: { has: (id: string) => boolean };
-  wslActionsWrap: { handleRefreshGit: (distro: string, projectId: string) => void };
-  remoteActionsWrap: { handleRefreshGit: (entryId: string, projectId: string) => void };
+  wslActionsWrap: { handleRefreshGit: (distro: string, projectId: ProjectId) => void };
+  remoteActionsWrap: { handleRefreshGit: (entryId: string, projectId: ProjectId) => void };
 }
 
 /**

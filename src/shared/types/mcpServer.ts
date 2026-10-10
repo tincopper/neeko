@@ -1,3 +1,4 @@
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 /**
  * MCP (Model Context Protocol) server resource type.
  *
@@ -27,7 +28,7 @@ export interface McpServer {
   /** Scope: "global" or "project". */
   scope: 'global' | 'project';
   /** Project id when scope = "project". */
-  projectId?: string | null;
+  projectId?: ProjectId | null;
   /** MCP Registry source (present when installed from the marketplace). */
   sourceRegistry?: string | null;
   /** Registry-unique name (matches the marketplace entry for "installed" marking). */

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { GitStatusSnapshot, Worktree } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 // spy 必须经 vi.hoisted 创建：`vi.mock` 的 factory 会被提升到模块顶层语句之前执行，
 // 直接引用外层 `const api` 会拿到 undefined —— 组件调用的就不是这里断言的那个函数。
@@ -41,7 +41,7 @@ import WorktreeList from '../WorktreeList';
 
 const PROJECT_ID = 'p1';
 const WT_PATH = '/repo/.worktrees/dev';
-const WT_KEY = String(workspaceKeyOf(PROJECT_ID, WT_PATH));
+const WT_KEY = String(WorkspaceSession.of(PROJECT_ID, WT_PATH ?? null).key);
 
 const worktrees = [{ path: WT_PATH, branch: 'feature/dev' }] as unknown as Worktree[];
 
@@ -113,7 +113,9 @@ describe('WorktreeList — 单元生命周期收口（R2.4 / I1-b）', () => {
     expect(useWorkspaceStore.getState().byProject[PROJECT_ID]?.activePath).toBeNull();
     // PTY 回收走终端域的 tab 空间入口：真实缓存键是 `{tabKey}:{tabId}:{paneId}`，
     // 手拼 `${projectId}:wt:${path}` 两段式查不到任何条目（PTY 会一直挂着）。
-    expect(api.cleanupTerminalsForTabKey).toHaveBeenCalledWith(workspaceKeyOf('p1', WT_PATH));
+    expect(api.cleanupTerminalsForTabKey).toHaveBeenCalledWith(
+      WorkspaceSession.of('p1', WT_PATH ?? null).key,
+    );
   });
 
   it('删除命令失败时不作废槽位（工作树还在，数据仍然有效）', async () => {

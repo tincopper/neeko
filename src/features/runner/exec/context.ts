@@ -2,10 +2,11 @@
  * Run/Debug 动作上下文与运行期工具（runner 层共享输入）。
  */
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /** Run/Debug 动作上下文（editor tab + 项目根）。 */
 export interface TestActionContext {
-  projectId: string;
+  projectId: ProjectId;
   /** Editor tab file path（项目/worktree 根的相对路径）。 */
   filePath: string;
   /** 项目根绝对路径（worktree 未激活时的 cwd 兜底）。 */
@@ -25,7 +26,7 @@ export const MAX_CAPTURED_OUTPUT_CHARS = 2_000_000;
  * 因此调用方无需自己拼「项目根 vs workspace 根」的二选一。
  * React 渲染路径用 [`runCwdOf`]（它多一个 `projectPath` 兜底）。
  */
-export function activeWorkspaceRoot(projectId: string): string | null {
+export function activeWorkspaceRoot(projectId: ProjectId): string | null {
   return selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
 }
 

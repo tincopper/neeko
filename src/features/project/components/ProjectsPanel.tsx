@@ -25,6 +25,7 @@ import { useAheadBehindSync } from '@/shared/hooks/useAheadBehindSync';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import { getDistroIcon } from '@/shared/utils/distros';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import serverIcon from '../../../assets/server.svg';
 import { push, pull, type PushOutcome } from '../../git/api/gitApi';
@@ -65,7 +66,6 @@ const ProjectsPanel: React.FC = () => {
     onOpenRemoteWorktreeTerminal,
     invokeRemoteGit,
   } = useRemoteContext();
-
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [commitProjectId, setCommitProjectId] = useState<string | null>(null);
   const [remoteHomeDir, setRemoteHomeDir] = useState<string>('');
@@ -159,7 +159,7 @@ const ProjectsPanel: React.FC = () => {
     }
   }, [dialogRemoteEntryId, invokeRemoteGit]);
 
-  const handleCommit = useCallback((projectId: string) => {
+  const handleCommit = useCallback((projectId: ProjectId) => {
     setCommitProjectId(projectId);
   }, []);
 
@@ -177,7 +177,7 @@ const ProjectsPanel: React.FC = () => {
   }
 
   const handlePush = useCallback(
-    async (projectId: string) => {
+    async (projectId: ProjectId) => {
       const projectPath = projects.find((p) => p.id === projectId)?.path ?? '';
       try {
         const worktreePath = activeProjectId === projectId ? activeCheckoutPath : null;
@@ -207,7 +207,7 @@ const ProjectsPanel: React.FC = () => {
   );
 
   const handlePull = useCallback(
-    async (projectId: string) => {
+    async (projectId: ProjectId) => {
       const projectPath = projects.find((p) => p.id === projectId)?.path ?? '';
       try {
         const worktreePath = activeProjectId === projectId ? activeCheckoutPath : null;
@@ -427,7 +427,7 @@ const ProjectsPanel: React.FC = () => {
       )}
       {commitProjectId && (
         <CommitDialog
-          projectId={commitProjectId}
+          projectId={commitProjectId as ProjectId}
           onClose={() => setCommitProjectId(null)}
           onRefreshGit={onRefreshGit}
         />

@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/unit-test/index.md", "reason": "测试分层规范（golden/负向类型/回归测试落位）"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "验证 store 改造符合状态管理规范"}

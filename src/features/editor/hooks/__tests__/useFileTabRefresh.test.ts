@@ -12,8 +12,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { FileChangedEvent, WorkspaceSession } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { FileChangedEvent } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 const { readFileContentMock } = vi.hoisted(() => ({ readFileContentMock: vi.fn() }));
 
@@ -30,18 +30,17 @@ vi.mock('@/features/git', () => ({
 
 import { useFileTabRefresh } from '../useFileTabRefresh';
 
-const WT: WorkspaceSession = { projectId: 'p1', worktreePath: '/wt' };
-const MAIN: WorkspaceSession = { projectId: 'p1', worktreePath: null };
+const WT = WorkspaceSession.of('p1', '/wt');
+const MAIN = WorkspaceSession.of('p1', null);
 
 function makeFileTab(id: string, workspace: WorkspaceSession, filePath: string, isDirty = false) {
   return {
     id,
-    projectId: workspace.projectId,
+    scope: { kind: 'workspace', session: workspace },
     title: id,
     order: 0,
     data: {
       kind: 'file' as const,
-      workspace,
       filePath,
       fileName: `${id}.ts`,
       content: { path: filePath, content: 'old', size: 3, is_binary: false },
@@ -72,53 +71,47 @@ beforeEach(() => {
 
 describe('useFileTabRefresh — 按 Workspace 定址刷新', () => {
   it('worktree 事件只刷新该单元组，读取地址 = tab.workspace（值携带）', async () => {
-    useEditorStore
-      .getState()
-      .addTab(workspaceKeyOf('p1', '/wt'), makeFileTab('wt-a', WT, '/wt/src/a.ts'));
-    useEditorStore
-      .getState()
-      .addTab(workspaceKeyOf('p1', null), makeFileTab('main-a', MAIN, '/repo/src/a.ts'));
+    useEditorStore.getState().addTab(makeFileTab('wt-a', WT, '/wt/src/a.ts'));
+    useEditorStore.getState().addTab(makeFileTab('main-a', MAIN, '/repo/src/a.ts'));
 
     await fire({
       project_id: 'p1',
-      workspace_key: String(workspaceKeyOf('p1', '/wt')),
+      workspace_key: String(WorkspaceSession.of('p1', '/wt').key),
       paths: ['src/a.ts'],
     });
 
     // 只读 worktree 组的那个 tab；地址是携带值，不从事件 key 解析
     expect(readFileContentMock).toHaveBeenCalledTimes(1);
     expect(readFileContentMock).toHaveBeenCalledWith(WT, '/wt/src/a.ts');
-    const wtTab = useEditorStore.getState().tabs[String(workspaceKeyOf('p1', '/wt'))].tabs[0];
+    const wtTab =
+      useEditorStore.getState().tabs[String(WorkspaceSession.of('p1', '/wt').key)].tabs[0];
     if (wtTab.data.kind === 'file') expect(wtTab.data.content.content).toBe('new');
     // 主仓组同路径文件不受波及（旧症状：worktree 改动刷新错单元）
-    const mainTab = useEditorStore.getState().tabs[String(workspaceKeyOf('p1', null))].tabs[0];
+    const mainTab =
+      useEditorStore.getState().tabs[String(WorkspaceSession.of('p1', null).key)].tabs[0];
     if (mainTab.data.kind === 'file') expect(mainTab.data.content.content).toBe('old');
   });
 
   it('dirty tab 命中 → 只标 externallyModified，不读盘', async () => {
-    useEditorStore
-      .getState()
-      .addTab(workspaceKeyOf('p1', null), makeFileTab('m', MAIN, '/repo/src/a.ts', true));
+    useEditorStore.getState().addTab(makeFileTab('m', MAIN, '/repo/src/a.ts', true));
 
     await fire({
       project_id: 'p1',
-      workspace_key: String(workspaceKeyOf('p1', null)),
+      workspace_key: String(WorkspaceSession.of('p1', null).key),
       paths: ['src/a.ts'],
     });
 
     expect(readFileContentMock).not.toHaveBeenCalled();
-    const tab = useEditorStore.getState().tabs[String(workspaceKeyOf('p1', null))].tabs[0];
+    const tab = useEditorStore.getState().tabs[String(WorkspaceSession.of('p1', null).key)].tabs[0];
     if (tab.data.kind === 'file') expect(tab.data.externallyModified).toBe(true);
   });
 
   it('绝对路径回退（strip_prefix 失败）同样命中', async () => {
-    useEditorStore
-      .getState()
-      .addTab(workspaceKeyOf('p1', '/wt'), makeFileTab('wt-a', WT, '/wt/src/a.ts'));
+    useEditorStore.getState().addTab(makeFileTab('wt-a', WT, '/wt/src/a.ts'));
 
     await fire({
       project_id: 'p1',
-      workspace_key: String(workspaceKeyOf('p1', '/wt')),
+      workspace_key: String(WorkspaceSession.of('p1', '/wt').key),
       paths: ['/wt/src/a.ts'],
     });
 
@@ -126,13 +119,11 @@ describe('useFileTabRefresh — 按 Workspace 定址刷新', () => {
   });
 
   it('未命中路径 → 不读盘不更新', async () => {
-    useEditorStore
-      .getState()
-      .addTab(workspaceKeyOf('p1', null), makeFileTab('m', MAIN, '/repo/src/a.ts'));
+    useEditorStore.getState().addTab(makeFileTab('m', MAIN, '/repo/src/a.ts'));
 
     await fire({
       project_id: 'p1',
-      workspace_key: String(workspaceKeyOf('p1', null)),
+      workspace_key: String(WorkspaceSession.of('p1', null).key),
       paths: ['src/b.ts'],
     });
 

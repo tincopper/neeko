@@ -9,6 +9,7 @@ import type {
   AgentSkillGroup,
   ProjectDiskSkill,
 } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 // ─── Managed Skills ──────────────────────────────────────────────────────────
 
@@ -129,18 +130,18 @@ export function unsyncTagGroup(tagGroupId: string): Promise<void> {
 }
 
 /** Incremental apply: install skills for project's tag groups; never removes others. */
-export function applyProjectSkills(projectId: string): Promise<void> {
+export function applyProjectSkills(projectId: ProjectId): Promise<void> {
   return invoke<void>('apply_project_skills_cmd', { projectId });
 }
 
 // ─── Project ↔ Tag Group ────────────────────────────────────────────────────
 
-export function getProjectTagGroups(projectId: string): Promise<TagGroup[]> {
+export function getProjectTagGroups(projectId: ProjectId): Promise<TagGroup[]> {
   return invoke<TagGroup[]>('get_project_tag_groups_cmd', { projectId });
 }
 
 export function setProjectTagGroups(
-  projectId: string,
+  projectId: ProjectId,
   tagGroupIds: string[],
   projectPath?: string,
 ): Promise<void> {
@@ -151,11 +152,11 @@ export function setProjectTagGroups(
   });
 }
 
-export function addProjectTagGroup(projectId: string, tagGroupId: string): Promise<void> {
+export function addProjectTagGroup(projectId: ProjectId, tagGroupId: string): Promise<void> {
   return invoke<void>('add_project_tag_group_cmd', { projectId, tagGroupId });
 }
 
-export function removeProjectTagGroup(projectId: string, tagGroupId: string): Promise<void> {
+export function removeProjectTagGroup(projectId: ProjectId, tagGroupId: string): Promise<void> {
   return invoke<void>('remove_project_tag_group_cmd', { projectId, tagGroupId });
 }
 

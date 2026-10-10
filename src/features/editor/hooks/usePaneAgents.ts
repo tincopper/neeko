@@ -3,13 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
 import type { AgentConfig, Tab } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { renderEditorTabLeading } from '../components/TabItemLeading';
 
 interface UsePaneAgentsParams {
   agents: AgentConfig[];
   hiddenAgentIds: string[];
-  projectIdForCheck: string | null;
+  projectIdForCheck: ProjectId | null;
   onAgentClick: (agent: AgentConfig) => void;
   showToast: (message: string, type?: 'info' | 'error') => void;
 }

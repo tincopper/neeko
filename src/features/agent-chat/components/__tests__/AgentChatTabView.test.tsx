@@ -6,9 +6,14 @@ import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it, vi } 
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { SequencedEvent, StreamEvent } from '@/shared/types/agentChat';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import AgentChatTabView, { clearMessageCache } from '../AgentChatTabView';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 vi.mock('@/features/agent/api/agentApi', () => ({
   listChatAgents: vi.fn(() =>
@@ -414,7 +419,7 @@ describe('AgentChatTabView', () => {
     await waitFor(() => {
       expect(editorMock.addTab).toHaveBeenCalledTimes(1);
     });
-    const [, tab] = editorMock.addTab.mock.calls[0];
+    const [tab] = editorMock.addTab.mock.calls[0];
     expect(tab.data).toMatchObject({ filePath: '/proj/src/auth/session.ts' });
   });
 
@@ -452,7 +457,7 @@ describe('AgentChatTabView', () => {
     await waitFor(() => {
       expect(editorMock.addTab).toHaveBeenCalledTimes(1);
     });
-    const [, tab] = editorMock.addTab.mock.calls[0];
+    const [tab] = editorMock.addTab.mock.calls[0];
     expect(tab.data).toMatchObject({ filePath: '/proj/src/a.ts' });
   });
 
@@ -587,15 +592,14 @@ describe('AgentChatTabView', () => {
     await waitFor(() => {
       expect(editorMock.addTab).toHaveBeenCalledTimes(1);
     });
-    const [tabKey, tab] = editorMock.addTab.mock.calls[0];
-    expect(tabKey).toBe(workspaceKeyOf('test-project', null));
+    const [tab] = editorMock.addTab.mock.calls[0];
+    expect(tab.scope).toEqual({ kind: 'workspace', session: mkSession('test-project') });
     expect(tab).toMatchObject({
-      id: `${workspaceKeyOf('test-project', null)}:/proj/src/auth/session.ts`,
-      projectId: 'test-project',
+      id: `${WorkspaceSession.of('test-project', null).key}:/proj/src/auth/session.ts`,
+      scope: { kind: 'workspace', session: mkSession('test-project') },
       title: 'session.ts',
       data: {
         kind: 'file',
-        workspace: { projectId: 'test-project', worktreePath: null },
         filePath: '/proj/src/auth/session.ts',
         isDirty: false,
       },
@@ -628,13 +632,15 @@ describe('AgentChatTabView', () => {
       await waitFor(() => {
         expect(editorMock.addTab).toHaveBeenCalledTimes(1);
       });
-      const [tabKey, tab] = editorMock.addTab.mock.calls[0];
-      expect(tabKey).toBe(workspaceKeyOf('test-project', '/wt'));
+      const [tab] = editorMock.addTab.mock.calls[0];
+      expect(tab.scope).toEqual({
+        kind: 'workspace',
+        session: WorkspaceSession.of('test-project', '/wt'),
+      });
       expect(tab).toMatchObject({
-        id: `${workspaceKeyOf('test-project', '/wt')}:/wt/src/auth/session.ts`,
+        id: `${WorkspaceSession.of('test-project', '/wt').key}:/wt/src/auth/session.ts`,
         data: {
           kind: 'file',
-          workspace: { projectId: 'test-project', worktreePath: '/wt' },
           filePath: '/wt/src/auth/session.ts',
         },
       });
@@ -652,14 +658,14 @@ describe('AgentChatTabView', () => {
   it('read_file 路径已打开时点击只 activateTab 不重复 addTab', async () => {
     await renderView();
     editorMock.tabs = {
-      [workspaceKeyOf('test-project', null)]: {
+      [WorkspaceSession.of('test-project', null).key]: {
         tabs: [
           {
-            id: `${workspaceKeyOf('test-project', null)}:/proj/src/auth/session.ts`,
+            id: `${WorkspaceSession.of('test-project', null).key}:/proj/src/auth/session.ts`,
             title: 'session.ts',
           },
         ],
-        activeTabId: `${workspaceKeyOf('test-project', null)}:/proj/src/auth/session.ts`,
+        activeTabId: `${WorkspaceSession.of('test-project', null).key}:/proj/src/auth/session.ts`,
       },
     };
     editorMock.addTab.mockClear();
@@ -678,8 +684,8 @@ describe('AgentChatTabView', () => {
 
     await waitFor(() => {
       expect(editorMock.activateTab).toHaveBeenCalledWith(
-        workspaceKeyOf('test-project', null),
-        `${workspaceKeyOf('test-project', null)}:/proj/src/auth/session.ts`,
+        WorkspaceSession.of('test-project', null).key,
+        `${WorkspaceSession.of('test-project', null).key}:/proj/src/auth/session.ts`,
       );
     });
     expect(editorMock.addTab).not.toHaveBeenCalled();

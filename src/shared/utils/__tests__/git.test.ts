@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Worktree } from '@/shared/types';
 
 import { filterWorktreeBranches, isActiveWorktree } from '../git';
-import { isMainCheckout, workspaceKeyOf } from '../workspaceRef';
+import { WorkspaceSession, isMainCheckout } from '../workspaceRef';
 
 /**
  * `shared/utils/git` 纯函数。
@@ -64,8 +64,10 @@ describe('isActiveWorktree — 「是否 linked worktree 单元」', () => {
     // 「纯空白串」也归为主仓，而本函数按非空字符串判为 worktree —— 该分叉已作为
     // 不一致点上报（空白路径现实中不会由后端 canonicalize 产出），故不在此固化。
     for (const path of [null, undefined, ''] as const) {
-      expect(isActiveWorktree(path)).toBe(!isMainCheckout(workspaceKeyOf('p1', path)));
+      expect(isActiveWorktree(path)).toBe(
+        !isMainCheckout(WorkspaceSession.of('p1', path ?? null).key),
+      );
     }
-    expect(isActiveWorktree('/wt/a')).toBe(!isMainCheckout(workspaceKeyOf('p1', '/wt/a')));
+    expect(isActiveWorktree('/wt/a')).toBe(!isMainCheckout(WorkspaceSession.of('p1', '/wt/a').key));
   });
 });

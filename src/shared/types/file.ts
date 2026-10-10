@@ -4,7 +4,7 @@
  */
 export const DEFAULT_TREE_DEPTH = 2;
 
-import type { WorkspaceSession } from './workspace';
+import type { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /** 目录内容的加载状态：`loading` 中重复请求幂等合并；`error` 保留旧内容可重试 */
 export type DirLoadState = 'idle' | 'loading' | 'loaded' | 'error';
@@ -84,15 +84,13 @@ export interface FileContent {
   is_binary: boolean;
 }
 
-export interface FileViewState {
-  projectId: string;
-  filePath: string;
-}
-
 export interface FileTab {
   id: string;
-  projectId: string;
-  /** 所属Workspace 地址（由统一 `FileTabData.workspace` 透传）。 */
+  /**
+   * 所属 Workspace 地址（由统一 `Tab.scope.session` 透传）—— **身份的唯一来源**。
+   * 项目身份是它的投影（`workspace.projectId`），不再单独持 `projectId`（同一 tab
+   * 不允许两种身份表示）。
+   */
   workspace: WorkspaceSession;
   filePath: string;
   fileName: string;

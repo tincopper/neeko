@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import type { AuthMethod } from '@/shared/types';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { createTerminalSession, closeTerminalSession, resizeTerminal } from '../api/terminalApi';
 import {
@@ -18,7 +19,7 @@ import type { TerminalStrategy } from './types';
 /** @deprecated Use `TerminalView` with `environment` prop instead. */
 export interface RemoteStrategyParams {
   entryId: string;
-  projectId: string;
+  projectId: ProjectId;
   projectPath: string;
   host: string;
   port: number;
@@ -26,7 +27,7 @@ export interface RemoteStrategyParams {
   auth: AuthMethod;
   fontSize?: number;
   fontFamily?: string;
-  onSessionReady?: (projectId: string) => void;
+  onSessionReady?: (projectId: ProjectId) => void;
   paneId?: string;
   cacheKeySuffix?: string;
 }
@@ -77,7 +78,7 @@ export function useRemoteTerminalStrategy(params: RemoteStrategyParams): Termina
           setupTerminalLinks(term, {
             projectPath,
             tabKey: projectId,
-            workspace: { projectId, worktreePath: null },
+            workspace: WorkspaceSession.of(projectId, null),
             showToast,
           });
         }

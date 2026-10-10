@@ -6,10 +6,11 @@ import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons'
 import SessionChips from '@/shared/components/SessionChips';
 import { useWorktreeChangeStats } from '@/shared/hooks/useWorktreeChangeStats';
 import type { GitStatusSnapshot, Worktree } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 interface ConnectionWorktreeListProps {
-  /** 本列表所属项目 —— 状态槽位按 `workspaceKeyOf(projectId, wt.path)` 定址（与本地侧栏同一张表）。 */
-  projectId: string;
+  /** 本列表所属项目 —— 状态槽位按 `WorkspaceSession.of(projectId, wt.path).key` 定址（与本地侧栏同一张表）。 */
+  projectId: ProjectId;
   worktrees: Worktree[];
   /** 当前激活的 worktree 路径 */
   activeCheckoutPath: string | null;

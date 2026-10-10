@@ -7,6 +7,7 @@ import { fromFileUri } from '@/features/lsp/api/languageMap';
 import { lspRequest } from '@/features/lsp/api/lspApi';
 import type { LspLocation } from '@/features/lsp/types';
 import { fuzzyFilter, openProjectFile } from '@/features/quick-open';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { flattenDocumentSymbols, symbolKindLabel, type FlatSymbol } from '../documentSymbols';
 
@@ -31,17 +32,17 @@ interface SymbolNavState {
   allItems: SymbolNavItem[];
   items: SymbolNavItem[];
   selectedIndex: number;
-  projectId: string | null;
+  projectId: ProjectId | null;
 
   openStructure: (opts: {
-    projectId: string;
+    projectId: ProjectId;
     projectPath: string;
     languageId: string;
     uri: string;
     filePath: string;
   }) => void;
   openFindUsages: (opts: {
-    projectId: string;
+    projectId: ProjectId;
     locations: LspLocation[];
     symbolHint?: string;
   }) => void;

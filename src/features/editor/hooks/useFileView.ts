@@ -6,10 +6,10 @@ import { useFileStore } from '@/features/file/store';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { activeWorkspaceSession, useActiveWorkspaceSession } from '@/shared/store/workspaceStore';
-import type { DirTreeResult, WorkspaceSession } from '@/shared/types';
+import type { DirTreeResult } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { isFileTab } from '@/shared/utils/fileTree';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useFileViewTabOps } from './useFileViewTabOps';
 
@@ -31,7 +31,9 @@ export function useFileView() {
   const workspace = useActiveWorkspaceSession(currentProjectId);
 
   // Composite tab key: worktree gets its own independent tab space
-  const tabKey = workspace ? workspaceKeyOf(workspace.projectId, workspace.worktreePath) : null;
+  const tabKey = workspace
+    ? WorkspaceSession.of(workspace.projectId, workspace.worktreePath ?? null).key
+    : null;
 
   // Read project tabs from unified store using tabKey
   const projectTabs = useEditorStore(
@@ -102,7 +104,7 @@ export function useFileView() {
    *   (a fresh owner still loads because loadDir resets the cache on owner change).
    */
   const loadFileTree = useCallback(
-    async (projectId: string, worktreePath?: string, force = false) => {
+    async (projectId: ProjectId, worktreePath?: string, force = false) => {
       const rootPath = worktreePath ?? useProjectStore.getState().activeProject?.path ?? null;
       if (!rootPath) return;
       const owner = `${projectId}:${rootPath}`;

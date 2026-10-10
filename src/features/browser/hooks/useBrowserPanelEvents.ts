@@ -14,11 +14,12 @@ import { useTauriEvent } from '@/shared/hooks/useTauriEvent';
 import { useProjectBrowserStore, type BrowserPanelState } from '@/shared/store/browserStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { FileChangedEvent, GitChangedEvent } from '@/shared/types';
 import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
 import { pathsContainFile } from '@/shared/utils/fileRef';
 import { recordNavigation } from '@/shared/utils/historyStack';
-import { workspaceRootOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, workspaceRootOf } from '@/shared/utils/workspaceRef';
 
 import { browserNavigate } from '../api/browserApi';
 import { isAgentCliTab, formatPickerMessage, type PickerElement } from '../components/pickerUtils';
@@ -35,7 +36,7 @@ interface PromptSubmittedPayload {
 }
 
 interface UseBrowserPanelEventsParams {
-  activeProjectId: string | null;
+  activeProjectId: ProjectId | null;
   label: string | null;
   isCreatedRef: React.RefObject<boolean>;
   /** auto-refresh 武装标记（armAutoRefresh/disarmAutoRefresh 操作同一 ref） */
@@ -154,7 +155,7 @@ export function useBrowserPanelEvents({
           reinjectPicker();
           return;
         }
-        const projectTabs = editorState.tabs[projectId];
+        const projectTabs = editorState.tabs[activeWorkspaceSession(projectId).key];
         if (!isAgentCliTab(projectTabs, editorState.activeTabId)) {
           showToastRef.current('Please switch to an Agent CLI tab', 'error');
           reinjectPicker();
@@ -194,7 +195,9 @@ export function useBrowserPanelEvents({
     const { project_id, paths } = event;
     if (!paths.length) return;
 
-    const currentUrl = useProjectBrowserStore.getState().getPanelState(project_id)?.url;
+    const currentUrl = useProjectBrowserStore
+      .getState()
+      .getPanelState(project_id as ProjectId)?.url;
     if (!currentUrl?.startsWith('file://')) return;
 
     const browserFilePath = fileUrlToFilePath(currentUrl);

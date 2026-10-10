@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChange, GitStatusSnapshot } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 vi.mock('../../api/gitApi', () => ({
   getWorkspaceStatus: vi.fn(),
@@ -44,7 +44,7 @@ function snapshotOf(
   entries: FileChange[],
 ): GitStatusSnapshot {
   return {
-    workspace_key: workspaceKeyOf(projectId, worktreePath),
+    workspace_key: WorkspaceSession.of(projectId, worktreePath ?? null).key,
     version,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -81,7 +81,7 @@ describe('refreshWorkspaceStatus — status 的唯一显式刷新入口', () => 
   it('主仓单元解析为 (projectId, null) —— 不得用空串表示主仓', async () => {
     mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', null, 1, []));
 
-    await refreshWorkspaceStatus(workspaceKeyOf('p1'));
+    await refreshWorkspaceStatus(WorkspaceSession.of('p1', null).key);
 
     expect(mockGetWorkspaceStatus).toHaveBeenCalledWith('p1', null);
   });
@@ -89,7 +89,7 @@ describe('refreshWorkspaceStatus — status 的唯一显式刷新入口', () => 
   it('worktree 单元解析出 canonical 路径并按该路径查询', async () => {
     mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', '/wt/a', 1, []));
 
-    await refreshWorkspaceStatus(workspaceKeyOf('p1', '/wt/a'));
+    await refreshWorkspaceStatus(WorkspaceSession.of('p1', '/wt/a').key);
 
     expect(mockGetWorkspaceStatus).toHaveBeenCalledWith('p1', '/wt/a');
   });
@@ -100,60 +100,65 @@ describe('refreshWorkspaceStatus — status 的唯一显式刷新入口', () => 
     await refreshWorkspaceStatus('p1');
 
     expect(mockGetWorkspaceStatus).toHaveBeenCalledWith('p1', null);
-    expect(slotOf(workspaceKeyOf('p1'))?.version).toBe(1);
+    expect(slotOf(WorkspaceSession.of('p1', null).key)?.version).toBe(1);
   });
 
   it('成功时快照整体入该单元槽位（全量替换，不做增量合并）', async () => {
     useProjectStore.getState().applyStatus(snapshotOf('p1', null, 1, [fc('old.ts')]));
     mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', null, 2, [fc('new.ts'), fc('n.ts')]));
 
-    await refreshWorkspaceStatus(workspaceKeyOf('p1'));
+    await refreshWorkspaceStatus(WorkspaceSession.of('p1', null).key);
 
-    expect(slotOf(workspaceKeyOf('p1'))?.entries).toEqual([fc('new.ts'), fc('n.ts')]);
-    expect(slotOf(workspaceKeyOf('p1'))?.version).toBe(2);
+    expect(slotOf(WorkspaceSession.of('p1', null).key)?.entries).toEqual([
+      fc('new.ts'),
+      fc('n.ts'),
+    ]);
+    expect(slotOf(WorkspaceSession.of('p1', null).key)?.version).toBe(2);
   });
 
   it('命令失败 = 状态未知：既不写空列表也不清空既有槽位', async () => {
     useProjectStore.getState().applyStatus(snapshotOf('p1', null, 4, [fc('keep.ts')]));
-    const before = slotOf(workspaceKeyOf('p1'));
+    const before = slotOf(WorkspaceSession.of('p1', null).key);
     mockGetWorkspaceStatus.mockRejectedValue(new Error('boom'));
 
-    await expect(refreshWorkspaceStatus(workspaceKeyOf('p1'))).resolves.toBeUndefined();
+    await expect(
+      refreshWorkspaceStatus(WorkspaceSession.of('p1', null).key),
+    ).resolves.toBeUndefined();
 
     // 「空列表」是一个断言（该单元确实干净），错误不是断言 —— 绝不得据此写入
-    expect(slotOf(workspaceKeyOf('p1'))).toBe(before);
-    expect(slotOf(workspaceKeyOf('p1'))?.entries).toEqual([fc('keep.ts')]);
+    expect(slotOf(WorkspaceSession.of('p1', null).key)).toBe(before);
+    expect(slotOf(WorkspaceSession.of('p1', null).key)?.entries).toEqual([fc('keep.ts')]);
     expect(consoleError).toHaveBeenCalled();
   });
 
   it('失败时不得凭空造出槽位（未挂载的单元保持「未知」）', async () => {
     mockGetWorkspaceStatus.mockRejectedValue(new Error('not mounted'));
 
-    await refreshWorkspaceStatus(workspaceKeyOf('p1', '/wt/a'));
+    await refreshWorkspaceStatus(WorkspaceSession.of('p1', '/wt/a').key);
 
-    expect(slotOf(workspaceKeyOf('p1', '/wt/a'))).toBeUndefined();
+    expect(slotOf(WorkspaceSession.of('p1', '/wt/a').key)).toBeUndefined();
   });
 
   it('刷新入口不自建第二道 version 门控：迟到快照交给 store 拒收', async () => {
     useProjectStore.getState().applyStatus(snapshotOf('p1', null, 9, [fc('newer.ts')]));
     mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', null, 3, [fc('stale.ts')]));
 
-    await refreshWorkspaceStatus(workspaceKeyOf('p1'));
+    await refreshWorkspaceStatus(WorkspaceSession.of('p1', null).key);
 
-    expect(slotOf(workspaceKeyOf('p1'))?.entries).toEqual([fc('newer.ts')]);
-    expect(slotOf(workspaceKeyOf('p1'))?.version).toBe(9);
+    expect(slotOf(WorkspaceSession.of('p1', null).key)?.entries).toEqual([fc('newer.ts')]);
+    expect(slotOf(WorkspaceSession.of('p1', null).key)?.version).toBe(9);
   });
 
   it('刷新一个单元不触碰同项目其它单元的槽位（串数据回归）', async () => {
     useProjectStore.getState().applyStatus(snapshotOf('p1', '/wt/a', 1, [fc('wtA.ts')]));
-    const wtSlotBefore = slotOf(workspaceKeyOf('p1', '/wt/a'));
+    const wtSlotBefore = slotOf(WorkspaceSession.of('p1', '/wt/a').key);
     mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', null, 5, [fc('main.ts')]));
 
-    await refreshWorkspaceStatus(workspaceKeyOf('p1'));
+    await refreshWorkspaceStatus(WorkspaceSession.of('p1', null).key);
 
-    expect(slotOf(workspaceKeyOf('p1'))?.entries).toEqual([fc('main.ts')]);
-    expect(slotOf(workspaceKeyOf('p1', '/wt/a'))).toBe(wtSlotBefore);
-    expect(slotOf(workspaceKeyOf('p1', '/wt/a'))?.entries).toEqual([fc('wtA.ts')]);
+    expect(slotOf(WorkspaceSession.of('p1', null).key)?.entries).toEqual([fc('main.ts')]);
+    expect(slotOf(WorkspaceSession.of('p1', '/wt/a').key)).toBe(wtSlotBefore);
+    expect(slotOf(WorkspaceSession.of('p1', '/wt/a').key)?.entries).toEqual([fc('wtA.ts')]);
   });
 });
 
@@ -169,7 +174,7 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
   it('窗口内同一单元多次调度只执行一次，并拿到该单元的 key', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
-    const key = workspaceKeyOf('p1', '/wt/a');
+    const key = WorkspaceSession.of('p1', '/wt/a').key;
 
     debounced.schedule(key, run);
     debounced.schedule(key, run);
@@ -187,8 +192,8 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
   it('同一项目的两个单元各占一个窗口，互不取消（旧实现按 projectId 去抖会丢一次刷新）', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
-    const main = workspaceKeyOf('p1');
-    const worktree = workspaceKeyOf('p1', '/wt/a');
+    const main = WorkspaceSession.of('p1', null).key;
+    const worktree = WorkspaceSession.of('p1', '/wt/a').key;
 
     debounced.schedule(main, run);
     debounced.schedule(worktree, run);
@@ -203,8 +208,8 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const runMain = vi.fn();
     const runWt = vi.fn();
-    const main = workspaceKeyOf('p1');
-    const worktree = workspaceKeyOf('p1', '/wt/a');
+    const main = WorkspaceSession.of('p1', null).key;
+    const worktree = WorkspaceSession.of('p1', '/wt/a').key;
 
     debounced.schedule(main, runMain);
     debounced.schedule(worktree, runWt);
@@ -223,7 +228,7 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
   it('执行后定时器条目即释放：同一单元可再次调度并再次执行', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
-    const key = workspaceKeyOf('p1');
+    const key = WorkspaceSession.of('p1', null).key;
 
     debounced.schedule(key, run);
     vi.advanceTimersByTime(500);
@@ -236,7 +241,7 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
   it('WorkspaceKey 与等价裸字符串视为同一单元（去重键取字符串形态）', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
-    const key = workspaceKeyOf('p1', '/wt/a');
+    const key = WorkspaceSession.of('p1', '/wt/a').key;
 
     debounced.schedule(key, run);
     debounced.schedule(String(key), run);
@@ -249,9 +254,9 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
 
-    debounced.schedule(workspaceKeyOf('p1'), run);
-    debounced.schedule(workspaceKeyOf('p1', '/wt/a'), run);
-    debounced.schedule(workspaceKeyOf('p2'), run);
+    debounced.schedule(WorkspaceSession.of('p1', null).key, run);
+    debounced.schedule(WorkspaceSession.of('p1', '/wt/a').key, run);
+    debounced.schedule(WorkspaceSession.of('p2', null).key, run);
     debounced.clear();
 
     vi.advanceTimersByTime(1000);

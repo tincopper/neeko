@@ -4,6 +4,7 @@ import { useProjectBrowserStore, type BrowserPanelState } from '@/shared/store/b
 import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { browserClose, browserSetVisible } from '../api/browserApi';
 import { BROWSER_PANEL_ID, decideProjectSwitchDock } from '../utils/projectSwitchDock';
@@ -11,7 +12,7 @@ import { BROWSER_PANEL_ID, decideProjectSwitchDock } from '../utils/projectSwitc
 import { getProjectBrowserLabel } from './useBrowserConstants';
 
 interface UseBrowserPanelSessionParams {
-  activeProjectId: string | null;
+  activeProjectId: ProjectId | null;
   label: string | null;
   browserState: BrowserPanelState | null;
   /** 需要写入（mount 恢复时置 true），故为可变结构而非只读 RefObject */

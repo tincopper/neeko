@@ -110,7 +110,7 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
 
   const openStashDiff = useOpenStashDiff(project?.id, activeCheckoutPath, stashes);
 
-  const openCommitDiffTab = useOpenDiffTab(connectionContext, activeCheckoutPath, project?.id);
+  const openCommitDiffTab = useOpenDiffTab(activeCheckoutPath, project?.id);
 
   // Changes 提交 / stash apply/pop 后：刷新 git info（wrapper） + 日志
   const handleRefreshAll = useCallback(async () => {

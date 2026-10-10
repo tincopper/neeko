@@ -22,6 +22,7 @@ import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { SkillView } from '@/shared/types';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 interface NavItem {
   key: SkillView;
@@ -29,7 +30,6 @@ interface NavItem {
   icon: React.ElementType;
   count?: number;
 }
-
 /**
  * Skills left rail — structure inspired by Skills Manager:
  * primary nav + Tags (tag groups).
@@ -134,7 +134,7 @@ const SkillsPanel: React.FC = React.memo(() => {
   );
 
   const selectProjectNav = useCallback(
-    (projectId: string) => {
+    (projectId: ProjectId) => {
       selectProject(projectId);
       setActiveSkillView('project');
       setActiveTagGroupIds([]);

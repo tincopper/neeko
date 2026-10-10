@@ -82,7 +82,7 @@ export function expandUntrackedEntries(
 export function useUntrackedDirExpansion(
   files: FileChange[],
   onExpandUntrackedDir: ((dirPath: string) => Promise<string[]>) | undefined,
-  /** 本列表所属Workspace（`workspaceKeyOf(projectId, worktreePath)`）：S1 只接受同址事件。 */
+  /** 本列表所属Workspace（`WorkspaceSession.of(projectId, worktreePath).key`）：S1 只接受同址事件。 */
   workspaceKey: string,
 ) {
   const [dirFilesMap, setDirFilesMap] = useState<Record<string, string[]>>({});

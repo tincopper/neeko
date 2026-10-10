@@ -15,6 +15,8 @@ import type {
   TabKind,
 } from '@/shared/types/tab';
 import { emitTabActivated } from '@/shared/utils/editorActivity';
+import { tabSpaceKeyOf } from '@/shared/utils/tabIdentity';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /**
  * Tab 关闭清理注册表（feature 解耦的按 kind 分发）。
@@ -111,15 +113,11 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         'untitledName' in p ||
         'initialPreviewMode' in p ||
         'readOnly' in p ||
-        'virtualUri' in p ||
-        'workspace' in p;
+        'virtualUri' in p;
       if (!isFilePartial) return data;
       const d = data as FileTabData;
-      // 警示：改 `workspace` 不会迁移 tab 组键 —— 组键是它的派生索引。
-      // 调用方不得用本入口「挪单元」；确需改单元 = 关旧组 tab + 新组重开。
       return {
         kind: 'file' as const,
-        workspace: 'workspace' in p ? (p.workspace as FileTabData['workspace']) : d.workspace,
         filePath: p.filePath !== undefined ? (p.filePath as string) : d.filePath,
         fileName: p.fileName !== undefined ? (p.fileName as string) : d.fileName,
         content: p.content !== undefined ? (p.content as FileContent) : d.content,
@@ -176,7 +174,7 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
       const d = data as PRDetailTabData;
       return {
         kind: 'prDetail' as const,
-        projectId: p.projectId !== undefined ? (p.projectId as string) : d.projectId,
+        projectId: p.projectId !== undefined ? (p.projectId as ProjectId) : d.projectId,
         prNumber: p.prNumber !== undefined ? (p.prNumber as number) : d.prNumber,
         prTitle: p.prTitle !== undefined ? (p.prTitle as string) : d.prTitle,
         prState: p.prState !== undefined ? (p.prState as string) : d.prState,
@@ -308,11 +306,12 @@ interface EditorStoreState {
   navigateGoal: NavigateGoal | null;
 
   /**
-   * 新增 tab。`targetGroup` 指定落组（pane 内 + 创建跟随发起面板）：
-   * 'pinned' 落 pinned 列表并激活 pinned；'left'/'right' 落对应组并组内激活；
-   * 缺省保持既有行为（落到布局当前激活组）。
+   * 新增 tab（构造律 P3）：store 键由 `tab.scope` 内部推导（`tabSpaceKeyOf`），调用方
+   * 无权指定键 —— 「键 A、tab 身份 B」的 bug 类别在构造上不存在。`targetGroup` 指定
+   * 落组：'pinned' 落 pinned 列表并激活；'left'/'right' 落对应组；缺省落当前激活组。
    */
-  addTab: (projectId: string, tab: Tab, targetGroup?: EditorGroupId | 'pinned') => void;
+  addTab: (tab: Tab, targetGroup?: EditorGroupId | 'pinned') => void;
+  // 注意：此处的 `projectId` 形参实为 **tab 空间键**（`WorkspaceKey | '__app__'`），非项目身份。
   closeTab: (projectId: string, tabId: string) => void;
   activateTab: (projectId: string, tabId: string) => void;
   updateTab: (
@@ -387,8 +386,9 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   cursorPosition: null,
   navigateGoal: null,
 
-  addTab: (projectId, tab, targetGroup) =>
+  addTab: (tab, targetGroup) =>
     set((state) => {
+      const projectId = tabSpaceKeyOf(tab.scope);
       const existing = state.tabs[projectId];
 
       if (tab.data.kind === 'terminal') {
@@ -1131,3 +1131,26 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       return { navigateGoal: null };
     }),
 }));
+
+/**
+ * 当前单元（tab 空间键 `tabKey`）的激活 tab id；无该空间 / 无激活 tab 时为 `null`。
+ *
+ * **单一读取实现**：任何「切项目 / 切单元后同步全局 `activeTabId`」的调用方（项目选择、
+ * worktree 切换、项目移除兜底、跨类型选择）都经此取，不得各自 `tabs[key]?.activeTabId ?? null`
+ * —— 同一事实多处重算是下一次分叉的入口。键由调用方按**目标单元**语义派生
+ * （`activeWorkspaceSession(id).key` / `WorkspaceSession.of(id, wt).key`）。
+ */
+export function activeTabIdOf(tabKey: string): string | null {
+  return useEditorStore.getState().tabs[tabKey]?.activeTabId ?? null;
+}
+
+/**
+ * 把全局 `activeTabId` 重派生于指定 tab 空间（`null` = 无项目 ⇒ 置空）。
+ *
+ * **写侧单一实现**：切项目 / 切单元 / 选中/移除项目后同步全局 `activeTabId` 一律经此，
+ * 调用方只负责按**目标单元**语义派生 `tabKey`（`activeWorkspaceSession(id).key` /
+ * `WorkspaceSession.of(id, wt).key`），不再各自 `setState({ activeTabId })`。
+ */
+export function restoreActiveTabId(tabKey: string | null): void {
+  useEditorStore.setState({ activeTabId: tabKey ? activeTabIdOf(tabKey) : null });
+}

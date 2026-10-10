@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import type { AuthMethod } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Island } from '@/ui/Island';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/Resizable';
 
@@ -14,7 +15,7 @@ interface EditorGroupLayoutProps {
   onAddTerminalTab: () => void;
   remoteProject?: {
     entryId: string;
-    projectId: string;
+    projectId: ProjectId;
     projectName: string;
     projectPath: string;
     host: string;

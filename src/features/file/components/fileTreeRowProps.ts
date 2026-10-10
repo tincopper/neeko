@@ -1,5 +1,6 @@
 import type { FileTreeViewNode } from '@/shared/types';
 import { viewNodeFingerprint, type FlatFileTreeRow } from '@/shared/utils/fileTree';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /**
  * FileTreeRow 的 props 契约与 memo 比较器（S3/S4 渲染隔离承重墙）。
@@ -11,7 +12,7 @@ import { viewNodeFingerprint, type FlatFileTreeRow } from '@/shared/utils/fileTr
  */
 export interface FileTreeRowProps {
   row: FlatFileTreeRow;
-  projectId: string | null;
+  projectId: ProjectId | null;
   onSelectFile: (path: string) => void;
   onToggleDir: (path: string) => void;
   /** 目录加载失败时点击重试（触发 store.loadDir 重新请求） */

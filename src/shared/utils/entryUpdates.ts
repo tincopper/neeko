@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 
 import type { GitInfo } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 type ProjectWithId = {
   id: string;
@@ -33,7 +34,7 @@ export function upsertEntryById<TEntry extends { id: string }>(
 export function updateProjectInEntries<
   TProject extends ProjectWithId,
   TEntry extends EntryWithProjects<TProject>,
->(entries: TEntry[], projectId: string, updater: (project: TProject) => TProject): TEntry[] {
+>(entries: TEntry[], projectId: ProjectId, updater: (project: TProject) => TProject): TEntry[] {
   return entries.map((entry) => ({
     ...entry,
     projects: entry.projects.map((project) =>
@@ -50,12 +51,12 @@ interface BuildRefreshGitHandlerOptions<
 > {
   refreshGitInfo: (
     projectPath: string,
-    projectId: string,
+    projectId: ProjectId,
     context: TContext,
   ) => Promise<GitInfo | null>;
   setEntries: Dispatch<SetStateAction<TEntry[]>>;
   setActiveProject: Dispatch<SetStateAction<TActiveProject | null>>;
-  isActiveProject: (activeProject: TActiveProject, projectId: string) => boolean;
+  isActiveProject: (activeProject: TActiveProject, projectId: ProjectId) => boolean;
   updateActiveProject: (activeProject: TActiveProject, gitInfo: GitInfo) => TActiveProject;
 }
 
@@ -65,7 +66,7 @@ export function buildRefreshGitHandler<
   TActiveProject,
   TContext,
 >(options: BuildRefreshGitHandlerOptions<TProject, TEntry, TActiveProject, TContext>) {
-  return async (context: TContext, projectId: string, projectPath: string): Promise<void> => {
+  return async (context: TContext, projectId: ProjectId, projectPath: string): Promise<void> => {
     const gitInfo = await options.refreshGitInfo(projectPath, projectId, context);
     if (!gitInfo) {
       return;

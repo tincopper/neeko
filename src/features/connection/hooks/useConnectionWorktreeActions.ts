@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 
 import type { GitStatusSnapshot } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   getWorkspaceStatus,
@@ -20,7 +21,7 @@ import {
  * 生产者、也没有本地终端缓存，因此这里不做「槽位作废 / 终端回收」，删除/改名后由调用方
  * 的 `onRefresh` 重拉列表收敛。
  */
-export function useConnectionWorktreeActions(projectId: string, logTag: string) {
+export function useConnectionWorktreeActions(projectId: ProjectId, logTag: string) {
   const rename = useCallback(
     (oldPath: string, newName: string) => {
       const newFullPath = oldPath.replace(/[^/\\]+$/, newName);

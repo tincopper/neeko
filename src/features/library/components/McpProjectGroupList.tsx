@@ -8,6 +8,7 @@ import NavRow from '@/shared/components/nav/NavRow';
 import NavSection from '@/shared/components/nav/NavSection';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /** Project group list inside the MCP navigation panel (selecting one opens the project view). */
 const McpProjectGroupList: React.FC = React.memo(() => {
@@ -25,7 +26,7 @@ const McpProjectGroupList: React.FC = React.memo(() => {
   const projectTagGroupCountsError = useSkillStore((s) => s.projectTagGroupCountsError);
 
   const handleSelect = useCallback(
-    (projectId: string) => {
+    (projectId: ProjectId) => {
       setActiveMcpProjectId(projectId);
       setActiveMcpTagGroup(null);
       setMcpView('project');

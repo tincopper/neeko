@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 import {
   loadOnboardingState,
   saveOnboardingState,
   type ProjectOnboardingState,
 } from '../api/onboardingApi';
 
-function buildKey(projectId: string, worktreePath?: string | null): string {
+function buildKey(projectId: ProjectId, worktreePath?: string | null): string {
   return worktreePath ? `${projectId}::${worktreePath}` : projectId;
 }
 
@@ -19,7 +21,7 @@ function buildDefaultState(): ProjectOnboardingState {
   };
 }
 
-export function useProjectOnboarding(projectId: string | null, worktreePath?: string | null) {
+export function useProjectOnboarding(projectId: ProjectId | null, worktreePath?: string | null) {
   const [state, setState] = useState<ProjectOnboardingState | null>(null);
   const keyRef = useRef<string | null>(null);
   const stateRef = useRef<ProjectOnboardingState | null>(null);

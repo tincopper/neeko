@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 /**
  * 无头测试构建门面（§4：`debug_build_test_binary` 薄命令，前端不直导 tauri api
  * 由调用方经此门面；cargo 语义解析留 `editor/utils/testCommands` 纯函数）。
@@ -7,7 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 /** 无头构建请求（与后端 `debug_build_test_binary(project_id, worktree_path, command, cwd)` 对齐）。 */
 export interface DebugBuildSpec {
-  projectId: string;
+  projectId: ProjectId;
   /**
    * 执行单元根（激活 worktree 根 / 项目根；无 worktree 传 `null`）。
    *

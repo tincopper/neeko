@@ -9,7 +9,6 @@ import type { DiffHunk, DiffViewProps, ViewMode } from './types';
 import { useCombinedDiffNav } from './useCombinedDiffNav';
 
 interface CombinedDiffViewProps {
-  projectId?: string;
   diffSource: NonNullable<DiffViewProps['diffSource']>;
   fileList: CommitFileChange[];
   /** 初始展开基准（= DiffView 的 filePath）。 */
@@ -44,7 +43,6 @@ interface CombinedDiffViewProps {
  */
 const CombinedDiffView: React.FC<CombinedDiffViewProps> = React.memo(
   ({
-    projectId,
     diffSource,
     fileList,
     initialPath,
@@ -85,7 +83,8 @@ const CombinedDiffView: React.FC<CombinedDiffViewProps> = React.memo(
       viewMode,
     });
 
-    const pid = projectId || '';
+    // 项目身份唯一来源 = DiffSource.workspace（不再单列 projectId prop）
+    const pid = diffSource.workspace.projectId;
     const activePath = fileList[currentFileIdx]?.path;
     return (
       <div

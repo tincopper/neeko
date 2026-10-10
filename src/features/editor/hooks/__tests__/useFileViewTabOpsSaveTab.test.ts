@@ -4,11 +4,16 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { FileTabData, Tab, WorkspaceSession } from '@/shared/types';
+import { FileTabData, Tab } from '@/shared/types';
 import { isFileTab } from '@/shared/utils/fileTree';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useFileViewTabOps } from '../useFileViewTabOps';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 const { requestSaveAsMock, writeFileContentMock } = vi.hoisted(() => ({
   requestSaveAsMock: vi.fn(),
@@ -24,17 +29,16 @@ vi.mock('@/features/file/api/fileApi', () => ({
   writeFileContent: writeFileContentMock,
 }));
 
-const MAIN: WorkspaceSession = { projectId: 'p1', worktreePath: null };
+const MAIN = WorkspaceSession.of('p1', null);
 
 function makeFileTab(id: string, overrides: Partial<FileTabData> = {}): Tab {
   return {
     id,
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: id,
     order: 0,
     data: {
       kind: 'file',
-      workspace: MAIN,
       filePath: `${id}.ts`,
       fileName: `${id}.ts`,
       content: { path: `${id}.ts`, content: 'hello', size: 5, is_binary: false },
@@ -48,10 +52,10 @@ function renderOps(setError = vi.fn(), workspaceRef: WorkspaceSession | null = M
   return renderHook(() =>
     useFileViewTabOps({
       tabKeyRef: {
-        current: workspaceKeyOf(
+        current: WorkspaceSession.of(
           workspaceRef?.projectId ?? 'p1',
-          workspaceRef?.worktreePath ?? null,
-        ),
+          workspaceRef?.worktreePath ?? null ?? null,
+        ).key,
       },
       workspaceRef: { current: workspaceRef },
       setError,
@@ -69,7 +73,6 @@ describe('useFileViewTabOps saveTabById', () => {
   it('命名文件：读取 store 内容保存到指定 tab 并清除 dirty 标记', async () => {
     act(() => {
       useEditorStore.getState().addTab(
-        workspaceKeyOf('p1', null),
         makeFileTab('t1', {
           content: { path: 't1.ts', content: 'new content', size: 11, is_binary: false },
         }),
@@ -91,7 +94,7 @@ describe('useFileViewTabOps saveTabById', () => {
     expect(saved).toBe(true);
     const tab = useEditorStore
       .getState()
-      .tabs[workspaceKeyOf('p1', null)]!.tabs.find((t) => t.id === 't1')!;
+      .tabs[WorkspaceSession.of('p1', null).key]!.tabs.find((t) => t.id === 't1')!;
     expect(isFileTab(tab)).toBe(true);
     if (isFileTab(tab)) {
       expect(tab.data.isDirty).toBe(false);
@@ -107,24 +110,23 @@ describe('useFileViewTabOps saveTabById', () => {
   it('worktree 组内的 tab：视图已切回主仓，写地址仍取 tab.workspace（不漂移）', async () => {
     const wt = '/home/u/.neeko/worktrees/fix-1';
     const abs = `${wt}/src/a.ts`;
-    const wtWorkspace: WorkspaceSession = { projectId: 'p1', worktreePath: wt };
+    const wtWorkspace = WorkspaceSession.of('p1', wt);
     act(() => {
-      useEditorStore.getState().addTab(
-        workspaceKeyOf('p1', wt),
-        makeFileTab('a', {
-          workspace: wtWorkspace,
-          filePath: abs,
-          fileName: 'a.ts',
-          content: { path: abs, content: 'edit', size: 4, is_binary: false },
-        }),
-      );
+      const wtTab = makeFileTab('a', {
+        filePath: abs,
+        fileName: 'a.ts',
+        content: { path: abs, content: 'edit', size: 4, is_binary: false },
+      });
+      useEditorStore
+        .getState()
+        .addTab({ ...wtTab, scope: { kind: 'workspace' as const, session: wtWorkspace } });
     });
     writeFileContentMock.mockResolvedValue(undefined);
 
     // 视图（refs）指向主仓；tabKeyRef 指到该 tab 所在的 worktree 组。
     const { result } = renderHook(() =>
       useFileViewTabOps({
-        tabKeyRef: { current: workspaceKeyOf('p1', wt) },
+        tabKeyRef: { current: WorkspaceSession.of('p1', wt ?? null).key },
         workspaceRef: { current: MAIN },
         setError: vi.fn(),
       }),
@@ -140,10 +142,7 @@ describe('useFileViewTabOps saveTabById', () => {
     act(() => {
       useEditorStore
         .getState()
-        .addTab(
-          workspaceKeyOf('p1', null),
-          makeFileTab('u1', { isUntitled: true, untitledName: 'Untitled-1' }),
-        );
+        .addTab(makeFileTab('u1', { isUntitled: true, untitledName: 'Untitled-1' }));
     });
 
     const { result } = renderOps();
@@ -156,7 +155,7 @@ describe('useFileViewTabOps saveTabById', () => {
     expect(requestSaveAsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         tabId: 'u1',
-        tabKey: workspaceKeyOf('p1', null),
+        tabKey: WorkspaceSession.of('p1', null).key,
         content: 'hello',
         defaultFilename: 'Untitled-1',
         closeAfterSave: true,
@@ -169,10 +168,7 @@ describe('useFileViewTabOps saveTabById', () => {
     act(() => {
       useEditorStore
         .getState()
-        .addTab(
-          workspaceKeyOf('p1', null),
-          makeFileTab('u1', { isUntitled: true, untitledName: 'Untitled-1' }),
-        );
+        .addTab(makeFileTab('u1', { isUntitled: true, untitledName: 'Untitled-1' }));
     });
 
     const { result } = renderOps();
@@ -189,9 +185,9 @@ describe('useFileViewTabOps saveTabById', () => {
 
   it('找不到 tab 或非文件 tab：返回 false 且不写盘', async () => {
     act(() => {
-      useEditorStore.getState().addTab(workspaceKeyOf('p1', null), {
+      useEditorStore.getState().addTab({
         id: 'term',
-        projectId: 'p1',
+        scope: { kind: 'workspace', session: mkSession('p1') },
         title: 'term',
         order: 0,
         data: { kind: 'terminal', agentId: null, status: 'Idle' },
@@ -215,7 +211,7 @@ describe('useFileViewTabOps saveTabById', () => {
 
   it('写盘失败：返回 false 并上报错误', async () => {
     act(() => {
-      useEditorStore.getState().addTab(workspaceKeyOf('p1', null), makeFileTab('t1'));
+      useEditorStore.getState().addTab(makeFileTab('t1'));
     });
     writeFileContentMock.mockRejectedValue(new Error('disk full'));
     const setError = vi.fn();

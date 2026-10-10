@@ -7,7 +7,7 @@ import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore, selectBranch, selectEntries } from '@/shared/store/projectStore';
-import { workspaceKeyOf, type WorkspaceKey } from '@/shared/utils/workspaceRef';
+import { useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 
 /**
  * Git Control dock 面板适配层（薄容器）：只做 dock/上下文适配 —— 面板可见性门控、
@@ -45,21 +45,22 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
     }
   }, [refreshGit, project]);
 
-  const workspaceKey: WorkspaceKey = useMemo(
-    () => workspaceKeyOf(project?.id ?? '', checkoutPath),
-    [project?.id, checkoutPath],
-  );
+  const workspaceKey = useActiveWorkspaceKey(project?.id ?? null);
 
   // 当前单元变更数（Changes tab 徽章）与分支名 —— 都按单元取。
   // **未知 ≠ 0**：槽位缺失（未挂载 / 首快照未到）时保持 undefined，由徽章侧决定不渲染；
   // 在这里折算成 0 等于让「还不知道」伪装成「干净」（ChangesList 已显式区分这两态）。
-  const changedFileCount = useProjectStore((s) => selectEntries(s, workspaceKey)?.length);
-  const checkoutBranch = useProjectStore((s) => selectBranch(s, workspaceKey));
+  const changedFileCount = useProjectStore((s) =>
+    workspaceKey ? selectEntries(s, workspaceKey)?.length : undefined,
+  );
+  const checkoutBranch = useProjectStore((s) =>
+    workspaceKey ? selectBranch(s, workspaceKey) : undefined,
+  );
 
   const aheadBehindMap = useGitStore((s) => s.aheadBehind);
   // 键 = Workspace身份（与写入侧同一把键，与连接形态无关）
   const aheadBehind = useMemo(
-    () => (project ? (aheadBehindMap[workspaceKey] ?? null) : null),
+    () => (project && workspaceKey ? (aheadBehindMap[workspaceKey] ?? null) : null),
     [project, aheadBehindMap, workspaceKey],
   );
 
@@ -79,7 +80,7 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
 
   return (
     <GitControlPanel
-      workspaceKey={workspaceKey}
+      workspaceKey={workspaceKey!} // 上方 guard 已保证 project 非空 → key 非空
       project={effectiveProject}
       commands={commands}
       capabilities={capabilities}

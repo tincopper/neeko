@@ -6,10 +6,13 @@ import { cn } from '@/lib/utils';
 import { BranchIcon, ArrowDown, ArrowUp } from '@/shared/components/icons';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveCheckoutPath, useActiveCheckoutBranch } from '@/shared/store/workspaceStore';
+import {
+  useActiveCheckoutPath,
+  useActiveCheckoutBranch,
+  useActiveWorkspaceKey,
+} from '@/shared/store/workspaceStore';
 import type { GitInfo } from '@/shared/types';
 import { filterWorktreeBranches, isActiveWorktree } from '@/shared/utils';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import BranchSwitcherPanel from './BranchSwitcherPanel';
 
@@ -32,7 +35,7 @@ function BranchStatusBarWidget({
 
   const activeProject = useProjectStore((s) => s.activeProject);
   const gitInfo: GitInfo | null = activeProject?.git_info ?? null;
-  const projectId = activeProject?.id ?? '';
+  const projectId = activeProject?.id ?? null;
   const currentBranch = gitInfo?.current_branch ?? '';
 
   const activeCheckoutPath = useActiveCheckoutPath();
@@ -40,13 +43,15 @@ function BranchStatusBarWidget({
   const isWorktreeActive = isActiveWorktree(activeCheckoutPath);
   const displayBranch = isWorktreeActive ? activeCheckoutBranch : currentBranch;
 
-  const favoriteBranches = useGitStore(useShallow((s) => s.favoriteBranches[projectId] ?? []));
+  const favoriteBranches = useGitStore(
+    useShallow((s) => (projectId ? (s.favoriteBranches[projectId] ?? []) : [])),
+  );
   const toggleFavorite = useGitStore((s) => s.toggleFavorite);
   // ahead/behind 按**Workspace**取（显示的分支就来自该单元的 HEAD）：
   // 旧实现读 `aheadBehind[projectId]` —— 键空间里从来没有这个键，徽标恒空。
-  const workspaceKey = workspaceKeyOf(projectId, activeCheckoutPath);
+  const workspaceKey = useActiveWorkspaceKey(projectId);
   const aheadBehind = useGitStore(
-    useShallow((s) => (projectId ? (s.aheadBehind[workspaceKey] ?? null) : null)),
+    useShallow((s) => (projectId ? (s.aheadBehind[workspaceKey ?? ''] ?? null) : null)),
   );
 
   const availableBranches = useMemo(
@@ -61,6 +66,7 @@ function BranchStatusBarWidget({
 
   const handleToggleFavorite = useCallback(
     (branchName: string) => {
+      if (!projectId) return;
       toggleFavorite(projectId, branchName);
     },
     [projectId, toggleFavorite],

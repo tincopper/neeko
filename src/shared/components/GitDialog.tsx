@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 
 import { cn } from '@/lib/utils';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
@@ -14,10 +15,9 @@ import { getWslHomeDir } from '../../features/connection/api/connectionApi';
 import { createBranch, createWorktree } from '../../features/git/api/gitApi';
 
 export type DialogType = 'new-branch' | 'new-worktree';
-
 export interface DialogState {
   type: DialogType;
-  projectId?: string;
+  projectId: ProjectId;
   branches: string[];
   projectPath?: string;
   source?: {
@@ -25,14 +25,13 @@ export interface DialogState {
     distro?: string;
     entryId?: string;
     projectPath: string;
-    projectId: string;
+    projectId: ProjectId;
   };
 }
-
 interface GitDialogProps {
   dialog: DialogState;
   onClose: () => void;
-  onRefreshGit: (projectId: string) => void;
+  onRefreshGit: (projectId: ProjectId) => void;
   onRefreshAfterWslSsh?: () => void;
   remoteHomeDir?: string;
 }
@@ -98,8 +97,8 @@ const GitDialog: React.FC<GitDialogProps> = ({
         setSubmitting(false);
         return;
       } else {
-        await createBranch(dialog.projectId ?? '', branchName.trim());
-        onRefreshGit(dialog.projectId ?? '');
+        await createBranch(dialog.projectId, branchName.trim());
+        onRefreshGit(dialog.projectId);
       }
       onClose();
     } catch (e: unknown) {
@@ -125,8 +124,8 @@ const GitDialog: React.FC<GitDialogProps> = ({
         setSubmitting(false);
         return;
       } else {
-        await createWorktree(dialog.projectId ?? '', computedPath, name, true);
-        onRefreshGit(dialog.projectId ?? '');
+        await createWorktree(dialog.projectId, computedPath, name, true);
+        onRefreshGit(dialog.projectId);
       }
       onClose();
     } catch (e: unknown) {
@@ -150,13 +149,14 @@ const GitDialog: React.FC<GitDialogProps> = ({
         setSubmitting(false);
         return;
       } else {
-        await createWorktree(
-          dialog.projectId ?? '',
-          worktreePath.trim(),
-          worktreeBranch.trim(),
-          newBranch,
-        );
-        onRefreshGit(dialog.projectId ?? '');
+        const localProjectId = dialog.projectId;
+        if (!localProjectId) {
+          setError('No project context for worktree creation');
+          setSubmitting(false);
+          return;
+        }
+        await createWorktree(localProjectId, worktreePath.trim(), worktreeBranch.trim(), newBranch);
+        onRefreshGit(localProjectId);
       }
       onClose();
     } catch (e: unknown) {

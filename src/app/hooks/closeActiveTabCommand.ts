@@ -5,13 +5,13 @@ import {
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { getActiveCheckoutPath } from '@/shared/store/workspaceStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { tabSpaceKeyOf } from '@/shared/utils/tabIdentity';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /**
- * 设置页 tab 空间 id（与 useTabManagement 的 APP_SETTINGS_PROJECT_ID 保持一致，
+ * 设置页 tab 空间 id（与 useTabManagement 的 app 空间键保持一致，
  * 无项目时设置页也有自己的 tab 空间可关）。
  */
-const APP_SETTINGS_PROJECT_ID = '__app__';
 
 /**
  * 解析「当前激活项目 / worktree」对应的 tabKey。
@@ -21,9 +21,9 @@ const APP_SETTINGS_PROJECT_ID = '__app__';
  */
 export function resolveCurrentTabKey(): string {
   const projectId = useProjectStore.getState().activeProjectId;
-  if (!projectId) return APP_SETTINGS_PROJECT_ID;
+  if (!projectId) return tabSpaceKeyOf({ kind: 'app' });
   const worktreePath = getActiveCheckoutPath();
-  return workspaceKeyOf(projectId, worktreePath);
+  return WorkspaceSession.of(projectId, worktreePath ?? null).key;
 }
 
 /**

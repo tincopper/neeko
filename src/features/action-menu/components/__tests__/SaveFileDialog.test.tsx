@@ -8,7 +8,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileTabData, Tab } from '@/shared/types';
 import type { Project } from '@/shared/types/project';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 const { saveNewFileMock, closeEditorTabMock, refreshWorkspaceStatusMock } = vi.hoisted(() => ({
   saveNewFileMock: vi.fn(),
@@ -34,6 +34,11 @@ vi.mock('@/features/terminal', () => ({
 import { useSaveAsStore, type SaveAsRequest } from '../../store/saveAsStore';
 import SaveFileDialog from '../SaveFileDialog';
 
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
+
 const activeProject = {
   id: 'p1',
   name: 'p1',
@@ -48,7 +53,7 @@ const activeProject = {
 function makeUntitledTab(id: string, overrides: Partial<FileTabData> = {}): Tab {
   return {
     id,
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: id,
     order: 0,
     data: {
@@ -65,7 +70,7 @@ function makeUntitledTab(id: string, overrides: Partial<FileTabData> = {}): Tab 
 function makeRequest(overrides: Partial<SaveAsRequest> = {}): SaveAsRequest {
   return {
     tabId: 'u1',
-    tabKey: workspaceKeyOf('p1', null),
+    tabKey: WorkspaceSession.of('p1', null).key,
     projectId: 'p1',
     content: 'hello',
     defaultDirectory: '/repo',
@@ -92,9 +97,7 @@ describe('SaveFileDialog closeAfterSave', () => {
 
   it('保存成功且 closeAfterSave=true → 自动关闭该 tab', async () => {
     act(() => {
-      useEditorStore
-        .getState()
-        .addTab(workspaceKeyOf('p1', null), makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
+      useEditorStore.getState().addTab(makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
     });
     renderDialog(makeRequest({ closeAfterSave: true }));
 
@@ -105,8 +108,8 @@ describe('SaveFileDialog closeAfterSave', () => {
       // Save As 是身份迁移：tab.id 同步改为 getTabId(tabKey, canonical path)，
       // 关闭清理也以新 id 触发（旧实现只改 filePath 不改 id —— 身份脱钩 bug）。
       expect(closeEditorTabMock).toHaveBeenCalledWith(
-        workspaceKeyOf('p1', null),
-        `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`,
+        WorkspaceSession.of('p1', null).key,
+        `${WorkspaceSession.of('p1', null).key}:/repo/notes/Untitled-1.ts`,
       );
     });
     expect(saveNewFileMock).toHaveBeenCalledWith(
@@ -120,11 +123,13 @@ describe('SaveFileDialog closeAfterSave', () => {
       useEditorStore
         .getState()
         .tabs[
-          workspaceKeyOf('p1', null)
-        ]!.tabs.some((t) => t.id === `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`),
+          WorkspaceSession.of('p1', null).key
+        ]!.tabs.some((t) => t.id === `${WorkspaceSession.of('p1', null).key}:/repo/notes/Untitled-1.ts`),
     ).toBe(false);
     expect(
-      useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]!.tabs.some((t) => t.id === 'u1'),
+      useEditorStore
+        .getState()
+        .tabs[WorkspaceSession.of('p1', null).key]!.tabs.some((t) => t.id === 'u1'),
     ).toBe(false);
     // 对话框请求已消费
     expect(useSaveAsStore.getState().request).toBeNull();
@@ -132,9 +137,7 @@ describe('SaveFileDialog closeAfterSave', () => {
 
   it('保存成功但未带 closeAfterSave（Ctrl+S 链路）→ 不关 tab，且 id 已迁移', async () => {
     act(() => {
-      useEditorStore
-        .getState()
-        .addTab(workspaceKeyOf('p1', null), makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
+      useEditorStore.getState().addTab(makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
     });
     renderDialog(makeRequest());
 
@@ -146,8 +149,8 @@ describe('SaveFileDialog closeAfterSave', () => {
     });
     expect(closeEditorTabMock).not.toHaveBeenCalled();
     // 身份迁移后 tab 保持激活（activateTab 以新 id 命中）
-    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]!.activeTabId).toBe(
-      `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`,
+    expect(useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key]!.activeTabId).toBe(
+      `${WorkspaceSession.of('p1', null).key}:/repo/notes/Untitled-1.ts`,
     );
   });
 
@@ -178,9 +181,7 @@ describe('SaveFileDialog closeAfterSave', () => {
   it('worktree 激活：canonical 根对齐 worktree（与 saveNewFile 的 Workspace 寻址一致）', async () => {
     useWorkspaceStore.getState().setActiveWorkspace('p1', '/wt');
     act(() => {
-      useEditorStore
-        .getState()
-        .addTab(workspaceKeyOf('p1', null), makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
+      useEditorStore.getState().addTab(makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
     });
     renderDialog(makeRequest());
 
@@ -196,13 +197,13 @@ describe('SaveFileDialog closeAfterSave', () => {
       );
     });
     // 刷新按**Workspace**定址（不是「项目 + 现取的全局镜像」）
-    expect(refreshWorkspaceStatusMock).toHaveBeenCalledWith(workspaceKeyOf('p1', '/wt'));
+    expect(refreshWorkspaceStatusMock).toHaveBeenCalledWith(WorkspaceSession.of('p1', '/wt').key);
     expect(
       useEditorStore
         .getState()
         .tabs[
-          workspaceKeyOf('p1', null)
-        ]!.tabs.some((t) => t.id === `${workspaceKeyOf('p1', null)}:/wt/notes/Untitled-1.ts`),
+          WorkspaceSession.of('p1', null).key
+        ]!.tabs.some((t) => t.id === `${WorkspaceSession.of('p1', null).key}:/wt/notes/Untitled-1.ts`),
     ).toBe(true);
   });
 
@@ -211,9 +212,9 @@ describe('SaveFileDialog closeAfterSave', () => {
     // 新内容覆盖，若仍走 updateTab+renameTab 会残留 id='u1'/filePath='/repo/…'
     // 的脱钩 tab，且 close/activate 落到错误的既有 tab。
     act(() => {
-      useEditorStore.getState().addTab(workspaceKeyOf('p1', null), {
-        id: `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`,
-        projectId: 'p1',
+      useEditorStore.getState().addTab({
+        id: `${WorkspaceSession.of('p1', null).key}:/repo/notes/Untitled-1.ts`,
+        scope: { kind: 'workspace', session: mkSession('p1') },
         title: 'Untitled-1.ts',
         order: 0,
         data: {
@@ -224,9 +225,7 @@ describe('SaveFileDialog closeAfterSave', () => {
           isDirty: false,
         },
       });
-      useEditorStore
-        .getState()
-        .addTab(workspaceKeyOf('p1', null), makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
+      useEditorStore.getState().addTab(makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
     });
     renderDialog(makeRequest());
 
@@ -238,19 +237,21 @@ describe('SaveFileDialog closeAfterSave', () => {
     });
     // 源 untitled tab 被关闭，不残留脱钩 tab
     expect(
-      useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]!.tabs.some((t) => t.id === 'u1'),
+      useEditorStore
+        .getState()
+        .tabs[WorkspaceSession.of('p1', null).key]!.tabs.some((t) => t.id === 'u1'),
     ).toBe(false);
     // 既有目标 tab 被激活（非重复新 tab）
-    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]!.activeTabId).toBe(
-      `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`,
+    expect(useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key]!.activeTabId).toBe(
+      `${WorkspaceSession.of('p1', null).key}:/repo/notes/Untitled-1.ts`,
     );
     expect(
       useEditorStore
         .getState()
         .tabs[
-          workspaceKeyOf('p1', null)
-        ]!.tabs.filter((t) => t.id === `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`),
+          WorkspaceSession.of('p1', null).key
+        ]!.tabs.filter((t) => t.id === `${WorkspaceSession.of('p1', null).key}:/repo/notes/Untitled-1.ts`),
     ).toHaveLength(1);
-    expect(closeEditorTabMock).toHaveBeenCalledWith(workspaceKeyOf('p1', null), 'u1');
+    expect(closeEditorTabMock).toHaveBeenCalledWith(WorkspaceSession.of('p1', null).key, 'u1');
   });
 });

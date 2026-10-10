@@ -9,6 +9,12 @@ vi.mock('@/features/browser', () => ({
 
 import PaneContent from '@/features/editor/components/PaneContent';
 import type { Tab } from '@/shared/types/tab';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 const baseProps = {
   tabKey: 'p1',
@@ -27,7 +33,7 @@ const baseProps = {
 
 const makeBrowserTab = (id: string): Tab => ({
   id,
-  projectId: 'p1',
+  scope: { kind: 'workspace', session: mkSession('p1') },
   title: 'Browser',
   order: 0,
   data: { kind: 'browser', url: '' },

@@ -10,6 +10,7 @@ import { readDirTree } from '@/features/file/api/fileApi';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { flattenFilePaths } from '../fileIndex';
 import { fuzzyFilter } from '../fuzzy';
@@ -60,7 +61,7 @@ function buildFileItems(paths: string[], query: string): QuickOpenItem[] {
   });
 }
 
-function buildRecentItems(projectId: string, query: string): QuickOpenItem[] {
+function buildRecentItems(projectId: ProjectId, query: string): QuickOpenItem[] {
   const recent = useRecentFilesStore.getState().list(projectId);
   const paths = recent.map((r) => r.filePath);
   const filtered = fuzzyFilter(paths, query, (p) => p, 50);
@@ -79,7 +80,7 @@ function recomputeItems(
   mode: QuickOpenMode,
   query: string,
   fileIndex: string[],
-  projectId: string | null,
+  projectId: ProjectId | null,
 ): QuickOpenItem[] {
   if (!projectId) return [];
   switch (mode) {
@@ -90,7 +91,7 @@ function recomputeItems(
   }
 }
 
-async function loadFileIndex(projectId: string): Promise<string[]> {
+async function loadFileIndex(projectId: ProjectId): Promise<string[]> {
   try {
     const { nodes } = await readDirTree(activeWorkspaceSession(projectId), null, 12);
     return flattenFilePaths(nodes);

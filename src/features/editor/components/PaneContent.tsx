@@ -6,10 +6,11 @@ import { ConversationViewer } from '@/features/conversation';
 import { DiffView, PRDetailView } from '@/features/git';
 import { SplitLayout, TerminalView } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { AgentConfig, AuthMethod } from '@/shared/types';
+import type { AgentConfig, AuthMethod, DiffSource } from '@/shared/types';
 import type { DiffMode } from '@/shared/types/settings';
 import type { Tab } from '@/shared/types/tab';
-import { buildDiffSource } from '@/shared/utils/diffSource';
+import { requireTabWorkspaceSession, tabSpaceKeyOf } from '@/shared/utils/tabIdentity';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import FileViewer from './FileViewer';
 import HtmlPreview from './HtmlPreview';
@@ -24,7 +25,7 @@ interface PaneContentProps {
   isActiveGroup: boolean;
   remoteProject?: {
     entryId: string;
-    projectId: string;
+    projectId: ProjectId;
     projectName: string;
     projectPath: string;
     host: string;
@@ -62,12 +63,21 @@ function PaneContent({
 }: PaneContentProps) {
   if (!activeTab) return null;
 
+  // 以下各 kind 的 props 均要求必有项目（这些 tab 只在 workspace 空间创建）——
+  // 经不变量收窄取 projectId（不制造伪身份、不用非空断言）。
+  const projectId = requireTabWorkspaceSession(activeTab).projectId;
+  // tab 空间键显式下传（TerminalView 不再从缓存键解析身份）
+  const tabSpaceKey = tabSpaceKeyOf(activeTab.scope);
+
   const handleOpenDiff = (filePath: string) => {
     const tabId = `tab_${crypto.randomUUID()}`;
-    const diffSource = buildDiffSource(null, null);
+    const diffSource: DiffSource = {
+      workspace: requireTabWorkspaceSession(activeTab),
+      revision: { type: 'worktree' },
+    };
     const tab = {
       id: tabId,
-      projectId: activeTab.projectId,
+      scope: activeTab.scope,
       title: filePath.split('/').pop() || filePath,
       order: 0,
       data: {
@@ -77,7 +87,7 @@ function PaneContent({
         diffSource,
       },
     };
-    useEditorStore.getState().addTab(tabKey, tab);
+    useEditorStore.getState().addTab(tab);
     useEditorStore.getState().activateTab(tabKey, tabId);
   };
 
@@ -87,7 +97,7 @@ function PaneContent({
         <ConversationViewer
           conversationId={activeTab.data.conversationId}
           agentId={activeTab.data.agentId}
-          projectId={activeTab.projectId}
+          projectId={projectId}
           conversationMeta={activeTab.data.conversationMeta ?? null}
           agents={agents}
           onBack={() => onCloseTab(activeTab.id)}
@@ -102,9 +112,13 @@ function PaneContent({
             layoutId={layoutId}
             renderPane={(paneId) =>
               remoteProject ? (
-                <TerminalView paneId={paneId} remoteConfig={remoteProject} />
+                <TerminalView
+                  paneId={paneId}
+                  remoteConfig={remoteProject}
+                  tabSpaceKey={tabSpaceKey}
+                />
               ) : (
-                <TerminalView paneId={paneId} />
+                <TerminalView paneId={paneId} tabSpaceKey={tabSpaceKey} />
               )
             }
             onSplitStateChange={onSplitStateChange}
@@ -117,7 +131,7 @@ function PaneContent({
     case 'diff':
       return (
         <DiffView
-          projectId={activeTab.projectId}
+          projectId={projectId}
           diffSource={activeTab.data.diffSource}
           filePath={activeTab.data.filePath}
           initialMode={diffMode}
@@ -132,7 +146,7 @@ function PaneContent({
     case 'html-preview':
       return (
         <HtmlPreview
-          projectId={activeTab.projectId}
+          projectId={projectId}
           filePath={activeTab.data.filePath}
           fileName={activeTab.data.fileName}
         />
@@ -141,7 +155,7 @@ function PaneContent({
       return (
         <PRDetailView
           key={activeTab.data.prNumber}
-          projectId={activeTab.data.projectId}
+          projectId={projectId}
           prNumber={activeTab.data.prNumber}
           prTitle={activeTab.data.prTitle}
           prState={activeTab.data.prState}
@@ -161,7 +175,7 @@ function PaneContent({
           key={activeTab.id}
           tabKey={tabKey}
           tabId={activeTab.id}
-          projectId={activeTab.projectId}
+          projectId={projectId}
           data={activeTab.data}
         />
       );
@@ -170,7 +184,7 @@ function PaneContent({
         <BrowserTabView
           tabKey={tabKey}
           tabId={activeTab.id}
-          projectId={activeTab.projectId}
+          projectId={projectId}
           isActive={isActiveGroup}
         />
       );

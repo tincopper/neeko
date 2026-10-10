@@ -8,11 +8,11 @@ import { useFileStore } from '@/features/file/store';
 import { refreshWorkspaceStatus } from '@/features/git/utils/gitStatus';
 import { useProjectStore } from '@/shared/store/projectStore';
 import {
+  activeWorkspaceKeyOf,
   activeWorkspaceSession,
   selectActiveCheckoutPath,
   useWorkspaceStore,
 } from '@/shared/store/workspaceStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import {
   Dialog,
   DialogContent,
@@ -97,7 +97,8 @@ const SaveFileDialog: React.FC = () => {
         force: true,
         silent: true,
       });
-      void refreshWorkspaceStatus(workspaceKeyOf(request.projectId, activeCheckoutPath));
+      const key = activeWorkspaceKeyOf(request.projectId);
+      if (key) void refreshWorkspaceStatus(key);
     } catch {
       /* 树刷新失败不影响保存结果 */
     }

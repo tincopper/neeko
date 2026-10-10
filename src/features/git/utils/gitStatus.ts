@@ -1,6 +1,6 @@
 import { useProjectStore } from '@/shared/store/projectStore';
 import {
-  parseWorkspaceKey,
+  WorkspaceSession,
   workspaceKeyLabel,
   type WorkspaceKey,
 } from '@/shared/utils/workspaceRef';
@@ -21,7 +21,7 @@ import { getWorkspaceStatus } from '../api/gitApi';
  * 提示），绝不写入「空列表」——空列表是一个断言，不是错误。
  */
 export async function refreshWorkspaceStatus(workspaceKey: WorkspaceKey | string): Promise<void> {
-  const { projectId, worktreePath } = parseWorkspaceKey(String(workspaceKey));
+  const { projectId, worktreePath } = WorkspaceSession.fromKeyOrId(String(workspaceKey));
   try {
     const snapshot = await getWorkspaceStatus(projectId, worktreePath);
     useProjectStore.getState().applyStatus(snapshot);

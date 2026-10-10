@@ -8,11 +8,19 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
+
+const SPACE_p1 = WorkspaceSession.of('p1', null).key;
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 function makeTab(id: string): Tab {
   return {
     id,
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: id,
     order: 0,
     data: { kind: 'file', filePath: id, fileName: id, content: '', isDirty: false },
@@ -26,15 +34,15 @@ describe('closeTab prod parity (no React rendering needed — pure store)', () =
 
   it('single group: closing active tab keeps left group active on a live tab', () => {
     const { addTab, activateTab } = useEditorStore.getState();
-    addTab('p1', makeTab('A'));
-    addTab('p1', makeTab('B'));
-    addTab('p1', makeTab('C'));
-    activateTab('p1', 'B');
+    addTab(makeTab('A'));
+    addTab(makeTab('B'));
+    addTab(makeTab('C'));
+    activateTab(SPACE_p1, 'B');
 
-    closeEditorTab('p1', 'B');
+    closeEditorTab(SPACE_p1, 'B');
 
     const s = useEditorStore.getState();
-    const layout = s.editorLayout['p1'];
+    const layout = s.editorLayout[SPACE_p1];
     expect(layout.groups.left.tabIds).toEqual(['A', 'C']);
     expect(layout.groups.left.activeTabId).toBe('A');
     expect(layout.groups.left.tabIds).toContain(layout.groups.left.activeTabId);
@@ -43,27 +51,27 @@ describe('closeTab prod parity (no React rendering needed — pure store)', () =
 
   it('single group: closing active tab that is the FIRST tab switches forward', () => {
     const { addTab, activateTab } = useEditorStore.getState();
-    addTab('p1', makeTab('A'));
-    addTab('p1', makeTab('B'));
-    activateTab('p1', 'A');
+    addTab(makeTab('A'));
+    addTab(makeTab('B'));
+    activateTab(SPACE_p1, 'A');
 
-    closeEditorTab('p1', 'A');
+    closeEditorTab(SPACE_p1, 'A');
 
     const s = useEditorStore.getState();
-    expect(s.editorLayout['p1'].groups.left.activeTabId).toBe('B');
+    expect(s.editorLayout[SPACE_p1].groups.left.activeTabId).toBe('B');
     expect(s.activeTabId).toBe('B');
   });
 
   it('single group: closing the LAST tab leaves a valid active tab', () => {
     const { addTab, activateTab } = useEditorStore.getState();
-    addTab('p1', makeTab('A'));
-    addTab('p1', makeTab('B'));
-    activateTab('p1', 'B');
+    addTab(makeTab('A'));
+    addTab(makeTab('B'));
+    activateTab(SPACE_p1, 'B');
 
-    closeEditorTab('p1', 'B');
+    closeEditorTab(SPACE_p1, 'B');
 
     const s = useEditorStore.getState();
-    expect(s.editorLayout['p1'].groups.left.activeTabId).toBe('A');
+    expect(s.editorLayout[SPACE_p1].groups.left.activeTabId).toBe('A');
     expect(s.activeTabId).toBe('A');
   });
 
@@ -71,16 +79,16 @@ describe('closeTab prod parity (no React rendering needed — pure store)', () =
     // Simulate session-restored tabs WITHOUT editorLayout (real-app state).
     useEditorStore.setState({
       tabs: {
-        p1: { tabs: [makeTab('A'), makeTab('B'), makeTab('C')], activeTabId: 'B' },
+        [SPACE_p1]: { tabs: [makeTab('A'), makeTab('B'), makeTab('C')], activeTabId: 'B' },
       },
       editorLayout: {},
       activeTabId: 'B',
     });
 
-    closeEditorTab('p1', 'B');
+    closeEditorTab(SPACE_p1, 'B');
 
     const s = useEditorStore.getState();
-    expect(s.tabs['p1'].activeTabId).toBe('A');
-    expect(s.tabs['p1'].tabs.map((t) => t.id)).toEqual(['A', 'C']);
+    expect(s.tabs[SPACE_p1].activeTabId).toBe('A');
+    expect(s.tabs[SPACE_p1].tabs.map((t) => t.id)).toEqual(['A', 'C']);
   });
 });

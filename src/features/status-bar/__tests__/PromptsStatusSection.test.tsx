@@ -10,7 +10,7 @@ import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Project } from '@/shared/types';
 import type { PromptResource } from '@/shared/types/library';
 import type { Tab } from '@/shared/types/tab';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 const hoisted = vi.hoisted(() => ({
   toast: vi.fn(),
   api: { current: {} as TerminalInsertApi },
@@ -34,6 +34,11 @@ vi.mock('@/features/library/api/libraryApi', () => ({
 }));
 
 import { PromptsStatusSection } from '../PromptsStatusSection';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 function projectFixture(): Project {
   return {
@@ -103,7 +108,7 @@ const WITH_VAR = promptFixture({
 function terminalTabFixture(id: string): Tab {
   return {
     id,
-    projectId: 'proj-1',
+    scope: { kind: 'workspace', session: mkSession('proj-1') },
     title: 'Terminal',
     order: 0,
     data: { kind: 'terminal', agentId: null, status: 'Idle' },
@@ -113,7 +118,7 @@ function terminalTabFixture(id: string): Tab {
 function fileTabFixture(id: string): Tab {
   return {
     id,
-    projectId: 'proj-1',
+    scope: { kind: 'workspace', session: mkSession('proj-1') },
     title: 'a.ts',
     order: 1,
     data: {
@@ -127,7 +132,9 @@ function fileTabFixture(id: string): Tab {
 }
 
 function setEditorTabs(tabs: Tab[], activeTabId: string | null) {
-  useEditorStore.setState({ tabs: { [workspaceKeyOf('proj-1', null)]: { tabs, activeTabId } } });
+  useEditorStore.setState({
+    tabs: { [WorkspaceSession.of('proj-1', null).key]: { tabs, activeTabId } },
+  });
 }
 
 function setProject(present: boolean) {
@@ -427,9 +434,9 @@ describe('PromptsStatusSection', () => {
     fireEvent.click(screen.getByTestId('prompts-status-chip'));
     fireEvent.click(screen.getByTestId('prompts-status-row-p1'));
     expect(insertToTerminal).toHaveBeenCalledWith('review this diff');
-    expect(useEditorStore.getState().tabs[workspaceKeyOf('proj-1', null)]?.activeTabId).toBe(
-      term.id,
-    );
+    expect(
+      useEditorStore.getState().tabs[WorkspaceSession.of('proj-1', null).key]?.activeTabId,
+    ).toBe(term.id);
     expect(hoisted.toast).not.toHaveBeenCalled();
   });
 
@@ -442,9 +449,9 @@ describe('PromptsStatusSection', () => {
     render(<PromptsStatusSection />);
     fireEvent.click(screen.getByTestId('prompts-status-chip'));
     fireEvent.click(screen.getByTestId('prompts-status-row-p1'));
-    expect(useEditorStore.getState().tabs[workspaceKeyOf('proj-1', null)]?.activeTabId).toBe(
-      file.id,
-    );
+    expect(
+      useEditorStore.getState().tabs[WorkspaceSession.of('proj-1', null).key]?.activeTabId,
+    ).toBe(file.id);
     expect(hoisted.toast).toHaveBeenCalledWith(expect.stringContaining('无活动终端'), 'info');
   });
 
@@ -457,9 +464,9 @@ describe('PromptsStatusSection', () => {
     render(<PromptsStatusSection />);
     fireEvent.click(screen.getByTestId('prompts-status-chip'));
     fireEvent.click(screen.getByTestId('prompts-status-row-p1'));
-    expect(useEditorStore.getState().tabs[workspaceKeyOf('proj-1', null)]?.activeTabId).toBe(
-      term.id,
-    );
+    expect(
+      useEditorStore.getState().tabs[WorkspaceSession.of('proj-1', null).key]?.activeTabId,
+    ).toBe(term.id);
     expect(hoisted.toast).not.toHaveBeenCalled();
   });
 
@@ -473,9 +480,9 @@ describe('PromptsStatusSection', () => {
     fireEvent.click(screen.getByTestId('prompts-status-chip'));
     fireEvent.click(screen.getByTestId('prompts-status-row-p1'));
     expect(insertToTerminal).toHaveBeenCalledWith('review this diff');
-    expect(useEditorStore.getState().tabs[workspaceKeyOf('proj-1', null)]?.activeTabId).toBe(
-      file.id,
-    );
+    expect(
+      useEditorStore.getState().tabs[WorkspaceSession.of('proj-1', null).key]?.activeTabId,
+    ).toBe(file.id);
     expect(hoisted.toast).not.toHaveBeenCalled();
   });
 });

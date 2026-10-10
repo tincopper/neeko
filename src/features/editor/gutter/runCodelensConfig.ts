@@ -8,12 +8,13 @@
 import { Facet } from '@codemirror/state';
 
 import type { RunTarget } from '@/features/runner';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /** Per-editor configuration injected via facet (fileName + click callbacks). */
 export interface RunCodelensConfig {
   fileName: string;
   /** LSP runnable 拉取所需的项目上下文（缺省则跳过 tier ①，只走快路径）。 */
-  projectId?: string;
+  projectId?: ProjectId;
   /** 被编辑文件绝对路径（`file://` uri 构造）。 */
   absFilePath?: string;
   /** LSP 会话键（项目根 / worktree 根）。 */

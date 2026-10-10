@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 
-type Callback = (projectId: string) => void;
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
+type Callback = (projectId: ProjectId) => void;
 
 const subscribers = new Set<Callback>();
 
@@ -8,7 +10,7 @@ const subscribers = new Set<Callback>();
  * 通知所有订阅者：某项目的 Git 状态已刷新（点击 Git 面板刷新按钮时调用）。
  * 用于驱动 diff 等依赖 Git 状态的缓存失效。
  */
-export function bumpGitRefresh(projectId: string) {
+export function bumpGitRefresh(projectId: ProjectId) {
   for (const cb of subscribers) cb(projectId);
 }
 

@@ -1,8 +1,9 @@
 // ─── Tab Types ──────────────────────────────────────────────────────────────
+import type { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
+
 import type { FileContent } from './file';
 import type { DiffSource, ViewMode, CommitFileChange } from './git';
 import type { ConversationMeta } from './session';
-import type { WorkspaceSession } from './workspace';
 
 export type TabKind =
   | 'terminal'
@@ -26,13 +27,6 @@ export interface TerminalTabData {
 
 export interface FileTabData {
   kind: 'file';
-  /**
-   * 本 tab 所属的Workspace（**地址值**：`worktreePath === null` = 主 checkout）。
-   *
-   * 由创建者在其身份源处给出（非解析 key 还原），是文件读写/刷新的**唯一地址来源** ——
-   * 消费侧（reload / 自动刷新）直接用 `tab.workspace`，不得再解 tabKey。
-   */
-  workspace: WorkspaceSession;
   filePath: string;
   fileName: string;
   content: FileContent;
@@ -78,7 +72,7 @@ export interface ConversationTabData {
 
 export interface PRDetailTabData {
   kind: 'prDetail';
-  projectId: string;
+  projectId: ProjectId;
   prNumber: number;
   prTitle: string;
   prState: string;
@@ -121,9 +115,17 @@ export type TabData =
   | BrowserTabData
   | AgentChatTabData;
 
+/**
+ * Tab 的领域归属（P4 层级归位）：`App → Project → Workspace` 层级中，tab 要么属于某个
+ * Workspace（业务 tab），要么属于 App 节点（设置 / 全局面板）—— 后者不依附任何
+ * Workspace，是联合类型的合法分支而非字符串哨兵。
+ */
+export type TabScope = { kind: 'workspace'; session: WorkspaceSession } | { kind: 'app' };
+
 export interface Tab {
   id: string;
-  projectId: string;
+  /** 唯一身份字段：tab 携带完整领域地址；store 键由它推导（构造律，见 editorStore.addTab）。 */
+  scope: TabScope;
   title: string;
   order: number;
   data: TabData;

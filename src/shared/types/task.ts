@@ -1,3 +1,4 @@
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 export interface TaskConfig {
   id: string;
   name: string;
@@ -31,7 +32,7 @@ export type ConsoleSessionSource = 'task' | 'lsp' | 'git';
  */
 export interface TaskRun {
   id: string;
-  projectId: string;
+  projectId: ProjectId;
   projectPath: string;
   configId: string;
   /** Tab label — task name or server name. */

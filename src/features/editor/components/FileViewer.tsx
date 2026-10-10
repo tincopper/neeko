@@ -9,6 +9,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useActiveCheckoutPath, useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 import type { Tab, FileTabData } from '@/shared/types';
 import { isFileTab } from '@/shared/utils/fileTree';
+import { requireTabWorkspaceSession } from '@/shared/utils/tabIdentity';
 
 import { useFileActionsContext } from '../FileActionsContext';
 
@@ -16,10 +17,10 @@ import FileEditor from './FileEditor';
 
 /** Convert a unified Tab (file kind) to legacy FileTab for FileEditor */
 function tabToFileTab(tab: Tab & { data: FileTabData }): import('@/shared/types').FileTab {
+  const session = requireTabWorkspaceSession(tab);
   return {
     id: tab.id,
-    projectId: tab.projectId,
-    workspace: tab.data.workspace,
+    workspace: session,
     filePath: tab.data.filePath,
     fileName: tab.data.fileName,
     content: tab.data.content,

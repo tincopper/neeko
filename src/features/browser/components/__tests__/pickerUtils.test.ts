@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
 import type { ProjectTabs, Tab } from '@/shared/types/tab';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import {
   findAgentCliTab,
@@ -9,6 +10,11 @@ import {
   getThemeColors,
 } from '../pickerUtils';
 
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -16,7 +22,7 @@ import {
 function makeTab(overrides: Partial<Tab> & { data: Tab['data'] }): Tab {
   return {
     id: 'tab-1',
-    projectId: 'proj-1',
+    scope: { kind: 'workspace', session: mkSession('proj-1') },
     title: 'Terminal',
     order: 0,
     ...overrides,

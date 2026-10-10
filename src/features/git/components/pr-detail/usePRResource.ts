@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 import { viewPr, listPrFiles, listPrCommits, listPrComments } from '../../api/gitApi';
 import type { PRInfo, PRFileChange, PRCommit } from '../../types';
 import type { PRComment } from '../../types/comment';
@@ -13,11 +15,11 @@ export interface PRResource {
 
 const cache = new Map<string, PRResource>();
 
-export function isPRCached(projectId: string, prNumber: number): boolean {
+export function isPRCached(projectId: ProjectId, prNumber: number): boolean {
   return cache.has(`${projectId}:${prNumber}`);
 }
 
-export function usePRResource(projectId: string, prNumber: number, enabled: boolean) {
+export function usePRResource(projectId: ProjectId, prNumber: number, enabled: boolean) {
   const key = `${projectId}:${prNumber}`;
   const cached = cache.get(key);
   const [resource, setResource] = useState<PRResource | null>(cached ?? null);

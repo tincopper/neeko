@@ -7,6 +7,7 @@
  * → 成功/认证/失败收尾」与仓库级 busy 去重收在一处。
  */
 import { gitConsoleSessionId, useTaskStore } from '@/shared/store/taskStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /** 该仓库已有长 git 操作在跑时的提示（与后端 `GitSyncSlots::begin` 文案一致）。 */
 export const GIT_BUSY_MESSAGE = 'Another git operation is already in progress for this repository';
@@ -49,7 +50,7 @@ function gitConsoleBusy(projectPath: string): boolean {
  * tab，若第二个入口照常 open + 失败收尾，会把正在跑的第一个 run 的 tab 误标 failed。
  */
 export function beginGitConsoleRun(
-  projectId: string,
+  projectId: ProjectId,
   projectPath: string,
   header: string,
 ): GitConsoleRunHandle | null {
@@ -67,7 +68,7 @@ export function beginGitConsoleRun(
 interface RunGitConsoleOpArgs<T> {
   /** Console tab 上写入的命令头（`$ …` 行）。 */
   header: string;
-  projectId: string;
+  projectId: ProjectId;
   /** 仓库显示路径（Console tab 按它稳定去重）。 */
   projectPath: string;
   /** 真正的操作；`runId` 透传给后端命令以路由输出与取消。 */

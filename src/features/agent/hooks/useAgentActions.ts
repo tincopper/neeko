@@ -4,6 +4,7 @@ import { refreshTerminal, switchAgentInTerminal } from '@/features/terminal';
 import type { SaveSessionFn } from '@/shared/hooks/useConnectionProjects';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { setProjectIde } from '../../project/api/projectApi';
 
@@ -25,13 +26,13 @@ interface UseAgentActionsParams {
 interface UseAgentActionsResult {
   handleSelectLocalAgent: (agent: AgentConfig | null, cacheKey: string) => void;
   handleOpenIdeCallback: (project: { id: string; selected_ide: string | null }) => void;
-  handleOpenIdeForSidebar: (projectId: string) => void;
+  handleOpenIdeForSidebar: (projectId: ProjectId) => void;
   handleSaveProjectSettings: (
-    projectId: string,
+    projectId: ProjectId,
     agentId: string | null,
     ideCommand: string | null,
   ) => Promise<void>;
-  handleSetProjectIde: (projectId: string, ideCommand: string | null) => void;
+  handleSetProjectIde: (projectId: ProjectId, ideCommand: string | null) => void;
 }
 
 export function useAgentActions({
@@ -113,7 +114,7 @@ export function useAgentActions({
   );
 
   const handleOpenIdeForSidebar = useCallback(
-    (projectId: string) => {
+    (projectId: ProjectId) => {
       const project = projects.find((item) => item.id === projectId);
       if (!project) {
         return;
@@ -124,7 +125,7 @@ export function useAgentActions({
   );
 
   const handleSaveProjectSettings = useCallback(
-    async (projectId: string, agentId: string | null, ideCommand: string | null) => {
+    async (projectId: ProjectId, agentId: string | null, ideCommand: string | null) => {
       useProjectStore.setState((state) => {
         const nextProjects = state.projects.map((project) =>
           project.id === projectId
@@ -166,7 +167,7 @@ export function useAgentActions({
    * 触发 saveSession 写盘，本地项目额�?invoke set_project_ide 让后�?manager 同步�?
    */
   const handleSetProjectIde = useCallback(
-    (projectId: string, ideCommand: string | null) => {
+    (projectId: ProjectId, ideCommand: string | null) => {
       useProjectStore.setState((state) => {
         const nextProjects = state.projects.map((p) =>
           p.id === projectId ? { ...p, selected_ide: ideCommand } : p,

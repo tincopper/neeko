@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { AgentConfig } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useTerminalTabs } from '../useTerminalTabs';
+
+const SPACE = WorkspaceSession.of('p1', null).key;
 
 function resetStore() {
   useEditorStore.setState({ tabs: {}, activeTabId: null });
@@ -16,7 +19,7 @@ describe('useTerminalTabs', () => {
     const { result } = renderHook(() => useTerminalTabs('t1', 'p1'));
     act(() => result.current.handleAddTerminalTab());
 
-    const entry = useEditorStore.getState().tabs['t1'];
+    const entry = useEditorStore.getState().tabs[SPACE];
     expect(entry.tabs).toHaveLength(1);
     expect(entry.tabs[0].title).toBe('Terminal 1');
     expect(entry.tabs[0].data.kind).toBe('terminal');
@@ -28,7 +31,7 @@ describe('useTerminalTabs', () => {
     const { result } = renderHook(() => useTerminalTabs('t1', 'p1'));
     for (let i = 0; i < 12; i += 1) act(() => result.current.handleAddTerminalTab());
 
-    const entry = useEditorStore.getState().tabs['t1'];
+    const entry = useEditorStore.getState().tabs[SPACE];
     expect(entry.tabs.filter((t) => t.data.kind === 'terminal')).toHaveLength(10);
   });
 
@@ -38,7 +41,7 @@ describe('useTerminalTabs', () => {
     const agent = { id: 'opencode', name: 'OpenCode' } as AgentConfig;
     act(() => result.current.handleAddAgentTab(agent));
 
-    const entry = useEditorStore.getState().tabs['t1'];
+    const entry = useEditorStore.getState().tabs[SPACE];
     expect(entry.tabs).toHaveLength(1);
     expect(entry.tabs[0].title).toBe('OpenCode');
     expect(entry.tabs[0].data.agentId).toBe('opencode');

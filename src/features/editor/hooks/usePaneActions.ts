@@ -6,8 +6,10 @@ import { useRecentFilesStore } from '@/features/quick-open/store/recentFilesStor
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { AgentConfig, EditorGroupId, Tab } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { closeTabWithConfirmation } from '../store/closeConfirmStore';
 
@@ -15,7 +17,7 @@ interface UsePaneActionsParams {
   tabKey: string;
   groupId: EditorGroupId | 'pinned';
   tabs: Tab[];
-  projectIdForCheck: string | null;
+  projectIdForCheck: ProjectId | null;
   /** Action Menu 的 agent 数据源：由调用方传入已过滤列表（installedEnabledAgents）。 */
   agents: AgentConfig[];
   /** 新建终端 tab；targetGroup 由发起 pane 决定（pinned pane 内创建落 pinned）。 */
@@ -72,10 +74,9 @@ export function usePaneActions({
             const tabId = `tab_${crypto.randomUUID()}`;
             // 新建 tab 落组跟随发起 pane（pinned pane 内创建落 pinned）
             useEditorStore.getState().addTab(
-              tabKey,
               {
                 id: tabId,
-                projectId: projectIdForCheck,
+                scope: { kind: 'workspace', session: activeWorkspaceSession(projectIdForCheck) },
                 title: 'Agent Chat',
                 order: tabs.length,
                 data: {
@@ -94,10 +95,9 @@ export function usePaneActions({
           if (projectIdForCheck) {
             const tabId = `tab_${crypto.randomUUID()}`;
             useEditorStore.getState().addTab(
-              tabKey,
               {
                 id: tabId,
-                projectId: projectIdForCheck,
+                scope: { kind: 'workspace', session: activeWorkspaceSession(projectIdForCheck) },
                 title: 'Browser',
                 order: tabs.length,
                 data: {
@@ -113,7 +113,7 @@ export function usePaneActions({
         }
         case 'new-file': {
           if (projectIdForCheck) {
-            createUntitledFileTab(tabKey, projectIdForCheck, groupId);
+            createUntitledFileTab(projectIdForCheck, groupId);
           }
           break;
         }
@@ -139,10 +139,9 @@ export function usePaneActions({
       if (!projectIdForCheck) return;
       const tabId = `tab_${crypto.randomUUID()}`;
       useEditorStore.getState().addTab(
-        tabKey,
         {
           id: tabId,
-          projectId: projectIdForCheck,
+          scope: { kind: 'workspace', session: activeWorkspaceSession(projectIdForCheck) },
           title: agentName,
           order: tabs.length,
           data: {
@@ -161,9 +160,9 @@ export function usePaneActions({
   // 双击 tab 栏空白区域快速新建文件
   const handleNewFileTab = useCallback(() => {
     if (projectIdForCheck) {
-      createUntitledFileTab(tabKey, projectIdForCheck, groupId);
+      createUntitledFileTab(projectIdForCheck, groupId);
     }
-  }, [groupId, tabKey, projectIdForCheck]);
+  }, [groupId, projectIdForCheck]);
 
   const actionMenuCtx: ActionContext = useMemo(
     () => ({

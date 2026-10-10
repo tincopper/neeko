@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type { TaskConfig } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import type { DiscoveredTask } from '../types';
 
@@ -15,7 +16,7 @@ export function discoverTaskConfigs(projectPath: string): Promise<DiscoveredTask
 export function importDiscoveredTask(
   task: DiscoveredTask,
   projectPath: string,
-  projectId?: string | null,
+  projectId?: ProjectId | null,
 ): Promise<TaskConfig> {
   return invoke<TaskConfig>('import_discovered_task', {
     task,
@@ -61,7 +62,7 @@ export interface TaskProcessSession {
  * Output is streamed on `terminal-output-{id}`; exit on `terminal-closed-{id}`.
  */
 export function startTaskProcessSession(
-  projectId: string,
+  projectId: ProjectId,
   cols: number,
   rows: number,
   workingDir: string | null,

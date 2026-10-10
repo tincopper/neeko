@@ -410,5 +410,66 @@ class WorkspaceIdentityTest(unittest.TestCase):
         self.assertEqual(result.verdict, PASS)
 
 
+    # ── 判据：散件拼装/反解函数退役（本任务 M4） ──────────────────────────────
+
+    def test_retired_workspace_key_of_is_a_violation(self):
+        result = self.run_fe(
+            "src/features/git/k.ts",
+            "const key = workspaceKeyOf(projectId, wtPath);\n",
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertTrue(any("workspaceKeyOf" in f.message for f in result.findings))
+
+    def test_retired_parse_workspace_key_is_a_violation(self):
+        result = self.run_fe(
+            "src/features/git/k.ts",
+            "const p = parseWorkspaceKey(key).projectId;\n",
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertTrue(any("parseWorkspaceKey" in f.message for f in result.findings))
+
+    def test_workspace_ref_definition_point_is_exempt(self):
+        # 定义点（FE_ALLOWLIST）允许出现库函数名
+        result = self.run_fe(
+            "src/shared/utils/workspaceRef.ts",
+            "export function workspaceKeyOf(a: string, b: string | null) { return a + b; }\n",
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    # ── 判据 8：复合键流入身份槽位 ────────────────────────────────────────────
+
+    def test_project_id_slot_holding_a_key_is_a_violation(self):
+        result = self.run_fe(
+            "src/features/git/agent.ts",
+            "const tab = { projectId: tabKey, title: 't' };\n",
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertTrue(any("身份槽位" in f.message for f in result.findings))
+
+    def test_project_id_slot_holding_a_real_id_passes(self):
+        result = self.run_fe(
+            "src/features/git/agent.ts",
+            "const tab = { projectId: realProjectId, title: 't' };\n",
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    # ── 判据 9：App 空间键字面量单点 ──────────────────────────────────────────
+
+    def test_app_space_literal_outside_owner_is_a_violation(self):
+        result = self.run_fe(
+            "src/app/components/View.tsx",
+            "const key = currentProjectId ? activeKey : '__app__';\n",
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertTrue(any("__app__" in f.message for f in result.findings))
+
+    def test_app_space_literal_in_owner_is_exempt(self):
+        result = self.run_fe(
+            "src/shared/utils/tabIdentity.ts",
+            "export const APP_TAB_SPACE_KEY = '__app__';\n",
+        )
+        self.assertEqual(result.verdict, PASS)
+
+
 if __name__ == "__main__":
     unittest.main()

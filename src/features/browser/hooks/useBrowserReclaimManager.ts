@@ -8,6 +8,7 @@ import {
   decideReclaims,
   type WebviewUsage,
 } from '@/shared/utils/reclaimPolicy';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { browserClose } from '../api/browserApi';
 
@@ -77,10 +78,10 @@ export function checkReclaims(): void {
   for (const key of reclaimKeys) {
     if (key.startsWith('panel:')) {
       const projectId = key.slice('panel:'.length);
-      void browserClose(getProjectBrowserLabel(projectId)).catch((err) => {
+      void browserClose(getProjectBrowserLabel(projectId as ProjectId)).catch((err) => {
         console.error('[Browser] Failed to reclaim panel webview:', err);
       });
-      useProjectBrowserStore.getState().setPanelState(projectId, {
+      useProjectBrowserStore.getState().setPanelState(projectId as ProjectId, {
         isCreated: false,
         isLoading: false,
       });

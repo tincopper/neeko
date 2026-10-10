@@ -9,7 +9,7 @@ import type { FileNode } from '@/shared/types';
 import type { AgentChatTabData } from '@/shared/types/tab';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useAgentChat } from '../hooks/useAgentChat';
 
@@ -25,7 +25,7 @@ export { clearMessageCache } from './messageCache';
 interface AgentChatTabViewProps {
   tabKey: string;
   tabId: string;
-  projectId: string;
+  projectId: ProjectId;
   data: AgentChatTabData;
   /** 是否启用 mock 模式（开发/演示用）。 */
   mockMode?: boolean;
@@ -131,7 +131,7 @@ export default function AgentChatTabView({
         // —— 相对路径被拼成主仓同名文件身份，worktree 下静默打不开。
         const workspace = activeWorkspaceSession(projectId);
         const filePath = canonicalFsPath(workspace.worktreePath ?? projectPath, rawPath);
-        const tabKey = workspaceKeyOf(projectId, workspace.worktreePath);
+        const tabKey = WorkspaceSession.of(projectId, workspace.worktreePath ?? null).key;
         const tabId = getTabId(tabKey, filePath);
         const existing = useEditorStore.getState().tabs[tabKey];
         if (existing?.tabs.some((t) => t.id === tabId)) {
@@ -140,14 +140,13 @@ export default function AgentChatTabView({
         }
         try {
           const content = await readFileContent(workspace, filePath);
-          useEditorStore.getState().addTab(tabKey, {
+          useEditorStore.getState().addTab({
             id: tabId,
-            projectId,
+            scope: { kind: 'workspace', session: workspace },
             title: getFileName(filePath),
             order: existing?.tabs.length ?? 0,
             data: {
               kind: 'file',
-              workspace,
               filePath,
               fileName: getFileName(filePath),
               content,

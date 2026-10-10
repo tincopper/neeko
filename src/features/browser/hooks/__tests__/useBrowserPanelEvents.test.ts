@@ -5,7 +5,7 @@ import { BROWSER_URL_CHANGED_EVENT, GIT_CHANGED_EVENT } from '@/shared/events';
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useProjectBrowserStore } from '@/shared/store/browserStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useBrowserPanelEvents } from '../useBrowserPanelEvents';
 
@@ -97,7 +97,7 @@ describe('useBrowserPanelEvents — git-changed 武装自动刷新', () => {
     act(() => {
       // 载荷是 `{ workspace_key, project_id }`（Workspace身份补齐后不再是裸 project_id 字符串）
       listeners.get(GIT_CHANGED_EVENT)!({
-        workspace_key: workspaceKeyOf('proj-1', null),
+        workspace_key: WorkspaceSession.of('proj-1', null).key,
         project_id: 'proj-1',
       });
     });
@@ -111,7 +111,7 @@ describe('useBrowserPanelEvents — git-changed 武装自动刷新', () => {
 
     act(() => {
       listeners.get(GIT_CHANGED_EVENT)!({
-        workspace_key: workspaceKeyOf('proj-1', null),
+        workspace_key: WorkspaceSession.of('proj-1', null).key,
         project_id: 'proj-1',
       });
     });
@@ -151,7 +151,7 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
     return { refresh, handler: grabFileChangedHandler() };
   }
 
-  const MAIN_KEY = workspaceKeyOf('proj-1', null);
+  const MAIN_KEY = WorkspaceSession.of('proj-1', null).key;
 
   it('变更路径属本文件（canonical 形态）→ 刷新', () => {
     const { refresh, handler } = setup('/repo', 'file:///repo/docs/main.html');
@@ -205,7 +205,7 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
 
     act(() => {
       handler({
-        workspace_key: workspaceKeyOf('proj-1', '/repo-wt'),
+        workspace_key: WorkspaceSession.of('proj-1', '/repo-wt').key,
         project_id: 'proj-1',
         paths: ['docs/main.html'],
       });

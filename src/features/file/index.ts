@@ -1,7 +1,6 @@
 export type {
   FileNode,
   FileContent,
-  FileViewState,
   FileTab,
   FileChangedEvent,
   FileTreeChangedEvent,

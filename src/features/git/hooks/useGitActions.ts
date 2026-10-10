@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import type { CommitResult, FileChange, PushOutcome } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import { withTimeout } from '@/shared/utils/withTimeout';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { beginGitConsoleRun, GIT_BUSY_MESSAGE, runGitConsoleOp } from '../api/gitConsoleRun';
 import { formatGitHost } from '../formatGitHost';
@@ -17,7 +18,6 @@ import { isConflictedEntry } from '../utils/gitStatusGroups';
  * `.trellis/spec/backend/git-domain.md`「长操作超时策略」。
  */
 const TIMEOUT_LOCAL_MS = 30_000;
-
 export interface CredentialDialogState {
   open: boolean;
   host: string;
@@ -47,7 +47,7 @@ export function hasConflictedSelected(
 interface UseGitActionsParams {
   commands: ProjectCommands;
   /** 仓库身份：Console tab 按 projectPath 稳定去重（一仓一 tab）。 */
-  projectId: string;
+  projectId: ProjectId;
   projectPath: string;
   onRefreshGit: () => Promise<void>;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;

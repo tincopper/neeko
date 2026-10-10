@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { VirtualList, type VirtualListHandle } from '@/shared/components/VirtualList';
 import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { useProjectStore } from '@/shared/store/projectStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 
 import { getConversationMessages, exportConversation } from '../api/conversationApi';
@@ -30,7 +31,7 @@ import MessageBubble from './MessageBubble';
 
 interface ConversationViewerProps {
   conversationId: string;
-  projectId?: string | null;
+  projectId?: ProjectId | null;
   agentId?: string;
   conversationMeta?: ConversationMeta | null;
   agents?: AgentConfig[];
@@ -38,7 +39,6 @@ interface ConversationViewerProps {
   onResume?: (meta: ConversationMeta) => void;
   showToast?: (message: string, type?: 'info' | 'error') => void;
 }
-
 const INITIAL_LOAD = 100;
 const LOAD_MORE = 50;
 

@@ -1,17 +1,19 @@
 import React, { createContext, useContext } from 'react';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 export interface ProjectActionsContextValue {
-  onRemoveProject: (projectId: string) => void;
-  onSelectProject: (projectId: string) => void;
+  onRemoveProject: (projectId: ProjectId) => void;
+  onSelectProject: (projectId: ProjectId) => void;
   onAddProject: () => void;
-  onSelectFile: (projectId: string, filePath: string) => void;
-  onRefreshGit: (projectId: string) => void;
-  onBackToMainTerminal: (projectId: string) => void;
-  onOpenIde?: (projectId: string) => void;
-  onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
+  onSelectFile: (projectId: ProjectId, filePath: string) => void;
+  onRefreshGit: (projectId: ProjectId) => void;
+  onBackToMainTerminal: (projectId: ProjectId) => void;
+  onOpenIde?: (projectId: ProjectId) => void;
+  onOpenWorktreeTerminal?: (projectId: ProjectId, worktreePath: string, branch: string) => void;
   onDragEnd?: (draggedId: string, targetId: string) => void;
   onSaveProjectSettings?: (
-    projectId: string,
+    projectId: ProjectId,
     agentId: string | null,
     ideCommand: string | null,
   ) => void;

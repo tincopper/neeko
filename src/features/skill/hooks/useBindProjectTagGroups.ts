@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { openLibraryAt } from '@/features/library/store/libraryNavigation';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { AgentConfig } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { getSkillsForTagGroup, importSkillsToProject } from '../api/skillApi';
 import { useSkillStore } from '../store';
@@ -17,7 +18,7 @@ export function resolveProjectTargetAgentIds(
 }
 
 export interface UseBindProjectTagGroupsOptions {
-  projectId: string;
+  projectId: ProjectId;
   projectPath: string;
   /** Current bound group ids (declaration). */
   previousBoundIds: string[];

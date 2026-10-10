@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "editorStore / workspaceStore 现状与 tab 状态键约定（本任务改造主体）"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "品牌类型与类型安全规范（ProjectId 品牌落地遵循）"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端质量门禁与迁移期注意事项"}
+{"file": "docs/domain-model.md", "reason": "10-08 领域模型术语表：Workspace 为状态隔离与寻址单位（公理来源）"}
+{"file": ".trellis/tasks/10-08-workspace-naming/design.md", "reason": "命名收敛设计与迁移映射先例（本任务为其 end-state 的一环）"}

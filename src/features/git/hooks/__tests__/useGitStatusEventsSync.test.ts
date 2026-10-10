@@ -35,13 +35,13 @@ import { GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useGitStatusEventsSync } from '../useGitStatusEventsSync';
 
 const DEBOUNCE_MS = 500;
-const MAIN_KEY = workspaceKeyOf('p1', null);
-const WT_KEY = workspaceKeyOf('p1', '/wt/a');
+const MAIN_KEY = WorkspaceSession.of('p1', null).key;
+const WT_KEY = WorkspaceSession.of('p1', '/wt/a').key;
 
 function snapshot(overrides: Record<string, unknown>) {
   return {

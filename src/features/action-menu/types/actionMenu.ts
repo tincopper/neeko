@@ -1,5 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 export type ActionId =
   | 'new-terminal'
   | 'new-browser'
@@ -17,7 +19,7 @@ export type ActionId =
 export type ActionGroup = 'terminal' | 'agent' | 'browser' | 'file' | 'quick' | 'library';
 
 export interface ActionContext {
-  projectId: string | null;
+  projectId: ProjectId | null;
   tabKey: string;
   /** Agent 列表（command 非空 = 支持 CLI，可开终端 Tab）。 */
   agents: { id: string; name: string; icon?: string | null; enabled: boolean; command?: string }[];

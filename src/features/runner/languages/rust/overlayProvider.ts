@@ -13,6 +13,7 @@
  */
 
 import { canonicalFsPath, fileUriOfPath } from '@/shared/utils/fileRef';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { isLspLanguageReady } from '../../utils/lspReadiness';
 import type { LineTarget, OverlayProvider } from '../contract';
@@ -21,7 +22,7 @@ import { langIo } from '../io';
 import { parseRunnables, selectRunnable, type RustOverlay } from './runnables';
 
 interface FetchRunnablesArgs {
-  projectId: string;
+  projectId: ProjectId;
   /** LSP 会话键（项目根 / worktree 根）。 */
   projectPath: string;
   /** 被编辑文件绝对路径（构造 `file://` uri）。 */

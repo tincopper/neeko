@@ -14,8 +14,8 @@ export function startQuickOpenActivityTracking(): () => void {
   started = true;
   return onTabActivated((tabKey, tabId, tab) => {
     useMruTabsStore.getState().record(tabKey, tabId);
-    if (tab?.data.kind === 'file') {
-      useRecentFilesStore.getState().record(tab.projectId, tab.data.filePath);
+    if (tab?.data.kind === 'file' && tab.scope.kind === 'workspace') {
+      useRecentFilesStore.getState().record(tab.scope.session.projectId, tab.data.filePath);
     }
   });
 }

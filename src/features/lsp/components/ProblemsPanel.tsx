@@ -39,7 +39,6 @@ function ProblemsPanel() {
   const setPanelOpen = useLspStore((s) => s.setProblemsPanelOpen);
   const activeProject = useProjectStore((s) => s.activeProject);
   const projectPath = activeProject?.path ?? '';
-  const projectId = activeProject?.id ?? '';
 
   const latestH = useRef(PANEL_H_DEFAULT);
   const [panelHeight, setPanelHeight] = useState(readStoredHeight);
@@ -50,7 +49,7 @@ function ProblemsPanel() {
       if (!activeProject) return;
       // 失败必须可见（读取被拒/路径解析失败曾静默吞掉，用户侧表现即「点了没反应」）。
       openProjectFile({
-        projectId,
+        projectId: activeProject.id,
         filePath: fromFileUri(uri),
         line: diagnostic.range.start.line + 1,
         column: diagnostic.range.start.character,
@@ -58,7 +57,7 @@ function ProblemsPanel() {
         console.error('[ProblemsPanel] jump to diagnostic failed:', fromFileUri(uri), err);
       });
     },
-    [activeProject, projectId],
+    [activeProject],
   );
 
   /** 顶缘拖拽调高（对齐 TaskConsolePanel 的 localStorage 持久化模式）。 */

@@ -6,14 +6,18 @@ import { useShallow } from 'zustand/shallow';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects cleans terminal caches on project close
 import { destroyTerminalCachesByPrefix } from '@/features/terminal';
 import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
-import { useEditorStore } from '@/shared/store/editorStore';
+import { restoreActiveTabId, useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import {
+  activeWorkspaceSession,
+  selectActiveCheckoutPath,
+  useWorkspaceStore,
+} from '@/shared/store/workspaceStore';
 import type { Project, AgentConfig, Tab, Worktree } from '@/shared/types';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
 import { getMacAppNameByCommand, resolveIdeLaunchCommand } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
-import { parseWorkspaceKey, workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs agent API for listing agents
 import { listAgents } from '../../agent/api/agentApi';
@@ -50,10 +54,9 @@ export function useLocalProjects() {
     });
   }, []);
 
-  const setActiveProjectId = useCallback((projectId: string | null) => {
-    const tabs = useEditorStore.getState().tabs;
-    const targetProjectTabs = projectId ? tabs[projectId] : null;
-    const restoredTabId = targetProjectTabs?.activeTabId ?? null;
+  const setActiveProjectId = useCallback((projectId: ProjectId | null) => {
+    // 该项目当前激活单元（主仓或 worktree）的激活 tab
+    restoreActiveTabId(projectId ? activeWorkspaceSession(projectId).key : null);
 
     useProjectStore.setState((state) => ({
       activeProjectId: projectId,
@@ -61,8 +64,6 @@ export function useLocalProjects() {
         ? (state.projects.find((project) => project.id === projectId) ?? null)
         : null,
     }));
-
-    useEditorStore.setState({ activeTabId: restoredTabId });
   }, []);
 
   const setActiveProject: Dispatch<SetStateAction<Project | null>> = useCallback((updater) => {
@@ -136,26 +137,25 @@ export function useLocalProjects() {
     }
   }, [addProjectFromPath]);
 
-  const handleRemoveProject = useCallback(async (projectId: string) => {
+  const handleRemoveProject = useCallback(async (projectId: ProjectId) => {
     try {
       await removeProject(projectId);
 
       // R1：项目确认移除后，清空该项目派生的**全部** tab 键空间（基础键 + worktree
       // 变体，键格式唯一事实源 = workspaceRef.ts 的 workspaceKeyOf）。归属判定用
-      // parseWorkspaceKey(k).projectId 精确匹配，避免字符串前缀误伤相邻 id（p1 vs
+      // WorkspaceSession.fromKey(k)?.projectId 精确匹配，避免字符串前缀误伤相邻 id（p1 vs
       // p10）；枚举 editorStore.tabs 现存键即完整键空间 —— 键仅在 tab 打开时存在，
       // 无需穷举 worktree 路径。逐一走 clearProjectTabs（R2：
       // 其内 dropNavigateGoalFor 级联清 navigateGoal + activeTabId 兜底 + 按 kind
       // 触发 tab cleanup），不绕开单写 helper 自行改 tabs 结构。上方 await 抛出
       // 即走 catch，不会触碰 tabs（R3）。
       for (const tabKey of Object.keys(useEditorStore.getState().tabs)) {
-        if (parseWorkspaceKey(tabKey).projectId === projectId) {
+        if (WorkspaceSession.fromKey(tabKey)?.projectId === projectId) {
           useEditorStore.getState().clearProjectTabs(tabKey);
         }
       }
 
       const projState = useProjectStore.getState();
-      const editorState = useEditorStore.getState();
 
       const nextProjects = projState.projects.filter((project) => project.id !== projectId);
       const nextActiveProjectId =
@@ -165,16 +165,15 @@ export function useLocalProjects() {
       const nextActiveProject = nextActiveProjectId
         ? (nextProjects.find((project) => project.id === nextActiveProjectId) ?? null)
         : null;
-      const nextActiveTabId = nextActiveProjectId
-        ? (editorState.tabs[nextActiveProjectId]?.activeTabId ?? null)
-        : null;
+      restoreActiveTabId(
+        nextActiveProjectId ? activeWorkspaceSession(nextActiveProjectId).key : null,
+      );
 
       useProjectStore.setState({
         projects: nextProjects,
         activeProjectId: nextActiveProjectId,
         activeProject: nextActiveProject,
       });
-      useEditorStore.setState({ activeTabId: nextActiveTabId });
 
       destroyTerminalCachesByPrefix(projectId);
     } catch (error) {
@@ -183,7 +182,7 @@ export function useLocalProjects() {
   }, []);
 
   const handleSelectProject = useCallback(
-    async (projectId: string) => {
+    async (projectId: ProjectId) => {
       setActiveProjectId(projectId);
       // fire-and-forget: 通知后端，不阻塞前端切换
       setActiveProjectApi(projectId).catch(console.error);
@@ -192,18 +191,19 @@ export function useLocalProjects() {
   );
 
   const handleSelectFile = useCallback(
-    async (projectId: string, filePath: string) => {
+    async (projectId: ProjectId, filePath: string) => {
       if (activeProjectId !== projectId) {
         setActiveProjectId(projectId);
         await setActiveProjectApi(projectId);
       }
 
-      const existingTabs = useEditorStore.getState().tabs[projectId];
+      const session = activeWorkspaceSession(projectId);
+      const existingTabs = useEditorStore.getState().tabs[session.key];
       const existingDiffTab = existingTabs?.tabs.find(
         (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
       );
       if (existingDiffTab) {
-        useEditorStore.getState().activateTab(projectId, existingDiffTab.id);
+        useEditorStore.getState().activateTab(session.key, existingDiffTab.id);
         return;
       }
 
@@ -211,23 +211,23 @@ export function useLocalProjects() {
       const tabId = `tab_${crypto.randomUUID()}`;
       const tab: Tab = {
         id: tabId,
-        projectId,
+        scope: { kind: 'workspace', session },
         title: fileName,
         order: existingTabs?.tabs.length ?? 0,
         data: {
           kind: 'diff',
           filePath,
           fileName,
-          diffSource: { type: 'local', projectId },
+          diffSource: { workspace: session, revision: { type: 'worktree' } },
         },
       };
-      useEditorStore.getState().addTab(projectId, tab);
-      useEditorStore.getState().activateTab(projectId, tabId);
+      useEditorStore.getState().addTab(tab);
+      useEditorStore.getState().activateTab(session.key, tabId);
     },
     [activeProjectId, setActiveProjectId],
   );
 
-  const handleRefreshGit = useCallback(async (projectId: string) => {
+  const handleRefreshGit = useCallback(async (projectId: ProjectId) => {
     // 通知 diff 等依赖 Git 状态的缓存失效
     bumpGitRefresh(projectId);
     const defaultGitInfo = {
@@ -261,7 +261,7 @@ export function useLocalProjects() {
       // 刷新目标 = **本项目**当前激活的单元（旧实现读全局镜像的 activeWorktreePath，
       // 于是刷新 B 项目会用 A 项目的 worktree 路径，结果写进 B 的槽）。
       const checkoutPath = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
-      await refreshWorkspaceStatus(workspaceKeyOf(projectId, checkoutPath));
+      await refreshWorkspaceStatus(WorkspaceSession.of(projectId, checkoutPath ?? null).key);
 
       getGitBranchInfo(projectId, checkoutPath)
         .then((branchInfo) => {

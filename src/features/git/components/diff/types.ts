@@ -1,5 +1,6 @@
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import type { ViewMode, DiffSource } from '@/shared/types/git';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export type { ViewMode, DiffSource } from '@/shared/types/git';
 
@@ -31,7 +32,7 @@ export interface CommitFileChange {
 }
 
 export interface DiffViewProps {
-  projectId?: string;
+  projectId?: ProjectId;
   diffSource?: DiffSource;
   filePath: string;
   initialMode?: ViewMode;

@@ -6,6 +6,7 @@ import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons'
 import { useWorktreeChangeStats } from '@/shared/hooks/useWorktreeChangeStats';
 import { useActiveWorkspace } from '@/shared/store/workspaceStore';
 import { Worktree } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { getWorkspaceStatus } from '../../git/api/gitApi';
 import { useWorktreeListActions } from '../hooks/useWorktreeListActions';
@@ -14,10 +15,10 @@ import SessionChips from './SessionChips';
 
 interface WorktreeListProps {
   worktrees: Worktree[];
-  projectId: string;
+  projectId: ProjectId;
   projectPath?: string;
-  onOpenWorktreeTerminal?: (projectId: string, path: string, branch: string) => void;
-  onRefreshGit: (projectId: string) => void;
+  onOpenWorktreeTerminal?: (projectId: ProjectId, path: string, branch: string) => void;
+  onRefreshGit: (projectId: ProjectId) => void;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
 }
 

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { sendToTerminal } from '@/features/terminal';
 import { INSERT_TO_AGENT_INPUT_EVENT } from '@/shared/events';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { setDragFile, useFileDrop } from '../useFileDrop';
 
@@ -108,7 +109,7 @@ describe('useFileDrop', () => {
     // Setup: store returns a terminal tab
     vi.mocked(useEditorStore.getState).mockReturnValue({
       tabs: {
-        'proj-1': {
+        [WorkspaceSession.of('proj-1', null).key]: {
           tabs: [{ id: 'tab-1', data: { kind: 'terminal' } }],
           activeTabId: 'tab-1',
         },
@@ -145,7 +146,7 @@ describe('useFileDrop', () => {
     // Setup: store returns a terminal tab
     vi.mocked(useEditorStore.getState).mockReturnValue({
       tabs: {
-        'proj-1': {
+        [WorkspaceSession.of('proj-1', null).key]: {
           tabs: [{ id: 'tab-1', data: { kind: 'terminal' } }],
           activeTabId: 'tab-1',
         },

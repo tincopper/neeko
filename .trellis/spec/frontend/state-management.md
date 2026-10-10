@@ -506,7 +506,7 @@ export async function refreshGitFileStates(projectId: string) {
 // 历史形态（已删除）：key = `${kind}:${entryId}:${projectId}`，且三端各用一种 entryId 约定
 // export function aheadBehindKey(kind: AheadBehindKind, entryId: string, projectId: string): string;
 
-// 现行形态：键的语义类型是Workspace身份 `WorkspaceKey`（`shared/utils/workspaceRef.ts` 的 `workspaceKeyOf`）；
+// 现行形态：键的语义类型是Workspace身份 `WorkspaceKey`（`shared/utils/workspaceRef.ts` 的 `WorkspaceSession#key`）；
 // 结构类型仍是 `string`，因此「传了非 WorkspaceKey 的字符串」不会编译报错 —— 靠本契约与护栏守。
 interface GitStoreState {
   aheadBehind: Record<string, AheadBehind>; // 键 = WorkspaceKey
@@ -519,7 +519,7 @@ interface GitStoreActions {
 
 ### 3. Contracts
 
-1. Key 派生契约（**已改**）：所有写入/读取路径必须经过唯一产出点 `workspaceKeyOf(projectId, worktreePath)`
+1. Key 派生契约（**已改**）：所有写入/读取路径必须经过唯一产出点 `WorkspaceSession.of(projectId, worktreePath ?? null).key`
    —— 就是「场景：Workspace分槽 + 激活态单源」第 7 条。不允许任何前缀拼接（`source` / `connectionId`
    维度已判为冗余：`project.id` 是 UUID，`WorkspaceKey` 已全局唯一）。
 2. 单一切片契约：跨三域的同语义状态共用一张表（`Record<key, T>`），不为每域单建独立切片。
@@ -530,8 +530,8 @@ interface GitStoreActions {
 
 | 场景 | 输入 | 预期 |
 |------|------|------|
-| local 写入 | `setAheadBehind(workspaceKeyOf(pid, null), ab)` | 只在主仓单元读到 |
-| worktree 写入 | `setAheadBehind(workspaceKeyOf(pid, wt), ab)` | 只在该单元读到，主仓单元不受影响 |
+| local 写入 | `setAheadBehind(WorkspaceSession.of(pid, null).key, ab)` | 只在主仓单元读到 |
+| worktree 写入 | `setAheadBehind(WorkspaceSession.of(pid, wt).key, ab)` | 只在该单元读到，主仓单元不受影响 |
 | 命令失败 | invoke reject | `setAheadBehind(workspaceKey, null)` 删除 key |
 | 重复同值写入 | 现值 deepEqual 新值 | 不触发 setState |
 
@@ -544,7 +544,7 @@ interface GitStoreActions {
 
 ### 6. Tests Required
 
-- `workspaceKeyOf` golden 形态与后端 `WorkspaceRef::key()` 逐字一致（`shared/utils/__tests__/workspaceRef.test.ts`）。
+- `WorkspaceSession#key` golden 形态与后端 `WorkspaceRef::key()` 逐字一致（`shared/utils/__tests__/workspaceSession.test.ts`）。
 - `gitStore` 单测：`setAheadBehind(workspaceKey, null)` 后该 key 不存在；同值写入不触发订阅。
 - 集成断言：主仓单元与 worktree 单元的 key 互不读到对方数据
   （`useRefreshGitInfo.test.ts` / `BranchStatusBarWidget.test.tsx` / `ConnectionProjectCard.test.tsx`）。
@@ -562,10 +562,10 @@ useGitStore.getState().setAheadBehind(k, info);
 #### Correct
 
 ```ts
-import { workspaceKeyOf } from '../utils/workspaceRef';
+import { WorkspaceSession } from '../utils/workspaceRef';
 
 // 单元身份本身即键；unitPath 取自 store selector，不各自猜
-const k = workspaceKeyOf(projectId, selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId));
+const k = activeWorkspaceSession(projectId).key;
 useGitStore.getState().setAheadBehind(k, info);
 ```
 
@@ -1063,7 +1063,7 @@ rerun: async (projectId) => {
 // shared/utils/workspaceRef.ts —— key 的唯一产出/反解处（与 Rust WorkspaceRef::key() 双端 golden 对齐）
 export const WORKSPACE_KEY_SEP = '\u0000';
 export type WorkspaceKey = string & { readonly __workspaceKey: unique symbol };
-export function workspaceKeyOf(projectId: string, worktreePath?: string | null): WorkspaceKey;
+class WorkspaceSession { get key(): WorkspaceKey; static of(projectId: string, worktreePath: string | null): WorkspaceSession }
 export function parseWorkspaceKey(key: string): { projectId: string; worktreePath: string | null };
 // 单元工作树根（= Rust WorkspaceRef::work_dir()）：事件相对路径的归一基准，主仓回落项目登记路径
 export function workspaceRootOf(workspaceKey: string, projectRoot: string): string;
@@ -1091,7 +1091,7 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(workspaceKe
 
 ### 3. Contracts
 
-1. **身份单源**：`WorkspaceKey` 只能由 `workspaceKeyOf` 产出、只能由 `parseWorkspaceKey` 反解。任何调用点手拼
+1. **身份单源**：`WorkspaceKey` 只能由 `WorkspaceSession#key` 产出、只能由 `WorkspaceSession.fromKey` 反解。任何调用点手拼
    `` `${projectId}\0${wt}` `` 或自行 `split('\0')` = 同一身份的第二种表示，必然与后端漂移。
    刷新目标必须是 `WorkspaceKey` 入参，**禁止**「projectId + 现取全局镜像的 worktreePath」。
 2. **一格一单元**：status 按 `workspace_key` 分槽。跨单元的数据共享只允许发生在**投影**上
@@ -1134,13 +1134,13 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(workspaceKe
    `{source}:{connectionId}` 维度纯冗余，且三个调用点各用一种 connectionId 约定（`distro` /
    `${host}:${port}` / `host`），只制造漂移。**How to apply**：写侧四个触发时机
    （`useRefreshGitInfo` / `useLocalProjects` / `useGitStatusEventsSync` / `useAheadBehindSync`）
-   是**同一事实的不同时刻**，键必须同形；读侧一律 `aheadBehind[workspaceKeyOf(projectId, unitPath)]`，
+   是**同一事实的不同时刻**，键必须同形；读侧一律 `aheadBehind[WorkspaceSession.of(projectId, unitPath ?? null).key]`，
    `unitPath` 取自 store selector（`selectActiveCheckoutPath`）。
 8. **激活单元 key 只有一个派生点**：`selectActiveWorkspaceKey(state, projectId)`（React 形态）/
    `activeWorkspaceKeyOf(projectId?)`（命令式形态）、`useActiveWorkspaceKey(projectId)`（渲染期形态），
    都在 `workspaceStore.ts`。任何文件直读 `.byProject[...].activePath` 即违规
    （护栏 `STORE_STATE_ACCESS_RE` 钉住）—— 判据拦的是
-   **形态**而非字段名，因为「别处再手写一遍 `workspaceKeyOf(pid, byProject[pid]?.activePath ?? null)`」
+   **形态**而非字段名，因为「别处再手写一遍 `activeWorkspaceSession(pid).key`」
    正是下一次分叉的入口（`projectId` 为空时还会产出 `'\u0000'` 这种谁也匹配不上的键）。渲染期直读
    还会停在旧值（非响应式）。
 9. **`file-changed` / `file-tree-changed` 的路径基准 = 单元工作树根**：载荷是
@@ -1180,7 +1180,7 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(workspaceKe
 
 - Good：主仓 ↔ worktreeA ↔ worktreeB 交替，每格只显示自己单元的条目；未挂载的 B 在侧栏走
   pull 通道，仍然按 key 定址同一张表。
-- Base：单主仓项目，行为与改造前一致（多了一层 `workspaceKeyOf(projectId, null)`）。
+- Base：单主仓项目，行为与改造前一致（多了一层 `WorkspaceSession.of(projectId, null).key`）。
 - Bad（都会重新引入本 issue 的症状）：把 `statuses` 又拍平回 per-project；在组件里
   `useWorkspaceStore.getState().activeWorktreePath`（或 `.byProject[pid].activePath`）取当前单元；
   给 `applyStatus` 加「`version === 0` 也放行」的兼容分支；在 `useEffect` 里再调一次
@@ -1237,7 +1237,7 @@ useTauriEvent<string>(GIT_CHANGED_EVENT, (payload) => {
 
 ```ts
 // 身份由入参给出，闸门只有一条规则，未知与空是两种界面形态
-const workspaceKey = workspaceKeyOf(projectId, selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId));
+const workspaceKey = activeWorkspaceSession(projectId).key;
 await refreshWorkspaceStatus(workspaceKey);
 useProjectStore.getState().applyStatus(snapshot); // 内部：version <= prev ⇒ 丢弃
 const status = useProjectStore((s) => selectStatus(s, workspaceKey));
@@ -1257,6 +1257,159 @@ useTauriEvent<GitChangedEvent>(GIT_CHANGED_EVENT, (payload) => {
 ```
 
 ---
+
+## 场景：Tab 身份模型（按 Workspace 值对象寻址）2026-10-10
+
+### 1. Scope / Trigger
+
+- Trigger：`Tab.projectId: string` + `addTab(spaceKey, tab)` 让「键」可被调用方指定、身份是
+  未类型化的裸 string。事故实证：点击 agent 时 `tabKey`（复合 `WorkspaceKey = projectId\0wt`）
+  被写进 `tab.projectId`，激活后 `check_agents_installed` 收到 37 字节（尾随 NUL）id → 后端
+  精确匹配失败 `Project not found`。diff tab 修过一次同类回归，agent tab 原样复发 —— 点修无效。
+- Scope：`shared/utils/workspaceRef.ts`（**唯一概念模块**：身份词汇 + 铸造点）、`shared/types/tab.ts`
+  （`Tab.scope`）、`shared/store/editorStore.ts`（`addTab` 构造律）、`shared/types/git.ts`
+  （`DiffSource`）、全部 tab 创建 / 消费点。`shared/types/workspace.ts` shim **已删除**（不再有 `types → utils` re-export 反转）。
+- 第一性原理：身份只有三种形态，键是身份的**派生索引**不是身份本身；「键 A、tab 身份 B」的
+  不一致必须在构造上不可能（非法状态不可表示），而不是下游检测。
+
+### 2. Signatures
+
+```ts
+// shared/utils/workspaceRef.ts —— 身份词汇的唯一正文（含 key 材质，护栏白名单文件）
+export const WORKSPACE_KEY_SEP = '\u0000';
+export type WorkspaceKey = string & { readonly __workspaceKey: unique symbol };
+export type ProjectId = string & { readonly __projectId: unique symbol };
+
+export class WorkspaceSession {
+  private constructor(readonly projectId: ProjectId, readonly worktreePath: string | null) {}
+  static of(projectId: string, worktreePath: string | null): WorkspaceSession; // '' / 空白 → 主仓
+  static fromKey(key: string): WorkspaceSession | null; // 反解：日志 / golden / wire 边界
+  get key(): WorkspaceKey; // 唯一铸造点（≡ Rust WorkspaceRef::key()），惰性缓存
+}
+
+export const APP_TAB_SPACE_KEY = '__app__';
+export function tabSpaceKeyOf(scope: TabScope): string; // 'workspace' → session.key；'app' → __app__
+export function tabProjectId(tab: Tab): ProjectId | null; // 项目粒度投影；app 空间 → null
+export function tabWorkspaceSession(tab: Tab): WorkspaceSession | null;
+
+// shared/types/tab.ts
+export type TabScope =
+  | { kind: 'workspace'; session: WorkspaceSession }
+  | { kind: 'app' };
+export interface Tab { id: string; scope: TabScope; title: string; order: number; data: TabData }
+
+// shared/store/editorStore.ts —— 构造律：键由 tab 自身推导，调用方无权指定
+addTab: (tab: Tab, targetGroup?: EditorGroupId | 'pinned') => void; // 内部 tabSpaceKeyOf(tab.scope)
+```
+
+### 3. Contracts
+
+1. **身份词汇封闭**：只允许 `ProjectId`（项目粒度）、`WorkspaceSession`（Workspace 地址值对象）、
+   `WorkspaceKey`（只出现在 map/record 键位）。不存在第四种身份表示。
+2. **Tab 携带完整领域地址**：`tab.scope` 是唯一身份字段；`TabData` 不再有 `workspace`。
+   项目粒度消费读 `tabProjectId(tab)`；Workspace 粒度消费读 `tab.scope.session`。
+3. **构造律（键由 tab 推导）**：`addTab` 内部取 `tabSpaceKeyOf(tab.scope)` —— 键与身份不一致
+   在构造上不可能。任何「外部传键」重载都不允许存在。
+4. **键是投影不是拼装**：`session.key` 是对象属性；散件函数 `WorkspaceSession#key` / 反解
+   `WorkspaceSession.fromKey` 已退役（护栏 `RETIRED_FRONTEND` 按符号钉），生产代码零命中。
+5. **`__app__` 是 App 节点的合法空间**（`App → Project → Workspace` 层级），用 `{ kind: 'app' }`
+   联合分支吸收；字面量只允许出现在 `tabSpaceKeyOf` 实现文件。
+6. **Rust 权威**：`WorkspaceRef::key()` 与 `session.key` 双端 golden 逐字一致；后端
+   `project_context` 对含 NUL 的 id 返回 `InvalidInput`（不是 `NotFound`），防止身份污染
+   被误诊为「项目缺失」。
+7. **「投影」与「组装」的判据**：`WorkspaceSession.of(projectId, path?).key` 是**合法投影**当且仅当
+   `path` 来自身份源本身（`useActiveCheckoutPath()` / `selectActiveCheckoutPath` / tab 携带的
+   `scope.session`）；此时它等价于 `activeWorkspaceSession(projectId).key`（纯形式，避免第二次
+   store 读取）。**禁止**的是「按裸 `projectId` 查按单元存的表」或「拿无关分量拼一个键」——
+   那才是本场景要消灭的「组装」。非 tab 域（git status / 文件树 / 终端缓存）因手头只有
+   `(projectId, worktreePath)`，统一经 `WorkspaceSession.of(...).key` 这一**唯一 mint** 取键。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 输入 | 预期 |
+|------|------|------|
+| 主仓 tab | `scope = { workspace, session: of(pid, null) }` | store 键 = `pid\0` |
+| worktree tab | `session = of(pid, '/wt')` | store 键 = `pid\0/wt`，按单元隔离 |
+| App 设置 tab | `scope = { kind: 'app' }` | 键 = `__app__`，`tabProjectId` = null |
+| agent 点击 | 新建 terminal tab | 身份 `session.projectId` 不含 NUL；`check_agents_installed` 收裸 id |
+| 空串 worktree | `of(pid, '')` | 归一为主仓（key 与 `isMainCheckout` 同一结论） |
+| wire 载荷 | 事件只带 `workspace_key` | 边界经 `WorkspaceSession.fromKey`（唯一 codec） |
+
+### 补充契约（2026-10-10 全链路收口）
+
+8. **`ProjectId` 品牌贯穿身份槽位与源头**：`activeProjectId` / `ProjectView.id` / `WSLProject.id` /
+   `RemoteProject.id` / `ProjectListItem.id` / 各 DTO `projectId` 全为 `ProjectId`；`ProjectId → string`
+   可赋、反向必须经身份边界。**有意的非身份 `projectId: string` 槽位（不得误品牌）**：
+   `editorStore` 的 tab 键形参（名 `projectId` 实为 `WorkspaceKey | '__app__'`）、`useTerminalTabs`
+   的键形参、`getTabId`（tab 键）、`getProjectBrowserLabel`（名 formatter）、`onboardingApi` 的
+   onboarding 键形参、`WorkspaceSession.of` / `mintWorkspaceKey`（入场 mint）。**注意 `terminalCacheKey`
+   相反**：它取**真实 `ProjectId`**（`activeProject.id`）构造本地终端缓存键，属身份槽位。
+   裸 string 在此类槽位与身份槽位间流动即违规 —— 原事故（tab 键被当 project 身份）正是这一类。
+10. **消费端读 `tabs` 必须用 tab 空间键，禁止裸 `projectId`**：`editorStore.tabs` 按 `WorkspaceKey`
+    （`id\0…`）分槽。任何 `tabs[projectId]`（裸 id）恒 miss —— 典型症状：切项目后全局 `activeTabId`
+    未恢复、worktree 下读到别的单元。派生点唯一：渲染期 `useActiveWorkspaceKey(projectId)`；命令式
+    `activeWorkspaceSession(projectId).key`；特定单元（主仓 / 指定 worktree）用 `WorkspaceSession.of(id, wt).key`。
+    （`useLocalProjects` / `useProjectSelection` / `useWorktreeActions` / `useEditorAgentActions` /
+    `DebugRunButton` / `useFileDrop` / `useBrowserPanelEvents` / `useBrowserTab` / `TerminalView` 已按此收口。）
+    全局 `activeTabId` 的**写侧只有一个入口** `editorStore.restoreActiveTabId(tabKey | null)`（切项目/单元时，
+    WSL/Remote 亦须调用，`useCrossTypeSelection` 已收口）；**读侧** `editorStore.activeTabIdOf(tabKey)`，
+    **渲染期派生** `useActiveWorkspaceKey`。调用方只派生目标单元的 `tabKey`，不得各自 `setState({ activeTabId })`。
+    禁止 `'' as ProjectId` 伪身份（缺值即 `null` + guard；`GitDialog.projectId` 为必填）。
+
+9. **`DiffSource = { workspace: WorkspaceSession; revision: DiffRevision }`**：环境（local/WSL/SSH）
+   维度由 `ProjectCommands`（按Workspace构造）承载，**禁止**再进 `DiffSource`；修订维度只有
+   `worktree | commit | stash` 三种。远端 worktree 因此获得 `workspace.worktreePath` 维度
+   （旧 8-variant 联合缺此维度）。`buildDiffSource` 已删除，构造点用**手头已有的 session**。
+
+### 5. Good/Base/Bad Cases
+
+- Good：worktree 激活时新建 agent/fi/browser tab，键 = `session.key`、tab 身份 = 同一 session，
+  后端按裸 `ProjectId` 找到项目。
+- Base：主仓单项目，行为不变（键多一层 `\0`）。
+- Bad（重新引入根因）：`addTab(spaceKey, tab)` 再出现；`tab.projectId` 槽位复活；
+  `projectId: tabKey` 形态；`WorkspaceSession#key` / `WorkspaceSession.fromKey` 被接回；`'__app__'` 散落硬编码。
+
+### 6. Tests Required
+
+- `shared/utils/__tests__/workspaceSession.test.ts`：golden ↔ Rust `WorkspaceRef::key()`、
+  `JSON.stringify` 字段白名单（getter 不入 wire）、`fromKey` 往返 / 非法返回 null、getter 缓存、
+  空串归一。
+- `shared/types/identity.test-d.ts`：品牌互斥负向类型测试（`tsc` 覆盖）。
+- `shared/store/__tests__/tabIdentity.test.ts`：8 个 TabData kind 键-身份一致性 + worktree +
+  `__app__` + 原事故路径（身份不含 NUL）。
+- `tools/guards/tests/test_check_workspace_identity.py`：判据 8（复合键入身份槽位）/ 判据 9
+  （`__app__` 单点）/ 退役符号正反例。
+- Rust `app_state::tests::project_context_rejects_nul_in_project_id`。
+- `editor/hooks/__tests__/useTabManagement.test.ts`：`handleAddTab` 以**真实 `projectId`** 调用
+  `addTab`（**不得**传复合 tab 键 —— 撤掉收敛即 RED）；`handleTabAgentClick` 把 tab 键形参收敛为 `projectId`。
+- `git/hooks/__tests__/useOpenDiffTab.test.ts` / `useDiffData.test.ts`：`DiffSource` 为
+  `{ workspace, revision }` 两字段形态（**环境维度不在其中**）。
+- `shared/types/identity.test-d.ts`：`ProjectId` ↔ `WorkspaceKey` 品牌互斥、裸 string 不可赋（`tsc` 覆盖）。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// 键由调用方指定 + 身份是裸 string：tabKey 可被误当 projectId
+useEditorStore.getState().addTab(tabKey, { id, projectId: tabKey, title, order, data });
+// 散件拼键（生产）
+const key = WorkspaceSession.of(projectId, worktreePath ?? null).key;
+```
+
+#### Correct
+
+```ts
+// 身份是值对象；键由 tab 自身推导（调用方无从指定）
+useEditorStore.getState().addTab({
+  id,
+  scope: { kind: 'workspace', session: activeWorkspaceSession(projectId) },
+  title,
+  order,
+  data,
+});
+// 键 = session.key（投影）；项目粒度消费 = tabProjectId(tab)
+```
 
 ## 常见错误
 
@@ -1284,7 +1437,7 @@ Context 粒度过大将放大重渲染影响。新增字段时优先放入最贴
 ### 6. 切换项目时 global `activeTabId` 未同步
 
 **问题**：tab 状态在 `editorStore` 里是两层结构 —— 全局 `activeTabId` 与按 `tabKey` 分槽的
-`tabs[tabKey].activeTabId`（`tabKey = workspaceKeyOf(projectId, worktreePath)`，主仓单元的 key = `projectId\0`）。切换项目/单元时若只写 `projectStore.activeProjectId` 而不恢复全局 `activeTabId`，
+`tabs[tabKey].activeTabId`（`tabKey = WorkspaceSession.of(projectId, worktreePath ?? null).key`，主仓单元的 key = `projectId\0`）。切换项目/单元时若只写 `projectStore.activeProjectId` 而不恢复全局 `activeTabId`，
 下游会用**上一个项目**的 tab id 算 `cacheKey`（终端缓存）或做 tab 解析，导致 cache miss 与孤立
 PTY 创建。
 

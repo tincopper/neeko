@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 import { useDockStore } from '@/shared/store/dockStore';
 import type { AppConfig, AgentConfig } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   loadConfig as loadSessionConfig,
@@ -12,9 +13,8 @@ import { checkAgentsInstalled, listAgents, setProjectAgents } from '../api/agent
 import AgentIcon from './AgentIcon';
 
 type MenuMode = 'none' | 'main' | 'terminal' | 'chat' | 'browser';
-
 interface AgentSelectorProps {
-  projectId: string;
+  projectId: ProjectId;
   currentAgentId: string | null;
   onSelectAgent: (agent: AgentConfig | null) => void;
   /** WSL/SSH ��Ŀ�� true��������� set_project_agent�����ⲿ�ص����г־û� */

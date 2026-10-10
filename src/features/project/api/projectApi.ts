@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 import type { Project } from '@/shared/types';
 import type { GitInfo } from '@/shared/types/git';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import type { CloneProjectParams, CloneProjectResult } from '../types/clone';
 
@@ -26,7 +27,7 @@ export function cancelProjectClone(): Promise<void> {
   return invoke<void>('cancel_project_clone');
 }
 
-export function removeProject(projectId: string): Promise<void> {
+export function removeProject(projectId: ProjectId): Promise<void> {
   return invoke<void>('remove_project', { projectId });
 }
 
@@ -34,15 +35,15 @@ export function listProjects(): Promise<Project[]> {
   return invoke<Project[]>('list_projects');
 }
 
-export function getProject(projectId: string): Promise<Project> {
+export function getProject(projectId: ProjectId): Promise<Project> {
   return invoke<Project>('get_project', { projectId });
 }
 
-export function refreshGitInfo(projectId: string): Promise<GitInfo> {
+export function refreshGitInfo(projectId: ProjectId): Promise<GitInfo> {
   return invoke<GitInfo>('refresh_git_info', { projectId });
 }
 
-export function setActiveProject(projectId: string): Promise<void> {
+export function setActiveProject(projectId: ProjectId): Promise<void> {
   return invoke<void>('set_active_project', { projectId });
 }
 
@@ -50,27 +51,27 @@ export function getActiveProject(): Promise<string | null> {
   return invoke<string | null>('get_active_project');
 }
 
-export function setViewTerminal(projectId: string): Promise<void> {
+export function setViewTerminal(projectId: ProjectId): Promise<void> {
   return invoke<void>('set_view_terminal', { projectId });
 }
 
-export function setViewDiff(projectId: string, filePath: string): Promise<void> {
+export function setViewDiff(projectId: ProjectId, filePath: string): Promise<void> {
   return invoke<void>('set_view_diff', { projectId, filePath });
 }
 
-export function setProjectCollapsed(projectId: string, collapsed: boolean): Promise<void> {
+export function setProjectCollapsed(projectId: ProjectId, collapsed: boolean): Promise<void> {
   return invoke<void>('set_project_collapsed', { projectId, collapsed });
 }
 
-export function setProjectColor(projectId: string, color?: string | null): Promise<void> {
+export function setProjectColor(projectId: ProjectId, color?: string | null): Promise<void> {
   return invoke<void>('set_project_color', { projectId, color });
 }
 
-export function renameProject(projectId: string, newName: string): Promise<void> {
+export function renameProject(projectId: ProjectId, newName: string): Promise<void> {
   return invoke<void>('rename_project', { projectId, newName });
 }
 
-export function changeProjectPath(projectId: string, newPath: string): Promise<void> {
+export function changeProjectPath(projectId: ProjectId, newPath: string): Promise<void> {
   return invoke<void>('change_project_path', { projectId, newPath });
 }
 
@@ -80,13 +81,13 @@ export function reorderProjects(orderedIds: string[]): Promise<void> {
 
 // ─── IDE commands ────────────────────────────────────────────────────────────
 
-export function setProjectIde(projectId: string, ide?: string | null): Promise<void> {
+export function setProjectIde(projectId: ProjectId, ide?: string | null): Promise<void> {
   return invoke<void>('set_project_ide', { projectId, ide });
 }
 
 /** Set project-level primary LSP language (null/empty = auto from root markers). */
 export function setProjectPrimaryLanguage(
-  projectId: string,
+  projectId: ProjectId,
   language?: string | null,
 ): Promise<void> {
   return invoke<void>('set_project_primary_language', { projectId, language });

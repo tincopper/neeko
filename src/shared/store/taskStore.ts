@@ -25,6 +25,7 @@ import {
   registerTaskConsoleCloser,
 } from '@/shared/utils/bottomPanelExclusive';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /** Optional cwd override + output/exit observers for programmatic runs (editor test Run/Debug). */
 export interface RunTaskOptions {
@@ -91,9 +92,9 @@ interface TaskStoreState {
   importDiscovered: (
     task: DiscoveredTask,
     projectPath: string,
-    projectId?: string,
+    projectId?: ProjectId,
   ) => Promise<void>;
-  importAllDiscovered: (projectPath: string, projectId?: string) => Promise<void>;
+  importAllDiscovered: (projectPath: string, projectId?: ProjectId) => Promise<void>;
   addConfig: (config: TaskConfig, projectPath?: string) => Promise<void>;
   updateConfig: (config: TaskConfig, projectPath?: string) => Promise<void>;
   deleteConfig: (id: string, scope: string, projectPath?: string) => Promise<void>;
@@ -113,7 +114,7 @@ interface TaskStoreState {
    * Fetches initial logs; caller/panel may poll while the tab stays active.
    */
   openLspLogConsole: (args: {
-    projectId: string;
+    projectId: ProjectId;
     projectPath: string;
     languageId: string;
     serverName: string;
@@ -127,7 +128,7 @@ interface TaskStoreState {
    * the `$ …` command line). Backend output arrives via `git-operation-output`
    * events routed by `useGitConsoleBridge`.
    */
-  openGitConsole: (args: { projectId: string; projectPath: string; header: string }) => string;
+  openGitConsole: (args: { projectId: ProjectId; projectPath: string; header: string }) => string;
   /** Append a streamed chunk to a git Console run (no-op when the tab was closed). */
   appendGitConsoleOutput: (runId: string, chunk: string) => void;
   /** Mark a git Console run finished (`ok=false` → failed, buffer kept). */
@@ -606,7 +607,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
       } else {
         const run: TaskRun = {
           id,
-          projectId,
+          projectId: projectId as ProjectId,
           projectPath,
           configId: `lsp:${languageId}`,
           name: serverName,
@@ -700,7 +701,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
       } else {
         const run: TaskRun = {
           id,
-          projectId,
+          projectId: projectId as ProjectId,
           projectPath,
           configId: id,
           name: `Git · ${repoDisplayName(projectPath)}`,

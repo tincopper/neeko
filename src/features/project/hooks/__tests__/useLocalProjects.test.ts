@@ -6,9 +6,10 @@ import { useLocalProjects } from '@/features/project/hooks/useLocalProjects';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import { useWorkspaceStore, type WorkspaceState } from '@/shared/store/workspaceStore';
 import type { Project } from '@/shared/types';
-import { parseWorkspaceKey, workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 import { createProject } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
@@ -195,14 +196,19 @@ describe('useLocalProjects', () => {
     /** 归属判定复用 tabKey.ts 的解析器（与生产实现同源，覆盖基础键 + worktree 变体）。 */
     function projectKeySpaces(projectId: string): string[] {
       return Object.keys(useEditorStore.getState().tabs).filter(
-        (key) => parseWorkspaceKey(key).projectId === projectId,
+        (key) => WorkspaceSession.fromKeyOrId(key).projectId === projectId,
       );
     }
 
     function seedFileTab(tabKey: string, projectId: string, tabId: string) {
-      useEditorStore.getState().addTab(tabKey, {
+      // 夹具按传入的键空间播种（session 从 key 反解，仅测试用）：使 tab 恰好落在该单元
+      void projectId;
+      useEditorStore.getState().addTab({
         id: tabId,
-        projectId,
+        scope: {
+          kind: 'workspace',
+          session: WorkspaceSession.fromKey(tabKey) ?? WorkspaceSession.of(tabKey, null),
+        },
         title: `${tabId}.ts`,
         order: 0,
         data: {
@@ -225,13 +231,18 @@ describe('useLocalProjects', () => {
         await result.current.loadProjects();
       });
 
-      const wtKey = workspaceKeyOf('p1', '/repo/wt-a');
+      const wtKey = WorkspaceSession.of('p1', '/repo/wt-a').key;
       act(() => {
         seedFileTab('p1', 'p1', 'f1');
         seedFileTab('p1', 'p1', 'f2');
         seedFileTab(wtKey, 'p1', 'fwt');
         seedFileTab('p2', 'p2', 'g1');
-        useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'f1', line: 3, col: 0 });
+        useEditorStore.getState().setNavigateGoal({
+          tabKey: WorkspaceSession.of('p1', null).key,
+          tabId: 'f1',
+          line: 3,
+          col: 0,
+        });
       });
       act(() => {
         result.current.setActiveProjectId('p1');
@@ -243,11 +254,33 @@ describe('useLocalProjects', () => {
 
       // 基础键与 worktree 变体全部清除，其他项目不受影响
       expect(projectKeySpaces('p1')).toEqual([]);
-      expect(useEditorStore.getState().tabs['p2']?.tabs.map((t) => t.id)).toEqual(['g1']);
+      expect(
+        useEditorStore.getState().tabs[activeWorkspaceSession('p2').key]?.tabs.map((t) => t.id),
+      ).toEqual(['g1']);
       // navigateGoal 随项目 tab 空间级联清除（clearProjectTabs → dropNavigateGoalFor）
       expect(useEditorStore.getState().navigateGoal).toBeNull();
       // UI 兜底落到剩余项目的 active tab
       expect(useEditorStore.getState().activeTabId).toBe('g1');
+    });
+
+    it('setActiveProjectId 按 session.key 恢复该项目激活单元的 activeTabId（裸 id 读即 miss）', async () => {
+      const projects = [createProject({ id: 'p1' })];
+      mockInvoke.mockResolvedValue(projects);
+
+      const { result } = renderHook(() => useLocalProjects());
+      await act(async () => {
+        await result.current.loadProjects();
+      });
+
+      act(() => {
+        seedFileTab('p1', 'p1', 'f1');
+      });
+      act(() => {
+        useEditorStore.setState({ activeTabId: null });
+        result.current.setActiveProjectId('p1');
+      });
+
+      expect(useEditorStore.getState().activeTabId).toBe('f1');
     });
 
     it('removing a project without tabs leaves other projects and their goal untouched', async () => {
@@ -262,7 +295,12 @@ describe('useLocalProjects', () => {
 
       act(() => {
         seedFileTab('p2', 'p2', 'g1');
-        useEditorStore.getState().setNavigateGoal({ tabKey: 'p2', tabId: 'g1', line: 1, col: 0 });
+        useEditorStore.getState().setNavigateGoal({
+          tabKey: WorkspaceSession.of('p2', null).key,
+          tabId: 'g1',
+          line: 1,
+          col: 0,
+        });
       });
 
       await act(async () => {
@@ -270,8 +308,12 @@ describe('useLocalProjects', () => {
       });
 
       expect(projectKeySpaces('p1')).toEqual([]);
-      expect(useEditorStore.getState().tabs['p2']?.tabs.map((t) => t.id)).toEqual(['g1']);
-      expect(useEditorStore.getState().navigateGoal?.tabKey).toBe('p2');
+      expect(
+        useEditorStore.getState().tabs[activeWorkspaceSession('p2').key]?.tabs.map((t) => t.id),
+      ).toEqual(['g1']);
+      expect(useEditorStore.getState().navigateGoal?.tabKey).toBe(
+        WorkspaceSession.of('p2', null).key,
+      );
     });
 
     it('clears the worktree-variant key space even when the base key has no tabs', async () => {
@@ -284,7 +326,7 @@ describe('useLocalProjects', () => {
         await result.current.loadProjects();
       });
 
-      const wtKey = workspaceKeyOf('p1', '/repo/wt-a');
+      const wtKey = WorkspaceSession.of('p1', '/repo/wt-a').key;
       act(() => {
         seedFileTab(wtKey, 'p1', 'fwt');
         seedFileTab('p2', 'p2', 'g1');
@@ -297,7 +339,9 @@ describe('useLocalProjects', () => {
 
       expect(useEditorStore.getState().tabs[wtKey]).toBeUndefined();
       expect(projectKeySpaces('p1')).toEqual([]);
-      expect(useEditorStore.getState().tabs['p2']?.tabs.map((t) => t.id)).toEqual(['g1']);
+      expect(
+        useEditorStore.getState().tabs[activeWorkspaceSession('p2').key]?.tabs.map((t) => t.id),
+      ).toEqual(['g1']);
       // worktree 键空间下的 goal 同样级联清除
       expect(useEditorStore.getState().navigateGoal).toBeNull();
     });
@@ -318,7 +362,12 @@ describe('useLocalProjects', () => {
 
       act(() => {
         seedFileTab('p1', 'p1', 'f1');
-        useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'f1', line: 1, col: 0 });
+        useEditorStore.getState().setNavigateGoal({
+          tabKey: WorkspaceSession.of('p1', null).key,
+          tabId: 'f1',
+          line: 1,
+          col: 0,
+        });
       });
 
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -328,8 +377,12 @@ describe('useLocalProjects', () => {
       consoleSpy.mockRestore();
 
       // 失败/取消路径不触碰 tabs（R3）
-      expect(useEditorStore.getState().tabs['p1']?.tabs.map((t) => t.id)).toEqual(['f1']);
-      expect(useEditorStore.getState().navigateGoal?.tabKey).toBe('p1');
+      expect(
+        useEditorStore.getState().tabs[activeWorkspaceSession('p1').key]?.tabs.map((t) => t.id),
+      ).toEqual(['f1']);
+      expect(useEditorStore.getState().navigateGoal?.tabKey).toBe(
+        WorkspaceSession.of('p1', null).key,
+      );
       expect(result.current.projects.map((p) => p.id)).toEqual(['p1', 'p2']);
     });
   });
@@ -358,7 +411,7 @@ describe('useLocalProjects', () => {
     /** 后端形态：get_workspace_status 回的是**被请求那个单元**的快照（workspace_key 自带身份）。 */
     function snapshotFor(projectId: string, worktreePath: string | null) {
       return {
-        workspace_key: workspaceKeyOf(projectId, worktreePath),
+        workspace_key: WorkspaceSession.of(projectId, worktreePath ?? null).key,
         version: 7,
         project_id: projectId,
         worktree_path: worktreePath,
@@ -426,7 +479,9 @@ describe('useLocalProjects', () => {
       // ahead/behind 不再独立 pull：它随权威快照单通道携带（R2.2 / Fix 2）
       expect(mockInvoke).not.toHaveBeenCalledWith('get_ahead_behind', expect.anything());
       // 快照落进**该单元**的槽位
-      expect(useProjectStore.getState().statuses[workspaceKeyOf('p1', null)]).toMatchObject({
+      expect(
+        useProjectStore.getState().statuses[WorkspaceSession.of('p1', null).key],
+      ).toMatchObject({
         version: 7,
       });
     });
@@ -441,12 +496,16 @@ describe('useLocalProjects', () => {
         worktreePath: WT_A,
       });
       expect(mockInvoke).not.toHaveBeenCalledWith('get_ahead_behind', expect.anything());
-      expect(useProjectStore.getState().statuses[workspaceKeyOf('p1', WT_A)]).toMatchObject({
+      expect(
+        useProjectStore.getState().statuses[WorkspaceSession.of('p1', WT_A ?? null).key],
+      ).toMatchObject({
         version: 7,
         worktree_path: WT_A,
       });
       // 主仓槽位不得被 worktree 的刷新结果占用
-      expect(useProjectStore.getState().statuses[workspaceKeyOf('p1', null)]).toBeUndefined();
+      expect(
+        useProjectStore.getState().statuses[WorkspaceSession.of('p1', null).key],
+      ).toBeUndefined();
     });
 
     it('回归：刷新 p2 用的是 p2 自己的激活单元，p1 的 worktree 路径不得串过来', async () => {
@@ -462,7 +521,9 @@ describe('useLocalProjects', () => {
         .filter((call) => call[0] === 'get_workspace_status')
         .map((call) => call[1]);
       expect(statusCalls).toEqual([{ projectId: 'p2', worktreePath: null }]);
-      expect(useProjectStore.getState().statuses[workspaceKeyOf('p1', WT_A)]).toBeUndefined();
+      expect(
+        useProjectStore.getState().statuses[WorkspaceSession.of('p1', WT_A ?? null).key],
+      ).toBeUndefined();
     });
 
     it('两个项目各自有激活 worktree 时互不串用', async () => {
@@ -525,9 +586,13 @@ describe('useLocalProjects', () => {
       expect(p1?.git_info?.branches).toEqual(['main', 'feature-a']);
       expect(p1?.git_info?.worktrees).toEqual([{ path: WT_A, branch: 'feature-a', head: 'abc' }]);
       // worktree 单元 HEAD 进自己的槽位，不进 git_info
-      expect(useProjectStore.getState().statuses[workspaceKeyOf('p1', WT_A)]?.branch).toBe('wt-p1');
+      expect(
+        useProjectStore.getState().statuses[WorkspaceSession.of('p1', WT_A ?? null).key]?.branch,
+      ).toBe('wt-p1');
       // p2 完全没有被触碰
-      expect(useProjectStore.getState().statuses[workspaceKeyOf('p2', null)]).toBeUndefined();
+      expect(
+        useProjectStore.getState().statuses[WorkspaceSession.of('p2', null).key],
+      ).toBeUndefined();
     });
 
     it('status 刷新失败时不写入空列表（失败 = 未知，不是「无变更」）', async () => {
@@ -589,7 +654,10 @@ describe('useLocalProjects', () => {
     });
   });
 
-  it.skip('handleSelectFile 在项目未激活时先激活项目再设 diff 视图', async () => {
+  it('handleSelectFile 在项目未激活时先激活项目再创建 diff tab（落在该项目主仓单元）', async () => {
+    useEditorStore.setState({ tabs: {}, activeTabId: null, editorLayout: {}, navigateGoal: null });
+    useWorkspaceStore.setState({ byProject: {} });
+    useProjectStore.setState({ projects: [], activeProjectId: null, activeProject: null });
     const project = createProject({ id: 'p-diff', name: 'diff-proj' });
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'list_projects') return [project];
@@ -609,14 +677,14 @@ describe('useLocalProjects', () => {
       await result.current.handleSelectFile('p-diff', 'src/foo.ts');
     });
 
-    // 激活项目
+    // 先激活项目
     expect(result.current.activeProjectId).toBe('p-diff');
-    // 激活项目时必须先调用 set_view_terminal（使 activeProject 在 diff 前有效）
-    const calls = mockInvoke.mock.calls.map((c) => c[0]);
-    const terminalIdx = calls.lastIndexOf('set_view_terminal');
-    const diffIdx = calls.lastIndexOf('set_view_diff');
-    expect(terminalIdx).toBeGreaterThanOrEqual(0);
-    expect(diffIdx).toBeGreaterThan(terminalIdx);
+    // 再在该项目主仓单元创建 diff tab
+    const mainKey = WorkspaceSession.of('p-diff', null).key;
+    const diffTab = useEditorStore
+      .getState()
+      .tabs[mainKey]?.tabs.find((t) => t.data.kind === 'diff');
+    expect(diffTab).toBeDefined();
   });
 
   it('handleSelectFile 在项目已激活时创建 diff tab', async () => {
@@ -641,7 +709,7 @@ describe('useLocalProjects', () => {
     // 项目已激活，不应再调用 set_active_project
     expect(mockInvoke).not.toHaveBeenCalledWith('set_active_project', expect.anything());
     // 应在 store 中创建 diff tab
-    const storeTabs = useEditorStore.getState().tabs['p-active'];
+    const storeTabs = useEditorStore.getState().tabs[WorkspaceSession.of('p-active', null).key];
     expect(storeTabs).toBeDefined();
     const diffTab = storeTabs?.tabs.find((t) => t.data.kind === 'diff');
     expect(diffTab).toBeDefined();
@@ -745,6 +813,48 @@ describe('useLocalProjects', () => {
       expect(mockInvoke).toHaveBeenCalledWith('reorder_projects', {
         orderedIds: ['p2', 'p1'],
       });
+    });
+  });
+
+  describe('handleSelectFile — 单元一致性（tab 空间 = diff 源）', () => {
+    beforeEach(() => {
+      useEditorStore.setState({
+        tabs: {},
+        activeTabId: null,
+        editorLayout: {},
+        navigateGoal: null,
+      });
+      useProjectStore.setState({ projects: [], activeProjectId: null, activeProject: null });
+      useWorkspaceStore.setState({ byProject: {} });
+    });
+
+    it('worktree 激活时 diff tab 落在该 worktree 单元，且 diffSource.workspace 同源', async () => {
+      const project = createProject({ id: 'p-wt' });
+      mockInvoke.mockImplementation(async (cmd: string) => {
+        if (cmd === 'list_projects') return [project];
+        return undefined;
+      });
+      useWorkspaceStore.getState().setActiveWorkspace('p-wt', '/repo/wt', 'feature');
+
+      const { result } = renderHook(() => useLocalProjects());
+      await act(async () => {
+        await result.current.loadProjects();
+      });
+      await act(async () => {
+        await result.current.handleSelectFile('p-wt', 'src/x.ts');
+      });
+
+      const wtKey = WorkspaceSession.of('p-wt', '/repo/wt').key;
+      const diffTab = useEditorStore
+        .getState()
+        .tabs[wtKey]?.tabs.find((t) => t.data.kind === 'diff');
+      expect(diffTab).toBeDefined();
+      if (diffTab?.data.kind === 'diff') {
+        expect(diffTab.data.diffSource.workspace.worktreePath).toBe('/repo/wt');
+      }
+      // 主仓键空间不得被写入该 diff tab（tab 与其 diff 源必须同单元）
+      const mainTabs = useEditorStore.getState().tabs[WorkspaceSession.of('p-wt', null).key];
+      expect(mainTabs?.tabs.some((t) => t.data.kind === 'diff') ?? false).toBe(false);
     });
   });
 });

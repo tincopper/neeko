@@ -7,6 +7,7 @@ import { WSLProject, WSLEntrySession } from '@/shared/types';
 import { getDistroIcon } from '@/shared/utils/distros';
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
 import { Input } from '@/ui/Input';
@@ -21,7 +22,6 @@ interface WSLDialogProps {
   /** 传入时直接跳到 select-path 步骤并预选该发行版 */
   selectedEntryId?: string;
 }
-
 export function WSLDialog({
   isOpen,
   onClose,
@@ -213,7 +213,7 @@ export function WSLDialog({
     }
 
     const newProject: WSLProject = {
-      id: crypto.randomUUID(),
+      id: crypto.randomUUID() as ProjectId,
       name: projectName,
       path: finalPath,
       distro: selectedDistro,

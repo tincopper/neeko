@@ -1,3 +1,4 @@
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 /**
  * Browser tab 的自动刷新门控（纯工具，无 I/O）。
  *
@@ -13,7 +14,7 @@ const armedProjects = new Set<string>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** 武装指定项目的自动刷新（幂等，重置安全窗计时）。 */
-export function armProjectAutoRefresh(projectId: string): void {
+export function armProjectAutoRefresh(projectId: ProjectId): void {
   armedProjects.add(projectId);
   const existing = timers.get(projectId);
   if (existing) clearTimeout(existing);
@@ -27,12 +28,12 @@ export function armProjectAutoRefresh(projectId: string): void {
 }
 
 /** 该项目是否处于自动刷新武装窗口内。 */
-export function isProjectAutoRefreshArmed(projectId: string): boolean {
+export function isProjectAutoRefreshArmed(projectId: ProjectId): boolean {
   return armedProjects.has(projectId);
 }
 
 /** 立即解除武装（项目切换 / 组件卸载时调用）。 */
-export function disarmProjectAutoRefresh(projectId: string): void {
+export function disarmProjectAutoRefresh(projectId: ProjectId): void {
   armedProjects.delete(projectId);
   const t = timers.get(projectId);
   if (t) {

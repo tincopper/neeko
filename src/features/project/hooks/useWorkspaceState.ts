@@ -9,7 +9,7 @@ import {
   useWorkspaceStore,
   type CheckoutEntry,
 } from '@/shared/store/workspaceStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /**
  * 「当前项目的 Workspace」视图 hook。
@@ -27,31 +27,34 @@ import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
  * worktree」与 `useWorkspaceState.test.ts`「mutator 按传入 projectId 写状态」）。
  * 读取全部经 `getState()` 现取，回调引用因此永久稳定。
  */
-export function useWorkspaceState(activeProjectId: string | null) {
+export function useWorkspaceState(activeProjectId: ProjectId | null) {
   const { activePath, activeBranch, opened } = useActiveWorkspace(activeProjectId);
 
-  const activateWorkspace = useCallback((projectId: string, path: string | null, branch = '') => {
-    const prevKey = activeWorkspaceKeyOf(projectId);
-    const nextKey = workspaceKeyOf(projectId, path);
-    useWorkspaceStore.getState().setActiveWorkspace(projectId, path, branch);
-    // 旧单元此后没有任何生产者，残留数据不得被渲染（未挂载 = 未知）
-    if (prevKey && prevKey !== nextKey) useProjectStore.getState().invalidateStatus(prevKey);
-    // 切到新的 tab 空间（tabKey 已按单元分域）
-    const tabs = useEditorStore.getState().tabs[workspaceKeyOf(projectId, path)];
-    useEditorStore.setState({ activeTabId: tabs?.activeTabId ?? null });
-  }, []);
+  const activateWorkspace = useCallback(
+    (projectId: ProjectId, path: string | null, branch = '') => {
+      const prevKey = activeWorkspaceKeyOf(projectId);
+      const nextKey = WorkspaceSession.of(projectId, path ?? null).key;
+      useWorkspaceStore.getState().setActiveWorkspace(projectId, path, branch);
+      // 旧单元此后没有任何生产者，残留数据不得被渲染（未挂载 = 未知）
+      if (prevKey && prevKey !== nextKey) useProjectStore.getState().invalidateStatus(prevKey);
+      // 切到新的 tab 空间（tabKey 已按单元分域）
+      const tabs = useEditorStore.getState().tabs[WorkspaceSession.of(projectId, path ?? null).key];
+      useEditorStore.setState({ activeTabId: tabs?.activeTabId ?? null });
+    },
+    [],
+  );
 
-  const markWorkspaceOpened = useCallback((projectId: string, path: string, branch: string) => {
+  const markWorkspaceOpened = useCallback((projectId: ProjectId, path: string, branch: string) => {
     useWorkspaceStore.getState().markWorkspaceOpened(projectId, path, branch);
   }, []);
 
   /** 只改展示用分支名（不切换单元、不触发挂载）。路径现取该项目的当前激活值。 */
-  const setActiveWorkspaceBranch = useCallback((projectId: string, branch: string) => {
+  const setActiveWorkspaceBranch = useCallback((projectId: ProjectId, branch: string) => {
     const path = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
     useWorkspaceStore.getState().setActiveWorkspace(projectId, path, branch);
   }, []);
 
-  const clearActiveWorkspace = useCallback((projectId: string) => {
+  const clearActiveWorkspace = useCallback((projectId: ProjectId) => {
     // 槽位作废随 store 级 mutator 单点发生（workspaceStore.clearActiveWorkspace），此处不重复
     useWorkspaceStore.getState().clearActiveWorkspace(projectId);
   }, []);

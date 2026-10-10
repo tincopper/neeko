@@ -17,7 +17,7 @@ import {
   selectActiveCheckoutPath,
   useWorkspaceStore,
 } from '@/shared/store/workspaceStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { frameSourceOpen, fsSourceOpen, virtualSourceOpen } from './sourceOpen';
 import { ensureSourceTab } from './sourceTab';
@@ -29,15 +29,15 @@ import type { StackFrameDto } from './types';
  * 三个入口的共同输入解析（都要先知道「这次打开落在哪个 tab 空间」）——故与入口同层。
  * 若将来出现第二个消费者（非跳转场景也需要该键），再抽成独立模块。
  */
-function targetTabKey(projectId: string): string {
+function targetTabKey(projectId: ProjectId): string {
   const activeWorktree = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
-  return projectId ? workspaceKeyOf(projectId, activeWorktree) : projectId;
+  return projectId ? WorkspaceSession.of(projectId, activeWorktree ?? null).key : projectId;
 }
 
 /**
  * 指定项目的登记根路径（主仓单元根）；项目不在表里 → 空串。
  */
-function projectRegisteredRoot(projectId: string): string {
+function projectRegisteredRoot(projectId: ProjectId): string {
   return useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
 }
 
@@ -54,7 +54,7 @@ function projectRegisteredRoot(projectId: string): string {
  * 推论（有意为之）：会话存活期间切到另一个单元时，旧单元的栈帧落在当前单元根之外，
  * 会回落**只读外部通道** —— 这是与 tab 空间/保存根一致的安全降级，不是缺陷。
  */
-function workspaceRootFor(projectId: string, fallbackPath: string): string {
+function workspaceRootFor(projectId: ProjectId, fallbackPath: string): string {
   const activeWorktree = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
   return activeWorktree || projectRegisteredRoot(projectId) || fallbackPath;
 }
@@ -84,7 +84,7 @@ function publishNavigateGoal(
  * `projectPath` 仅作项目表缺失时的兜底 —— 实际读取 scope 恒取**当前执行单元**
  *（激活 worktree / 该项目的登记根），见 `workspaceRootFor`。 */
 export async function openSourceAtLine(
-  projectId: string,
+  projectId: ProjectId,
   projectPath: string,
   sourcePath: string,
   line: number,
@@ -115,7 +115,7 @@ export async function openSourceAtLine(
 
 /** 用户意图：打开适配器虚拟源码（DAP `sourceReference`）并跳到指定行。 */
 export async function openVirtualSourceAtLine(
-  projectId: string,
+  projectId: ProjectId,
   sourceName: string | null | undefined,
   reference: number,
   line: number,
@@ -144,7 +144,7 @@ export async function openVirtualSourceAtLine(
 
 /** 停点源码可见性请求。 */
 export interface StopSourceRequest {
-  projectId: string;
+  projectId: ProjectId;
   /** 项目表缺失时的兜底根；实际读取 scope 恒取**当前执行单元**（见 `workspaceRootFor`）。 */
   projectPath: string;
   frame: StackFrameDto;

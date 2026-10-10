@@ -13,6 +13,7 @@ import type {
   StashActionResult,
   StashEntry,
 } from '@/shared/types/git';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export type ProjectEnvironment =
   | { type: 'Local' }
@@ -22,7 +23,7 @@ export type ProjectEnvironment =
 export function environmentToConnectionContext(
   env: ProjectEnvironment,
   projectPath: string,
-  projectId: string,
+  projectId: ProjectId,
 ): ConnectionContext {
   switch (env.type) {
     case 'Local':
@@ -42,7 +43,7 @@ export function environmentToConnectionContext(
 }
 
 export interface Project {
-  id: string;
+  id: ProjectId;
   name: string;
   path: string;
   environment: ProjectEnvironment;
@@ -69,7 +70,7 @@ export type TerminalEntry = {
 
 export interface LocalConnectionContext {
   type: 'local';
-  projectId: string;
+  projectId: ProjectId;
 }
 
 export interface WslConnectionContext {
@@ -94,7 +95,7 @@ export type ConnectionContext =
 
 export interface ProjectView {
   readonly type: ProjectEnvironment['type'];
-  readonly id: string;
+  readonly id: ProjectId;
   readonly name: string;
   readonly path: string;
   readonly gitInfo: GitInfo | null;

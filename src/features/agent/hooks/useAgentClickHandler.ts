@@ -3,13 +3,14 @@ import { useCallback } from 'react';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig } from '@/shared/types';
 import type { TerminalTab } from '@/shared/types/terminal';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { setProjectAgents } from '../api/agentApi';
 
 interface UseAgentClickHandlerOptions {
   tabKey: string | null;
   handleTabAgentClick: (tabKey: string, agent: AgentConfig) => TerminalTab | null;
-  activeProject: { id: string } | null;
+  activeProject: { id: ProjectId } | null;
   agentActions: {
     handleSelectLocalAgent: (agent: AgentConfig, cacheKey: string) => void;
   };

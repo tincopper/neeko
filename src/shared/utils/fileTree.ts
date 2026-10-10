@@ -179,8 +179,8 @@ export function flattenFileTreeView(nodes: FileTreeViewNode[]): FlatFileTreeRow[
 }
 
 /** Generate a unique tab ID from project ID and file path */
-export function getTabId(projectId: string, filePath: string): string {
-  return `${projectId}:${filePath}`;
+export function getTabId(tabKey: string, filePath: string): string {
+  return `${tabKey}:${filePath}`;
 }
 
 /** Extract file name from path */

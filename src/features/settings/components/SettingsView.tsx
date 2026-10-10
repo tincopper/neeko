@@ -6,6 +6,7 @@ import { useAppContext } from '@/shared/contexts';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig, AppConfig } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Island } from '@/ui/Island';
 
 import { listAgents } from '../../agent/api/agentApi';
@@ -32,7 +33,6 @@ function SettingsView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [builtinAgents, setBuiltinAgents] = useState<AgentConfig[]>([]);
   const [allAgents, setAllAgents] = useState<AgentConfig[]>([]);
-
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -80,7 +80,7 @@ function SettingsView() {
       const projectId = activeNav.slice(8);
       return (
         <ProjectPanel
-          projectId={projectId}
+          projectId={projectId as ProjectId}
           customIdes={config.customIdes}
           onProjectRemoved={handleProjectRemoved}
         />

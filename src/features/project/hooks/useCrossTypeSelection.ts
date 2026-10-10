@@ -2,20 +2,22 @@ import { useCallback } from 'react';
 
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useConnectionStore } from '@/shared/store/connectionStore';
+import { restoreActiveTabId } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { activeWorkspaceSession, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 interface WslActions {
   setWslDiffState: ((state: null) => void) | undefined;
   resetTransientState: () => void;
-  handleRefreshGit: (distro: string, projectId: string, projectPath: string) => void;
+  handleRefreshGit: (distro: string, projectId: ProjectId, projectPath: string) => void;
   handleOpenWorktreeTerminal: (distro: string, worktreePath: string, branch: string) => void;
   setActiveWorkspacePath: (path: string | null) => void;
 }
 
 interface RemoteActions {
   resetTransientState: () => void;
-  handleRefreshGit: (entryId: string, projectId: string, projectPath: string) => void;
+  handleRefreshGit: (entryId: string, projectId: ProjectId, projectPath: string) => void;
   handleOpenWorktreeTerminal: (entryId: string, worktreePath: string, branch: string) => void;
   setActiveWorkspacePath: (path: string | null) => void;
 }
@@ -23,7 +25,7 @@ interface RemoteActions {
 interface UseCrossTypeSelectionOptions {
   wslActions: WslActions;
   remoteActions: RemoteActions;
-  selectProject: (projectId: string) => Promise<void>;
+  selectProject: (projectId: ProjectId) => Promise<void>;
 }
 
 export function useCrossTypeSelection({
@@ -38,12 +40,12 @@ export function useCrossTypeSelection({
   }, []);
 
   const handleSelectProject = useCallback(
-    async (projectId: string) => {
+    async (projectId: ProjectId) => {
       closeSettingsView();
 
       // 切换项目类型：清掉各项目的激活单元（后端挂载由 useActiveWorkspaceSync 跟随）
       for (const pid of Object.keys(useWorkspaceStore.getState().byProject)) {
-        useWorkspaceStore.getState().clearActiveWorkspace(pid);
+        useWorkspaceStore.getState().clearActiveWorkspace(pid as ProjectId);
       }
       wslActions.setWslDiffState?.(null);
       remoteActions.resetTransientState();
@@ -59,8 +61,12 @@ export function useCrossTypeSelection({
       });
 
       if (project.environment.type === 'Wsl') {
+        // 切项目后全局 activeTabId 重派生于该项目当前单元的激活 tab
+        // （此前只有 local 分支经 selectProject 同步，WSL/Remote 停留在上一项目 → 下游 cacheKey 陈旧）
+        restoreActiveTabId(activeWorkspaceSession(project.id).key);
         void wslActions.handleRefreshGit(project.environment.distro, project.id, project.path);
       } else if (project.environment.type === 'Remote') {
+        restoreActiveTabId(activeWorkspaceSession(project.id).key);
         const host = project.environment.host;
         const entry =
           useConnectionStore.getState().remoteEntries.find((e) => e.host === host) ?? null;
@@ -68,6 +74,7 @@ export function useCrossTypeSelection({
           void remoteActions.handleRefreshGit(entry.id, project.id, project.path);
         }
       } else {
+        // local：selectProject 内部先清回主仓单元再同步 activeTabId
         await selectProject(projectId);
       }
     },

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types/tab';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { splitMarkdownBlocks } from '../blocks';
 import {
@@ -13,9 +14,14 @@ import {
 } from '../cleanup';
 import { useTranslationStore } from '../store';
 
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
+
 const makeFileTab = (projectId: string, filePath: string): Tab => ({
   id: `file:${filePath}`,
-  projectId,
+  scope: { kind: 'workspace' as const, session: mkSession(projectId) },
   title: filePath,
   order: 0,
   data: {
@@ -71,7 +77,7 @@ describe('translationTabCleanupHandler — 文件 tab 关闭回收', () => {
       .initSelectors(key, { targetLanguage: '简体中文', agentId: 'opencode', modelId: null });
     const terminalTab = {
       id: 'term:1',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'Terminal 1',
       order: 0,
       data: { kind: 'terminal' as const, agentId: null, status: 'Idle' as const },

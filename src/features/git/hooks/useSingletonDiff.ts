@@ -1,10 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import type { DiffSource } from '@/features/git/components/diff/types';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { CommitFileChange, ConnectionContext } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 const DIFF_TAB_ID = 'diff_singleton';
 
@@ -12,32 +12,12 @@ function fileNameOf(filePath: string): string {
   return filePath.split(/[/\\]/).pop() ?? filePath;
 }
 
-function buildDiffSource(connectionContext: ConnectionContext, commitHash: string): DiffSource {
-  switch (connectionContext.type) {
-    case 'local':
-      return { type: 'commit', projectId: connectionContext.projectId, commitHash };
-    case 'wsl':
-      return {
-        type: 'wsl-commit',
-        distro: connectionContext.distro,
-        projectPath: connectionContext.projectPath,
-        commitHash,
-      };
-    case 'remote':
-      return {
-        type: 'remote-commit',
-        host: connectionContext.host,
-        port: connectionContext.port,
-        username: connectionContext.username,
-        auth: connectionContext.auth,
-        projectPath: connectionContext.projectPath,
-        commitHash,
-      };
-  }
+function commitDiffSource(workspace: WorkspaceSession, commitHash: string): DiffSource {
+  return { workspace, revision: { type: 'commit', commitHash } };
 }
 
 export function useSingletonDiff(
-  projectId: string | undefined,
+  projectId: ProjectId | undefined,
   commitHash: string | null,
   files: CommitFileChange[],
   connectionContext: ConnectionContext | null,
@@ -46,7 +26,12 @@ export function useSingletonDiff(
   // worktree 激活时使用 worktree 专属 tab key，避免 commit diff 落入 local tab 组
   // tab 的 projectId 直接持真实 id（值在手边就用法，不再从 tabKey 解回）
   const realProjectId = useProjectStore.getState().activeProjectId ?? projectId ?? '';
-  const tabKey = workspaceKeyOf(realProjectId, activeCheckoutPath);
+  // 身份值对象是唯一来源：键 = session.key（useMemo 稳定引用 → 下游 useCallback 不 churn）
+  const session = useMemo(
+    () => WorkspaceSession.of(realProjectId, activeCheckoutPath ?? null),
+    [realProjectId, activeCheckoutPath],
+  );
+  const tabKey = session.key;
 
   const hasSingleton = useCallback(() => {
     const store = useEditorStore.getState();
@@ -56,7 +41,7 @@ export function useSingletonDiff(
   const openFileInDiff = useCallback(
     (filePath: string) => {
       if (!commitHash || !connectionContext) return;
-      const diffSource = buildDiffSource(connectionContext, commitHash);
+      const diffSource = commitDiffSource(session, commitHash);
       const store = useEditorStore.getState();
       const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === DIFF_TAB_ID);
       const fileName = fileNameOf(filePath);
@@ -74,11 +59,10 @@ export function useSingletonDiff(
         store.updateTab(tabKey, DIFF_TAB_ID, partial);
         store.activateTab(tabKey, DIFF_TAB_ID);
       } else {
-        store.addTab(tabKey, {
+        store.addTab({
           id: DIFF_TAB_ID,
-          // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
-          //（否则后端 resolve_project 找不到项目）
-          projectId: realProjectId,
+          // 身份从 realProjectId（值在手边）经身份源构造，不从复合 tabKey 反解
+          scope: { kind: 'workspace', session },
           title,
           order: 200,
           data: { kind: 'diff', ...partial },
@@ -86,7 +70,7 @@ export function useSingletonDiff(
         store.activateTab(tabKey, DIFF_TAB_ID);
       }
     },
-    [tabKey, realProjectId, commitHash, connectionContext],
+    [tabKey, session, commitHash, connectionContext],
   );
 
   const openCombined = useCallback(
@@ -94,7 +78,7 @@ export function useSingletonDiff(
       if (!commitHash || !connectionContext) return;
       const targetPath = currentFile ?? files[0]?.path ?? '';
       if (!targetPath) return;
-      const diffSource = buildDiffSource(connectionContext, commitHash);
+      const diffSource = commitDiffSource(session, commitHash);
       const title = `History Commit \u00b7 ${commitHash.slice(0, 7)} \u00b7 ${files.length} files`;
       const store = useEditorStore.getState();
       const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === DIFF_TAB_ID);
@@ -111,11 +95,10 @@ export function useSingletonDiff(
         store.updateTab(tabKey, DIFF_TAB_ID, partial);
         store.activateTab(tabKey, DIFF_TAB_ID);
       } else {
-        store.addTab(tabKey, {
+        store.addTab({
           id: DIFF_TAB_ID,
-          // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
-          //（否则后端 resolve_project 找不到项目）
-          projectId: realProjectId,
+          // 身份从 realProjectId（值在手边）经身份源构造，不从复合 tabKey 反解
+          scope: { kind: 'workspace', session },
           title,
           order: 200,
           data: { kind: 'diff', ...partial },
@@ -123,27 +106,27 @@ export function useSingletonDiff(
         store.activateTab(tabKey, DIFF_TAB_ID);
       }
     },
-    [tabKey, realProjectId, commitHash, connectionContext, files],
+    [tabKey, session, commitHash, connectionContext, files],
   );
 
   const pinFile = useCallback(
     (filePath: string) => {
       if (!commitHash || !connectionContext) return;
-      const diffSource = buildDiffSource(connectionContext, commitHash);
+      const diffSource = commitDiffSource(session, commitHash);
       const pinnedId = `diff_pinned_${filePath.replace(/[/\\]/g, '_')}`;
       const store = useEditorStore.getState();
       const fileName = fileNameOf(filePath);
       const title = `History Diff \u00b7 ${fileName}`;
-      store.addTab(tabKey, {
+      store.addTab({
         id: pinnedId,
-        projectId: realProjectId,
+        scope: { kind: 'workspace', session },
         title,
         order: 200,
         data: { kind: 'diff', filePath, fileName, diffSource },
       });
       store.activateTab(tabKey, pinnedId);
     },
-    [tabKey, realProjectId, commitHash, connectionContext],
+    [tabKey, session, commitHash, connectionContext],
   );
 
   const scrollToFile = useCallback(

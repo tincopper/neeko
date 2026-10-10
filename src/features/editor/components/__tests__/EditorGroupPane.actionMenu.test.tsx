@@ -35,8 +35,15 @@ import type { EditorContextValue } from '@/shared/contexts';
 import { AppProvider, EditorProvider } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { AgentConfig } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import EditorGroupPane from '../EditorGroupPane';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+const SPACE = mkSession('p1').key;
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 const AGENTS: AgentConfig[] = [
   { id: 'opencode', name: 'OpenCode', enabled: true, command: 'opencode' },
@@ -85,7 +92,7 @@ function renderPane(editorCtx: Partial<EditorContextValue> = {}) {
     <AppProvider value={appValue}>
       <EditorProvider value={{ ...editorValue, ...editorCtx }}>
         <FileActionsProvider value={fileActionsValue}>
-          <EditorGroupPane groupId="left" tabKey="p1" onFocusGroup={vi.fn()} layoutId="l1" />
+          <EditorGroupPane groupId="left" tabKey={SPACE} onFocusGroup={vi.fn()} layoutId="l1" />
         </FileActionsProvider>
       </EditorProvider>
     </AppProvider>,
@@ -95,9 +102,9 @@ function renderPane(editorCtx: Partial<EditorContextValue> = {}) {
 /** 播种一个 file tab，令 PaneTabBar（tabs.length > 0）渲染。 */
 function seedFileTab() {
   useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
-  useEditorStore.getState().addTab('p1', {
+  useEditorStore.getState().addTab({
     id: 'tab1',
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: 'a.ts',
     order: 0,
     data: {

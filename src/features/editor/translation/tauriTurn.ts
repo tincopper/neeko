@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { TRANSLATION_EVENT } from '@/shared/events';
 import type { SequencedEvent } from '@/shared/types/agentChat';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { cancelTranslation, startTranslation } from '../api/translationApi';
 
@@ -10,7 +11,7 @@ import type { AbortSignalLike, TranslationTurn } from './pipeline';
 
 export interface TauriTurnOptions {
   agentId: string;
-  projectId: string;
+  projectId: ProjectId;
   modelId?: string | null;
   /** turn 失败/中止时的错误信息挂载点（可观测） */
   onError?: (message: string) => void;

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 vi.mock('@/features/terminal/components/terminalTabCleanup', async () => {
   const { useEditorStore } = await import('@/shared/store/editorStore');
@@ -20,6 +21,7 @@ vi.mock('@/features/terminal/components/terminalTabCleanup', async () => {
 
 describe('useTerminalTabs', () => {
   const PROJECT_ID = 'test-project';
+  const SPACE = WorkspaceSession.of(PROJECT_ID, null).key;
 
   beforeEach(() => {
     // Clear the unified store tabs between tests
@@ -34,15 +36,15 @@ describe('useTerminalTabs', () => {
       tabId = result.current.ensureDefaultTab(PROJECT_ID);
     });
 
-    expect(result.current.getTabs(PROJECT_ID)).toHaveLength(1);
-    expect(result.current.getActiveTabId(PROJECT_ID)).toBe(tabId);
+    expect(result.current.getTabs(SPACE)).toHaveLength(1);
+    expect(result.current.getActiveTabId(SPACE)).toBe(tabId);
 
     act(() => {
-      result.current.closeTab(PROJECT_ID, tabId);
+      result.current.closeTab(SPACE, tabId);
     });
 
-    expect(result.current.getTabs(PROJECT_ID)).toHaveLength(0);
-    expect(result.current.getActiveTabId(PROJECT_ID)).toBeNull();
+    expect(result.current.getTabs(SPACE)).toHaveLength(0);
+    expect(result.current.getActiveTabId(SPACE)).toBeNull();
   });
 
   it('should activate adjacent tab when closing a middle tab', () => {
@@ -58,15 +60,15 @@ describe('useTerminalTabs', () => {
       tab3Id = tab3!.id;
     });
 
-    expect(result.current.getTabs(PROJECT_ID)).toHaveLength(3);
-    expect(result.current.getActiveTabId(PROJECT_ID)).toBe(tab3Id);
+    expect(result.current.getTabs(SPACE)).toHaveLength(3);
+    expect(result.current.getActiveTabId(SPACE)).toBe(tab3Id);
 
     act(() => {
-      result.current.closeTab(PROJECT_ID, tab2Id);
+      result.current.closeTab(SPACE, tab2Id);
     });
 
-    expect(result.current.getTabs(PROJECT_ID)).toHaveLength(2);
-    expect(result.current.getActiveTabId(PROJECT_ID)).toBe(tab3Id);
+    expect(result.current.getTabs(SPACE)).toHaveLength(2);
+    expect(result.current.getActiveTabId(SPACE)).toBe(tab3Id);
   });
 
   it('should switch to previous tab when closing the last tab in list', () => {
@@ -80,14 +82,14 @@ describe('useTerminalTabs', () => {
       tab2Id = tab2!.id;
     });
 
-    expect(result.current.getActiveTabId(PROJECT_ID)).toBe(tab2Id);
+    expect(result.current.getActiveTabId(SPACE)).toBe(tab2Id);
 
     act(() => {
-      result.current.closeTab(PROJECT_ID, tab2Id);
+      result.current.closeTab(SPACE, tab2Id);
     });
 
-    expect(result.current.getTabs(PROJECT_ID)).toHaveLength(1);
-    expect(result.current.getActiveTabId(PROJECT_ID)).toBe(tab1Id);
+    expect(result.current.getTabs(SPACE)).toHaveLength(1);
+    expect(result.current.getActiveTabId(SPACE)).toBe(tab1Id);
   });
 
   describe('handleAgentClick', () => {
@@ -106,8 +108,8 @@ describe('useTerminalTabs', () => {
       });
 
       expect(created).not.toBeNull();
-      expect(result.current.getTabs(PROJECT_ID)).toHaveLength(2);
-      expect(result.current.getActiveTabId(PROJECT_ID)).not.toBe(firstTab);
+      expect(result.current.getTabs(SPACE)).toHaveLength(2);
+      expect(result.current.getActiveTabId(SPACE)).not.toBe(firstTab);
     });
 
     it('新 tab 携带正确的 agentId', () => {
@@ -135,7 +137,7 @@ describe('useTerminalTabs', () => {
         }
       });
 
-      expect(result.current.getTabs(PROJECT_ID)).toHaveLength(10);
+      expect(result.current.getTabs(SPACE)).toHaveLength(10);
 
       const agent = { id: 'claude-code', name: 'Claude Code', command: 'claude', args: [] };
       let created: ReturnType<typeof result.current.handleAgentClick> = null;
@@ -145,7 +147,7 @@ describe('useTerminalTabs', () => {
 
       // 第 11 次应返回 null（上限），不再创建新 tab
       expect(created).toBeNull();
-      expect(result.current.getTabs(PROJECT_ID)).toHaveLength(10);
+      expect(result.current.getTabs(SPACE)).toHaveLength(10);
     });
   });
 });

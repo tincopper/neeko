@@ -6,6 +6,8 @@
  * actions are owned by the library feature.
  */
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 import type { ManagedSkillDto } from './skill';
 
 /** Resource kinds managed by the Library. */
@@ -36,7 +38,7 @@ export interface ResourceSummary {
   description?: string | null;
   tags: string[];
   scope: 'global' | 'project';
-  projectId?: string | null;
+  projectId?: ProjectId | null;
   favorite: boolean;
   usageCount: number;
   lastUsedAt?: number | null;
@@ -60,7 +62,7 @@ export interface PromptResource {
   slash?: string | null;
   tags: string[];
   scope: 'global' | 'project';
-  projectId?: string | null;
+  projectId?: ProjectId | null;
   variables?: PromptVariable[];
   /** Resource kind: "prompt" (default) or "command". Commands are slash-triggered
    *  templates that get deployed to agent-specific command directories. */

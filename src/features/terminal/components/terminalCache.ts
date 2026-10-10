@@ -6,6 +6,7 @@ import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { safeDisposeTerminal } from '@/shared/utils/terminal';
 import { terminalInputEvent } from '@/shared/utils/terminalEvents';
 import type { TerminalInputController } from '@/shared/utils/terminalInput';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { getAgent } from '../../agent/api/agentApi';
 import { closeTerminalSession } from '../api/terminalApi';
@@ -15,7 +16,6 @@ import type { TerminalCache } from './terminalTypes';
 // =============================================================================
 // Factory — shared by local / WSL / remote cache modules
 // =============================================================================
-
 /** Minimal common shape that all three cache types satisfy. */
 interface CacheEntry {
   term: Terminal;
@@ -25,7 +25,6 @@ interface CacheEntry {
   unlistenOutput?: (() => void) | null;
   unlistenClosed?: (() => void) | null;
 }
-
 export interface CacheBackendOptions {
   /** Cache key prefix, e.g. "wsl:", "remote:", "" */
   prefix: string;
@@ -36,7 +35,6 @@ export interface CacheBackendOptions {
   /** Whether to track executed agent keys (local only) */
   trackExecutedAgents?: boolean;
 }
-
 export function createTerminalCacheBackend<TCache extends CacheEntry>(
   options: CacheBackendOptions,
 ) {
@@ -191,7 +189,7 @@ export const terminalRebuildCallbacks = backend.rebuildCallbacks;
 export const terminalWrapperRefs = backend.wrapperRefs;
 export const executedAgentKeys = backend.executedAgentKeys!;
 
-export function terminalCacheKey(projectId: string, tabId?: string | null, paneId = 'p1') {
+export function terminalCacheKey(projectId: ProjectId, tabId?: string | null, paneId = 'p1') {
   return tabId ? backend.cacheKey(projectId, tabId, paneId) : backend.cacheKey(projectId, paneId);
 }
 
@@ -205,8 +203,10 @@ export function destroyTerminalCachesByPrefix(prefix: string) {
   backend.destroyCachesByPrefix(prefix);
 }
 
-export function refreshTerminal(projectId: string) {
-  backend.refreshTerminal(projectId);
+// 入参可为 projectId（`useAgentActions`）或完整 cache key（快捷键 / TerminalViewBase）——
+// 后端 refreshTerminal 按前缀消解，故类型保持 string。
+export function refreshTerminal(projectIdOrKey: string) {
+  backend.refreshTerminal(projectIdOrKey);
 }
 
 // =============================================================================
@@ -234,7 +234,7 @@ export const wslTerminalCache = wslBackend.cache;
 export const wslRebuildCallbacks = wslBackend.rebuildCallbacks;
 export const wslWrapperRefs = wslBackend.wrapperRefs;
 
-export function wslCacheKey(distro: string, projectId: string) {
+export function wslCacheKey(distro: string, projectId: ProjectId) {
   return wslBackend.cacheKey(distro, projectId);
 }
 
@@ -360,7 +360,7 @@ export const remoteTerminalCache = remoteBackend.cache;
 export const remoteRebuildCallbacks = remoteBackend.rebuildCallbacks;
 export const remoteWrapperRefs = remoteBackend.wrapperRefs;
 
-export function remoteCacheKey(entryId: string, projectId: string) {
+export function remoteCacheKey(entryId: string, projectId: ProjectId) {
   return remoteBackend.cacheKey(entryId, projectId);
 }
 
@@ -528,7 +528,7 @@ function hasCacheKeySegment(key: string, part: string): boolean {
  */
 export function findSessionIdForProject(
   cache: Map<string, { sessionId: string | null }>,
-  projectId: string,
+  projectId: ProjectId,
   tabId?: string | null,
   scopePrefix?: string,
 ): string | null {

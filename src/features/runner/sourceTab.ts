@@ -10,10 +10,11 @@ import {
   captureCurrentNavLocation,
   recordNavigationJump,
 } from '@/shared/store/navigationHistoryStore';
-import type { Tab, WorkspaceSession } from '@/shared/types';
+import { Tab } from '@/shared/types';
 import { getLanguageExtension } from '@/shared/utils/codemirror';
 import { sameFileAt } from '@/shared/utils/fileRef';
 import { getTabId, isFileTab } from '@/shared/utils/fileTree';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import type { SourceOpenRequest } from './sourceOpen';
 
@@ -30,7 +31,7 @@ export interface EnsureSourceTabResult {
 
 export interface EnsureSourceTabRequest {
   tabKey: string;
-  projectId: string;
+  projectId: ProjectId;
   /** 本 tab 所属Workspace 地址（值携带，用于文件写入/读取寻址）。 */
   workspace: WorkspaceSession;
   /** 项目根：tab 复用比较要它才能把「项目相对形态」归一到同一身份。 */
@@ -105,12 +106,11 @@ export async function ensureSourceTab(
   const tabId = getTabId(tabKey, identity);
   const newTab: Tab = {
     id: tabId,
-    projectId,
+    scope: { kind: 'workspace', session: workspace },
     title: tabTitle,
     order: fresh.tabs[tabKey]?.tabs.length ?? 0,
     data: {
       kind: 'file',
-      workspace,
       filePath: identity,
       fileName: tabTitle,
       content: loaded.content,
@@ -120,6 +120,6 @@ export async function ensureSourceTab(
     },
   };
   recordNavigationJump(from, to);
-  fresh.addTab(tabKey, newTab);
+  fresh.addTab(newTab);
   return { tabId, line: line1, col };
 }

@@ -7,10 +7,11 @@ import { cn } from '@/lib/utils';
 import { Plus, Pencil, Trash2 } from '@/shared/components/icons';
 import { useTaskStore } from '@/shared/store/taskStore';
 import type { TaskConfig } from '@/shared/types/task';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui';
 
 interface Props {
-  projectId: string;
+  projectId: ProjectId;
   projectPath: string | null;
 }
 

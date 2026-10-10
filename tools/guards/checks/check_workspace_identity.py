@@ -73,6 +73,11 @@ RETIRED_FRONTEND = (
     # connectionId 约定（`distro` / `${host}:${port}` / `host`）⇒ 读侧永远拼不出写侧的键。
     # 定址只允许Workspace身份本身（`workspaceKeyOf`）。
     "aheadBehindKey",
+    # 散件拼装 / 反解：键的唯一铸造点是 `WorkspaceSession#key`（值对象投影）。这两个自由函数
+    # 允许任意调用方拿分量拼键或从字符串逆向 —— 「键与身份」再次分叉的入口。生产代码零命中
+    # （仅定义点 workspaceRef.ts 与测试可用；测试在 scan 里已跳过）。
+    "workspaceKeyOf",
+    "parseWorkspaceKey",
 )
 RETIRED_BACKEND = (
     "get_worktree_changed_files",  # libgit2 第二套 status 引擎
@@ -143,6 +148,17 @@ KEY_MATERIAL_ALLOWLIST = {
     "src-tauri/src/common/git/status_worker/writer.rs": "快照序列化的 golden 断言（workspace_key 的 JSON 形态）",
     "src-tauri/src/common/git/path_guard.rs": "NUL 拒绝路径的测试夹具（CheckoutPath::resolve 的输入校验闸门）",
 }
+# ── 判据 8：复合键流入身份槽位（本任务根因） ─────────────────────────────────────
+# `projectId: <标识符>` 中右侧以 `Key` 结尾 = 把复合 WorkspaceKey 当裸 projectId 传入
+# （历史事故：`projectId: tabKey` → 后端 Project not found）。身份槽位只允许持 ProjectId
+# 或 WorkspaceSession，不允许把「索引」写进去。
+PROJECT_ID_KEY_SLOT_RE = re.compile(r"\bprojectId\s*:\s*([A-Za-z_$][\w$]*)\b")
+# ── 判据 9：App 设置空间键字面量单点 ─────────────────────────────────────────────
+# `'__app__'` 是 App 节点的合法空间键，但字面量只允许出现在唯一实现处（`tabSpaceKeyOf` 所在文件）；
+# 其余代码必须经 `tabSpaceKeyOf` / `APP_TAB_SPACE_KEY` 消费，不得各自硬编码哨兵。
+APP_SPACE_LITERAL_RE = re.compile(r"['\"`]__app__['\"`]")
+APP_SPACE_LITERAL_ALLOWLIST = ("src/shared/utils/tabIdentity.ts",)
+
 # 冒号式复合键流入 repo-key 消费点（历史缺陷 `${projectId}:wt:${path}` 的同形复发）。
 # 只拦「projectId 插值模板串 + 消费词同现」：tab / 终端缓存 / onboarding 的 `:` 命名空间各自合法。
 COLON_KEY_RE = re.compile(r"`[^`]*\$\{[^}]*[pP]roject[iI]d[^}]*\}[:|][^`]*`")
@@ -159,7 +175,7 @@ GUARD = Guard(
     red_lines=(5, 12),
     docs=".trellis/spec/backend/git-domain.md",
     fix_hint=(
-        "status 的寻址单位是Workspace（`WorkspaceRef` / `workspaceKeyOf(projectId, canonicalWtPath)`），"
+        "status 的寻址单位是Workspace（`WorkspaceRef` / `WorkspaceSession#key`，其后端同形为 `WorkspaceRef::key()`），"
         "不是 project。请经 `applyStatus` 写、经 selector 读激活态、经 `gitApi` 发命令；"
         "不要恢复被删除的 version=0 / allowEqual / 全局镜像等第二通道。"
     ),
@@ -277,6 +293,27 @@ def scan_frontend(ctx: Context) -> tuple:
                 findings.append(
                     Finding(
                         "status 命令只能在 gitApi.ts 或 ProjectCommands 端口封装（api-layer 单一出口）",
+                        rel,
+                        number,
+                    )
+                )
+            m = PROJECT_ID_KEY_SLOT_RE.search(line)
+            if m and m.group(1).endswith("Key"):
+                findings.append(
+                    Finding(
+                        "复合 WorkspaceKey 流入身份槽位（`projectId: <…Key>`）：键是 map/record 的"
+                        "派生索引，身份槽位只允许持 ProjectId / WorkspaceSession —— 否则后端按"
+                        "裸 id 精确匹配失败（历史事故：Project not found）",
+                        rel,
+                        number,
+                    )
+                )
+            if APP_SPACE_LITERAL_RE.search(line) and rel not in APP_SPACE_LITERAL_ALLOWLIST:
+                findings.append(
+                    Finding(
+                        "App 设置空间键 `'__app__'` 字面量只允许出现在唯一实现处"
+                        "（`tabSpaceKeyOf` 所在文件）；其余代码经 `tabSpaceKeyOf` /"
+                        "`APP_TAB_SPACE_KEY` 消费，不得各自硬编码哨兵",
                         rel,
                         number,
                     )

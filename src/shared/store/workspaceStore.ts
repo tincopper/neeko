@@ -8,8 +8,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/shallow';
 
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { WorkspaceSession } from '@/shared/types/workspace';
-import { workspaceKeyOf, type WorkspaceKey } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession, type WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 /** `opened` 清单里的一项：一个被打开过的 workspace 的 checkout 元数据（git worktree 条目）。 */
 export interface CheckoutEntry {
@@ -42,14 +41,14 @@ interface WorkspaceStoreState {
    */
   byProject: Record<string, WorkspaceState>;
   /** Workspace 切换的唯一 mutator（切回主仓传 null）。后端挂载等副作用由调用方负责。 */
-  setActiveWorkspace: (projectId: string, path: string | null, branch?: string) => void;
+  setActiveWorkspace: (projectId: ProjectId, path: string | null, branch?: string) => void;
   /** 打开某 workspace（进 opened 清单，不改激活态）。 */
-  markWorkspaceOpened: (projectId: string, path: string, branch: string) => void;
+  markWorkspaceOpened: (projectId: ProjectId, path: string, branch: string) => void;
   /**
    * 清空某项目的激活单元（项目被移除 / 切换项目类型时）。
    * **同时作废该单元的 status 槽位**（单点收口，调用方无需补刀）。
    */
-  clearActiveWorkspace: (projectId: string) => void;
+  clearActiveWorkspace: (projectId: ProjectId) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
@@ -95,7 +94,9 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
     // 被清掉的单元从此没有生产者，残留快照不得继续被渲染（I1-b：未知 ≠ 旧数据）。
     // 作废随本 mutator 单点发生：调用方（切项目 / 删 worktree / 项目移除 / 跨类型切换）
     // 不必各自记得补一刀 —— 漏补的调用点正是旧数据藏身处（本次审核实测 4 处全漏）。
-    useProjectStore.getState().invalidateStatus(workspaceKeyOf(projectId, cur.activePath));
+    useProjectStore
+      .getState()
+      .invalidateStatus(WorkspaceSession.of(projectId, cur.activePath ?? null).key);
   },
 }));
 
@@ -103,7 +104,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
 
 export function selectWorkspaceStateOf(
   state: WorkspaceStoreState,
-  projectId: string | null | undefined,
+  projectId: ProjectId | null | undefined,
 ): WorkspaceState {
   if (!projectId) return EMPTY;
   return state.byProject[projectId] ?? EMPTY;
@@ -111,7 +112,7 @@ export function selectWorkspaceStateOf(
 
 export function selectActiveCheckoutPath(
   state: WorkspaceStoreState,
-  projectId: string | null | undefined,
+  projectId: ProjectId | null | undefined,
 ): string | null {
   return selectWorkspaceStateOf(state, projectId).activePath;
 }
@@ -119,17 +120,17 @@ export function selectActiveCheckoutPath(
 /**
  * 「某项目当前 Workspace 的 git 身份（`WorkspaceKey`）」—— **全前端唯一的派生点**。
  *
- * 以前这段派生（`workspaceKeyOf(projectId, byProject[projectId]?.activePath ?? null)`）在 6 处各自
+ * 以前这段派生（`WorkspaceSession.of(projectId, byProject[projectId]?.activePath ?? null).key`）在 6 处各自
  * 手写（事件回调、hook、组件、store 内部），任何一处漏改或加特例就会让「当前单元」出现第二种
  * 表示 —— 那正是本任务要根治的症状形态。仓储侧只能经本函数与
  * [`activeWorkspaceKeyOf`] 读取。
  */
 export function selectActiveWorkspaceKey(
   state: WorkspaceStoreState,
-  projectId: string | null | undefined,
+  projectId: ProjectId | null | undefined,
 ): WorkspaceKey | null {
   if (!projectId) return null;
-  return workspaceKeyOf(projectId, selectActiveCheckoutPath(state, projectId));
+  return WorkspaceSession.of(projectId, selectActiveCheckoutPath(state, projectId) ?? null).key;
 }
 
 /** 命令式读取「当前项目的激活 Workspace 的 checkout 路径」（事件回调、命令式分支）。 */
@@ -144,7 +145,7 @@ export function getActiveCheckoutPath(): string | null {
  * 与 [`selectActiveWorkspaceKey`] 同源：React 渲染用 selector 形态（可响应），
  * 事件回调 / 命令式流程用本函数。
  */
-export function activeWorkspaceKeyOf(projectId?: string | null): WorkspaceKey | null {
+export function activeWorkspaceKeyOf(projectId?: ProjectId | null): WorkspaceKey | null {
   const pid = projectId ?? useProjectStore.getState().activeProjectId;
   return selectActiveWorkspaceKey(useWorkspaceStore.getState(), pid);
 }
@@ -154,11 +155,11 @@ export function activeWorkspaceKeyOf(projectId?: string | null): WorkspaceKey | 
  * `worktreePath === null` ⟺ 主 checkout。这是「当前视图单元」的**唯一构造点**之一
  * （另两个来源是 tab / 事件），消费者不得自造。
  */
-export function activeWorkspaceSession(projectId: string): WorkspaceSession {
+export function activeWorkspaceSession(projectId: ProjectId): WorkspaceSession {
   const raw = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
-  // '' / 空白必须与 codec（workspaceKeyOf）同一归一规则回落主仓 —— 否则 key 判主仓而
+  // '' / 空白必须与 codec（WorkspaceSession.of / session.key）同一归一规则回落主仓 —— 否则 key 判主仓而
   // isMainCheckout(session) 判 worktree，同一事实出现两种结论（不变量 4）。
-  return { projectId, worktreePath: raw && raw.trim() !== '' ? raw : null };
+  return WorkspaceSession.of(projectId, raw && raw.trim() !== '' ? raw : null);
 }
 
 /**
@@ -168,18 +169,18 @@ export function activeWorkspaceSession(projectId: string): WorkspaceSession {
  * 渲染期需要身份值的消费者用本 hook，**不得**再各自 `useMemo({ projectId, worktreePath })`
  * （手写会漏掉空串→主仓的归一）。
  */
-export function useActiveWorkspaceSession(projectId: string | null): WorkspaceSession | null {
+export function useActiveWorkspaceSession(projectId: ProjectId | null): WorkspaceSession | null {
   return useWorkspaceStore(
     useShallow((s) => {
       if (!projectId) return null;
       const raw = selectActiveCheckoutPath(s, projectId);
-      return { projectId, worktreePath: raw && raw.trim() !== '' ? raw : null };
+      return WorkspaceSession.of(projectId, raw && raw.trim() !== '' ? raw : null);
     }),
   );
 }
 
 /** React 侧：某项目的完整 Workspace 状态。 */
-export function useActiveWorkspace(projectId: string | null): WorkspaceState {
+export function useActiveWorkspace(projectId: ProjectId | null): WorkspaceState {
   return useWorkspaceStore(useShallow((s) => selectWorkspaceStateOf(s, projectId)));
 }
 
@@ -193,11 +194,11 @@ export function useActiveCheckoutPath(): string | null {
  * React 侧：「当前激活单元」的 key（响应式形态，供渲染期需要身份的 hook 使用）。
  *
  * 存在的理由与 [`selectActiveWorkspaceKey`] 同一个：身份只能有一个派生点。消费者若自己写
- * `workspaceKeyOf(projectId, useActiveCheckoutPath() ?? null)`，那就是第二次派生 —— 且
+ * `WorkspaceSession.of(projectId, useActiveCheckoutPath() ?? null).key`，那就是第二次派生 —— 且
  * `projectId` 为空的中间态会产出 `'\u0000'` 这种「谁也匹配不上」的键（真值恒为「未知」，
  * 会被误当成「未挂载」）。取值与 [`selectActiveWorkspaceKey`] 逐字同源。
  */
-export function useActiveWorkspaceKey(projectId: string | null): WorkspaceKey | null {
+export function useActiveWorkspaceKey(projectId: ProjectId | null): WorkspaceKey | null {
   return useWorkspaceStore((s) => selectActiveWorkspaceKey(s, projectId));
 }
 

@@ -4,6 +4,7 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from '
 import { AgentIcon } from '@/features/agent';
 import type { AgentConfig } from '@/features/agent/types';
 import { cn } from '@/lib/utils';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 
 import { useConversationList } from '../hooks/useConversationList';
@@ -14,7 +15,7 @@ import ConversationList from './ConversationList';
 
 interface ConversationPanelProps {
   projectPath: string | null;
-  projectId: string | null;
+  projectId: ProjectId | null;
   agents: AgentConfig[];
   isActive: boolean;
   showToast: (message: string, type?: 'info' | 'error') => void;
@@ -23,7 +24,6 @@ interface ConversationPanelProps {
   /** 恢复为 Agent Chat（可选；未传时入口隐藏）。 */
   onChatResumeConversation?: (meta: ConversationMeta) => void;
 }
-
 function matchesSearch(meta: ConversationMeta, query: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();

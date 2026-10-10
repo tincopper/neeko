@@ -1,7 +1,6 @@
 // eslint-disable-next-line no-restricted-imports -- invoke is the foundational IPC primitive for project commands
 import { invoke } from '@tauri-apps/api/core';
 
-import type { WorkspaceSession } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import type {
   GitInfo,
@@ -16,6 +15,7 @@ import type {
   StashActionResult,
   StashEntry,
 } from '@/shared/types/git';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 export function createProjectCommands(workspace: WorkspaceSession): ProjectCommands {
   const { projectId, worktreePath } = workspace;

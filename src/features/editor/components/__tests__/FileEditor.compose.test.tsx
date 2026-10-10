@@ -19,6 +19,7 @@ import { useDebugStore } from '@/features/runner/store/debugStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileTab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
 import { createProject } from '@/testing/factories';
 
@@ -98,7 +99,7 @@ const TAB_ID = `p1:${FILE_PATH}`;
 function makeTab(overrides: Partial<FileTab> = {}): FileTab {
   return {
     id: TAB_ID,
-    projectId: 'p1',
+    workspace: WorkspaceSession.of('p1', null),
     filePath: FILE_PATH,
     fileName: 'a.ts',
     content: { path: FILE_PATH, content: 'const a = 1;\n', size: 13, is_binary: false },

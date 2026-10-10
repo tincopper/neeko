@@ -6,7 +6,7 @@ import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileChange, GitStatusSnapshot, WSLProject } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 import { invoke } from '@/testing/tauriCore';
 
 /** 某Workspace的权威 status（主仓 worktree_path = null）。 */
@@ -16,7 +16,7 @@ function makeSnapshot(
   entries: FileChange[],
 ): GitStatusSnapshot {
   return {
-    workspace_key: workspaceKeyOf(projectId, worktreePath),
+    workspace_key: WorkspaceSession.of(projectId, worktreePath ?? null).key,
     version: 1,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -53,7 +53,7 @@ function makeWslProject(overrides: Partial<WSLProject> = {}): WSLProject {
         },
       ],
       // 注意：GitInfo 不再有 changed_files / is_clean —— 未提交变更属于每个工作树，
-      // 经 projectStore.statuses[workspaceKeyOf(projectId, worktreePath)] 按单元投递。
+      // 经 projectStore.statuses[WorkspaceSession.of(projectId, (worktreePath) ?? null).key] 按单元投递。
     },
     ...overrides,
   };
@@ -150,7 +150,7 @@ describe('ConnectionProjectCard (WSL)', () => {
     // 键 = Workspace身份（主仓单元）。旧键是 `wsl:Ubuntu:wsl-p1` —— 三个写入点各用一种
     // connectionId 约定，读侧拼不出写侧的键，徽标因此时有时无。
     useGitStore.setState({
-      aheadBehind: { [workspaceKeyOf(project.id, null)]: { ahead: 3, behind: 0 } },
+      aheadBehind: { [WorkspaceSession.of(project.id, null).key]: { ahead: 3, behind: 0 } },
     });
     render(
       <ConnectionProjectCard
@@ -176,8 +176,8 @@ describe('ConnectionProjectCard (WSL)', () => {
     // 两个单元的键都给值：主仓的数字**不得**泄漏到 worktree 视图的 local 行上
     useGitStore.setState({
       aheadBehind: {
-        [workspaceKeyOf(project.id, null)]: { ahead: 3, behind: 0 },
-        [workspaceKeyOf(project.id, wtPath)]: { ahead: 9, behind: 0 },
+        [WorkspaceSession.of(project.id, null).key]: { ahead: 3, behind: 0 },
+        [WorkspaceSession.of(project.id, wtPath ?? null).key]: { ahead: 9, behind: 0 },
       },
     });
     render(

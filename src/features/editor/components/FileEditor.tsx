@@ -96,7 +96,7 @@ function FileEditor({
 
   const { bpSyncEffect, lastSyncedBpKeyRef, handleLnClick, handleLnHover, handleLnLeave } =
     useEditorBreakpoints({
-      projectId: tab.projectId,
+      projectId: tab.workspace.projectId,
       absFilePath,
       editorViewRef,
       editorViewEpoch,
@@ -169,13 +169,13 @@ function FileEditor({
   // 可运行动作（TS 点击直跑 → Task Console；Rust/Go/Java 测试用例与 main 入口
   // 点击弹 Run/Debug 下拉菜单 → Run 走 Task Console / Debug 走 DAP 会话）
   const { handleRun, menu, menuItems, openMenu, closeMenu } = useRunActions({
-    projectId: tab.projectId,
+    projectId: tab.workspace.projectId,
     filePath: tab.filePath,
     projectPath,
   });
   // 统一 gutter 单列：断点红点常驻 + 可运行 play 标记叠加（测试用例与 main 共用）。
   const bpGutterExt = useUnifiedGutterExtension({
-    projectId: tab.projectId,
+    projectId: tab.workspace.projectId,
     absFilePath,
     fileName: tab.filePath,
     projectPath,
@@ -189,7 +189,7 @@ function FileEditor({
   // projectRoot=projectPath：绝对 tab.filePath 剥根 + file-changed 身份匹配（get_file_diff 拒绝绝对路径）。
   const gitChangeExt = useGitChangeEditor({
     enabled: editorGitChangeHighlight,
-    projectId: tab.projectId,
+    projectId: tab.workspace.projectId,
     filePath: tab.filePath,
     projectRoot: projectPath,
     worktreePath,

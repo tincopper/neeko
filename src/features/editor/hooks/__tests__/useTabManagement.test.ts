@@ -9,7 +9,7 @@ import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import type { Tab } from '@/shared/types/tab';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useTabManagement } from '../useTabManagement';
 
@@ -19,13 +19,17 @@ vi.mock('@/features/terminal/components/terminalTabCleanup', () => ({
   closeEditorTab: vi.fn(),
   closeAllEditorTabs: vi.fn(),
 }));
+const { mockAddTab, mockHandleAgentClick } = vi.hoisted(() => ({
+  mockAddTab: vi.fn(),
+  mockHandleAgentClick: vi.fn(),
+}));
 vi.mock('@/features/terminal/hooks/useTerminalTabs', () => ({
   useTerminalTabs: () => ({
     getTabs: () => [],
-    addTab: vi.fn(),
+    addTab: mockAddTab,
     activateTab: vi.fn(),
     updateTabStatus: vi.fn(),
-    handleAgentClick: vi.fn(),
+    handleAgentClick: mockHandleAgentClick,
   }),
 }));
 
@@ -69,7 +73,7 @@ describe('useTabManagement handleCloseTab', () => {
     // mistakenly match against.
     useEditorStore.setState({
       tabs: {
-        [workspaceKeyOf('p1', null)]: {
+        [WorkspaceSession.of('p1', null).key]: {
           tabs: [makeTerminalTab('tab-1', 'p1')],
           activeTabId: 'tab-1',
         },
@@ -94,13 +98,16 @@ describe('useTabManagement handleCloseTab', () => {
 
     // Must target the active tabKey only, not scan state.tabs for the tabId.
     expect(mockCloseEditorTab).toHaveBeenCalledTimes(1);
-    expect(mockCloseEditorTab).toHaveBeenCalledWith(workspaceKeyOf('p1', null), 'tab-1');
+    expect(mockCloseEditorTab).toHaveBeenCalledWith(WorkspaceSession.of('p1', null).key, 'tab-1');
   });
 
   it('非 dirty 文件 tab → 直关，不弹确认', async () => {
     useEditorStore.setState({
       tabs: {
-        [workspaceKeyOf('p1', null)]: { tabs: [makeFileTab('f1', 'p1', false)], activeTabId: 'f1' },
+        [WorkspaceSession.of('p1', null).key]: {
+          tabs: [makeFileTab('f1', 'p1', false)],
+          activeTabId: 'f1',
+        },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       editorLayout: {},
@@ -114,7 +121,7 @@ describe('useTabManagement handleCloseTab', () => {
       await result.current.handleCloseTab('f1');
     });
 
-    expect(mockCloseEditorTab).toHaveBeenCalledWith(workspaceKeyOf('p1', null), 'f1');
+    expect(mockCloseEditorTab).toHaveBeenCalledWith(WorkspaceSession.of('p1', null).key, 'f1');
     expect(saveTabById).not.toHaveBeenCalled();
     expect(useCloseConfirmStore.getState().pending).toBeNull();
   });
@@ -122,7 +129,10 @@ describe('useTabManagement handleCloseTab', () => {
   it('dirty 文件 tab：cancel → 不关闭', async () => {
     useEditorStore.setState({
       tabs: {
-        [workspaceKeyOf('p1', null)]: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
+        [WorkspaceSession.of('p1', null).key]: {
+          tabs: [makeFileTab('f1', 'p1', true)],
+          activeTabId: 'f1',
+        },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       editorLayout: {},
@@ -150,7 +160,10 @@ describe('useTabManagement handleCloseTab', () => {
   it('dirty 文件 tab：discard → 直接关闭（不调用保存）', async () => {
     useEditorStore.setState({
       tabs: {
-        [workspaceKeyOf('p1', null)]: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
+        [WorkspaceSession.of('p1', null).key]: {
+          tabs: [makeFileTab('f1', 'p1', true)],
+          activeTabId: 'f1',
+        },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       editorLayout: {},
@@ -171,13 +184,16 @@ describe('useTabManagement handleCloseTab', () => {
     });
 
     expect(saveTabById).not.toHaveBeenCalled();
-    expect(mockCloseEditorTab).toHaveBeenCalledWith(workspaceKeyOf('p1', null), 'f1');
+    expect(mockCloseEditorTab).toHaveBeenCalledWith(WorkspaceSession.of('p1', null).key, 'f1');
   });
 
   it('dirty 文件 tab：save 成功 → 先保存再关闭', async () => {
     useEditorStore.setState({
       tabs: {
-        [workspaceKeyOf('p1', null)]: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
+        [WorkspaceSession.of('p1', null).key]: {
+          tabs: [makeFileTab('f1', 'p1', true)],
+          activeTabId: 'f1',
+        },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       editorLayout: {},
@@ -198,13 +214,16 @@ describe('useTabManagement handleCloseTab', () => {
     });
 
     expect(saveTabById).toHaveBeenCalledWith('f1');
-    expect(mockCloseEditorTab).toHaveBeenCalledWith(workspaceKeyOf('p1', null), 'f1');
+    expect(mockCloseEditorTab).toHaveBeenCalledWith(WorkspaceSession.of('p1', null).key, 'f1');
   });
 
   it('dirty 文件 tab：save 失败 → 不关闭', async () => {
     useEditorStore.setState({
       tabs: {
-        [workspaceKeyOf('p1', null)]: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
+        [WorkspaceSession.of('p1', null).key]: {
+          tabs: [makeFileTab('f1', 'p1', true)],
+          activeTabId: 'f1',
+        },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       editorLayout: {},
@@ -226,5 +245,44 @@ describe('useTabManagement handleCloseTab', () => {
 
     expect(saveTabById).toHaveBeenCalledWith('f1');
     expect(mockCloseEditorTab).not.toHaveBeenCalled();
+  });
+
+  it('handleAddTab 以真实 projectId 调用 addTab —— 不得把复合 tab 键当身份（原事故同型）', () => {
+    const { result } = renderHook(() =>
+      useTabManagement({
+        activeProject: { id: 'p1' },
+        activeCheckoutPath: '/wt',
+        saveTabById: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.handleAddTab();
+    });
+
+    expect(mockAddTab).toHaveBeenCalledTimes(1);
+    expect(mockAddTab).toHaveBeenCalledWith('p1');
+    // 复合 tab 键（含 NUL 分隔）绝不能作为身份传入
+    expect(mockAddTab).not.toHaveBeenCalledWith(WorkspaceSession.of('p1', '/wt').key);
+  });
+
+  it('handleTabAgentClick 把 tab 键形参收敛为真实 projectId 再交给底层', () => {
+    const { result } = renderHook(() =>
+      useTabManagement({
+        activeProject: { id: 'p1' },
+        activeCheckoutPath: null,
+        saveTabById: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.handleTabAgentClick(WorkspaceSession.of('p1', null).key, {
+        id: 'a1',
+        name: 'Agent',
+      } as never);
+    });
+
+    expect(mockHandleAgentClick).toHaveBeenCalledTimes(1);
+    expect(mockHandleAgentClick.mock.calls[0][0]).toBe('p1');
   });
 });

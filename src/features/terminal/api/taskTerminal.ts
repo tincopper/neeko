@@ -1,5 +1,7 @@
 import { useEditorStore } from '@/shared/store/editorStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /**
  * taskCommand 终端的创建端口（terminal 域唯一入口）。
@@ -27,16 +29,17 @@ export interface TaskTerminalOptions {
  *
  * @returns 建成功 true；配额满（`MAX_TERMINAL_TABS`）false。
  */
-export function createTaskTerminal(projectId: string, opts: TaskTerminalOptions): boolean {
+export function createTaskTerminal(projectId: ProjectId, opts: TaskTerminalOptions): boolean {
   const state = useEditorStore.getState();
-  const existing = state.tabs[projectId];
+  // 配额检查按 store 键（= tab.scope 推导键）寻址，与 addTab 落键同形
+  const existing = state.tabs[activeWorkspaceSession(projectId).key];
   const terminalCount = (existing?.tabs ?? []).filter((t) => t.data.kind === 'terminal').length;
   if (terminalCount >= MAX_TERMINAL_TABS) return false;
 
   const tabId = generateTerminalTabId();
   const tab: Tab = {
     id: tabId,
-    projectId,
+    scope: { kind: 'workspace', session: activeWorkspaceSession(projectId) },
     title: opts.agentName ?? opts.agentId,
     order: existing?.tabs.length ?? 0,
     data: {
@@ -46,7 +49,7 @@ export function createTaskTerminal(projectId: string, opts: TaskTerminalOptions)
       taskCommand: opts.taskCommand,
     },
   };
-  state.addTab(projectId, tab);
+  state.addTab(tab);
   state.activateTab(projectId, tabId);
   return true;
 }

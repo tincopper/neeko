@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react';
 
 import { useDebugStore } from '@/features/runner/store/debugStore';
 import type { BreakpointEntry } from '@/features/runner/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 // ── Effects / fields (exported so FileViewer lineNumbers can drive hover) ─
 
@@ -202,7 +203,7 @@ const syncEffectOf: BreakpointSyncEffect = (entries) => setBreakpointsEffect.of(
  * 与 FileViewer 行号列的点击/悬停处理器。
  */
 export function useBreakpointGutter(
-  projectId: string | null,
+  projectId: ProjectId | null,
   filePath: string | null,
 ): {
   syncEffect: BreakpointSyncEffect;

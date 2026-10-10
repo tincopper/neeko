@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 
 import type { LspLocation } from '@/features/lsp/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import type { useLspNavigation } from './useLspNavigation';
 
@@ -10,7 +11,7 @@ type NavigateToLocation = ReturnType<typeof useLspNavigation>['navigateToLocatio
 export interface JdtLinkContext {
   projectPath: string | null;
   tabKey: string;
-  projectId: string;
+  projectId: ProjectId;
   filePath: string;
 }
 

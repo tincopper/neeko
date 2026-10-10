@@ -207,7 +207,7 @@ useEditorStore.getState().activateTab(tabKey, tabId);
 - 一个 `useEffect`，依赖 `(activeProjectId, activeCheckoutPath, commands)`。`commands` 来自
   `useActiveProject()`，**已按当前单元绑定**，所以取回的就是该单元的数字；
 - 结果写进 `gitStore.aheadBehind`，**键 = Workspace身份 `WorkspaceKey`**
-  （`workspaceKeyOf(activeProjectId, activeCheckoutPath)`），不带 `{source}:{connectionId}` 前缀 ——
+  （`activeWorkspaceSession(activeProjectId).key`），不带 `{source}:{connectionId}` 前缀 ——
   理由与「为什么前缀必错」见 `state-management.md` 场景「Workspace分槽 + 激活态单源」第 7 条；
 - 它在 `ProjectsPanel` 顶层挂一次。与 `useRefreshGitInfo` 是**同一事实的两个触发时机**
   （切换项目 vs 手动刷新），键与语义必须同形。
@@ -215,7 +215,7 @@ useEditorStore.getState().activateTab(tabKey, tabId);
 **契约**：
 1. 只在 active 切换时触发，不批量预热（避免 SSH 网络抖动放大成本）
 2. 失败路径调用 `setAheadBehind(workspaceKey, null)`，让消费侧不渲染陈旧 chip
-3. 键由唯一产出点 `workspaceKeyOf` 给出；禁止消费侧另算一份「等价键」
+3. 键由唯一产出点 `WorkspaceSession#key` 给出；禁止消费侧另算一份「等价键」
 4. hook 在跨域容器（如 `ProjectsPanel`）顶层调用一次即可，禁止在每个 ProjectGroup 内重复挂载
 
 **反模式**：让 `useLocalProjects` / `useWslProjects` / `useRemoteProjects` 各自 invoke + 自己持状态
@@ -243,7 +243,7 @@ function useAheadBehindSync(commands?: AheadBehindCommands | null) {
 
   useEffect(() => {
     if (!commands || !activeProjectId || !activeProject?.git_info) return;
-    const workspaceKey = workspaceKeyOf(activeProjectId, activeCheckoutPath);
+    const workspaceKey = activeWorkspaceSession(activeProjectId).key;
     let cancelled = false;
     commands
       .getAheadBehind()

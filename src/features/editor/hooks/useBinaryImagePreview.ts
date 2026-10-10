@@ -13,7 +13,7 @@ import { isImageFile } from '@/shared/utils/fileTree';
  */
 export function useBinaryImagePreview(tab: FileTab): boolean {
   const environmentType = useProjectStore(
-    (s) => s.projects.find((p) => p.id === tab.projectId)?.environment.type,
+    (s) => s.projects.find((p) => p.id === tab.workspace.projectId)?.environment.type,
   );
   return tab.content.is_binary && isImageFile(tab.filePath) && environmentType === 'Local';
 }

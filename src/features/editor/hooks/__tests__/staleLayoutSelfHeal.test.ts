@@ -16,14 +16,20 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
 import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useEditorGroupLayout } from '../useEditorGroupLayout';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 function makeTab(id: string, kind: Tab['data']['kind'] = 'file'): Tab {
   if (kind === 'file') {
     return {
       id,
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: id,
       order: 0,
       data: {
@@ -37,7 +43,7 @@ function makeTab(id: string, kind: Tab['data']['kind'] = 'file'): Tab {
   }
   return {
     id,
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: id,
     order: 0,
     data: { kind: 'terminal', agentId: null, status: 'Idle' },

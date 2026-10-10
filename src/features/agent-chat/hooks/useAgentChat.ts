@@ -16,6 +16,7 @@ import type { SequencedEvent } from '@/shared/types/agentChat';
 import type { ConversationMeta } from '@/shared/types/session';
 import type { AgentChatTabData } from '@/shared/types/tab';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   approveAgentCall,
@@ -48,7 +49,6 @@ import { useMockEventSchedule } from './useMockEventSchedule';
 const MAX_TOOL_OUTPUT_CHARS = 128 * 1024;
 /** tool 输出截断标记。 */
 const TOOL_OUTPUT_TRUNCATED_MARK = '\n[output truncated - showing tail]\n';
-
 /** 追加 tool 输出并限制上限：超限后滑动保留尾部窗口，标记仅注入一次。 */
 function clipToolOutput(existing: string | undefined, delta: string): string {
   const next = (existing ?? '') + delta;
@@ -61,7 +61,7 @@ function clipToolOutput(existing: string | undefined, delta: string): string {
 export interface UseAgentChatParams {
   tabKey: string;
   tabId: string;
-  projectId: string;
+  projectId: ProjectId;
   data: AgentChatTabData;
   /** 是否启用 mock 模式（开发/演示用）。 */
   mockMode: boolean;

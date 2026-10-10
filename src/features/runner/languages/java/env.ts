@@ -5,6 +5,8 @@
  * 又要跑 `mvn`、还要发通知 —— 全部经 [`LangIo`] 注入，故本模块可脱离 Tauri 单测。
  * 调试链路的编排（attach / JDTLS）留在 `exec/java.ts`，阶段 3 迁入本目录。
  */
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 import type { TestActionContext } from '../../exec/context';
 import { runRootRelativeParts } from '../../exec/paths';
 import type { ClasspathSeparator, ExistsProbe, LangIo, ReadTextProbe } from '../contract';
@@ -146,7 +148,7 @@ export async function checkJavaCompiled(
 
 /** Java 依赖 classpath 文本读取探针（bind projectId + runRoot）：读 .neeko/java-classpath.txt。
  *  缺失/读取失败返回 null（resolveJavaClasspath 退化为仅 target/ 目录 classpath）。 */
-function javaClasspathReader(projectId: string, runRoot: string, io: LangIo): ReadTextProbe {
+function javaClasspathReader(projectId: ProjectId, runRoot: string, io: LangIo): ReadTextProbe {
   return async () => {
     return io.readText(projectId, MAVEN_CLASSPATH_REL_PATH, runRoot || null);
   };
@@ -253,7 +255,7 @@ export async function prepareJavaMainRun(
 export async function javaCommandEnv(
   javaRoot: string,
   javaEnv: JavaRunEnv,
-  projectId: string,
+  projectId: ProjectId,
   io: LangIo,
 ): Promise<JavaCommandEnv> {
   const separator =

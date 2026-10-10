@@ -5,8 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useEditorGroupLayout } from '../useEditorGroupLayout';
+
+const SPACE_p1 = WorkspaceSession.of('p1', null).key;
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 vi.mock('@/features/terminal', () => ({
   closeEditorTab: (tabKey: string, tabId: string) => {
@@ -23,7 +31,7 @@ function makeTab(
 ): Tab {
   return {
     id,
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: id,
     order: 0,
     data: {
@@ -46,30 +54,30 @@ describe('useEditorGroupLayout batch close dirty confirmation', () => {
     const onRequestCloseDirty = vi.fn();
     const { addTab } = useEditorStore.getState();
     act(() => {
-      addTab('p1', makeTab('A'));
-      addTab('p1', makeTab('B', { isDirty: false }));
+      addTab(makeTab('A'));
+      addTab(makeTab('B', { isDirty: false }));
     });
 
-    const { result } = renderHook(() => useEditorGroupLayout('p1', onRequestCloseDirty));
+    const { result } = renderHook(() => useEditorGroupLayout(SPACE_p1, onRequestCloseDirty));
     act(() => {
       result.current.closeOtherTabs('A');
     });
 
     expect(onRequestCloseDirty).not.toHaveBeenCalled();
-    expect(useEditorStore.getState().tabs['p1'].tabs.map((t) => t.id)).toEqual(['A']);
+    expect(useEditorStore.getState().tabs[SPACE_p1].tabs.map((t) => t.id)).toEqual(['A']);
   });
 
   it('closeOtherTabs asks confirmation when affected tabs are dirty', () => {
     const onRequestCloseDirty = vi.fn();
     const { addTab } = useEditorStore.getState();
     act(() => {
-      addTab('p1', makeTab('A'));
-      addTab('p1', makeTab('B', { isDirty: true, fileName: 'b.ts' }));
-      addTab('p1', makeTab('C', { isDirty: true, fileName: 'c.ts' }));
-      addTab('p1', makeTab('D', { isDirty: false }));
+      addTab(makeTab('A'));
+      addTab(makeTab('B', { isDirty: true, fileName: 'b.ts' }));
+      addTab(makeTab('C', { isDirty: true, fileName: 'c.ts' }));
+      addTab(makeTab('D', { isDirty: false }));
     });
 
-    const { result } = renderHook(() => useEditorGroupLayout('p1', onRequestCloseDirty));
+    const { result } = renderHook(() => useEditorGroupLayout(SPACE_p1, onRequestCloseDirty));
     act(() => {
       result.current.closeOtherTabs('A');
     });
@@ -78,7 +86,7 @@ describe('useEditorGroupLayout batch close dirty confirmation', () => {
     expect(onRequestCloseDirty).toHaveBeenCalledTimes(1);
     const [dirtyNames, doClose] = onRequestCloseDirty.mock.calls[0] as [string[], () => void];
     expect(dirtyNames).toEqual(['b.ts', 'c.ts']);
-    expect(useEditorStore.getState().tabs['p1'].tabs.map((t) => t.id)).toEqual([
+    expect(useEditorStore.getState().tabs[SPACE_p1].tabs.map((t) => t.id)).toEqual([
       'A',
       'B',
       'C',
@@ -89,33 +97,33 @@ describe('useEditorGroupLayout batch close dirty confirmation', () => {
     act(() => {
       doClose();
     });
-    expect(useEditorStore.getState().tabs['p1'].tabs.map((t) => t.id)).toEqual(['A']);
+    expect(useEditorStore.getState().tabs[SPACE_p1].tabs.map((t) => t.id)).toEqual(['A']);
   });
 
   it('closeOtherTabs closes directly when no confirmation callback is provided', () => {
     const { addTab } = useEditorStore.getState();
     act(() => {
-      addTab('p1', makeTab('A'));
-      addTab('p1', makeTab('B', { isDirty: true }));
+      addTab(makeTab('A'));
+      addTab(makeTab('B', { isDirty: true }));
     });
 
-    const { result } = renderHook(() => useEditorGroupLayout('p1'));
+    const { result } = renderHook(() => useEditorGroupLayout(SPACE_p1));
     act(() => {
       result.current.closeOtherTabs('A');
     });
 
-    expect(useEditorStore.getState().tabs['p1'].tabs.map((t) => t.id)).toEqual(['A']);
+    expect(useEditorStore.getState().tabs[SPACE_p1].tabs.map((t) => t.id)).toEqual(['A']);
   });
 
   it('closeAllTabs asks confirmation when dirty tabs exist and only closes on confirm', () => {
     const onRequestCloseDirty = vi.fn();
     const { addTab } = useEditorStore.getState();
     act(() => {
-      addTab('p1', makeTab('A', { isDirty: true, fileName: 'a.ts' }));
-      addTab('p1', makeTab('B'));
+      addTab(makeTab('A', { isDirty: true, fileName: 'a.ts' }));
+      addTab(makeTab('B'));
     });
 
-    const { result } = renderHook(() => useEditorGroupLayout('p1', onRequestCloseDirty));
+    const { result } = renderHook(() => useEditorGroupLayout(SPACE_p1, onRequestCloseDirty));
     act(() => {
       result.current.closeAllTabs();
     });
@@ -124,28 +132,28 @@ describe('useEditorGroupLayout batch close dirty confirmation', () => {
     const [dirtyNames, doClose] = onRequestCloseDirty.mock.calls[0] as [string[], () => void];
     expect(dirtyNames).toEqual(['a.ts']);
     // 未确认前不关闭
-    expect(useEditorStore.getState().tabs['p1']).toBeDefined();
+    expect(useEditorStore.getState().tabs[SPACE_p1]).toBeDefined();
 
     act(() => {
       doClose();
     });
-    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+    expect(useEditorStore.getState().tabs[SPACE_p1]).toBeUndefined();
   });
 
   it('closeAllTabs closes directly when no dirty tabs exist', () => {
     const onRequestCloseDirty = vi.fn();
     const { addTab } = useEditorStore.getState();
     act(() => {
-      addTab('p1', makeTab('A'));
-      addTab('p1', makeTab('B'));
+      addTab(makeTab('A'));
+      addTab(makeTab('B'));
     });
 
-    const { result } = renderHook(() => useEditorGroupLayout('p1', onRequestCloseDirty));
+    const { result } = renderHook(() => useEditorGroupLayout(SPACE_p1, onRequestCloseDirty));
     act(() => {
       result.current.closeAllTabs();
     });
 
     expect(onRequestCloseDirty).not.toHaveBeenCalled();
-    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+    expect(useEditorStore.getState().tabs[SPACE_p1]).toBeUndefined();
   });
 });

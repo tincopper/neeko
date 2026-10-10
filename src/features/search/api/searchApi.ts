@@ -7,6 +7,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type { SearchOptions, SearchResponse } from '@/shared/types/search';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export const SEARCH_COMMANDS = {
   run: 'search_run',
@@ -15,7 +16,7 @@ export const SEARCH_COMMANDS = {
 
 /** Start or continue a paginated search. */
 export async function runSearch(params: {
-  projectId: string;
+  projectId: ProjectId;
   query: string;
   requestId: string;
   options?: SearchOptions;

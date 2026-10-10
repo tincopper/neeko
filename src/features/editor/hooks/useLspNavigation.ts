@@ -23,6 +23,7 @@ import { getLanguageExtension, preloadLanguageExtension } from '@/shared/utils/c
 import { fileRefFromLspUri, fileRefFromTabPath, sameFile } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { isJdtDisplayPath, isJdtUri, jdtDisplayPath, tabLspDocumentUri } from '@/shared/utils/jdt';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { applyNavigateCaret } from '../navigateCaret';
 
@@ -71,7 +72,7 @@ export function useLspNavigation({
       location: LspLocation,
       projPath: string,
       tKey: string,
-      projId: string,
+      projId: ProjectId,
       currentFilePath: string,
       preloadedContent?: string | null,
     ) => {
@@ -171,12 +172,11 @@ export function useLspNavigation({
           : getFileName(targetPath);
         const newTab: Tab = {
           id: targetTabId,
-          projectId: projId,
+          scope: { kind: 'workspace', session: activeWorkspaceSession(projId) },
           title,
           order: 0,
           data: {
             kind: 'file' as const,
-            workspace: activeWorkspaceSession(projId),
             filePath: targetPath,
             fileName: title,
             content,
@@ -187,7 +187,7 @@ export function useLspNavigation({
             virtualUri: isJdtUri(location.uri) ? location.uri : undefined,
           },
         };
-        useEditorStore.getState().addTab(tKey, newTab);
+        useEditorStore.getState().addTab(newTab);
       } catch (e) {
         useEditorStore.getState().clearNavigateGoal(goalSeq);
         showNavigationFailure('read-failed');
@@ -237,7 +237,7 @@ export function useLspNavigation({
           result.location,
           projectPath,
           tabKey,
-          tab.projectId,
+          tab.workspace.projectId,
           tab.filePath,
           result.fileContent,
         );
@@ -264,14 +264,14 @@ export function useLspNavigation({
       definition.findReferences(lid, uri, line, character).then((results) => {
         if (results.length === 0) {
           useSymbolNavStore.getState().openFindUsages({
-            projectId: tab.projectId,
+            projectId: tab.workspace.projectId,
             locations: [],
             symbolHint,
           });
           return;
         }
         useSymbolNavStore.getState().openFindUsages({
-          projectId: tab.projectId,
+          projectId: tab.workspace.projectId,
           locations: results,
           symbolHint,
         });
@@ -286,7 +286,7 @@ export function useLspNavigation({
       const uri = lspDocumentUri;
       if (!uri) return false;
       useSymbolNavStore.getState().openStructure({
-        projectId: tab.projectId,
+        projectId: tab.workspace.projectId,
         projectPath,
         languageId: lid,
         uri,
@@ -309,7 +309,7 @@ export function useLspNavigation({
   }, [
     projectPath,
     lspDocumentUri,
-    tab.projectId,
+    tab.workspace.projectId,
     tab.filePath,
     tabKey,
     definition,
@@ -330,7 +330,7 @@ export function useLspNavigation({
     projectPath,
     tabKey,
     lspDocumentUri,
-    projectId: tab.projectId,
+    projectId: tab.workspace.projectId,
     filePath: tab.filePath,
     lspLanguageIdRef,
     goToDefinition: definition.goToDefinitionWithContent,

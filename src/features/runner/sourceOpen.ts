@@ -9,13 +9,13 @@
  * - `identity` 是**规范 tab 身份**（tab / 断点 key / 黄线共用同一套归一）；
  * - `load` 决定内容通道（项目内读 / 会话门控的外部只读 / 适配器 `source` 请求）。
  */
-import type { WorkspaceSession } from '@/shared/types';
 import {
   fileRefFromTabPath,
   sourceIdentityOf,
   virtualSourceIdentity,
 } from '@/shared/utils/fileRef';
 import { getFileName } from '@/shared/utils/fileTree';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import {
   loadStopSourceContent,

@@ -16,6 +16,7 @@ import { useMemo } from 'react';
 
 import { isRunnableFile, type RunTarget } from '@/features/runner';
 import { useDebugStore } from '@/features/runner/store/debugStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   breakpointContribution,
@@ -36,7 +37,7 @@ import {
 } from './useBreakpointGutter';
 
 interface UseUnifiedGutterExtensionParams {
-  projectId: string | null;
+  projectId: ProjectId | null;
   /** DAP 绝对路径（断点 store 同步用；也用于 LSP runnable 的 `file://` uri）。 */
   absFilePath: string | null;
   fileName: string;

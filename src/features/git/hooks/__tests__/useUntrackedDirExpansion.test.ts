@@ -28,10 +28,10 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FileChange, FileChangedEvent } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /** 本列表所属的Workspace（主仓形态）。S1 只接受同址事件，故所有用例都必须显式给出。 */
-const UNIT_KEY = workspaceKeyOf('p1', null);
+const UNIT_KEY = WorkspaceSession.of('p1', null).key;
 
 type Subscriber = (event: FileChangedEvent) => void;
 
@@ -208,7 +208,7 @@ describe('useUntrackedDirExpansion — AC7 事件风暴的调用次数上界', (
     await waitFor(() => expect(expand).toHaveBeenCalledTimes(1));
     await settle();
 
-    emitBurst(['tmp-untracked/foreign.txt'], workspaceKeyOf('p1', '/repo-wt'));
+    emitBurst(['tmp-untracked/foreign.txt'], WorkspaceSession.of('p1', '/repo-wt').key);
     await settle();
     expect(expand).toHaveBeenCalledTimes(1);
 

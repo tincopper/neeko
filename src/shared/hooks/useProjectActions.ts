@@ -5,12 +5,14 @@ import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import {
+  activeWorkspaceSession,
   selectActiveCheckoutPath,
   useActiveCheckoutPath,
   useWorkspaceStore,
 } from '@/shared/store/workspaceStore';
 import type { AgentConfig, AppConfig, RemoteEntrySession, Tab } from '@/shared/types';
 import { updateProjectInEntries } from '@/shared/utils/entryUpdates';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 // eslint-disable-next-line import/no-restricted-paths -- shared hook depends on git API for git info refresh
 import { getGitInfo } from '../../features/git/api/gitApi';
@@ -32,20 +34,17 @@ import {
 import type { SaveSessionFn } from './useConnectionProjects';
 
 export type ProjectEnvironment = 'wsl' | 'remote';
-
 export interface WslDiffState {
   distro: string;
   projectPath: string;
   filePath: string;
 }
-
 interface UseProjectActionsParams {
   environment: ProjectEnvironment;
   config: AppConfig;
   showToast: (message: string, type?: 'info' | 'error') => void;
   saveSession: SaveSessionFn;
 }
-
 /**
  * 统一的项目 action hook —— 替代 useWslActions / useRemoteActions。
  *
@@ -61,12 +60,10 @@ export function useProjectActions({
   saveSession,
 }: UseProjectActionsParams) {
   const isWsl = environment === 'wsl';
-
   // ── Store selectors ──────────────────────────────────────────────────────
   const remoteEntries = useConnectionStore((state) => state.remoteEntries);
   const remoteAuthStore = useConnectionStore((state) => state.remoteAuthStore);
   const activeCheckoutPath = useActiveCheckoutPath();
-
   // ── Diff state (WSL-only) ────────────────────────────────────────────────
   const [wslDiffState, setWslDiffState] = useState<WslDiffState | null>(null);
 
@@ -106,7 +103,7 @@ export function useProjectActions({
   // ── Git refresh ─────────────────────────────────────────────────────────
 
   const refreshGit = useMemo(() => {
-    const handler = async (_connectionId: string, projectId: string): Promise<void> => {
+    const handler = async (_connectionId: string, projectId: ProjectId): Promise<void> => {
       // 单元归属按被刷新的 projectId 取（旧实现读全局镜像 → 跨项目刷新会串到别的工作树）
       const worktreePath = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
       const gitInfo = await getGitInfo(projectId, worktreePath).catch((e) => {
@@ -137,48 +134,51 @@ export function useProjectActions({
   }, [isWsl]);
 
   const handleRefreshGit = useCallback(
-    async (connectionId: string, projectId: string) => {
+    async (connectionId: string, projectId: ProjectId) => {
       // 通知 diff 等依赖 Git 状态的缓存失效
       bumpGitRefresh(projectId);
       await refreshGit(connectionId, projectId);
     },
     [refreshGit],
   );
-
   // ── File selection (WSL-only — Remote uses its own flow) ──────────────
 
-  const handleSelectFile = useCallback((distro: string, projectPath: string, filePath: string) => {
-    const activeProject = useProjectStore.getState().activeProject;
-    if (!activeProject) return;
+  // 前两个参数（distro / projectPath）已由Workspace地址承载，保留形参以稳定调用签名
+  const handleSelectFile = useCallback(
+    (_distro: string, _projectPath: string, filePath: string) => {
+      const activeProject = useProjectStore.getState().activeProject;
+      if (!activeProject) return;
 
-    const projectId = activeProject.id;
-    const existingTabs = useEditorStore.getState().tabs[projectId];
-    const existingDiffTab = existingTabs?.tabs.find(
-      (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
-    );
-    if (existingDiffTab) {
-      useEditorStore.getState().activateTab(projectId, existingDiffTab.id);
-      return;
-    }
+      const projectId = activeProject.id;
+      const session = activeWorkspaceSession(projectId);
+      const existingTabs = useEditorStore.getState().tabs[session.key];
+      const existingDiffTab = existingTabs?.tabs.find(
+        (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
+      );
+      if (existingDiffTab) {
+        useEditorStore.getState().activateTab(session.key, existingDiffTab.id);
+        return;
+      }
 
-    const fileName = filePath.split(/[\\/]/).pop() || filePath;
-    const tabId = `tab_${crypto.randomUUID()}`;
-    const tab: Tab = {
-      id: tabId,
-      projectId,
-      title: fileName,
-      order: existingTabs?.tabs.length ?? 0,
-      data: {
-        kind: 'diff',
-        filePath,
-        fileName,
-        diffSource: { type: 'wsl', distro, projectPath },
-      },
-    };
-    useEditorStore.getState().addTab(projectId, tab);
-    useEditorStore.getState().activateTab(projectId, tabId);
-  }, []);
-
+      const fileName = filePath.split(/[\\/]/).pop() || filePath;
+      const tabId = `tab_${crypto.randomUUID()}`;
+      const tab: Tab = {
+        id: tabId,
+        scope: { kind: 'workspace', session },
+        title: fileName,
+        order: existingTabs?.tabs.length ?? 0,
+        data: {
+          kind: 'diff',
+          filePath,
+          fileName,
+          diffSource: { workspace: session, revision: { type: 'worktree' } },
+        },
+      };
+      useEditorStore.getState().addTab(tab);
+      useEditorStore.getState().activateTab(session.key, tabId);
+    },
+    [],
+  );
   // ── IDE operations ──────────────────────────────────────────────────────
 
   const handleOpenIde = useCallback(

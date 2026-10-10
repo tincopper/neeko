@@ -16,13 +16,21 @@ import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import type { AgentConfig, FileTabData, Tab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
+
+const SPACE = WorkspaceSession.of('p1', null).key;
 
 import { usePaneActions } from '../usePaneActions';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 function makeFileTab(id: string, overrides: Partial<FileTabData> = {}): Tab {
   return {
     id,
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: id,
     order: 0,
     data: {
@@ -38,7 +46,7 @@ function makeFileTab(id: string, overrides: Partial<FileTabData> = {}): Tab {
 
 describe('usePaneActions', () => {
   const defaultParams = {
-    tabKey: 'p1',
+    tabKey: SPACE,
     groupId: 'left' as const,
     tabs: [makeFileTab('tab1'), makeFileTab('tab2')],
     projectIdForCheck: 'p1',
@@ -60,14 +68,14 @@ describe('usePaneActions', () => {
 
   /** dirty 判断走共享 helper 的 store 查找：把 params.tabs 同步种进 editorStore。 */
   function seedTabs(tabs: Tab[]) {
-    for (const tab of tabs) useEditorStore.getState().addTab('p1', tab);
+    for (const tab of tabs) useEditorStore.getState().addTab(tab);
   }
 
   it('handleActivateTab activates the tab in store', () => {
     const { result } = renderHook(() => usePaneActions(defaultParams));
-    useEditorStore.getState().addTab('p1', {
+    useEditorStore.getState().addTab({
       id: 'tab1',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'tab1',
       order: 0,
       data: { kind: 'file', filePath: 't1', fileName: 't1', content: '', isDirty: false },
@@ -87,7 +95,7 @@ describe('usePaneActions', () => {
       await result.current.handleCloseTab('tab1');
     });
 
-    expect(closeEditorTab).toHaveBeenCalledWith('p1', 'tab1');
+    expect(closeEditorTab).toHaveBeenCalledWith(SPACE, 'tab1');
     expect(useCloseConfirmStore.getState().pending).toBeNull();
   });
 
@@ -123,7 +131,7 @@ describe('usePaneActions', () => {
       await closing;
     });
     // 'discard' → proceed to close
-    expect(closeEditorTab).toHaveBeenCalledWith('p1', 'tab1');
+    expect(closeEditorTab).toHaveBeenCalledWith(SPACE, 'tab1');
   });
 
   it('handleCloseTab requests confirmation for dirty NAMED files (not just untitled)', async () => {
@@ -183,7 +191,7 @@ describe('usePaneActions', () => {
     });
 
     expect(onSaveTab).toHaveBeenCalledWith('tab1');
-    expect(closeEditorTab).toHaveBeenCalledWith('p1', 'tab1');
+    expect(closeEditorTab).toHaveBeenCalledWith(SPACE, 'tab1');
   });
 
   it('handleCloseTab aborts close when save fails', async () => {
@@ -226,7 +234,7 @@ describe('usePaneActions', () => {
     });
 
     const s = useEditorStore.getState();
-    const tabs = s.tabs['p1']?.tabs ?? [];
+    const tabs = s.tabs[SPACE]?.tabs ?? [];
     expect(tabs.length).toBe(1);
     expect(tabs[0]?.data.kind).toBe('file');
   });
@@ -239,7 +247,7 @@ describe('usePaneActions', () => {
     });
 
     const s = useEditorStore.getState();
-    const tabs = s.tabs['p1']?.tabs ?? [];
+    const tabs = s.tabs[SPACE]?.tabs ?? [];
     expect(tabs.length).toBe(1);
     expect(tabs[0]?.data).toMatchObject({ kind: 'terminal', agentId: 'opencode' });
   });
@@ -252,7 +260,7 @@ describe('usePaneActions', () => {
     });
 
     const s = useEditorStore.getState();
-    const tabs = s.tabs['p1']?.tabs ?? [];
+    const tabs = s.tabs[SPACE]?.tabs ?? [];
     expect(tabs.length).toBe(1);
   });
 
@@ -266,7 +274,7 @@ describe('usePaneActions', () => {
     });
 
     const s = useEditorStore.getState();
-    const tabs = s.tabs['p1']?.tabs ?? [];
+    const tabs = s.tabs[SPACE]?.tabs ?? [];
     expect(tabs.length).toBe(1);
     expect(tabs[0]?.data).toMatchObject({ kind: 'browser', url: '' });
     expect(s.activeTabId).toBe(tabs[0]?.id);
@@ -282,7 +290,7 @@ describe('usePaneActions', () => {
       } as unknown as ActionRegistryItem);
     });
 
-    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+    expect(useEditorStore.getState().tabs[SPACE]).toBeUndefined();
   });
 });
 
@@ -290,7 +298,7 @@ describe('usePaneActions — pinned pane 内创建跟随落组', () => {
   function setup(groupId: 'pinned') {
     const onAddTerminalTab = vi.fn();
     const params = {
-      tabKey: 'p1',
+      tabKey: SPACE,
       groupId,
       tabs: [makeFileTab('tab1')],
       projectIdForCheck: 'p1',
@@ -317,7 +325,7 @@ describe('usePaneActions — pinned pane 内创建跟随落组', () => {
       } as unknown as ActionRegistryItem);
     });
 
-    const layout = useEditorStore.getState().editorLayout['p1'];
+    const layout = useEditorStore.getState().editorLayout[SPACE];
     expect(layout?.pinnedTabIds).toHaveLength(1);
     expect(layout?.groups.left.tabIds).toEqual([]);
   });
@@ -332,7 +340,7 @@ describe('usePaneActions — pinned pane 内创建跟随落组', () => {
       } as unknown as ActionRegistryItem);
     });
 
-    const layout = useEditorStore.getState().editorLayout['p1'];
+    const layout = useEditorStore.getState().editorLayout[SPACE];
     expect(layout?.pinnedTabIds).toHaveLength(1);
   });
 

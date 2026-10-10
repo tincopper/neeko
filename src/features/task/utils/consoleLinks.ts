@@ -19,13 +19,13 @@ import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { revealInFileManager, readFileContent } from '../../file/api/fileApi';
 
 interface ConsoleLinkOptions {
   projectPath: string;
-  projectId: string;
+  projectId: ProjectId;
 }
 
 interface FileMatch {
@@ -106,8 +106,8 @@ async function openFileInEditor(
 ): Promise<void> {
   // 一次捕获当前视图单元的值：组键、读取地址、tab 记录全部由它派生
   // （跨 await 不再二次读 store —— 中途切单元会让「记录的地址 ≠ 读取的地址」）。
-  const workspace = activeWorkspaceSession(projId);
-  const tabKey = workspaceKeyOf(workspace.projectId, workspace.worktreePath);
+  const workspace = activeWorkspaceSession(projId as ProjectId);
+  const tabKey = WorkspaceSession.of(workspace.projectId, workspace.worktreePath ?? null).key;
   const tabId = getTabId(tabKey, fullPath);
   const existing = useEditorStore.getState().tabs[tabKey];
   if (existing?.tabs.some((t) => t.id === tabId)) {
@@ -122,19 +122,18 @@ async function openFileInEditor(
     const content = await readFileContent(workspace, fullPath);
     const newTab: Tab = {
       id: tabId,
-      projectId: workspace.projectId,
+      scope: { kind: 'workspace', session: workspace },
       title: getFileName(fullPath),
       order: existing?.tabs.length ?? 0,
       data: {
         kind: 'file',
-        workspace,
         filePath: fullPath,
         fileName: getFileName(fullPath),
         content,
         isDirty: false,
       },
     };
-    useEditorStore.getState().addTab(tabKey, newTab);
+    useEditorStore.getState().addTab(newTab);
     if (line !== undefined) {
       useEditorStore.getState().setNavigateGoal({ tabKey, tabId, line, col: col ?? 0 });
     }

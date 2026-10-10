@@ -3,8 +3,8 @@ import { useMemo } from 'react';
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
-import type { AuthMethod, WorkspaceSession } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import type { AuthMethod } from '@/shared/types';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 import {
@@ -41,7 +41,7 @@ export interface UseTerminalStrategyOptions {
     port: number;
     username: string;
     auth: AuthMethod;
-    onSessionReady?: (projectId: string) => void;
+    onSessionReady?: (projectId: ProjectId) => void;
     cacheKeySuffix?: string;
   };
   /** Optional worktree overrides (same as local-only TerminalView props) */
@@ -131,11 +131,11 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         },
         setupFileLinks: (term) => {
           if (projectPath) {
-            const tabWorkspace: WorkspaceSession = {
+            const tabWorkspace = WorkspaceSession.of(
               projectId,
-              worktreePath: isWorktree ? (effWorktreePath ?? null) : null,
-            };
-            const tabKey = workspaceKeyOf(tabWorkspace.projectId, tabWorkspace.worktreePath);
+              isWorktree ? (effWorktreePath ?? null) : null,
+            );
+            const tabKey = tabWorkspace.key;
             setupTerminalLinks(term, { projectPath, tabKey, workspace: tabWorkspace, showToast });
           }
         },
@@ -173,11 +173,8 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         onSessionReady: () => {},
         setupFileLinks: (term) => {
           if (projectPath) {
-            const tabWorkspace: WorkspaceSession = {
-              projectId,
-              worktreePath: activeCheckoutPath ?? null,
-            };
-            const tabKey = workspaceKeyOf(tabWorkspace.projectId, tabWorkspace.worktreePath);
+            const tabWorkspace = WorkspaceSession.of(projectId, activeCheckoutPath ?? null);
+            const tabKey = tabWorkspace.key;
             setupTerminalLinks(term, { projectPath, tabKey, workspace: tabWorkspace, showToast });
           }
         },
@@ -216,7 +213,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
             setupTerminalLinks(term, {
               projectPath,
               tabKey: projectId,
-              workspace: { projectId, worktreePath: null },
+              workspace: WorkspaceSession.of(projectId, null),
               showToast,
             });
           }

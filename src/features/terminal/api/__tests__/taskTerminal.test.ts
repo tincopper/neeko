@@ -4,10 +4,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { MAX_TERMINAL_TABS, createTaskTerminal } from '../taskTerminal';
 
 const PROJECT_ID = 'task-terminal-test';
+
+const SPACE = WorkspaceSession.of(PROJECT_ID, null).key;
 
 describe('createTaskTerminal', () => {
   beforeEach(() => {
@@ -22,7 +25,7 @@ describe('createTaskTerminal', () => {
     });
 
     expect(ok).toBe(true);
-    const projectTabs = useEditorStore.getState().tabs[PROJECT_ID];
+    const projectTabs = useEditorStore.getState().tabs[SPACE];
     expect(projectTabs.tabs).toHaveLength(1);
     const tab = projectTabs.tabs[0];
     expect(tab.data.kind).toBe('terminal');
@@ -36,7 +39,7 @@ describe('createTaskTerminal', () => {
 
   it('无 agentName 时标题回落 agentId', () => {
     createTaskTerminal(PROJECT_ID, { agentId: 'claude', taskCommand: 'claude hi' });
-    const tab = useEditorStore.getState().tabs[PROJECT_ID].tabs[0];
+    const tab = useEditorStore.getState().tabs[SPACE].tabs[0];
     expect(tab.title).toBe('claude');
   });
 
@@ -45,6 +48,6 @@ describe('createTaskTerminal', () => {
       expect(createTaskTerminal(PROJECT_ID, { agentId: 'a', taskCommand: `cmd ${i}` })).toBe(true);
     }
     expect(createTaskTerminal(PROJECT_ID, { agentId: 'a', taskCommand: 'one more' })).toBe(false);
-    expect(useEditorStore.getState().tabs[PROJECT_ID].tabs).toHaveLength(MAX_TERMINAL_TABS);
+    expect(useEditorStore.getState().tabs[SPACE].tabs).toHaveLength(MAX_TERMINAL_TABS);
   });
 });

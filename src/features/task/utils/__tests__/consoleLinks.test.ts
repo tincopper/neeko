@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 const { readFileContentMock, revealInFileManagerMock } = vi.hoisted(() => ({
   readFileContentMock: vi.fn(),
@@ -17,6 +17,11 @@ vi.mock('../../file/api/fileApi', () => ({
 }));
 
 import { setupConsoleLinks } from '../consoleLinks';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 /** 80 列 × 10 行 × 10px/列 × 20px/行 的假终端；lineText 渲染在第 1 行。 */
 function makeFakeTerm(lineText: string) {
@@ -72,8 +77,8 @@ describe('consoleLinks — 文件路径 Ctrl/Cmd+Click 打开编辑器（canonic
     fireEvent.mouseDown(container, { button: 0, clientX, clientY: 5, metaKey: true });
 
     await vi.waitFor(() => {
-      const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
-      expect(space.tabs[0].id).toBe(`${workspaceKeyOf('p1', null)}:/repo/src/main.rs`);
+      const space = useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key];
+      expect(space.tabs[0].id).toBe(`${WorkspaceSession.of('p1', null).key}:/repo/src/main.rs`);
       expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
         '/repo/src/main.rs',
       );
@@ -90,7 +95,7 @@ describe('consoleLinks — 文件路径 Ctrl/Cmd+Click 打开编辑器（canonic
     fireEvent.mouseDown(container, { button: 0, clientX, clientY: 5, metaKey: true });
 
     await vi.waitFor(() => {
-      const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
+      const space = useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key];
       expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
         '/repo/src/main.rs',
       );
@@ -99,7 +104,7 @@ describe('consoleLinks — 文件路径 Ctrl/Cmd+Click 打开编辑器（canonic
 });
 
 describe('consoleLinks — worktree 键空间（workspaceKeyOf 派生）', () => {
-  const WT_KEY = workspaceKeyOf('p1', '/repo/.wt/feat');
+  const WT_KEY = WorkspaceSession.of('p1', '/repo/.wt/feat').key;
   const TAB_ID_WT = `${WT_KEY}:/repo/src/main.rs`;
 
   beforeEach(() => {
@@ -139,7 +144,7 @@ describe('consoleLinks — worktree 键空间（workspaceKeyOf 派生）', () =>
       const wt = useEditorStore.getState().tabs[WT_KEY];
       expect(wt?.tabs[0]?.id).toBe(TAB_ID_WT);
       // 不污染基础键空间
-      expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]).toBeUndefined();
+      expect(useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key]).toBeUndefined();
       // goal 与 tab 同键空间（键空间自洽，R4）
       expect(useEditorStore.getState().navigateGoal).toMatchObject({
         tabKey: WT_KEY,
@@ -154,11 +159,11 @@ describe('consoleLinks — worktree 键空间（workspaceKeyOf 派生）', () =>
     clickMainRsLink();
 
     await vi.waitFor(() => {
-      const base = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
-      expect(base?.tabs[0]?.id).toBe(`${workspaceKeyOf('p1', null)}:/repo/src/main.rs`);
+      const base = useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key];
+      expect(base?.tabs[0]?.id).toBe(`${WorkspaceSession.of('p1', null).key}:/repo/src/main.rs`);
       expect(useEditorStore.getState().navigateGoal).toMatchObject({
-        tabKey: workspaceKeyOf('p1', null),
-        tabId: `${workspaceKeyOf('p1', null)}:/repo/src/main.rs`,
+        tabKey: WorkspaceSession.of('p1', null).key,
+        tabId: `${WorkspaceSession.of('p1', null).key}:/repo/src/main.rs`,
         line: 10,
         col: 2,
       });
@@ -173,7 +178,7 @@ describe('consoleLinks — worktree 键空间（workspaceKeyOf 派生）', () =>
           tabs: [
             {
               id: TAB_ID_WT,
-              projectId: 'p1',
+              scope: { kind: 'workspace', session: mkSession('p1') },
               title: 'main.rs',
               order: 0,
               data: {

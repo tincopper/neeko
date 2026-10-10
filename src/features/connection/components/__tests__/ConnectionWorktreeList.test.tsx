@@ -5,13 +5,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ConnectionWorktreeList from '@/features/connection/components/ConnectionWorktreeList';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { GitStatusSnapshot, Worktree } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 const WT: Worktree = { path: '/home/u/wts/feature-x', branch: 'feature/x', head: 'abc' };
 
 function makeSnapshot(projectId: string, worktreePath: string): GitStatusSnapshot {
   return {
-    workspace_key: workspaceKeyOf(projectId, worktreePath),
+    workspace_key: WorkspaceSession.of(projectId, worktreePath ?? null).key,
     version: 1,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -77,7 +77,7 @@ describe('ConnectionWorktreeList — 远端侧栏 chip（按单元订阅，不�
     expect(screen.getByText('-1')).toBeInTheDocument();
     // 数据确实落在共享槽位（本地/远端侧栏同表），而不是组件私有 state
     expect(
-      useProjectStore.getState().statuses[workspaceKeyOf('p1', WT.path)]?.entries,
+      useProjectStore.getState().statuses[WorkspaceSession.of('p1', WT.path ?? null).key]?.entries,
     ).toHaveLength(1);
   });
 
@@ -118,7 +118,9 @@ describe('ConnectionWorktreeList — 远端侧栏 chip（按单元订阅，不�
     await waitFor(() => expect(onFetchStatus).toHaveBeenCalledTimes(1));
     d.resolve(makeSnapshot('p1', WT.path));
     await waitFor(() =>
-      expect(useProjectStore.getState().statuses[workspaceKeyOf('p1', WT.path)]).toBeDefined(),
+      expect(
+        useProjectStore.getState().statuses[WorkspaceSession.of('p1', WT.path ?? null).key],
+      ).toBeDefined(),
     );
     expect(onFetchStatus).toHaveBeenCalledTimes(1);
   });

@@ -6,10 +6,12 @@ import { useFileStore } from '@/features/file/store';
 import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { FileContent, Tab, WorkspaceSession } from '@/shared/types';
+import { FileContent, Tab } from '@/shared/types';
 import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewState';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId, isFileTab } from '@/shared/utils/fileTree';
+import { requireTabWorkspaceSession } from '@/shared/utils/tabIdentity';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 interface UseFileViewTabOpsParams {
   tabKeyRef: React.MutableRefObject<string | null>;
@@ -84,12 +86,11 @@ export function useFileViewTabOps({ tabKeyRef, workspaceRef, setError }: UseFile
 
         const newTab: Tab = {
           id: tabId,
-          projectId,
+          scope: { kind: 'workspace', session: ws },
           title: getFileName(filePath),
           order: existing?.tabs.length ?? 0,
           data: {
             kind: 'file',
-            workspace: ws,
             filePath,
             fileName: getFileName(filePath),
             content,
@@ -97,7 +98,7 @@ export function useFileViewTabOps({ tabKeyRef, workspaceRef, setError }: UseFile
           },
         };
 
-        useEditorStore.getState().addTab(tk, newTab);
+        useEditorStore.getState().addTab(newTab);
         return true;
       } catch (e) {
         setError(String(e));
@@ -178,14 +179,16 @@ export function useFileViewTabOps({ tabKeyRef, workspaceRef, setError }: UseFile
 
       // Untitled tab → trigger Save As dialog
       if (fileTab.data.isUntitled) {
+        const tabSession = requireTabWorkspaceSession(fileTab);
         const projectPath =
-          useProjectStore.getState().projects.find((p) => p.id === fileTab.projectId)?.path ?? '';
+          useProjectStore.getState().projects.find((p) => p.id === tabSession.projectId)?.path ??
+          '';
         // Save As 默认目录 = 该 tab 所属单元的工作树根（worktree 可在项目根外）。
-        const defaultDirectory = fileTab.data.workspace.worktreePath ?? projectPath;
+        const defaultDirectory = tabSession.worktreePath ?? projectPath;
         useSaveAsStore.getState().requestSaveAs({
           tabId: fileTab.id,
           tabKey: tk,
-          projectId: fileTab.projectId,
+          projectId: tabSession.projectId,
           content,
           defaultDirectory,
           defaultFilename: fileTab.data.untitledName ?? fileTab.data.fileName,
@@ -195,9 +198,9 @@ export function useFileViewTabOps({ tabKeyRef, workspaceRef, setError }: UseFile
       }
 
       try {
-        // 地址 = 该 tab 携带的唯一值（FileTabData.workspace）——不取「当前激活视图」：
+        // 地址 = tab.scope 携带的唯一地址值 ——不取「当前激活视图」：
         // 后台组保存 / 切换后保存若用现场重组的 ref，会写错工作树（单元漂移）。
-        await writeFileContent(fileTab.data.workspace, fileTab.data.filePath, content);
+        await writeFileContent(requireTabWorkspaceSession(fileTab), fileTab.data.filePath, content);
 
         // Update tab: mark as not dirty, update content
         useEditorStore.getState().updateTab(tk, fileTab.id, {

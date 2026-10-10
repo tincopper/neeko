@@ -7,12 +7,13 @@ import {
   toVisualEntries,
   useDebugStore,
 } from '@/features/runner/store/debugStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { useBreakpointGutter } from './useBreakpointGutter';
 import { useCurrentLineHighlight } from './useCurrentLineHighlight';
 
 interface UseEditorBreakpointsParams {
-  projectId: string;
+  projectId: ProjectId;
   absFilePath: string;
   editorViewRef: React.MutableRefObject<EditorView | null>;
   editorViewEpoch: number;

@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 export interface SaveAsRequest {
   tabId: string;
   tabKey: string;
-  projectId: string;
+  projectId: ProjectId;
   content: string;
   defaultDirectory: string;
   defaultFilename: string;

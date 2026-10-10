@@ -10,9 +10,13 @@ import ContextMenu, { type ContextMenuItem } from '@/shared/components/ContextMe
 import ProjectSettingsDialog from '@/shared/components/ProjectSettingsDialog';
 import { useGitStore } from '@/shared/store/gitStore';
 import { selectEntries, useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import {
+  selectActiveCheckoutPath,
+  useActiveWorkspaceKey,
+  useWorkspaceStore,
+} from '@/shared/store/workspaceStore';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useConnectionWorktreeActions } from '../hooks/useConnectionWorktreeActions';
 
@@ -52,8 +56,8 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
 
     // ahead/behind 仅在 active 项目时显示；键 = 该项目的**激活单元**（与写入侧同一把键）。
     // 旧键带 `{source}:{identifier}` 前缀，而那三个写入点的 identifier 约定各不相同 ⇒ 读不到。
-    const workspaceKey = workspaceKeyOf(project.id, activeCheckoutPath);
-    const aheadBehind = useGitStore((s) => s.aheadBehind[workspaceKey]);
+    const workspaceKey = useActiveWorkspaceKey(project.id);
+    const aheadBehind = useGitStore((s) => (workspaceKey ? s.aheadBehind[workspaceKey] : null));
 
     const [collapsed, setCollapsed] = useState(true);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -149,7 +153,9 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
 
     // local 主终端行的 +A -D = **主仓单元**的 status 条目（worktree 单元各有自己的条目）。
     // 缺失 = 未知（未挂载 / 刚被切走）→ 不显示 chip；绝不沿用其它单元的条目。
-    const mainEntries = useProjectStore((s) => selectEntries(s, workspaceKeyOf(project.id, null)));
+    const mainEntries = useProjectStore((s) =>
+      selectEntries(s, WorkspaceSession.of(project.id, null).key),
+    );
 
     const localChanges = useMemo(() => {
       const files = mainEntries ?? [];

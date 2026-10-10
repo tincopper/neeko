@@ -14,6 +14,7 @@ import {
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   drainTaskProcessOutput,
@@ -31,7 +32,7 @@ export interface TaskProcessHandle {
 export interface StartTaskProcessOptions {
   command: string;
   cwd: string;
-  projectId: string;
+  projectId: ProjectId;
   cols?: number;
   rows?: number;
   onOutput: (chunk: string) => void;

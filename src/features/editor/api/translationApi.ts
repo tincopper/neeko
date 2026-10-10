@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 /**
  * 文档翻译后端命令的 API 门面（AGENTS.md：前端不直接 import invoke）。
  *
@@ -10,7 +12,7 @@ import { invoke } from '@tauri-apps/api/core';
 /** `translation_stream` 请求体（驼峰命名，serde 映射后端 snake_case）。 */
 export interface TranslationStreamRequest {
   agentId: string;
-  projectId: string;
+  projectId: ProjectId;
   /** 前端管线组装好的完整翻译 prompt */
   prompt: string;
   /** 用户选择的模型 ID；缺省走 agent 默认 */

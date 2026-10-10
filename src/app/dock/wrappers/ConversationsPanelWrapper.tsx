@@ -10,9 +10,8 @@ import { useAppContext } from '@/shared/contexts';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
+import { activeWorkspaceSession, useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 /**
  * Conversations dock 面板适配层：读取 project context + agent 列表透传
@@ -32,10 +31,8 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
 
   // Determine project ID and tab key for opening conversation tabs
   const currentProjectId = useProjectStore((s) => s.activeProjectId);
-  const activeCheckoutPath = useActiveCheckoutPath();
-  const tabKey = currentProjectId
-    ? workspaceKeyOf(currentProjectId, activeCheckoutPath)
-    : currentProjectId;
+  const activeWorkspaceKey = useActiveWorkspaceKey(currentProjectId);
+  const tabKey = currentProjectId ? activeWorkspaceKey : currentProjectId;
 
   const handleResumeConversation = useCallback(
     async (meta: ConversationMeta) => {
@@ -86,7 +83,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
       }
       const tab: Tab = {
         id: tabId,
-        projectId: currentProjectId,
+        scope: { kind: 'workspace', session: activeWorkspaceSession(currentProjectId) },
         title: meta.agentId,
         order: existingTabs?.tabs.length ?? 0,
         data: {
@@ -96,7 +93,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
           taskCommand,
         },
       };
-      editorState.addTab(tabKey, tab);
+      editorState.addTab(tab);
       editorState.activateTab(tabKey, tabId);
     },
     [currentProjectId, tabKey, showToast],
@@ -110,7 +107,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
       const tabId = `tab_${crypto.randomUUID()}`;
       const tab: Tab = {
         id: tabId,
-        projectId: currentProjectId,
+        scope: { kind: 'workspace', session: activeWorkspaceSession(currentProjectId) },
         title: `${meta.userTitle ?? meta.title ?? 'Agent Chat'}`,
         order: existingTabs?.tabs.length ?? 0,
         data: {
@@ -121,7 +118,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
           resumeNativeSessionId: meta.nativeSessionId,
         },
       };
-      editorState.addTab(tabKey, tab);
+      editorState.addTab(tab);
       editorState.activateTab(tabKey, tabId);
       showToast(`Restoring "${meta.userTitle ?? meta.title}" in Agent Chat…`, 'info');
     },
@@ -130,12 +127,13 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
 
   const handleOpenConversationTab = useCallback(
     (meta: ConversationMeta) => {
+      if (!currentProjectId) return; // 无项目身份不开 tab（原 `?? tabKey ?? 'conversation'` 隐患已根除）
       const editorState = useEditorStore.getState();
       const existingTabs = tabKey ? editorState.tabs[tabKey] : undefined;
       const tabId = `tab_${crypto.randomUUID()}`;
       const tab: Tab = {
         id: tabId,
-        projectId: currentProjectId ?? tabKey ?? 'conversation',
+        scope: { kind: 'workspace', session: activeWorkspaceSession(currentProjectId) },
         title: conversationTabTitle(meta),
         order: existingTabs?.tabs.length ?? 0,
         data: {
@@ -146,10 +144,8 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
           onResume: handleResumeConversation,
         },
       };
-      if (tabKey) {
-        editorState.addTab(tabKey, tab);
-        editorState.activateTab(tabKey, tabId);
-      }
+      editorState.addTab(tab);
+      editorState.activateTab(tabKey!, tabId);
     },
     [currentProjectId, tabKey, handleResumeConversation],
   );

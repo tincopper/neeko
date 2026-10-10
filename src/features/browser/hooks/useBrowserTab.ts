@@ -9,6 +9,7 @@ import { useBrowserTabsStore } from '@/shared/store/browserTabsStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { FileChangedEvent, GitChangedEvent } from '@/shared/types';
 import {
   armProjectAutoRefresh,
@@ -18,7 +19,7 @@ import {
 import { fileUrlToFilePath, hostFromUrl } from '@/shared/utils/browserUtils';
 import { pathsContainFile } from '@/shared/utils/fileRef';
 import { canGoBack, canGoForward, recordNavigation } from '@/shared/utils/historyStack';
-import { workspaceRootOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, workspaceRootOf } from '@/shared/utils/workspaceRef';
 
 import {
   findAgentCliTab,
@@ -38,16 +39,14 @@ interface PromptSubmittedPayload {
   elements: PickerElement[];
   label?: string;
 }
-
 interface UseBrowserTabOptions {
   tabKey: string;
   tabId: string;
-  projectId: string;
+  projectId: ProjectId;
   /** 该 tab 是否「可见」：所在 pane 为当前激活组且项目激活。 */
   isActive: boolean;
   showToast: (message: string, type?: 'info' | 'error') => void;
 }
-
 /**
  * 编辑器 Browser tab 的适配 hook。
  *
@@ -63,7 +62,6 @@ export function useBrowserTab({
   showToast,
 }: UseBrowserTabOptions) {
   const label = getBrowserTabLabel(tabId);
-
   // 确保 tab 关闭清理已注册（幂等）：closeTab 时销毁 webview + 移除状态
   ensureBrowserTabCleanupRegistered();
 
@@ -171,7 +169,9 @@ export function useBrowserTab({
         if (!data?.prompt || !Array.isArray(data.elements) || data.elements.length === 0) return;
 
         const editorState = useEditorStore.getState();
-        const targetTabId = findAgentCliTab(editorState.tabs[projectId]);
+        const targetTabId = findAgentCliTab(
+          editorState.tabs[activeWorkspaceSession(projectId).key],
+        );
         if (!targetTabId) {
           showToast('Please open an Agent CLI tab to receive the modification', 'error');
           reinjectPicker();

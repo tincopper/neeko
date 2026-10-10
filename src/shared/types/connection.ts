@@ -1,7 +1,8 @@
 import type { GitInfo } from '@/shared/types/git';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export interface WSLProject {
-  id: string;
+  id: ProjectId;
   name: string;
   path: string;
   distro: string;
@@ -19,7 +20,7 @@ export interface WSLEntrySession {
 }
 
 export interface RemoteProject {
-  id: string;
+  id: ProjectId;
   name: string;
   path: string;
   entry_id: string;

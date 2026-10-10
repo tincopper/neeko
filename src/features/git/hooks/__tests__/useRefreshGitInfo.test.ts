@@ -11,12 +11,12 @@ import type {
   ProjectCommands,
   ProjectView,
 } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useRefreshGitInfo } from '../useRefreshGitInfo';
 
-const MAIN_KEY = workspaceKeyOf('proj-1', null);
-const WT_KEY = workspaceKeyOf('proj-1', '/test/wt');
+const MAIN_KEY = WorkspaceSession.of('proj-1', null).key;
+const WT_KEY = WorkspaceSession.of('proj-1', '/test/wt').key;
 
 function makeGitInfo(overrides?: Partial<GitInfo>): GitInfo {
   // GitInfo 只剩 per-project 元数据：分支 / 工作树清单 / provider。

@@ -8,13 +8,14 @@ import type {
   ProjectView,
 } from '@/shared/types/activeProject';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /** diff stats 与 changed files 的合并视图。 */
 export type ChangedFilesWithStats = Array<FileChange & { additions: number; deletions: number }>;
 
 interface UseCommitPanelDiffStatsParams {
   commands: ProjectCommands;
-  projectId: string;
+  projectId: ProjectId;
   changedFiles: FileChange[];
 }
 

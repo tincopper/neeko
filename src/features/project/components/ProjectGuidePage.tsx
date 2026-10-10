@@ -7,6 +7,7 @@ import AgentIcon from '@/shared/components/AgentIcon';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import type { AgentConfig } from '@/shared/types';
 import type { Step } from '@/shared/types/step';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { useProjectOnboarding } from '../hooks/useProjectOnboarding';
 
@@ -14,7 +15,7 @@ import { OnboardingSteps } from './OnboardingSteps';
 import { QuickActionBar } from './QuickActionBar';
 
 interface ProjectGuidePageProps {
-  projectId: string;
+  projectId: ProjectId;
   projectName: string;
   projectPath: string;
   /** Project selected_agents (ids) for disk sync targets. */

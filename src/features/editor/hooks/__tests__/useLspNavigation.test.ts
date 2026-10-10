@@ -6,8 +6,14 @@ import {
   showNavigationFailure,
 } from '@/features/lsp/api/definitionTarget';
 import type { LspLocation } from '@/features/lsp/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { resolveLspDocumentUri, useLspNavigation } from '../useLspNavigation';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 // 捕获接缝：navigateToLocation 是 hook 内部函数，经 useCmdClickGoToDefinition
 // 的参数暴露。mock 该模块抓住引用，即可直接驱动验证预读内容契约。
@@ -80,7 +86,7 @@ const LOCATION: LspLocation = {
   range: { start: { line: 3, character: 1 }, end: { line: 3, character: 5 } },
 };
 
-const TAB = { filePath: '/repo/src/main.rs', projectId: 'proj-1' };
+const TAB = { filePath: '/repo/src/main.rs', workspace: WorkspaceSession.of('proj-1', null) };
 
 /** 渲染 hook 并取出被捕获的内部 navigateToLocation。 */
 function getNavigateToLocation(): (...args: unknown[]) => Promise<void> {
@@ -111,7 +117,6 @@ describe('useLspNavigation — 预读内容契约防御', () => {
 
     expect(loadDefinitionTargetContent).not.toHaveBeenCalled();
     expect(h.addTab).toHaveBeenCalledWith(
-      'k1',
       expect.objectContaining({
         data: expect.objectContaining({
           kind: 'file',
@@ -136,7 +141,6 @@ describe('useLspNavigation — 预读内容契约防御', () => {
     await navigate(LOCATION, '/repo', 'k1', 'proj-1', '/repo/src/main.rs', '中文注释');
 
     expect(h.addTab).toHaveBeenCalledWith(
-      'k1',
       expect.objectContaining({
         data: expect.objectContaining({
           content: expect.objectContaining({ size: 12 }),
@@ -168,7 +172,6 @@ describe('useLspNavigation — 预读内容契约防御', () => {
       LOCATION.uri,
     );
     expect(h.addTab).toHaveBeenCalledWith(
-      'k1',
       expect.objectContaining({
         data: expect.objectContaining({
           content: {
@@ -209,7 +212,6 @@ describe('useLspNavigation — 预读内容契约防御', () => {
     await navigate(LOCATION, '/repo', 'k1', 'proj-1', '/repo/src/main.rs', null);
 
     expect(h.addTab).toHaveBeenCalledWith(
-      'k1',
       expect.objectContaining({
         data: expect.objectContaining({
           content: { path: '/opt/lib.rs', content: 'ext body', size: 8, is_binary: false },
@@ -228,7 +230,10 @@ describe('useLspNavigation — 预读内容契约防御', () => {
       useLspNavigation({
         projectPath: '/repo',
         tabKey: 'k1',
-        tab: { filePath: '/repo/src/main.rs', projectId: 'uuid-1' } as never,
+        tab: {
+          filePath: '/repo/src/main.rs',
+          workspace: WorkspaceSession.of('uuid-1', null),
+        } as never,
         lspLanguageIdRef: { current: 'java' },
         editorViewRef: { current: null },
       }),
@@ -256,9 +261,8 @@ describe('useLspNavigation — 预读内容契约防御', () => {
     // 双键：常规读取用 UUID，门控键是 fs path
     expect(loadDefinitionTargetContent).toHaveBeenCalledWith('uuid-1', '/repo', 'java', JDT_URI);
     expect(h.addTab).toHaveBeenCalledWith(
-      'k1',
       expect.objectContaining({
-        projectId: 'uuid-1',
+        scope: { kind: 'workspace', session: mkSession('uuid-1') },
         data: expect.objectContaining({
           readOnly: true,
           // tab 身份用 jdt 展示路径（tabIdentityOf，.java 结尾可命中高亮）；
@@ -276,7 +280,7 @@ describe('useLspNavigation — 预读内容契约防御', () => {
       useLspNavigation({
         projectPath: '/repo',
         tabKey: 'k1',
-        tab: { filePath: 'src/main.rs', projectId: 'uuid-1' } as never,
+        tab: { filePath: 'src/main.rs', workspace: WorkspaceSession.of('uuid-1', null) } as never,
         lspLanguageIdRef: { current: 'rust' },
         editorViewRef: { current: null },
       }),
@@ -335,7 +339,7 @@ describe('resolveLspDocumentUri — jdt 展示身份缺原始 uri 时不得伪�
 
 describe('useLspNavigation — lspKeymap 身份稳定（配置纯净不变量）', () => {
   it('tab 换新对象引用（FileViewer 每次渲染新建）后 lspKeymap 引用不变', () => {
-    const tab = { filePath: '/repo/src/main.rs', projectId: 'proj-1' };
+    const tab = { filePath: '/repo/src/main.rs', workspace: WorkspaceSession.of('proj-1', null) };
 
     // 回归：keymap 进入 CodeMirror extensions 数组，身份一变宿主就 reconfigure
     // 重建整个扩展世界 —— lint 经 appendConfig 惰性安装的渲染扩展被丢掉，

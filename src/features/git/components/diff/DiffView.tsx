@@ -229,7 +229,6 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
     if (combined && files && diffSource) {
       return (
         <CombinedDiffView
-          projectId={projectId}
           diffSource={diffSource}
           fileList={fileList}
           initialPath={filePath}

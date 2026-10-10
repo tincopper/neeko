@@ -20,6 +20,8 @@
  * 依赖方向：`languages/<lang>/` → 本文件（+ `syntax/` 工具箱 + `exec/` 通用原语）；
  * 反向依赖（通用层直导某语言目录）由护栏测试钉死。
  */
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 import type { TestActionContext } from '../exec/context';
 import type { RunTarget } from '../runTarget';
 import type { AlignedCaseResult } from '../store/testResults';
@@ -99,7 +101,7 @@ export interface LangIo {
   /** 目标环境文件存在性（经统一执行门面，Local/WSL/SSH 通吃）。 */
   fileExists(absPath: string): Promise<boolean>;
   /** 读项目内文本文件（缺失/失败 → `null`）；`base` 为宿主目录前缀（文件在其下），scope 恒取当前Workspace。 */
-  readText(projectId: string, relPath: string, base: string | null): Promise<string | null>;
+  readText(projectId: ProjectId, relPath: string, base: string | null): Promise<string | null>;
   /** 宿主 home 目录（缓存产物落点）。 */
   homeDir(): Promise<string>;
   /**
@@ -108,7 +110,7 @@ export interface LangIo {
    * 语言模块据此派生平台事实（如 Java 的 classpath 分隔符 = 目标 JVM 的
    * `File.pathSeparator`）—— 由**目标**而非宿主决定，故不能读平台常量。
    */
-  targetPlatform(projectId: string): 'windows' | 'unix';
+  targetPlatform(projectId: ProjectId): 'windows' | 'unix';
   /** LSP 请求（未就绪/失败由调用方兜住，不抛）。 */
   lspRequest(projectPath: string, lang: string, method: string, params: unknown): Promise<unknown>;
   /** 无头执行一条命令（构建 / 生成 classpath 产物），返回输出而非抛错。
@@ -116,7 +118,7 @@ export interface LangIo {
    *  语言模块只给命令与 cwd；**执行单元根由本 IO 门面自行派生**（见 `io.ts`）——
    *  语言模块永不感知 worktree。 */
   runBuild(spec: {
-    projectId: string;
+    projectId: ProjectId;
     command: string;
     cwd: string;
   }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
@@ -151,7 +153,7 @@ export interface LineTarget {
 export interface OverlayProvider {
   /** 拉取覆盖结果；未就绪/失败 → 空 Map（不阻塞快路径）。 */
   load(args: {
-    projectId: string;
+    projectId: ProjectId;
     projectPath: string;
     absFilePath: string;
     targets: readonly LineTarget[];

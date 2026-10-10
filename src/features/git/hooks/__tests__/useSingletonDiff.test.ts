@@ -6,7 +6,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { ConnectionContext } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 describe('useSingletonDiff worktree tab projectId', () => {
   beforeEach(() => {
@@ -27,12 +27,12 @@ describe('useSingletonDiff worktree tab projectId', () => {
       result.current.openFileInDiff('src/main.ts');
     });
 
-    const tabKey = workspaceKeyOf(projectId, wtPath);
+    const tabKey = WorkspaceSession.of(projectId, wtPath ?? null).key;
     const diffTab = useEditorStore
       .getState()
       .tabs[tabKey]?.tabs.find((t) => t.data.kind === 'diff');
     expect(diffTab).toBeDefined();
     // tab 的 projectId 必须保持真实 project id，否则后端 resolve_project 找不到项目
-    expect(diffTab?.projectId).toBe(projectId);
+    expect(diffTab?.scope.session.projectId).toBe(projectId);
   });
 });

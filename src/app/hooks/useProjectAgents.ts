@@ -2,17 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
 import type { AgentConfig } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 // Module-level cache: `${projectId}::${agentId}` — status is environment-specific.
 const agentInstalledCache = new Map<string, boolean>();
 
-function agentInstallCacheKey(projectId: string | null, agentId: string): string {
+function agentInstallCacheKey(projectId: ProjectId | null, agentId: string): string {
   return `${projectId ?? '__none__'}::${agentId}`;
 }
 
 interface UseProjectAgentsParams {
   agents: AgentConfig[];
-  projectId: string | null;
+  projectId: ProjectId | null;
   showToast: (message: string, type?: 'info' | 'error') => void;
   onAgentClick: (agent: AgentConfig) => void;
 }

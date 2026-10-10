@@ -7,9 +7,10 @@ import { useSearchStore } from '@/features/search/store/searchStore';
 import { useAppContext } from '@/shared/contexts';
 import type { SearchMatch } from '@/shared/types/search';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 interface SearchPanelProps {
-  projectId: string | null;
+  projectId: ProjectId | null;
 }
 
 /** Highlight matched substrings within a line. */

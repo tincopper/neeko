@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 
 import type { SaveSessionFn } from '@/shared/hooks/useConnectionProjects';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { saveSession as saveSessionApi } from '../api/sessionApi';
 
@@ -9,7 +10,7 @@ export interface UseSessionPersistenceResult {
   worktreeState: Record<string, string>;
   restoreWorktreeState: (next: Record<string, string>) => void;
   saveSession: SaveSessionFn;
-  saveWorktreeState: (projectId: string, wtPath: string | null) => void;
+  saveWorktreeState: (projectId: ProjectId, wtPath: string | null) => void;
   saveSidebarWidth: (width: number) => void;
 }
 
@@ -29,7 +30,7 @@ export function useSessionPersistence(): UseSessionPersistenceResult {
   }, []);
 
   const saveWorktreeState = useCallback(
-    (projectId: string, wtPath: string | null) => {
+    (projectId: ProjectId, wtPath: string | null) => {
       setWorktreeState((prev) => {
         const next = { ...prev };
         if (wtPath) {

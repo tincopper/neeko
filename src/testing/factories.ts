@@ -6,10 +6,12 @@ import type {
   TagGroup,
   DiscoveredSkillDto,
 } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export function createProject(overrides?: Partial<Project>): Project {
   return {
-    id: 'test-project-id',
+    // 测试夹具铸造点（品牌唯一铸造在 api wrapper；测试/夹具是允许来源之一）
+    id: 'test-project-id' as ProjectId,
     name: 'test-project',
     path: '/tmp/test-project',
     environment: { type: 'Local' },

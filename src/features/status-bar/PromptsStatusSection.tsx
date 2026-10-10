@@ -11,7 +11,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { PromptResource } from '@/shared/types/library';
 import { filterPromptsByQuery } from '@/shared/utils/promptQuery';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /** 描述规则：description 优先，为空回退 content 首 120 字（换行转空格）。 */
 function promptDescription(prompt: PromptResource): string {
@@ -35,12 +35,12 @@ function sortPrompts(prompts: PromptResource[]): PromptResource[] {
  * 本项目 tab 组里的终端 tab。已在终端上或找不到终端 tab 时静默跳过
  * （写入本身已成功，不打扰用户）。
  */
-function revealTerminalTab(projectId: string): void {
+function revealTerminalTab(projectId: ProjectId): void {
   const editorState = useEditorStore.getState();
-  const tabKey = workspaceKeyOf(
+  const tabKey = WorkspaceSession.of(
     projectId,
-    selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId),
-  );
+    selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId) ?? null,
+  ).key;
   const group = editorState.tabs[tabKey];
   const tabs = group?.tabs ?? [];
   if (tabs.some((t) => t.id === group?.activeTabId && t.data.kind === 'terminal')) return;

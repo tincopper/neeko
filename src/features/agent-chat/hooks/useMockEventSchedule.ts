@@ -1,18 +1,18 @@
 import { useEffect, type MutableRefObject } from 'react';
 
 import type { SequencedEvent } from '@/shared/types/agentChat';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export interface MockEventScheduleParams {
   mockMode: boolean;
   sessionId: string | undefined;
-  projectId: string;
+  projectId: ProjectId;
   applyEvent: (ev: SequencedEvent) => void;
   sessionIdRef: MutableRefObject<string | undefined>;
   turnStartRef: MutableRefObject<number | null>;
   turnCountsRef: MutableRefObject<{ ran: number; edited: number; searched: number }>;
   turnToolsRef: MutableRefObject<Array<{ callId: string }>>;
 }
-
 /**
  * 开发/演示用：调度 mock 事件序列，模拟 agent 流式输出。
  * 与真实事件流共用 applyEvent reducer，保证两条链路行为一致。

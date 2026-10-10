@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type { SessionStore } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export function saveConfig(config: Record<string, unknown>): Promise<void> {
   return invoke<void>('save_config', { config });
@@ -30,12 +31,12 @@ export function greet(name: string): Promise<string> {
 }
 
 export function saveVcsSettings(
-  projectId: string,
+  projectId: ProjectId,
   settings: Record<string, unknown>,
 ): Promise<void> {
   return invoke<void>('save_vcs_settings_command', { projectId, settings });
 }
 
-export function loadVcsSettings(projectId: string): Promise<Record<string, unknown>> {
+export function loadVcsSettings(projectId: ProjectId): Promise<Record<string, unknown>> {
   return invoke<Record<string, unknown>>('load_vcs_settings_command', { projectId });
 }

@@ -2,6 +2,7 @@ import { Globe } from 'lucide-react';
 import React, { useCallback, useEffect } from 'react';
 
 import { useAppContext } from '@/shared/contexts/AppContext';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { useBrowserTab } from '../hooks/useBrowserTab';
 
@@ -10,7 +11,7 @@ import BrowserToolbar from './BrowserToolbar';
 interface BrowserTabViewProps {
   tabKey: string;
   tabId: string;
-  projectId: string;
+  projectId: ProjectId;
   /** 该 tab 是否可见（所在 pane 为当前激活组且项目激活）。 */
   isActive: boolean;
 }

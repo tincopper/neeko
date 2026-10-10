@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import type { FileChange, GitStatusSnapshot, Project } from '@/shared/types';
-import type { WorkspaceKey } from '@/shared/utils/workspaceRef';
+import type { ProjectId, WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 /** 打开 IDE 用的最小投影（项目卡片回传）。 */
 interface IdeProject {
@@ -24,11 +24,11 @@ export type WorkspaceStatus = GitStatusSnapshot;
 
 interface ProjectStoreState {
   projects: Project[];
-  activeProjectId: string | null;
+  activeProjectId: ProjectId | null;
   activeProject: Project | null;
   isTerminalView: boolean;
   /**
-   * 各Workspace的权威 status，键为 `workspaceKeyOf(projectId, worktreePath)`。
+   * 各Workspace的权威 status，键为 `WorkspaceSession.of(projectId, worktreePath).key`（≡ 本仓 key）。
    *
    * **缺失 = 未知**（该单元未挂载 / 刚被切走 / 非 git）—— 消费端必须渲染空态或加载态，
    * 严禁把「未知」当「无变更」或直接沿用上一个单元的数据：那正是本次根治的症状形态。
@@ -49,9 +49,9 @@ interface ProjectStoreState {
   applyStatus: (snapshot: WorkspaceStatus) => boolean;
   /** 作废一个单元（离开视图 / 后端 unwatch）：槽位不得残留可被渲染的旧数据。 */
   invalidateStatus: (workspaceKey: WorkspaceKey | string) => void;
-  selectProject: (id: string) => void;
+  selectProject: (id: ProjectId) => void;
   openIde: (project: IdeProject) => void;
-  setProjectIde: (projectId: string, ideCommand: string | null) => void;
+  setProjectIde: (projectId: ProjectId, ideCommand: string | null) => void;
 }
 
 export const useProjectStore = create<ProjectStoreState>((set) => ({

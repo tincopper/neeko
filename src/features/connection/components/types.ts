@@ -1,5 +1,6 @@
 import type { AgentConfig, AppConfig, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import type { Project } from '@/shared/types/project';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export type ConnectionSource =
   | { type: 'wsl'; distro: string }
@@ -11,8 +12,8 @@ export interface ConnectionProjectCardProps {
   source: ConnectionSource;
   isActive: boolean;
   isLast?: boolean;
-  onSelectProject: (projectId: string) => void;
-  onRemoveProject: (entryId: string, projectId: string) => void;
+  onSelectProject: (projectId: ProjectId) => void;
+  onRemoveProject: (entryId: string, projectId: ProjectId) => void;
   onOpenIde?: (identifier: string, projectPath: string, ide: string) => void;
   onOpenWorktreeTerminal?: (identifier: string, worktreePath: string, branch: string) => void;
   ideCommandOverrides?: Record<string, string>;
@@ -27,15 +28,15 @@ export interface ConnectionProjectCardProps {
 export interface WSLItemProps {
   entry: WSLEntrySession;
   lastProjectId?: string | null;
-  onSelectProject: (projectId: string) => void;
-  onRemoveProject: (entryId: string, projectId: string) => void;
+  onSelectProject: (projectId: ProjectId) => void;
+  onRemoveProject: (entryId: string, projectId: ProjectId) => void;
   onRemoveEntry: (entryId: string) => void;
   onAddProject: (entryId: string) => void;
   onOpenIde?: (distro: string, projectPath: string, ide: string) => void;
   onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
-  onRefresh?: (distro: string, projectId: string) => void;
+  onRefresh?: (distro: string, projectId: ProjectId) => void;
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
@@ -46,15 +47,15 @@ export interface WSLItemProps {
 export interface RemoteItemProps {
   entry: RemoteEntrySession;
   lastProjectId?: string | null;
-  onSelectProject: (projectId: string) => void;
-  onRemoveProject: (entryId: string, projectId: string) => void;
+  onSelectProject: (projectId: ProjectId) => void;
+  onRemoveProject: (entryId: string, projectId: ProjectId) => void;
   onRemoveEntry: (entryId: string) => void;
   onAddProject: (entryId: string) => void;
   onOpenIde?: (entryId: string, projectPath: string, ide: string) => void;
   onOpenWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
-  onRefresh?: (entryId: string, projectId: string) => void;
+  onRefresh?: (entryId: string, projectId: ProjectId) => void;
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;

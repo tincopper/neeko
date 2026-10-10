@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChange, GitStatusSnapshot, ProjectCapabilities } from '@/shared/types';
-import { workspaceKeyOf, type WorkspaceKey } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession, type WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 // 面板经 `useCommitPanelAux` 取 AppProvider 的 config（只用到 agentCommandOverrides），
 // 这里给一个最小替身，避免为了渲染容器而把整个组合根搬进单测。
@@ -13,8 +13,8 @@ vi.mock('@/shared/contexts', () => ({
 
 import GitCommitPanel from '../GitCommitPanel';
 
-const MAIN_KEY = workspaceKeyOf('p1', null);
-const WT_KEY = workspaceKeyOf('p1', '/private/tmp/repo/wt-a');
+const MAIN_KEY = WorkspaceSession.of('p1', null).key;
+const WT_KEY = WorkspaceSession.of('p1', '/private/tmp/repo/wt-a').key;
 
 function file(path: string): FileChange {
   return {

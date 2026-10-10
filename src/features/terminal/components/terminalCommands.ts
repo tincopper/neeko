@@ -3,6 +3,7 @@ import { emit } from '@tauri-apps/api/event';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { safeDisposeTerminal } from '@/shared/utils/terminal';
 import { terminalInputEvent } from '@/shared/utils/terminalEvents';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { getAgent } from '../../agent/api/agentApi';
 import { resizeTerminal, closeTerminalSession } from '../api/terminalApi';
@@ -16,7 +17,7 @@ import {
 } from './terminalCache';
 import { createTerminalForProject } from './terminalFactory';
 
-export function sendToTerminal(projectId: string, text: string, tabId?: string | null) {
+export function sendToTerminal(projectId: ProjectId, text: string, tabId?: string | null) {
   let sessionId: string | null = null;
 
   // When tabId is provided, build the exact cache key for precise lookup
@@ -80,7 +81,11 @@ export function pasteToTerminalSession(sessionId: string, text: string): void {
  *
  * @returns true when a session matched and bytes were emitted, false otherwise.
  */
-export function pasteToTerminal(projectId: string, text: string, tabId?: string | null): boolean {
+export function pasteToTerminal(
+  projectId: ProjectId,
+  text: string,
+  tabId?: string | null,
+): boolean {
   let sessionId: string | null = null;
 
   // When tabId is provided, build the exact cache key for precise lookup
@@ -111,7 +116,7 @@ export function pasteToTerminal(projectId: string, text: string, tabId?: string 
   return true;
 }
 
-export function launchAgentInTerminal(projectId: string, command: string, args: string[]) {
+export function launchAgentInTerminal(projectId: ProjectId, command: string, args: string[]) {
   const cmdStr = [command, ...args].join(' ');
   sendToTerminal(projectId, '\x03');
   setTimeout(() => sendToTerminal(projectId, `${cmdStr}\r`), 50);
@@ -144,7 +149,7 @@ export async function switchAgentInTerminal(
     const agent = await getAgent(agentId).catch(() => null);
     if (agent) {
       const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
-      launchAgentInTerminal(backendProjectId, cmd, agent.args);
+      launchAgentInTerminal(backendProjectId as ProjectId, cmd, agent.args);
     }
     return;
   }

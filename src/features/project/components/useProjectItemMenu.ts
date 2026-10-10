@@ -3,19 +3,20 @@ import { useMemo, useState } from 'react';
 import type { DialogState } from '@/shared/components/GitDialog';
 import { FolderGitIcon, GitLogoIcon } from '@/shared/components/icons';
 import type { Project } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import type { ContextMenuItem } from './ContextMenu';
 
 interface UseProjectItemMenuParams {
   project: Project;
   onOpenDialog: (dialog: DialogState) => void;
-  onOpenIde?: (projectId: string) => void;
-  onRefresh?: (projectId: string) => void;
+  onOpenIde?: (projectId: ProjectId) => void;
+  onRefresh?: (projectId: ProjectId) => void;
   onOpenSettings?: () => void;
-  onRemoveProject: (projectId: string) => void;
-  onCommit?: (projectId: string) => void;
-  onPush?: (projectId: string) => void;
-  onPull?: (projectId: string) => void;
+  onRemoveProject: (projectId: ProjectId) => void;
+  onCommit?: (projectId: ProjectId) => void;
+  onPush?: (projectId: ProjectId) => void;
+  onPull?: (projectId: ProjectId) => void;
   hasConfig: boolean;
 }
 

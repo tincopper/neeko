@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { FileChange } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import ChangesList from '../ChangesList';
 
@@ -30,7 +30,7 @@ const baseProps = {
   onExpandUntrackedDir: vi.fn(),
   loading: false,
   /** 本列表渲染的Workspace（展开缓存的 file-changed 失效信号按它过滤）。 */
-  workspaceKey: workspaceKeyOf('p1', null),
+  workspaceKey: WorkspaceSession.of('p1', null).key,
 };
 
 const TRACKED = [

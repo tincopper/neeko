@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 
 import type { EditorGroupId, Tab } from '@/shared/types';
+import { tabProjectId } from '@/shared/utils/tabIdentity';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import type { EditorGroupLayoutResult } from './useEditorGroupLayout';
 
@@ -8,14 +10,14 @@ export interface PaneTabsResult {
   tabs: Tab[];
   activeTabId: string | null;
   activeTab: Tab | null;
-  projectIdForCheck: string | null;
+  projectIdForCheck: ProjectId | null;
 }
 
 /** 根据面板 groupId 从布局状态派生当前面板的 tabs / activeTab / 项目 id */
 export function usePaneTabs(
   groupId: EditorGroupId | 'pinned',
   layoutState: EditorGroupLayoutResult,
-  remoteProjectId: string | null,
+  remoteProjectId: ProjectId | null,
 ): PaneTabsResult {
   const { leftTabs, rightTabs, pinnedTabs, leftActiveTabId, rightActiveTabId, pinnedActiveTab } =
     layoutState;
@@ -43,6 +45,6 @@ export function usePaneTabs(
     tabs,
     activeTabId,
     activeTab,
-    projectIdForCheck: remoteProjectId ?? activeTab?.projectId ?? null,
+    projectIdForCheck: remoteProjectId ?? (activeTab ? tabProjectId(activeTab) : null),
   };
 }

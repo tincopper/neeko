@@ -52,12 +52,12 @@ vi.mock('@/shared/store/gitStore', () => ({
 import { GIT_CHANGED_EVENT } from '@/shared/events';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useSessionBootstrap } from '../useSessionBootstrap';
 
-const MAIN_KEY = workspaceKeyOf('p1', null);
-const WT_KEY = workspaceKeyOf('p1', '/repo/wt/Test');
+const MAIN_KEY = WorkspaceSession.of('p1', null).key;
+const WT_KEY = WorkspaceSession.of('p1', '/repo/wt/Test').key;
 
 /** 从 listen mock 中取出指定事件的 handler。 */
 function captureHandler(eventName: string) {

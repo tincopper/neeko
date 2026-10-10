@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { createHistoryStack, type HistoryStack } from '@/shared/utils/historyStack';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { useProjectStore } from './projectStore';
 
@@ -21,12 +22,12 @@ export interface BrowserPanelState {
 
 interface ProjectBrowserStore {
   states: Record<string, BrowserPanelState>;
-  getPanelState: (projectId: string) => BrowserPanelState;
-  setPanelState: (projectId: string, patch: Partial<BrowserPanelState>) => void;
-  removeState: (projectId: string) => void;
+  getPanelState: (projectId: ProjectId) => BrowserPanelState;
+  setPanelState: (projectId: ProjectId, patch: Partial<BrowserPanelState>) => void;
+  removeState: (projectId: ProjectId) => void;
   navigateTo: {
     (url: string): void;
-    (projectId: string, url: string): void;
+    (projectId: ProjectId, url: string): void;
   };
   reset: () => void;
 }
@@ -42,7 +43,7 @@ const defaultPanelState = (label: string): BrowserPanelState => ({
   lastActiveAt: 0,
 });
 
-function deriveLabel(projectId: string): string {
+function deriveLabel(projectId: ProjectId): string {
   return `neeko-browser-${projectId}`;
 }
 
@@ -80,7 +81,9 @@ export const useProjectBrowserStore = create<ProjectBrowserStore>()((set, get) =
 
   navigateTo: (urlOrProjectId: string, maybeUrl?: string) => {
     const projectId =
-      maybeUrl !== undefined ? urlOrProjectId : useProjectStore.getState().activeProjectId;
+      maybeUrl !== undefined
+        ? (urlOrProjectId as ProjectId)
+        : useProjectStore.getState().activeProjectId;
     const url = maybeUrl ?? urlOrProjectId;
     if (!projectId) return;
     const state = get().getPanelState(projectId);

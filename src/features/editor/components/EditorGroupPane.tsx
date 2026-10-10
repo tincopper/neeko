@@ -6,6 +6,7 @@ import { ContextMenu } from '@/features/project';
 import { useEditorContext, EditorProvider } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import type { AuthMethod, EditorGroupId } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { PINNED_DROP_PREFIX, editorPaneRegionClass } from '../dragDrop';
 import { useFileActionsContext } from '../FileActionsContext';
@@ -41,7 +42,7 @@ interface EditorGroupPaneProps {
   onFocusGroup: () => void;
   remoteProject?: {
     entryId: string;
-    projectId: string;
+    projectId: ProjectId;
     projectName: string;
     projectPath: string;
     host: string;

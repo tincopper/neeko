@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { SplitPane } from '@/shared/components';
 import { FileDiff, GitCommitHorizontal, MessageSquare } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/Tabs';
 
 import {
@@ -27,7 +28,7 @@ import PRTimeline from './PRTimeline';
 import { usePRResource } from './usePRResource';
 
 interface PRDetailViewProps {
-  projectId: string;
+  projectId: ProjectId;
   prNumber: number;
   prTitle: string;
   prState: string;
@@ -40,7 +41,6 @@ interface PRDetailViewProps {
   onClose?: () => void;
   onOpenDiff?: (filePath: string) => void;
 }
-
 function getStateBadgeClass(state: string): string {
   switch (state.toUpperCase()) {
     case 'OPEN':

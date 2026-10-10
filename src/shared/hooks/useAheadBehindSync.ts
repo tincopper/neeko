@@ -2,9 +2,8 @@ import { useEffect } from 'react';
 
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
+import { useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 import type { AheadBehind } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 interface AheadBehindCommands {
   getAheadBehind(): Promise<AheadBehind>;
@@ -29,7 +28,7 @@ interface AheadBehindCommands {
 export function useAheadBehindSync(commands?: AheadBehindCommands | null) {
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  const activeCheckoutPath = useActiveCheckoutPath();
+  const activeWorkspaceKey = useActiveWorkspaceKey(activeProjectId);
   const setAheadBehind = useGitStore((s) => s.setAheadBehind);
 
   useEffect(() => {
@@ -37,8 +36,9 @@ export function useAheadBehindSync(commands?: AheadBehindCommands | null) {
 
     // 非 git 项目（git_info 为 null）跳过 ahead/behind 查询
     if (activeProject.git_info === null) return;
+    if (!activeWorkspaceKey) return;
 
-    const workspaceKey = workspaceKeyOf(activeProjectId, activeCheckoutPath);
+    const workspaceKey = activeWorkspaceKey;
 
     let cancelled = false;
     commands
@@ -52,5 +52,5 @@ export function useAheadBehindSync(commands?: AheadBehindCommands | null) {
     return () => {
       cancelled = true;
     };
-  }, [activeProjectId, activeProject, activeCheckoutPath, commands, setAheadBehind]);
+  }, [activeProjectId, activeProject, activeWorkspaceKey, commands, setAheadBehind]);
 }

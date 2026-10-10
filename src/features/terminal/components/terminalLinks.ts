@@ -4,9 +4,10 @@ import type { Terminal } from '@xterm/xterm';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { Tab, WorkspaceSession } from '@/shared/types';
+import { Tab } from '@/shared/types';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { revealInFileManager, readFileContent } from '../../file/api/fileApi';
 
@@ -107,19 +108,18 @@ async function openFileInEditor(
     const content = await readFileContent(workspace, fullPath);
     const newTab: Tab = {
       id: tabId,
-      projectId: workspace.projectId,
+      scope: { kind: 'workspace', session: workspace },
       title: getFileName(fullPath),
       order: existing?.tabs.length ?? 0,
       data: {
         kind: 'file',
-        workspace,
         filePath: fullPath,
         fileName: getFileName(fullPath),
         content,
         isDirty: false,
       },
     };
-    useEditorStore.getState().addTab(tabKey, newTab);
+    useEditorStore.getState().addTab(newTab);
     if (line !== undefined) {
       useEditorStore.getState().setNavigateGoal({
         tabKey,

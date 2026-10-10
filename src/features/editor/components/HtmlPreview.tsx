@@ -9,10 +9,10 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { FileChangedEvent } from '@/shared/types';
 import { pathsContainFile } from '@/shared/utils/fileRef';
-import { workspaceRootOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, workspaceRootOf } from '@/shared/utils/workspaceRef';
 
 interface HtmlPreviewProps {
-  projectId: string;
+  projectId: ProjectId;
   filePath: string;
   fileName: string;
 }

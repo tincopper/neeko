@@ -1,4 +1,5 @@
 import type { FileLineChange } from '@/shared/types/git';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { deriveFileLineChanges } from '../utils/lineChange';
 
@@ -11,7 +12,7 @@ import { getFileDiff } from './gitApi';
  * 失败与陈旧响应由调用方（`useGitChangeEditor`）处理。
  */
 export async function loadFileLineChanges(
-  projectId: string,
+  projectId: ProjectId,
   filePath: string,
   worktreePath?: string | null,
 ): Promise<FileLineChange[]> {

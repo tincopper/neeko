@@ -4,7 +4,7 @@ import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore, selectEntries } from '@/shared/store/projectStore';
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Project } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import SessionRow from './SessionRow';
 import WorktreeList from './WorktreeList';
@@ -15,9 +15,9 @@ interface ProjectGitSectionProps {
   /** 由父级派生的 Ctrl+N shortcut（hover 时展示） */
   shortcut?: string;
   actions: {
-    onSelectProject: (projectId: string) => void;
-    onRefreshGit: (projectId: string) => void;
-    onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
+    onSelectProject: (projectId: ProjectId) => void;
+    onRefreshGit: (projectId: ProjectId) => void;
+    onOpenWorktreeTerminal?: (projectId: ProjectId, worktreePath: string, branch: string) => void;
     onShowToast?: (message: string, type?: 'info' | 'error') => void;
   };
 }
@@ -34,7 +34,7 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
   // 响应式读取（渲染期读 `getState()` 会停在旧值：切回主仓时高亮不更新）
   const activeCheckoutPath = useWorkspaceStore((s) => selectActiveCheckoutPath(s, project.id));
   /** 主仓单元的键：本行显示的一切（ahead/behind、+A -D 聚合）都取主仓单元。 */
-  const mainWorkspaceKey = workspaceKeyOf(project.id, null);
+  const mainWorkspaceKey = WorkspaceSession.of(project.id, null).key;
 
   // local 主终端行的 ahead/behind 取**主仓单元**的键（旧实现的 `local:{projectId}` 键没有任何写
   // 入侧，于是徽标恒空）；该数字只在主仓视图（`localActive`）显示，与 worktree 的数字互不相关。

@@ -69,7 +69,7 @@ interface ChangesListProps {
    */
   unknown?: boolean;
   /**
-   * 本列表渲染的Workspace key（`workspaceKeyOf(projectId, activeWorktreePath)`）。
+   * 本列表渲染的Workspace key（`WorkspaceSession.of(projectId, activeWorktreePath).key`）。
    * 展开缓存的失效信号按它过滤 `file-changed`：事件路径相对**产出单元**的工作树根，
    * 不带单元就会拿别的工作树的同名相对路径当成本列表的变更。
    */

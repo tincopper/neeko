@@ -2,6 +2,7 @@ import type { EditorView } from '@codemirror/view';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import { fileRefFromLspUri, fileRefFromTabPath, tabIdentityOf } from '@/shared/utils/fileRef';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /**
  * 已打开编辑器页的注册表：`FileRef` 身份 → `EditorView`。
@@ -24,12 +25,12 @@ import { fileRefFromLspUri, fileRefFromTabPath, tabIdentityOf } from '@/shared/u
 const views = new Map<string, { view: EditorView; count: number }>();
 
 /** 项目根路径取自项目对象；取不到返回 null（此时不登记，宁缺勿错）。 */
-function projectRootOf(projectId: string): string | null {
+function projectRootOf(projectId: ProjectId): string | null {
   return useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? null;
 }
 
 /** tab → 编辑器身份（登记侧）。取不到项目根返回 null。 */
-export function editorIdentityOfTab(projectId: string, filePath: string): string | null {
+export function editorIdentityOfTab(projectId: ProjectId, filePath: string): string | null {
   const root = projectRootOf(projectId);
   if (!root) return null;
   return tabIdentityOf(fileRefFromTabPath(root, filePath));

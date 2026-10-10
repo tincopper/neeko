@@ -122,6 +122,12 @@ impl AppStateWrapper {
         &self,
         project_id: &str,
     ) -> Result<(crate::core::project::ProjectEnvironment, String), AppError> {
+        // 合法 project id 绝不含 NUL —— 它只可能来自「复合 WorkspaceKey（`id\0wt`）误当裸 id」
+        // （历史事故：前端把 tab 空间键塞进身份槽位 → 后端按精确匹配失败）。显式拒绝优于
+        // 按 NotFound 处理：后者会把排障引向「项目缺失」，掩盖真正的身份污染。
+        if project_id.contains('\0') {
+            return Err(AppError::InvalidInput("Invalid project id".into()));
+        }
         let manager = self.project_manager.lock().map_err(AppError::from)?;
         let project = manager
             .get_project(project_id)
@@ -364,4 +370,24 @@ fn agent_manager_with_overrides(
         .collect::<std::collections::HashMap<_, _>>();
     manager.restore_overrides(&overrides);
     manager
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::testing::isolated_state;
+
+    #[test]
+    fn project_context_rejects_nul_in_project_id() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+        // 复合 WorkspaceKey（主仓单元）误当裸 id 的形态：`<uuid>\0`
+        let err = state
+            .project_context("3122d984-3c86-4ba4-b67c-105ed5b69853\0")
+            .expect_err("NUL-containing project id must be rejected");
+        assert!(
+            matches!(err, AppError::InvalidInput(ref m) if m == "Invalid project id"),
+            "expected InvalidInput(\"Invalid project id\"), got {err:?}"
+        );
+    }
 }

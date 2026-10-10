@@ -22,6 +22,8 @@
  */
 import { create } from 'zustand';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 export type TestCaseStatus = 'passed' | 'failed' | 'ignored' | 'skipped' | 'running';
 
 export interface TestCaseStatusInfo {
@@ -55,22 +57,22 @@ interface TestResultsState {
   /** 每文件单调递增版本（gutter 刷新信号，不渲染）。 */
   versions: Record<string, number>;
   /** Run 开始：清该文件旧状态并标记进行中（保留子测试发现缓存）。 */
-  beginRun: (projectId: string, filePath: string) => void;
+  beginRun: (projectId: ProjectId, filePath: string) => void;
   /** 落库对齐后的结果并结束 running；空结果 = 本次运行无状态可落（如编译失败）。 */
-  applyResults: (projectId: string, filePath: string, results: AlignedCaseResult[]) => void;
+  applyResults: (projectId: ProjectId, filePath: string, results: AlignedCaseResult[]) => void;
   /** 归并本次运行发现的子测试全名（无新增 → 不变更、不 bump）。 */
   recordSubtests: (
-    projectId: string,
+    projectId: ProjectId,
     filePath: string,
     parentCaseName: string,
     names: string[],
   ) => void;
   /** 文件编辑 → 状态失效（删除整文件条目，含子测试发现缓存）。 */
-  invalidateFile: (projectId: string, filePath: string) => void;
+  invalidateFile: (projectId: ProjectId, filePath: string) => void;
 }
 
 /** 复合 key（projectId 与 filePath 均可含任意字符，用 \u0000 分隔避免歧义）。 */
-export function testResultsFileKey(projectId: string, filePath: string): string {
+export function testResultsFileKey(projectId: ProjectId, filePath: string): string {
   return `${projectId}\u0000${filePath}`;
 }
 
@@ -150,7 +152,7 @@ export const useTestResultsStore = create<TestResultsState>((set) => ({
  * 占位（半透明图标），run 结束后未命中的用例无状态（不渲染）。
  */
 export function statusForCase(
-  projectId: string,
+  projectId: ProjectId,
   filePath: string,
   caseName: string,
 ): TestCaseStatusInfo | null {
@@ -167,7 +169,7 @@ export function statusForCase(
  * 读取非响应式（与 statusForCase 同惯例）——菜单在 openMenu 时点读，天然取到最新缓存。
  */
 export function subtestsForCase(
-  projectId: string,
+  projectId: ProjectId,
   filePath: string,
   parentCaseName: string,
 ): string[] {

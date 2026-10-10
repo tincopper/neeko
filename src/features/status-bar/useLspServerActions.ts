@@ -9,12 +9,13 @@ import {
 import { useLspStore, type LspSessionState } from '@/features/lsp/store/lspStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useTaskStore } from '@/shared/store/taskStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { serverName } from './lspStatusFormat';
 
 interface Params {
   activeProjectPath: string | undefined;
-  activeProjectId: string | null;
+  activeProjectId: ProjectId | null;
   sessionEntries: LspSessionState[];
   closeAll: () => void;
 }

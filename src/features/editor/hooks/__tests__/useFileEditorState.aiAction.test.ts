@@ -13,6 +13,7 @@ import {
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileTab } from '@/shared/types';
 import { tabIdentityOf, fileRefFromLspUri } from '@/shared/utils/fileRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useFileEditorState } from '../useFileEditorState';
 
@@ -45,7 +46,7 @@ vi.mock('@/shared/utils/codemirror', () => ({
 
 const TAB: FileTab = {
   id: 'p1:/proj/main.go',
-  projectId: 'p1',
+  workspace: WorkspaceSession.of('p1', null),
   filePath: '/proj/main.go',
   fileName: 'main.go',
   content: { path: '/proj/main.go', content: 'package main\n', size: 13, is_binary: false },

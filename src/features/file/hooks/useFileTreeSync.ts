@@ -4,24 +4,20 @@ import { useCallback, useEffect, useRef } from 'react';
 import { readDirTree } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
 import { FILE_TREE_CHANGED_EVENT } from '@/shared/events';
-import {
-  activeWorkspaceSession,
-  selectActiveCheckoutPath,
-  useWorkspaceStore,
-} from '@/shared/store/workspaceStore';
+import { activeWorkspaceSession, activeWorkspaceKeyOf } from '@/shared/store/workspaceStore';
 import type { ProjectView, FileTreeChangedEvent } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export interface UseFileTreeSyncOptions {
   project: ProjectView | null;
-  activeProjectId: string | null;
+  activeProjectId: ProjectId | null;
   /** 文件树根路径（worktree 或项目根） */
   fileRootPath: string | null;
   /** 面板在 dock 中是否激活（激活时才发起首次加载） */
   isActive: boolean;
-  onLoadFileTree: (pid: string, rootPath: string) => void;
+  onLoadFileTree: (pid: ProjectId, rootPath: string) => void;
   onFileRefresh: () => void;
   onExpandDir: (dirPath: string) => Promise<void>;
 }
@@ -49,7 +45,7 @@ export function useFileTreeSync({
   onExpandDir,
 }: UseFileTreeSyncOptions) {
   const makeLoader = useCallback(
-    (pid: string, dirPath: string) => () =>
+    (pid: ProjectId, dirPath: string) => () =>
       readDirTree(
         activeWorkspaceSession(pid),
         dirPath || null,
@@ -112,8 +108,7 @@ export function useFileTreeSync({
       if (!activeProjectId || project_id !== activeProjectId) return;
       // 按**Workspace**定址：树的作用域含工作树根路径，收别的单元的事件会用它
       // 不相关的目录集合重载当前树（相对路径在两个工作树里同形不同义）。
-      const checkoutPath = selectActiveCheckoutPath(useWorkspaceStore.getState(), activeProjectId);
-      if (workspace_key !== workspaceKeyOf(activeProjectId, checkoutPath)) return;
+      if (workspace_key !== activeWorkspaceKeyOf(activeProjectId)) return;
       if (!project || project.type !== 'Local') return;
       // 移除 isActive 限制：即使文件面板未激活，文件变更仍应触发刷新，
       // 确保用户切换到文件面板时看到的是最新状态。

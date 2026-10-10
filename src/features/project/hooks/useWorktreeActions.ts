@@ -1,20 +1,21 @@
 import { useCallback } from 'react';
 
-import { useEditorStore } from '@/shared/store/editorStore';
+import { restoreActiveTabId } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { isActiveWorktree } from '@/shared/utils/git';
+import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
 
 import { loadOnboardingState } from '../api/onboardingApi';
 import { setActiveProject, setViewTerminal } from '../api/projectApi';
 
 interface UseWorktreeActionsParams {
   /** 激活某Workspace（`null` = 主仓）。只写激活态，后端挂载由 useActiveWorkspaceSync 跟随。 */
-  activateWorkspace: (projectId: string, path: string | null, branch?: string) => void;
+  activateWorkspace: (projectId: ProjectId, path: string | null, branch?: string) => void;
   /** 记入「打开过的工作树」清单。 */
-  markWorkspaceOpened: (projectId: string, path: string, branch: string) => void;
-  saveWorktreeState: (projectId: string, wtPath: string | null) => void;
+  markWorkspaceOpened: (projectId: ProjectId, path: string, branch: string) => void;
+  saveWorktreeState: (projectId: ProjectId, wtPath: string | null) => void;
 }
 
 export function useWorktreeActions({
@@ -25,7 +26,7 @@ export function useWorktreeActions({
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const handleBackToMainTerminal = useCallback(
-    (projectId: string) => {
+    (projectId: ProjectId) => {
       const path = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
       if (isActiveWorktree(path)) {
         activateWorkspace(projectId, null, '');
@@ -39,21 +40,19 @@ export function useWorktreeActions({
   );
 
   const handleOpenWorktreeTerminal = useCallback(
-    async (projectId: string, worktreePath: string, branch: string) => {
+    async (projectId: ProjectId, worktreePath: string, branch: string) => {
       // 首次访问该工作树时展示引导页，否则直接进入终端
       const worktreeKey = `${projectId}::${worktreePath}`;
       const onboardingState = await loadOnboardingState(worktreeKey);
       const isFirstVisit = onboardingState === null;
 
       if (activeProjectId !== projectId) {
-        const targetProjectTabs = useEditorStore.getState().tabs[projectId];
+        // 打开的是**指定 worktree** 的终端 → 重派生该单元的激活 tab
+        restoreActiveTabId(WorkspaceSession.of(projectId, worktreePath).key);
         useProjectStore.setState({
           activeProjectId: projectId,
           activeProject:
             useProjectStore.getState().projects.find((project) => project.id === projectId) ?? null,
-        });
-        useEditorStore.setState({
-          activeTabId: targetProjectTabs?.activeTabId ?? null,
         });
         setActiveProject(projectId).catch(console.error);
       }

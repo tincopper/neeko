@@ -4,7 +4,7 @@ import type { StashEntry } from '@/features/git/types';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { Tab } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /**
  * 点击 stash 文件打开 diff tab（与 history 打开 diff 文件机制一致）。
@@ -13,7 +13,7 @@ import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
  * 避免 diff tab 落入 local tab 组。
  */
 export function useOpenStashDiff(
-  projectId: string | undefined,
+  projectId: ProjectId | undefined,
   activeCheckoutPath?: string | null,
   stashes: StashEntry[] = [],
 ): (selector: string, filePath: string) => void {
@@ -22,14 +22,16 @@ export function useOpenStashDiff(
       const projectState = useProjectStore.getState();
       const editorState = useEditorStore.getState();
       const realProjectId = projectState.activeProjectId ?? projectId ?? '';
-      const tabKey = workspaceKeyOf(realProjectId, activeCheckoutPath);
+      // 身份值对象是唯一来源：键 = session.key
+      const session = WorkspaceSession.of(realProjectId, activeCheckoutPath ?? null);
+      const tabKey = session.key;
       const existingTabs = editorState.tabs[tabKey];
       const existingDiffTab = existingTabs?.tabs.find(
         (t) =>
           t.data.kind === 'diff' &&
           t.data.filePath === filePath &&
-          t.data.diffSource.type === 'stash' &&
-          t.data.diffSource.selector === selector,
+          t.data.diffSource.revision.type === 'stash' &&
+          t.data.diffSource.revision.selector === selector,
       );
       if (existingDiffTab) {
         editorState.activateTab(tabKey, existingDiffTab.id);
@@ -40,22 +42,18 @@ export function useOpenStashDiff(
       const tabId = `tab_${crypto.randomUUID()}`;
       const tabItem: Tab = {
         id: tabId,
-        // tab 的 projectId 是真实 project id（持值，不从 tabKey 解回）
-        projectId: realProjectId,
+        // tab 身份是真实 project id 的 session（持值，不从 tabKey 反解）
+        scope: { kind: 'workspace', session },
         title: message ? `${selector}: ${message}` : selector,
         order: existingTabs?.tabs.length ?? 0,
         data: {
           kind: 'diff',
           filePath,
           fileName,
-          diffSource: {
-            type: 'stash',
-            projectId: realProjectId,
-            selector,
-          },
+          diffSource: { workspace: session, revision: { type: 'stash', selector } },
         },
       };
-      editorState.addTab(tabKey, tabItem);
+      editorState.addTab(tabItem);
       editorState.activateTab(tabKey, tabId);
     },
     [projectId, activeCheckoutPath, stashes],

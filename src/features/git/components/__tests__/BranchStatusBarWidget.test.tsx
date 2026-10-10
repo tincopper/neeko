@@ -5,7 +5,7 @@
  * （写入侧用的是 `{source}:{connectionId}:{projectId}`，且三个写入点的 connectionId 约定
  * 各不相同：`distro` / `${host}:${port}` / `host`）⇒ 状态栏的 ↑N/↓N 恒空。
  *
- * 现在读写两侧共用 `workspaceKeyOf(projectId, worktreePath)`：主仓与 linked worktree 各显示
+ * 现在读写两侧共用 `WorkspaceSession.of(projectId, (worktreePath) ?? null).key`：主仓与 linked worktree 各显示
  * **自己那个单元**的待推送数 —— 这正是 ahead/behind 作为 per 工作树 事实的落地点。
  */
 import { render, screen } from '@testing-library/react';
@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import BranchStatusBarWidget from '../BranchStatusBarWidget';
 
@@ -57,7 +57,7 @@ describe('BranchStatusBarWidget — ahead/behind 按Workspace读取', () => {
   it('主仓单元：显示该单元键下的 ↑N/↓N', () => {
     seed('p1', null);
     useGitStore.setState({
-      aheadBehind: { [workspaceKeyOf('p1', null)]: { ahead: 2, behind: 1 } },
+      aheadBehind: { [WorkspaceSession.of('p1', null).key]: { ahead: 2, behind: 1 } },
     });
 
     render(<BranchStatusBarWidget {...ACTIONS} />);
@@ -70,8 +70,8 @@ describe('BranchStatusBarWidget — ahead/behind 按Workspace读取', () => {
     seed('p1', '/repo-wt');
     useGitStore.setState({
       aheadBehind: {
-        [workspaceKeyOf('p1', null)]: { ahead: 7, behind: 0 },
-        [workspaceKeyOf('p1', '/repo-wt')]: { ahead: 5, behind: 0 },
+        [WorkspaceSession.of('p1', null).key]: { ahead: 7, behind: 0 },
+        [WorkspaceSession.of('p1', '/repo-wt').key]: { ahead: 5, behind: 0 },
       },
     });
 

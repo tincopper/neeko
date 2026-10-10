@@ -449,7 +449,7 @@ return (
 **adapter 调用方契约**：
 1. 数据 normalize：把领域模型映射成展示组件期望的 props（如把 `git_info.worktrees` 映射成 `SessionRow` 数组）
 2. 回调注入：把领域 IPC 包装成展示组件期望的回调（如 `onAddWorktree = () => onOpenDialog("new-worktree", ...)`）
-3. store 读写在 adapter 层完成（如 `aheadBehind` 用**Workspace键** `workspaceKeyOf(projectId, unitPath)` 查表；`unitPath` 取自 `selectActiveWorkspaceKey` / `selectActiveCheckoutPath`，不各自猜）
+3. store 读写在 adapter 层完成（如 `aheadBehind` 用**Workspace键** `WorkspaceSession.of(projectId, unitPath ?? null).key` 查表；`unitPath` 取自 `selectActiveWorkspaceKey` / `selectActiveCheckoutPath`，不各自猜）
 
 **反模式**：让纯展示组件 import `invoke` 或 `useGitStore`——会立刻丧失三端复用能力，把 wsl/remote 路径推回写另一份并行实现。
 

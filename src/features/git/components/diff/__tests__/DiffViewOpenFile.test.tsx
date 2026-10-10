@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
+
 import DiffView from '../DiffView';
 import type { DiffResult } from '../types';
 
@@ -28,7 +30,10 @@ vi.mock('@/features/quick-open', () => ({
 
 const mockOpenProjectFile = vi.fn(() => Promise.resolve());
 
-const DIFF_SOURCE = { type: 'local', projectId: 'p1' } as const;
+const DIFF_SOURCE = {
+  workspace: WorkspaceSession.of('p1', null),
+  revision: { type: 'worktree' },
+} as const;
 
 const diffResult: DiffResult = {
   hunks: [

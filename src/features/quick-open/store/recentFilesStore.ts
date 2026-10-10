@@ -7,11 +7,12 @@
 import { create } from 'zustand';
 
 import { sameIdentity } from '@/shared/utils/fileRef';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 const MAX_RECENT = 50;
 
 export interface RecentFileEntry {
-  projectId: string;
+  projectId: ProjectId;
   filePath: string;
   /** epoch ms */
   at: number;
@@ -20,9 +21,9 @@ export interface RecentFileEntry {
 interface RecentFilesState {
   /** projectId → MRU list (newest first) */
   byProject: Record<string, RecentFileEntry[]>;
-  record: (projectId: string, filePath: string) => void;
-  list: (projectId: string) => RecentFileEntry[];
-  clearProject: (projectId: string) => void;
+  record: (projectId: ProjectId, filePath: string) => void;
+  list: (projectId: ProjectId) => RecentFileEntry[];
+  clearProject: (projectId: ProjectId) => void;
 }
 
 export const useRecentFilesStore = create<RecentFilesState>((set, get) => ({

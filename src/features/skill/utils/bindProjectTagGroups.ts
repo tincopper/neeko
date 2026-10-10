@@ -1,7 +1,8 @@
 import type { ManagedSkillDto } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export interface BindProjectTagGroupsInput {
-  projectId: string;
+  projectId: ProjectId;
   projectPath: string;
   /** Full desired set of bound tag group ids (atomic replace). */
   tagGroupIds: string[];
@@ -13,7 +14,7 @@ export interface BindProjectTagGroupsInput {
 
 export interface BindProjectTagGroupsDeps {
   setProjectTagGroups: (
-    projectId: string,
+    projectId: ProjectId,
     tagGroupIds: string[],
     projectPath?: string,
   ) => Promise<void>;

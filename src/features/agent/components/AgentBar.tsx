@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 
 import type { AgentConfig } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { checkAgentsInstalled } from '../api/agentApi';
 
@@ -11,7 +12,7 @@ interface AgentBarProps {
   selectedAgentId: string | null;
   compactMode?: boolean;
   /** Project whose Local/WSL/SSH environment is used for install checks. */
-  projectId?: string | null;
+  projectId?: ProjectId | null;
   onSelectAgent: (agentId: string | null) => void;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
 }

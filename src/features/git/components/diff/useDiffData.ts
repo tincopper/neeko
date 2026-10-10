@@ -7,11 +7,12 @@ import { useGitRefresh } from '@/shared/hooks/useGitRefresh';
 import type { FileChangedEvent, GitStatusSnapshot } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import type { DiffResult, DiffSource, DiffLine } from './types';
 
 interface UseDiffDataParams {
-  projectId?: string;
+  projectId?: ProjectId;
   diffSource?: DiffSource;
   filePath: string;
   commands?: ProjectCommands | null;
@@ -38,28 +39,34 @@ export function useDiffData({
   const fetchDiff = useCallback(
     async (collapseMode: boolean): Promise<DiffResult> => {
       const ds = diffSource;
-      // 所有 diff 加载统一走 commands（ProjectCommands 在各环境下都可用）
-      // commands 不可用时降级为 projectId 直调
-      if (ds?.type === 'commit' || ds?.type === 'wsl-commit' || ds?.type === 'remote-commit') {
+      const rev = ds?.revision;
+      // 地址权威在 `DiffSource.workspace`；`projectId` 仅为无 diffSource 时的回退。
+      const pid = ds?.workspace.projectId ?? projectId;
+      // 所有 diff 加载统一走 commands（ProjectCommands 按Workspace构造，自带环境维度）
+      // commands 不可用时降级为 pid 直调；无项目上下文则 fail-visible（不制造 '' 伪身份）
+      if (rev?.type === 'commit') {
         if (commands) {
-          return commands.getCommitFileDiff(ds.commitHash, filePath, collapseMode);
+          return commands.getCommitFileDiff(rev.commitHash, filePath, collapseMode);
         }
+        if (!pid) throw new Error('[useDiffData] no project context for commit diff');
         const { getCommitFileDiff } = await import('../../api/gitApi');
-        return getCommitFileDiff(projectId ?? '', ds.commitHash, filePath, collapseMode);
+        return getCommitFileDiff(pid, rev.commitHash, filePath, collapseMode);
       }
-      if (ds?.type === 'stash') {
+      if (rev?.type === 'stash') {
         if (commands) {
-          return commands.getStashFileDiff(ds.selector, filePath, collapseMode);
+          return commands.getStashFileDiff(rev.selector, filePath, collapseMode);
         }
+        if (!pid) throw new Error('[useDiffData] no project context for stash diff');
         const { getStashFileDiff } = await import('../../api/gitApi');
-        return getStashFileDiff(projectId ?? '', ds.selector, filePath, collapseMode);
+        return getStashFileDiff(pid, rev.selector, filePath, collapseMode);
       }
       if (commands) {
         return commands.getFileDiff(filePath, collapseMode);
       }
+      if (!pid) throw new Error('[useDiffData] no project context for worktree diff');
       const { getFileDiff } = await import('../../api/gitApi');
-      const wt = ds?.type === 'worktree' ? ds.worktreePath : undefined;
-      return getFileDiff(projectId ?? '', filePath, wt, collapseMode);
+      const wt = ds?.workspace.worktreePath ?? undefined;
+      return getFileDiff(pid, filePath, wt, collapseMode);
     },
     [projectId, diffSource, filePath, commands],
   );

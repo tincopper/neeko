@@ -2,10 +2,11 @@ import { useMemo } from 'react';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { ProjectEnvironment } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export interface ProjectListItem {
   kind: 'local' | 'wsl' | 'remote';
-  id: string;
+  id: ProjectId;
   name: string;
   path: string;
   has_git_info: boolean;
@@ -46,7 +47,7 @@ export function useProjectList(): {
 /** Pure function version — testable without React context */
 export function useProjectListFromData(
   projects: {
-    id: string;
+    id: ProjectId;
     name: string;
     path: string;
     git_info?: unknown | null;

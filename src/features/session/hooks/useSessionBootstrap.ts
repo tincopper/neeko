@@ -4,7 +4,7 @@ import { useProjectStore, selectHasStatus } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Worktree } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /* eslint-disable import/no-restricted-paths -- session bootstrap needs git API for reading git info */
 import { canonicalWorktreePath, getGitBranchInfo, getWorkspaceStatus } from '../../git/api/gitApi';
@@ -49,7 +49,7 @@ export function useSessionBootstrap(deps: {
           git_provider: '',
         };
 
-        const patchGitInfo = (projectId: string, patch: Partial<typeof defaultGitInfo>) => {
+        const patchGitInfo = (projectId: ProjectId, patch: Partial<typeof defaultGitInfo>) => {
           useProjectStore.setState((state) => {
             const nextProjects = state.projects.map((proj) => {
               if (proj.id !== projectId) return proj;
@@ -68,7 +68,7 @@ export function useSessionBootstrap(deps: {
         for (const p of projects) {
           // 非 git 项目（git_info 为 null）跳过所有 git 命令
           if (p.git_info === null) continue;
-          const mainKey = workspaceKeyOf(p.id, null);
+          const mainKey = WorkspaceSession.of(p.id, null).key;
           // 主仓单元 status：走同一写入口（applyStatus 内含 version gate），侧栏
           // 变更计数因此有数据来源；激活单元由 useActiveWorkspaceSync 负责挂载与刷新。
           if (!selectHasStatus(useProjectStore.getState(), mainKey)) {
@@ -107,7 +107,7 @@ export function useSessionBootstrap(deps: {
         }
 
         // 恢复上次活动的项目（来自 session 持久化的 active_project_id）
-        const activeId = session.active_project_id;
+        const activeId = session.active_project_id as ProjectId;
         if (activeId) {
           const state = useProjectStore.getState();
           const activeProj = state.projects.find((p) => p.id === activeId) ?? null;

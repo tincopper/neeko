@@ -29,15 +29,17 @@ import { INSERT_TO_AGENT_INPUT_EVENT } from '@/shared/events';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
+import {
+  activeWorkspaceSession,
+  useActiveWorkspaceKey,
+  useActiveCheckoutPath,
+} from '@/shared/store/workspaceStore';
 import type { AgentConfig } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { tabSpaceKeyOf } from '@/shared/utils/tabIdentity';
 import { Button } from '@/ui/Button';
 
 import { WelcomeScreen } from './WelcomeScreen';
-const APP_SETTINGS_PROJECT_ID = '__app__';
-
 function ProjectView() {
   const { showToast } = useAppContext();
   const { onAddProject } = useProjectActionsContext();
@@ -46,15 +48,13 @@ function ProjectView() {
   const { agents, onAgentClick } = useEditorContext();
   const activeProject = useProjectStore((state) => state.activeProject);
   const activeCheckoutPath = useActiveCheckoutPath();
-
   // Determine the current project ID (all types via unified store)
   const currentProjectId = activeProject?.id ?? null;
-
+  const activeWorkspaceKey = useActiveWorkspaceKey(currentProjectId);
   // Composite tab key: worktree gets its own independent tab space
   const tabKey = currentProjectId
-    ? workspaceKeyOf(currentProjectId, activeCheckoutPath)
-    : APP_SETTINGS_PROJECT_ID;
-
+    ? (activeWorkspaceKey ?? tabSpaceKeyOf({ kind: 'app' }))
+    : tabSpaceKeyOf({ kind: 'app' });
   // Get unified tabs from store
   const projectTabs = useEditorStore(
     useShallow((state) => {
@@ -108,9 +108,9 @@ function ProjectView() {
     if (!tabKey || !currentProjectId) return;
     const tabId = `tab_${crypto.randomUUID()}`;
     const tabs = useEditorStore.getState().tabs[tabKey]?.tabs ?? [];
-    useEditorStore.getState().addTab(tabKey, {
+    useEditorStore.getState().addTab({
       id: tabId,
-      projectId: currentProjectId,
+      scope: { kind: 'workspace', session: activeWorkspaceSession(currentProjectId) },
       title: 'Agent Chat',
       order: tabs.length,
       data: {
@@ -124,7 +124,7 @@ function ProjectView() {
 
   const handleGuideNewFile = useCallback(() => {
     if (!tabKey || !currentProjectId) return;
-    createUntitledFileTab(tabKey, currentProjectId);
+    createUntitledFileTab(currentProjectId);
   }, [tabKey, currentProjectId]);
 
   const handleSelectAgent = useCallback(
@@ -159,7 +159,7 @@ function ProjectView() {
           break;
         case 'new-file': {
           if (currentProjectId) {
-            createUntitledFileTab(tabKey, currentProjectId);
+            createUntitledFileTab(currentProjectId);
           }
           break;
         }
@@ -176,7 +176,7 @@ function ProjectView() {
         }
       }
     },
-    [handleAddTerminalTab, activeProject, currentProjectId, tabKey],
+    [handleAddTerminalTab, activeProject, currentProjectId],
   );
 
   // ── Terminal / agent-input 插入能力注册 ─────────────────────────────────

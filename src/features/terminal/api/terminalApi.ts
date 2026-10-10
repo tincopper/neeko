@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 /** Mirrors the Rust crate::terminal::types::TerminalSession struct */
 export interface TerminalSession {
   id: string;
@@ -22,7 +24,7 @@ export interface TerminalSession {
 }
 
 export function createTerminalSession(
-  projectId: string,
+  projectId: ProjectId,
   cols: number,
   rows: number,
   shell?: string | null,

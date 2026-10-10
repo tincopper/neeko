@@ -15,10 +15,11 @@ import { relativeToRoot } from '@/shared/utils/fileRef';
  * tab 的 filePath 恒为 canonical 绝对路径，而树节点路径相对树根
  * （worktree ?? 项目根）：`rootPath` 传入树根，路径在其下时剥根转相对再匹配。
  */
-export function useLocateFileInTree(tabKey: string, rootPath?: string | null) {
+export function useLocateFileInTree(tabKey: string | null, rootPath?: string | null) {
   const activeTab = useEditorStore(
     useCallback(
       (s) => {
+        if (!tabKey) return null;
         const projectTabs = s.tabs[tabKey];
         if (!projectTabs?.activeTabId) return null;
         return projectTabs.tabs.find((t) => t.id === projectTabs.activeTabId) ?? null;

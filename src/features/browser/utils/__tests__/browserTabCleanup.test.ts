@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useBrowserTabsStore } from '@/shared/store/browserTabsStore';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 const browserCloseMock = vi.fn().mockResolvedValue(undefined);
 const browserSetVisibleMock = vi.fn().mockResolvedValue(undefined);
@@ -13,6 +14,11 @@ vi.mock('@/features/browser/api/browserApi', () => ({
 }));
 
 import { ensureBrowserTabCleanupRegistered } from '../browserTabCleanup';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 describe('browserTabCleanup — 关闭 browser tab 销毁 webview + 清除状态', () => {
   beforeEach(() => {
@@ -25,9 +31,9 @@ describe('browserTabCleanup — 关闭 browser tab 销毁 webview + 清除状态
   it('closeTab 关闭 browser tab 时先隐藏再关闭 webview 并移除 per-tab 状态', () => {
     ensureBrowserTabCleanupRegistered();
 
-    useEditorStore.getState().addTab('p1', {
+    useEditorStore.getState().addTab({
       id: 'tab_b1',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'GitHub',
       order: 0,
       data: { kind: 'browser', url: 'https://github.com' },
@@ -40,7 +46,7 @@ describe('browserTabCleanup — 关闭 browser tab 销毁 webview + 清除状态
       lastActiveAt: Date.now(),
     });
 
-    useEditorStore.getState().closeTab('p1', 'tab_b1');
+    useEditorStore.getState().closeTab(mkSession('p1').key, 'tab_b1');
 
     expect(browserSetVisibleMock).toHaveBeenCalledWith('neeko-browser-tab-tab_b1', false);
     expect(browserCloseMock).toHaveBeenCalledWith('neeko-browser-tab-tab_b1');
@@ -50,16 +56,16 @@ describe('browserTabCleanup — 关闭 browser tab 销毁 webview + 清除状态
   it('clearProjectTabs 清空项目时对所有 browser tab 执行 browserClose', () => {
     ensureBrowserTabCleanupRegistered();
 
-    useEditorStore.getState().addTab('p1', {
+    useEditorStore.getState().addTab({
       id: 'tab_b1',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'A',
       order: 0,
       data: { kind: 'browser', url: 'https://a.com' },
     });
-    useEditorStore.getState().addTab('p1', {
+    useEditorStore.getState().addTab({
       id: 'tab_b2',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'B',
       order: 1,
       data: { kind: 'browser', url: 'https://b.com' },
@@ -67,7 +73,7 @@ describe('browserTabCleanup — 关闭 browser tab 销毁 webview + 清除状态
     useBrowserTabsStore.getState().setTabState('tab_b1', { url: 'https://a.com', isCreated: true });
     useBrowserTabsStore.getState().setTabState('tab_b2', { url: 'https://b.com', isCreated: true });
 
-    useEditorStore.getState().clearProjectTabs('p1');
+    useEditorStore.getState().clearProjectTabs(mkSession('p1').key);
 
     expect(browserCloseMock).toHaveBeenCalledWith('neeko-browser-tab-tab_b1');
     expect(browserCloseMock).toHaveBeenCalledWith('neeko-browser-tab-tab_b2');
@@ -77,15 +83,15 @@ describe('browserTabCleanup — 关闭 browser tab 销毁 webview + 清除状态
   it('关闭非 browser 类型 tab 不触发 browserClose', () => {
     ensureBrowserTabCleanupRegistered();
 
-    useEditorStore.getState().addTab('p1', {
+    useEditorStore.getState().addTab({
       id: 'tab_t1',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'Terminal',
       order: 0,
       data: { kind: 'terminal', agentId: null, status: 'Idle' },
     });
 
-    useEditorStore.getState().closeTab('p1', 'tab_t1');
+    useEditorStore.getState().closeTab(mkSession('p1').key, 'tab_t1');
 
     expect(browserCloseMock).not.toHaveBeenCalled();
   });

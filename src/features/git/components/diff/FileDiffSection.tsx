@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ChevronRight } from '@/shared/components/icons';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import DiffTable from './DiffTable';
 import {
@@ -141,7 +142,7 @@ export const DiffFileCard: React.FC<DiffFileCardProps> = React.memo(
 DiffFileCard.displayName = 'DiffFileCard';
 
 interface FileDiffSectionProps {
-  projectId: string;
+  projectId: ProjectId;
   diffSource: NonNullable<DiffViewProps['diffSource']>;
   filePath: string;
   status: string;

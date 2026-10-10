@@ -1,24 +1,25 @@
 import type { DialogState } from '@/shared/components/GitDialog';
 import type { AgentConfig, AppConfig, Project } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 export interface ProjectItemActions {
-  onSelectProject: (projectId: string) => void;
-  onRemoveProject: (projectId: string) => void;
-  onSelectFile: (projectId: string, filePath: string) => void;
-  onRefreshGit: (projectId: string) => void;
-  onBackToMainTerminal: (projectId: string) => void;
+  onSelectProject: (projectId: ProjectId) => void;
+  onRemoveProject: (projectId: ProjectId) => void;
+  onSelectFile: (projectId: ProjectId, filePath: string) => void;
+  onRefreshGit: (projectId: ProjectId) => void;
+  onBackToMainTerminal: (projectId: ProjectId) => void;
   onOpenDialog: (dialog: DialogState) => void;
-  onCommit?: (projectId: string) => void;
-  onPush?: (projectId: string) => void;
-  onPull?: (projectId: string) => void;
-  onOpenIde?: (projectId: string) => void;
-  onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
+  onCommit?: (projectId: ProjectId) => void;
+  onPush?: (projectId: ProjectId) => void;
+  onPull?: (projectId: ProjectId) => void;
+  onOpenIde?: (projectId: ProjectId) => void;
+  onOpenWorktreeTerminal?: (projectId: ProjectId, worktreePath: string, branch: string) => void;
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
-  onRefresh?: (projectId: string) => void;
+  onRefresh?: (projectId: ProjectId) => void;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
   onSaveProjectSettings?: (
-    projectId: string,
+    projectId: ProjectId,
     agentId: string | null,
     ideCommand: string | null,
   ) => void;

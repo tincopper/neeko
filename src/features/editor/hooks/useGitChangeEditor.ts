@@ -15,7 +15,7 @@ import type {
 } from '@/shared/types';
 import { fileRefFromTabPath, pathsContainFile, relativeToRootOrNull } from '@/shared/utils/fileRef';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
-import { workspaceKeyOf, workspaceRootOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession, workspaceRootOf } from '@/shared/utils/workspaceRef';
 
 import { createGitChangeExtensions, setFileLineChangesEffect } from '../git-change';
 
@@ -24,7 +24,7 @@ const REFRESH_DEBOUNCE_MS = 300;
 
 interface UseGitChangeEditorParams {
   enabled: boolean;
-  projectId: string | null;
+  projectId: ProjectId | null;
   /** tab.filePath（canonical 绝对或虚拟身份）；fetch 前剥根为仓库相对路径。 */
   filePath: string;
   /** 项目根：剥根基准（worktree 未激活时）+ file-changed 相对路径身份基准。 */
@@ -56,7 +56,7 @@ function resolveWorkspaceRelativePath(workspaceRoot: string, filePath: string): 
 
 /** 主/事件两条路径共用的拉取：失败返回 `[]`（静默），stale 时返回 `null` 表示丢弃。 */
 async function loadChanges(
-  projectId: string,
+  projectId: ProjectId,
   filePath: string,
   worktreePath: string | null | undefined,
   isStale: () => boolean,
@@ -72,7 +72,7 @@ async function loadChanges(
 }
 
 function buildKey(
-  projectId: string,
+  projectId: ProjectId,
   filePath: string,
   worktreePath: string | null | undefined,
   eventTick: number,
@@ -122,7 +122,7 @@ export function useGitChangeEditor({
    * 一律按 `workspace_key` 定址 —— 同一项目的 worktree 与主仓是两套 HEAD/index/workdir，
    * 只比 `project_id` 会让主仓快照触发 worktree 编辑器的重拉（反之亦然）。
    */
-  const workspaceKey = projectId ? workspaceKeyOf(projectId, worktreePath) : null;
+  const workspaceKey = projectId ? WorkspaceSession.of(projectId, worktreePath ?? null).key : null;
 
   // 单元相对路径的基准（= 该单元工作树根）。唯一派生点：`workspaceRootOf`。
   const workspaceRoot = workspaceKey

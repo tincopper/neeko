@@ -10,6 +10,8 @@ import TerminalViewBase from './TerminalViewBase';
 
 export interface TerminalViewProps {
   paneId: string;
+  /** 该 pane 所属 tab 的空间键（`WorkspaceSession#key`）；由 PaneContent 显式下传。 */
+  tabSpaceKey?: string;
   worktreePath?: string;
   worktreeBranch?: string;
   /** Remote-specific configuration. Required when the active project is Remote. */
@@ -24,7 +26,13 @@ export interface TerminalViewProps {
   };
 }
 
-function TerminalView({ paneId, worktreePath, worktreeBranch, remoteConfig }: TerminalViewProps) {
+function TerminalView({
+  paneId,
+  tabSpaceKey,
+  worktreePath,
+  worktreeBranch,
+  remoteConfig,
+}: TerminalViewProps) {
   const { config } = useAppContext();
   const { activeTabId, tabs, onTabStatusChange } = useEditorContext();
   const strategy = useTerminalStrategy({
@@ -40,10 +48,9 @@ function TerminalView({ paneId, worktreePath, worktreeBranch, remoteConfig }: Te
   const agentCommandOverride = config.agentCommandOverrides?.[tabAgentId ?? ''];
 
   // Task terminal fields — read from full Tab data in editorStore
-  const projectId = strategy ? strategy.cacheKey.split(':')[0] : null;
   const fullTabData = useEditorStore((s) => {
-    if (!projectId || !activeTabId) return null;
-    const pt = s.tabs[projectId];
+    if (!tabSpaceKey || !activeTabId) return null;
+    const pt = s.tabs[tabSpaceKey];
     return pt?.tabs.find((t) => t.id === activeTabId)?.data ?? null;
   });
   const taskCommand = fullTabData?.kind === 'terminal' ? (fullTabData.taskCommand ?? null) : null;

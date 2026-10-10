@@ -10,13 +10,19 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useLocateFileInTree } from '../useLocateFileInTree';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 function makeFileTab(id: string, filePath: string): Tab {
   return {
     id,
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: filePath,
     order: 0,
     data: {
@@ -32,7 +38,7 @@ function makeFileTab(id: string, filePath: string): Tab {
 function makeTerminalTab(id: string): Tab {
   return {
     id,
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: id,
     order: 0,
     data: { kind: 'terminal', agentId: null, status: 'Idle' },

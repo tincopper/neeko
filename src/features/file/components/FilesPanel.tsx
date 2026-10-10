@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import ContextMenu from '@/shared/components/ContextMenu';
 import type { FileChange } from '@/shared/types';
 import { buildFileTreeView, flattenFileTreeView } from '@/shared/utils/fileTree';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { useFilePanelState } from '../hooks/useFilePanelState';
 import { useGitDecorationProjection } from '../hooks/useGitDecorationProjection';
@@ -22,7 +23,7 @@ interface FilesPanelProps {
   projectName: string | null;
   projectPath?: string | null;
   /** 项目 ID — 用于拖拽文件时传给 sendToAgent */
-  projectId: string | null;
+  projectId: ProjectId | null;
   activeFilePath: string | null;
   onSelectFile: (filePath: string) => void;
   onRefresh: () => void;

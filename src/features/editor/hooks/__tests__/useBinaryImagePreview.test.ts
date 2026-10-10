@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileTab, ProjectEnvironment } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useBinaryImagePreview } from '../useBinaryImagePreview';
 
 function fileTab(filePath: string, isBinary: boolean): FileTab {
   return {
     id: 't1',
-    projectId: 'p1',
+    workspace: WorkspaceSession.of('p1', null),
     filePath,
     fileName: filePath.split('/').pop() ?? filePath,
     content: { path: filePath, content: '', size: 10, is_binary: isBinary },

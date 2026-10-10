@@ -146,13 +146,15 @@ export function useEditorViewSnapshot({
       editorViewRef.current = view;
       // 登记到全局注册表：跨面板的编辑（codeAction / workspace/applyEdit）要按
       // document uri 找回这个视图。项目根取自项目对象，不在本处推导。
-      const viewIdentity = editorIdentityOfTab(tab.projectId, absFilePath);
+      const viewIdentity = editorIdentityOfTab(tab.workspace.projectId, absFilePath);
       if (viewIdentity) registerEditorView(viewIdentity, view);
       setEditorViewEpoch((n) => n + 1);
       // Apply any breakpoints already in the store (effect may have run before view existed)
       const dbgBp = useDebugStore.getState();
-      const rawEntries = dbgBp.breakpoints[tab.projectId]?.[absFilePath] ?? [];
-      const muted = tab.projectId ? !!dbgBp.breakpointsMuted[tab.projectId] : false;
+      const rawEntries = dbgBp.breakpoints[tab.workspace.projectId]?.[absFilePath] ?? [];
+      const muted = tab.workspace.projectId
+        ? !!dbgBp.breakpointsMuted[tab.workspace.projectId]
+        : false;
       const visualEntries = toVisualEntries(rawEntries, muted);
       lastSyncedBpKeyRef.current = breakpointSyncKey(absFilePath, visualEntries);
       view.dispatch({ effects: bpSyncEffect(visualEntries) });
@@ -160,7 +162,7 @@ export function useEditorViewSnapshot({
       const dbg = useDebugStore.getState();
       const snapshotSession = dbg.session;
       // 快照恢复只属于本 tab 项目的会话：跨项目残留停点不得在别的项目编辑器上画线（#14）。
-      const snapshotVisible = isSessionVisibleFor(snapshotSession, tab.projectId);
+      const snapshotVisible = isSessionVisibleFor(snapshotSession, tab.workspace.projectId);
       const hl = resolveDebugHighlightLine(
         absFilePath,
         snapshotVisible ? dbg.location : null,
@@ -207,7 +209,7 @@ export function useEditorViewSnapshot({
     [
       tabKey,
       tabId,
-      tab.projectId,
+      tab.workspace.projectId,
       absFilePath,
       bpSyncEffect,
       editorViewRef,
@@ -222,12 +224,12 @@ export function useEditorViewSnapshot({
     return () => {
       saveEditorSnapshot();
       // 注销：注册表必须随视图一起回收，否则会持有已销毁的 EditorView（V8 堆泄漏）。
-      const viewIdentity = editorIdentityOfTab(tab.projectId, absFilePath);
+      const viewIdentity = editorIdentityOfTab(tab.workspace.projectId, absFilePath);
       if (viewIdentity) unregisterEditorView(viewIdentity);
       editorViewRef.current = null;
       editorRestoredRef.current = false;
     };
-  }, [saveEditorSnapshot, editorViewRef, tab.projectId, absFilePath]);
+  }, [saveEditorSnapshot, editorViewRef, tab.workspace.projectId, absFilePath]);
 
   return { handleCreateEditor, viewStateExt, resetEditorRestored };
 }

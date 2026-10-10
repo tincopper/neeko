@@ -14,12 +14,13 @@ import { useGitStore } from '@/shared/store/gitStore';
 import { useActiveCheckoutPath, useActiveCheckoutBranch } from '@/shared/store/workspaceStore';
 import type { GitInfo, AheadBehind } from '@/shared/types';
 import { filterWorktreeBranches, isActiveWorktree } from '@/shared/utils';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import BranchSwitcherPanel from './BranchSwitcherPanel';
 
 interface BranchInfoProps {
   gitInfo: GitInfo | null;
-  projectId: string;
+  projectId: ProjectId;
   aheadBehind: AheadBehind | null;
   loading: boolean;
   onFetch: () => void;

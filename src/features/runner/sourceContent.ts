@@ -12,7 +12,8 @@
  * result, so a further channel is added here alone.
  */
 import { readFileContent } from '@/features/file/api/fileApi';
-import type { FileContent, WorkspaceSession } from '@/shared/types';
+import { FileContent } from '@/shared/types';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { dapReadExternalSource, dapSourceContent } from './api/debugApi';
 
@@ -41,7 +42,7 @@ function isJdtSourceRef(p: string): boolean {
 
 /** 会话门控的只读外部读取（授权凭据 = 调试器正停在该源码上）。 */
 async function readExternal(
-  projectId: string,
+  projectId: ProjectId,
   sessionId: string,
   sourcePath: string,
 ): Promise<StopSourceContent> {

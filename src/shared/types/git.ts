@@ -1,4 +1,4 @@
-import type { AuthMethod } from './connection';
+import type { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 export interface FileChange {
   path: string;
@@ -304,31 +304,22 @@ export type PushOutcome =
 
 export type ViewMode = 'unified' | 'split';
 
-export type DiffSource =
-  | { type: 'local'; projectId: string }
-  | { type: 'wsl'; distro: string; projectPath: string }
-  | {
-      type: 'remote';
-      entryId: string;
-      host: string;
-      port: number;
-      username: string;
-      auth: AuthMethod;
-      projectPath: string;
-    }
-  | { type: 'worktree'; projectId: string; worktreePath: string }
-  | { type: 'commit'; projectId: string; commitHash: string }
-  | { type: 'wsl-commit'; distro: string; projectPath: string; commitHash: string }
-  | {
-      type: 'remote-commit';
-      host: string;
-      port: number;
-      username: string;
-      auth: AuthMethod;
-      projectPath: string;
-      commitHash: string;
-    }
-  | { type: 'stash'; projectId: string; selector: string };
+/**
+ * diff 的修订维度：对**工作区**（未提交）/ 某个 commit / 某个 stash 做 diff。
+ *
+ * 环境（local / WSL / SSH）**不在这里** —— 它由 `ProjectCommands`（按Workspace构造）
+ * 携带；把环境塞进数据源是「同一份身份两种表示」，且会让远端 worktree 缺维度。
+ */
+export type DiffRevision =
+  | { type: 'worktree' }
+  | { type: 'commit'; commitHash: string }
+  | { type: 'stash'; selector: string };
+
+/** diff 的完整地址：Workspace（`projectId` + `worktreePath`）+ 修订维度。 */
+export interface DiffSource {
+  workspace: WorkspaceSession;
+  revision: DiffRevision;
+}
 
 // ─── PR Comment Types ───────────────────────────────────────────────────────
 

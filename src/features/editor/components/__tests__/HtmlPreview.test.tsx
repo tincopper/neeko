@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 import { createProject } from '@/testing/factories';
 
 const readFileContent = vi.hoisted(() => vi.fn());
@@ -25,9 +25,9 @@ import HtmlPreview from '../HtmlPreview';
 const PROJECT_PATH = '/repo';
 const FILE_PATH = `${PROJECT_PATH}/docs/main.html`;
 /** 主仓单元与某 linked worktree 单元的 key（由唯一产出点构造，不手拼分隔符）。 */
-const MAIN_KEY = workspaceKeyOf('p1', null);
+const MAIN_KEY = WorkspaceSession.of('p1', null).key;
 const WT_PATH = '/repo-wt';
-const WT_KEY = workspaceKeyOf('p1', WT_PATH);
+const WT_KEY = WorkspaceSession.of('p1', WT_PATH ?? null).key;
 
 function grabFileChangedHandler(): (event: { workspace_key: string; paths: string[] }) => void {
   const calls = vi.mocked(useFileChangedEvent).mock.calls;

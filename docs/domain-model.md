@@ -83,10 +83,15 @@ App
 
 **编辑 tab 组键 = checkout 的身份 `WorkspaceKey`**（唯一编码；`:wt:` 已退役）。
 
+**editor tab 已按 `Workspace` 隔离**（10-10 落地）：`Tab` 携带 `TabScope`（`{ workspace, session }` |
+`{ app }`），身份是 `WorkspaceSession` 值对象而非裸 `projectId`；store 键由 `tabSpaceKeyOf(tab.scope)`
+推导（构造律，调用方无权指定）。键的散件拼装/反解函数（`workspaceKeyOf` / `parseWorkspaceKey`）已退役，
+唯一铸造点是 `WorkspaceSession#key`（≡ Rust `WorkspaceRef::key()`）。
+
 ## 未完成（登记）
 
 - 若某子系统的状态键仍是 `Project`（如 debug 活动会话、LSP 会话根），它尚未达到「按 `Workspace` 隔离」——
-  这是能力边界缺口，与命名无关。
+  这是能力边界缺口，与命名无关。**editor tab 已补上**（见上：`TabScope` + `WorkspaceSession`）。
 - 命名迁移（`App → Project → Workspace`、`RepoKey`→`WorkspaceKey`、`RepoRef`→`WorkspaceRef`、
   `repo_key`→`workspace_key` 等）已在本任务全部落地；完整映射见
   `.trellis/tasks/10-08-workspace-naming/design.md` 的 Tier 表。

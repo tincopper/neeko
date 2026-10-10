@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import AgentIcon from '@/shared/components/AgentIcon';
 import type { AppConfig, AgentConfig } from '@/shared/types';
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from '@/shared/utils/idePresets';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
 
@@ -13,7 +14,7 @@ import { setProjectAgents } from '../../features/agent/api/agentApi';
 import { setProjectIde } from '../../features/project/api/projectApi';
 
 interface ProjectSettingsDialogProps {
-  projectId: string;
+  projectId: ProjectId;
   projectName: string;
   currentAgent: string | null;
   currentIde: string | null;
@@ -22,7 +23,6 @@ interface ProjectSettingsDialogProps {
   onClose: () => void;
   onSave: (agentId: string | null, ideCommand: string | null) => void;
 }
-
 function ProjectSettingsDialog({
   projectId,
   projectName,

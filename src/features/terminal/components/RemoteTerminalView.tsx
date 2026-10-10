@@ -2,6 +2,7 @@ import React from 'react';
 
 import { useEditorContext } from '@/shared/contexts';
 import type { AuthMethod } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { useRemoteTerminalStrategy } from '../strategies';
 
@@ -9,7 +10,7 @@ import TerminalViewBase from './TerminalViewBase';
 
 export interface RemoteTerminalViewProps {
   entryId: string;
-  projectId: string;
+  projectId: ProjectId;
   projectName: string;
   projectPath: string;
   host: string;
@@ -18,7 +19,7 @@ export interface RemoteTerminalViewProps {
   auth: AuthMethod;
   fontSize?: number;
   fontFamily?: string;
-  onSessionReady?: (projectId: string) => void;
+  onSessionReady?: (projectId: ProjectId) => void;
   selectedAgentId?: string | null;
   paneId?: string;
   cacheKeySuffix?: string;

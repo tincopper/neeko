@@ -10,6 +10,7 @@ import { fileRefFromLspUri, sameFile } from '@/shared/utils/fileRef';
 import { jdtDisplayPath } from '@/shared/utils/jdt';
 import { resolveLspPositionFromOffset } from '@/shared/utils/lspPosition';
 import { IS_MACOS } from '@/shared/utils/platform';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 type GoToDefinition = (
   languageId: string,
@@ -28,7 +29,7 @@ interface HandleCmdClickParams {
   tabKey: string;
   /** 派生后的 LSP 文档 uri（唯一派生点 `resolveLspDocumentUri`；null = 该 tab 无有效文档身份）。 */
   lspDocumentUri: string | null;
-  projectId: string;
+  projectId: ProjectId;
   filePath: string;
   lspLanguageIdRef: React.MutableRefObject<string | null>;
   goToDefinition: GoToDefinition;
@@ -42,7 +43,7 @@ interface HandleCmdClickParams {
     location: LspLocation,
     projectPath: string,
     tabKey: string,
-    projectId: string,
+    projectId: ProjectId,
     currentFilePath: string,
     preloadedContent?: string | null,
   ) => Promise<void>;
@@ -157,7 +158,7 @@ interface UseCmdClickGoToDefinitionParams {
   projectPath: string | null;
   tabKey: string;
   lspDocumentUri: string | null;
-  projectId: string;
+  projectId: ProjectId;
   filePath: string;
   lspLanguageIdRef: React.MutableRefObject<string | null>;
   goToDefinition: GoToDefinition;
@@ -171,7 +172,7 @@ interface UseCmdClickGoToDefinitionParams {
     location: LspLocation,
     projectPath: string,
     tabKey: string,
-    projectId: string,
+    projectId: ProjectId,
     currentFilePath: string,
     preloadedContent?: string | null,
   ) => Promise<void>;

@@ -12,7 +12,7 @@ import { useActiveWorkspaceSync } from '@/app/hooks/useActiveWorkspaceSync';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { GitStatusSnapshot } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /** 本 hook 的**唯一**副作用出口：挂载请求。用它计数，避免被日志上报等旁路命令干扰。 */
 function mountCallCount(): number {
@@ -21,7 +21,7 @@ function mountCallCount(): number {
 
 function snapshotFor(worktreePath: string | null, version = 1): GitStatusSnapshot {
   return {
-    workspace_key: String(workspaceKeyOf('p1', worktreePath)),
+    workspace_key: String(WorkspaceSession.of('p1', worktreePath ?? null).key),
     version,
     project_id: 'p1',
     worktree_path: worktreePath,
@@ -55,7 +55,7 @@ async function advanceVirtualTime(totalMs: number, stepMs = 25): Promise<void> {
 /** 把主仓单元槽位预填成「pull 读回来的数据」（`useSessionBootstrap` 启动时对每个 git 项目都做一次）。 */
 function prefillMainSlotFromPull(version = 3): void {
   useProjectStore.setState({
-    statuses: { [String(workspaceKeyOf('p1', null))]: snapshotFor(null, version) },
+    statuses: { [String(WorkspaceSession.of('p1', null).key)]: snapshotFor(null, version) },
   });
 }
 
@@ -160,7 +160,7 @@ describe('useActiveWorkspaceSync —— 首快照未落地时的有界自愈', (
    */
   it('挂载失败不作判死：保留激活意图、槽位置为未知，并退避重试直到落地', async () => {
     vi.useFakeTimers();
-    const key = String(workspaceKeyOf('p1', '/wt/gone'));
+    const key = String(WorkspaceSession.of('p1', '/wt/gone').key);
     useWorkspaceStore.getState().setActiveWorkspace('p1', '/wt/gone', 'gone');
     invokeSpy
       .mockRejectedValueOnce(new Error('status for workspace is not available yet'))
@@ -208,7 +208,7 @@ describe('useActiveWorkspaceSync —— 首快照未落地时的有界自愈', (
     // 且仍然不判死：激活意图保留，交给唯一判死点（useAppShellData 的清单校验）
     expect(useWorkspaceStore.getState().byProject['p1']?.activePath).toBe('/wt/gone');
     expect(
-      useProjectStore.getState().statuses[String(workspaceKeyOf('p1', '/wt/gone'))],
+      useProjectStore.getState().statuses[String(WorkspaceSession.of('p1', '/wt/gone').key)],
     ).toBeUndefined();
 
     // 「耗尽」只上报一次（列表一直转与只是慢在外部的唯一可分辨信号），且上报文案不含 NUL
@@ -221,7 +221,7 @@ describe('useActiveWorkspaceSync —— 首快照未落地时的有界自愈', (
   it('意图未变但槽位被作废 ⇒ 自愈重取（预算已归还，重新有完整次数）', async () => {
     vi.useFakeTimers();
     useWorkspaceStore.getState().setActiveWorkspace('p1', '/wt/a', 'feat-a');
-    const key = String(workspaceKeyOf('p1', '/wt/a'));
+    const key = String(WorkspaceSession.of('p1', '/wt/a').key);
     renderHook(() => useActiveWorkspaceSync());
     await advanceVirtualTime(25);
     expect(mountCallCount()).toBe(1);
@@ -239,7 +239,7 @@ describe('useActiveWorkspaceSync —— 首快照未落地时的有界自愈', (
   it('退避窗内快照到达（push 生产者先落地）⇒ 取消本轮重试，不再发命令', async () => {
     vi.useFakeTimers();
     useWorkspaceStore.getState().setActiveWorkspace('p1', '/wt/a', 'feat-a');
-    const key = String(workspaceKeyOf('p1', '/wt/a'));
+    const key = String(WorkspaceSession.of('p1', '/wt/a').key);
     invokeSpy.mockRejectedValue(new Error('status for workspace is not available yet'));
 
     renderHook(() => useActiveWorkspaceSync());
@@ -275,7 +275,7 @@ describe('useActiveWorkspaceSync —— 首快照未落地时的有界自愈', (
     await advanceVirtualTime(25);
     expect(mountCallCount()).toBe(5);
     expect(
-      useProjectStore.getState().statuses[String(workspaceKeyOf('p1', '/wt/b'))]?.version,
+      useProjectStore.getState().statuses[String(WorkspaceSession.of('p1', '/wt/b').key)]?.version,
     ).toBe(2);
   });
 });

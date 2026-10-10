@@ -12,11 +12,11 @@ import { useActivateWorkspace } from '@/features/git/hooks/useActivateWorkspace'
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { GitStatusSnapshot } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
-const MAIN_KEY = workspaceKeyOf('p1', null);
-const WT_A = workspaceKeyOf('p1', '/wt/a');
-const WT_B = workspaceKeyOf('p1', '/wt/b');
+const MAIN_KEY = WorkspaceSession.of('p1', null).key;
+const WT_A = WorkspaceSession.of('p1', '/wt/a').key;
+const WT_B = WorkspaceSession.of('p1', '/wt/b').key;
 
 function snapshotFor(key: string, version: number): GitStatusSnapshot {
   const [projectId, tail] = key.split('\u0000');
@@ -34,7 +34,9 @@ function snapshotFor(key: string, version: number): GitStatusSnapshot {
 
 function setActive() {
   invokeSpy.mockImplementation((_cmd: string, args: { worktreePath?: string | null }) =>
-    Promise.resolve(snapshotFor(workspaceKeyOf('p1', args?.worktreePath ?? null), 1)),
+    Promise.resolve(
+      snapshotFor(WorkspaceSession.of('p1', args?.worktreePath ?? null ?? null).key, 1),
+    ),
   );
 }
 
@@ -167,7 +169,7 @@ describe('useActivateWorkspace —— 后端是路径身份的唯一归一点（
     const canonical = '/private/tmp/x/wt-a';
     useWorkspaceStore.getState().setActiveWorkspace('p1', hint, 'feat-a');
     invokeSpy.mockImplementation(() =>
-      Promise.resolve(snapshotFor(workspaceKeyOf('p1', canonical), 1)),
+      Promise.resolve(snapshotFor(WorkspaceSession.of('p1', canonical ?? null).key, 1)),
     );
 
     const { result } = renderHook(() => useActivateWorkspace('p1'));
@@ -179,10 +181,12 @@ describe('useActivateWorkspace —— 后端是路径身份的唯一归一点（
     expect(outcome).toBe('mounted');
     expect(useWorkspaceStore.getState().byProject['p1']?.activePath).toBe(canonical);
     expect(
-      useProjectStore.getState().statuses[String(workspaceKeyOf('p1', canonical))],
+      useProjectStore.getState().statuses[String(WorkspaceSession.of('p1', canonical ?? null).key)],
     ).toBeDefined();
     // 意图形态不该留下槽位（否则两份形态各占一格）
-    expect(useProjectStore.getState().statuses[String(workspaceKeyOf('p1', hint))]).toBeUndefined();
+    expect(
+      useProjectStore.getState().statuses[String(WorkspaceSession.of('p1', hint ?? null).key)],
+    ).toBeUndefined();
   });
 
   it('主仓单元保持 null 形态（不该被改写成项目根路径）', async () => {
@@ -204,7 +208,7 @@ describe('useActivateWorkspace —— 后端是路径身份的唯一归一点（
     });
     expect(outcome).toBe('failed');
     expect(
-      useProjectStore.getState().statuses[String(workspaceKeyOf('p1', '/wt/gone'))],
+      useProjectStore.getState().statuses[String(WorkspaceSession.of('p1', '/wt/gone').key)],
     ).toBeUndefined();
   });
 

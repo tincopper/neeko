@@ -4,6 +4,7 @@ import { VirtualList } from '@/shared/components/VirtualList';
 import type { VirtualListHandle } from '@/shared/components/VirtualList';
 import type { FileTreeViewNode } from '@/shared/types';
 import { flatRowKey, type FlatFileTreeRow } from '@/shared/utils/fileTree';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { isPanelInteractiveTarget } from '../utils/fileTreeUtils';
 
@@ -25,7 +26,7 @@ interface FileTreeListProps {
   /** 加载失败且无内容显示重试 */
   loadFailed: boolean;
   /** 拖拽文件时传给 sendToAgent */
-  projectId: string | null;
+  projectId: ProjectId | null;
   onSelectFile: (filePath: string) => void;
   onToggleDir: (path: string) => void;
   /** 目录加载失败时点击重试（触发 store.loadDir 重新请求） */

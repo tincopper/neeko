@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type { ContextManifest } from '@/shared/types/agentChat';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /**
  * agent-chat 后端命令的 feature API 门面（AGENTS.md：前端不直接 import invoke）。
@@ -11,7 +12,7 @@ import type { ContextManifest } from '@/shared/types/agentChat';
 /** `agent_stream` 请求体（驼峰命名，serde 映射后端 snake_case）。 */
 export interface StreamChatRequest {
   agentId: string;
-  projectId: string;
+  projectId: ProjectId;
   prompt: string;
   files?: string[];
   skills?: string[];

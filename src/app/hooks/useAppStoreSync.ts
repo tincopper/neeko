@@ -2,13 +2,14 @@ import { useEffect } from 'react';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import { isActiveWorktree } from '@/shared/utils/git';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 interface UseAppStoreSyncParams {
   isTerminalView: boolean;
   activeCheckoutPath: string | null;
-  selectProject: (id: string) => void;
+  selectProject: (id: ProjectId) => void;
   handleOpenIdeCallback: (project: { id: string; selected_ide: string | null }) => void;
-  handleSetProjectIde: (projectId: string, ideCommand: string | null) => void;
+  handleSetProjectIde: (projectId: ProjectId, ideCommand: string | null) => void;
 }
 
 /**

@@ -2,7 +2,7 @@
  * `workspaceStore` 的唯一派生点 + 激活态 mutator。
  *
  * 「当前视图所在Workspace」的 key 以前在 6 处各自手写
- * （`workspaceKeyOf(projectId, byProject[projectId]?.activePath ?? null)`）：事件回调、hook、组件、
+ * （`WorkspaceSession.of(projectId, (byProject[projectId]?.activePath ?? null) ?? null).key`）：事件回调、hook、组件、
  * store 内部各一份。任何一处漏改 / 加特例都会让「当前单元」出现第二种表示 —— 那正是本任务
  * 要根治的症状形态。本文件钉住**唯一**派生点的语义，护栏
  * （`check_workspace_identity`）禁止绕过它直读 `.byProject[...].activePath`。
@@ -20,11 +20,11 @@ import {
   useActiveWorkspaceSession,
   useWorkspaceStore,
 } from '@/shared/store/workspaceStore';
-import { isMainCheckout, workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession, isMainCheckout } from '@/shared/utils/workspaceRef';
 
 const WT_A = '/wt/a';
-const MAIN_KEY = workspaceKeyOf('p1', null);
-const WT_KEY = workspaceKeyOf('p1', WT_A);
+const MAIN_KEY = WorkspaceSession.of('p1', null).key;
+const WT_KEY = WorkspaceSession.of('p1', WT_A ?? null).key;
 
 beforeEach(() => {
   useProjectStore.setState({ activeProjectId: null, activeProject: null, projects: [] });
@@ -44,7 +44,7 @@ describe('selectActiveWorkspaceKey —— 当前视图单元的唯一派生点',
   it('store 里没有该项目的条目时按主仓派生；未给 projectId 时返回 null', () => {
     // 「无激活态条目」= 该项目还没选过 worktree（主仓）—— 不是「未知项目」，故仍派生主仓 key
     expect(selectActiveWorkspaceKey(useWorkspaceStore.getState(), 'missing')).toBe(
-      workspaceKeyOf('missing', null),
+      WorkspaceSession.of('missing', null).key,
     );
     expect(selectActiveWorkspaceKey(useWorkspaceStore.getState(), null)).toBeNull();
     expect(selectActiveWorkspaceKey(useWorkspaceStore.getState(), '')).toBeNull();
@@ -55,7 +55,7 @@ describe('selectActiveWorkspaceKey —— 当前视图单元的唯一派生点',
     const state = useWorkspaceStore.getState();
 
     expect(selectActiveWorkspaceKey(state, 'p1')).toBe(
-      workspaceKeyOf('p1', selectActiveCheckoutPath(state, 'p1')),
+      WorkspaceSession.of('p1', selectActiveCheckoutPath(state, 'p1') ?? null).key,
     );
   });
 });
@@ -84,7 +84,7 @@ describe('activeWorkspaceKeyOf —— 命令式形态（事件回调 / 命令式
     useWorkspaceStore.getState().setActiveWorkspace('p2', null);
 
     expect(activeWorkspaceKeyOf('p1')).toBe(WT_KEY);
-    expect(activeWorkspaceKeyOf('p2')).toBe(workspaceKeyOf('p2', null));
+    expect(activeWorkspaceKeyOf('p2')).toBe(WorkspaceSession.of('p2', null).key);
   });
 
   it('缺省取**当前激活项目**的单元（无激活项目时为 null）', () => {
@@ -100,7 +100,7 @@ describe('activeWorkspaceKeyOf —— 命令式形态（事件回调 / 命令式
     useWorkspaceStore.getState().setActiveWorkspace('p1', WT_A, 'feature-a');
     useProjectStore.setState({ activeProjectId: 'p2' });
 
-    expect(activeWorkspaceKeyOf()).toBe(workspaceKeyOf('p2', null));
+    expect(activeWorkspaceKeyOf()).toBe(WorkspaceSession.of('p2', null).key);
     expect(activeWorkspaceKeyOf('p1')).toBe(WT_KEY);
   });
 });
@@ -113,7 +113,7 @@ describe('激活态 mutator 的最小契约', () => {
     useWorkspaceStore.getState().clearActiveWorkspace('p1');
 
     expect(activeWorkspaceKeyOf('p1')).toBe(MAIN_KEY);
-    expect(activeWorkspaceKeyOf('p2')).toBe(workspaceKeyOf('p2', WT_A));
+    expect(activeWorkspaceKeyOf('p2')).toBe(WorkspaceSession.of('p2', WT_A ?? null).key);
   });
 
   it('clearActiveWorkspace 同步作废该单元的 status 槽位（单点收口，调用方无需各自补刀）', () => {

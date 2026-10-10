@@ -1,6 +1,7 @@
 import React, { createContext, useContext } from 'react';
 
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 // ── WSL-specific types ────────────────────────────────────────────────────
 
@@ -10,12 +11,12 @@ export interface WslContextValue {
   activeWslCheckoutPath: string | null;
   wslDiffState: { distro: string; projectPath: string; filePath: string } | null;
   setWslOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
-  onCloseWslProject: (entryId: string, projectId: string) => void;
-  onRemoveWslProject: (entryId: string, projectId: string) => void;
+  onCloseWslProject: (entryId: string, projectId: ProjectId) => void;
+  onRemoveWslProject: (entryId: string, projectId: ProjectId) => void;
   onRemoveWslEntry: (entryId: string) => void;
   onAddWslProject: (entryId: string) => void;
   onSelectWslFile?: (distro: string, projectPath: string, filePath: string) => void;
-  onRefreshWslGit?: (distro: string, projectId: string, projectPath: string) => void;
+  onRefreshWslGit?: (distro: string, projectId: ProjectId, projectPath: string) => void;
   onOpenWslIde?: (distro: string, projectPath: string, ide: string) => void;
   onOpenWslWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
   onWslDiffBack: () => void;
@@ -30,11 +31,11 @@ export interface RemoteContextValue {
   activeRemoteCheckoutPath: string | null;
   remoteAuthStore: Map<string, AuthMethod>;
   setRemoteOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
-  onCloseRemoteProject: (entryId: string, projectId: string) => void;
-  onRemoveRemoteProject: (entryId: string, projectId: string) => void;
+  onCloseRemoteProject: (entryId: string, projectId: ProjectId) => void;
+  onRemoveRemoteProject: (entryId: string, projectId: ProjectId) => void;
   onRemoveRemoteEntry: (entryId: string) => void;
   onAddRemoteProject: (entryId: string) => void;
-  onRefreshRemoteGit?: (entryId: string, projectId: string, projectPath: string) => void;
+  onRefreshRemoteGit?: (entryId: string, projectId: ProjectId, projectPath: string) => void;
   onOpenRemoteIde?: (entryId: string, projectPath: string, ide: string) => void;
   onOpenRemoteWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
   invokeRemoteGit?: (

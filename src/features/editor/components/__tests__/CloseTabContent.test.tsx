@@ -5,7 +5,7 @@ import { EditorProvider } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
 import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import TabBar from '../../components/TabBar';
 
@@ -50,8 +50,8 @@ function seed(tabs: Tab[], active: string) {
   layout.groups.left.tabIds = tabs.map((t) => t.id);
   layout.groups.left.activeTabId = active;
   useEditorStore.setState({
-    tabs: { [workspaceKeyOf('p1', null)]: { tabs, activeTabId: active } },
-    editorLayout: { [workspaceKeyOf('p1', null)]: layout },
+    tabs: { [WorkspaceSession.of('p1', null).key]: { tabs, activeTabId: active } },
+    editorLayout: { [WorkspaceSession.of('p1', null).key]: layout },
     activeTabId: active,
   });
   ctx.tabs = tabs;
@@ -68,8 +68,9 @@ describe('close active tab → next tab becomes active (dev/build parity)', () =
     seed([makeTab('A', 'a.ts'), makeTab('B', 'b.ts')], 'A');
 
     const onClose = (tabId: string) => {
-      useEditorStore.getState().closeTab(workspaceKeyOf('p1', null), tabId);
-      ctx.activeTabId = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)].activeTabId;
+      useEditorStore.getState().closeTab(WorkspaceSession.of('p1', null).key, tabId);
+      ctx.activeTabId =
+        useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key].activeTabId;
     };
     render(
       <EditorProvider value={{ ...ctx, onCloseTab: onClose }}>
@@ -88,10 +89,12 @@ describe('close active tab → next tab becomes active (dev/build parity)', () =
     fireEvent.click(closeBtns[0]);
 
     const state = useEditorStore.getState();
-    expect(state.tabs[workspaceKeyOf('p1', null)].tabs.map((t) => t.id)).toEqual(['B']);
-    expect(state.tabs[workspaceKeyOf('p1', null)].activeTabId).toBe('B');
-    expect(state.editorLayout[workspaceKeyOf('p1', null)].groups.left.activeTabId).toBe('B');
-    const leftTab = state.editorLayout[workspaceKeyOf('p1', null)].groups.left.tabIds;
+    expect(state.tabs[WorkspaceSession.of('p1', null).key].tabs.map((t) => t.id)).toEqual(['B']);
+    expect(state.tabs[WorkspaceSession.of('p1', null).key].activeTabId).toBe('B');
+    expect(state.editorLayout[WorkspaceSession.of('p1', null).key].groups.left.activeTabId).toBe(
+      'B',
+    );
+    const leftTab = state.editorLayout[WorkspaceSession.of('p1', null).key].groups.left.tabIds;
     expect(leftTab).toContain('B');
   });
 });

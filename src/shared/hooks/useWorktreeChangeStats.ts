@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/shallow';
 
 import { selectEntries, useProjectStore } from '@/shared/store/projectStore';
 import type { GitStatusSnapshot, Worktree } from '@/shared/types';
-import { workspaceKeyOf, type WorkspaceKey } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession, type WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 /** worktree 行的 +A -D 聚合（本 hook 的返回值形状，不外泄）。 */
 interface ChangeStat {
@@ -60,14 +60,16 @@ function fetchOnce(
  *   失败应返回 `null` 而非抛出。
  */
 export function useWorktreeChangeStats(
-  projectId: string,
+  projectId: ProjectId,
   worktrees: Worktree[],
   fetchStatus?: (worktreePath: string) => Promise<GitStatusSnapshot | null>,
 ): Record<string, ChangeStat> {
   // 精确订阅：只关心本列表每个单元自己的 entries。槽位是不可变更新，entries 引用变化 =
   // 该单元真的变了；`useShallow` 让别的单元的快照推送不触发本列表重渲。
   const perUnitEntries = useProjectStore(
-    useShallow((s) => worktrees.map((wt) => selectEntries(s, workspaceKeyOf(projectId, wt.path)))),
+    useShallow((s) =>
+      worktrees.map((wt) => selectEntries(s, WorkspaceSession.of(projectId, wt.path ?? null).key)),
+    ),
   );
   const fetchedRef = useRef<Set<WorkspaceKey>>(new Set());
 
@@ -75,12 +77,14 @@ export function useWorktreeChangeStats(
     if (!fetchStatus) return;
     // 先收敛「已拉清单」到当前列表：单元被移出列表后它的 key 必须退出 —— 否则同一挂载内
     // 「删掉再建同路径」不会重拉，清单也会无界增长。
-    const present = new Set(worktrees.map((wt) => workspaceKeyOf(projectId, wt.path)));
+    const present = new Set(
+      worktrees.map((wt) => WorkspaceSession.of(projectId, wt.path ?? null).key),
+    );
     for (const key of fetchedRef.current) {
       if (!present.has(key)) fetchedRef.current.delete(key);
     }
     for (const wt of worktrees) {
-      const key = workspaceKeyOf(projectId, wt.path);
+      const key = WorkspaceSession.of(projectId, wt.path ?? null).key;
       if (fetchedRef.current.has(key)) continue;
       fetchedRef.current.add(key);
       fetchOnce(key, wt.path, fetchStatus)

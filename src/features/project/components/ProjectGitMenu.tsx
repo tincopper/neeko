@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import type { DialogType } from '@/shared/components/GitDialog';
 import { FolderGitIcon } from '@/shared/components/icons';
 import type { Project } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,9 +21,9 @@ interface ProjectGitMenuProps {
   setOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   /** Trigger shown in the project hover action slot. */
   trigger: React.ReactNode;
-  onCommit?: (projectId: string) => void;
-  onPush?: (projectId: string) => void;
-  onPull?: (projectId: string) => void;
+  onCommit?: (projectId: ProjectId) => void;
+  onPush?: (projectId: ProjectId) => void;
+  onPull?: (projectId: ProjectId) => void;
   onOpenDialog: (type: DialogType) => void;
 }
 

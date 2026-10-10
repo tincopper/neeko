@@ -33,7 +33,7 @@ export function useFileTabRefresh() {
     if (!projectTabs) return;
 
     for (const tab of projectTabs.tabs) {
-      if (tab.data.kind !== 'file') continue;
+      if (tab.data.kind !== 'file' || tab.scope.kind !== 'workspace') continue;
 
       if (!pathsContainFile(workspaceRoot, paths, tab.data.filePath)) continue;
 
@@ -45,7 +45,7 @@ export function useFileTabRefresh() {
       } else {
         try {
           // 地址 = 该 tab 所属Workspace（值携带，非解析）
-          const content = await readFileContent(tab.data.workspace, tab.data.filePath);
+          const content = await readFileContent(tab.scope.session, tab.data.filePath);
           useEditorStore.getState().updateTab(workspaceKey, tab.id, {
             kind: 'file',
             content,

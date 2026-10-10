@@ -4,8 +4,10 @@ import type { PRDetailTabData } from '@/features/editor/types';
 import { cn } from '@/lib/utils';
 import { SearchIcon, MessageSquare, ChevronDown, GitMerge, X } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { PRListItem } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   closePr,
@@ -17,12 +19,11 @@ import {
   mergePr,
 } from '../api/gitApi';
 import { getInvokeErrorMessage, mapPrLoadError } from '../utils/prLoadError';
-
 interface PullRequestsPanelProps {
-  projectId: string;
+  projectId: ProjectId;
   tabKey: string;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
-  onRefreshGit: (projectId: string) => void;
+  onRefreshGit: (projectId: ProjectId) => void;
   onOpenTerminal: (command: string, title: string) => void;
 }
 
@@ -295,16 +296,15 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
         editorState.activateTab(tabKey, existingTab.id);
         return;
       }
-
       const tabId = `tab_${crypto.randomUUID()}`;
-      editorState.addTab(tabKey, {
+      editorState.addTab({
         id: tabId,
-        projectId,
+        scope: { kind: 'workspace', session: activeWorkspaceSession(projectId) },
         title: `#${pr.number} ${pr.title}`,
         order: 0,
         data: {
           kind: 'prDetail' as const,
-          projectId,
+          projectId: projectId as ProjectId,
           prNumber: pr.number,
           prTitle: pr.title,
           prState: pr.state,

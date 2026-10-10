@@ -1,4 +1,5 @@
 import { useTaskStore } from '@/shared/store/taskStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   dapCheckAdapter,
@@ -14,7 +15,6 @@ import { languageHooks } from '../languageHooks';
 
 import { CLEAR_EXPANSION, endedSessionPatch, isLiveSession, notifyError } from './shared';
 import type { DebugSessionSlice, DebugSliceCreator } from './types';
-
 /**
  * 会话生命周期：启动 / 附加 / 停止 / 控制 / 复位 / 面板级错误。
  *
@@ -40,7 +40,7 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
   /** Adapter check + session launch + panel/console wiring, shared by `start` (named config)
    *  and `startWithConfig` (synthetic config from editor test debug). Rethrows on failure. */
   const launchSession = async (
-    projectId: string,
+    projectId: ProjectId,
     config: LaunchConfig,
     start: () => Promise<DapSessionInfo>,
   ) => {
@@ -103,7 +103,7 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
   };
   /** 成功启动后记录 Rerun 意图（**唯一写入点**）：快照 config 避引用漂移、`starter` 闭包透传、失败不覆盖。 */
   const recordLaunch = (
-    projectId: string,
+    projectId: ProjectId,
     config: LaunchConfig,
     starter?: () => Promise<DapSessionInfo>,
   ) => {

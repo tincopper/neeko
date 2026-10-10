@@ -6,6 +6,7 @@ import { useAppContext } from '@/shared/contexts/AppContext';
 import { RemoteProject, RemoteEntrySession, AuthMethod } from '@/shared/types';
 import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
@@ -25,7 +26,6 @@ interface RemoteDialogProps {
   /** 已有服务器的 auth 缓存（entryId → AuthMethod），用于向已有服务器添加项目时的路径补全 */
   existingEntryAuth?: Map<string, AuthMethod>;
 }
-
 export function RemoteDialog({
   isOpen,
   onClose,
@@ -240,7 +240,7 @@ export function RemoteDialog({
     }
 
     const newProject: RemoteProject = {
-      id: crypto.randomUUID(),
+      id: crypto.randomUUID() as ProjectId,
       name: projectName,
       path: projectPath,
       entry_id: selectedServer?.id || crypto.randomUUID(),
@@ -260,7 +260,7 @@ export function RemoteDialog({
         authType === 'password' ? { Password: password } : { KeyFile: keyPath };
       const encodedAuth = saveCredentials ? btoa(JSON.stringify(auth)) : null;
       const newEntry: RemoteEntrySession = {
-        id: crypto.randomUUID(),
+        id: crypto.randomUUID() as ProjectId,
         host,
         port: parseInt(port) || 22,
         username,

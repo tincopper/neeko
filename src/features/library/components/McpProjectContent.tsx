@@ -2,11 +2,12 @@ import React, { useMemo } from 'react';
 
 import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import McpListSection from './McpListSection';
 
 interface McpProjectContentProps {
-  projectId: string;
+  projectId: ProjectId;
 }
 
 const McpProjectContent: React.FC<McpProjectContentProps> = React.memo(({ projectId }) => {

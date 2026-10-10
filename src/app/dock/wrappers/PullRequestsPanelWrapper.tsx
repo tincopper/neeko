@@ -6,8 +6,9 @@ import { useAppContext } from '@/shared/contexts';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /**
  * Pull Requests dock 面板适配层：仅本地项目渲染（canManagePRs capability）。
@@ -29,13 +30,13 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
     if (!project) return '';
     // worktree tab key 仅对 local 项目生效（WSL/Remote 使用各自的 worktree 流程）
     if (project.type === 'Local') {
-      return workspaceKeyOf(project.id, worktreePath);
+      return WorkspaceSession.of(project.id, worktreePath ?? null).key;
     }
     return project.id;
   }, [project, worktreePath]);
 
   const onRefreshGit = useCallback(
-    async (_projectId: string) => {
+    async (_projectId: ProjectId) => {
       void _projectId;
       if (!project || !commands) return;
       const gitInfo = await commands.refreshGitInfo();
@@ -76,9 +77,9 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
       const tabId = crypto.randomUUID();
       const tab: Tab = {
         id: tabId,
-        // tab 的 projectId 直接持真实 project id（值在手边：上面已守卫 project 非空），
-        // 不能用复合 worktree tab key，也不从 tabKey 解回
-        projectId: project.id,
+        // tab 身份直接持真实 project id 的 session（值在手边：上面已守卫 project 非空），
+        // 不能用复合 worktree tab key，也不从 tabKey 反解
+        scope: { kind: 'workspace', session: activeWorkspaceSession(project.id) },
         title,
         order: existingTabs?.tabs.length ?? 0,
         data: {
@@ -88,7 +89,7 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
           taskCommand: command,
         },
       };
-      editorState.addTab(tabKey, tab);
+      editorState.addTab(tab);
       editorState.activateTab(tabKey, tabId);
     },
     [project, tabKey],

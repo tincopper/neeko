@@ -8,6 +8,7 @@ import type {
   McpServerTarget,
   AgentCapabilities,
 } from '@/shared/types/mcpServer';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   listMcpServers,
@@ -54,7 +55,7 @@ interface McpState {
   /** Active agent ID when viewing agent-specific MCP servers. */
   activeMcpAgentId: string | null;
   /** Active project ID when viewing project-specific MCP servers. */
-  activeMcpProjectId: string | null;
+  activeMcpProjectId: ProjectId | null;
   /** MCP marketplace search query (independent of installed-list search). */
   mcpRegistryQuery: string;
   /** Pre-fill template for the MCP editor when installing from the marketplace. */
@@ -90,7 +91,7 @@ interface McpActions {
     env?: Record<string, string>;
     transport?: 'stdio' | 'sse' | 'http';
     scope?: 'global' | 'project';
-    projectId?: string | null;
+    projectId?: ProjectId | null;
     sourceRegistry?: string | null;
     sourceRef?: string | null;
     tags?: string[];
@@ -106,7 +107,7 @@ interface McpActions {
       env?: Record<string, string>;
       transport?: 'stdio' | 'sse' | 'http';
       scope?: 'global' | 'project';
-      projectId?: string | null;
+      projectId?: ProjectId | null;
       sourceRegistry?: string | null;
       sourceRef?: string | null;
       tags?: string[];
@@ -121,7 +122,7 @@ interface McpActions {
 
   setMcpView: (view: 'installed' | 'marketplace' | 'agent' | 'project') => void;
   setActiveMcpAgentId: (id: string | null) => void;
-  setActiveMcpProjectId: (id: string | null) => void;
+  setActiveMcpProjectId: (id: ProjectId | null) => void;
   setMcpRegistryQuery: (query: string) => void;
   setMcpDraft: (draft: McpRegistryGeneratedConfig | null) => void;
   setMcpMarketplaceCount: (count: number) => void;
@@ -139,9 +140,9 @@ interface McpActions {
   removeServerFromMcpTagGroup: (tagGroupId: string, serverId: string) => Promise<void>;
 
   /** MCP project binding actions. */
-  getProjectMcpTagGroups: (projectId: string) => Promise<McpTagGroup[]>;
-  setProjectMcpTagGroups: (projectId: string, tagGroupIds: string[]) => Promise<void>;
-  applyProjectMcpServers: (projectId: string, projectPath: string) => Promise<void>;
+  getProjectMcpTagGroups: (projectId: ProjectId) => Promise<McpTagGroup[]>;
+  setProjectMcpTagGroups: (projectId: ProjectId, tagGroupIds: string[]) => Promise<void>;
+  applyProjectMcpServers: (projectId: ProjectId, projectPath: string) => Promise<void>;
 
   /** MCP deployment target actions. */
   refreshMcpServerTargets: (serverId: string) => Promise<void>;

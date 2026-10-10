@@ -1,6 +1,8 @@
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import type { StateCreator } from 'zustand';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 import type { StopLocation } from '../../stopLocation';
 import type {
   BreakpointEntry,
@@ -45,18 +47,18 @@ export interface DebugConfigSlice {
   configs: LaunchConfig[];
   entries: EntryPoint[];
   selectedConfigName: string | null;
-  loadConfigs: (projectId: string) => Promise<void>;
-  loadEntries: (projectId: string) => Promise<void>;
+  loadConfigs: (projectId: ProjectId) => Promise<void>;
+  loadEntries: (projectId: ProjectId) => Promise<void>;
   selectConfig: (name: string | null) => void;
-  saveConfigs: (projectId: string, configurations: LaunchConfig[]) => Promise<void>;
-  addConfig: (projectId: string, config: LaunchConfig) => Promise<void>;
-  updateConfig: (projectId: string, originalName: string, config: LaunchConfig) => Promise<void>;
-  deleteConfig: (projectId: string, name: string) => Promise<void>;
+  saveConfigs: (projectId: ProjectId, configurations: LaunchConfig[]) => Promise<void>;
+  addConfig: (projectId: ProjectId, config: LaunchConfig) => Promise<void>;
+  updateConfig: (projectId: ProjectId, originalName: string, config: LaunchConfig) => Promise<void>;
+  deleteConfig: (projectId: ProjectId, name: string) => Promise<void>;
 }
 
 /** Rerun 的 launch 意图：语言侧登记，通用层零语言字面量（D7）。 */
 export interface DebugLaunchIntent {
-  projectId: string;
+  projectId: ProjectId;
   label: string;
   /** 不透明重放 thunk（自带 reset + 回显，通用层不二次 reset）。 */
   replay: () => Promise<void>;
@@ -86,8 +88,8 @@ export interface DebugSessionSlice {
   setLaunching: (value: boolean) => void;
   setLastLaunch: (intent: DebugLaunchIntent | null) => void;
   /** Rerun：带相同意图再走现有启动链（thunk 自带 reset + 回显，通用层不二次 reset）。 */
-  rerun: (projectId: string) => Promise<void>;
-  start: (projectId: string, currentFile?: string | null) => Promise<void>;
+  rerun: (projectId: ProjectId) => Promise<void>;
+  start: (projectId: ProjectId, currentFile?: string | null) => Promise<void>;
   /**
    * Start a session from a fully-specified synthetic config (editor test debug).
    *
@@ -96,7 +98,7 @@ export interface DebugSessionSlice {
    * 回显命令）传 false，避免再次清空。
    */
   startWithConfig: (
-    projectId: string,
+    projectId: ProjectId,
     config: LaunchConfig,
     opts?: { starter?: () => Promise<DapSessionInfo>; reset?: boolean },
   ) => Promise<void>;
@@ -106,13 +108,17 @@ export interface DebugSessionSlice {
    */
   attachSession: (session: DapSessionInfo) => void;
   /** 面板级错误（置位时打开 Console 并走面板互斥）；`projectId` = 错误所属项目，`null` = 清除。 */
-  setPanelError: (projectId: string | null, message: string | null) => void;
+  setPanelError: (projectId: ProjectId | null, message: string | null) => void;
   /** 项目切换时静默释放旧项目会话：终止后端会话、标记 terminated，但不打开面板。 */
   stopSilent: () => Promise<void>;
   /** 新会话开始前的状态复位（语言侧入口自行控制顺序时使用，如先复位再回显命令）。 */
   resetSession: () => void;
   /** Debug a discovered entry (ensures matching launch config). */
-  debugEntry: (projectId: string, entry: EntryPoint, currentFile?: string | null) => Promise<void>;
+  debugEntry: (
+    projectId: ProjectId,
+    entry: EntryPoint,
+    currentFile?: string | null,
+  ) => Promise<void>;
   /** Run entry without debugger (terminal task). */
   runEntry: (entry: EntryPoint) => void;
   stop: () => Promise<void>;
@@ -174,21 +180,21 @@ export interface DebugBreakpointSlice {
   /** 全局静音（per-project 单 bool；mute 下适配器载荷为空，单个 enabled 位不动）。 */
   breakpointsMuted: Record<string, boolean>;
   /** 存在性 toggle（语义不变：`(file,line)` 有无；disabled 行单击 = 删除）。 */
-  toggleBreakpoint: (projectId: string, filePath: string, line: number) => Promise<void>;
-  removeBreakpoint: (projectId: string, filePath: string, line: number) => Promise<void>;
+  toggleBreakpoint: (projectId: ProjectId, filePath: string, line: number) => Promise<void>;
+  removeBreakpoint: (projectId: ProjectId, filePath: string, line: number) => Promise<void>;
   /** 改单个使能位（乐观更新 → 下发 enabled 子集 → 回填 verified；失败回滚 + notify）。 */
   setBreakpointEnabled: (
-    projectId: string,
+    projectId: ProjectId,
     filePath: string,
     line: number,
     enabled: boolean,
   ) => Promise<void>;
   /** 全局静音开关（乐观更新 → 调后端 → 失败回滚 + notify；entries 不动）。 */
-  setBreakpointsMuted: (projectId: string, muted: boolean) => Promise<void>;
-  loadBreakpoints: (projectId: string) => Promise<void>;
-  getFileBreakpoints: (projectId: string, filePath: string) => readonly BreakpointEntry[];
-  listAllBreakpoints: (projectId: string) => BreakpointSpec[];
-  breakpointCount: (projectId: string | null) => number;
+  setBreakpointsMuted: (projectId: ProjectId, muted: boolean) => Promise<void>;
+  loadBreakpoints: (projectId: ProjectId) => Promise<void>;
+  getFileBreakpoints: (projectId: ProjectId, filePath: string) => readonly BreakpointEntry[];
+  listAllBreakpoints: (projectId: ProjectId) => BreakpointSpec[];
+  breakpointCount: (projectId: ProjectId | null) => number;
 }
 
 /** DAP 事件订阅（无自身 state，只把事件投影到各 slice）。 */

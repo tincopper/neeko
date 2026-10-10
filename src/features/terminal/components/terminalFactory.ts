@@ -15,6 +15,7 @@ import {
   resolveTerminalLineHeight,
   TERMINAL_FONT_WEIGHT,
 } from '@/shared/utils/typography';
+import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
 
 import { getAgent } from '../../agent/api/agentApi';
 import { createTerminalSession, drainTerminal, drainTerminalWait } from '../api/terminalApi';
@@ -87,7 +88,7 @@ export async function createTerminalForProject(
   setupTerminalLinks(term, {
     projectPath,
     tabKey: backendProjectId,
-    workspace: { projectId: backendProjectId, worktreePath: null },
+    workspace: WorkspaceSession.of(backendProjectId, null),
   });
 
   const initCols = term.cols;
@@ -108,7 +109,7 @@ export async function createTerminalForProject(
 
   try {
     const session = await createTerminalSession(
-      backendProjectId,
+      backendProjectId as ProjectId,
       initCols,
       initRows,
       shell || null,

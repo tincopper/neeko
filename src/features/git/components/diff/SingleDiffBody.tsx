@@ -2,6 +2,7 @@ import React, { type ReactNode } from 'react';
 
 import { openProjectFile } from '@/features/quick-open';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import DiffTable from './DiffTable';
 import DiffToolbar from './DiffToolbar';
@@ -53,7 +54,7 @@ function DiffEmptyState() {
 
 interface SingleDiffBodyProps {
   filePath: string;
-  projectId?: string;
+  projectId?: ProjectId;
   loading: boolean;
   error: string | null;
   diffResult: DiffResult | null;

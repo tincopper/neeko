@@ -6,6 +6,7 @@ import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import { applyStateAction, upsertEntryById } from '@/shared/utils/entryUpdates';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   wslCacheKey,
@@ -14,7 +15,6 @@ import {
   destroyRemoteCachesByPrefix,
   // eslint-disable-next-line import/no-restricted-paths -- shared hook depends on terminal cache for cleanup
 } from '../../features/terminal/components/terminalCache';
-
 export type SaveSessionFn = (...args: unknown[]) => Promise<void>;
 export type ProjectEnvironment = 'wsl' | 'remote';
 
@@ -137,7 +137,7 @@ export function useConnectionProjects({
   // ── Close project ────────────────────────────────────────────────────────
 
   const handleCloseProject = useCallback(
-    (entryId: string, projectId: string) => {
+    (entryId: string, projectId: ProjectId) => {
       if (isWsl) {
         const entry = wslEntries.find((e) => e.id === entryId);
         if (entry) {
@@ -162,7 +162,7 @@ export function useConnectionProjects({
   // ── Remove project ───────────────────────────────────────────────────────
 
   const handleRemoveProject = useCallback(
-    async (entryId: string, projectId: string) => {
+    async (entryId: string, projectId: ProjectId) => {
       if (isWsl) {
         const entry = wslEntries.find((e) => e.id === entryId);
         if (entry) {

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import type { AheadBehind } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 interface GitStoreState {
   /**
@@ -16,8 +17,8 @@ interface GitStoreState {
   setAheadBehind: (workspaceKey: string, info: AheadBehind | null) => void;
 
   favoriteBranches: Record<string, string[]>;
-  setFavoriteBranches: (projectId: string, branches: string[]) => void;
-  toggleFavorite: (projectId: string, branchName: string) => void;
+  setFavoriteBranches: (projectId: ProjectId, branches: string[]) => void;
+  toggleFavorite: (projectId: ProjectId, branchName: string) => void;
 
   /**
    * G4：各**Workspace**的 status 是否被截断（entries 超过 MAX_STATUS_ENTRIES=1000）。

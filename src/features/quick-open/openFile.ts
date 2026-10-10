@@ -19,12 +19,12 @@ import type { Tab } from '@/shared/types';
 import { getLanguageExtension } from '@/shared/utils/codemirror';
 import { sourceIdentityOf } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useRecentFilesStore } from './store/recentFilesStore';
 
 export async function openProjectFile(opts: {
-  projectId: string;
+  projectId: ProjectId;
   filePath: string;
   line?: number;
   column?: number;
@@ -40,7 +40,7 @@ export async function openProjectFile(opts: {
   // 一次捕获当前视图单元的值：身份基准、组键、读取地址全部由它派生（零重取、零解析）。
   const workspace = activeWorkspaceSession(projectId);
   const filePath = sourceIdentityOf(workspace.worktreePath ?? projectPath, rawPath);
-  const tabKey = workspaceKeyOf(projectId, workspace.worktreePath);
+  const tabKey = WorkspaceSession.of(projectId, workspace.worktreePath ?? null).key;
   const store = useEditorStore.getState();
   const tabId = getTabId(tabKey, filePath);
   const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === tabId);
@@ -60,12 +60,11 @@ export async function openProjectFile(opts: {
   const content = await readFileContent(workspace, filePath);
   const newTab: Tab = {
     id: tabId,
-    projectId,
+    scope: { kind: 'workspace', session: workspace },
     title: getFileName(filePath),
     order: store.tabs[tabKey]?.tabs.length ?? 0,
     data: {
       kind: 'file',
-      workspace,
       filePath,
       fileName: getFileName(filePath),
       content,
@@ -74,5 +73,5 @@ export async function openProjectFile(opts: {
     },
   };
   store.setNavigateGoal({ tabKey, tabId, line, col });
-  store.addTab(tabKey, newTab);
+  store.addTab(newTab);
 }

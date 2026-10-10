@@ -1,3 +1,4 @@
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 export interface LaunchConfig {
   name: string;
   type: string;
@@ -28,7 +29,7 @@ export interface EntryPoint {
 
 export interface DapSessionInfo {
   sessionId: string;
-  projectId: string;
+  projectId: ProjectId;
   projectPath: string;
   configName: string;
   status: string;
@@ -73,7 +74,7 @@ export interface VariableDto {
 
 export interface DapEventPayload {
   sessionId: string;
-  projectId: string;
+  projectId: ProjectId;
   kind: string;
   body: unknown;
 }

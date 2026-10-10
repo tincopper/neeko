@@ -1,3 +1,4 @@
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 /**
  * Search across files in a project (local / WSL / SSH).
  *
@@ -54,7 +55,7 @@ export interface SearchFileGroup {
 export interface SearchResponse {
   requestId: string;
   query: string;
-  projectId: string;
+  projectId: ProjectId;
   matches: SearchFileGroup[];
   cursor: SearchCursor;
   truncated: boolean;

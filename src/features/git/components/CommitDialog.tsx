@@ -5,6 +5,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileChange } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
@@ -22,11 +23,10 @@ import { beginGitConsoleRun, GIT_BUSY_MESSAGE, runGitConsoleOp } from '../api/gi
 import { isConflictedEntry } from '../utils/gitStatusGroups';
 
 interface CommitDialogProps {
-  projectId: string;
+  projectId: ProjectId;
   onClose: () => void;
-  onRefreshGit: (projectId: string) => void;
+  onRefreshGit: (projectId: ProjectId) => void;
 }
-
 function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const activeCheckoutPath = useWorkspaceStore((s) => selectActiveCheckoutPath(s, activeProjectId));

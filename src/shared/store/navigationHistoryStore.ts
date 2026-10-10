@@ -46,21 +46,22 @@ export function captureCurrentNavLocation(): NavLocation | null {
   const projectId = proj.activeProjectId;
   if (!projectId) return null;
 
-  // 激活 key 唯一派生点（不在消费侧重算 workspaceKeyOf 组合）
+  // 激活 key 唯一派生点（不在消费侧重算 WorkspaceSession 组合）
   const tabKey = activeWorkspaceKeyOf(projectId);
   if (!tabKey) return null;
 
   const projectTabs = editor.tabs[tabKey];
   if (!projectTabs?.activeTabId) return null;
   const tab = projectTabs.tabs.find((t) => t.id === projectTabs.activeTabId);
-  if (!tab || tab.data.kind !== 'file') return null;
+  if (!tab || tab.data.kind !== 'file' || tab.scope.kind !== 'workspace') return null;
 
   const cursor = editor.cursorPosition;
   return {
     projectId,
     tabKey,
     filePath: tab.data.filePath,
-    workspace: tab.data.workspace,
+    // workspace 改从 tab.scope 投影（FileTabData.workspace 已上提）
+    workspace: tab.scope.session,
     line: Math.max(1, cursor?.line ?? 1),
     column: Math.max(0, cursor?.col ?? 0),
   };
@@ -90,19 +91,18 @@ async function restoreLocation(loc: NavLocation): Promise<void> {
     const content = await readFileContent(loc.workspace, loc.filePath);
     const newTab: Tab = {
       id: tabId,
-      projectId: loc.projectId,
+      scope: { kind: 'workspace', session: loc.workspace },
       title: getFileName(loc.filePath),
       order: existing?.tabs.length ?? 0,
       data: {
         kind: 'file',
-        workspace: loc.workspace,
         filePath: loc.filePath,
         fileName: getFileName(loc.filePath),
         content,
         isDirty: false,
       },
     };
-    store.addTab(loc.tabKey, newTab);
+    store.addTab(newTab);
   } catch (e) {
     console.error('[nav-history] Failed to open', loc.filePath, e);
     store.clearNavigateGoal(goalSeq);

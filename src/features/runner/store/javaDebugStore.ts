@@ -12,6 +12,7 @@
 import { create } from 'zustand';
 
 import { useNotificationStore } from '@/shared/store/notificationStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { debugJavaAttach, debugJavaStart } from '../api/debugApi';
 import { activeWorkspaceRoot } from '../exec/context';
@@ -45,10 +46,10 @@ interface JavaDebugState {
   /** 设置后端标注（`null` 清除）。 */
   setBackendLabel: (label: JavaBackendLabel | null) => void;
   /** 记住/清除「本项目已确认降级到 host」。 */
-  markHostFallback: (projectId: string) => void;
-  clearHostFallback: (projectId: string) => void;
+  markHostFallback: (projectId: ProjectId) => void;
+  clearHostFallback: (projectId: ProjectId) => void;
   /** 本项目是否已确认降级（供 dispatch 跳过 B' 探测）。 */
-  isHostFallback: (projectId: string) => boolean;
+  isHostFallback: (projectId: ProjectId) => boolean;
   /** 新会话开始：复位本会话的记忆（标注 + 零命中闩锁）。 */
   resetSession: () => void;
   /** 「零用例即终止」的闩锁（同一会话只报一次）。 */
@@ -59,7 +60,7 @@ interface JavaDebugState {
    * 解析第三方库 / JDK 源码。
    */
   startJavaAttach: (
-    projectId: string,
+    projectId: ProjectId,
     command: string,
     cwd: string,
     testName: string,
@@ -70,7 +71,7 @@ interface JavaDebugState {
    * `undefined` = 被在途启动链拦截（评审 P3 互斥位），调用方视同无事发生。
    */
   startJavaDebug: (
-    projectId: string,
+    projectId: ProjectId,
     target: JavaJdtlsTarget,
   ) => Promise<JavaDebugStartResult | undefined>;
 }

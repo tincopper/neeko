@@ -8,7 +8,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { armProjectAutoRefresh, disarmProjectAutoRefresh } from '@/shared/utils/browserAutoRefresh';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 // 轻量化依赖：terminal 调用 + webview/picker 子 hook 打桩，聚焦 hook 自身逻辑
 vi.mock('@/features/terminal', () => ({
@@ -40,6 +40,11 @@ vi.mock('@/features/browser/hooks/useBrowserPicker', () => ({
 vi.mock('@/shared/hooks/useFileChangedEvent', () => ({ useFileChangedEvent: vi.fn() }));
 
 import { useBrowserTab } from '../useBrowserTab';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 describe('useBrowserTab — per-tab 状态惰性初始化', () => {
   beforeEach(() => {
@@ -131,7 +136,7 @@ describe('useBrowserTab — closePage 关闭页面回收资源', () => {
           tabs: [
             {
               id: 'tab_c',
-              projectId: 'p1',
+              scope: { kind: 'workspace', session: mkSession('p1') },
               title: 'A',
               order: 0,
               data: { kind: 'browser', url: 'https://a.com' },
@@ -183,7 +188,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
   const TAB_ID = 'tab_f';
   const TAB_KEY = 'p1';
   const FILE_URL = 'file:///repo/docs/main.html';
-  const MAIN_KEY = workspaceKeyOf('p1', null);
+  const MAIN_KEY = WorkspaceSession.of('p1', null).key;
 
   function grabFileChangedHandler(): (event: {
     workspace_key: string;
@@ -265,7 +270,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
 
     act(() => {
       handler({
-        workspace_key: workspaceKeyOf('p1', '/repo-wt'),
+        workspace_key: WorkspaceSession.of('p1', '/repo-wt').key,
         project_id: 'p1',
         paths: ['docs/main.html'],
       });
@@ -296,7 +301,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
 describe('useBrowserTab — 浮层打开期间隐藏 webview', () => {
   const browserTab = {
     id: 'tab_bw',
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: 'B',
     order: 0,
     data: { kind: 'browser' as const, url: 'https://a.com' },

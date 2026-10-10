@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { ChevronRightIcon } from '@/shared/components/icons';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
+import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 import { noAutocorrectProps } from '@/ui/inputDefaults';
 
 import { listPrReviewComments, addPrReviewComment } from '../../api/gitApi';
@@ -17,7 +18,7 @@ import type { ViewMode } from '../diff/types';
 import { useDiffData } from '../diff/useDiffData';
 
 interface PRFilesChangedPanelProps {
-  projectId: string;
+  projectId: ProjectId;
   prNumber: number;
   files: PRFileChange[];
   scrollToFile?: string | null;
@@ -38,7 +39,7 @@ function getFileName(path: string): string {
 const reviewCommentsCache = new Map<string, Promise<PRReviewComment[]>>();
 const reviewCommentsResult = new Map<string, PRReviewComment[]>();
 
-function fetchReviewComments(projectId: string, prNumber: number): Promise<PRReviewComment[]> {
+function fetchReviewComments(projectId: ProjectId, prNumber: number): Promise<PRReviewComment[]> {
   const key = `${projectId}:${prNumber}`;
   const cached = reviewCommentsResult.get(key);
   if (cached) return Promise.resolve(cached);
@@ -252,7 +253,7 @@ const PRFilesChangedPanel: React.FC<PRFilesChangedPanelProps> = ({
 };
 
 interface FileDiffSectionProps {
-  projectId: string;
+  projectId: ProjectId;
   prNumber: number;
   file: PRFileChange;
   viewMode: ViewMode;
@@ -393,7 +394,7 @@ const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
 FileDiffSection.displayName = 'FileDiffSection';
 
 interface DiffBodyProps {
-  projectId: string;
+  projectId: ProjectId;
   prNumber: number;
   filePath: string;
   fileStatus: string;
@@ -577,10 +578,9 @@ const DiffBody: React.FC<DiffBodyProps> = ({
 };
 
 interface AddedFileContentProps {
-  projectId: string;
+  projectId: ProjectId;
   filePath: string;
 }
-
 const AddedFileContent: React.FC<AddedFileContentProps> = ({ projectId, filePath }) => {
   const [content, setContent] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(true);
@@ -588,7 +588,7 @@ const AddedFileContent: React.FC<AddedFileContentProps> = ({ projectId, filePath
   useEffect(() => {
     let cancelled = false;
     // PR diff 数据按主仓投影：与它同单元读取，不跟随激活视图（worktree 激活时会读错副本）。
-    readFileContent({ projectId, worktreePath: null }, filePath)
+    readFileContent(WorkspaceSession.of(projectId, null), filePath)
       .then((result) => {
         if (!cancelled) {
           setContent(result.content);

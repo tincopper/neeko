@@ -14,6 +14,7 @@ import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FileTab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useFileEditorLsp } from '../useFileEditorLsp';
 
@@ -37,7 +38,10 @@ vi.mock('../useJdtLinkNavigation', () => ({
   useJdtLinkNavigation: () => ({ onOpenJdtLink: vi.fn(), bind: () => vi.fn() }),
 }));
 
-const TAB = { filePath: '/repo/main.go', projectId: 'p1' } as unknown as FileTab;
+const TAB = {
+  filePath: '/repo/main.go',
+  workspace: WorkspaceSession.of('p1', null),
+} as unknown as FileTab;
 const EDITOR_VIEW_REF = { current: null } as React.MutableRefObject<EditorView | null>;
 
 function renderWith(fileUri: string | null) {

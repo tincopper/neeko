@@ -13,14 +13,12 @@ export interface OnboardingConfig {
 
 const ONBOARDING_VERSION = 1;
 
-export async function loadOnboardingState(
-  projectId: string,
-): Promise<ProjectOnboardingState | null> {
+export async function loadOnboardingState(key: string): Promise<ProjectOnboardingState | null> {
   try {
     const config = await invoke<Record<string, unknown>>('load_config');
     const onboarding = (config as unknown as OnboardingConfig).projectOnboarding;
     if (!onboarding) return null;
-    return onboarding[projectId] ?? null;
+    return onboarding[key] ?? null;
   } catch {
     return null;
   }
@@ -32,19 +30,19 @@ export async function loadOnboardingState(
 let saveChain: Promise<void> = Promise.resolve();
 
 export async function saveOnboardingState(
-  projectId: string,
+  key: string,
   state: Partial<ProjectOnboardingState>,
 ): Promise<void> {
   const task = saveChain.then(async () => {
     const config = await invoke<Record<string, unknown>>('load_config');
     const raw = (config as unknown as OnboardingConfig).projectOnboarding ?? {};
-    const existing = raw[projectId] ?? {
+    const existing = raw[key] ?? {
       version: ONBOARDING_VERSION,
       completedSteps: [],
       dismissed: false,
       updatedAt: 0,
     };
-    raw[projectId] = {
+    raw[key] = {
       ...existing,
       ...state,
       version: ONBOARDING_VERSION,

@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { WorkspaceSession } from '@/shared/types';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 const { readFileContentMock } = vi.hoisted(() => ({
   readFileContentMock: vi.fn(),
@@ -22,10 +21,8 @@ vi.mock('@/features/action-menu/store/saveAsStore', () => ({
 import { useFileViewTabOps } from '../useFileViewTabOps';
 
 describe('useFileViewTabOps.openFile — FilesPanel 链路 canonical 化', () => {
-  const workspaceRef = {
-    current: { projectId: 'p1', worktreePath: '/wt' } as WorkspaceSession | null,
-  };
-  const tabKeyRef = { current: workspaceKeyOf('p1', '/wt') as string | null };
+  const workspaceRef = { current: WorkspaceSession.of('p1', '/wt') as WorkspaceSession | null };
+  const tabKeyRef = { current: WorkspaceSession.of('p1', '/wt').key as string | null };
 
   function renderOps() {
     return renderHook(() =>
@@ -59,9 +56,9 @@ describe('useFileViewTabOps.openFile — FilesPanel 链路 canonical 化', () =>
       await result.current.openFile('src/a.ts');
     });
 
-    const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', '/wt')];
+    const space = useEditorStore.getState().tabs[WorkspaceSession.of('p1', '/wt').key];
     expect(space.tabs).toHaveLength(1);
-    expect(space.tabs[0].id).toBe(`${workspaceKeyOf('p1', '/wt')}:/wt/src/a.ts`);
+    expect(space.tabs[0].id).toBe(`${WorkspaceSession.of('p1', '/wt').key}:/wt/src/a.ts`);
     expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe('/wt/src/a.ts');
     // 读取走 worktree 地址（FilesPanel 链路的既有语义）
     expect(readFileContentMock).toHaveBeenCalledWith(
@@ -71,24 +68,24 @@ describe('useFileViewTabOps.openFile — FilesPanel 链路 canonical 化', () =>
   });
 
   it('无 worktree：root=项目路径，相对路径拼项目根 canonical', async () => {
-    workspaceRef.current = { projectId: 'p1', worktreePath: null };
-    tabKeyRef.current = workspaceKeyOf('p1', null);
+    workspaceRef.current = WorkspaceSession.of('p1', null);
+    tabKeyRef.current = WorkspaceSession.of('p1', null).key;
     const { result } = renderOps();
 
     await act(async () => {
       await result.current.openFile('src/a.ts');
     });
 
-    const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
-    expect(space.tabs[0].id).toBe(`${workspaceKeyOf('p1', null)}:/repo/src/a.ts`);
+    const space = useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key];
+    expect(space.tabs[0].id).toBe(`${WorkspaceSession.of('p1', null).key}:/repo/src/a.ts`);
     expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
       '/repo/src/a.ts',
     );
   });
 
   it('已打开（canonical 身份命中）→ 激活既有 tab', async () => {
-    workspaceRef.current = { projectId: 'p1', worktreePath: '/wt' };
-    tabKeyRef.current = workspaceKeyOf('p1', '/wt');
+    workspaceRef.current = WorkspaceSession.of('p1', '/wt');
+    tabKeyRef.current = WorkspaceSession.of('p1', '/wt').key;
     const { result } = renderOps();
     await act(async () => {
       await result.current.openFile('src/a.ts');
@@ -98,7 +95,9 @@ describe('useFileViewTabOps.openFile — FilesPanel 链路 canonical 化', () =>
     });
 
     await waitFor(() => {
-      expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', '/wt')].tabs).toHaveLength(1);
+      expect(
+        useEditorStore.getState().tabs[WorkspaceSession.of('p1', '/wt').key].tabs,
+      ).toHaveLength(1);
     });
   });
 });

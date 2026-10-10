@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type { FileContent } from '@/shared/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import type {
   BreakpointEntry,
@@ -15,14 +16,14 @@ import type {
 } from '../types';
 
 export function dapListConfigs(
-  projectId: string,
+  projectId: ProjectId,
   worktreePath: string | null,
 ): Promise<LaunchConfig[]> {
   return invoke<LaunchConfig[]>('dap_list_configs', { projectId, worktreePath });
 }
 
 export function dapSaveConfigs(
-  projectId: string,
+  projectId: ProjectId,
   worktreePath: string | null,
   configurations: LaunchConfig[],
 ): Promise<void> {
@@ -30,7 +31,7 @@ export function dapSaveConfigs(
 }
 
 export function dapDiscoverEntries(
-  projectId: string,
+  projectId: ProjectId,
   worktreePath: string | null,
 ): Promise<EntryPoint[]> {
   return invoke<EntryPoint[]>('dap_discover_entries', { projectId, worktreePath });
@@ -39,7 +40,7 @@ export function dapDiscoverEntries(
 /** `worktreePath` = 执行单元根（激活 worktree / 项目根；无 worktree 传 null）。
  *  后端据此派生 cwd 校验基准、适配器 workspace、`${workspaceFolder}` 与 launch.json 读取根。 */
 export function dapStartSession(
-  projectId: string,
+  projectId: ProjectId,
   worktreePath: string | null,
   configName?: string | null,
   currentFile?: string | null,
@@ -53,7 +54,7 @@ export function dapStartSession(
 }
 
 export function dapStartSessionConfig(
-  projectId: string,
+  projectId: ProjectId,
   worktreePath: string | null,
   config: LaunchConfig,
 ): Promise<DapSessionInfo> {
@@ -78,7 +79,7 @@ export interface JavaAttachTarget {
  *  `worktreePath` = 执行单元根（激活 worktree / 项目根）；后端用它做 cwd 校验基准
  *  与适配器 workspace（worktree 可在项目根之外）。 */
 export function debugJavaAttach(
-  projectId: string,
+  projectId: ProjectId,
   worktreePath: string | null,
   target: JavaAttachTarget,
 ): Promise<DapSessionInfo> {
@@ -89,12 +90,12 @@ export function dapStopSession(sessionId: string): Promise<void> {
   return invoke('dap_stop_session', { sessionId });
 }
 
-export function dapGetSession(projectId: string): Promise<DapSessionInfo | null> {
+export function dapGetSession(projectId: ProjectId): Promise<DapSessionInfo | null> {
   return invoke<DapSessionInfo | null>('dap_get_session', { projectId });
 }
 
 export function dapSetBreakpoints(
-  projectId: string,
+  projectId: ProjectId,
   filePath: string,
   breakpoints: BreakpointEntry[],
   sessionId?: string | null,
@@ -107,17 +108,17 @@ export function dapSetBreakpoints(
   });
 }
 
-export function dapGetBreakpoints(projectId: string): Promise<BreakpointSpec[]> {
+export function dapGetBreakpoints(projectId: ProjectId): Promise<BreakpointSpec[]> {
   return invoke<BreakpointSpec[]>('dap_get_breakpoints', { projectId });
 }
 
 /** 全局静音开关（per-project 单 bool；后端持久化进 breakpoints.json）。 */
-export function dapSetBreakpointsMuted(projectId: string, muted: boolean): Promise<void> {
+export function dapSetBreakpointsMuted(projectId: ProjectId, muted: boolean): Promise<void> {
   return invoke('dap_set_breakpoints_muted', { projectId, muted });
 }
 
 /** 读全局静音（loadBreakpoints 时与列表同取）。 */
-export function dapGetBreakpointsMuted(projectId: string): Promise<boolean> {
+export function dapGetBreakpointsMuted(projectId: ProjectId): Promise<boolean> {
   return invoke<boolean>('dap_get_breakpoints_muted', { projectId });
 }
 
@@ -143,7 +144,7 @@ export function dapSourceContent(sessionId: string, sourceReference: number): Pr
  * stopped at that exact frame path.
  */
 export function dapReadExternalSource(
-  projectId: string,
+  projectId: ProjectId,
   sessionId: string,
   path: string,
 ): Promise<FileContent> {
@@ -176,7 +177,7 @@ export function dapEvaluate(
   });
 }
 
-export function dapCheckAdapter(projectId: string, adapterType: string): Promise<boolean> {
+export function dapCheckAdapter(projectId: ProjectId, adapterType: string): Promise<boolean> {
   return invoke<boolean>('dap_check_adapter', { projectId, adapterType });
 }
 
@@ -185,7 +186,7 @@ export function dapCheckAdapter(projectId: string, adapterType: string): Promise
  *  结果三态（session / warming / unavailable）**不含自动换引擎**：不可用时由调用方
  *  按 `staticallyDetectable` 决定"一次性询问改用 Host"还是"报错 + 显式入口"。 */
 export function debugJavaStart(
-  projectId: string,
+  projectId: ProjectId,
   worktreePath: string | null,
   target: JavaJdtlsTarget,
 ): Promise<JavaDebugStartResult> {

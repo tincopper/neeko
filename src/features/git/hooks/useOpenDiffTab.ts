@@ -2,9 +2,8 @@ import { useCallback } from 'react';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { ConnectionContext, Tab } from '@/shared/types';
-import { buildDiffSource } from '@/shared/utils/diffSource';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import type { DiffSource, Tab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /**
  * 在编辑器打开（或激活已存在的）Commit Diff tab。
@@ -18,7 +17,6 @@ import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
  *   （否则后端 resolve_project 找不到项目）。
  */
 export function useOpenDiffTab(
-  connectionContext: ConnectionContext | null,
   activeCheckoutPath?: string | null,
   projectIdFallback?: string,
 ): (filePath: string) => void {
@@ -28,7 +26,9 @@ export function useOpenDiffTab(
       const editorState = useEditorStore.getState();
       // 真实 project id 直接持值（值在手边就不从 tabKey 解回），tabKey 只是它的派生索引
       const realProjectId = projectState.activeProjectId ?? projectIdFallback ?? '';
-      const tabKey = workspaceKeyOf(realProjectId, activeCheckoutPath);
+      // 身份值对象是唯一来源：键 = session.key（不再用散件另拼一次，避免与 tab 身份分叉）
+      const session = WorkspaceSession.of(realProjectId, activeCheckoutPath ?? null);
+      const tabKey = session.key;
       const existingTabs = editorState.tabs[tabKey];
       const existingDiffTab = existingTabs?.tabs.find(
         (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
@@ -38,19 +38,19 @@ export function useOpenDiffTab(
         return;
       }
 
-      const diffSource = buildDiffSource(connectionContext, activeCheckoutPath);
+      const diffSource: DiffSource = { workspace: session, revision: { type: 'worktree' } };
       const fileName = filePath.split(/[\\/]/).pop() || filePath;
       const tabId = `tab_${crypto.randomUUID()}`;
       const tab: Tab = {
         id: tabId,
-        projectId: realProjectId,
+        scope: { kind: 'workspace', session },
         title: `Commit Diff · ${fileName}`,
         order: existingTabs?.tabs.length ?? 0,
         data: { kind: 'diff', filePath, fileName, diffSource },
       };
-      editorState.addTab(tabKey, tab);
+      editorState.addTab(tab);
       editorState.activateTab(tabKey, tabId);
     },
-    [connectionContext, activeCheckoutPath, projectIdFallback],
+    [activeCheckoutPath, projectIdFallback],
   );
 }

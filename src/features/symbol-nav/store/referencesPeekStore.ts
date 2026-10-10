@@ -10,6 +10,7 @@ import { create } from 'zustand';
 
 import { loadDefinitionTargetContent } from '@/features/lsp/api/definitionTarget';
 import type { LspLocation } from '@/features/lsp/types';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { groupReferencesByFile, windowPreviewLines } from '../referencesPeek';
 
@@ -63,11 +64,11 @@ interface ReferencesPeekState {
   groups: PeekFileGroup[];
   selectedIndex: number;
   /** 预览文本加载用（项目内文件按 UUID 解析）；跳转不使用。 */
-  projectId: string | null;
+  projectId: ProjectId | null;
   navigate: PeekNavigate | null;
 
   openPeek: (opts: {
-    projectId: string;
+    projectId: ProjectId;
     projectPath: string;
     languageId: string;
     locations: LspLocation[];

@@ -39,7 +39,7 @@
   "invariants": [
     {
       "id": "repo-unit-key-single-source",
-      "title": "Workspace身份只能由 WorkspaceRef / workspaceKeyOf 产出",
+      "title": "Workspace身份只能由 WorkspaceRef / WorkspaceSession#key 产出",
       "tier": "guard",
       "enforcement": [
         { "kind": "guard", "ref": "check_workspace_identity" },

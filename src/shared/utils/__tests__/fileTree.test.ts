@@ -10,6 +10,12 @@ import {
   isJsonFile,
   isSvgFile,
 } from '@/shared/utils/fileTree';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
+
+/** 测试身份源：项目 id → WorkspaceSession（主仓形态）。 */
+function mkSession(projectId: string) {
+  return WorkspaceSession.of(projectId, null);
+}
 
 function dirNode(name: string, path: string, children: FileNode[] = []): FileNode {
   return { name, path, is_dir: true, children };
@@ -206,7 +212,7 @@ describe('isDirtyFileTab / getTabDisplayName', () => {
   function fileTab(overrides: Partial<FileTabData> = {}): Tab {
     return {
       id: 't1',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 't1',
       order: 0,
       data: {
@@ -223,7 +229,7 @@ describe('isDirtyFileTab / getTabDisplayName', () => {
   function terminalTab(): Tab {
     return {
       id: 'term',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'term',
       order: 0,
       data: { kind: 'terminal', agentId: null, status: 'Idle' },

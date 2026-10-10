@@ -1,10 +1,11 @@
 import { registerTabCleanup } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types/tab';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { useTranslationStore } from './store';
 
 /** 翻译状态的存储键：按文件（而非项目 tab 空间）隔离 */
-export function translationKeyFor(projectId: string, filePath: string): string {
+export function translationKeyFor(projectId: ProjectId, filePath: string): string {
   return `${projectId}:${filePath}`;
 }
 
@@ -37,8 +38,8 @@ function abortTranslation(key: string): void {
  * translationStore 的 tab 维度状态（临时译文不落盘，共识 Q9）。
  */
 export const translationTabCleanupHandler = (_tabKey: string, tab: Tab): void => {
-  if (tab.data.kind !== 'file') return;
-  const key = translationKeyFor(tab.projectId, tab.data.filePath);
+  if (tab.data.kind !== 'file' || tab.scope.kind !== 'workspace') return;
+  const key = translationKeyFor(tab.scope.session.projectId, tab.data.filePath);
   abortTranslation(key);
   useTranslationStore.getState().clear(key);
 };

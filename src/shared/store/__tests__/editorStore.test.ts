@@ -3,13 +3,24 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { EditorSplitLayout, Tab } from '@/shared/types';
 import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
-import { registerTabCleanup, unregisterTabCleanup, useEditorStore } from '../editorStore';
+import {
+  activeTabIdOf,
+  registerTabCleanup,
+  restoreActiveTabId,
+  unregisterTabCleanup,
+  useEditorStore,
+} from '../editorStore';
+
+/** 测试身份源 + tab 空间键（addTab 现从 tab.scope 推导键；主仓 → `'p1\0'`）。 */
+const mkSession = (projectId: string) => WorkspaceSession.of(projectId, null);
+const SPACE = mkSession('p1').key;
 
 function makeTab(id: string): Tab {
   return {
     id,
-    projectId: 'p1',
+    scope: { kind: 'workspace', session: mkSession('p1') },
     title: id,
     order: 0,
     data: { kind: 'file', filePath: id, fileName: id, content: '', isDirty: false },
@@ -32,8 +43,8 @@ function splitLayout(
 
 function seedState(layout: EditorSplitLayout, tabs: Tab[], globalActive: string) {
   useEditorStore.setState({
-    tabs: { p1: { tabs, activeTabId: globalActive } },
-    editorLayout: { p1: layout },
+    tabs: { [SPACE]: { tabs, activeTabId: globalActive } },
+    editorLayout: { [SPACE]: layout },
     activeTabId: globalActive,
   });
 }
@@ -52,9 +63,9 @@ describe('editorStore.closeTab — split layout active switch', () => {
     const layout = splitLayout(['A', 'B'], ['C'], 'A', 'C');
     seedState(layout, [makeTab('A'), makeTab('B'), makeTab('C')], 'C');
 
-    useEditorStore.getState().closeTab('p1', 'A');
+    useEditorStore.getState().closeTab(SPACE, 'A');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.groups.left.tabIds).toEqual(['B']);
     // left group must NOT point at C (belongs to right group) → would render blank
     expect(next.groups.left.activeTabId).toBe('B');
@@ -67,9 +78,9 @@ describe('editorStore.closeTab — split layout active switch', () => {
     const layout = splitLayout(['A'], ['B', 'C'], 'A', 'C');
     seedState(layout, [makeTab('A'), makeTab('B'), makeTab('C')], 'A');
 
-    useEditorStore.getState().closeTab('p1', 'C');
+    useEditorStore.getState().closeTab(SPACE, 'C');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.groups.right.tabIds).toEqual(['B']);
     expect(next.groups.right.activeTabId).toBe('B');
     expect(next.groups.left.activeTabId).toBe('A');
@@ -80,9 +91,9 @@ describe('editorStore.closeTab — split layout active switch', () => {
     const layout = splitLayout(['A', 'B'], ['C', 'D'], 'B', 'D');
     seedState(layout, [makeTab('A'), makeTab('B'), makeTab('C'), makeTab('D')], 'B');
 
-    useEditorStore.getState().closeTab('p1', 'B');
+    useEditorStore.getState().closeTab(SPACE, 'B');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.groups.left.activeTabId).toBe('A');
     expect(useEditorStore.getState().activeTabId).toBe('A');
   });
@@ -102,9 +113,9 @@ describe('editorStore.pinTab — 多 pinned tabs 追加语义', () => {
     layout.groups.left = { tabIds: ['A', 'B'], activeTabId: 'A' };
     seedState(layout, [makeTab('A'), makeTab('B')], 'A');
 
-    useEditorStore.getState().pinTab('p1', 'A');
+    useEditorStore.getState().pinTab(SPACE, 'A');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedTabIds).toEqual(['A']);
     expect(next.pinnedActiveTabId).toBe('A');
     expect(next.groups.left.tabIds).toEqual(['B']);
@@ -117,9 +128,9 @@ describe('editorStore.pinTab — 多 pinned tabs 追加语义', () => {
     layout.groups.left = { tabIds: ['B'], activeTabId: 'B' };
     seedState(layout, [makeTab('A'), makeTab('B')], 'B');
 
-    useEditorStore.getState().pinTab('p1', 'B');
+    useEditorStore.getState().pinTab(SPACE, 'B');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedTabIds).toEqual(['A', 'B']);
     expect(next.pinnedActiveTabId).toBe('B');
     expect(next.groups.left.tabIds).toEqual([]);
@@ -132,9 +143,9 @@ describe('editorStore.pinTab — 多 pinned tabs 追加语义', () => {
     layout.groups.left = { tabIds: ['B'], activeTabId: 'B' };
     seedState(layout, [makeTab('A'), makeTab('B')], 'B');
 
-    useEditorStore.getState().pinTab('p1', 'A');
+    useEditorStore.getState().pinTab(SPACE, 'A');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedTabIds).toEqual(['A']);
     expect(next.groups.left.tabIds).toEqual(['B']);
   });
@@ -156,9 +167,9 @@ describe('editorStore.unpinTab — 按 tab 移除并放回 left', () => {
     layout.groups.left = { tabIds: ['C'], activeTabId: 'C' };
     seedState(layout, [makeTab('A'), makeTab('B'), makeTab('C')], 'B');
 
-    useEditorStore.getState().unpinTab('p1', 'A');
+    useEditorStore.getState().unpinTab(SPACE, 'A');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedTabIds).toEqual(['B']);
     expect(next.groups.left.tabIds).toEqual(['A', 'C']);
   });
@@ -170,9 +181,9 @@ describe('editorStore.unpinTab — 按 tab 移除并放回 left', () => {
     layout.groups.left = { tabIds: [], activeTabId: null };
     seedState(layout, [makeTab('A'), makeTab('B')], 'A');
 
-    useEditorStore.getState().unpinTab('p1', 'A');
+    useEditorStore.getState().unpinTab(SPACE, 'A');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedTabIds).toEqual(['B']);
     expect(next.pinnedActiveTabId).toBe('B');
     expect(next.groups.left.tabIds).toEqual(['A']);
@@ -195,9 +206,9 @@ describe('editorStore.activateTab — pinned tab 激活', () => {
     layout.groups.left = { tabIds: ['C'], activeTabId: 'C' };
     seedState(layout, [makeTab('A'), makeTab('B'), makeTab('C')], 'C');
 
-    useEditorStore.getState().activateTab('p1', 'B');
+    useEditorStore.getState().activateTab(SPACE, 'B');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedActiveTabId).toBe('B');
     expect(next.groups.left.tabIds).toEqual(['C']);
     expect(next.groups.right.tabIds).toEqual([]);
@@ -210,9 +221,9 @@ describe('editorStore.updateTab — browser 标题/favicon 同步', () => {
   });
 
   function seedBrowserTab() {
-    useEditorStore.getState().addTab('p1', {
+    useEditorStore.getState().addTab({
       id: 'tb1',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'Browser',
       order: 0,
       data: { kind: 'browser', url: 'https://a.com' },
@@ -221,12 +232,12 @@ describe('editorStore.updateTab — browser 标题/favicon 同步', () => {
 
   it('同时更新浏览器 tab 顶层标题与 data.favicon', () => {
     seedBrowserTab();
-    useEditorStore.getState().updateTab('p1', 'tb1', {
+    useEditorStore.getState().updateTab(SPACE, 'tb1', {
       title: 'GitHub',
       favicon: 'https://a.com/favicon.ico',
     });
 
-    const tab = useEditorStore.getState().tabs['p1']!.tabs.find((t) => t.id === 'tb1')!;
+    const tab = useEditorStore.getState().tabs[SPACE]!.tabs.find((t) => t.id === 'tb1')!;
     expect(tab.title).toBe('GitHub');
     expect(tab.data).toMatchObject({
       kind: 'browser',
@@ -237,9 +248,9 @@ describe('editorStore.updateTab — browser 标题/favicon 同步', () => {
 
   it('仅更新 favicon 时保留 url', () => {
     seedBrowserTab();
-    useEditorStore.getState().updateTab('p1', 'tb1', { favicon: 'https://a.com/fav.png' });
+    useEditorStore.getState().updateTab(SPACE, 'tb1', { favicon: 'https://a.com/fav.png' });
 
-    const tab = useEditorStore.getState().tabs['p1']!.tabs.find((t) => t.id === 'tb1')!;
+    const tab = useEditorStore.getState().tabs[SPACE]!.tabs.find((t) => t.id === 'tb1')!;
     expect(tab.data).toMatchObject({
       kind: 'browser',
       url: 'https://a.com',
@@ -254,9 +265,9 @@ describe('editorStore.updateTab — file tab 只读字段透传（mergeTabData�
   });
 
   function seedReadonlyTab() {
-    useEditorStore.getState().addTab('p1', {
+    useEditorStore.getState().addTab({
       id: 'tf1',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'Foo.java',
       order: 0,
       data: {
@@ -271,11 +282,11 @@ describe('editorStore.updateTab — file tab 只读字段透传（mergeTabData�
     });
   }
 
-  const tabOf = () => useEditorStore.getState().tabs['p1']!.tabs.find((t) => t.id === 'tf1')!;
+  const tabOf = () => useEditorStore.getState().tabs[SPACE]!.tabs.find((t) => t.id === 'tf1')!;
 
   it('externallyModified 刷新不剥离 readOnly / virtualUri', () => {
     seedReadonlyTab();
-    useEditorStore.getState().updateTab('p1', 'tf1', { externallyModified: true });
+    useEditorStore.getState().updateTab(SPACE, 'tf1', { externallyModified: true });
 
     const data = tabOf().data;
     expect(data.kind === 'file' && data.readOnly).toBe(true);
@@ -284,7 +295,7 @@ describe('editorStore.updateTab — file tab 只读字段透传（mergeTabData�
 
   it('content 刷新不剥离 readOnly / virtualUri', () => {
     seedReadonlyTab();
-    useEditorStore.getState().updateTab('p1', 'tf1', {
+    useEditorStore.getState().updateTab(SPACE, 'tf1', {
       content: { path: 'jdt:/x', content: 'new', size: 3, is_binary: false },
     });
 
@@ -294,9 +305,9 @@ describe('editorStore.updateTab — file tab 只读字段透传（mergeTabData�
   });
 
   it('显式写入 readOnly / virtualUri 时生效', () => {
-    useEditorStore.getState().addTab('p1', {
+    useEditorStore.getState().addTab({
       id: 'tf2',
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'Bar.rs',
       order: 0,
       data: {
@@ -307,9 +318,9 @@ describe('editorStore.updateTab — file tab 只读字段透传（mergeTabData�
         isDirty: false,
       },
     });
-    useEditorStore.getState().updateTab('p1', 'tf2', { readOnly: true });
+    useEditorStore.getState().updateTab(SPACE, 'tf2', { readOnly: true });
 
-    const data = useEditorStore.getState().tabs['p1']!.tabs.find((t) => t.id === 'tf2')!.data;
+    const data = useEditorStore.getState().tabs[SPACE]!.tabs.find((t) => t.id === 'tf2')!.data;
     expect(data.kind === 'file' && data.readOnly).toBe(true);
   });
 });
@@ -330,9 +341,9 @@ describe('editorStore.unpinTabTo — 拖拽 unpin 到指定组', () => {
     layout.groups.left = { tabIds: ['C', 'D'], activeTabId: 'C' };
     seedState(layout, [makeTab('A'), makeTab('B'), makeTab('C'), makeTab('D')], 'A');
 
-    useEditorStore.getState().unpinTabTo('p1', 'A', 'left', 'D');
+    useEditorStore.getState().unpinTabTo(SPACE, 'A', 'left', 'D');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedTabIds).toEqual(['B']);
     expect(next.groups.left.tabIds).toEqual(['C', 'A', 'D']);
   });
@@ -344,9 +355,9 @@ describe('editorStore.unpinTabTo — 拖拽 unpin 到指定组', () => {
     layout.groups.left = { tabIds: ['C'], activeTabId: 'C' };
     seedState(layout, [makeTab('A'), makeTab('C')], 'A');
 
-    useEditorStore.getState().unpinTabTo('p1', 'A', 'left', 'C');
+    useEditorStore.getState().unpinTabTo(SPACE, 'A', 'left', 'C');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.groups.left.activeTabId).toBe('A');
   });
 
@@ -357,9 +368,9 @@ describe('editorStore.unpinTabTo — 拖拽 unpin 到指定组', () => {
     layout.groups.left = { tabIds: ['C'], activeTabId: 'C' };
     seedState(layout, [makeTab('A'), makeTab('B'), makeTab('C')], 'A');
 
-    useEditorStore.getState().unpinTabTo('p1', 'A', 'left', 'C');
+    useEditorStore.getState().unpinTabTo(SPACE, 'A', 'left', 'C');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedActiveTabId).toBe('B');
   });
 
@@ -370,9 +381,9 @@ describe('editorStore.unpinTabTo — 拖拽 unpin 到指定组', () => {
     layout.groups.left = { tabIds: ['C', 'D'], activeTabId: 'C' };
     seedState(layout, [makeTab('A'), makeTab('C'), makeTab('D')], 'A');
 
-    useEditorStore.getState().unpinTabTo('p1', 'A', 'left', null);
+    useEditorStore.getState().unpinTabTo(SPACE, 'A', 'left', null);
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.groups.left.tabIds).toEqual(['C', 'D', 'A']);
   });
 
@@ -383,9 +394,9 @@ describe('editorStore.unpinTabTo — 拖拽 unpin 到指定组', () => {
     layout.groups.left = { tabIds: ['C'], activeTabId: 'C' };
     seedState(layout, [makeTab('A'), makeTab('B'), makeTab('C')], 'B');
 
-    useEditorStore.getState().unpinTabTo('p1', 'A', 'left', 'C');
+    useEditorStore.getState().unpinTabTo(SPACE, 'A', 'left', 'C');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedTabIds).toEqual(['B']);
     expect(next.groups.left.tabIds).toEqual(['C']);
   });
@@ -399,9 +410,9 @@ describe('editorStore.unpinTabTo — 拖拽 unpin 到指定组', () => {
     layout.groups.right = { tabIds: ['D'], activeTabId: 'D' };
     seedState(layout, [makeTab('A'), makeTab('C'), makeTab('D')], 'A');
 
-    useEditorStore.getState().unpinTabTo('p1', 'A', 'right', 'D');
+    useEditorStore.getState().unpinTabTo(SPACE, 'A', 'right', 'D');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedTabIds).toEqual([]);
     expect(next.isSplit).toBe(true);
     expect(next.groups.right.tabIds).toEqual(['A', 'D']);
@@ -431,7 +442,7 @@ describe('editorStore.addTab — targetGroup 指定落组（pane 内 + 创建跟
   function makeNewTab(id: string): Tab {
     return {
       id,
-      projectId: 'p1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
       title: id,
       order: 99,
       data: { kind: 'browser', url: '' },
@@ -440,9 +451,9 @@ describe('editorStore.addTab — targetGroup 指定落组（pane 内 + 创建跟
 
   it("targetGroup='pinned' → 落 pinnedTabIds 并激活 pinned，groups 不含它", () => {
     seedTwoGroups();
-    useEditorStore.getState().addTab('p1', makeNewTab('NEW'), 'pinned');
+    useEditorStore.getState().addTab(makeNewTab('NEW'), 'pinned');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedTabIds).toEqual(['NEW']);
     expect(next.pinnedActiveTabId).toBe('NEW');
     expect(next.groups.left.tabIds).toEqual(['L1']);
@@ -452,9 +463,9 @@ describe('editorStore.addTab — targetGroup 指定落组（pane 内 + 创建跟
 
   it("targetGroup='left' → 落 left 组并激活（即使激活组是 right）", () => {
     seedTwoGroups();
-    useEditorStore.getState().addTab('p1', makeNewTab('NEW'), 'left');
+    useEditorStore.getState().addTab(makeNewTab('NEW'), 'left');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.groups.left.tabIds).toEqual(['L1', 'NEW']);
     expect(next.groups.left.activeTabId).toBe('NEW');
     expect(next.groups.right.tabIds).toEqual(['R1']);
@@ -462,18 +473,18 @@ describe('editorStore.addTab — targetGroup 指定落组（pane 内 + 创建跟
 
   it("targetGroup='right' → 落 right 组并激活", () => {
     seedTwoGroups();
-    useEditorStore.getState().addTab('p1', makeNewTab('NEW'), 'right');
+    useEditorStore.getState().addTab(makeNewTab('NEW'), 'right');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.groups.right.tabIds).toEqual(['R1', 'NEW']);
     expect(next.groups.right.activeTabId).toBe('NEW');
   });
 
   it('缺省 targetGroup → 保持现状落到 activeGroupId（回归保护）', () => {
     seedTwoGroups();
-    useEditorStore.getState().addTab('p1', makeNewTab('NEW'));
+    useEditorStore.getState().addTab(makeNewTab('NEW'));
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.groups.right.tabIds).toEqual(['R1', 'NEW']);
     expect(next.groups.left.tabIds).toEqual(['L1']);
     expect(next.pinnedTabIds).toEqual([]);
@@ -486,9 +497,9 @@ describe('editorStore.addTab — targetGroup 指定落组（pane 内 + 创建跟
     layout.groups.left = { tabIds: ['L1'], activeTabId: 'L1' };
     seedState(layout, [makeTab('P1'), makeTab('L1')], 'L1');
 
-    useEditorStore.getState().addTab('p1', makeNewTab('NEW'), 'pinned');
+    useEditorStore.getState().addTab(makeNewTab('NEW'), 'pinned');
 
-    const next = useEditorStore.getState().editorLayout['p1'];
+    const next = useEditorStore.getState().editorLayout[SPACE];
     expect(next.pinnedTabIds).toEqual(['P1', 'NEW']);
     expect(next.pinnedActiveTabId).toBe('NEW');
   });
@@ -509,13 +520,13 @@ describe('editorStore.renameTab — Save As 身份迁移（改 id 保持一致�
     layout.pinnedActiveTabId = 'A';
     seedState(layout, [makeTab('u1'), makeTab('A'), makeTab('B')], 'u1');
 
-    useEditorStore.getState().renameTab('p1', 'u1', 'p1:/repo/x.ts');
+    useEditorStore.getState().renameTab(SPACE, 'u1', 'p1:/repo/x.ts');
 
     const s = useEditorStore.getState();
-    expect(s.tabs['p1'].tabs.map((t) => t.id)).toEqual(['p1:/repo/x.ts', 'A', 'B']);
-    expect(s.tabs['p1'].activeTabId).toBe('p1:/repo/x.ts');
+    expect(s.tabs[SPACE].tabs.map((t) => t.id)).toEqual(['p1:/repo/x.ts', 'A', 'B']);
+    expect(s.tabs[SPACE].activeTabId).toBe('p1:/repo/x.ts');
     expect(s.activeTabId).toBe('p1:/repo/x.ts');
-    const l = s.editorLayout['p1'];
+    const l = s.editorLayout[SPACE];
     expect(l.groups.left.tabIds).toEqual(['p1:/repo/x.ts', 'A']);
     expect(l.groups.left.activeTabId).toBe('p1:/repo/x.ts');
     expect(l.groups.right.tabIds).toEqual(['B']);
@@ -526,21 +537,21 @@ describe('editorStore.renameTab — Save As 身份迁移（改 id 保持一致�
   it('目标 id 已被占用 → 拒绝（无变化）', () => {
     seedState(splitLayout(['u1', 'A'], [], 'u1', 'u1'), [makeTab('u1'), makeTab('A')], 'u1');
 
-    useEditorStore.getState().renameTab('p1', 'u1', 'A');
+    useEditorStore.getState().renameTab(SPACE, 'u1', 'A');
 
     const s = useEditorStore.getState();
-    expect(s.tabs['p1'].tabs.map((t) => t.id)).toEqual(['u1', 'A']);
-    expect(s.tabs['p1'].activeTabId).toBe('u1');
+    expect(s.tabs[SPACE].tabs.map((t) => t.id)).toEqual(['u1', 'A']);
+    expect(s.tabs[SPACE].activeTabId).toBe('u1');
   });
 
   it('old id 不存在 → 无变化', () => {
     seedState(splitLayout(['A'], [], 'A', 'A'), [makeTab('A')], 'A');
 
-    useEditorStore.getState().renameTab('p1', 'missing', 'X');
+    useEditorStore.getState().renameTab(SPACE, 'missing', 'X');
 
     const s = useEditorStore.getState();
-    expect(s.tabs['p1'].tabs.map((t) => t.id)).toEqual(['A']);
-    expect(s.tabs['p1'].activeTabId).toBe('A');
+    expect(s.tabs[SPACE].tabs.map((t) => t.id)).toEqual(['A']);
+    expect(s.tabs[SPACE].activeTabId).toBe('A');
   });
 });
 
@@ -556,18 +567,18 @@ describe('editorStore.navigateGoal — cleared when its target tab is removed', 
 
   it('closeTab removes the goal target tab → navigateGoal cleared', () => {
     seedState(splitLayout(['A', 'B'], [], 'A', 'A'), [makeTab('A'), makeTab('B')], 'A');
-    useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'A', line: 1, col: 0 });
+    useEditorStore.getState().setNavigateGoal({ tabKey: SPACE, tabId: 'A', line: 1, col: 0 });
 
-    useEditorStore.getState().closeTab('p1', 'A');
+    useEditorStore.getState().closeTab(SPACE, 'A');
 
     expect(useEditorStore.getState().navigateGoal).toBeNull();
   });
 
   it('closeTab removes another tab → navigateGoal preserved', () => {
     seedState(splitLayout(['A', 'B'], [], 'A', 'A'), [makeTab('A'), makeTab('B')], 'A');
-    useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'A', line: 1, col: 0 });
+    useEditorStore.getState().setNavigateGoal({ tabKey: SPACE, tabId: 'A', line: 1, col: 0 });
 
-    useEditorStore.getState().closeTab('p1', 'B');
+    useEditorStore.getState().closeTab(SPACE, 'B');
 
     const goal = useEditorStore.getState().navigateGoal;
     expect(goal).not.toBeNull();
@@ -580,18 +591,18 @@ describe('editorStore.navigateGoal — cleared when its target tab is removed', 
     layout.pinnedTabIds = ['A'];
     layout.pinnedActiveTabId = 'A';
     seedState(layout, [makeTab('A')], 'A');
-    useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'A', line: 1, col: 0 });
+    useEditorStore.getState().setNavigateGoal({ tabKey: SPACE, tabId: 'A', line: 1, col: 0 });
 
-    useEditorStore.getState().closeTab('p1', 'A');
+    useEditorStore.getState().closeTab(SPACE, 'A');
 
     expect(useEditorStore.getState().navigateGoal?.tabId).toBe('A');
   });
 
   it('clearProjectTabs removes the project tab space → goal for that tabKey cleared', () => {
     seedState(splitLayout(['A'], [], 'A', 'A'), [makeTab('A')], 'A');
-    useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'A', line: 1, col: 0 });
+    useEditorStore.getState().setNavigateGoal({ tabKey: SPACE, tabId: 'A', line: 1, col: 0 });
 
-    useEditorStore.getState().clearProjectTabs('p1');
+    useEditorStore.getState().clearProjectTabs(SPACE);
 
     expect(useEditorStore.getState().navigateGoal).toBeNull();
   });
@@ -600,7 +611,7 @@ describe('editorStore.navigateGoal — cleared when its target tab is removed', 
     seedState(splitLayout(['A'], [], 'A', 'A'), [makeTab('A')], 'A');
     useEditorStore.getState().setNavigateGoal({ tabKey: 'p2', tabId: 'X', line: 1, col: 0 });
 
-    useEditorStore.getState().clearProjectTabs('p1');
+    useEditorStore.getState().clearProjectTabs(SPACE);
 
     expect(useEditorStore.getState().navigateGoal?.tabKey).toBe('p2');
   });
@@ -632,18 +643,41 @@ describe('editorStore.tabCleanup — handler 异常在分发点隔离', () => {
     seedState(splitLayout(['A', 'B'], [], 'A', 'A'), [makeTab('A'), makeTab('B')], 'A');
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(() => useEditorStore.getState().clearProjectTabs('p1')).not.toThrow();
+    expect(() => useEditorStore.getState().clearProjectTabs(SPACE)).not.toThrow();
 
     expect(throwingHandler).toHaveBeenCalledTimes(2); // A 抛错不中断 B 的清理
-    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+    expect(useEditorStore.getState().tabs[SPACE]).toBeUndefined();
   });
 
   it('closeTab：handler 抛错 → tab 仍被移除、异常不外溢', () => {
     seedState(splitLayout(['A', 'B'], [], 'A', 'A'), [makeTab('A'), makeTab('B')], 'A');
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(() => useEditorStore.getState().closeTab('p1', 'A')).not.toThrow();
+    expect(() => useEditorStore.getState().closeTab(SPACE, 'A')).not.toThrow();
 
-    expect(useEditorStore.getState().tabs['p1'].tabs.map((t) => t.id)).toEqual(['B']);
+    expect(useEditorStore.getState().tabs[SPACE].tabs.map((t) => t.id)).toEqual(['B']);
+  });
+});
+
+describe('activeTabIdOf / restoreActiveTabId（全局 activeTabId 读/写单一实现）', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ tabs: {}, activeTabId: null, editorLayout: {}, navigateGoal: null });
+  });
+
+  it('activeTabIdOf 读指定空间的激活 tab；未知空间返回 null', () => {
+    useEditorStore.getState().addTab(makeTab('A'));
+    expect(activeTabIdOf(SPACE)).toBe('A');
+    expect(activeTabIdOf(mkSession('other').key)).toBeNull();
+  });
+
+  it('restoreActiveTabId 按 tabKey 重派生全局 activeTabId；null 置空', () => {
+    useEditorStore.getState().addTab(makeTab('A'));
+    useEditorStore.setState({ activeTabId: null });
+
+    restoreActiveTabId(SPACE);
+    expect(useEditorStore.getState().activeTabId).toBe('A');
+
+    restoreActiveTabId(null);
+    expect(useEditorStore.getState().activeTabId).toBeNull();
   });
 });
