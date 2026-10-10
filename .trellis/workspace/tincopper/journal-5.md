@@ -1923,3 +1923,36 @@ callback filtering, so `.gitignore`d subtrees produce no watch input at all.
 ### Next Steps
 
 - None - task complete
+
+
+## Session 263: Tab identity model: address tabs by WorkspaceSession
+
+**Date**: 2026-10-10
+**Task**: Tab identity model: address tabs by WorkspaceSession
+**Branch**: `main`
+
+### Summary
+
+Rework tab/workspace identity: Tab.scope + addTab construction law (store key derived from tab.scope via tabSpaceKeyOf), WorkspaceSession class (private ctor / of / fromKey / fromKeyOrId / cached key getter = single key mint, ≡ Rust WorkspaceRef::key()), ProjectId branding across DTO + slots, DiffSource reshaped to { workspace, revision } (env lives in ProjectCommands), editorStore.tabs read by tab-space key everywhere, editorStore.activeTabIdOf (read) + restoreActiveTabId (write) as the single active-tab derivations, Rust project_context rejects NUL project ids (InvalidInput), workspace-identity guard + specs synced. Gates: 23/23, test_fe 509 files / 4574 tests, 0 skip.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `449bc432` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
