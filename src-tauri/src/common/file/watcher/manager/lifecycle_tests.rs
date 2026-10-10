@@ -739,10 +739,18 @@ fn linked_worktree_edit_pushes_versioned_snapshot_without_manual_poke() {
 ///
 /// 为什么断言句柄数而不是 OS 线程数：线程由 `stop_signal` + 句柄 drop 收敛，属实现细节；
 /// 「累积」的可观测形态就是挂载表增长 —— 表里留一份句柄就必然留一套后台线程与文件描述符。
+///
+/// **不启动任何 OS 监听**：单元 key 只由 `(project_id, workdir)` 决定，与目录是否存在无关；
+/// 指向**尚不存在**的路径时，notify 在 `append_path` 阶段即以 `path_not_found` 失败
+/// （发生在 `FSEventStreamStart` 之前），于是 `watch()` 仍完整走生产路径 —— 建句柄、写挂载表、
+/// 起 debounce/maintenance 线程 —— 却不创建 FSEvents 流。本用例的唯一判据是挂载表簿记，
+/// 20 次真实建流只是给 macOS 的 fseventsd 交税（单次建流有系统级成本，见 2026-10-10 事故）。
+/// 真实目录上的「挂载/释放确实生效」由本文件 `repo_with_linked_worktree` 系列用例覆盖。
 #[test]
 fn twenty_unit_switches_do_not_accumulate_mounts() {
     let tmp = tempfile::tempdir().unwrap();
-    let (main, worktree) = repo_with_linked_worktree(tmp.path());
+    let main = tmp.path().join("repo");
+    let worktree = tmp.path().join("repo-wt");
     let main_unit = main_unit(&main);
     let wt_unit = worktree_unit(&main, &worktree);
 
