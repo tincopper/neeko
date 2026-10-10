@@ -1,0 +1,32 @@
+{
+  "id": "watcher-boundary-cost-model",
+  "name": "watcher-boundary-cost-model",
+  "title": "监听边界与成本模型：ignored 子树零监听、可排除的物理边界、粗粒度失效",
+  "description": "让被 .gitignore 忽略的子树在物理层不被监听；把监听边界从 gitignore 逻辑语义提升为可物理实现的 watch manifest；过载降级改为粗化。单任务内以工作流（W0~W4）管理，不建子任务目录。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-10-09",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [
+    "watch-manifest-contract",
+    "ignored-structure-events",
+    "user-watcher-exclude",
+    "tree-read-entry-cap",
+    "macos-fsevent-exclusion"
+  ],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

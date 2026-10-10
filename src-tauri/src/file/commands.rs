@@ -1,6 +1,6 @@
 use crate::common::git::WorkspaceSession;
 use crate::platform::reveal::{build_reveal_command, normalize_path};
-use crate::project::types::{FileContent, FileNode};
+use crate::project::types::FileContent;
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::Path;
@@ -52,7 +52,7 @@ pub async fn read_dir_tree(
     sub_path: Option<String>,
     max_depth: Option<u32>,
     state: State<'_, AppStateWrapper>,
-) -> Result<Vec<FileNode>, AppError> {
+) -> Result<crate::common::file::services::DirTreeResult, AppError> {
     // 深度常量单一事实源：crate::common::file::services::DEFAULT_TREE_DEPTH
     let depth = max_depth.unwrap_or(crate::common::file::services::DEFAULT_TREE_DEPTH);
     let (target, repo) = state.resolve_workspace_target(&workspace).await?;
@@ -66,10 +66,22 @@ pub async fn read_dir_tree(
     //
     // base 与 gitignore 单元来自**同一个** WorkspaceRef（一次解析）—— 归一含
     // `exists` / `canonicalize`（阻塞 fs），经 `resolve_workspace_target` 内部隔离到阻塞池（红线 3）。
+    //
+    // 用户排除模式读 config.json 是阻塞 I/O（红线 3）→ 经阻塞池；且只有 Local 目标会消费
+    // （远程 ignored 走远程 `git ls-files`），远程/非 git 无需读。
+    let user_excludes = if matches!(target, crate::common::executor::factory::ExecTarget::Local) {
+        let watcher_manager = state.watcher_manager.clone();
+        tokio::task::spawn_blocking(move || watcher_manager.watcher_excludes())
+            .await
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let gitignore = crate::common::file::services::resolve_gitignore_filter(
         &target,
         state.watcher_manager.gitignore_for(&repo),
         Path::new(base),
+        &user_excludes,
     )
     .await;
     crate::common::file::services::read_dir_tree(

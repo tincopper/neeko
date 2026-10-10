@@ -7,6 +7,7 @@ use crate::common::git::parsers::build_file_tree_from_find;
 use crate::core::exec::collect;
 use crate::project::types::FileNode;
 use crate::AppError;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -17,6 +18,28 @@ use super::ignored_cache::{
 
 /// 文件树默认递归深度
 pub const DEFAULT_TREE_DEPTH: u32 = 3;
+
+/// 单层目录条目上限（红线 4：单次 Command 返回 JSON 不超过 2MB）。
+///
+/// `FileNode` 的 JSON 约 120–200B（name + path + 布尔 + 空数组），2000 条约
+/// 0.3–0.5MB，为 2MB 上限留足余量。达到上限即停止该层读取（不先全量收集再
+/// 截断），置 `truncated` 并向上传播到顶层结果。
+///
+/// 动机：`target/debug/deps` 这类目录一级可达 88 万条，无界读取会把全部条目
+/// 序列化经 IPC 返回，撞红线 4 并爆内存（`research/raw-perf-evidence.md`）。
+pub const MAX_DIR_ENTRIES: usize = 2000;
+
+/// 目录树读取结果：节点 + 截断语义（红线 4）。
+///
+/// `truncated` 是**顶层**标记：任意层因 [`MAX_DIR_ENTRIES`] 截断都会向上传播，
+/// 使消费侧能区分「目录确实只有这些条目」与「被上限截断」。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirTreeResult {
+    /// 该层（或嵌套层合并后）的目录条目；任意层被截断时仍是有界集合。
+    pub nodes: Vec<FileNode>,
+    /// 任意层命中 [`MAX_DIR_ENTRIES`] 被截断为 true。
+    pub truncated: bool,
+}
 
 /// 校验 WSL / Remote 文件树懒加载使用的相对子路径。
 /// 远程路径无法在本端 canonicalize，必须先用严格语法校验拒绝越界：
@@ -49,7 +72,7 @@ pub async fn read_dir_tree(
     sub_path: Option<&str>,
     max_depth: u32,
     gitignore: Option<&crate::common::file::watcher::GitIgnoreFilter>,
-) -> Result<Vec<FileNode>, AppError> {
+) -> Result<DirTreeResult, AppError> {
     match target {
         ExecTarget::Local => {
             let base = PathBuf::from(root_path);
@@ -104,7 +127,12 @@ pub async fn read_dir_tree(
                 })
                 .await;
             apply_ignored_to_tree(&mut tree, &ignored_paths);
-            Ok(tree)
+            // WSL/Remote 分支本次不施加单层上限（行为不变）：远程 find 已受 max_depth
+            // 约束，海量单目录的截断是已知缺口（见 implement.md · W3）。
+            Ok(DirTreeResult {
+                nodes: tree,
+                truncated: false,
+            })
         }
     }
 }
@@ -164,12 +192,16 @@ pub fn invalidate_local_gitignore_cache() {
 ///   loaded，灰显只能靠手动刷新修复；
 /// - 非 git 目录 / 非 Local 目标（ignored 走远程 `git ls-files`）→ 不构建。
 ///
-/// `is_git_repo`（fs 元数据探测）与 `GitIgnoreFilter::new`（阻塞全树遍历）
+/// `is_git_repo`（fs 元数据探测）与 `GitIgnoreFilter` 构造（阻塞全树遍历）
 /// 均为阻塞 I/O，必须整体移交 blocking 线程执行，禁止进入 async driver。
+///
+/// `user_excludes` 是用户级 `watcherExclude` 快照（由组合根从配置域读取后传入）——
+/// 本服务不感知配置文件路径，只消费模式。
 pub async fn resolve_gitignore_filter(
     target: &ExecTarget,
     existing: Option<Arc<GitIgnoreFilter>>,
     base: &Path,
+    user_excludes: &[String],
 ) -> Option<Arc<GitIgnoreFilter>> {
     // 非 Local 目标的 ignored 标注走远程 `git ls-files`，不构建本地兜底过滤器
     // （远程路径可能恰好以本地挂载/UNC 形式存在，误判会引入无谓的全树遍历）。
@@ -190,11 +222,15 @@ pub async fn resolve_gitignore_filter(
         }
     }
     let root = base.to_path_buf();
+    let user_excludes = user_excludes.to_vec();
     let built = tokio::task::spawn_blocking(move || {
         if !crate::common::git::local::is_git_repo(&root) {
             return None;
         }
-        Some(Arc::new(GitIgnoreFilter::new(root)))
+        Some(Arc::new(GitIgnoreFilter::with_user_excludes(
+            root,
+            &user_excludes,
+        )))
     })
     .await;
     let filter = flatten_join_result(built)?;
@@ -225,22 +261,34 @@ fn prefix_paths(nodes: &mut [FileNode], prefix: &str) {
 }
 
 /// 本地递归读取目录树：.git 硬过滤 + gitignore 分层过滤器读前剪枝 + ignored 标注。
+///
+/// 每层最多处理 [`MAX_DIR_ENTRIES`] 条：达到即停止该层读取并置 `truncated`，
+/// 任意层截断都向上传播到顶层结果（红线 4）。
 pub(super) fn read_dir_recursive(
     dir: &Path,
     project_root: &Path,
     depth: u32,
     gitignore: Option<&crate::common::file::watcher::GitIgnoreFilter>,
-) -> Result<Vec<FileNode>, AppError> {
+) -> Result<DirTreeResult, AppError> {
     if depth == 0 {
-        return Ok(vec![]);
+        return Ok(DirTreeResult {
+            nodes: vec![],
+            truncated: false,
+        });
     }
 
     let mut nodes = Vec::new();
+    let mut truncated = false;
 
     let entries = std::fs::read_dir(dir)
         .map_err(|e| AppError::File(format!("Failed to read directory: {}", e)))?;
 
     for entry in entries.flatten() {
+        // 红线 4：达到单层上限即停止读取（不先全量收集再截断）。
+        if nodes.len() >= MAX_DIR_ENTRIES {
+            truncated = true;
+            break;
+        }
         let file_name = entry.file_name();
         let name = file_name.to_string_lossy().to_string();
 
@@ -276,12 +324,14 @@ pub(super) fn read_dir_recursive(
                 });
                 continue;
             }
-            let children = read_dir_recursive(&full_path, project_root, depth - 1, gitignore)?;
+            let child = read_dir_recursive(&full_path, project_root, depth - 1, gitignore)?;
+            // 任意层截断都向上传播：顶层 `truncated` 覆盖整棵读取。
+            truncated |= child.truncated;
             nodes.push(FileNode {
                 name,
                 path: relative_path,
                 is_dir: true,
-                children,
+                children: child.nodes,
                 ignored: false,
             });
         } else {
@@ -307,5 +357,5 @@ pub(super) fn read_dir_recursive(
         }
     });
 
-    Ok(nodes)
+    Ok(DirTreeResult { nodes, truncated })
 }

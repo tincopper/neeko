@@ -14,6 +14,7 @@ mod debounce;
 mod git_meta;
 mod gitignore;
 mod manager;
+mod manifest;
 mod types;
 
 // 对外公共面（`file/mod.rs` 与 `app_state.rs` 依赖）：事件 payload 类型 + 管理器；

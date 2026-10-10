@@ -18,7 +18,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 
 vi.mock('@/features/file/api/fileApi', () => ({
-  readDirTree: vi.fn(() => Promise.resolve([])),
+  readDirTree: vi.fn(() => Promise.resolve({ nodes: [], truncated: false })),
 }));
 
 vi.mock('@/shared/utils/errorReporting', () => ({

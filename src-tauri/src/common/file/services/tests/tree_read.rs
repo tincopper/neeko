@@ -2,6 +2,7 @@
 
 use super::super::tree_read::{
     build_find_tree_args, flatten_join_result, read_dir_recursive, validate_remote_sub_path,
+    MAX_DIR_ENTRIES,
 };
 use super::temp_root;
 use crate::common::executor::factory::ExecTarget;
@@ -27,7 +28,7 @@ async fn read_dir_tree_local_reads_tree_from_blocking_task() {
     )
     .await
     .expect("async 读取目录树失败");
-    let names: Vec<&str> = tree.iter().map(|n| n.name.as_str()).collect();
+    let names: Vec<&str> = tree.nodes.iter().map(|n| n.name.as_str()).collect();
     assert!(names.contains(&"src"), "普通目录应保留: {names:?}");
     assert!(names.contains(&"top.txt"), "普通文件应保留: {names:?}");
 
@@ -41,8 +42,8 @@ async fn read_dir_tree_local_reads_tree_from_blocking_task() {
     )
     .await
     .expect("async 读取 sub_path 失败");
-    assert_eq!(sub_tree.len(), 1, "sub_path 懒加载应只返回目标层节点");
-    assert_eq!(sub_tree[0].name, "a.rs");
+    assert_eq!(sub_tree.nodes.len(), 1, "sub_path 懒加载应只返回目标层节点");
+    assert_eq!(sub_tree.nodes[0].name, "a.rs");
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -104,7 +105,7 @@ fn read_dir_tree_excludes_git_meta_directory() {
     fs::write(root.join("node_modules/pkg/index.js"), "x").expect("写入 index.js 失败");
 
     let tree = read_dir_recursive(&root, &root, 3, None).expect("读取测试目录树失败");
-    let names: Vec<&str> = tree.iter().map(|n| n.name.as_str()).collect();
+    let names: Vec<&str> = tree.nodes.iter().map(|n| n.name.as_str()).collect();
     assert!(
         !names.contains(&".git"),
         ".git 元数据目录不应出现在文件树中: {:?}",
@@ -134,7 +135,8 @@ fn read_dir_tree_prunes_ignored_dirs_before_descending() {
     fs::write(root.join(".gitignore"), "target/\n").expect("写入 .gitignore 失败");
 
     let filter = GitIgnoreFilter::new(root.clone());
-    let tree = read_dir_recursive(&root, &root, 3, Some(&filter)).expect("读取目录树失败");
+    let result = read_dir_recursive(&root, &root, 3, Some(&filter)).expect("读取目录树失败");
+    let tree = &result.nodes;
 
     // 3 节点：target（灰显）+ src.rs + .gitignore（合法工作文件）
     assert_eq!(
@@ -142,6 +144,7 @@ fn read_dir_tree_prunes_ignored_dirs_before_descending() {
         3,
         "应恰好有 target / src.rs / .gitignore 三个顶层节点"
     );
+    assert!(!result.truncated, "小目录读取不应被截断");
     let target_node = tree.iter().find(|n| n.name == "target").unwrap();
     assert!(
         target_node.is_dir && target_node.children.is_empty() && target_node.ignored,
@@ -151,7 +154,7 @@ fn read_dir_tree_prunes_ignored_dirs_before_descending() {
 
     // 对照：无 gitignore 时深层内容正常展开
     let full = read_dir_recursive(&root, &root, 3, None).unwrap();
-    let target_full = full.iter().find(|n| n.name == "target").unwrap();
+    let target_full = full.nodes.iter().find(|n| n.name == "target").unwrap();
     assert!(
         !target_full.children.is_empty(),
         "无 ignored 时深层内容应正常展开"
@@ -190,10 +193,14 @@ async fn resolve_gitignore_filter_builds_fallback_for_local_git_repo() {
     fs::write(root.join(".gitignore"), "*.log\n").expect("写入 .gitignore 失败");
     fs::write(root.join("debug.log"), "").expect("写入 debug.log 失败");
 
-    let filter =
-        crate::common::file::services::resolve_gitignore_filter(&ExecTarget::Local, None, &root)
-            .await
-            .expect("本地 git 仓库必须构建兜底过滤器");
+    let filter = crate::common::file::services::resolve_gitignore_filter(
+        &ExecTarget::Local,
+        None,
+        &root,
+        &[],
+    )
+    .await
+    .expect("本地 git 仓库必须构建兜底过滤器");
     assert!(
         filter.should_ignore_own(&root.join("debug.log"), false),
         "兜底过滤器必须具备 gitignore 语义"
@@ -205,9 +212,13 @@ async fn resolve_gitignore_filter_builds_fallback_for_local_git_repo() {
 #[tokio::test]
 async fn resolve_gitignore_filter_returns_none_for_non_git_dir() {
     let root = temp_root("gitignore_fallback_non_git");
-    let filter =
-        crate::common::file::services::resolve_gitignore_filter(&ExecTarget::Local, None, &root)
-            .await;
+    let filter = crate::common::file::services::resolve_gitignore_filter(
+        &ExecTarget::Local,
+        None,
+        &root,
+        &[],
+    )
+    .await;
     assert!(filter.is_none(), "非 git 目录不应构建过滤器");
     let _ = fs::remove_dir_all(&root);
 }
@@ -222,6 +233,7 @@ async fn resolve_gitignore_filter_reuses_existing_watcher_filter() {
         &ExecTarget::Local,
         Some(Arc::clone(&shared)),
         &root,
+        &[],
     )
     .await
     .expect("已有过滤器必须原样返回");
@@ -253,6 +265,7 @@ async fn resolve_gitignore_filter_builds_base_root_when_existing_root_mismatches
         &ExecTarget::Local,
         Some(Arc::clone(&shared)),
         &wt_root,
+        &[],
     )
     .await
     .expect("根不匹配必须现场构建过滤器");
@@ -318,14 +331,22 @@ async fn resolve_gitignore_filter_caches_built_filter_per_root() {
     fs::create_dir_all(root.join(".git")).expect("创建 .git 失败");
     fs::write(root.join(".gitignore"), "*.log\n").expect("写入 .gitignore 失败");
 
-    let first =
-        crate::common::file::services::resolve_gitignore_filter(&ExecTarget::Local, None, &root)
-            .await
-            .expect("首次构建");
-    let second =
-        crate::common::file::services::resolve_gitignore_filter(&ExecTarget::Local, None, &root)
-            .await
-            .expect("二次读取");
+    let first = crate::common::file::services::resolve_gitignore_filter(
+        &ExecTarget::Local,
+        None,
+        &root,
+        &[],
+    )
+    .await
+    .expect("首次构建");
+    let second = crate::common::file::services::resolve_gitignore_filter(
+        &ExecTarget::Local,
+        None,
+        &root,
+        &[],
+    )
+    .await
+    .expect("二次读取");
     assert!(
         Arc::ptr_eq(&first, &second),
         "同 root 应复用读层缓存，而非重建"
@@ -334,10 +355,14 @@ async fn resolve_gitignore_filter_caches_built_filter_per_root() {
     // 规则变更：写入新规则 → 失效 → 重读必须重建并命中新规则
     fs::write(root.join(".gitignore"), "cache.log\n").expect("写入新规则失败");
     crate::common::file::services::invalidate_local_gitignore_cache();
-    let refreshed =
-        crate::common::file::services::resolve_gitignore_filter(&ExecTarget::Local, None, &root)
-            .await
-            .expect("失效后重建");
+    let refreshed = crate::common::file::services::resolve_gitignore_filter(
+        &ExecTarget::Local,
+        None,
+        &root,
+        &[],
+    )
+    .await
+    .expect("失效后重建");
     assert!(!Arc::ptr_eq(&first, &refreshed), "失效后必须重建过滤器");
     assert!(
         refreshed.should_ignore_own(&root.join("cache.log"), false),
@@ -359,7 +384,7 @@ async fn resolve_gitignore_filter_never_builds_fallback_for_remote_targets() {
         distro: "Ubuntu-22.04".to_string(),
     };
     assert!(
-        crate::common::file::services::resolve_gitignore_filter(&wsl, None, &root)
+        crate::common::file::services::resolve_gitignore_filter(&wsl, None, &root, &[])
             .await
             .is_none(),
         "WSL 目标不应构建本地兜底过滤器"
@@ -379,7 +404,9 @@ fn read_dir_recursive_partial_ignore_only_prunes_matched_dir() {
     fs::write(root.join(".gitignore"), "sub/deep\n").unwrap();
 
     let filter = GitIgnoreFilter::new(root.clone());
-    let tree = read_dir_recursive(&root, &root, 3, Some(&filter)).unwrap();
+    let tree = read_dir_recursive(&root, &root, 3, Some(&filter))
+        .unwrap()
+        .nodes;
     let sub = &tree[0];
     assert_eq!(sub.children.len(), 2, "sub 自身未命中，children 应保留");
     let deep = &sub.children[0];
@@ -402,7 +429,9 @@ fn read_dir_recursive_expand_inside_ignored_dir_keeps_children_visible() {
 
     let filter = GitIgnoreFilter::new(root.clone());
     // 懒加载：根 = node_modules 本身，depth=2 覆盖到孙子
-    let tree = read_dir_recursive(&root.join("node_modules"), &root, 2, Some(&filter)).unwrap();
+    let tree = read_dir_recursive(&root.join("node_modules"), &root, 2, Some(&filter))
+        .unwrap()
+        .nodes;
     assert_eq!(tree.len(), 1);
     assert!(
         !tree[0].ignored && !tree[0].children.is_empty(),
@@ -420,11 +449,61 @@ fn read_dir_recursive_marks_ignored_files() {
     fs::write(root.join(".gitignore"), ".env\n").unwrap();
 
     let filter = GitIgnoreFilter::new(root.clone());
-    let tree = read_dir_recursive(&root, &root, 1, Some(&filter)).unwrap();
+    let tree = read_dir_recursive(&root, &root, 1, Some(&filter))
+        .unwrap()
+        .nodes;
     assert_eq!(tree.len(), 2, "被忽略文件与 .gitignore 本身都保留节点");
     let env = tree.iter().find(|n| n.name == ".env").unwrap();
     assert!(env.ignored, "ignored 文件应带标记供前端灰显");
     let gitignore = tree.iter().find(|n| n.name == ".gitignore").unwrap();
     assert!(!gitignore.ignored, ".gitignore 本身是工作文件，不标记");
+    let _ = fs::remove_dir_all(&root);
+}
+
+// ── R7 / AC6：读层单层条目上限 + truncated 语义（红线 4）──────────────
+
+/// 达到 `MAX_DIR_ENTRIES` 即在该层停止读取并置 `truncated`（不先全量收集再截断）。
+#[test]
+fn read_dir_recursive_truncates_layer_at_entry_cap() {
+    let root = temp_root("tree_entry_cap");
+    let total = MAX_DIR_ENTRIES + 5;
+    for i in 0..total {
+        fs::write(root.join(format!("f_{i:05}.txt")), "x").unwrap();
+    }
+
+    let result = read_dir_recursive(&root, &root, 1, None).unwrap();
+    assert_eq!(result.nodes.len(), MAX_DIR_ENTRIES, "恰好读取到上限即停止");
+    assert!(result.truncated, "命中上限必须置 truncated");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// 小目录不截断：条目齐全且 `truncated == false`。
+#[test]
+fn read_dir_recursive_small_dir_is_not_truncated() {
+    let root = temp_root("tree_no_trunc");
+    fs::write(root.join("a.txt"), "x").unwrap();
+    fs::write(root.join("b.txt"), "x").unwrap();
+
+    let result = read_dir_recursive(&root, &root, 1, None).unwrap();
+    assert_eq!(result.nodes.len(), 2);
+    assert!(!result.truncated, "未命中的小目录不应标记截断");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// 嵌套子目录被截断 → 上层结果同样置 `truncated`（向上传播到顶层）。
+#[test]
+fn read_dir_recursive_propagates_nested_truncation_to_top() {
+    let root = temp_root("tree_nested_trunc");
+    let big = root.join("big");
+    fs::create_dir_all(&big).unwrap();
+    for i in 0..(MAX_DIR_ENTRIES + 3) {
+        fs::write(big.join(format!("f_{i:05}.txt")), "x").unwrap();
+    }
+    fs::write(root.join("top.txt"), "x").unwrap();
+
+    let result = read_dir_recursive(&root, &root, 2, None).unwrap();
+    assert!(result.truncated, "子目录截断必须向上传播到顶层");
+    let big_node = result.nodes.iter().find(|n| n.name == "big").unwrap();
+    assert_eq!(big_node.children.len(), MAX_DIR_ENTRIES);
     let _ = fs::remove_dir_all(&root);
 }

@@ -154,6 +154,19 @@ impl StorageManager {
         Ok(config)
     }
 
+    /// 用户级文件监听排除（config.json `watcherExclude`，`string[]`）。
+    ///
+    /// 与 `load_config` 同源读取（配置路径的唯一事实源在 `StorageManager`），缺省/损坏
+    /// 一律回空 —— 行为等价于「只遵循 .gitignore + 硬噪声」。watcher 域不再自行拼
+    /// `~/.neeko/config.json` 路径，用户排除由组合根注入。
+    #[must_use]
+    pub fn watcher_excludes(&self) -> Vec<String> {
+        self.load_config()
+            .ok()
+            .map(|c| watcher_excludes_from_config(&c))
+            .unwrap_or_default()
+    }
+
     /// Load user-defined custom agents（config.json `customAgents` 数组，缺省为空）。
     #[must_use]
     pub fn load_custom_agents(&self) -> Vec<serde_json::Value> {
@@ -202,5 +215,44 @@ impl StorageManager {
             }
         }
         self.save_config(&config)
+    }
+}
+
+/// `watcherExclude` 字段的纯解析（配置读取的可测内核）。
+///
+/// 缺失 / 非数组 → 空；非字符串项与空串被过滤；合法项保序。
+#[must_use]
+pub fn watcher_excludes_from_config(config: &serde_json::Value) -> Vec<String> {
+    config
+        .get("watcherExclude")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `watcherExclude` 纯解析：缺失 / 非数组 → 空；非字符串与空串被过滤；合法项保序。
+    #[test]
+    fn watcher_excludes_from_config_filters_invalid_entries() {
+        use serde_json::json;
+        assert!(watcher_excludes_from_config(&json!({})).is_empty());
+        assert!(watcher_excludes_from_config(&json!({ "watcherExclude": "not-array" })).is_empty());
+        assert!(watcher_excludes_from_config(
+            &json!({ "watcherExclude": [1, null, "", "target/"] })
+        )
+        .eq(&vec!["target/".to_string()]));
+        assert_eq!(
+            watcher_excludes_from_config(&json!({ "watcherExclude": ["a/", "**/b/**"] })),
+            vec!["a/".to_string(), "**/b/**".to_string()]
+        );
     }
 }

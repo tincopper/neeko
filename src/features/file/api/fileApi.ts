@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { FileContent, FileNode, WorkspaceSession } from '@/shared/types';
+import type { DirTreeResult, FileContent, WorkspaceSession } from '@/shared/types';
 
 export function revealInFileManager(path: string): Promise<void> {
   return invoke<void>('reveal_in_file_manager', { path });
@@ -27,8 +27,8 @@ export function readDirTree(
   workspace: WorkspaceSession,
   subPath?: string | null,
   maxDepth?: number | null,
-): Promise<FileNode[]> {
-  return invoke<FileNode[]>('read_dir_tree', {
+): Promise<DirTreeResult> {
+  return invoke<DirTreeResult>('read_dir_tree', {
     workspace,
     subPath: subPath ?? null,
     maxDepth: maxDepth ?? null,

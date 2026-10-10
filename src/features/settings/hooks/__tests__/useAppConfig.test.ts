@@ -402,4 +402,36 @@ describe('useAppConfig', () => {
       }),
     );
   });
+
+  it('watcherExclude 缺字段时默认为空数组', async () => {
+    mockInvoke.mockResolvedValue({});
+    const { result } = renderHook(() => useAppConfig());
+    await waitFor(() => {
+      expect(result.current.config.watcherExclude).toEqual([]);
+    });
+  });
+
+  it('watcherExclude 合法数组被保留', async () => {
+    mockInvoke.mockResolvedValue({ watcherExclude: ['target/', '**/node_modules/**'] });
+    const { result } = renderHook(() => useAppConfig());
+    await waitFor(() => {
+      expect(result.current.config.watcherExclude).toEqual(['target/', '**/node_modules/**']);
+    });
+  });
+
+  it('watcherExclude 非数组时归一为空数组', async () => {
+    mockInvoke.mockResolvedValue({ watcherExclude: 'target/' });
+    const { result } = renderHook(() => useAppConfig());
+    await waitFor(() => {
+      expect(result.current.config.watcherExclude).toEqual([]);
+    });
+  });
+
+  it('watcherExclude 非字符串项被过滤，合法项保序', async () => {
+    mockInvoke.mockResolvedValue({ watcherExclude: [1, null, 'dist/', '**/target/**'] });
+    const { result } = renderHook(() => useAppConfig());
+    await waitFor(() => {
+      expect(result.current.config.watcherExclude).toEqual(['dist/', '**/target/**']);
+    });
+  });
 });

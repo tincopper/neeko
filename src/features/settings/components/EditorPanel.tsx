@@ -4,6 +4,8 @@ import type { AgentConfig } from '@/shared/types';
 import { agentCapabilities } from '@/shared/types/agent';
 import { Separator, Switch } from '@/ui';
 
+import WatcherExcludeSection from './WatcherExcludeSection';
+
 interface EditorPanelProps {
   editorFontSize: number;
   onEditorFontSizeChange: (size: number) => void;
@@ -14,6 +16,9 @@ interface EditorPanelProps {
   /** 编辑器左侧 Git 行级变更高亮开关 */
   editorGitChangeHighlight: boolean;
   onEditorGitChangeHighlightChange: (enabled: boolean) => void;
+  /** 用户级文件监听排除（D2）；空数组 = 只遵循 .gitignore */
+  watcherExclude: string[];
+  onWatcherExcludeChange: (patterns: string[]) => void;
   /** AI 翻译默认项 */
   translationAgentId?: string;
   translationTargetLanguage?: string;
@@ -41,6 +46,8 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   onAutoLocateFileOnTabSwitchChange,
   editorGitChangeHighlight,
   onEditorGitChangeHighlightChange,
+  watcherExclude,
+  onWatcherExcludeChange,
   translationAgentId,
   translationTargetLanguage,
   agents,
@@ -109,6 +116,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
           onCheckedChange={onEditorGitChangeHighlightChange}
         />
       </div>
+      <WatcherExcludeSection excludes={watcherExclude} onExcludesChange={onWatcherExcludeChange} />
       <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6 [&:last-child]:border-b-0">
         <div className="flex-1 min-w-0">
           <div className="text-[0.86em] text-text-primary font-medium mb-0.75">

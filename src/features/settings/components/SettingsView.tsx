@@ -15,7 +15,7 @@ import AgentsPanel from './AgentsPanel';
 import AppearancePanel from './AppearancePanel';
 import { NAV_ITEMS, type SettingsNavId } from './constants';
 import DebugPanel from './DebugPanel';
-import EditorPanel from './EditorPanel';
+import EditorSettingsPanel from './EditorSettingsPanel';
 import GitPanel from './GitPanel';
 import IdePanel from './IdePanel';
 import LspPanel from './LspPanel';
@@ -111,29 +111,11 @@ function SettingsView() {
 
       case 'editor':
         return (
-          <EditorPanel
-            editorFontSize={config.editorFontSize}
-            onEditorFontSizeChange={state.setEditorFontSize}
-            autoLocateFileOnTabSwitch={config.autoLocateFileOnTabSwitch}
-            onAutoLocateFileOnTabSwitchChange={(enabled) =>
-              onConfigChange({ ...config, autoLocateFileOnTabSwitch: enabled })
-            }
-            editorGitChangeHighlight={config.editorGitChangeHighlight}
-            onEditorGitChangeHighlightChange={(enabled) =>
-              onConfigChange({ ...config, editorGitChangeHighlight: enabled })
-            }
-            translationAgentId={config.translation?.agentId}
-            translationTargetLanguage={config.translation?.targetLanguage}
+          <EditorSettingsPanel
+            config={config}
+            onConfigChange={onConfigChange}
             agents={allAgents}
-            onTranslationAgentChange={(agentId) =>
-              onConfigChange({ ...config, translation: { ...config.translation, agentId } })
-            }
-            onTranslationTargetLanguageChange={(targetLanguage) =>
-              onConfigChange({
-                ...config,
-                translation: { ...config.translation, targetLanguage },
-              })
-            }
+            onEditorFontSizeChange={state.setEditorFontSize}
           />
         );
 

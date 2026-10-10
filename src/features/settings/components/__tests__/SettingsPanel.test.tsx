@@ -41,6 +41,7 @@ function renderPanel(overrides: Partial<AppConfig> = {}) {
   const config = { ...defaultConfig, ...overrides };
   const onConfigChange = vi.fn();
   const onClose = vi.fn();
+  const saveConfig = vi.fn();
   const appContext = {
     config,
     customThemes: [],
@@ -49,14 +50,14 @@ function renderPanel(overrides: Partial<AppConfig> = {}) {
     loading: false,
     ideCommandOverrides: config.ideCommandOverrides ?? {},
     showToast: vi.fn(),
-    saveConfig: vi.fn(),
+    saveConfig,
   };
   const view = render(
     <AppProvider value={appContext}>
       <SettingsPanel onConfigChange={onConfigChange} onClose={onClose} />
     </AppProvider>,
   );
-  return { ...view, onConfigChange, onClose, config };
+  return { ...view, onConfigChange, onClose, saveConfig, config };
 }
 
 describe('SettingsPanel', () => {
@@ -139,6 +140,23 @@ describe('SettingsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Editor' }));
       fireEvent.click(screen.getByText('+'));
       expect(onConfigChange).toHaveBeenCalledWith(expect.objectContaining({ editorFontSize: 24 }));
+    });
+
+    it('Watcher Exclusions 编辑区回显已有模式（每行一个）', () => {
+      renderPanel({ watcherExclude: ['target/', '**/node_modules/**'] });
+      fireEvent.click(screen.getByRole('button', { name: 'Editor' }));
+      const textarea = screen.getByLabelText('Watcher exclude patterns');
+      expect(textarea).toHaveValue('target/\n**/node_modules/**');
+    });
+
+    it('编辑 Watcher Exclusions 按行解析并经 onConfigChange 持久化', () => {
+      const { onConfigChange } = renderPanel({ watcherExclude: [] });
+      fireEvent.click(screen.getByRole('button', { name: 'Editor' }));
+      const textarea = screen.getByLabelText('Watcher exclude patterns');
+      fireEvent.change(textarea, { target: { value: 'target/\n\n**/dist/**\n' } });
+      expect(onConfigChange).toHaveBeenCalledWith(
+        expect.objectContaining({ watcherExclude: ['target/', '**/dist/**'] }),
+      );
     });
   });
 

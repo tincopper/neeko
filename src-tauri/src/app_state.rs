@@ -298,6 +298,13 @@ impl AppStateWrapper {
             )),
         );
 
+        // 用户级 watcher 排除由配置域读取、经组合根注入 watcher 域（依赖倒置：
+        // watcher 不感知 `~/.neeko/config.json`）。每次挂载调用一次，保持配置冻结语义。
+        let watcher_manager = {
+            let storage = storage_manager.clone();
+            WatcherManager::new().with_watcher_excludes(move || storage.watcher_excludes())
+        };
+
         Self {
             runtime,
             project_manager: Mutex::new(ProjectManager::new(persist)),
@@ -311,7 +318,7 @@ impl AppStateWrapper {
             active_project_id: Mutex::new(None),
             project_clone: Mutex::new(None),
             git_sync: crate::common::git::transport::GitSyncSlots::default(),
-            watcher_manager: WatcherManager::new(),
+            watcher_manager,
             library_store,
             lsp_manager,
             dap_manager,

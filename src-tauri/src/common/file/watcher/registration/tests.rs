@@ -1,82 +1,50 @@
 //! registration 测试：计划纯函数 + Selective 状态机（mock watcher 注入，跨平台确定性）。
 
 use super::super::gitignore::GitIgnoreFilter;
-use super::strategy::{
-    compute_watch_dirs, WatchRegistration, WatchStrategy, MAX_WATCH_DIRS, MAX_WATCH_FAILURES,
-};
+use super::super::manifest::WatchManifest;
+use super::strategy::{WatchRegistration, MAX_WATCH_DIRS, MAX_WATCH_FAILURES};
 use notify::{EventHandler, RecursiveMode, Watcher};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex as StdMutex;
 
-/// 计划纯函数：可见目录全部注册（浅→深），.git 与 ignored 子树排除
+/// 平台分派：`register_root` 严格跟随能力位 —— Selective 后端逐目录注册，
+/// 其余后端一次整树注册（与改造前 `watch_selectively()` 语义等价）。
 #[test]
-fn compute_watch_dirs_includes_visible_and_excludes_ignored() {
+fn register_root_follows_platform_backend() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
-    std::fs::create_dir_all(root.join("src/deep")).unwrap();
-    std::fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
-    std::fs::create_dir_all(root.join(".git/objects")).unwrap();
-    std::fs::write(root.join(".gitignore"), "node_modules/\n").unwrap();
+    std::fs::create_dir_all(root.join("visible")).unwrap();
+    let filter = selective_test_filter(root);
 
-    let filter = GitIgnoreFilter::new(root.to_path_buf());
-    let plan = compute_watch_dirs(root, Some(&filter), 100);
+    let mut watcher = FailureWatch::new(&[]);
+    let mut reg = WatchRegistration::default();
+    reg.register_root(&mut watcher, root, Some(&filter), None);
 
-    let names: Vec<String> = plan
-        .iter()
-        .map(|p| {
-            p.strip_prefix(root)
-                .unwrap()
-                .to_string_lossy()
-                .replace('\\', "/")
-        })
-        .collect();
-    // 根 + src + src/deep；node_modules 与 .git 排除
-    assert!(names.contains(&String::new()), "根目录必须注册");
-    assert!(names.contains(&"src".to_string()) && names.contains(&"src/deep".to_string()));
-    assert!(
-        !names.iter().any(|n| n.contains("node_modules")),
-        "ignored 子树不注册"
-    );
-    assert!(!names.iter().any(|n| n.contains(".git")), ".git 不注册");
-}
-
-/// max_dirs 截断：达到上限即截止（调用方据此降级整树）
-#[test]
-fn compute_watch_dirs_respects_cap() {
-    let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path();
-    for i in 0..20 {
-        std::fs::create_dir_all(root.join(format!("d{i}"))).unwrap();
+    match crate::platform::watch_backend::watch_backend() {
+        crate::platform::watch_backend::WatchBackend::SelectiveRegistration => {
+            assert_eq!(
+                watcher.watched_recursive_count(),
+                0,
+                "Selective 后端不得整树注册"
+            );
+            assert!(
+                reg.registered.contains(root) && reg.registered.contains(&root.join("visible")),
+                "Selective 后端应逐可见目录注册"
+            );
+        }
+        _ => {
+            assert_eq!(
+                watcher.watched_recursive_count(),
+                1,
+                "非 Selective 后端必须整树递归注册一次"
+            );
+            assert!(
+                reg.registered.is_empty(),
+                "非 Selective 后端不维护逐目录注册集合"
+            );
+        }
     }
-    let plan = compute_watch_dirs(root, None, 5);
-    assert_eq!(plan.len(), 5);
-}
-
-/// 无 filter（非 git 项目）：全部目录可见（排除 .git 仍生效）
-#[test]
-fn compute_watch_dirs_without_filter_includes_all_but_git() {
-    let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path();
-    std::fs::create_dir_all(root.join("a/b")).unwrap();
-    std::fs::create_dir_all(root.join(".git/x")).unwrap();
-    let plan = compute_watch_dirs(root, None, 100);
-    assert_eq!(plan.len(), 3, "根 + a + a/b（.git 排除）");
-}
-
-/// 策略决策：非 git（filter=None）不得走 Selective（由 register_root 内部分派，
-/// 此处断言平台常量存在性 + 枚举相等性语义）
-#[test]
-fn watch_strategy_platform_constant_defined() {
-    // 平台差异必须经 platform facade 决策；这里同时验证 facade 与 enum 的映射。
-    let selective = crate::platform::watch_strategy::watch_selectively();
-    let strategy = WatchStrategy::for_platform();
-    assert_eq!(
-        strategy == WatchStrategy::Selective,
-        selective,
-        "watch strategy must follow platform::watch_strategy facade"
-    );
-    assert_ne!(WatchStrategy::Selective, WatchStrategy::Recursive);
 }
 
 fn selective_test_filter(root: &Path) -> GitIgnoreFilter {
@@ -166,8 +134,9 @@ fn register_selective_degrades_after_repeated_failures() {
     let mut watcher = FailureWatch::new(&fail_all.iter().map(String::as_str).collect::<Vec<_>>());
 
     let filter = selective_test_filter(root);
+    let manifest = WatchManifest::compute(root, Some(&filter), MAX_WATCH_DIRS);
     let mut reg = WatchRegistration::default();
-    reg.register_selective(&mut watcher, root, Some(&filter));
+    reg.register_selective(&mut watcher, &manifest, root);
 
     assert!(
         watcher.watched_recursive_count() >= 1,
@@ -198,7 +167,8 @@ fn register_selective_degrade_unwatches_partially_registered() {
     let mut reg = WatchRegistration::default();
     // 手动走 Selective（绕过平台分派；当前平台若为 macOS/Windows 也可测状态机）
     let filter = selective_test_filter(root);
-    reg.register_selective(&mut watcher, root, Some(&filter));
+    let manifest = WatchManifest::compute(root, Some(&filter), MAX_WATCH_DIRS);
+    reg.register_selective(&mut watcher, &manifest, root);
 
     assert!(reg.degraded, "连续失败达阈值必须降级");
     assert_eq!(
@@ -223,9 +193,10 @@ fn register_selective_degrades_when_plan_exceeds_cap() {
         std::fs::create_dir_all(root.join(format!("x{i}"))).unwrap();
     }
     let filter = selective_test_filter(root);
+    let manifest = WatchManifest::compute(root, Some(&filter), MAX_WATCH_DIRS);
     let mut watcher = FailureWatch::new(&[]);
     let mut reg = WatchRegistration::default();
-    reg.register_selective(&mut watcher, root, Some(&filter));
+    reg.register_selective(&mut watcher, &manifest, root);
 
     assert_eq!(watcher.watched_recursive_count(), 1, "超限直接整树注册一次");
     assert!(
@@ -242,7 +213,7 @@ fn on_dir_added_registers_new_subtree_and_noop_after_degrade() {
     let root = tmp.path();
     let mut watcher = FailureWatch::new(&[]);
     let mut reg = WatchRegistration::default();
-    reg.register_root(&mut watcher, root, None::<&GitIgnoreFilter>);
+    reg.register_root(&mut watcher, root, None::<&GitIgnoreFilter>, None);
 
     let added = root.join("new-dir");
     std::fs::create_dir_all(&added).unwrap();
@@ -266,6 +237,49 @@ fn on_dir_added_registers_new_subtree_and_noop_after_degrade() {
         watcher.watched.lock().unwrap().len(),
         before,
         "降级后维护 no-op"
+    );
+}
+
+/// 维护路径：`add_dir` 不得对被忽略目录补注册 —— `WatchManifest::compute` 以 `dir`
+/// 为根、不会对 root 自身做剪枝，若放行会把整棵 ignored 子树重新拉进物理监听（R1）。
+#[test]
+fn add_dir_skips_ignored_subtree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let ignored = root.join("ignored");
+    std::fs::create_dir_all(ignored.join("child")).unwrap();
+    let filter = selective_test_filter(root); // .gitignore: ignored/
+
+    let mut watcher = FailureWatch::new(&[]);
+    let mut reg = WatchRegistration::default();
+    reg.add_dir(&mut watcher, root, &ignored, Some(&filter));
+
+    assert!(
+        reg.registered.is_empty(),
+        "被忽略目录不得补注册（否则整棵 ignored 子树进入物理监听）"
+    );
+    assert!(
+        watcher.watched.lock().unwrap().is_empty(),
+        "被忽略目录不得产生任何 watch 调用"
+    );
+}
+
+/// R1 守卫不得误伤可见子树：带 git 过滤时可见目录仍按计划补注册。
+#[test]
+fn add_dir_registers_visible_subtree_with_git_filter() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let visible = root.join("src");
+    std::fs::create_dir_all(visible.join("nested")).unwrap();
+    let filter = selective_test_filter(root);
+
+    let mut watcher = FailureWatch::new(&[]);
+    let mut reg = WatchRegistration::default();
+    reg.add_dir(&mut watcher, root, &visible, Some(&filter));
+
+    assert!(
+        reg.registered.contains(&visible) && reg.registered.contains(&visible.join("nested")),
+        "可见子树应正常补注册"
     );
 }
 
@@ -331,7 +345,8 @@ fn on_rules_changed_unwatches_all_then_reregisters() {
     let mut watcher = FailureWatch::new(&[]);
     let mut reg = WatchRegistration::default();
     // 手动走 Selective（在 macOS/Windows 上绕过平台分派，专注状态机）
-    reg.register_selective(&mut watcher, root, Some(&filter));
+    let manifest = WatchManifest::compute(root, Some(&filter), MAX_WATCH_DIRS);
+    reg.register_selective(&mut watcher, &manifest, root);
     let registered_before = reg.registered.len();
     assert!(
         registered_before >= 2,

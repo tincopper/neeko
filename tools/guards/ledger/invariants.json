@@ -252,6 +252,22 @@
         }
       ],
       "red_line": 12
+    },
+    {
+      "id": "watch-boundary-upper-bound",
+      "title": "监听集合 ⊆ 可见集合 ∪ ignored 根存在性（ignored 子树内部零监听）",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/common/file/watcher/manifest.rs"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/common/file/watcher/manager/tests.rs"
+        }
+      ],
+      "red_line": null
     }
   ]
 }

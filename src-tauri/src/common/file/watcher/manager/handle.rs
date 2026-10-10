@@ -5,14 +5,15 @@ use super::super::git_meta::GitMetaWatcherHandle;
 use super::super::gitignore::GitIgnoreFilter;
 use super::super::registration::WatchRegistration;
 use crate::common::git::status_worker::GitStatusWorker;
-use notify::RecommendedWatcher;
+use crate::platform::watch_backend::PlatformWatcher;
 use std::sync::mpsc;
 use std::sync::{atomic::AtomicBool, Arc};
 
 /// 单项目的 watcher 资源聚合（drop 即释放：debounce channel 关闭、停止信号置位）。
 pub(in crate::common::file::watcher) struct WatcherHandle {
-    /// Arc<Mutex> 包装：注册维护线程需要 &mut 执行 watch/unwatch
-    pub(super) _watcher: Arc<std::sync::Mutex<RecommendedWatcher>>,
+    /// Arc<Mutex> 包装：注册维护线程需要 &mut 执行 watch/unwatch。
+    /// 类型是平台门面 [`PlatformWatcher`]（W2 起 macOS 可能是物理排除后端）。
+    pub(super) _watcher: Arc<std::sync::Mutex<PlatformWatcher>>,
     /// S2 注册状态（策略/已注册集合）与维护消息发送端
     pub(super) _registration: Arc<std::sync::Mutex<WatchRegistration>>,
     pub(super) _maintenance_tx: Option<mpsc::Sender<super::super::registration::WatchMaintenance>>,

@@ -161,6 +161,13 @@ describe('buildFileTreeView git 状态盖章（S3 组装期 join）', () => {
     expect('dir_state' in view[1]!).toBe(false);
   });
 
+  it('目录截断标记盖章 is_truncated（R7 红线 4）：命中目录携带，未命中不写键', () => {
+    const dirs = { '': [dirNode('big', 'big'), dirNode('small', 'small')] };
+    const view = buildFileTreeView(dirs, new Set(), { truncatedDirs: { big: true } });
+    expect(view[0]).toMatchObject({ path: 'big', is_truncated: true });
+    expect('is_truncated' in view[1]!).toBe(false);
+  });
+
   it('重命名命中节点盖章 renaming_name（行替换为输入框）', () => {
     const dirs = { '': [fileNode('b.ts', 'b.ts')] };
     const view = buildFileTreeView(

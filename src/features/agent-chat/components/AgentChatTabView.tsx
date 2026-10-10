@@ -186,7 +186,7 @@ export default function AgentChatTabView({
     if (attachFiles.length === 0 && !attachFilesLoading) {
       setAttachFilesLoading(true);
       void readDirTree(activeWorkspaceSession(projectId), null, 3)
-        .then((tree) => setAttachFiles(tree))
+        .then((result) => setAttachFiles(result.nodes))
         .catch(() => setAttachFiles([]))
         .finally(() => setAttachFilesLoading(false));
     }

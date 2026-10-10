@@ -380,6 +380,20 @@ describe('FilesPanel 文件管理', () => {
     expect(screen.getByText('src')).toHaveClass('text-text-muted');
   });
 
+  // ── R7 / 红线 4：读层截断标记全链路可达（store.truncatedDirs → 视图树 → 行）──
+
+  it('读层截断的目录行显示截断提示，未截断目录不显示', () => {
+    seedDirs([
+      { name: 'big', path: 'big', is_dir: true, children: [] },
+      { name: 'small', path: 'small', is_dir: true, children: [] },
+    ]);
+    useFileStore.setState({ truncatedDirs: { big: true } });
+    render(<FilesPanel {...baseProps} />);
+
+    // 恰好一行携带截断提示（big），small 不携带
+    expect(screen.getAllByTitle('目录条目过多，已截断显示')).toHaveLength(1);
+  });
+
   it('部分忽略：命中的子目录灰显，未命中项保持默认色', () => {
     const partialTree: FileNode[] = [
       {

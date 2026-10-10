@@ -107,6 +107,11 @@ export interface AppConfig {
   autoLocateFileOnTabSwitch: boolean;
   /** 编辑器左侧 Git 行级变更高亮（IDEA 风格变更条 + 行/词背景），默认开启。 */
   editorGitChangeHighlight: boolean;
+  /**
+   * 用户级文件监听排除（VS Code `files.watcherExclude` 式 gitignore 方言 glob，
+   * 相对项目根，支持 `**`）。未配置（缺省 / 空数组）= 只遵循 .gitignore + 硬噪声。
+   */
+  watcherExclude?: string[];
   /** Language server settings (profile soft-warm, custom servers, idle recycle). */
   lsp: LspConfig;
   /** Project-id → favorite branch names, persisted across sessions. */

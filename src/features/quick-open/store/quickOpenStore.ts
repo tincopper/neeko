@@ -92,8 +92,8 @@ function recomputeItems(
 
 async function loadFileIndex(projectId: string): Promise<string[]> {
   try {
-    const tree = await readDirTree(activeWorkspaceSession(projectId), null, 12);
-    return flattenFilePaths(tree);
+    const { nodes } = await readDirTree(activeWorkspaceSession(projectId), null, 12);
+    return flattenFilePaths(nodes);
   } catch (e) {
     console.warn('[quick-open] failed to load file index', e);
     return [];

@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端 spec 入口与 Pre-Development Checklist（新增 manifest.rs 前的必读清单）"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "§12 Workspace 身份与 status 生产者单源、§14 派生值新鲜度契约（监听⊇依赖）——本任务要补的上界不得破坏它"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 common/file/watcher/manifest.rs 与 src/platform/watch_backend.rs 的落点约定"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "IPC 载荷与命令层边界（读层条目上限涉及红线 4）"}
+{"file": ".trellis/spec/unit-test/real-source-determinism.md", "reason": "watcher 集成测试依赖真实文件系统/事件的确定性要求（夹具 tempdir 派生）"}
+{"file": ".trellis/spec/guides/invariant-enforcement.md", "reason": "不变量（I1~I5）如何落成护栏与测试，避免只写在文档里"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本改造跨 platform / watcher / file 三层，需按跨层思考指南核对数据流"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "文件树懒加载与事件消费的前端约定（C3 涉及 useFileTreeSync loader）"}
+{"file": ".trellis/tasks/10-09-watcher-boundary-cost-model/research/current-watcher-architecture.md", "reason": "现状代码事实（平台策略/事件分类/caps/读层）——实现的唯一现状依据"}
+{"file": ".trellis/tasks/10-09-watcher-boundary-cost-model/research/macos-watch-backends.md", "reason": "macOS 后端可行性与路线对比（notify FSEvents/kqueue/exclusion、VS Code 实证、限额）"}
+{"file": ".trellis/tasks/10-09-watcher-boundary-cost-model/research/raw-perf-evidence.md", "reason": "成本证据与复现命令，用于验证改造收益与回归判定"}

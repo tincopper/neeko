@@ -21,8 +21,9 @@ use std::sync::{mpsc, Arc};
 /// - `.gitignore` / `.git/info/exclude` 变更：热重载过滤规则 + 失效远程
 ///   ignored 缓存 + 注册层全量重算；
 /// - 内容事件：gitignore 过滤后投递 file-changed debounce、驱动 git worker；
-/// - 结构事件（Create/Remove/Rename）：ignored 节点仍在文件树展示，不过滤，
-///   投递 tree-debounce（父目录集合聚合后定向刷新）+ 注册维护。
+/// - 结构事件（Create/Remove/Rename）：ignored 根自身的边界事件保留（灰节点更新），
+///   子树**内部**路径一律丢弃（监听层不订阅 ignored 内部），投递 tree-debounce
+///   （父目录集合聚合后定向刷新）与注册维护。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_notify_callback(
     repo: WorkspaceRef,
@@ -70,12 +71,17 @@ pub(super) fn build_notify_callback(
         // 内容/普通事件：git 项目走 gitignore 规则，非 git 项目仅硬过滤噪声。
         let relevant_paths =
             relevant_event_paths(&event.paths, gitignore_filter_for_notify.as_deref());
-        // 文件树结构事件：ignored 文件/目录也展示为灰色节点，必须刷新。
+        // 文件树结构事件：ignored 根自身的边界事件保留（灰节点更新），子树**内部**
+        // 路径一律丢弃（监听层不订阅 ignored 内部），避免 ignored churn 放大刷新面。
         let is_structure_change = matches!(
             event.kind,
             EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(ModifyKind::Name(_))
         );
-        let tree_paths = structure_event_paths(&event.paths, is_structure_change);
+        let tree_paths = structure_event_paths(
+            &event.paths,
+            is_structure_change,
+            gitignore_filter_for_notify.as_deref(),
+        );
 
         if relevant_paths.is_empty() && tree_paths.is_empty() {
             return;
@@ -110,7 +116,7 @@ pub(super) fn build_notify_callback(
                 let _ = tree_debounce_tx.send(p.clone());
             }
             // S2：目录级结构变化 → 注册维护（回调只投递消息，不做 fs 探测——
-            // is_dir 判定由维护线程的 compute_watch_dirs/read_dir 自然过滤）。
+            // is_dir 判定由维护线程的 WatchManifest::compute/read_dir 自然过滤）。
             // Remove 必须清理 stale 注册；rename 先清理旧路径，再按存在路径补注册。
             for p in &tree_paths {
                 if is_removal {

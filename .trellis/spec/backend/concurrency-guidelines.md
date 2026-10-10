@@ -122,7 +122,8 @@ stop.store(true, Ordering::Relaxed);
 ### 后台线程资源所有权 —— 单一强所有者 + Weak 借用者（watcher 生命周期与挂载契约）
 
 > 2026-09-24 缺陷沉淀：旧 watcher 不释放（同一变更 emit 多次、每次项目激活泄漏一套线程），
-> 根因是 `spawn_maintenance_thread` 强持有 `Arc<Mutex<RecommendedWatcher>>`，而退出条件
+> 根因是 `spawn_maintenance_thread` 强持有 `Arc<Mutex<notify watcher>>`（W2 后该类型是平台
+> 门面 `PlatformWatcher`，见 `src/platform/watch_backend/`），而退出条件
 > `rx.recv()` 断开依赖的 `maintenance_tx` clone 又被 notify 闭包（活在 watcher 内）持有 ——
 > **双向保活**，`unwatch` 只置 stop_signal 而仅心跳线程轮询它。
 

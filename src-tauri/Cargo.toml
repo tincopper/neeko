@@ -65,6 +65,11 @@ libc = "0.2"
 webkit2gtk = "2.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# W2：自写 macOS FSEvents 后端需要直接调用 `FSEventStreamSetExclusionPaths`。
+# 该 FFI 绑定已是 notify 的传递依赖（锁定 4.1.0），此处提为直接依赖，不新增任何 FFI crate。
+fsevent-sys = "4.1"
+# 移植 notify 的 fsevent.rs 需要 `bitflags!`（notify 在 macOS 上已依赖 2.x）。
+bitflags = "2"
 libproc = "0.14.11"
 # 直接依赖以访问 tauri with_webview 暴露的 WKWebView 句柄(强制 Inspector 独立窗口)
 objc2 = "0.6"

@@ -15,6 +15,8 @@ export interface FileTreeViewInput {
   selectedPath?: string | null;
   /** 目录加载状态机：盖章为目录节点的 dir_state（spinner / 重试红点） */
   dirLoadStates?: Record<string, DirLoadState>;
+  /** 目录截断标记（R7 / 红线 4）：命中目录盖章为 is_truncated（行尾「已截断」提示） */
+  truncatedDirs?: Record<string, boolean>;
   /** 内联新建：命中目录盖章为 creating_input（含当前输入值，击键驱动指纹变化） */
   creating?: { dirPath: string; kind: 'file' | 'dir' } | null;
   creatingValue?: string;
@@ -103,6 +105,7 @@ function finalizeNode(
     if (expandedDirs.has(node.path)) node.is_expanded = true;
     const dirState = input.dirLoadStates?.[node.path];
     if (dirState && dirState !== 'idle') node.dir_state = dirState;
+    if (input.truncatedDirs?.[node.path]) node.is_truncated = true;
     if (input.creating?.dirPath === node.path) {
       node.creating_input = { kind: input.creating.kind, value: input.creatingValue ?? '' };
     }
@@ -122,7 +125,9 @@ function finalizeNode(
 export function computeSubtreeFingerprint(node: FileTreeViewNode, childFps: string): string {
   return `${node.is_dir ? 1 : 0}|${node.git_status ?? ''}|${node.is_ignored ? 1 : 0}|${
     node.is_active ? 1 : 0
-  }|${node.is_selected ? 1 : 0}|${node.is_expanded ? 1 : 0}|${node.dir_state ?? ''}|${
+  }|${node.is_selected ? 1 : 0}|${node.is_expanded ? 1 : 0}|${node.is_truncated ? 1 : 0}|${
+    node.dir_state ?? ''
+  }|${
     node.creating_input ? `${node.creating_input.kind}:${node.creating_input.value}` : ''
   }|${node.renaming_name ?? ''}|${childFps}`;
 }

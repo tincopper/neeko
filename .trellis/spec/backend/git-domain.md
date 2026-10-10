@@ -623,6 +623,23 @@ watcher→scheduler→worker→snapshot 端到端，无手动 poke）、`git/ser
 生产者填 `ahead/behind`；`get_ahead_behind` 走 transport 校验而非宿主 fs）、前端
 `useGitStatusEventsSync.test.ts`（快照写入徽标；**被拒快照不得覆盖**）。
 
+**已知例外（R6 / D5，勿当 bug 反复调查）**：被 `.gitignore` 忽略的文件即使已在编辑器中打开，
+也**不随外部变化 live-refresh** —— 内容事件按 gitignore 过滤（`relevant_event_paths`），监听边界按
+R1 上界剪枝，ignored 子树内部不产生任何监听输入。这是**显式契约**而非缺陷；若需要「已打开文件
+按路径订阅」另开任务。
+
+**监听边界的物理实现（W2）**：macOS 通过 `FSEventStreamSetExclusionPaths` 物理排除
+`WatchManifest.ignored_roots`，但排除集合是 ignore 规则的**派生值** —— 规则变化时必须重组流
+（`registration/maintenance.rs` 的 `ReloadAll` → `PlatformWatcher::set_exclusion_paths`），否则
+**撤销忽略**后新可见子树永不投递事件（违反本节的**下端界**）。新增能物理排除的后端必须复用同
+一重建落点。
+
+**已知例外之二（W2 物理排除 + `!` 重包含，勿当 bug 反复调查）**：macOS 的 exclusion 按**顶层
+ignored 根**整体置入（`FSEventStreamSetExclusionPaths` 无否定语义），因此对被排除子树**内部**
+的 `!reinclude` 路径不投递事件（过滤 / 读层仍正确，重挂载后恢复）。这是物理排除的固有能力边界，
+详见 `tasks/10-09-watcher-boundary-cost-model/design.md` §3.5；与上面的 R6 例外同属「监听集合
+只保证下界」的显式登记，不是缺陷。
+
 ## 相关文件
 
 - `src-tauri/src/common/git/workspace_ref.rs` — Workspace身份（`WorkspaceRef` / `Checkout` / key 契约）

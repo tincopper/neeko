@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端 Quality Check 入口（最终 2.2 全量核对）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端质量判据：禁止 allow 压警告、测试覆盖要求"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "核对改造未破坏 §12/§14：缩小监听集合后逐派生值验证依赖仍在集合内"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "后端测试编排与断言口径（watcher 集成测试）"}
+{"file": ".trellis/spec/unit-test/real-source-determinism.md", "reason": "真实源测试的确定性判据：禁止以真实 FSEvents 投递时序为断言（现有 lifecycle_tests 抖动来源）"}
+{"file": ".trellis/spec/guides/invariant-enforcement.md", "reason": "核对 I1~I5 是否有可执行护栏/测试，而非只存在于 design.md"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端改动（loader/事件消费）的质量判据"}
+{"file": ".trellis/tasks/10-09-watcher-boundary-cost-model/research/current-watcher-architecture.md", "reason": "复核实现是否与现状事实一致（含 caps 与结构事件泄漏点）"}
+{"file": ".trellis/tasks/10-09-watcher-boundary-cost-model/research/raw-perf-evidence.md", "reason": "用复现命令验证收益（如 ignored 目录写入零事件、条目上限生效）"}

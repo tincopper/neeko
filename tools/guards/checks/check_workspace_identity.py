@@ -336,7 +336,14 @@ NO_STATUS_IMPACT_OPERATIONS = {
 # 挂载唯一入口：生产代码里 `WatcherManager::watch` 的合法调用文件（管理器自身实现与测试除外）。
 MOUNT_ALLOWLIST = ("src-tauri/src/git/services/status.rs",)
 # 任意接收者的 `.watch(` 都算候选（不硬编码变量名 —— 改名即绕过的判据等于没有判据）；
-# notify 内部的 `watcher.watch(path, mode)` 全部位于 common/file/watcher/（已整体豁免）。
+# notify 内部的 `watcher.watch(path, mode)` 位于 `common/file/watcher/`；W2 起 notify
+# `Watcher::watch` 适配只落在 `platform/watch_backend/platform_watcher.rs`（生产门面）与
+# `macos_fsevent.rs`（其测试）—— 精确到文件，避免整目录豁免掩盖误放的 `WatcherManager::watch`。
+WATCHER_ADAPTER_ALLOWLIST = (
+    "common/file/watcher/",
+    "platform/watch_backend/platform_watcher.rs",
+    "platform/watch_backend/macos_fsevent.rs",
+)
 MOUNT_CALL_RE = re.compile(r"\w+\s*\.\s*watch\s*\(")
 
 
@@ -346,7 +353,7 @@ def scan_mount_singularity(ctx: Context) -> tuple:
     paths = list(ctx.glob(BE_SCOPE))
     for path in paths:
         rel = ctx.rel(path).replace("\\", "/")
-        if "common/file/watcher/" in rel or rel in MOUNT_ALLOWLIST:
+        if any(prefix in rel for prefix in WATCHER_ADAPTER_ALLOWLIST) or rel in MOUNT_ALLOWLIST:
             continue  # 管理器自身定义处与唯一合法调用方
         for number, line in enumerate(_code_lines(_read(path)), start=1):
             if MOUNT_CALL_RE.search(line):

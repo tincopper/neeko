@@ -22,6 +22,17 @@ export interface FileNode {
 }
 
 /**
+ * 目录树读取结果（后端 `read_dir_tree` 返回）：节点 + 截断语义。
+ *
+ * `truncated` = 本次读取中任意层超过单层条目上限（`MAX_DIR_ENTRIES`，红线 4
+ * 单次 JSON ≤ 2MB）被截断；消费侧据此区分「确实只有这些条目」与「被上限截断」。
+ */
+export interface DirTreeResult {
+  nodes: FileNode[];
+  truncated: boolean;
+}
+
+/**
  * 文件树节点的 git 主导状态词表（与 gitFileDecoration 的展示优先级链共用同一词表）。
  */
 export type FileTreeGitStatus =
@@ -56,6 +67,8 @@ export type FileTreeViewNode = FileNode & {
   is_selected?: boolean;
   /** 目录已展开（决定 children 是否渲染；仅目录节点携带） */
   is_expanded?: boolean;
+  /** 目录内容被读层单层条目上限截断（行尾提示「已截断」；仅目录节点携带） */
+  is_truncated?: boolean;
   /** 目录加载状态（loading spinner / error 重试；仅目录节点携带） */
   dir_state?: DirLoadState;
   /** 内联新建输入落在本目录（仅命中节点携带；value 每击键更新 → 指纹驱动重渲染） */

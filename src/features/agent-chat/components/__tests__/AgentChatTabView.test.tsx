@@ -23,7 +23,7 @@ vi.mock('@/features/agent/api/agentApi', () => ({
 }));
 
 vi.mock('@/features/file/api/fileApi', () => ({
-  readDirTree: vi.fn(() => Promise.resolve([])),
+  readDirTree: vi.fn(() => Promise.resolve({ nodes: [], truncated: false })),
   readFileContent: vi.fn(() =>
     Promise.resolve({
       path: 'src/auth/session.ts',

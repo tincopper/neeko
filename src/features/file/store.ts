@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import type { DirLoadState, FileNode } from '@/shared/types';
+import type { DirLoadState, DirTreeResult, FileNode } from '@/shared/types';
 
 /** 目录缓存 key：项目内相对路径，'' 表示项目根目录 */
 export type DirPath = string;
@@ -21,6 +21,11 @@ interface FileStoreState {
   dirs: Record<DirPath, FileNode[]>;
   /** 各目录加载状态机：idle | loading | loaded | error */
   loadStates: Record<DirPath, DirLoadState>;
+  /**
+   * 各目录读取是否因单层条目上限被截断（R7 / 红线 4）：dirPath → truncated。
+   * 后端 `read_dir_tree` 的顶层截断标记逐目录记录；`reset` 随归属一起清空。
+   */
+  truncatedDirs: Record<DirPath, boolean>;
   /** 各目录请求序号：响应回来时序号不匹配即过期，丢弃防乱序覆盖 */
   requests: Record<DirPath, number>;
   activeFilePath: string | null;
@@ -34,7 +39,7 @@ interface FileStoreState {
   loadDir: (
     owner: FileTreeOwner,
     dirPath: DirPath,
-    loader: () => Promise<FileNode[]>,
+    loader: () => Promise<DirTreeResult>,
     opts?: LoadDirOptions,
   ) => Promise<void>;
   /**
@@ -49,7 +54,7 @@ interface FileStoreState {
    */
   refreshTree: (
     owner: FileTreeOwner,
-    loaderFor: (dirPath: DirPath) => () => Promise<FileNode[]>,
+    loaderFor: (dirPath: DirPath) => () => Promise<DirTreeResult>,
     opts?: { silent?: boolean; dirs?: string[] },
   ) => Promise<void>;
   /** 切换项目/root 时清空全部缓存与归属 */
@@ -102,6 +107,7 @@ export const useFileStore = create<FileStoreState>((set, get) => ({
   owner: null,
   dirs: {},
   loadStates: {},
+  truncatedDirs: {},
   requests: {},
   activeFilePath: null,
 
@@ -116,6 +122,7 @@ export const useFileStore = create<FileStoreState>((set, get) => ({
     // 切换 owner：丢弃全部旧缓存与在途请求（旧响应会因 owner/token 校验被忽略）
     const prevDirs = ownerChanged ? {} : state.dirs;
     const prevLoadStates = ownerChanged ? {} : state.loadStates;
+    const prevTruncatedDirs = ownerChanged ? {} : state.truncatedDirs;
     const prevRequests = ownerChanged ? {} : state.requests;
     const token = (prevRequests[dirPath] ?? 0) + 1;
     // silent 且已有内容：后台更新，不切换 loading 态；否则进入 loading（含首次）
@@ -125,11 +132,13 @@ export const useFileStore = create<FileStoreState>((set, get) => ({
       owner,
       dirs: prevDirs,
       loadStates: keepSilent ? prevLoadStates : { ...prevLoadStates, [dirPath]: 'loading' },
+      truncatedDirs: prevTruncatedDirs,
       requests: { ...prevRequests, [dirPath]: token },
     });
 
     try {
-      const tree = await loader();
+      const result = await loader();
+      const tree = result.nodes;
       const latest = get();
       if (latest.owner !== owner || latest.requests[dirPath] !== token) return;
       // 请求目录写入一级缓存；嵌套树中的子目录 seed 进缓存（仅填补空缺，
@@ -151,7 +160,11 @@ export const useFileStore = create<FileStoreState>((set, get) => ({
           loadStates[p] = 'loaded';
         }
       }
-      set({ dirs, loadStates });
+      set({
+        dirs,
+        loadStates,
+        truncatedDirs: { ...latest.truncatedDirs, [dirPath]: result.truncated },
+      });
     } catch {
       const latest = get();
       if (latest.owner !== owner || latest.requests[dirPath] !== token) return;
@@ -180,5 +193,13 @@ export const useFileStore = create<FileStoreState>((set, get) => ({
     );
   },
 
-  reset: () => set({ owner: null, dirs: {}, loadStates: {}, requests: {}, activeFilePath: null }),
+  reset: () =>
+    set({
+      owner: null,
+      dirs: {},
+      loadStates: {},
+      truncatedDirs: {},
+      requests: {},
+      activeFilePath: null,
+    }),
 }));

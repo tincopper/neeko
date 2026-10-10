@@ -23,7 +23,7 @@
 //! | `file_url` | `file_url_to_path` | `lsp/session/root.rs` |
 //! | `notify_base` | `notify_base` | `browser/scripts.rs` |
 //! | `path_identity` | `portable_render` / `posix_render` | `common/git/checkout_path.rs` |
-//! | `watch_strategy` | `watch_selectively` | `common/file/watcher/registration.rs` |
+//! | `watch_backend` | `watch_backend` / `create_file_watcher` / `PlatformWatcher` | `common/file/watcher/registration/strategy.rs` + `manager/core.rs` |
 //! | `fonts` | `get_system_fonts` | `common/utils/fonts.rs` |
 
 pub mod devtools;
@@ -40,4 +40,4 @@ pub mod process_spawn;
 pub mod process_tree;
 pub mod reveal;
 pub mod shell_launch;
-pub mod watch_strategy;
+pub mod watch_backend;

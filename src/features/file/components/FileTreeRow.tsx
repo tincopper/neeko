@@ -169,6 +169,15 @@ function FileTreeRow({
             height={16}
           />
           <span className={`flex-1 font-medium truncate ${nameColorClass}`}>{node.name}</span>
+          {node.is_truncated && (
+            <span
+              className="shrink-0 text-text-muted ml-1"
+              title="目录条目过多，已截断显示"
+              aria-label={`目录 ${node.name} 条目已截断`}
+            >
+              …
+            </span>
+          )}
           {isLoadingChildren && (
             <span className="shrink-0 w-3 h-3 rounded-full border border-text-muted border-t-transparent animate-spin ml-1" />
           )}

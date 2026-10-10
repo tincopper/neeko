@@ -3,8 +3,10 @@
 //! 业界公理 2「排除发生在注册层，不在回调里」的平台现实：
 //! - **Linux (inotify)**：支持按目录注册 —— 走「可见目录逐个 NonRecursive 注册」，
 //!   ignored 子树在内核层就不再产生事件（纯计划函数 + 降级兜底）；
-//! - **macOS (FSEvents)**：事件按路径前缀送达，无法按目录排除 —— 保持整树
-//!   Recursive 注册，回调层 GitIgnoreFilter 过滤（调研文档已明确该限制）；
+//! - **macOS (FSEvents)**：自写后端（`platform/watch_backend/macos_fsevent.rs`）在
+//!   `FSEventStreamStart` 之前用 `FSEventStreamSetExclusionPaths` 物理排除 ignored 子树 ——
+//!   仍整树递归订阅，但被排除目录**内部**变化不投递；忽略规则变化时由维护线程重建 exclusion
+//!   （见 [`maintenance`]）；
 //! - **Windows (ReadDirectoryChangesW)**：每目录一个 64KB 缓冲句柄，万级目录
 //!   句柄/内存不可行 —— 保持整树 Recursive 注册，回调层过滤。
 //!
@@ -21,4 +23,6 @@ mod strategy;
 mod tests;
 
 pub(in crate::common::file::watcher) use maintenance::spawn_maintenance_thread;
-pub(in crate::common::file::watcher) use strategy::{WatchMaintenance, WatchRegistration};
+pub(in crate::common::file::watcher) use strategy::{
+    WatchMaintenance, WatchRegistration, MAX_WATCH_DIRS,
+};

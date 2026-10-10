@@ -12,7 +12,8 @@
 use super::super::debounce::{DebounceSender, ThrottleScheduler, TreeChangeDebounceSender};
 use super::super::git_meta::create_git_meta_watcher;
 use super::super::gitignore::GitIgnoreFilter;
-use super::super::registration::{spawn_maintenance_thread, WatchRegistration};
+use super::super::manifest::WatchManifest;
+use super::super::registration::{spawn_maintenance_thread, WatchRegistration, MAX_WATCH_DIRS};
 use super::super::sink::{WatcherEvent, WatcherEventSink};
 use super::super::types::{GitChangedEvent, GitPerfSuggestionEvent};
 use super::callbacks::build_notify_callback;
@@ -20,7 +21,10 @@ use super::handle::WatcherHandle;
 use crate::common::git::local::is_git_repo;
 use crate::common::git::status_worker::{GitStatusSnapshot, GitStatusWorker};
 use crate::common::git::WorkspaceRef;
-use notify::{Config, RecommendedWatcher, Watcher};
+use crate::platform::watch_backend::{
+    build_exclusion_paths, create_file_watcher, watch_backend, WatchBackend,
+};
+use notify::Config;
 #[cfg(test)]
 use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc;
@@ -32,6 +36,12 @@ use std::{
     },
     time::Duration,
 };
+
+/// 用户级 watcher 排除（`watcherExclude`）模式提供者。
+///
+/// 组合根注入：watcher 域不感知配置文件路径（配置路径的唯一事实源在 `StorageManager`），
+/// 也不在底层模块里做全局 IO。每次挂载调用一次（用户排除在挂载期冻结）。
+pub type WatcherExcludesProvider = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
 
 /// Manages file-system watchers per repository workspace (main repo or one linked worktree).
 ///
@@ -54,6 +64,8 @@ pub struct WatcherManager {
     /// 挂载临界区（D-B 不变量）：`release_except` 与 `watch` 必须成对原子发生，
     /// 否则并发 `activate` 能交错出两套挂载（见 [`Self::mount_only`] 的说明）。
     mount_lock: Arc<Mutex<()>>,
+    /// 用户级 watcher 排除模式提供者（D2）；默认空 = 只 gitignore + 硬噪声。
+    watcher_excludes_provider: WatcherExcludesProvider,
     /// 已创建的 watcher 套数（幂等契约观测口，见 `lifecycle_tests.rs`）：
     /// 「重复 watch 只建一套」用创建计数断言，不用事件批次计数 —— 单次写入的
     /// 多个 FS 事件在负载下可跨 debounce 窗口分多批投递（合法生产行为），
@@ -77,9 +89,27 @@ impl WatcherManager {
             snapshots: Arc::new(Mutex::new(HashMap::new())),
             version_floors: Arc::new(Mutex::new(HashMap::new())),
             mount_lock: Arc::new(Mutex::new(())),
+            watcher_excludes_provider: Arc::new(Vec::new),
             #[cfg(test)]
             watcher_set_creations: Arc::new(AtomicUsize::default()),
         }
+    }
+
+    /// 注入用户级排除模式提供者（组合根用，见 `AppStateWrapper::new_with_library_store`）。
+    /// 读层兜底构造过滤器时用 [`Self::watcher_excludes`] 取同一份来源。
+    #[must_use]
+    pub fn with_watcher_excludes<F>(mut self, provider: F) -> Self
+    where
+        F: Fn() -> Vec<String> + Send + Sync + 'static,
+    {
+        self.watcher_excludes_provider = Arc::new(provider);
+        self
+    }
+
+    /// 当前用户级排除模式快照（读层 `resolve_gitignore_filter` 构造兜底过滤器用）。
+    #[must_use]
+    pub fn watcher_excludes(&self) -> Vec<String> {
+        (self.watcher_excludes_provider)()
     }
 
     /// 已创建的 watcher 套数（`#[cfg(test)]` 观测口：直接测量「重复 watch 是否被
@@ -260,9 +290,36 @@ impl WatcherManager {
         // 与 git 自身行为一致（不再是硬编码目录名黑名单）。
         // 非 git 单元时为 None，不做 gitignore 过滤。
         let gitignore_filter = if git_repo {
-            Some(GitIgnoreFilter::new(path.clone()))
+            Some(GitIgnoreFilter::with_user_excludes(
+                path.clone(),
+                &(self.watcher_excludes_provider)(),
+            ))
         } else {
             None
+        };
+        // W2：监听边界清单在**构造 watcher 之前**算出 —— 它的 `ignored_roots` 是 macOS
+        // 物理排除集合，而排除必须在 `FSEventStreamStart` 之前设置。清单同时回传给注册层
+        // （避免 `SelectiveRegistration` 后端重复遍历整棵树）。
+        //
+        // 只在会消费它的后端上计算：`RecursiveFilterOnly`（Windows）既不逐目录注册、
+        // 也不做物理排除，多算一次全树遍历纯属浪费（且会改变 Windows 的挂载成本）。
+        let manifest = if watch_backend() == WatchBackend::RecursiveFilterOnly {
+            None
+        } else {
+            gitignore_filter
+                .as_ref()
+                .map(|filter| WatchManifest::compute(&path, Some(filter), MAX_WATCH_DIRS))
+        };
+        // 物理排除集合只在能真正排除的后端上计算（macOS）：其余后端（含 Linux
+        // `SelectiveRegistration`）工厂会丢弃它，且 `build_exclusion_paths` 与整树遍历
+        // 都无收益 —— 避免 Linux/Windows 上的无谓工作量。
+        let exclusions = if watch_backend().can_exclude_subtrees() {
+            manifest
+                .as_ref()
+                .map(|manifest| build_exclusion_paths(manifest.ignored_roots()))
+                .unwrap_or_default()
+        } else {
+            Vec::new()
         };
         // S2：filter 以 Option<Arc<..>> 共享给闭包（事件过滤 + 规则热重载）、
         // 注册维护线程、WatcherHandle —— 单一实例三方可见
@@ -273,7 +330,7 @@ impl WatcherManager {
         let (maintenance_tx, maintenance_rx) =
             mpsc::channel::<super::super::registration::WatchMaintenance>();
         let maintenance_tx_for_closure = maintenance_tx.clone();
-        let notify_result = RecommendedWatcher::new(
+        let notify_result = create_file_watcher(
             build_notify_callback(
                 repo.clone(),
                 sink_for_watcher_error,
@@ -285,6 +342,7 @@ impl WatcherManager {
                 git_repo,
             ),
             Config::default(),
+            &exclusions,
         );
 
         let watcher = match notify_result {
@@ -322,8 +380,13 @@ impl WatcherManager {
                     return;
                 }
             };
-            // MutexGuard 不实现 Watcher：显式解引用到内层 &mut RecommendedWatcher
-            reg.register_root(&mut *w, &path, gitignore_for_handle.as_deref());
+            // MutexGuard 不实现 Watcher：显式解引用到内层 &mut PlatformWatcher
+            reg.register_root(
+                &mut *w,
+                &path,
+                gitignore_for_handle.as_deref(),
+                manifest.as_ref(),
+            );
         }
         spawn_maintenance_thread(
             // 只给 Weak：强所有者是下面的 WatcherHandle（见 maintenance.rs 的生命周期契约）

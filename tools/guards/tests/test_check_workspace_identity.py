@@ -372,6 +372,32 @@ class WorkspaceIdentityTest(unittest.TestCase):
         )
         self.assertEqual(result.verdict, PASS)
 
+    def test_platform_watch_backend_adapter_is_not_flagged(self):
+        """W2 起 notify `Watcher::watch` 适配精确落在 platform_watch_backend 的两个文件 ——
+        与 `WatcherManager::watch` 无关，不得被挂载唯一入口判据误伤。"""
+        result = self.run_backend_files(
+            {
+                "src-tauri/src/platform/watch_backend/platform_watcher.rs": (
+                    "fn inner(&mut self) { watcher.watch(path, recursive_mode); }\n"
+                ),
+                "src-tauri/src/platform/watch_backend/macos_fsevent.rs": (
+                    "fn t(&mut self) { watcher.watch(&root, RecursiveMode::Recursive).unwrap(); }\n"
+                ),
+            }
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    def test_watcher_watch_outside_adapter_allowlist_is_flagged(self):
+        """豁免精确到文件：同目录其余文件（如 factory.rs）仍受判据约束。"""
+        result = self.run_backend_files(
+            {
+                "src-tauri/src/platform/watch_backend/factory.rs": (
+                    "fn bad(&mut self) { watcher.watch(path, recursive_mode); }\n"
+                ),
+            }
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+
     def test_comment_mentioning_watch_is_allowed(self):
         result = self.run_backend_files(
             {

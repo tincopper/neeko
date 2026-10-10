@@ -6,7 +6,7 @@ import { useFileStore } from '@/features/file/store';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { activeWorkspaceSession, useActiveWorkspaceSession } from '@/shared/store/workspaceStore';
-import type { FileNode, WorkspaceSession } from '@/shared/types';
+import type { DirTreeResult, WorkspaceSession } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { isFileTab } from '@/shared/utils/fileTree';
 import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
@@ -83,7 +83,7 @@ export function useFileView() {
    */
   const makeDirLoader = useCallback((workspace: WorkspaceSession, dirPath: string) => {
     const depth = dirPath ? 1 : DEFAULT_TREE_DEPTH;
-    return (): Promise<FileNode[]> => readDirTree(workspace, dirPath || null, depth);
+    return (): Promise<DirTreeResult> => readDirTree(workspace, dirPath || null, depth);
   }, []);
 
   /** 解析当前 root 路径：当前视图单元为 worktree 时用其根，否则 activeProject.path */

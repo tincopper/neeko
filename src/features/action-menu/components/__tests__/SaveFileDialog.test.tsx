@@ -17,7 +17,7 @@ const { saveNewFileMock, closeEditorTabMock, refreshWorkspaceStatusMock } = vi.h
 }));
 
 vi.mock('@/features/file/api/fileApi', () => ({
-  readDirTree: vi.fn(() => Promise.resolve([])),
+  readDirTree: vi.fn(() => Promise.resolve({ nodes: [], truncated: false })),
   saveNewFile: saveNewFileMock,
 }));
 vi.mock('@/features/git/utils/gitStatus', () => ({

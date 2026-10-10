@@ -77,6 +77,7 @@ function FilesPanel({
 }: FilesPanelProps) {
   const dirs = useFileStore((s) => s.dirs);
   const loadStates = useFileStore((s) => s.loadStates);
+  const truncatedDirs = useFileStore((s) => s.truncatedDirs);
   // dirs 镜像 ref：readDir 用稳定闭包读取（身份不随 dirs 变化抖动——
   // 否则 handleToggleDir 每次渲染重建，FileTreeRow memo 比较器按回调身份
   // 比较会令整树重渲染，击穿 S4 render-count 兜底）。
@@ -116,6 +117,7 @@ function FilesPanel({
           activeFilePath,
           selectedPath: state.selectedNode?.path ?? null,
           dirLoadStates: loadStates,
+          truncatedDirs,
           creating: state.creating,
           creatingValue: state.creatingValue,
           renaming: state.renaming,
@@ -127,6 +129,7 @@ function FilesPanel({
       state.expandedDirs,
       activeFilePath,
       loadStates,
+      truncatedDirs,
       state.selectedNode,
       state.creating,
       state.creatingValue,

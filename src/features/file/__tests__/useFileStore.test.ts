@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useFileStore } from '@/features/file/store';
-import type { FileNode } from '@/shared/types';
+import type { DirTreeResult, FileNode } from '@/shared/types';
 import { deferred } from '@/testing/async';
 
 const OWNER = 'p1:/proj';
@@ -13,6 +13,10 @@ function dirNode(name: string, path: string, children: FileNode[] = []): FileNod
 function fileNode(name: string, path: string): FileNode {
   return { name, path, is_dir: false, children: [] };
 }
+/** 目录读取结果包装：既有用例默认不截断，truncated 断言单独传入。 */
+function dirResult(nodes: FileNode[], truncated = false): DirTreeResult {
+  return { nodes, truncated };
+}
 
 beforeEach(() => {
   useFileStore.getState().reset();
@@ -22,10 +26,12 @@ describe('useFileStore 扁平目录缓存', () => {
   it('loadDir 成功写入目录缓存并标记 loaded（缓存只存一级条目，嵌套子目录 seed 进缓存）', async () => {
     const loader = vi
       .fn()
-      .mockResolvedValue([
-        dirNode('src', 'src', [fileNode('a.ts', 'src/a.ts')]),
-        fileNode('b.ts', 'b.ts'),
-      ]);
+      .mockResolvedValue(
+        dirResult([
+          dirNode('src', 'src', [fileNode('a.ts', 'src/a.ts')]),
+          fileNode('b.ts', 'b.ts'),
+        ]),
+      );
 
     await useFileStore.getState().loadDir(OWNER, '', loader);
 
@@ -42,12 +48,14 @@ describe('useFileStore 扁平目录缓存', () => {
   it('嵌套子目录 seed 进缓存：展开命中缓存，不重复请求', async () => {
     const loader = vi
       .fn()
-      .mockResolvedValue([
-        dirNode('src', 'src', [
-          dirNode('utils', 'src/utils', [fileNode('b.ts', 'src/utils/b.ts')]),
+      .mockResolvedValue(
+        dirResult([
+          dirNode('src', 'src', [
+            dirNode('utils', 'src/utils', [fileNode('b.ts', 'src/utils/b.ts')]),
+          ]),
+          fileNode('a.ts', 'src/a.ts'),
         ]),
-        fileNode('a.ts', 'src/a.ts'),
-      ]);
+      );
 
     await useFileStore.getState().loadDir(OWNER, '', loader);
 
@@ -59,7 +67,7 @@ describe('useFileStore 扁平目录缓存', () => {
     expect(s.loadStates['src/utils']).toBe('loaded');
 
     // 已 seed 的目录再次 loadDir 幂等跳过：不会重复请求
-    const expandLoader = vi.fn().mockResolvedValue([fileNode('x.ts', 'src/x.ts')]);
+    const expandLoader = vi.fn().mockResolvedValue(dirResult([fileNode('x.ts', 'src/x.ts')]));
     await useFileStore.getState().loadDir(OWNER, 'src', expandLoader);
     expect(expandLoader).not.toHaveBeenCalled();
     expect(s.dirs['src']).toEqual([dirNode('utils', 'src/utils')]);
@@ -69,13 +77,13 @@ describe('useFileStore 扁平目录缓存', () => {
     // 先通过懒加载写入 src 缓存（新内容）
     await useFileStore
       .getState()
-      .loadDir(OWNER, 'src', () => Promise.resolve([fileNode('new.ts', 'src/new.ts')]));
+      .loadDir(OWNER, 'src', () => Promise.resolve(dirResult([fileNode('new.ts', 'src/new.ts')])));
 
     // 根刷新返回旧的嵌套树（src 下是旧内容）
     await useFileStore
       .getState()
       .loadDir(OWNER, '', () =>
-        Promise.resolve([dirNode('src', 'src', [fileNode('old.ts', 'src/old.ts')])]),
+        Promise.resolve(dirResult([dirNode('src', 'src', [fileNode('old.ts', 'src/old.ts')])])),
       );
 
     const s = useFileStore.getState();
@@ -88,7 +96,7 @@ describe('useFileStore 扁平目录缓存', () => {
   it('空 children 的目录不 seed：展开时仍按需请求（保留穿透语义）', async () => {
     const loader = vi
       .fn()
-      .mockResolvedValue([dirNode('locked', 'locked'), fileNode('a.ts', 'a.ts')]);
+      .mockResolvedValue(dirResult([dirNode('locked', 'locked'), fileNode('a.ts', 'a.ts')]));
 
     await useFileStore.getState().loadDir(OWNER, '', loader);
 
@@ -103,10 +111,10 @@ describe('useFileStore 扁平目录缓存', () => {
     // 1. 建立 owner + 根缓存
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([dirNode('src', 'src')]));
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([dirNode('src', 'src')])));
 
     // 2. 展开 src 发起在途请求（loading、无缓存）
-    const srcDeferred = deferred<FileNode[]>();
+    const srcDeferred = deferred<DirTreeResult>();
     const pSrc = useFileStore.getState().loadDir(OWNER, 'src', () => srcDeferred.promise);
     expect(useFileStore.getState().loadStates['src']).toBe('loading');
 
@@ -116,7 +124,8 @@ describe('useFileStore 扁平目录缓存', () => {
       .loadDir(
         OWNER,
         '',
-        () => Promise.resolve([dirNode('src', 'src', [fileNode('old.ts', 'src/old.ts')])]),
+        () =>
+          Promise.resolve(dirResult([dirNode('src', 'src', [fileNode('old.ts', 'src/old.ts')])])),
         { force: true, silent: true },
       );
 
@@ -125,7 +134,7 @@ describe('useFileStore 扁平目录缓存', () => {
     expect(useFileStore.getState().dirs['src']).toBeUndefined();
 
     // 4. src 请求返回真实内容：最终一致
-    srcDeferred.resolve([fileNode('new.ts', 'src/new.ts')]);
+    srcDeferred.resolve(dirResult([fileNode('new.ts', 'src/new.ts')]));
     await pSrc;
     const finalState = useFileStore.getState();
     expect(finalState.dirs['src']).toEqual([fileNode('new.ts', 'src/new.ts')]);
@@ -133,37 +142,37 @@ describe('useFileStore 扁平目录缓存', () => {
   });
 
   it('加载期间标记 loading', async () => {
-    const d = deferred<FileNode[]>();
+    const d = deferred<DirTreeResult>();
     const p = useFileStore.getState().loadDir(OWNER, '', () => d.promise);
     expect(useFileStore.getState().loadStates['']).toBe('loading');
-    d.resolve([fileNode('a.ts', 'a.ts')]);
+    d.resolve(dirResult([fileNode('a.ts', 'a.ts')]));
     await p;
     expect(useFileStore.getState().loadStates['']).toBe('loaded');
   });
 
   it('并发加载同一目录：过期响应（token 不匹配）被丢弃，最后一次为准', async () => {
-    const first = deferred<FileNode[]>();
-    const second = deferred<FileNode[]>();
+    const first = deferred<DirTreeResult>();
+    const second = deferred<DirTreeResult>();
     const p1 = useFileStore.getState().loadDir(OWNER, 'src', () => first.promise);
     const p2 = useFileStore.getState().loadDir(OWNER, 'src', () => second.promise);
 
-    second.resolve([fileNode('b.ts', 'src/b.ts')]);
+    second.resolve(dirResult([fileNode('b.ts', 'src/b.ts')]));
     await p2;
-    first.resolve([fileNode('a.ts', 'src/a.ts')]);
+    first.resolve(dirResult([fileNode('a.ts', 'src/a.ts')]));
     await p1;
 
     expect(useFileStore.getState().dirs['src']).toEqual([fileNode('b.ts', 'src/b.ts')]);
   });
 
   it('切换 owner：旧缓存与旧响应作废，新 owner 响应写入', async () => {
-    const stale = deferred<FileNode[]>();
+    const stale = deferred<DirTreeResult>();
     const pStale = useFileStore.getState().loadDir(OWNER, '', () => stale.promise);
 
     await useFileStore
       .getState()
-      .loadDir('p2:/proj2', '', () => Promise.resolve([fileNode('x.ts', 'x.ts')]));
+      .loadDir('p2:/proj2', '', () => Promise.resolve(dirResult([fileNode('x.ts', 'x.ts')])));
 
-    stale.resolve([fileNode('old.ts', 'old.ts')]);
+    stale.resolve(dirResult([fileNode('old.ts', 'old.ts')]));
     await pStale;
 
     const s = useFileStore.getState();
@@ -175,7 +184,7 @@ describe('useFileStore 扁平目录缓存', () => {
   it('加载失败：标记 error 且保留旧目录内容（绝不置空）', async () => {
     await useFileStore
       .getState()
-      .loadDir(OWNER, 'src', () => Promise.resolve([fileNode('a.ts', 'src/a.ts')]));
+      .loadDir(OWNER, 'src', () => Promise.resolve(dirResult([fileNode('a.ts', 'src/a.ts')])));
 
     await useFileStore
       .getState()
@@ -195,11 +204,13 @@ describe('useFileStore 扁平目录缓存', () => {
   it('silent 后台刷新：已有内容时不切换 loading 态，成功仍更新缓存', async () => {
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([fileNode('old.ts', 'old.ts')]));
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([fileNode('old.ts', 'old.ts')])));
 
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([fileNode('new.ts', 'new.ts')]), { silent: true });
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([fileNode('new.ts', 'new.ts')])), {
+        silent: true,
+      });
 
     const s = useFileStore.getState();
     expect(s.loadStates['']).toBe('loaded');
@@ -209,7 +220,7 @@ describe('useFileStore 扁平目录缓存', () => {
   it('silent 后台刷新失败：保留旧内容并标记 error（供 UI 重试）', async () => {
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([fileNode('old.ts', 'old.ts')]));
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([fileNode('old.ts', 'old.ts')])));
 
     await useFileStore
       .getState()
@@ -223,12 +234,12 @@ describe('useFileStore 扁平目录缓存', () => {
   it('刷新根目录不触碰已加载的子目录缓存（根治展开目录被整树覆盖）', async () => {
     await useFileStore
       .getState()
-      .loadDir(OWNER, 'src', () => Promise.resolve([fileNode('a.ts', 'src/a.ts')]));
+      .loadDir(OWNER, 'src', () => Promise.resolve(dirResult([fileNode('a.ts', 'src/a.ts')])));
 
     await useFileStore
       .getState()
       .loadDir(OWNER, '', () =>
-        Promise.resolve([dirNode('src', 'src'), fileNode('new.md', 'new.md')]),
+        Promise.resolve(dirResult([dirNode('src', 'src'), fileNode('new.md', 'new.md')])),
       );
 
     const s = useFileStore.getState();
@@ -237,14 +248,14 @@ describe('useFileStore 扁平目录缓存', () => {
   });
 
   it('幂等：已加载目录再次 loadDir 不发起重复请求', async () => {
-    const loader = vi.fn().mockResolvedValue([fileNode('a.ts', 'src/a.ts')]);
+    const loader = vi.fn().mockResolvedValue(dirResult([fileNode('a.ts', 'src/a.ts')]));
     await useFileStore.getState().loadDir(OWNER, 'src', loader);
     await useFileStore.getState().loadDir(OWNER, 'src', loader);
     expect(loader).toHaveBeenCalledTimes(1);
   });
 
   it('加载中重复调用：token 递增，最后一次为准（不跳过，防乱序）', async () => {
-    const loader = vi.fn().mockResolvedValue([fileNode('a.ts', 'src/a.ts')]);
+    const loader = vi.fn().mockResolvedValue(dirResult([fileNode('a.ts', 'src/a.ts')]));
     const p1 = useFileStore.getState().loadDir(OWNER, 'src', loader);
     const p2 = useFileStore.getState().loadDir(OWNER, 'src', loader);
     await Promise.all([p1, p2]);
@@ -253,8 +264,8 @@ describe('useFileStore 扁平目录缓存', () => {
   });
 
   it('force 强制重新加载（刷新场景）', async () => {
-    const loader1 = vi.fn().mockResolvedValue([fileNode('old.ts', 'src/old.ts')]);
-    const loader2 = vi.fn().mockResolvedValue([fileNode('new.ts', 'src/new.ts')]);
+    const loader1 = vi.fn().mockResolvedValue(dirResult([fileNode('old.ts', 'src/old.ts')]));
+    const loader2 = vi.fn().mockResolvedValue(dirResult([fileNode('new.ts', 'src/new.ts')]));
     await useFileStore.getState().loadDir(OWNER, 'src', loader1);
     await useFileStore.getState().loadDir(OWNER, 'src', loader2, { force: true });
     expect(useFileStore.getState().dirs['src']).toEqual([fileNode('new.ts', 'src/new.ts')]);
@@ -263,7 +274,7 @@ describe('useFileStore 扁平目录缓存', () => {
 
   it('error 后再次 loadDir 自动重试（无需 force）', async () => {
     await useFileStore.getState().loadDir(OWNER, 'src', () => Promise.reject(new Error('boom')));
-    const loader = vi.fn().mockResolvedValue([fileNode('a.ts', 'src/a.ts')]);
+    const loader = vi.fn().mockResolvedValue(dirResult([fileNode('a.ts', 'src/a.ts')]));
     await useFileStore.getState().loadDir(OWNER, 'src', loader);
     expect(useFileStore.getState().loadStates['src']).toBe('loaded');
     expect(useFileStore.getState().dirs['src']).toEqual([fileNode('a.ts', 'src/a.ts')]);
@@ -272,23 +283,24 @@ describe('useFileStore 扁平目录缓存', () => {
   it('reset 清空归属与全部缓存', async () => {
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([fileNode('a.ts', 'a.ts')]));
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([fileNode('a.ts', 'a.ts')])));
     useFileStore.getState().reset();
     const s = useFileStore.getState();
     expect(s.owner).toBeNull();
     expect(s.dirs).toEqual({});
     expect(s.loadStates).toEqual({});
+    expect(s.truncatedDirs).toEqual({});
     expect(s.requests).toEqual({});
   });
 
   it('refreshTree 强制重载根目录（root 缓存更新）', async () => {
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([fileNode('old.ts', 'old.ts')]));
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([fileNode('old.ts', 'old.ts')])));
 
     await useFileStore
       .getState()
-      .refreshTree(OWNER, () => () => Promise.resolve([fileNode('new.ts', 'new.ts')]));
+      .refreshTree(OWNER, () => () => Promise.resolve(dirResult([fileNode('new.ts', 'new.ts')])));
 
     const s = useFileStore.getState();
     expect(s.loadStates['']).toBe('loaded');
@@ -299,17 +311,19 @@ describe('useFileStore 扁平目录缓存', () => {
     // 先加载根 + 展开目录 src（旧内容 a.ts）
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([dirNode('src', 'src'), fileNode('b.ts', 'b.ts')]));
+      .loadDir(OWNER, '', () =>
+        Promise.resolve(dirResult([dirNode('src', 'src'), fileNode('b.ts', 'b.ts')])),
+      );
     await useFileStore
       .getState()
-      .loadDir(OWNER, 'src', () => Promise.resolve([fileNode('a.ts', 'src/a.ts')]));
+      .loadDir(OWNER, 'src', () => Promise.resolve(dirResult([fileNode('a.ts', 'src/a.ts')])));
 
     // 移动 a.ts → b.ts：新树根无变化，src 内容变化；旧目录 src/old 删除
     const loaderFor = (dirPath: string) => () =>
       Promise.resolve(
         dirPath === 'src'
-          ? [fileNode('moved.ts', 'src/moved.ts')]
-          : [dirNode('src', 'src'), fileNode('b.ts', 'b.ts')],
+          ? dirResult([fileNode('moved.ts', 'src/moved.ts')])
+          : dirResult([dirNode('src', 'src'), fileNode('b.ts', 'b.ts')]),
       );
 
     await useFileStore.getState().refreshTree(OWNER, loaderFor);
@@ -325,16 +339,16 @@ describe('useFileStore 扁平目录缓存', () => {
     // 建立根缓存
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([dirNode('src', 'src')]));
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([dirNode('src', 'src')])));
 
     // 展开 src 发起在途请求
-    const srcDeferred = deferred<FileNode[]>();
+    const srcDeferred = deferred<DirTreeResult>();
     const pSrc = useFileStore.getState().loadDir(OWNER, 'src', () => srcDeferred.promise);
     expect(useFileStore.getState().loadStates['src']).toBe('loading');
 
     // refreshTree 只应刷新根，跳过 loading 的 src
     const rootLoader = () => () =>
-      Promise.resolve([dirNode('src', 'src'), fileNode('x.ts', 'x.ts')]);
+      Promise.resolve(dirResult([dirNode('src', 'src'), fileNode('x.ts', 'x.ts')]));
     await useFileStore.getState().refreshTree(OWNER, rootLoader);
 
     // src 仍为 loading、未被 rootLoader 返回覆盖
@@ -342,7 +356,7 @@ describe('useFileStore 扁平目录缓存', () => {
     expect(useFileStore.getState().dirs['src']).toBeUndefined();
 
     // 在途请求完成：最终一致
-    srcDeferred.resolve([fileNode('new.ts', 'src/new.ts')]);
+    srcDeferred.resolve(dirResult([fileNode('new.ts', 'src/new.ts')]));
     await pSrc;
     expect(useFileStore.getState().dirs['src']).toEqual([fileNode('new.ts', 'src/new.ts')]);
   });
@@ -351,21 +365,23 @@ describe('useFileStore 扁平目录缓存', () => {
     // 已加载根 + src + docs 三个桶
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([dirNode('src', 'src'), dirNode('docs', 'docs')]));
+      .loadDir(OWNER, '', () =>
+        Promise.resolve(dirResult([dirNode('src', 'src'), dirNode('docs', 'docs')])),
+      );
     await useFileStore
       .getState()
-      .loadDir(OWNER, 'src', () => Promise.resolve([fileNode('a.ts', 'src/a.ts')]));
+      .loadDir(OWNER, 'src', () => Promise.resolve(dirResult([fileNode('a.ts', 'src/a.ts')])));
     await useFileStore
       .getState()
-      .loadDir(OWNER, 'docs', () => Promise.resolve([fileNode('d.md', 'docs/d.md')]));
+      .loadDir(OWNER, 'docs', () => Promise.resolve(dirResult([fileNode('d.md', 'docs/d.md')])));
 
     // 事件只影响 src：只有 src 的 loader 会被调用
     const loaderFor = vi.fn(
       (dirPath: string) => () =>
         Promise.resolve(
           dirPath === ''
-            ? [dirNode('src', 'src'), dirNode('docs', 'docs')]
-            : [fileNode('b.ts', `src/b.ts`)],
+            ? dirResult([dirNode('src', 'src'), dirNode('docs', 'docs')])
+            : dirResult([fileNode('b.ts', `src/b.ts`)]),
         ),
     );
     await useFileStore.getState().refreshTree(OWNER, loaderFor, { silent: true, dirs: ['src'] });
@@ -380,13 +396,17 @@ describe('useFileStore 扁平目录缓存', () => {
   it('dirs 为空数组 = 全量兜底（watcher overflow / 手动刷新语义）', async () => {
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([dirNode('src', 'src')]));
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([dirNode('src', 'src')])));
     await useFileStore
       .getState()
-      .loadDir(OWNER, 'src', () => Promise.resolve([fileNode('a.ts', 'src/a.ts')]));
+      .loadDir(OWNER, 'src', () => Promise.resolve(dirResult([fileNode('a.ts', 'src/a.ts')])));
 
     const loaderFor = (dirPath: string) => () =>
-      Promise.resolve(dirPath === '' ? [dirNode('src', 'src')] : [fileNode('b.ts', 'src/b.ts')]);
+      Promise.resolve(
+        dirPath === ''
+          ? dirResult([dirNode('src', 'src')])
+          : dirResult([fileNode('b.ts', 'src/b.ts')]),
+      );
     await useFileStore.getState().refreshTree(OWNER, loaderFor, { silent: true, dirs: [] });
 
     // 全量刷新：根与已加载子目录全部重载
@@ -397,11 +417,11 @@ describe('useFileStore 扁平目录缓存', () => {
   it('refreshTree silent 后台刷新：不切换 loading 态，新数据到达前保留旧内容', async () => {
     await useFileStore
       .getState()
-      .loadDir(OWNER, '', () => Promise.resolve([fileNode('old.ts', 'old.ts')]));
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([fileNode('old.ts', 'old.ts')])));
 
     const p = useFileStore
       .getState()
-      .refreshTree(OWNER, () => () => Promise.resolve([fileNode('new.ts', 'new.ts')]), {
+      .refreshTree(OWNER, () => () => Promise.resolve(dirResult([fileNode('new.ts', 'new.ts')])), {
         silent: true,
       });
     // silent 刷新不进入 loading
@@ -409,5 +429,30 @@ describe('useFileStore 扁平目录缓存', () => {
     await p;
     // 数据到达后更新
     expect(useFileStore.getState().dirs['']).toEqual([fileNode('new.ts', 'new.ts')]);
+  });
+
+  it('loadDir 记录每目录 truncated 标记（R7 / 红线 4）：截断目录置 true，未截断置 false', async () => {
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([dirNode('big', 'big')])));
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, 'big', () => Promise.resolve(dirResult([fileNode('a.o', 'big/a.o')], true)));
+
+    const s = useFileStore.getState();
+    expect(s.truncatedDirs['big']).toBe(true);
+    expect(s.truncatedDirs['']).toBe(false);
+  });
+
+  it('切换 owner 清空旧截断标记（不同归属的截断语义不串台）', async () => {
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, '', () => Promise.resolve(dirResult([fileNode('a.ts', 'a.ts')], true)));
+    expect(useFileStore.getState().truncatedDirs['']).toBe(true);
+
+    await useFileStore
+      .getState()
+      .loadDir('p2:/proj2', '', () => Promise.resolve(dirResult([fileNode('x.ts', 'x.ts')])));
+    expect(useFileStore.getState().truncatedDirs).toEqual({ '': false });
   });
 });

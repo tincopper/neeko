@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 import { parseImportStrategy, setLspImportStrategy } from '@/features/lsp/api/lspImportStrategy';
+import { applyCustomCssVars, clearCustomCssVars } from '@/features/settings/customThemeVars';
 import type {
   AppConfig,
   ThemeListItem,
@@ -48,6 +49,7 @@ const DEFAULT_CONFIG: AppConfig = {
   enableDevTools: false,
   autoLocateFileOnTabSwitch: true,
   editorGitChangeHighlight: true,
+  watcherExclude: [],
   lsp: {
     autoStart: 'onFirstFile',
     deactivateStopMinutes: 30,
@@ -95,63 +97,6 @@ function mergeLspConfig(raw: unknown): LspConfig {
 
 function isBuiltinTheme(theme: string): boolean {
   return (BUILTIN_THEMES as readonly string[]).includes(theme);
-}
-
-const CUSTOM_CSS_VARS = [
-  'bg-primary',
-  'bg-secondary',
-  'bg-tertiary',
-  'bg-hover',
-  'bg-selected',
-  'bg-gradient-start',
-  'bg-gradient-end',
-  'text-primary',
-  'text-secondary',
-  'text-muted',
-  'border-color',
-  'terminal-selection',
-  'titlebar-gradient-start',
-  'accent-blue',
-  'accent-blue-rgb',
-  'accent-green',
-  'accent-yellow',
-  'accent-red',
-  'text-on-accent',
-  'status-idle',
-  'status-running',
-  'status-failed',
-  'diff-added',
-  'diff-removed',
-  'diff-added-text',
-  'diff-removed-text',
-];
-
-let _previousCustomVars: string[] | null = null;
-
-function applyCustomCssVars(variables: Record<string, string>) {
-  if (_previousCustomVars) {
-    for (const name of _previousCustomVars) {
-      document.documentElement.style.removeProperty(`--${name}`);
-    }
-  }
-  const applied: string[] = [];
-  for (const name of CUSTOM_CSS_VARS) {
-    const val = variables[name];
-    if (val !== undefined) {
-      document.documentElement.style.setProperty(`--${name}`, val);
-      applied.push(name);
-    }
-  }
-  _previousCustomVars = applied;
-}
-
-function clearCustomCssVars() {
-  if (_previousCustomVars) {
-    for (const name of _previousCustomVars) {
-      document.documentElement.style.removeProperty(`--${name}`);
-    }
-    _previousCustomVars = null;
-  }
 }
 
 export function useAppConfig() {
@@ -371,6 +316,11 @@ export function useAppConfig() {
               typeof saved.editorGitChangeHighlight === 'boolean'
                 ? saved.editorGitChangeHighlight
                 : DEFAULT_CONFIG.editorGitChangeHighlight,
+            watcherExclude: Array.isArray(saved.watcherExclude)
+              ? (saved.watcherExclude as unknown[]).filter(
+                  (p): p is string => typeof p === 'string',
+                )
+              : (DEFAULT_CONFIG.watcherExclude ?? []),
             lsp: mergedLsp,
             favoriteBranches:
               saved.favoriteBranches && typeof saved.favoriteBranches === 'object'
