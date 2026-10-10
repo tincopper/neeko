@@ -1858,3 +1858,68 @@ DAP 域新增唯一单元解析点 ExecUnit/resolve_unit（复用 RepoRef）；�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 262: Watcher boundary & cost model: ignored subtrees zero-watch
+
+**Date**: 2026-10-10
+**Task**: Watcher boundary & cost model: ignored subtrees zero-watch
+**Branch**: `main`
+
+### Summary
+
+Watch boundary is now an explicit manifest: ignored subtrees produce no watch input (macOS physical FSEvents exclusion + cross-platform structure-event convergence); added user-level watcherExclude and a bounded read layer. Four independent trellis-check rounds closed all findings; pnpm check green.
+
+### Main Changes
+
+### Watcher boundary & cost model
+
+Made the file-watch boundary an explicit value object instead of relying on
+callback filtering, so `.gitignore`d subtrees produce no watch input at all.
+
+**Delivered (W0–W4)**
+- `WatchManifest` (visible dirs + top-level ignored roots) + `WatchBackend`
+  capability enum replacing the misleading `WatchStrategy::{Selective,Recursive}`.
+- `structure_event_paths` now converges against the ignore filter: paths inside
+  ignored subtrees are dropped; only the ignored root's own create/remove/rename
+  boundary event is kept (gray-node updates via the parent watch).
+- macOS: self-written FSEvents `notify::Watcher` that physically excludes
+  ignored roots via `FSEventStreamSetExclusionPaths`, with runtime fallback
+  (`NEEKO_DISABLE_FSEVENT_EXCLUSION`) and exclusion-stream rebuild on ignore
+  rule changes / runtime-appearing ignored roots.
+- User-level `watcherExclude` (VS Code `files.watcherExclude`-style), merged
+  into the single `GitIgnoreFilter` decision point (registration, event
+  classification, tree read). Injected via `StorageManager` provider so the
+  watcher domain no longer reads global config paths.
+- Read layer bounded by `MAX_DIR_ENTRIES` + `truncated` (2MB IPC limit).
+
+**Decisions / accepted exceptions**
+- AC4 of the PRD closed as an explicit exception: `SelectiveRegistration` cap
+  overflow still degrades to recursive (preserves git-domain.md §14 lower
+  bound); documented in `design.md` §4 + `degrade_recursive` comment.
+- W2 `!reinclude` under a physically excluded subtree does not deliver events
+  (registered as a second known exception in `git-domain.md` §14).
+- Non-git projects: `watcherExclude` is inert (registered in W4 residuals).
+
+**Verification**
+- Four independent `trellis-check` rounds: no Block; all Warning/Nit closed.
+- `pnpm check` green (23/23 gates, `test_rust` ~300s incl. real FSEvents suite).
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c690c8df` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
