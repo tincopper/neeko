@@ -184,6 +184,29 @@ src/shared/utils/themeVariables.ts        ← 契约（60 个变量名，按语�
 | `--diff-added` / `--diff-added-text` | `bg-diff-added` / `text-diff-added-text` | diff 新增（底 / 字） |
 | `--diff-removed` / `--diff-removed-text` | `bg-diff-removed` / `text-diff-removed-text` | diff 删除（底 / 字） |
 
+#### 变更高亮：**行级底色是唯一标记，行内不叠底块**
+
+两个渲染面（编辑器 `features/editor/git-change`、Diff 面板 `features/git/components/diff`）
+共用同一条口径：
+
+| 渲染面 | 行级标记 | 禁止 |
+| --- | --- | --- |
+| 编辑器 | `.cm-git-line-added` / `.cm-git-line-modified`（8% 底）+ 4px 变更条 | `.cm-git-word`（词级 `Decoration.mark`） |
+| Diff 面板 | `.split-cell.added/removed`（`--diff-*` 底）+ 统一视图 `bg-diff-*` | `.word-diff-added` / `.word-diff-removed` |
+
+**为什么不给行内片段上底**（判据的物理依据，不是审美偏好）：
+
+1. 片段底色优先级高于 hljs 着色 → 读者先看见底块再看见代码；
+2. 一次改动跨多个 token 时行内出现不连续色块，长行碎成色带；
+3. 底块通常带 `padding`，而代码格是 `white-space: pre` → 片段一加内边距整行列对齐就错。
+
+代价（需知晓）：行内定位成本转移给用户（人眼扫一行）。若日后有实证需求（用户报「看不出改了哪」），
+**正确回退是行内字色/下划线**（与坑 10 行内代码同构），不是把底块加回来。
+
+机器判据：`src/styles/__tests__/changeHighlightCss.ts`（契约登记表 `CHANGE_HIGHLIGHT_SURFACES` +
+禁止类 `FORBIDDEN_INLINE_CLASSES`），真实文件断言与反证用例同走一个函数；
+表格侧行为锁在 `features/git/components/diff/__tests__/DiffTable.highlight.test.tsx`。
+
 ### 终端底色：**不复用专属 token，刻意跟随表面层**
 
 `--terminal-bg: var(--bg-secondary)`（`base/variables.css`，运行时由 `buildTerminalTheme` 直读）。

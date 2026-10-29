@@ -72,7 +72,7 @@
 | # | 能力 | 一句话 | 锚点 | README |
 | --- | --- | --- | --- | --- |
 | 5.1 | 变更树 | 分层文件树 + 状态装饰；磁盘变更自动刷新 | `src/features/git/components/ChangesSection.tsx` | ✅ |
-| 5.2 | Diff | 统一/并排、语法高亮、词级差异、变更块导航、合并提交视图 | `src/features/git/components/diff/` | ✅ |
+| 5.2 | Diff | 统一/并排、语法高亮、行级变更底色、变更块导航、合并提交视图 | `src/features/git/components/diff/` | ✅ |
 | 5.3 | 分支与工作树 | 搜索式分支切换，新建/重命名/删除，worktree 增删 | `src/features/git/components/BranchSwitcherPanel.tsx` | ✅ |
 | 5.4 | 暂存与冲突 | stash 管理、冲突文件解决 | `src/features/git/components/StashPanel.tsx` | ✅ |
 | 5.5 | 提交与同步 | commit（可由 Agent 生成 message）、push/pull、凭据提示 | `src/features/git/components/CommitDialog.tsx` | ✅ |
