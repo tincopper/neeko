@@ -414,3 +414,227 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 369: 修复内容滚动容器右侧滚动条占位导致的左右不齐
+<!-- trellis-session: v=2 fp=d60a036a3ba3c467 -->
+
+**Date**: 2026-10-29
+**Task**: 修复内容滚动容器右侧滚动条占位导致的左右不齐
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- 新增 @utility scroll-gutter-both（scrollbar-gutter: stable both-edges）作为滚动条留白唯一来源；挂到 MarkdownScrollContainer / PdfFileView / ImageFileView / AgentChatTabView(.wa-chat) / ConversationViewer(VirtualList)；TerminalViewBase 由 p-0 pl-2 改 px-2 使左右内边对称
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 6 个容器各一条 toHaveClass 断言（先红后绿）；pnpm check:quick 全绿；vite build 产物里确认 .scroll-gutter-both → scrollbar-gutter:stable both-edges 已生成
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 在真机上目视确认 markdown/PDF/图片/终端四类 tab 的左右留白对称
+
+
+## Session 370: 回退 both-edges，改为不强制滚动条宽度（保留 overlay 零占位）
+<!-- trellis-session: v=2 fp=91113879275778d3 -->
+
+**Date**: 2026-10-29
+**Task**: 回退 both-edges，改为不强制滚动条宽度（保留 overlay 零占位）
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- 回退上一轮的 scroll-gutter-both（@utility + 5 个容器 + 5 条断言）：WebKit 把 scrollbar-gutter 加在滚动条外侧，滚动条被推进内容区，比原问题更歪。改为 reset.css 通用规则只保留 scrollbar-color、删掉 scrollbar-width: thin —— 宽度交给平台，macOS overlay 滚动条零布局宽度、浮于内容之上，内容天然左右对称。保留 TerminalViewBase p-0 pl-2 → px-2
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 新增 src/styles/__tests__/scrollbarPolicy.test.ts（真实 reset.css + 3 条反证共用同一判据函数，禁止通用规则出现 scrollbar-width / scrollbar-gutter）；pnpm check:quick 全绿
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真机确认 macOS 下滚动条已回到 overlay（零占位、滚动时浮现）；若 scrollbar-color 仍把 WebKit 拉回经典滚动条，则需要自绘 overlay 滚动条方案
+
+
+## Session 371: 滚动条样式不动，内容右内边减去实测滚动条占位
+<!-- trellis-session: v=2 fp=15939b632e54b3fd -->
+
+**Date**: 2026-10-29
+**Task**: 滚动条样式不动，内容右内边减去实测滚动条占位
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- 新增 shared/utils/scrollbarGutter.ts：启动时实测滚动条宽度写到 :root 的 --scrollbar-gutter（overlay 下为 0，补偿自动失效）。MarkdownScrollContainer / ImageFileView / AgentChatTabView(.wa-chat) 右内边改成 calc(base-var(--scrollbar-gutter,0px))；PdfFileView 滚动区与 ConversationViewer 的 VirtualList 左内边补等量（内容居中于整盒）；PdfFileView fit-width 用 readScrollbarGutterVar 扣掉占位防溢出。reset.css 恢复原样（滚动条样式/位置不变）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] scrollbarGutter 纯函数用例 + 5 个容器 toHaveClass 断言；pnpm check:quick 全绿；vite build 产物确认 calc(1.5rem - var(--scrollbar-gutter,0px)) / padding-left:var(--scrollbar-gutter,0px) 已生成且无 <base> 垃圾规则
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真机确认：滚动条位置样式不变，内容右侧不再多出约 11px 空白
+
+
+## Session 372: 终端 tab 排查收尾：回退壳层右内边，探针实测后定案
+<!-- trellis-session: v=2 fp=6aee3349392e1ea9 -->
+
+**Date**: 2026-10-29
+**Task**: 终端 tab 排查收尾：回退壳层右内边，探针实测后定案
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- TerminalViewBase 回到原始 p-0 pl-2（px-2 会把 xterm overlay 滚动条从右边缘推进内容区）；删除临时布局探针。探针实测：wrap 284→1148 / xterm 292→1148 / screen 292→1148 —— 终端容器已铺满，右侧剩余仅为字符网格余量（<1 字宽）。规范的终端段落改写为「禁止加右内边 + 余量是网格固有」，并记录实测判据。保留其余内容容器的 --scrollbar-gutter 右内边补偿（markdown/图片/agent-chat 减、PDF/会话左补）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] TerminalViewBase 测试增加「壳层只许 pl-2、不许 pr-2/px-2」断言；pnpm check:quick 全绿
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 用户已确认终端 tab 视觉正常；其余四类内容容器的补偿效果待真机确认
+
+
+## Session 373: 终端滚动条接入 3s 自动隐藏
+<!-- trellis-session: v=2 fp=900b6f04772e7c0d -->
+
+**Date**: 2026-10-29
+**Task**: 终端滚动条接入 3s 自动隐藏
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- xterm 自绘滚动条的显隐归它内部 VisibilityController（只在指针移出滚动区时隐藏，指针停在终端里就永远可见）。新增 createScrollIdleTag()（shared/utils/scrollAutoHide.ts）：订阅 term.onScroll，停止滚动 3s 后给壳层挂 .scroll-idle；components/xterm.css 在该状态下滑块 opacity:0 + 滚动条容器 pointer-events:none。接线 TerminalViewBase 两处 onScroll 与 TaskConsoleOutput（含 dispose）。极性取「无类=可见」，接线缺失时退回旧行为而非让滚动条消失
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] createScrollIdleTag 4 条单测（延迟/重置/立即清除/空元素与 dispose）+ xterm.css 契约测试（真实文件与 3 条反证共用判据：空闲淡出、不得默认隐藏、空闲态关指针）+ TaskConsoleOutput 的 xterm 替身补 onScroll；pnpm check:quick 全绿；vite build 产物确认 scroll-idle 规则已生成
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真机确认：终端滚动后约 3s 滑块淡出，再次滚动立刻出现；隐藏时终端最右 6px 可正常点击/选区
+
+
+## Session 374: 终端网格右侧 14px 幻影根因修复（addon-fit 补丁）+ 半透明 overlay 滚动条
+<!-- trellis-session: v=2 fp=a375ff04c00a0f2b -->
+
+**Date**: 2026-10-29
+**Task**: 终端网格右侧 14px 幻影根因修复（addon-fit 补丁）+ 半透明 overlay 滚动条
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- 根因：@xterm/addon-fit 的 proposeDimensions() 写死 scrollback===0?0:(options.overviewRuler?.width||14)，而 xterm 6 已移除 overviewRuler ⇒ 恒减 14px，网格右边缘比左内边多出 14~22px。新增 patches/@xterm__addon-fit@0.11.0.patch 把默认值改为 0（pnpm-workspace patchedDependencies + lockfile 已同步），并清掉 node_modules/.vite。终端滚动条保持贴右边缘（overlay，压在最后一列上），改为半透明：opacity .45 / hover .75 / active .95，自动隐藏仍走 .scroll-idle
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] xterm.css 契约测试加「滑块必须半透明(0<opacity<1)」判据 + 对应反证；pnpm check:quick 全绿（16 护栏）；vite build 产物确认 overviewRuler?.width||0 与 .xterm-slider{opacity:.45} 已生效
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真机确认：终端文字铺到右边缘、左右留白基本等宽，滚动条半透明浮在文字上方并 3s 淡出；升级 @xterm/addon-fit 时必须重打补丁（pnpm 会报 patch 不匹配）
+
+
+## Session 375: 按 neeko-check 清单重构滚动条补偿（逐元素实测 + 单一实现）
+<!-- trellis-session: v=2 fp=42ed78f0595c2e53 -->
+
+**Date**: 2026-10-29
+**Task**: 按 neeko-check 清单重构滚动条补偿（逐元素实测 + 单一实现）
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- W1 删除全局 --scrollbar-gutter 安装（不再放 React effect，首帧前由 hook 的 useLayoutEffect 落地）；W2 补偿改为逐元素实测 offsetWidth-clientWidth（新增 shared/utils/scrollbarCompensation.ts + shared/hooks/useScrollbarCompensation.ts，两种模式 widen/center，max(0) 保底、幂等复算）；N7 类名不再写 calc 算术，基线 padding 留在 Tailwind 类；VirtualList 新增 scrollbarCompensation prop（滚动元素归它所有）+ data 标记；PdfFileView 改用 contentBoxWidthOf 并补 fit-width 用例；W4 补丁键改无版本并重命名为 patches/@xterm__addon-fit.patch + 新增 xtermFitAddonPatch 守卫（含 2 条反证）；W5 判据抽到 __tests__/xtermCss.ts 并重命名 xtermScrollbar.test.ts；N12 清掉 wa-chat 的死类 scrollbar；ConversationViewer 抽出 buildConversationStats 纯函数（顺带把文件从 567 降到 530 行，过 ratchet）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 新增 scrollbarCompensation 10 条、xtermFitAddonPatch 3 条、conversationStats 4 条、VirtualList center 补偿 1 条、Markdown 3 条、PDF fit-width 1 条；pnpm check:quick 16/16 全绿；vite build 产物含 overviewRuler?.width||0
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真机目视：markdown/图片/agent-chat/PDF/会话五处左右留白等宽；升级 @xterm/addon-fit 时无版本补丁会硬失败，按提示重打

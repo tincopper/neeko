@@ -397,6 +397,79 @@ async 作用域且永不收敛 ⇒ 后续渲染全部丢失（表现为「明明
 </div>
 ```
 
+### 滚动条占位：逐元素实测补偿（`useScrollbarCompensation`）
+
+`reset.css` 的全局 `scrollbar-width: thin` 让滚动条静止时透明不可见，但它仍是
+**经典滚动条**：占布局宽度、且只占**右侧**。于是同一容器天然是「左 padding ↔ 右 padding
++ 滚动条」，内容看着没铺满（markdown 预览 `px-6` 看着像 `px-6 / px-9`）。
+
+**判据**：内容滚动容器一律用 `useScrollbarCompensation(ref, mode)`，不自写 padding 算术、
+不用 `scrollbar-gutter` 属性：
+
+| mode | 行为 | 适用 |
+| --- | --- | --- |
+| `widen`（默认） | 右内边减掉实测占位 → 内容变宽、左边界不动 | 有右内边的容器：markdown 预览 / 图片 / agent-chat |
+| `center` | 左内边加上实测占位 | 右内边为 0、内容居中的容器：PDF 滚动区 / 会话列表（经 `VirtualList` 的 `scrollbarCompensation` prop） |
+| `none` | 不补偿 | 既有消费方保持原行为 |
+
+三条硬约束（第一性原理）：
+
+1. **占位属于元素，不属于应用**：只有真正溢出的容器才有滚动条，所以补偿量必须
+   `offsetWidth - clientWidth` 逐元素实测。全局常量会把「内容不足一屏」的容器补反
+   （右窄左宽），把 bug 换个方向复现。
+2. **样式基线仍在 Tailwind 类里**（`px-6` / `p-4`）：hook 只写**调整量**（inline style），
+   每次先清自己的 inline 值再读基线 —— 幂等，不会越减越多，也不把数值搬进 JS。
+3. **JS 里要可用宽度用 `contentBoxWidthOf(el)`**，不要直接拿 `clientWidth`（它含两侧内边，
+   PDF fit-width 曾因此溢出补偿量）。
+
+落点：`shared/utils/scrollbarCompensation.ts`（实测 / 补偿 / ResizeObserver 订阅）
++ `shared/hooks/useScrollbarCompensation.ts`（`useLayoutEffect`，保证首帧前落地，
+避免内容横向跳一下）。
+
+护栏：`scrollbarCompensation.test.ts`（10 条：占位钳零、幂等、无滚动条回基线、负内边保底
+`max(0, …)`、center 补左侧、dispose 清 inline）；四个容器各一条「类名不含算术 / 基线类保持」
+断言；PDF 另有一条 `Fit width` 按内容盒宽度计算的用例。
+
+**例外：终端不要套这套补偿**。xterm 的滚动条是它**自绘的 overlay 元素**（贴在 xterm
+元素右边缘、**不占布局宽度**），`offsetWidth - clientWidth` 对它恒为 0 —— 交给 hook 是
+无害空转，所以 `TerminalViewBase` 壳层只需保持 `p-0 pl-2`：禁止加右内边（试过 `px-2`，
+会把滚动条一起从右边缘推进 8px），也禁止调 `useScrollbarCompensation`。
+
+### 终端右侧的 14px 幻影（`@xterm/addon-fit` 补丁）
+
+终端「右边留白比左边宽」的真正来源不是滚动条，而是 `addon-fit` 的
+`proposeDimensions()`：
+
+```js
+const overviewRulerWidth = scrollback === 0 ? 0 : (options.overviewRuler?.width || 14);
+```
+
+xterm 6 已移除 `overviewRuler` 选项（见 `shared/utils/terminal.ts` 注释），于是这里
+**恒取 14**，可用宽度被无条件减掉 14px —— 网格右边缘比左内边（`pl-2` = 8px）多出约
+14～22px 空白。
+
+落点：`patches/@xterm__addon-fit@0.11.0.patch`（`pnpm-workspace.yaml` 的
+`patchedDependencies`）把默认值改成 `0`。**升级 addon 版本时必须同步重打补丁**
+（否则 pnpm 直接报 patch 不匹配，不会静默回退）。改完 `node_modules` 记得
+`rm -rf node_modules/.vite`，否则 Vite 预打包还在用旧代码。
+
+### 终端滚动条：半透明 + 自动隐藏
+
+网格铺到右边缘后，6px 滑块**压在最后一列上**（overlay），因此必须是半透明的：
+基础 `opacity: 0.45` / `:hover` 0.75 / 拖拽中 0.95。
+
+显隐：xterm 的 VisibilityController 只在指针**移出滚动区**时才隐藏
+（`_mouseIsOver` 守卫）—— 而终端的滚动区就是整个面板，指针停在里面时滚动条永远可见。
+所以由 `createScrollIdleTag()`（`shared/utils/scrollAutoHide.ts`）订阅 `term.onScroll`，
+停止滚动 3s 后给壳层挂 `.scroll-idle`，`components/xterm.css` 在该状态下把滑块
+`opacity: 0` 并把滚动条容器 `pointer-events: none`（否则透明 6px 会吃掉最右列的点击
+与选区）。极性刻意是**「无类 = 可见」**：接线缺失时退回 xterm 原行为。两个 xterm 宿主
+（`TerminalViewBase` / `TaskConsoleOutput`）都必须接。
+
+护栏：`scrollbarGutter.test.ts`（测量 / 安装 / 读取纯函数）+ 四个内容容器各一条
+`toHaveClass` 断言 + `TerminalViewBase.fitScheduler.test.tsx` 里一条「壳层只许 `pl-2`、
+不许 `pr-2`/`px-2`」断言。
+
 ### 动态类合并：`cn()`（唯一来源 `@/lib/utils`）
 
 需要条件组合类名时使用 `cn()`（`clsx` + `tailwind-merge`），禁止另起 `cn` 实现

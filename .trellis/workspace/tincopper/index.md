@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 368
+- **Total Sessions**: 375
 - **Last Active**: 2026-10-29
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~416 | Active |
+| `journal-8.md` | ~640 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,13 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 375 | 2026-10-29 | 按 neeko-check 清单重构滚动条补偿（逐元素实测 + 单一实现） | - | `main` |
+| 374 | 2026-10-29 | 终端网格右侧 14px 幻影根因修复（addon-fit 补丁）+ 半透明 overlay 滚动条 | - | `main` |
+| 373 | 2026-10-29 | 终端滚动条接入 3s 自动隐藏 | - | `main` |
+| 372 | 2026-10-29 | 终端 tab 排查收尾：回退壳层右内边，探针实测后定案 | - | `main` |
+| 371 | 2026-10-29 | 滚动条样式不动，内容右内边减去实测滚动条占位 | - | `main` |
+| 370 | 2026-10-29 | 回退 both-edges，改为不强制滚动条宽度（保留 overlay 零占位） | - | `main` |
+| 369 | 2026-10-29 | 修复内容滚动容器右侧滚动条占位导致的左右不齐 | - | `main` |
 | 368 | 2026-10-29 | Markdown 图片渲染修复 + PDF 预览；asset 协议 dotfile 403 根因 | - | `main` |
 | 367 | 2026-10-29 | Markdown 图片渲染修复 + PDF 预览（range 通道） | - | `main` |
 | 366 | 2026-10-29 | README 重写与文档防漂移护栏 | `f4bbf46a`, `66088710`, `3a1adbc9`, `6e21cb9a` | `main` |
