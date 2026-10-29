@@ -4,6 +4,7 @@ import type {
   ConversationListPage,
   ConversationMeta,
   ConversationMessage,
+  ConversationMessagePage,
   ScanReport,
 } from '../types';
 
@@ -28,8 +29,31 @@ export function listConversations(
   });
 }
 
-export function getConversationMessages(id: string): Promise<ConversationMessage[]> {
-  return invoke<ConversationMessage[]>('get_conversation_messages', { id });
+/** 拉取一页正文；每页由 Rust 侧按 1.5MB 预算切分（红线 4）。 */
+export function getConversationMessagesPage(
+  id: string,
+  offset = 0,
+): Promise<ConversationMessagePage> {
+  return invoke<ConversationMessagePage>('get_conversation_messages', { id, offset });
+}
+
+/**
+ * 拉取完整正文：逐页组装，保证单次 IPC 载荷在预算内。
+ *
+ * 需要「整段会话」的调用方（视图渲染 / 统计 / 工具面板 / 会话恢复）继续保持这个签名，
+ * 只是背后的传输变成多页 —— 语义与内存占用不变，只有单次载荷被约束住。
+ */
+export async function getConversationMessages(id: string): Promise<ConversationMessage[]> {
+  const messages: ConversationMessage[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await getConversationMessagesPage(id, offset);
+    messages.push(...page.items);
+    if (!page.hasMore || page.items.length === 0) {
+      return messages;
+    }
+    offset = page.offset + page.items.length;
+  }
 }
 
 export function searchConversations(

@@ -24,6 +24,19 @@ export interface ScanReport {
   errors: string[];
 }
 
+/**
+ * 会话正文分页（红线 4：单次 IPC 载荷 ≤2MB）。
+ *
+ * 分页只是**传输**边界：解析在 Rust 侧仍然完整，前端用 `hasMore` 逐页组装。
+ */
+export interface ConversationMessagePage {
+  items: ConversationMessage[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
 export interface ConversationListPage {
   items: ConversationMeta[];
   total: number;

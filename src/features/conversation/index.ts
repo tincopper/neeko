@@ -4,6 +4,7 @@ export {
   scanConversations,
   listConversations,
   getConversationMessages,
+  getConversationMessagesPage,
   searchConversations,
   updateConversation,
   getResumeCommand,
