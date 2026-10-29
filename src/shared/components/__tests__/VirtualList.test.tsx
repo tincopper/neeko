@@ -209,4 +209,56 @@ describe('VirtualList', () => {
       });
     }
   });
+
+  it('scrollbarCompensation：滚动元素归组件所有，由它落地补偿并暴露可观察标记', async () => {
+    // 默认 none：既有消费方（文件树等）行为不变，也不打标记
+    const { unmount } = renderList();
+    await waitFor(() => expect(screen.getAllByTestId('row').length).toBeGreaterThan(0));
+    const plain = screen.getByTestId('scroll-list');
+    expect(plain).not.toHaveAttribute('data-scrollbar-compensation');
+    unmount();
+
+    // center：实测占位 11px ⇒ 左内边补上，让内容居中于整个盒子
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get: () => 389,
+    });
+    // computed style 替身：inline 值优先（与真实引擎一致 —— 补偿是幂等复算，
+    // 且 jest-dom 的 toHaveStyle 也读这里，所以必须是 getter 而不是快照值）
+    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation(
+      (el) =>
+        ({
+          get paddingLeft() {
+            return (el as HTMLElement).style.paddingLeft || '0px';
+          },
+          get paddingRight() {
+            return (el as HTMLElement).style.paddingRight || '0px';
+          },
+          getPropertyValue: (prop: string) =>
+            (el as HTMLElement).style.getPropertyValue(prop) || '0px',
+        }) as unknown as CSSStyleDeclaration,
+    );
+
+    render(
+      <VirtualList
+        items={['a', 'b']}
+        getKey={(item) => item}
+        renderItem={(item) => <div data-testid="row">{item}</div>}
+        estimateSize={40}
+        className="overflow-auto"
+        scrollbarCompensation="center"
+        initialRect={{ width: 400, height: 400 }}
+      />,
+    );
+    await waitFor(() => expect(screen.getAllByTestId('row').length).toBeGreaterThan(0));
+    const scroller = screen.getByTestId('scroll-list');
+    expect(scroller).toHaveAttribute('data-scrollbar-compensation', 'center');
+    expect(scroller).toHaveStyle({ paddingLeft: '11px' });
+
+    computed.mockRestore();
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get: () => 0,
+    });
+  });
 });

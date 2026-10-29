@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useScrollbarCompensation } from '@/shared/hooks/useScrollbarCompensation';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { contentBoxWidthOf } from '@/shared/utils/scrollbarCompensation';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { PdfPageCanvas } from './pdf/PdfPageCanvas';
@@ -56,6 +58,8 @@ export default function PdfFileView({ filePath, fileName, projectId }: PdfFileVi
   const [page, setPage] = useState(1);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // 滚动区右内边为 0：改补左内边，让居中页面对齐整个盒子（见 scrollbarCompensation）
+  useScrollbarCompensation(scrollRef, 'center');
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -66,7 +70,9 @@ export default function PdfFileView({ filePath, fileName, projectId }: PdfFileVi
     if (!el) return;
     const measure = () => {
       setViewportHeight(el.clientHeight);
-      setContainerWidth(el.clientWidth);
+      // 可用宽度 = 内容盒（clientWidth 含两侧内边，含左补偿）——
+      // 直接用 clientWidth 会让 fit-width 溢出补偿量（见 scrollbarCompensation.ts）
+      setContainerWidth(contentBoxWidthOf(el));
     };
     measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);

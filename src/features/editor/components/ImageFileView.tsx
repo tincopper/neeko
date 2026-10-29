@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAssetUrl } from '@/shared/hooks/useAssetUrl';
+import { useScrollbarCompensation } from '@/shared/hooks/useScrollbarCompensation';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 interface ImageFileViewProps {
@@ -28,6 +29,9 @@ interface ImageFileViewProps {
  * （历史实现接绝对路径，而绝对路径由 `project.path` 派生 ⇒ worktree 下指向主仓）。
  */
 function ImageFileView({ filePath, fileName, basePath, projectId }: ImageFileViewProps) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // 预览容器自身可能溢出（大图）：同样按实测占位补偿右内边
+  useScrollbarCompensation(scrollRef);
   const [overlay, setOverlay] = useState(false);
   // 按「哪个 filePath 失败」派生错误态：tab 复用组件时不需复位 effect。
   const [failedFor, setFailedFor] = useState<string | null>(null);
@@ -70,7 +74,7 @@ function ImageFileView({ filePath, fileName, basePath, projectId }: ImageFileVie
   }
 
   return (
-    <div className="h-full flex items-center justify-center p-4 overflow-auto">
+    <div ref={scrollRef} className="h-full flex items-center justify-center p-4 overflow-auto">
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <img
         src={src}

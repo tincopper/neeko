@@ -331,6 +331,17 @@ describe('AgentChatTabView', () => {
     expect(screen.queryByTestId('approval-panel')).not.toBeInTheDocument();
   });
 
+  it('消息滚动区的补偿不写进类名（由 hook 落 inline 调整）', async () => {
+    const { container } = await renderView();
+
+    // eslint-disable-next-line testing-library/no-container, testing-library/no-node-access -- 结构断言：滚动容器类名
+    const scroller = container.querySelector('.wa-chat');
+    expect(scroller).toHaveClass('wa-chat');
+    expect(scroller?.className).not.toContain('calc(');
+    // 历史死类（仓库内无任何定义）随本次改动一并清掉
+    expect(scroller).not.toHaveClass('scrollbar');
+  });
+
   it('审批与澄清面板固定在滚动区外（composer 上方），不随消息流滚走', async () => {
     const { container } = await renderView();
 

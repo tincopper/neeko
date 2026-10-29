@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
+import { useScrollbarCompensation } from '@/shared/hooks/useScrollbarCompensation';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileNode } from '@/shared/types';
 import type { AgentChatTabData } from '@/shared/types/tab';
@@ -103,6 +104,8 @@ export default function AgentChatTabView({
 
   // 消息流自动跟随滚动（refs + 保护窗的纯滚动关注点，见该 hook）。
   const { chatEndRef, chatScrollRef } = useChatAutoFollow(messages.length);
+  // 经典滚动条只占右侧：按实测占位减右内边（.wa-chat 的 padding 是基线）
+  useScrollbarCompensation(chatScrollRef);
 
   // 空会话态拉取可恢复列表（仅 opencode 类支持接续的 agent 有意义，失败静默）
   const emptyChat = messages.length === 0 && !streaming && !pendingApproval && !pendingUserInput;
@@ -154,7 +157,8 @@ export default function AgentChatTabView({
 
   return (
     <div className="wa-root" data-testid="agent-chat-tab">
-      <div className="wa-chat scrollbar" ref={chatScrollRef}>
+      {/* 右内边补偿由 useScrollbarCompensation 按实测占位调整（见该 hook 注释） */}
+      <div className="wa-chat" ref={chatScrollRef}>
         <div className="wa-inner">
           <div className="wa-sys" title={ctxInfo?.projectPath ?? ''}>
             <span className="sys-dot" />

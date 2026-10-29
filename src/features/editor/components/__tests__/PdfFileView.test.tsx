@@ -103,6 +103,33 @@ describe('PdfFileView', () => {
     expect(options.wasmUrl).toBe('/pdfjs/wasm/');
   });
 
+  it('Fit width 按内容盒宽度计算（扣掉两侧内边，不溢出补偿量）', async () => {
+    setup({ numPages: 3 });
+    // 滚动区 clientWidth 800、左侧补偿 11（= 滚动条占位） ⇒ 内容盒 789，
+    // 再扣 fitWidthScale 的 padding 32 ⇒ 757 / 612 ≈ 1.237 ⇒ 展示 124%
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get: () => 800,
+    });
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(
+      () =>
+        ({
+          paddingLeft: '11px',
+          paddingRight: '0px',
+          getPropertyValue: (prop: string) =>
+            prop === 'padding-left' ? '11px' : prop === 'padding-right' ? '0px' : '',
+        }) as unknown as CSSStyleDeclaration,
+    );
+
+    render(<PdfFileView filePath="a.pdf" fileName="a.pdf" projectId={projectId} />);
+    expect(await screen.findByTestId('pdf-viewer')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Fit width'));
+    expect(await screen.findByText('124%')).toBeInTheDocument();
+
+    vi.restoreAllMocks();
+  });
+
   it('连续滚动只渲染可视窗口内的页（虚拟化，AC6）', async () => {
     setup({ numPages: 50 });
     render(<PdfFileView filePath="a.pdf" fileName="a.pdf" projectId={projectId} />);

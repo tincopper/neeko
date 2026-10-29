@@ -2,7 +2,9 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import React, { useCallback, useEffect, useRef } from 'react';
 
 import { cn } from '@/lib/utils';
+import { useScrollbarCompensation } from '@/shared/hooks/useScrollbarCompensation';
 import { useScrollMemory } from '@/shared/hooks/useScrollMemory';
+import type { ScrollbarCompensation } from '@/shared/utils/scrollbarCompensation';
 
 export interface VirtualListHandle {
   scrollToIndex: (index: number, align?: 'center' | 'start' | 'end') => void;
@@ -27,6 +29,12 @@ interface VirtualListProps<T> {
   onScroll?: (scrollTop: number) => void;
   /** Imperative handle exposed to parent for programmatic scrolling. */
   handleRef?: React.MutableRefObject<VirtualListHandle | null>;
+  /**
+   * 滚动条占位补偿模式（滚动元素归本组件所有，因此由本组件落地）：
+   * `widen` 减右内边 / `center` 补左内边 / `none` 不补偿（默认，既有消费方行为不变）。
+   * 机制见 `shared/utils/scrollbarCompensation.ts`。
+   */
+  scrollbarCompensation?: ScrollbarCompensation;
 }
 
 function VirtualListInner<T>({
@@ -41,8 +49,10 @@ function VirtualListInner<T>({
   onRangeChange,
   onScroll,
   handleRef,
+  scrollbarCompensation = 'none',
 }: VirtualListProps<T>): React.ReactElement {
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
+  useScrollbarCompensation(internalScrollRef, scrollbarCompensation);
   // 容器可见性：隐藏（display:none 期间）停用 virtualizer——
   // 让 tanstack 主动 cleanup 行元素的 ResizeObserver，防止行在脱离渲染树时被测成
   // 0 尺寸后永久污染 itemSizeCache（导致恢复显示时前面的行不可见/塌缩）。
@@ -147,6 +157,9 @@ function VirtualListInner<T>({
       onScroll={handleScroll}
       data-testid="scroll-list"
       className={cn('overflow-y-auto', className)}
+      data-scrollbar-compensation={
+        scrollbarCompensation === 'none' ? undefined : scrollbarCompensation
+      }
       style={listStyle}
     >
       <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>

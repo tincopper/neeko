@@ -395,6 +395,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
             ) : (
               <VirtualList
                 className="flex-1"
+                scrollbarCompensation="center"
                 items={groups}
                 getKey={(g) => g.indices[0]}
                 estimateSize={96}

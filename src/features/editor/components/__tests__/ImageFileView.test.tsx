@@ -40,6 +40,14 @@ describe('ImageFileView', () => {
     expect(screen.queryByRole('button', { name: /close image preview/i })).not.toBeInTheDocument();
   });
 
+  it('滚动容器的补偿只落 inline 调整，类名保留 Tailwind 基线 p-4', () => {
+    render(<ImageFileView filePath="a.png" basePath="/tmp/project" fileName="a.png" />);
+    // eslint-disable-next-line testing-library/no-node-access -- 结构断言：滚动容器是 img 的直接父节点
+    const scroller = screen.getByAltText('a.png').parentElement;
+    expect(scroller).toHaveClass('p-4', 'overflow-auto');
+    expect(scroller?.className).not.toContain('calc(');
+  });
+
   it('加载失败时显示占位提示而非破图', () => {
     render(<ImageFileView filePath="a.png" basePath="/nonexistent" fileName="a.png" />);
     fireEvent.error(screen.getByAltText('a.png'));

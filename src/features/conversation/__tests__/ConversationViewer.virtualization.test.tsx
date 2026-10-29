@@ -83,4 +83,27 @@ describe('ConversationViewer virtualization', () => {
     expect(groupRows.length).toBeGreaterThan(0);
     expect(groupRows.length).toBeLessThan(90);
   });
+
+  it('消息滚动区声明 center 补偿（居中于整个盒子）', async () => {
+    render(
+      <ConversationViewer
+        conversationId="claude-code:abc"
+        agentId="claude-code"
+        onBack={() => {}}
+        onResume={() => {}}
+        showToast={() => {}}
+      />,
+      { wrapper: createAppProviderWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/user message 20/)).toBeInTheDocument();
+    });
+
+    // 滚动元素归 VirtualList 所有 ⇒ 补偿模式以 prop 下传，落地为 data 标记
+    //（实际内边调整在 useScrollbarCompensation 内，见 scrollbarCompensation.test.ts）
+    // eslint-disable-next-line testing-library/no-node-access -- 结构关系断言（滚动祖先）
+    const scroller = screen.getByText(/user message 20/).closest('[data-scrollbar-compensation]');
+    expect(scroller).toHaveAttribute('data-scrollbar-compensation', 'center');
+  });
 });

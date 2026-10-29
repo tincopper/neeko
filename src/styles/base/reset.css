@@ -42,7 +42,13 @@
      伪元素样式，宽度由 scrollbar-width: thin 决定（UA 值，无法精确 px）。
      引擎版本下限：scrollbar-width/scrollbar-color 需 Safari 18.2+（Tauri
      macOS 用系统 WKWebView）/ WebKitGTK 2.46+；旧内核降级为系统默认
-     滚动条常显，功能不受影响。 */
+     滚动条常显，功能不受影响。
+
+     代价：显式声明宽度后滚动条是**经典滚动条**（占布局宽度，且只占右侧）。
+     占位补偿由内容滚动容器各自落地 —— `useScrollbarCompensation()` 逐元素实测
+     `offsetWidth - clientWidth` 并调整内边（见 shared/utils/scrollbarCompensation.ts）。
+     不用全局常量：没有滚动条的容器不该被补偿。也不用 `scrollbar-gutter: both-edges`：
+     WebKit 把保留区加在滚动条外侧，反而把滚动条推进内容区（实测后放弃）。 */
   * {
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;

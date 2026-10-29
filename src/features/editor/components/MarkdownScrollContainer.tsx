@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
+import { useScrollbarCompensation } from '@/shared/hooks/useScrollbarCompensation';
 import type { ViewVariant } from '@/shared/utils/editorViewState';
 import { getViewSnapshot, setViewSnapshot } from '@/shared/utils/editorViewState';
 
@@ -24,6 +25,9 @@ function MarkdownScrollContainer({
   variant = 'markdown',
 }: MarkdownScrollContainerProps) {
   const ref = useRef<HTMLDivElement | null>(null);
+  // 经典滚动条只占右侧：实测自身占位并减右内边，让左右留白相等
+  //（机制见 shared/utils/scrollbarCompensation.ts）
+  useScrollbarCompensation(ref);
 
   // 挂载 + 内容变化后恢复 scrollTop（用 layoutEffect 抢在浏览器绘制前）
   useLayoutEffect(() => {
