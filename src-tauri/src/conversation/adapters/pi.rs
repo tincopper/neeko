@@ -3,15 +3,19 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapters::content_blocks::{extract_message_content, has_visible_text};
 use crate::conversation::adapters::{
-    linearize_tree_entries, parse_timestamp, read_jsonl, recent_messages_from, strip_ansi,
+    linearize_tree_entries, message_role, parse_timestamp, read_jsonl, CONVERSATION_ROLES,
 };
+use crate::conversation::normalize::recent_messages_from_rev;
+use crate::conversation::text::{strip_ansi, strip_image_references};
 
 /// Pi CLI 会话适配器
 ///
 /// 会话格式：`~/.pi/agent/sessions/<sanitized-path>/*.jsonl`
-/// - 首行 type="session" 包含版本、ID、时间戳
-/// - 后续行为 type="message" 含 id/parentId 树结构 和 message.role/ content
+/// - 首行 type="session" 包含版本、ID、时间戳（**从不写 name/title**，标题只能靠 P3 首条用户消息）
+/// - 后续行为 type="message" 含 id/parentId 树结构；`message.content` 恒为**块数组**
+///   （text / thinking / toolCall），工具结果单独成 `role: "toolResult"` 记录
 /// - 不支持原生 CLI 恢复（仅 TUI 内的 /resume 命令）
 pub struct PiAdapter;
 
@@ -75,48 +79,48 @@ impl AgentSessionAdapter for PiAdapter {
             .and_then(parse_timestamp)
             .unwrap_or(started_at);
 
-        // 消息数
-        let message_entries: Vec<&serde_json::Value> = entries
+        // 对话回合 = 正文视图口径（角色白名单）。后续三个量都基于它，避免逐条抽取整段正文：
+        // 计数走轻量判定，标题只抽 user 回合，预览由新到旧惰性抽取凑满 5 条即停。
+        let conversation_entries: Vec<&serde_json::Value> = entries
             .iter()
-            .filter(|e| e.get("type").and_then(|v| v.as_str()) == Some("message"))
-            .collect();
-        let message_count = message_entries.len() as u32;
-
-        // 首条用户消息（P3 标题候选）
-        let first_user_raw = message_entries
-            .iter()
-            .find(|e| e.pointer("/message/role").and_then(|v| v.as_str()) == Some("user"))
-            .or_else(|| message_entries.first())
-            .and_then(|e| {
-                e.pointer("/message/content")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| e.pointer("/message/text").and_then(|v| v.as_str()))
-                    .or_else(|| e.get("content").and_then(|v| v.as_str()))
-            })
-            .map(|s| s.to_string());
-
-        // 最近消息缓冲（剔除 harness 注入噪声），供 manager 构建预览
-        let recent_pairs: Vec<(String, String)> = message_entries
-            .iter()
-            .filter_map(|e| {
-                let role = e
-                    .pointer("/message/role")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("user")
-                    .to_string();
-                let text = e
-                    .pointer("/message/content")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| e.pointer("/message/text").and_then(|v| v.as_str()))
-                    .or_else(|| e.get("content").and_then(|v| v.as_str()))?;
-                let t = text.trim().to_string();
-                if t.is_empty() {
-                    return None;
-                }
-                Some((role, t))
+            .filter(|e| {
+                e.get("type").and_then(|v| v.as_str()) == Some("message")
+                    && message_role(e).is_some_and(|r| CONVERSATION_ROLES.contains(&r))
             })
             .collect();
-        let recent_messages = recent_messages_from(recent_pairs);
+        let message_count = conversation_entries
+            .iter()
+            .filter(|e| has_visible_text(e))
+            .count() as u32;
+
+        // 首条用户消息（P3 标题候选）：纯图片回合不是标题素材，继续往下找
+        let first_user_raw = conversation_entries
+            .iter()
+            .filter(|e| message_role(e) == Some("user"))
+            .map(|e| extract_message_content(e).text)
+            .find(|text| !strip_image_references(text).trim().is_empty());
+
+        let recent_messages =
+            recent_messages_from_rev(conversation_entries.iter().rev().filter_map(|e| {
+                Some((
+                    message_role(e)?.to_string(),
+                    extract_message_content(e).text,
+                ))
+            }));
+
+        // 会话模型：pi 在 `model_change` 行写 `modelId`，助手消息再写一份 `message.model`
+        let model = entries
+            .iter()
+            .find(|e| e.get("type").and_then(|v| v.as_str()) == Some("model_change"))
+            .and_then(|e| e.get("modelId").or_else(|| e.get("model")))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                conversation_entries
+                    .iter()
+                    .find_map(|e| e.pointer("/message/model").and_then(|v| v.as_str()))
+                    .map(|s| s.to_string())
+            });
 
         // 项目路径：从 session 行或文件路径
         let project_path = first
@@ -136,7 +140,7 @@ impl AgentSessionAdapter for PiAdapter {
             title,
             first_user_message: first_user_raw,
             recent_messages,
-            model: None,
+            model,
             started_at,
             updated_at,
             message_count,
@@ -159,20 +163,16 @@ impl AgentSessionAdapter for PiAdapter {
                 continue;
             }
 
-            let role = entry
-                .pointer("/message/role")
-                .and_then(|v| v.as_str())
-                .unwrap_or("user");
+            let role = message_role(entry).unwrap_or("user");
+            // 工具结果以整条 `toolResult` 记录形式落盘，不进正文视图（体量不可控，红线 4）
+            if !CONVERSATION_ROLES.contains(&role) {
+                continue;
+            }
 
-            let content = entry
-                .pointer("/message/content")
-                .and_then(|v| v.as_str())
-                .or_else(|| entry.pointer("/message/text").and_then(|v| v.as_str()))
-                .or_else(|| entry.get("content").and_then(|v| v.as_str()))
-                .unwrap_or("");
-
-            let cleaned = strip_ansi(content);
-            if cleaned.is_empty() {
+            // 正文与结构化块同源抽取（块数组 → text / thinking / toolCall）
+            let content = extract_message_content(entry);
+            let cleaned = strip_ansi(&content.text);
+            if cleaned.trim().is_empty() {
                 continue;
             }
 
@@ -184,8 +184,12 @@ impl AgentSessionAdapter for PiAdapter {
             messages.push(ParsedMessage {
                 role: role.to_string(),
                 content: cleaned,
-                blocks: Vec::new(),
-                model: None,
+                blocks: content.blocks,
+                // pi 在每条助手消息上记录当时的模型（会话中途可能切换）
+                model: entry
+                    .pointer("/message/model")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 timestamp,
                 seq: *seq,
             });
@@ -217,33 +221,50 @@ impl AgentSessionAdapter for PiAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::conversation::types::MessageBlock;
     use tempfile::TempDir;
 
+    const SESSION_ID: &str = "01a1876f-0cba-7518-a2bb-a1453b806c78";
+
+    /// 真实 pi 会话格式（version 3）：`message.content` 恒为**块数组**
+    /// （text / thinking / toolCall），工具结果作为独立的 `role: "toolResult"` 记录。
     fn create_pi_fixture(dir: &TempDir, name: &str) -> PathBuf {
         let path = dir.path().join(name);
         let mut content = String::new();
 
-        // session header
+        // session header（pi 从不写 name/title）
         content.push_str(
-            r#"{"type":"session","version":3,"id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2025-01-15T10:00:00Z","cwd":"/projects/test"}"#,
+            r#"{"type":"session","version":3,"id":"01a1876f-0cba-7518-a2bb-a1453b806c78","timestamp":"2025-01-15T10:00:00Z","cwd":"/projects/test"}"#,
         );
         content.push('\n');
 
-        // message 1 (user)
+        // model_change / custom 行不承载消息
         content.push_str(
-            r#"{"type":"message","id":"msg1","parentId":"root","timestamp":"2025-01-15T10:00:01Z","message":{"role":"user","content":"How do I implement authentication?"}}"#,
+            r#"{"type":"model_change","id":"mc1","parentId":null,"timestamp":"2025-01-15T10:00:00.500Z","provider":"magpie","modelId":"workbuddy/deepseek-v4.1-flash"}"#,
         );
         content.push('\n');
 
-        // message 2 (assistant)
+        // message 1 (user) — text 块
         content.push_str(
-            r#"{"type":"message","id":"msg2","parentId":"msg1","timestamp":"2025-01-15T10:00:02Z","message":{"role":"assistant","content":"You should use JWT tokens. Here's a basic setup..."}}"#,
+            r#"{"type":"message","id":"msg1","parentId":null,"timestamp":"2025-01-15T10:00:01Z","message":{"role":"user","content":[{"type":"text","text":"How do I implement authentication?"},{"type":"image","data":"iVBORw0KGgo=","mimeType":"image/png"}]}}"#,
         );
         content.push('\n');
 
-        // message 3 (user follow-up)
+        // message 2 (assistant) — thinking + text + toolCall（arguments 是 JSON 字符串）
         content.push_str(
-            r#"{"type":"message","id":"msg3","parentId":"msg2","timestamp":"2025-01-15T10:00:03Z","message":{"role":"user","content":"Can you show me the code?"}}"#,
+            r#"{"type":"message","id":"msg2","parentId":"msg1","timestamp":"2025-01-15T10:00:02Z","message":{"role":"assistant","model":"workbuddy/deepseek-v4.1-flash","content":[{"type":"thinking","thinking":"先确认认证中间件位置"},{"type":"text","text":"You should use JWT tokens. Here's a basic setup..."},{"type":"toolCall","id":"call_1","name":"bash","arguments":"{\"command\":\"ls src\"}"}]}}"#,
+        );
+        content.push('\n');
+
+        // message 3 (toolResult) — 独立记录，不属于会话正文
+        content.push_str(
+            r#"{"type":"message","id":"msg3","parentId":"msg2","timestamp":"2025-01-15T10:00:03Z","message":{"role":"toolResult","toolCallId":"call_1","toolName":"bash","isError":false,"content":[{"type":"text","text":"action-menu/\nagent/"}]}}"#,
+        );
+        content.push('\n');
+
+        // message 4 (user follow-up)
+        content.push_str(
+            r#"{"type":"message","id":"msg4","parentId":"msg3","timestamp":"2025-01-15T10:00:04Z","message":{"role":"user","content":[{"type":"text","text":"Can you show me the code?"}]}}"#,
         );
         content.push('\n');
 
@@ -258,16 +279,86 @@ mod tests {
         let adapter = PiAdapter;
 
         let meta = adapter.parse_meta(&path).unwrap();
-        assert_eq!(
-            meta.native_session_id,
-            "550e8400-e29b-41d4-a716-446655440000"
-        );
+        assert_eq!(meta.native_session_id, SESSION_ID);
+        // 计数口径 = 正文视图能看到的对话消息（user/assistant），toolResult 不计
         assert_eq!(meta.message_count, 3);
-        assert!(meta
-            .recent_messages
-            .iter()
-            .any(|(_, t)| t.contains("authentication")));
+        assert_eq!(meta.model.as_deref(), Some("workbuddy/deepseek-v4.1-flash"));
         assert_eq!(meta.project_path.as_deref(), Some("/projects/test"));
+        // pi 不写标题，P2 恒为 None；P3 必须是首条用户消息的正文
+        assert_eq!(meta.title, None);
+        assert_eq!(
+            meta.first_user_message.as_deref(),
+            Some("How do I implement authentication?")
+        );
+    }
+
+    /// 回归：标题不再退化成 `pi <session-id 前 8 位>`。
+    #[test]
+    fn should_resolve_readable_title_from_first_user_message() {
+        let dir = TempDir::new().unwrap();
+        let path = create_pi_fixture(&dir, "session-pi.jsonl");
+        let adapter = PiAdapter;
+
+        let meta = adapter.parse_meta(&path).unwrap();
+        let title = crate::conversation::manager::resolve_title(
+            meta.title.as_deref(),
+            meta.first_user_message.as_deref(),
+            adapter.agent_id(),
+            &meta.native_session_id,
+        );
+        assert_eq!(title, "How do I implement authentication?");
+    }
+
+    /// 回归：首条用户消息只有图片引用时，P3 候选必须继续往下找。
+    #[test]
+    fn should_skip_image_only_turn_when_picking_title_candidate() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("session-image-first.jsonl");
+        let content = [
+            r#"{"type":"session","version":3,"id":"01a18800-0000-7000-8000-000000000001","timestamp":"2025-01-15T10:00:00Z","cwd":"/projects/test"}"#,
+            r#"{"type":"message","id":"msg1","parentId":null,"timestamp":"2025-01-15T10:00:01Z","message":{"role":"user","content":[{"type":"text","text":"[Image #1]\n\n"},{"type":"image","data":"iVBORw0KGgo=","mimeType":"image/png"}]}}"#,
+            r#"{"type":"message","id":"msg2","parentId":"msg1","timestamp":"2025-01-15T10:00:02Z","message":{"role":"user","content":[{"type":"text","text":"历史会话里显示的是 ID，不是标题"}]}}"#,
+        ]
+        .join("\n");
+        // 尾行补换行：正在写入的半行会被 read_jsonl 跳过
+        std::fs::write(&path, format!("{content}\n")).expect("Failed to write fixture");
+
+        let meta = PiAdapter.parse_meta(&path).unwrap();
+        assert_eq!(
+            meta.first_user_message.as_deref(),
+            Some("历史会话里显示的是 ID，不是标题")
+        );
+    }
+
+    #[test]
+    fn should_build_preview_from_user_and_assistant_turns_only() {
+        let dir = TempDir::new().unwrap();
+        let path = create_pi_fixture(&dir, "session-pi.jsonl");
+        let adapter = PiAdapter;
+
+        let meta = adapter.parse_meta(&path).unwrap();
+        assert!(
+            meta.recent_messages
+                .iter()
+                .any(|(_, t)| t.contains("authentication")),
+            "preview must contain the user turn: {:?}",
+            meta.recent_messages
+        );
+        assert!(
+            meta.recent_messages
+                .iter()
+                .any(|(_, t)| t.contains("show me the code")),
+            "preview must contain the follow-up turn: {:?}",
+            meta.recent_messages
+        );
+        // 工具输出不参与预览（体量不可控，见红线 4）
+        assert!(
+            meta.recent_messages
+                .iter()
+                .all(|(_, t)| !t.contains("action-menu")),
+            "tool results must stay out of the preview: {:?}",
+            meta.recent_messages
+        );
     }
 
     #[test]
@@ -277,14 +368,36 @@ mod tests {
         let adapter = PiAdapter;
 
         let messages = adapter.parse_messages(&path).unwrap();
+        // toolResult 记录不进入正文视图（与 Claude Code 适配器一致）
         assert_eq!(messages.len(), 3);
+
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[0].content, "How do I implement authentication?");
+        assert!(matches!(
+            messages[0].blocks.as_slice(),
+            [MessageBlock::Text { text }] if text == "How do I implement authentication?"
+        ));
+
         assert_eq!(messages[1].role, "assistant");
         assert_eq!(
-            messages[1].content,
-            "You should use JWT tokens. Here's a basic setup..."
+            messages[1].model.as_deref(),
+            Some("workbuddy/deepseek-v4.1-flash")
         );
+        assert_eq!(messages[0].model, None);
+        assert!(messages[1].content.contains("You should use JWT tokens"));
+        assert!(messages[1].content.contains("先确认认证中间件位置"));
+        assert!(messages[1].content.contains("🔧 `bash`"));
+        assert_eq!(messages[1].blocks.len(), 3);
+        assert!(matches!(
+            &messages[1].blocks[1],
+            MessageBlock::Text { text } if text.contains("JWT tokens")
+        ));
+        assert!(matches!(
+            &messages[1].blocks[2],
+            MessageBlock::ToolUse { name, input, .. }
+                if name == "bash" && input["command"] == "ls src"
+        ));
+
         assert_eq!(messages[2].role, "user");
         assert_eq!(messages[2].content, "Can you show me the code?");
     }
@@ -295,7 +408,7 @@ mod tests {
         let path = create_pi_fixture(&dir, "session-pi.jsonl");
 
         let id = PiAdapter.extract_session_id(&path);
-        assert_eq!(id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
+        assert_eq!(id, Some(SESSION_ID.to_string()));
     }
 
     #[test]

@@ -11,10 +11,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapters::content_blocks::{extract_message_content, has_visible_text};
 use crate::conversation::adapters::{
-    linearize_tree_entries, parse_timestamp, read_jsonl, recent_messages_from, strip_ansi,
+    linearize_tree_entries, message_role, parse_timestamp, read_jsonl, CONVERSATION_ROLES,
 };
-use crate::conversation::types::MessageBlock;
+use crate::conversation::normalize::recent_messages_from_rev;
+use crate::conversation::text::strip_ansi;
 
 /// OMP CLI session adapter.
 ///
@@ -61,27 +63,6 @@ fn is_main_session_file(session_root: &Path, file_path: &Path) -> bool {
             .extension()
             .and_then(|e| e.to_str())
             .is_some_and(|e| e.eq_ignore_ascii_case("jsonl"))
-}
-
-fn extract_text_from_message_content(content: &serde_json::Value) -> String {
-    match content {
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Array(parts) => {
-            let mut out = String::new();
-            for part in parts {
-                if part.get("type").and_then(|v| v.as_str()) == Some("text") {
-                    if let Some(t) = part.get("text").and_then(|v| v.as_str()) {
-                        if !out.is_empty() {
-                            out.push('\n');
-                        }
-                        out.push_str(t);
-                    }
-                }
-            }
-            out
-        }
-        _ => String::new(),
-    }
 }
 
 impl AgentSessionAdapter for OmpAdapter {
@@ -184,37 +165,34 @@ impl AgentSessionAdapter for OmpAdapter {
             .and_then(|e| e.get("model").and_then(|v| v.as_str()))
             .map(|s| s.to_string());
 
+        // 对话回合（正文视图口径）：计数走轻量判定，标题只抽 user 回合，
+        // 预览由新到旧惰性抽取 —— 成本不随会话长度增长（见 content_blocks 注释）。
         let linearized = linearize_tree_entries(&entries, "id", "parentId", "type", None);
-        let mut first_user_message: Option<String> = None;
-        let mut pairs: Vec<(String, String)> = Vec::new();
-        let mut message_count: u32 = 0;
-
-        for (idx, _seq) in &linearized {
-            let entry = &entries[*idx];
-            if entry.get("type").and_then(|v| v.as_str()) != Some("message") {
-                continue;
-            }
-            let role = entry
-                .pointer("/message/role")
-                .and_then(|v| v.as_str())
-                .unwrap_or("user")
-                .to_string();
-            let raw = entry
-                .pointer("/message/content")
-                .map(extract_text_from_message_content)
-                .unwrap_or_default();
-            let cleaned = strip_ansi(&raw);
-            if cleaned.trim().is_empty() {
-                continue;
-            }
-            message_count += 1;
-            if first_user_message.is_none() && role == "user" {
-                first_user_message = Some(cleaned.clone());
-            }
-            pairs.push((role, cleaned));
-        }
-
-        let recent_messages = recent_messages_from(pairs);
+        let conversation_entries: Vec<&serde_json::Value> = linearized
+            .iter()
+            .map(|(idx, _)| &entries[*idx])
+            .filter(|e| {
+                e.get("type").and_then(|v| v.as_str()) == Some("message")
+                    && message_role(e).is_some_and(|r| CONVERSATION_ROLES.contains(&r))
+            })
+            .collect();
+        let message_count = conversation_entries
+            .iter()
+            .filter(|e| has_visible_text(e))
+            .count() as u32;
+        let first_user_message = conversation_entries
+            .iter()
+            .filter(|e| message_role(e) == Some("user"))
+            .map(|e| strip_ansi(&extract_message_content(e).text))
+            .find(|text| !text.trim().is_empty());
+        let recent_messages =
+            recent_messages_from_rev(conversation_entries.iter().rev().filter_map(|e| {
+                let role = message_role(e)?;
+                Some((
+                    role.to_string(),
+                    strip_ansi(&extract_message_content(e).text),
+                ))
+            }));
 
         Ok(ParsedMeta {
             native_session_id,
@@ -240,17 +218,15 @@ impl AgentSessionAdapter for OmpAdapter {
                 continue;
             }
 
-            let role = entry
-                .pointer("/message/role")
-                .and_then(|v| v.as_str())
-                .unwrap_or("user")
-                .to_string();
+            let Some(role) = message_role(entry) else {
+                continue;
+            };
+            if !CONVERSATION_ROLES.contains(&role) {
+                continue;
+            }
 
-            let raw = entry
-                .pointer("/message/content")
-                .map(extract_text_from_message_content)
-                .unwrap_or_default();
-            let cleaned = strip_ansi(&raw);
+            let content = extract_message_content(entry);
+            let cleaned = strip_ansi(&content.text);
             if cleaned.trim().is_empty() {
                 continue;
             }
@@ -261,10 +237,13 @@ impl AgentSessionAdapter for OmpAdapter {
                 .unwrap_or(0);
 
             messages.push(ParsedMessage {
-                role,
-                content: cleaned.clone(),
-                blocks: vec![MessageBlock::Text { text: cleaned }],
-                model: None,
+                role: role.to_string(),
+                content: cleaned,
+                blocks: content.blocks,
+                model: entry
+                    .pointer("/message/model")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 timestamp,
                 seq: *seq,
             });
@@ -303,6 +282,7 @@ impl AgentSessionAdapter for OmpAdapter {
 mod tests {
     use super::*;
     use crate::conversation::manager::ConversationManager;
+    use crate::conversation::types::MessageBlock;
     use tempfile::TempDir;
 
     fn write_main_session(dir: &Path, sanitized: &str, filename: &str) -> PathBuf {
@@ -313,7 +293,8 @@ mod tests {
 {"type":"session","version":3,"id":"019f5bb5-892b-7000-81f0-17bad4822cf8","timestamp":"2026-07-13T13:40:51.628Z","cwd":"/Users/tomgs/RustroverProjects/neeko"}
 {"type":"model_change","id":"m1","parentId":null,"timestamp":"2026-07-13T13:40:51.679Z","model":"deepseek/deepseek-v4-pro"}
 {"type":"message","id":"u1","parentId":null,"timestamp":"2026-07-13T13:41:37.693Z","message":{"role":"user","content":[{"type":"text","text":"hello"}],"timestamp":1783950097683}}
-{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-07-13T13:41:40.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Hi!"}],"timestamp":1783950100000}}
+{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-07-13T13:41:40.000Z","message":{"role":"assistant","model":"deepseek/deepseek-v4-pro","content":[{"type":"thinking","thinking":"先看 gh.rs"},{"type":"text","text":"Hi!"},{"type":"toolCall","id":"c1","name":"read","arguments":"{\"path\":\"gh.rs\"}"}],"timestamp":1783950100000}}
+{"type":"message","id":"t1","parentId":"a1","timestamp":"2026-07-13T13:41:41.000Z","message":{"role":"toolResult","toolCallId":"c1","toolName":"read","isError":false,"content":[{"type":"text","text":"fn main() {}"}],"timestamp":1783950101000}}
 "#;
         std::fs::write(&path, content).unwrap();
         path
@@ -343,10 +324,26 @@ mod tests {
         assert_eq!(meta.model.as_deref(), Some("deepseek/deepseek-v4-pro"));
 
         let messages = adapter.parse_messages(&path).unwrap();
+        // toolResult 记录不进正文视图（与 pi / claude-code 一致）
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "user");
         assert!(messages[0].content.contains("hello"));
         assert_eq!(messages[1].role, "assistant");
+        assert!(messages[1].content.contains("Hi!"));
+        // 块数组必须映射成结构化块（思考 / 工具调用），不再只剩纯文本
+        assert_eq!(messages[1].blocks.len(), 3);
+        assert!(matches!(
+            &messages[1].blocks[0],
+            MessageBlock::Thinking { thinking } if thinking == "先看 gh.rs"
+        ));
+        assert!(matches!(
+            &messages[1].blocks[2],
+            MessageBlock::ToolUse { name, input, .. } if name == "read" && input["path"] == "gh.rs"
+        ));
+        assert_eq!(
+            messages[1].model.as_deref(),
+            Some("deepseek/deepseek-v4-pro")
+        );
     }
 
     #[test]

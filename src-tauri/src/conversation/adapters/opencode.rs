@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use rusqlite::OpenFlags;
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::recent_messages_from;
+use crate::conversation::normalize::recent_messages_from;
 use crate::conversation::types::MessageBlock;
 
 /// Maximum number of preview messages to load from the database.

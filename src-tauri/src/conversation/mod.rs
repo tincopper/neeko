@@ -16,6 +16,8 @@ pub mod normalize;
 pub mod scan_cache;
 /// Project-scoped session discovery helpers (path encode / prefix match).
 pub mod scope;
+/// Shared session text primitives (ANSI / image references / truncation).
+pub(crate) mod text;
 pub mod types;
 
 pub use adapter::AgentSessionAdapter;

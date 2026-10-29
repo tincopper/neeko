@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{
-    parse_timestamp, read_jsonl, recent_messages_from, strip_ansi, truncate,
-};
-use crate::conversation::types::MessageBlock;
+use crate::conversation::adapters::content_blocks::extract_message_content;
+use crate::conversation::adapters::{parse_timestamp, read_jsonl};
+use crate::conversation::normalize::recent_messages_from;
+use crate::conversation::text::strip_ansi;
 
 /// Claude Code 会话适配器
 ///
@@ -18,172 +18,6 @@ use crate::conversation::types::MessageBlock;
 /// - user 消息的 message 字段是字符串，assistant 的 message 是 object（含 content 数组）
 /// - 不支持原生 CLI 恢复（仅 TUI 内的 /resume 命令）
 pub struct ClaudeCodeAdapter;
-
-/// 提取 Claude Code 消息内容，兼容多种格式：
-/// - message 是字符串 → 直接返回
-/// - message 是 object，有 content 数组 → 提取所有块（text/thinking/tool_use 等）
-fn extract_claude_message_content(entry: &serde_json::Value) -> String {
-    let msg = match entry.get("message") {
-        Some(m) => m,
-        None => return String::new(),
-    };
-
-    // 情况1：message 是字符串（较新的 Claude Code 格式中 user 消息）
-    if let Some(s) = msg.as_str() {
-        return s.to_string();
-    }
-
-    // 情况2：message 是 object，有 content 数组
-    if let Some(arr) = msg.get("content").and_then(|v| v.as_array()) {
-        let parts: Vec<String> = arr
-            .iter()
-            .map(|block| {
-                let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                match block_type {
-                    "text" => block
-                        .get("text")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    "thinking" => {
-                        let t = block.get("thinking").and_then(|v| v.as_str()).unwrap_or("");
-                        if !t.is_empty() {
-                            format!("<thinking>\n{}\n</thinking>", t)
-                        } else {
-                            String::new()
-                        }
-                    }
-                    "tool_use" => {
-                        let name = block
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown");
-                        let input = block.get("input");
-                        format_tool_use(name, input)
-                    }
-                    _ => block
-                        .get("text")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                }
-            })
-            .filter(|s| !s.is_empty())
-            .collect();
-        return parts.join("\n\n");
-    }
-
-    // 情况3：message 是 object，有 content 字符串
-    if let Some(s) = msg.get("content").and_then(|v| v.as_str()) {
-        return s.to_string();
-    }
-
-    // 案例4：message 有 text 字段
-    msg.get("text")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string()
-}
-
-/// 将 tool_use 块格式化为可读文本（保持向后兼容）
-fn format_tool_use(name: &str, input: Option<&serde_json::Value>) -> String {
-    let input_str = match input {
-        Some(v) if !v.is_null() => {
-            serde_json::to_string_pretty(v).unwrap_or_else(|_| String::new())
-        }
-        _ => String::new(),
-    };
-    let preview = if input_str.chars().count() > 200 {
-        format!("{}...", truncate(&input_str, 200))
-    } else {
-        input_str
-    };
-    format!("🔧 `{name}`\n```json\n{preview}\n```")
-}
-
-/// 提取消息的结构化内容块
-fn extract_message_blocks(entry: &serde_json::Value) -> Vec<MessageBlock> {
-    let msg = match entry.get("message") {
-        Some(m) => m,
-        None => return vec![],
-    };
-
-    // user 消息：message 是字符串
-    if let Some(s) = msg.as_str() {
-        return vec![MessageBlock::Text {
-            text: s.to_string(),
-        }];
-    }
-
-    // assistant 消息：message.content 是数组
-    if let Some(arr) = msg.get("content").and_then(|v| v.as_array()) {
-        return arr
-            .iter()
-            .filter_map(|block| {
-                let block_type = block.get("type")?.as_str()?;
-                match block_type {
-                    "text" => Some(MessageBlock::Text {
-                        text: block.get("text")?.as_str()?.to_string(),
-                    }),
-                    "thinking" => Some(MessageBlock::Thinking {
-                        thinking: block.get("thinking")?.as_str()?.to_string(),
-                    }),
-                    "tool_use" => Some(MessageBlock::ToolUse {
-                        id: block.get("id")?.as_str()?.to_string(),
-                        name: block.get("name")?.as_str()?.to_string(),
-                        input: block.get("input")?.clone(),
-                    }),
-                    "tool_result" => Some(MessageBlock::ToolResult {
-                        tool_use_id: block.get("tool_use_id")?.as_str()?.to_string(),
-                        content: extract_tool_result_content(block),
-                        is_error: block.get("is_error")?.as_bool().unwrap_or(false),
-                    }),
-                    _ => None,
-                }
-            })
-            .collect();
-    }
-
-    // message 是 object，有 content 字符串
-    if let Some(s) = msg.get("content").and_then(|v| v.as_str()) {
-        return vec![MessageBlock::Text {
-            text: s.to_string(),
-        }];
-    }
-
-    // message 有 text 字段
-    if let Some(s) = msg.get("text").and_then(|v| v.as_str()) {
-        return vec![MessageBlock::Text {
-            text: s.to_string(),
-        }];
-    }
-
-    vec![]
-}
-
-/// 提取 tool_result 的内容
-fn extract_tool_result_content(block: &serde_json::Value) -> String {
-    // tool_result 可能有 content 字段（字符串或数组）
-    if let Some(s) = block.get("content").and_then(|v| v.as_str()) {
-        return s.to_string();
-    }
-
-    if let Some(arr) = block.get("content").and_then(|v| v.as_array()) {
-        return arr
-            .iter()
-            .filter_map(|item| {
-                if item.get("type")?.as_str()? == "text" {
-                    item.get("text")?.as_str().map(|s| s.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-    }
-
-    String::new()
-}
 
 fn is_message_type(t: &str) -> bool {
     t == "user" || t == "assistant" || t == "system"
@@ -291,7 +125,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
             .map(|s| s.to_string());
 
         // P4 / 预览来源：首条 user 消息原文
-        let first_user_raw = first_user_msg.map(extract_claude_message_content);
+        let first_user_raw = first_user_msg.map(|e| extract_message_content(e).text);
 
         let title = custom_title.or(ai_title).or(agent_name_title);
 
@@ -310,15 +144,6 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
             .and_then(|e| e.get("timestamp").and_then(parse_timestamp))
             .unwrap_or(started_at);
 
-        let message_count = entries
-            .iter()
-            .filter(|e| {
-                e.get("type")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(is_message_type)
-            })
-            .count() as u32;
-
         // 最近消息缓冲（剔除 harness 注入噪声），供 manager 构建预览
         let recent_pairs: Vec<(String, String)> = entries
             .iter()
@@ -327,7 +152,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
                 if !matches!(role, "user" | "assistant" | "system") {
                     return None;
                 }
-                let text = extract_claude_message_content(e);
+                let text = extract_message_content(e).text;
                 let t = text.trim().to_string();
                 if t.is_empty() {
                     return None;
@@ -335,6 +160,9 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
                 Some((role.to_string(), t))
             })
             .collect();
+        // 计数口径 = 正文视图能看到的条数（与 parse_messages 同一过滤规则），
+        // 否则 tool_result-only 的 user 记录会让徽标比正文多出几百条
+        let message_count = u32::try_from(recent_pairs.len()).unwrap_or(u32::MAX);
         let recent_messages = recent_messages_from(recent_pairs);
 
         // project_path：优先从 user 消息的 cwd 字段获取（真实路径）
@@ -376,14 +204,14 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
                 continue;
             }
 
-            let content = extract_claude_message_content(entry);
-            let cleaned = strip_ansi(&content);
+            let content = extract_message_content(entry);
+            let cleaned = strip_ansi(&content.text);
             if cleaned.trim().is_empty() {
                 continue;
             }
 
-            // 提取结构化内容块
-            let blocks = extract_message_blocks(entry);
+            // 结构化内容块（与正文同源，一次抽取得出）
+            let blocks = content.blocks;
 
             // 提取消息级别的模型名称（Claude CLI v2 格式）
             let model = entry

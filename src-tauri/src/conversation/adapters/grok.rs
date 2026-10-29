@@ -9,9 +9,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{
-    parse_timestamp, read_jsonl, recent_messages_from, strip_ansi,
-};
+use crate::conversation::adapters::{parse_timestamp, read_jsonl};
+use crate::conversation::normalize::recent_messages_from;
+use crate::conversation::text::strip_ansi;
 use crate::conversation::types::MessageBlock;
 
 /// Grok CLI session adapter.

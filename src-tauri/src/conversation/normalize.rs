@@ -1,8 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::collections::VecDeque;
+use std::sync::LazyLock;
+
 use regex::Regex;
 
-use crate::conversation::adapters::strip_ansi;
+use crate::conversation::text::{strip_ansi, strip_image_references};
 
 /// 标题字符上限（按 Unicode 标量，代理对安全）
 pub(crate) const TITLE_MAX_CHARS: usize = 96;
@@ -85,8 +88,9 @@ pub(crate) fn normalize_session_text(input: &str, target: NormTarget) -> Option<
         return None;
     }
 
-    // 3. 隐藏块剥离
+    // 3. 隐藏块与图片引用剥离（两者都是"引用而非语义文本"）
     let s = strip_hidden_blocks(&s);
+    let s = strip_image_references(&s);
     // 剥离后可能产生多余空白，再次折叠
     let s = collapse_whitespace(&s);
 
@@ -166,6 +170,38 @@ pub(crate) fn build_preview_messages(messages: &[(String, String)]) -> String {
     parts.join("\n")
 }
 
+/// 由（role, 原文）消息对构建预览环形缓冲（急切版）。
+///
+/// 归属 `normalize` 而非 `adapters`：它是预览策略，与 [`PREVIEW_MESSAGE_LIMIT`]、
+/// harness 噪声判定同源；放在这里也让 `adapters → normalize` 保持单向依赖。
+pub(crate) fn recent_messages_from(pairs: Vec<(String, String)>) -> Vec<(String, String)> {
+    recent_messages_from_rev(pairs.into_iter().rev())
+}
+
+/// 预览环形缓冲的惰性核心：**由新到旧**拉取，凑满 [`PREVIEW_MESSAGE_LIMIT`] 条立即停。
+///
+/// - 剔除 harness 注入噪声（[`is_harness_injected_user_turn`]）与空白消息
+/// - 输出仍按时间正序（旧 → 新）
+///
+/// 惰性很关键：适配器可以把「反向迭代 + 按需抽取正文」直接喂进来，抽取成本就是
+/// O(保留条数) 而不是 O(整个会话) —— 见 `content_blocks::has_visible_text` 的注释。
+pub(crate) fn recent_messages_from_rev<I>(pairs: I) -> Vec<(String, String)>
+where
+    I: Iterator<Item = (String, String)>,
+{
+    let mut kept: VecDeque<(String, String)> = VecDeque::with_capacity(PREVIEW_MESSAGE_LIMIT + 1);
+    for (role, text) in pairs {
+        if kept.len() == PREVIEW_MESSAGE_LIMIT {
+            break;
+        }
+        if text.trim().is_empty() || is_harness_injected_user_turn(&text) {
+            continue;
+        }
+        kept.push_front((role, text));
+    }
+    kept.into_iter().collect()
+}
+
 const fn role_label(role: &str) -> &'static str {
     if role.eq_ignore_ascii_case("assistant") {
         "Assistant"
@@ -178,26 +214,32 @@ const fn role_label(role: &str) -> &'static str {
     }
 }
 
+/// 连续空白（含换行）—— 标题/预览统一折叠为单空格。
+static WHITESPACE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s+").expect("infallible: static pattern"));
+
+/// 隐藏块 + HTML 注释的编译后正则（进程内编译一次，按 `HIDDEN_BLOCKS` 顺序）。
+static HIDDEN_BLOCK_RES: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    let mut res: Vec<Regex> = HIDDEN_BLOCKS
+        .iter()
+        .filter_map(|(open, close)| Regex::new(&format!(r"(?is)<{open}>(?s:.*?){close}")).ok())
+        .collect();
+    if let Ok(comment) = Regex::new(r"(?is)<!--(?s:.*?)-->") {
+        res.push(comment);
+    }
+    res
+});
+
 /// 所有 Unicode 空白折叠为单个空格并 trim。
 fn collapse_whitespace(s: &str) -> String {
-    let re = Regex::new(r"\s+").expect("infallible: static regex pattern");
-    re.replace_all(s, " ").trim().to_string()
+    WHITESPACE.replace_all(s, " ").trim().to_string()
 }
 
 /// 移除已知隐藏块标签对及其内容。
 fn strip_hidden_blocks(s: &str) -> String {
-    let mut out = s.to_string();
-    for (open, close) in HIDDEN_BLOCKS {
-        let pat = format!(r"(?is)<{open}>(?s:.*?){close}");
-        if let Ok(re) = Regex::new(&pat) {
-            out = re.replace_all(&out, "").to_string();
-        }
-    }
-    // HTML 注释剥离：`<!-- ... -->`
-    if let Ok(re) = Regex::new(r"(?is)<!--(?s:.*?)-->") {
-        out = re.replace_all(&out, "").to_string();
-    }
-    out
+    HIDDEN_BLOCK_RES.iter().fold(s.to_string(), |acc, re| {
+        re.replace_all(&acc, "").to_string()
+    })
 }
 
 /// 是否以注入指令前缀开头（纯指令内容应视为无语义）。
@@ -282,6 +324,58 @@ mod tests {
     fn collapses_whitespace() {
         let r = normalize_session_text("  hello \n\t world  ", NormTarget::Title).unwrap();
         assert_eq!(r, "hello world");
+    }
+
+    #[test]
+    fn preview_buffer_matches_eager_version() {
+        let pairs: Vec<(String, String)> = (0..12)
+            .map(|i| {
+                let role = if i % 2 == 0 { "user" } else { "assistant" };
+                let text = if i == 7 {
+                    "<system-reminder>noise</system-reminder>".to_string()
+                } else if i == 9 {
+                    "   ".to_string()
+                } else {
+                    format!("m{i}")
+                };
+                (role.to_string(), text)
+            })
+            .collect();
+        let eager = recent_messages_from(pairs.clone());
+        let lazy = recent_messages_from_rev(pairs.into_iter().rev());
+        assert_eq!(eager, lazy);
+        assert_eq!(eager.len(), PREVIEW_MESSAGE_LIMIT);
+        assert_eq!(eager.last().map(|(_, t)| t.as_str()), Some("m11"));
+    }
+
+    /// 惰性是 Pi / OMP 列表扫描的成本边界：凑满即停，不再抽取更老的正文。
+    #[test]
+    fn preview_buffer_stops_pulling_once_full() {
+        let mut pulled = 0;
+        let candidates = (0..100).map(|i| {
+            pulled += 1;
+            ("user".to_string(), format!("m{i}"))
+        });
+        // 反向迭代：新 → 旧
+        let recent = recent_messages_from_rev(candidates.rev());
+        assert_eq!(recent.len(), PREVIEW_MESSAGE_LIMIT);
+        assert!(
+            pulled <= PREVIEW_MESSAGE_LIMIT + 1,
+            "must stop pulling once full, pulled={pulled}"
+        );
+    }
+
+    #[test]
+    fn strips_image_references_for_title() {
+        let input = "[[Image #1]](file:///Users/t/blobs/32b9.png)\n\n图片显示不对";
+        let r = normalize_session_text(input, NormTarget::Title).unwrap();
+        assert_eq!(r, "图片显示不对");
+    }
+
+    #[test]
+    fn returns_none_for_image_only_title_material() {
+        assert!(normalize_session_text("[Image #1]", NormTarget::Title).is_none());
+        assert!(normalize_session_text("![shot](a.png)", NormTarget::Preview).is_none());
     }
 
     #[test]
