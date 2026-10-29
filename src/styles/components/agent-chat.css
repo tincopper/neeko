@@ -64,7 +64,8 @@
   .rich p { margin:0; line-height:1.55; font-size:13px; color:var(--text-secondary); }
   .rich p:last-child { margin:0; }
   .rich b { font-weight:600; color:var(--text-primary); }
-  .rich code { font-family:var(--font-mono); font-size:11.5px; background:var(--bg-hover); border-radius:3px; padding:1px 4px; color:var(--accent-blue); }
+  /* 行内代码与 markdown 预览同口径：无底块，前景色取 --code-inline-fg（见 markdown.css） */
+  .rich code { font-family:var(--font-mono); font-size:11.5px; color:var(--code-inline-fg); }
   .rich ul { margin:0; padding-left:18px; }
   .rich ol { margin:0; padding-left:18px; }
   .rich li { font-size:13px; line-height:1.55; color:var(--text-secondary); }
@@ -186,7 +187,8 @@
   .diff-expand-markdown .rich { gap:6px; }
   .diff-expand-head { padding:5px 10px; font-size:10.5px; color:var(--text-muted); background:var(--bg-tertiary); font-family:var(--font-mono); }
   .diff-expand pre { margin:0; padding:9px 12px; font-family:var(--font-mono); font-size:12px; line-height:1.55; overflow-x:auto; }
-  /* 重置 .rich code 行内样式（padding+背景）对 diff 代码块的泄漏，否则多行 .dl 每行两侧形成竖块色带 */
+  /* 不变量：`.rich code` 的行内样式不得泄漏到 diff 代码块，否则多行 `.dl` 每行两侧形成竖块色带。
+   * 行内代码现在已无 padding / 背景（见上），本行保留作为兜底 —— 未来重新引入 chip 时它仍然有效。 */
   .diff-expand code { font-family:var(--font-mono); background:transparent; padding:0; }
 
   .dl { display:block; white-space:pre; }

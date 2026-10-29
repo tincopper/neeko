@@ -58,14 +58,21 @@
     height: auto;
   }
 
-  /* Inline code */
+  /* Inline code —— 只靠字形 + 前景色区分，不做底块（长文里 chip 会堆成色带）。
+   *
+   * 颜色用 `--code-inline-fg`，不是 accent、也不是 `--mono-fg`：
+   * - accent（light 2.84 / claude 3.04）压在海面 / 浮岛 / 三级表面上正文级不达标；
+   * - `--mono-fg` 在 one-dark-pro 与正文同值，用户报「区分不了」。
+   * 所以颜色由主题逐个定值，判据是「对比度 ≥ 4.5（读得清）+ ΔE ≥ 0.10（看得出）」双条：
+   * styles/__tests__/themeTokens.test.ts「行内代码前景色」。
+   * 取色规则：必须是**本主题调色板里的某个槽位**（色相不变，只允许调明度到 AA），
+   * 且不得与链接色（--accent-blue）撞车。槽位逐主题自选、不固定 —— 上一版钉在
+   * `--cm-string`，结果五主题全绿（这几套调色板的 strings 本来就都是绿）。
+   */
   .markdown-preview code:not(pre code) {
-    background: var(--bg-tertiary);
-    padding: 0.15em 0.4em;
-    border-radius: 3px;
-    font-size: 0.875em;
-    color: var(--accent-green);
+    color: var(--code-inline-fg);
     font-family: var(--font-mono);
+    font-size: 0.875em;
   }
 
   /* Code blocks */

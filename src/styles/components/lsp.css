@@ -86,11 +86,10 @@
     }
 
     /* ── Inline code ────────────────────────────────────────────── */
+    /* 与 markdown 预览 / Agent 对话同口径：无底块，前景色取 --code-inline-fg
+     * （判据见 styles/__tests__/inlineCodeCss.ts，三处渲染面一起校验） */
     & code:not(pre code) {
-      background: var(--bg-tertiary);
-      color: var(--accent-orange);
-      padding: 1px 5px;
-      border-radius: 3px;
+      color: var(--code-inline-fg);
       font-family: var(--font-mono);
       font-size: 11px;
     }
@@ -257,10 +256,7 @@
       &:hover { text-decoration: underline; }
     }
     & code:not(pre code) {
-      background: var(--bg-tertiary);
-      color: var(--accent-orange);
-      padding: 1px 5px;
-      border-radius: 3px;
+      color: var(--code-inline-fg);
       font-family: var(--font-mono);
       font-size: 11px;
     }
