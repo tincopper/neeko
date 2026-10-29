@@ -675,3 +675,150 @@ Replace the inline-code background chip with a per-theme foreground colour guard
 ### Status
 
 [OK] **Completed**
+
+
+## Session 377: 修复 pi 历史会话标题退化成 ID（块数组内容抽取）
+<!-- trellis-session: v=2 fp=49b8c0398228b217 -->
+
+**Date**: 2026-10-29
+**Task**: 修复 pi 历史会话标题退化成 ID（块数组内容抽取）
+**Branch**: `main`
+
+### Summary
+
+pi 会话 message.content 恒为块数组，适配器只兼容字符串导致标题/预览/正文全空；抽出共享 content_blocks 层并复用
+
+### Main Changes
+
+- 新增 adapters/content_blocks.rs：Anthropic 风格块数组 → MessageContent{text,blocks}，方言别名集中一处
+- pi 适配器改用共享抽取（标题 P3、预览、正文 blocks）；toolResult 记录不进正文
+- claude_code 适配器 175 行重复抽取逻辑改为委托共享层
+- normalize 剥离图片引用（[Image #N] / blob URI），标题不再被附件链接污染
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test: 2288 lib + 120 集成全绿；pnpm check:quick 9/9 护栏通过
+- [OK] 真实数据回归：266 个 pi 会话标题全部可读（不再出现 pi 01a1876f）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- get_conversation_messages 无载荷上限：最大 pi 会话 4293 条消息序列化 8.7MB，超红线 4 的 2MB 预算，需单独做分页/按需加载
+
+
+## Session 378: 补齐 pi/omp 适配器缺口：共享块抽取、模型字段与视图口径
+<!-- trellis-session: v=2 fp=e34c5756b93eb689 -->
+
+**Date**: 2026-10-29
+**Task**: 补齐 pi/omp 适配器缺口：共享块抽取、模型字段与视图口径
+**Branch**: `main`
+
+### Summary
+
+omp 改用共享 content_blocks 层（思考/工具块不再丢）；pi+omp 补会话级与消息级 model；三处用户可见量（徽标/预览/正文）统一到 CONVERSATION_ROLES 口径
+
+### Main Changes
+
+- omp.rs 删除本地文本-only 抽取，改用 extract_message_content（122 个真实会话：408 个块/195 条消息，此前只有纯文本）
+- CONVERSATION_ROLES 提升为 adapters 共享常量，pi 与 omp 共用同一视图过滤
+- pi: model_change.modelId → meta.model；message.model → 消息级 model
+- message_count 口径改为正文可见回合数（pi 323→151 与正文一致；omp 排除 toolResult/developer/bashExecution）
+- README 记录视图口径契约（徽标/预览/正文同源）与 model 来源
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test 2288 + 120 全绿；pnpm check:quick 9/9
+- [OK] 真实数据探针：pi 4 条会话标题可读且 model 非空；omp 3 条会话 blocks=408/798 且计数与正文一致
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 红线 4 仍未解：get_conversation_messages 无上限，最大 pi 会话 8.7MB；分页会牵动视图内搜索/统计/导出语义，需独立任务
+
+
+## Session 379: 关闭会话适配器审查清单：性能回归、分层收敛与正文载荷分页
+<!-- trellis-session: v=2 fp=f0d6c10b7765b1ec -->
+
+**Date**: 2026-10-29
+**Task**: 关闭会话适配器审查清单：性能回归、分层收敛与正文载荷分页
+**Branch**: `main`
+
+### Summary
+
+按 neeko-check 清单逐条修复 B1-B4 与 I1-I4：pi 列表扫描 26-30s→5.8s、mod.rs 402→47 行、normalize↔adapters 循环依赖解除、正文分页守住红线 4（最大页 1470KB）
+
+### Main Changes
+
+- B1 成本模型：新增 content_blocks::has_visible_text（轻量判定，不建块）+ normalize::recent_messages_from_rev（反向惰性，凑满 5 条即停）；pi/omp parse_meta 不再全量抽取与克隆
+- B2 红线 9：adapters/mod.rs 削为纯声明+re-export，新增 shared.rs（JSONL 管道/角色白名单/message_role）与 registry.rs（all_adapters）
+- B3 依赖单向：新增 conversation/text.rs（文本原语 + LazyLock 正则），recent_messages_from 迁入 normalize，消除 normalize↔adapters 双向边
+- B4 红线 4：get_conversation_messages 返回 ConversationMessagePage（≤800 条/≤1.5MB/至少 1 条），前端 API 层逐页组装，三处调用方签名不变
+- I1 message_role 去重到 shared；I2 别名表 17 条 + 轻量/全量等价性测试；I3 正则 LazyLock；I4 spec §2.3/§3.2/§3.3/§4.3.2/§4.6 同步
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test 2302 + 120 全绿；clippy --all-targets -D warnings ✓；pnpm check:quick 20/20 护栏
+- [OK] 实测：pi 扫描 26→5.8s / omp 18.5→3.1s；最大会话 9069KB 分 7 页、最大单页 1470KB；pi 266 + omp 122 会话计数与正文条数 0 不一致
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- export_conversation 仍返回整段 Markdown 字符串（同类红线 4 风险），需改为 Rust 侧落盘 + 保存对话框
+
+
+## Session 380: 第二轮审查：修掉分页重复解析、计数口径与切会话竞态
+<!-- trellis-session: v=2 fp=7b2263c28679ff24 -->
+
+**Date**: 2026-10-29
+**Task**: 第二轮审查：修掉分页重复解析、计数口径与切会话竞态
+**Branch**: `main`
+
+### Summary
+
+对上一轮改动做对抗复核，实测发现 3 个真缺陷（其中 2 个我自己引入）：分页每页重解析（3.66s）、claude 计数比正文多 508 条、切会话迟到请求覆盖；全部修复并补测试
+
+### Main Changes
+
+- R1 口径：claude message_count 改用 recent_pairs.len()（163/175 → 0/175 不一致）；spec 增加合规表并量化 codex/opencode/reasonix 待统一债务
+- R2 分页成本：manager 增加单槽 CachedTranscript（文件长度+mtime 失效），7 页 3.66s → 690ms；补 3 个测试（端到端拼接 / 只解析一次 / 文件增长失效）
+- R3 竞态：useConversationDetail 加请求代次守卫（分页使加载窗口变长），补 2 个 hook 测试
+- R4 阻塞：get_conversation_messages 改 async + block_in_place，把整文件解析挪出主线程（红线 3 动机）
+- R5/R6：spec §4.6 小节编号错序修正；shared.rs 删除无用的模块级 unwrap/expect allow
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test 2305 + 120；clippy --all-targets -D warnings；pnpm check:quick 21/21；前端 conversation 117 测试
+- [OK] 实测：claude 计数不一致 163→0；分页 3.66s→690ms；pi/omp/claude 三个适配器计数与正文 0 不一致
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- codex(62/119)/opencode(317/399)/reasonix(16/21) 计数口径仍未统一；export_conversation 仍 sync + 无载荷上限
