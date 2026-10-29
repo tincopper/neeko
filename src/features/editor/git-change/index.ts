@@ -8,7 +8,7 @@ import {
 } from '@codemirror/state';
 import { Decoration, EditorView, gutter, GutterMarker, type DecorationSet } from '@codemirror/view';
 
-import type { FileLineChange, LineChangeKind, WordRange } from '@/shared/types/git';
+import type { FileLineChange, LineChangeKind } from '@/shared/types/git';
 
 // ── State channel：数据只经 effect 更新，扩展引用终身稳定（防 reconfigure）──
 
@@ -40,17 +40,7 @@ export const fileLineChangesField = StateField.define<readonly FileLineChange[]>
   },
 });
 
-// ── 行背景 + 词级 Decoration ──────────────────────────────────────────────
-
-function clipWords(lineLen: number, words: readonly WordRange[]): WordRange[] {
-  const out: WordRange[] = [];
-  for (const w of words) {
-    const from = Math.max(0, Math.min(w.from, lineLen));
-    const to = Math.max(from, Math.min(w.to, lineLen));
-    if (to > from) out.push({ from, to });
-  }
-  return out;
-}
+// ── 行背景 Decoration（整行浅底，不做词级小块）────────────────────────────
 
 function buildChangeDecorations(
   state: EditorState,
@@ -69,15 +59,6 @@ function buildChangeDecorations(
         class: c.kind === 'added' ? 'cm-git-line-added' : 'cm-git-line-modified',
       }),
     );
-    if (c.kind === 'modified' && c.words) {
-      for (const w of clipWords(line.length, c.words)) {
-        builder.add(
-          line.from + w.from,
-          line.from + w.to,
-          Decoration.mark({ class: 'cm-git-word' }),
-        );
-      }
-    }
   }
   return builder.finish();
 }

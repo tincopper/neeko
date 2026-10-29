@@ -74,7 +74,7 @@ describe('fileLineChangesField', () => {
 describe('line decorations', () => {
   it('should_apply_line_background_classes', () => {
     const view = makeView(true, [
-      { line: 2, kind: 'modified', words: [{ from: 5, to: 7 }] },
+      { line: 2, kind: 'modified' },
       { line: 4, kind: 'added' },
     ]);
     const lines = view.dom.querySelectorAll('.cm-line');
@@ -84,19 +84,14 @@ describe('line decorations', () => {
     view.destroy();
   });
 
-  it('should_mark_word_ranges_inside_modified_line', () => {
-    const view = makeView(true, [{ line: 1, kind: 'modified', words: [{ from: 0, to: 4 }] }]);
-    const marks = view.dom.querySelectorAll('.cm-git-word');
-    expect(marks).toHaveLength(1);
-    expect(marks[0].textContent).toBe('line');
-    view.destroy();
-  });
-
-  it('should_clip_out_of_range_word_spans', () => {
-    const view = makeView(true, [{ line: 1, kind: 'modified', words: [{ from: 0, to: 9999 }] }]);
-    const marks = view.dom.querySelectorAll('.cm-git-word');
-    expect(marks).toHaveLength(1);
-    expect(marks[0].textContent).toBe('line one');
+  it('should_keep_changed_line_text_unwrapped', () => {
+    const view = makeView(true, [{ line: 1, kind: 'modified' }]);
+    const line = view.dom.querySelectorAll('.cm-line')[0] as HTMLElement;
+    // 行级 = 只有背景 + 变更条：行内**不得**出现任何 span。
+    // 词级 `Decoration.mark` 会把文本切成子 span，因此这条断言在 mark 回潮时必红；
+    // 而 `querySelectorAll('.cm-git-word') === 0` 在类名不存在时永远空转（废断言）。
+    expect(line.querySelectorAll('span')).toHaveLength(0);
+    expect(line.className).toContain('cm-git-line-modified');
     view.destroy();
   });
 
@@ -104,7 +99,6 @@ describe('line decorations', () => {
     const view = makeView(true, []);
     expect(view.dom.querySelectorAll('.cm-git-line-added')).toHaveLength(0);
     expect(view.dom.querySelectorAll('.cm-git-line-modified')).toHaveLength(0);
-    expect(view.dom.querySelectorAll('.cm-git-word')).toHaveLength(0);
     view.destroy();
   });
 

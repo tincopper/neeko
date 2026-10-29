@@ -12,7 +12,6 @@ export type {
   DiffHunk,
   DiffResult,
   LineChangeKind,
-  WordRange,
   FileLineChange,
   PRListItem,
   PRStatusCheck,

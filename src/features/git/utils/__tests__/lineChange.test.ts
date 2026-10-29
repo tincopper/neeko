@@ -63,7 +63,7 @@ describe('deriveFileLineChanges', () => {
     ]);
   });
 
-  it('should_pair_removed_and_added_as_modified_with_word_ranges', () => {
+  it('should_pair_removed_and_added_as_modified', () => {
     const diff = result([
       hunk({
         old_start: 10,
@@ -75,15 +75,6 @@ describe('deriveFileLineChanges', () => {
     expect(changes).toHaveLength(1);
     expect(changes[0].line).toBe(11);
     expect(changes[0].kind).toBe('modified');
-    expect(changes[0].words).toBeDefined();
-    expect(changes[0].words!.length).toBeGreaterThan(0);
-    const lineText = 'const a = 2;';
-    for (const w of changes[0].words!) {
-      expect(w.from).toBeGreaterThanOrEqual(0);
-      expect(w.to).toBeLessThanOrEqual(lineText.length);
-      expect(w.to).toBeGreaterThan(w.from);
-    }
-    expect(lineText.slice(changes[0].words![0].from, changes[0].words![0].to)).toBe('2');
   });
 
   it('should_mark_extra_added_lines_beyond_pair_as_added', () => {
@@ -95,7 +86,7 @@ describe('deriveFileLineChanges', () => {
       }),
     ]);
     expect(deriveFileLineChanges(diff)).toEqual([
-      { line: 1, kind: 'modified', words: expect.any(Array) },
+      { line: 1, kind: 'modified' },
       { line: 2, kind: 'added' },
     ]);
   });
@@ -185,7 +176,7 @@ describe('deriveFileLineChanges', () => {
     expect(deriveFileLineChanges(diff)).toEqual([{ line: 1, kind: 'added' }]);
   });
 
-  it('should_omit_words_for_identical_paired_lines', () => {
+  it('should_pair_identical_lines_as_modified', () => {
     const diff = result([
       hunk({
         old_start: 1,
@@ -193,45 +184,6 @@ describe('deriveFileLineChanges', () => {
         lines: [removed('same'), added('same')],
       }),
     ]);
-    const changes = deriveFileLineChanges(diff);
-    expect(changes).toHaveLength(1);
-    expect(changes[0].kind).toBe('modified');
-    expect(changes[0].words ?? []).toEqual([]);
-  });
-});
-
-describe('buildWordRanges (via derive)', () => {
-  it('should_cover_full_replacement_range', () => {
-    const diff = result([
-      hunk({
-        old_start: 1,
-        new_start: 1,
-        lines: [removed('alpha'), added('beta')],
-      }),
-    ]);
-    const [change] = deriveFileLineChanges(diff);
-    expect(change.words).toEqual([{ from: 0, to: 4 }]);
-  });
-
-  it('should_handle_cjk_and_empty_old_text', () => {
-    const diff = result([
-      hunk({
-        old_start: 1,
-        new_start: 1,
-        lines: [added('你好世界')],
-      }),
-    ]);
-    expect(deriveFileLineChanges(diff)).toEqual([{ line: 1, kind: 'added' }]);
-
-    const insert = result([
-      hunk({
-        old_start: 1,
-        new_start: 1,
-        lines: [removed(''), added('你好')],
-      }),
-    ]);
-    const [c] = deriveFileLineChanges(insert);
-    expect(c.kind).toBe('modified');
-    expect(c.words).toEqual([{ from: 0, to: 2 }]);
+    expect(deriveFileLineChanges(diff)).toEqual([{ line: 1, kind: 'modified' }]);
   });
 });

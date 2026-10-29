@@ -162,7 +162,7 @@
     background-color: color-mix(in srgb, var(--accent-yellow) 22%, transparent) !important;
   }
 
-  /* ── Git 行级变更高亮（IDEA 风格）：独立 4px 变更条列 + 行背景 + 词级高亮 ──
+  /* ── Git 行级变更高亮（IDEA 风格）：独立 4px 变更条列 + 行背景 ──
    * 颜色：走 --git-status-added / --git-status-modified（与 gitFileDecoration 同源，
    * 与主题 UI 的 --accent-* 解耦）；编辑器不用带 alpha 的 diff token。
    * 变更条不进 gutterContributions registry，纯被动状态展示。 */
@@ -205,7 +205,9 @@
     border-radius: 2px !important;
   }
 
-  /* 行背景（弱化，避免盖过当前行高亮） */
+  /* 行背景（弱化，避免盖过当前行高亮）。
+   * 刻意只做整行浅底、不做词级小块：词级底会盖掉语法色，长行里还会碎成色带；
+   * added / modified 一视同仁（仅色相区分），行内细节交给语法高亮。 */
   .cm-editor .cm-git-line-added {
     background: color-mix(in srgb, var(--git-status-added, #30d158) 8%, transparent) !important;
   }
@@ -218,15 +220,6 @@
   }
   .cm-editor .cm-activeLine.cm-git-line-modified {
     background: color-mix(in srgb, var(--git-status-modified, #2997ff) 6%, var(--bg-secondary)) !important;
-  }
-
-  /* 词级高亮（仅 modified 行内，LCS 推导的变更词区间） */
-  .cm-editor .cm-git-word {
-    background: color-mix(in srgb, var(--git-status-modified, #2997ff) 24%, transparent) !important;
-    border-radius: 2px;
-  }
-  .cm-editor .cm-git-line-added .cm-git-word {
-    background: color-mix(in srgb, var(--git-status-added, #30d158) 24%, transparent) !important;
   }
 
   /* ── 注释译文（`commentView.ts` 产出的 widget 类名）──
