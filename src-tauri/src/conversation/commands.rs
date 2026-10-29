@@ -1,6 +1,6 @@
 use crate::conversation::manager::ScanProgressEvent;
 use crate::conversation::types::{
-    ConversationListPage, ConversationMessage, ConversationMeta, ScanReport,
+    ConversationListPage, ConversationMessagePage, ConversationMeta, ScanReport,
 };
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -116,16 +116,24 @@ pub fn list_conversations(
         .map_err(AppError::from)
 }
 
-/// Get full messages for a conversation by its ID.
+/// Get one page of a conversation's messages by its ID.
+///
+/// 分页是**传输**边界（红线 4：单次载荷 ≤2MB），前端按 `hasMore` 组装完整正文。
+/// `offset` 省略即从第一条开始。
 #[tauri::command]
-pub fn get_conversation_messages(
+pub async fn get_conversation_messages(
     id: String,
-    state: State<AppStateWrapper>,
-) -> Result<Vec<ConversationMessage>, AppError> {
-    state
-        .conversation_manager
-        .get_messages(&id)
-        .map_err(AppError::from)
+    offset: Option<u32>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<ConversationMessagePage, AppError> {
+    // 解析要读整份会话文件（实测大会话约 0.5s）：异步命令 + block_in_place 把它挪出
+    // 主线程，避免打开大会话时卡住 UI 事件循环（红线 3 的同一动机）。
+    tokio::task::block_in_place(|| {
+        state
+            .conversation_manager
+            .get_messages_page(&id, offset.unwrap_or(0))
+            .map_err(AppError::from)
+    })
 }
 
 /// Search conversations by title or preview text.

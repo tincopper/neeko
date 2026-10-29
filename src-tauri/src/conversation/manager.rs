@@ -11,7 +11,8 @@ use walkdir::WalkDir;
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage};
 use crate::conversation::normalize::{build_preview_messages, normalize_session_text, NormTarget};
 use crate::conversation::types::{
-    ConversationListPage, ConversationMessage, ConversationMeta, ScanReport,
+    ConversationListPage, ConversationMessage, ConversationMessagePage, ConversationMeta,
+    ScanReport,
 };
 
 /// 会话标题三优先级解析（供 `scan` 循环与单测复用）。
@@ -47,6 +48,20 @@ pub struct ConversationManager {
     disk_index_hydrated: Mutex<bool>,
     /// Optional progress callback for scan_agents (command layer may emit Tauri events).
     scan_progress: Mutex<Option<Box<dyn Fn(ScanProgressEvent) + Send>>>,
+    /// 单槽正文缓存：分页只解析一次（见 `load_transcript`）。
+    transcript: Mutex<Option<CachedTranscript>>,
+}
+
+/// 最近一次正文解析结果。用于分页：否则每一页都会重新解析整份会话文件
+/// （实测最大会话 4293 条：7 页 = 7 次全量解析 ≈ 3.7s，而单次解析 ≈ 0.5s）。
+///
+/// 只缓存**一个**会话、且以 (文件长度, 修改时间) 失效 —— 它是读放大缓存，不是持久化
+/// （会话文件是 append-only，变长即失效，不会读到旧正文）。
+struct CachedTranscript {
+    conversation_id: String,
+    file_len: u64,
+    file_modified: Option<std::time::SystemTime>,
+    messages: std::sync::Arc<Vec<ConversationMessage>>,
 }
 
 /// Lightweight progress signal emitted during multi-agent scan.
@@ -76,6 +91,7 @@ impl ConversationManager {
             cache: Mutex::new(HashMap::new()),
             disk_index_hydrated: Mutex::new(false),
             scan_progress: Mutex::new(None),
+            transcript: Mutex::new(None),
         }
     }
 
@@ -550,6 +566,77 @@ impl ConversationManager {
         })
     }
 
+    /// 获取一页会话正文（红线 4：单次 IPC 载荷受预算约束）。
+    ///
+    /// 分页只是**传输**边界：解析仍然完整（本地文件，不涉 IPC），因此搜索/统计/导出
+    /// 这些需要全量的路径继续用 [`Self::get_messages`]。
+    pub fn get_messages_page(
+        &self,
+        conversation_id: &str,
+        offset: u32,
+    ) -> Result<ConversationMessagePage> {
+        let all = self.load_transcript(conversation_id)?;
+        let total = all.len();
+        let start = (offset as usize).min(total);
+        let end = page_end(&all, start);
+        Ok(ConversationMessagePage {
+            items: all[start..end].to_vec(),
+            total: saturating_u32(total),
+            offset: saturating_u32(start),
+            limit: saturating_u32(end - start),
+            has_more: end < total,
+        })
+    }
+
+    /// 取（缓存的）完整正文。分页是传输边界，解析只做一次。
+    fn load_transcript(
+        &self,
+        conversation_id: &str,
+    ) -> Result<std::sync::Arc<Vec<ConversationMessage>>> {
+        let file_path = self.session_file_path(conversation_id)?;
+        let (file_len, file_modified) = transcript_stamp(&file_path);
+
+        {
+            let cache = self
+                .transcript
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Transcript cache lock poisoned: {e}"))?;
+            if let Some(hit) = cache.as_ref() {
+                if hit.conversation_id == conversation_id
+                    && hit.file_len == file_len
+                    && hit.file_modified == file_modified
+                {
+                    return Ok(std::sync::Arc::clone(&hit.messages));
+                }
+            }
+        }
+
+        let messages = std::sync::Arc::new(self.get_messages(conversation_id)?);
+        let mut cache = self
+            .transcript
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Transcript cache lock poisoned: {e}"))?;
+        *cache = Some(CachedTranscript {
+            conversation_id: conversation_id.to_string(),
+            file_len,
+            file_modified,
+            messages: std::sync::Arc::clone(&messages),
+        });
+        Ok(messages)
+    }
+
+    /// 会话正文对应的原生文件路径（缓存未命中时的解析入口）。
+    fn session_file_path(&self, conversation_id: &str) -> Result<std::path::PathBuf> {
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
+        cache
+            .get(conversation_id)
+            .map(|m| m.file_path.clone())
+            .context("Conversation not found in cache")
+    }
+
     /// 获取会话的完整消息列表
     pub fn get_messages(&self, conversation_id: &str) -> Result<Vec<ConversationMessage>> {
         let (agent_id, _native_id) =
@@ -739,6 +826,42 @@ impl ConversationManager {
     }
 }
 
+/// 单页正文的序列化字节预算（红线 4 的 2MB 上限留出外层包装与前端解析余量）。
+const MESSAGE_PAGE_BYTE_BUDGET: usize = 1_500_000;
+
+/// 单页条数上限：避免「极小消息」把单页条数拉爆（也限制前端单次渲染批次）。
+const MESSAGE_PAGE_MAX_ITEMS: usize = 800;
+
+/// 会话文件指纹（长度 + 修改时间）。会话文件 append-only，靠这两项即可判定缓存失效。
+fn transcript_stamp(path: &std::path::Path) -> (u64, Option<std::time::SystemTime>) {
+    match std::fs::metadata(path) {
+        Ok(meta) => (meta.len(), meta.modified().ok()),
+        // 文件不可读时给一个必然不匹配的指纹：让缓存失效，由解析路径报出真实错误
+        Err(_) => (u64::MAX, None),
+    }
+}
+
+/// 条数 → u32（会话条数不可能接近 `u32::MAX`；显式饱和胜过 `as` 强转）。
+fn saturating_u32(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+/// 计算本页结束下标（`start..end` 即本页切片）。
+///
+/// 约束：条数 ≤ [`MESSAGE_PAGE_MAX_ITEMS`]、累计序列化字节 ≤ [`MESSAGE_PAGE_BYTE_BUDGET`]，
+/// 且**至少 1 条** —— 否则超大单条消息会让 offset 永不前进，前端死循环。
+fn page_end(messages: &[ConversationMessage], start: usize) -> usize {
+    let start = start.min(messages.len());
+    let mut bytes = 0usize;
+    for (i, message) in messages[start..].iter().enumerate() {
+        if i >= MESSAGE_PAGE_MAX_ITEMS || bytes >= MESSAGE_PAGE_BYTE_BUDGET {
+            return start + i;
+        }
+        bytes += serde_json::to_vec(message).map_or(0, |v| v.len());
+    }
+    messages.len()
+}
+
 /// Build a cache entry from adapter-parsed meta (shared by bulk + WalkDir paths).
 fn build_conversation_meta(
     agent_id: &str,
@@ -903,6 +1026,8 @@ mod tests {
         agent_id: String,
         root: PathBuf,
         file_pattern: String,
+        /// 解析次数（验证分页复用缓存、文件变动时失效）
+        parse_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     }
 
     impl TestAdapter {
@@ -911,7 +1036,13 @@ mod tests {
                 agent_id: agent_id.to_string(),
                 root,
                 file_pattern: "*.jsonl".to_string(),
+                parse_calls: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             }
+        }
+
+        fn counting(mut self, counter: std::sync::Arc<std::sync::atomic::AtomicUsize>) -> Self {
+            self.parse_calls = counter;
+            self
         }
 
         fn read_jsonl_entries(path: &Path) -> Result<Vec<serde_json::Value>> {
@@ -987,6 +1118,8 @@ mod tests {
         }
 
         fn parse_messages(&self, file_path: &Path) -> Result<Vec<ParsedMessage>> {
+            self.parse_calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let entries = Self::read_jsonl_entries(file_path)?;
             let mut messages = Vec::new();
             for (seq, entry) in entries.iter().enumerate() {
@@ -2035,5 +2168,184 @@ mod tests {
         let all = manager.list_page(Some("/projects/p"), None, 0, 0).unwrap();
         assert_eq!(all.items.len(), 3);
         assert!(!all.has_more);
+    }
+
+    /// 生成 tests fixture：每行一条消息（TestAdapter 直读 content/timestamp）。
+    fn write_fixture(dir: &Path, name: &str, count: u32) -> PathBuf {
+        let path = dir.join(name);
+        let mut body = String::new();
+        for i in 0..count {
+            body.push_str(&format!(
+                r#"{{"role":"user","content":"m{i}","timestamp":{}}}"#,
+                1_700_000_000_000i64 + i64::from(i)
+            ));
+            body.push('\n');
+        }
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    /// 红线 4 端到端：分页拼接 = 全量，且各项分页元信息自洽。
+    #[test]
+    fn should_page_messages_end_to_end() {
+        let dir = TempDir::new().unwrap();
+        write_fixture(dir.path(), "s1.jsonl", 900);
+        let manager = ConversationManager::new(vec![Box::new(TestAdapter::new(
+            "pi",
+            dir.path().to_path_buf(),
+        ))]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        let full = manager.get_messages(&id).unwrap();
+        assert_eq!(full.len(), 900);
+
+        let mut offset = 0u32;
+        let mut assembled = Vec::new();
+        loop {
+            let page = manager.get_messages_page(&id, offset).unwrap();
+            assert_eq!(page.total, 900);
+            assert!(page.limit >= 1, "each page must make progress");
+            assembled.extend(page.items.clone());
+            if !page.has_more {
+                break;
+            }
+            offset = page.offset + page.limit;
+        }
+        assert_eq!(assembled.len(), full.len());
+        assert_eq!(
+            assembled.iter().map(|m| m.seq).collect::<Vec<_>>(),
+            full.iter().map(|m| m.seq).collect::<Vec<_>>()
+        );
+    }
+
+    /// 分页只解析一次：否则每一页都要重读整份会话（实测 7 页 = 7 次全量解析）。
+    #[test]
+    fn should_parse_transcript_once_across_pages() {
+        let dir = TempDir::new().unwrap();
+        write_fixture(dir.path(), "s2.jsonl", 900);
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let manager = ConversationManager::new(vec![Box::new(
+            TestAdapter::new("pi", dir.path().to_path_buf()).counting(counter.clone()),
+        )]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        let _ = manager.get_messages_page(&id, 0).unwrap();
+        let _ = manager.get_messages_page(&id, 800).unwrap();
+        assert_eq!(counter.load(std::sync::atomic::Ordering::Relaxed), 1);
+    }
+
+    /// 文件增长后缓存必须失效（会话文件是 append-only，页面不能读到旧正文）。
+    #[test]
+    fn should_invalidate_transcript_cache_when_file_grows() {
+        let dir = TempDir::new().unwrap();
+        let path = write_fixture(dir.path(), "s3.jsonl", 3);
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let manager = ConversationManager::new(vec![Box::new(
+            TestAdapter::new("pi", dir.path().to_path_buf()).counting(counter.clone()),
+        )]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        assert_eq!(manager.get_messages_page(&id, 0).unwrap().total, 3);
+
+        let mut extra = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        use std::io::Write;
+        for i in 3..5 {
+            writeln!(
+                extra,
+                r#"{{"role":"user","content":"m{i}","timestamp":{}}}"#,
+                1_700_000_000_000i64 + i64::from(i)
+            )
+            .unwrap();
+        }
+        drop(extra);
+
+        assert_eq!(manager.get_messages_page(&id, 0).unwrap().total, 5);
+        assert_eq!(counter.load(std::sync::atomic::Ordering::Relaxed), 2);
+    }
+
+    fn message_of(seq: u32, content: String) -> ConversationMessage {
+        ConversationMessage {
+            role: if seq.is_multiple_of(2) {
+                "user".into()
+            } else {
+                "assistant".into()
+            },
+            content,
+            blocks: Vec::new(),
+            model: None,
+            timestamp: i64::from(seq),
+            seq,
+        }
+    }
+
+    /// 红线 4：单页条数上限守住传输边界。
+    #[test]
+    fn should_cap_page_by_item_limit() {
+        let count = saturating_u32(MESSAGE_PAGE_MAX_ITEMS) + 100;
+        let messages: Vec<ConversationMessage> =
+            (0..count).map(|i| message_of(i, format!("m{i}"))).collect();
+        assert_eq!(page_end(&messages, 0), MESSAGE_PAGE_MAX_ITEMS);
+        assert_eq!(page_end(&messages, MESSAGE_PAGE_MAX_ITEMS), messages.len());
+    }
+
+    /// 超大单条消息也必须成页（否则 offset 不前进，前端会死循环）。
+    #[test]
+    fn should_keep_at_least_one_message_per_page() {
+        let huge = "x".repeat(MESSAGE_PAGE_BYTE_BUDGET * 2);
+        let messages = vec![message_of(0, huge), message_of(1, "small".into())];
+        assert_eq!(page_end(&messages, 0), 1);
+        assert_eq!(page_end(&messages, 1), 2);
+    }
+
+    #[test]
+    fn should_respect_byte_budget() {
+        // 每条 ~4KB → 预算（1.5MB）先于条数上限（800）触发
+        let body = "y".repeat(4000);
+        let messages: Vec<ConversationMessage> =
+            (0..2000u32).map(|i| message_of(i, body.clone())).collect();
+        let end = page_end(&messages, 0);
+        assert!(end > 1, "budget must allow more than one message");
+        assert!(end < MESSAGE_PAGE_MAX_ITEMS, "byte budget must bind first");
+    }
+
+    #[test]
+    fn should_clamp_offset_past_end() {
+        let messages = vec![message_of(0, "only".into())];
+        assert_eq!(page_end(&messages, 5), 1);
+        assert_eq!(page_end(&[], 0), 0);
+    }
+
+    /// 回归：首条用户消息带图片引用时，标题不得退化成图片 blob URI 或 `[Image #N]` 占位符。
+    #[test]
+    fn should_not_leak_image_reference_into_title() {
+        let placeholder = resolve_title(
+            None,
+            Some("[Image #1] \n\n历史会话中显示的不是标题而是一串ID"),
+            "pi",
+            "01a187b7-f5da",
+        );
+        assert_eq!(placeholder, "历史会话中显示的不是标题而是一串ID");
+
+        let expanded = resolve_title(
+            None,
+            Some("[[Image #1]](file:///Users/t/.pi/agent/image-view/blobs/32b9.png)\n\n同一个问题"),
+            "pi",
+            "01a187b7-f5da",
+        );
+        assert_eq!(expanded, "同一个问题");
+        assert!(!expanded.contains("file://"));
+    }
+
+    /// 回归：纯图片回合不能作为标题素材，必须继续落到兜底。
+    #[test]
+    fn should_fall_back_when_first_message_is_image_only() {
+        let title = resolve_title(None, Some("[Image #1]"), "pi", "01a187b7-f5da");
+        assert_eq!(title, "pi 01a187b7");
     }
 }

@@ -93,6 +93,25 @@ pub struct ConversationMessage {
     pub seq: u32,
 }
 
+/// 会话正文分页。
+///
+/// 红线 4：单次 Command 载荷 ≤2MB，而单个会话可能有数千条消息（实测最大 8.7MB）。
+/// 前端按 `has_more` 逐页组装；每页由 manager 按字节预算切分，IPC 单次始终在预算内。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationMessagePage {
+    /// 本页消息（时间正序）
+    pub items: Vec<ConversationMessage>,
+    /// 会话消息总数
+    pub total: u32,
+    /// 本页起始下标
+    pub offset: u32,
+    /// 本页条数
+    pub limit: u32,
+    /// 是否还有下一页
+    pub has_more: bool,
+}
+
 /// 扫描报告
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
