@@ -79,7 +79,7 @@ index.css          入口：只聚合，不写规则
 
 **判据：这个文件是「定义主题差异」，还是「使用主题差异」？**
 
-- `themes/*.css` —— **定义**。59 个颜色值 + `color-scheme`，就是主题差异本身。
+- `themes/*.css` —— **定义**。60 个颜色值 + `color-scheme`，就是主题差异本身。
 - `base/*` —— **不定义**任何主题差异。它要么是常量（字阶 / z-index / 密度），
   要么是 `var()` 指向别处（`reset.css` 的 `body { color: var(--text-primary) }`、
   `tailwind.css` 的 `--color-bg-primary: var(--bg-primary)`）。
@@ -89,7 +89,7 @@ index.css          入口：只聚合，不写规则
 | `base/variables.css` | 字阶、密度、z-index、字体角色、兜底色板 | ❌ | ❌ |
 | `base/reset.css` | `*` / `body` / 滚动条 | ❌ | ✅ **是**（消费 `--text-primary` 等） |
 | `base/tailwind.css` / `shadcn.css` | 桥接与别名（值全是 `var()`） | ❌ | ✅ **是**（转发主题色） |
-| `themes/*.css` | 59 个颜色值 + `color-scheme` | ✅ | ✅（来源） |
+| `themes/*.css` | 60 个颜色值 + `color-scheme` | ✅ | ✅（来源） |
 
 > ⚠ **不要说「base/ 不随主题变」** —— `reset.css` 的 `body` 前景/背景、滚动条颜色
 > 都取自主题变量，会随主题变。准确表述是「base/ 不**定义**主题差异」：
@@ -110,13 +110,13 @@ themes/
 └── classic-dark.css    classic-dark
 ```
 
-**每个主题文件自包含**：59 个变量值 + 自己的 `color-scheme`。
+**每个主题文件自包含**：60 个变量值 + 自己的 `color-scheme`。
 
 | 好处 | 说明 |
 | --- | --- |
 | 新增主题 = 复制一个文件改值 | 不会漏配 `color-scheme`（它就在同一文件里） |
 | diff 直观 | `git diff --stat` 直接显示动了哪几个主题 |
-| 定位快 | 改 light 主题只需打开 `light.css`（59 个变量一个屏幕内） |
+| 定位快 | 改 light 主题只需打开 `light.css`（60 个变量一个屏幕内） |
 
 **校验按「文件身份」而不是「内容特征」**（`styles/__tests__/themeTokens.test.ts`）：
 
@@ -198,7 +198,7 @@ worktree / LSP / toast / agents / CodeMirror 五处），放 `motion/`；
 **变量名的唯一来源**是 `src/shared/utils/themeVariables.ts`，不是 CSS。
 
 ```
-shared/utils/themeVariables.ts   ← 契约（59 个变量名，按语义分组）
+shared/utils/themeVariables.ts   ← 契约（60 个变量名，按语义分组）
         │
         ├──► styles/themes/*.css                  校验：每个主题块必须定义全部变量
         ├──► features/settings/customThemeVars.ts  自定义主题可覆盖清单

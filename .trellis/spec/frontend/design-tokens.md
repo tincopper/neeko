@@ -18,7 +18,7 @@ base/variables.css    不随主题变的全局值：
    │                  CodeMirror 与 git-status 的**兜底值**
    ↓
 themes/<theme>.css    一主题一文件（dark / light / one-dark-pro / claude / classic-dark）
-   │                  **自包含**：59 个变量值 + 自己的 color-scheme
+   │                  **自包含**：60 个变量值 + 自己的 color-scheme
    ↓
 base/tailwind.css     桥接为 Tailwind v4 utility 类（--color-* / --text-*）
    │                  @theme    → 键名与被引用变量不同名（--color-bg-primary → var(--bg-primary)）
@@ -34,7 +34,7 @@ base/tailwind.css     桥接为 Tailwind v4 utility 类（--color-* / --text-*�
 | `base/variables.css` | 字阶、密度、z-index、字体角色、兜底色板 | ❌ |
 | `base/reset.css` | `*` / `body` / `#root` / 滚动条 | ❌ |
 | `base/tailwind.css` · `base/shadcn.css` | 桥接与别名（值是 `var()`） | ❌ |
-| `themes/*.css` | 59 个颜色值 + `color-scheme` | ✅ 就是主题差异本身 |
+| `themes/*.css` | 60 个颜色值 + `color-scheme` | ✅ 就是主题差异本身 |
 
 `base/` 里同时有「变量定义」与「选择器规则」—— 它们性质不同（前者不匹配元素），
 但对维护者是同一件事：**改主题时不需要看这些文件**。这条心智比「变量 vs 规则」
@@ -96,7 +96,7 @@ base/tailwind.css     桥接为 Tailwind v4 utility 类（--color-* / --text-*�
 ### 变量名契约：唯一来源不是 CSS
 
 ```
-src/shared/utils/themeVariables.ts        ← 契约（59 个变量名，按语义分组）
+src/shared/utils/themeVariables.ts        ← 契约（60 个变量名，按语义分组）
         │
         ├──► styles/themes/*.css                  校验：每个主题块必须定义全部变量
         ├──► features/settings/customThemeVars.ts  自定义主题可覆盖清单
@@ -145,6 +145,7 @@ src/shared/utils/themeVariables.ts        ← 契约（59 个变量名，按语�
 | `--text-on-accent` | `text-text-on-accent` | **accent 底上的文字色**（随主题变） |
 | `--border-color` | `border-border` | 常规边框 / 分割线 |
 | `--border-subtle` | `border-border-subtle` | **弱分割线**（层级更淡的一档） |
+| `--code-inline-fg` | —（仅 CSS 内部使用，无桥接） | **行内代码前景色**（逐主题取色；坑 10） |
 
 ### 控件专属
 
@@ -628,6 +629,74 @@ JetBrains 式的「名字着色」只在**未高亮**时生效。
 > 阀值用 3.0（WCAG 1.4.11 非文本级）而不是 4.5：条目标签不是正文段落，
 > 且 one-dark-pro 的选中底（`#4d5666`，原主题的 scrollbarSlider 亮档）实测 3.47
 > 是五主题下限。要提高到 4.5 得重调该主题的选中档位 —— 那是另一个决定。
+
+### 坑 10：**行内代码的底块不是对比度保证，删它等于把责任交还给表面栈**
+
+2026-11 需求：「markdown 里的 `` `code` `` 不要背景色，长文里很丑，给文字一个颜色即可」。
+
+**误区**：以为底块（`background: var(--bg-tertiary)` + padding + 圆角 chip）在保证可读性，
+所以「删掉它就不能再用 accent 色」。实测相反 —— 底块从未保证过对比度：
+
+| 主题 | `--accent-green` vs `--bg-primary` | vs `--bg-tertiary`（chip 底） |
+| --- | --- | --- |
+| dark | 7.51 | 6.01 |
+| **light** | **2.84** | **3.08** |
+| **claude** | **3.38** | **3.04** |
+| classic-dark | 7.21 | 6.22 |
+| one-dark-pro | 6.94 | 5.33 |
+
+chip 在 light / claude 下**反而把对比度压得更低**（2.84 → 3.08），两个浅色主题
+一直是 < 4.5 的正文级失败，只是 chip 的视觉重量把它盖住了。
+
+**结构结论**：正文里的行内代码不用 accent、也不用中性前景，而是**专属的逐主题 token`--code-inline-fg`**。
+两个方向都实测过并都被否掉：
+
+| 候选 | 失败面 | 数字 |
+| --- | --- | --- |
+| `--accent-green` | 对比度（浅色主题） | light 2.84 / claude 3.04 |
+| `--mono-fg` | 可辨识度（与正文分不开） | one-dark-pro ΔE **0.000**（它与 `--text-primary` 同值 `#abb2bf`）、dark 0.090、classic-dark 0.086 |
+
+> 第二条是用户实际报出来的：「字体颜色没有了，应该加个字体颜色，不然区分不了」。
+> **可读 ≠ 可辨**：对比度只衡量亮度差，一个「与正文同色」的等宽字体对比度可能很高，
+> 却完全看不出是代码。所以本 token 有**双判据**。
+
+**取色规则：槽位逐主题自选，但必须取自本主题调色板，只许调明度。**
+
+第一版把规则钉在 `--cm-string`，结果五个主题**全是绿** —— 因为 One Dark / Atom One Light /
+Apple 这三套调色板的 strings 本来就都是绿。用户反馈「还是绿色的，每个主题都是绿色的」。
+规则应该约束的是「**取自哪套调色板**」，不是「哪个固定槽位」：
+
+| 主题 | 取色槽位 | `--code-inline-fg` | 对比度下限 | ΔE vs 正文 | ΔE vs 链接（防撞车） |
+| --- | --- | --- | --- | --- | --- |
+| dark | `--cm-number`（琥珀） | `#dea052` | 6.66 | 0.26 / 0.16 | 0.23 |
+| light | `--cm-keyword`（Atom 紫） | `#a626a4` | 5.18 | 0.36 / 0.21 | 0.23 |
+| claude | `--accent-brick`（暖砖红） | `#8b382f` | 5.90 | 0.22 / 0.11 | 0.17 |
+| classic-dark | `--accent-green`（Apple 绿） | `#30d158` | 6.22 | 0.32 / 0.23 | 0.32 |
+| one-dark-pro | `--cm-keyword`（One Dark 紫） | `#e091f8` | 4.90 | 0.15 / 0.16 | 0.18 |
+
+槽位自选的取舍依据：**语义安全的色才配正文** —— 红 / 黄 / 橙在别处承载错误与警告，
+所以优先绿、紫、以及 claude 自己的暖砖红；`--accent-blue` 也不能选，它是 markdown 链接色
+（`.markdown-preview a`），码字与链接同色会被误读。同理暗色主题里已有 accent 绿的
+保留绿，中性底（dark）用琥珀更像编辑器惯例（VS Code Dark+ 的 `textPreformat` 就是暖色）。
+
+> 反面教材（前两版）：① 钉死 `--cm-string` → 五主题全绿；
+> ② 手挑「看起来像」的颜色（light `#17703a` 偏青 8°、classic-dark 用了它的 success 绿 14°）
+> → 不属于该主题配色。结论：**「适配主题」只能靠「同色相 + 只改明度」这条可验证关系，
+> 不能靠人眼觉得像。**
+
+**机器判据**（判据本体 `styles/__tests__/inlineCodeCss.ts`，由 `themeTokens.test.ts`「行内代码」驱动，五条）：
+读 `components/markdown.css` / `components/agent-chat.css` / `components/lsp.css` 里**每一条**行内代码规则，断言
+① 无 `background`；② 两处 token 相同；③ 该 token 在 `--bg-primary` / `--bg-secondary` /
+`--bg-tertiary` 上逐主题 ≥ 4.5（**读得清**），且与 `--text-primary` / `--text-secondary`
+的 OKLab ΔE ≥ 0.10（**看得出**）；④ 色相与彩度等于本主题**某个调色板槽位**
+（10 个 `--accent-*` / `--cm-*` 中最近的一个，色相差 ≤ 6°、彩度 ≥ 60%，**属于本主题配色**）；
+⑤ 与链接色 `--accent-blue` 的 ΔE ≥ 0.12（**不长得像链接**）。
+**token 名从实现反推** —— 谁把颜色改成 `--mono-fg` 或自编色值，测试自动去测它并变红，
+不存在「测试绿、实现错」。
+
+> 阈值分工：对比度用 4.5（正文级，不是坑 9 的 3.0 非文本级 —— 行内代码是句子的一部分）；
+> ΔE 用 0.10（≈ 明显不同色；实测最紧的组合是 claude 对 secondary 的 0.111）。
+> ΔE 与色相辅助函数在 `styles/__tests__/themeCss.ts` 的 `deltaE()` / `toOklch()` / `hueDelta()`。
 
 ---
 
