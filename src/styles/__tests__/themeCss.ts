@@ -160,6 +160,50 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
+/** sRGB → OKLab（感知均匀空间，用于色差；线性化与 D65 XYZ → LMS → 立方根） */
+function toOklab([r, g, b]: Rgb): Rgb {
+  const f = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const [R, G, B] = [f(r), f(g), f(b)];
+  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
+  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
+  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ];
+}
+
+/**
+ * OKLab 感知色差（ΔE，欧氏距离）。0 = 同色；≈0.02 起可辨；≥0.10 明显不同色。
+ *
+ * 为什么需要它：`contrastRatio` 只比相对亮度 —— 一个色相不同、亮度相近的颜色
+ * 对比度接近 1.0，而它俩肉眼分得很清；反过来「完全同色」的对比度也是 1.0。
+ * 「文字看不出是代码」是**色差**问题，不是对比度问题，所以两种判据都得有。
+ */
+export function deltaE(a: Rgb, b: Rgb): number {
+  const [l1, a1, b1] = toOklab(a);
+  const [l2, a2, b2] = toOklab(b);
+  return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
+}
+
+/** sRGB → OKLCH（`[L, C, H°]`）。色相/彩度用于判断「这个颜色是不是本主题那一支」。 */
+export function toOklch(rgb: Rgb): [number, number, number] {
+  const [l, a, b] = toOklab(rgb);
+  return [l, Math.hypot(a, b), ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360];
+}
+
+/**
+ * 两个颜色的色相差（0~180°，环形）。
+ *
+ * 用于锁「取色必须来自本主题自己的调色板」：同一个色相、只改明度 = 仍是这支色；
+ * 换色相（比如把字面量绿换成关键字紫）= 不再是该主题的配色语言。
+ */
+export function hueDelta(a: Rgb, b: Rgb): number {
+  const diff = Math.abs(toOklch(a)[2] - toOklch(b)[2]);
+  return diff > 180 ? 360 - diff : diff;
+}
+
 // ── 判据：抽成纯函数，才能用坏数据直接驱动 ────────────────────────────────
 //
 // 为什么必须是纯函数而不是写在测试里的 inline 逻辑：

@@ -53,6 +53,14 @@ export default defineConfig({
         lines: 55,
 
         // 纯函数 / 唯一构造点：仓库要求 100%
+        // 行内代码判据（styles 域）：判据本身是纯函数，坏数据用例必须走完每条分支 ——
+        // 否则「判据没被判据测过」会重演 themeCss.ts 顶部记录的假测试事故。
+        '**/styles/__tests__/inlineCodeCss.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
         '**/runner/stackFrames.ts': {
           lines: 100,
           statements: 100,

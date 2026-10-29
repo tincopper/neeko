@@ -8,11 +8,23 @@ import { HIGHLIGHTED_NAME_CLASS } from '@/shared/utils/gitFileDecoration';
 import { THEME_VARIABLES, THEME_VARIABLE_GROUPS } from '@/shared/utils/themeVariables';
 
 import {
+  INLINE_CODE_BODY,
+  INLINE_CODE_FG,
+  INLINE_CODE_LINK,
+  INLINE_CODE_PALETTE,
+  INLINE_CODE_SELECTOR,
+  INLINE_CODE_SURFACES,
+  inlineCodeBlocks,
+  inlineCodeStyleViolations,
+  inlineCodeThemeViolations,
+} from './inlineCodeCss';
+import {
   colorOf,
   contrastRatio,
   describeDefects,
   inspectThemeFile,
   readGlobalVars,
+  parseColor,
   readThemeFiles,
   splitBlocks,
   themeFileFromSource,
@@ -296,6 +308,159 @@ describe('选中行文件名对比度', () => {
       }
     }
     expect(failures).toEqual([]);
+  });
+});
+
+describe('行内代码（无底块 + 逐主题取色）', () => {
+  // 需求演进：① 行内代码不要背景块（长文里 chip 堆成色带）→ ② 颜色不能与正文同色
+  // （用户：「字体颜色没有了，区分不了」）→ ③ 颜色不能五个主题都一样（用户：「每个主题都是绿色的」）。
+  // 判据因此分两层，且都在 `inlineCodeCss.ts` 里（styles/README.md：判据必须是纯函数，
+  // 真实文件与坏数据用例走同一条代码路径）：
+  //   - 样式形态：无 background；前景色取 `--code-inline-fg`；
+  //   - 主题取值：读得清（≥4.5）× 看得出（ΔE ≥0.10）× 属于本主题调色板（色相 ±6°、
+  //     彩度 ≥60%）× 不像链接（ΔE ≥0.12）。
+  // 每个渲染面显式声明自己的行内代码选择器：markdown / lsp 用 `code:not(pre code)`，
+  // agent-chat 用裸 `.rich code`（围栏代码块由 `.rich .codeblock code` / `.diff-expand code` 重置）。
+  const CSS_FILES = [
+    { file: 'components/markdown.css', selector: INLINE_CODE_SELECTOR },
+    { file: 'components/agent-chat.css', selector: /\.rich\s+code\b/ },
+    { file: 'components/lsp.css', selector: INLINE_CODE_SELECTOR },
+  ].map((entry) => ({
+    ...entry,
+    css: readFileSync(resolve(__dirname, `../${entry.file}`), 'utf8'),
+  }));
+
+  /** 把一个主题里判据用到的 token 抽成 swatches（坏数据用例直接替换其中几项即可） */
+  function swatchesOf(theme: (typeof themeFiles)[number], token = INLINE_CODE_FG) {
+    const tokens = [
+      token,
+      ...INLINE_CODE_SURFACES,
+      ...INLINE_CODE_BODY,
+      INLINE_CODE_LINK,
+      ...INLINE_CODE_PALETTE,
+    ];
+    const swatches: Record<string, ReturnType<typeof colorOf>> = {};
+    for (const name of tokens) swatches[name] = colorOf(theme, name);
+    return swatches;
+  }
+
+  it('三处行内代码渲染面都是「无底块 + 取契约 token」', () => {
+    const failures = CSS_FILES.flatMap(({ file, css, selector }) =>
+      inlineCodeStyleViolations(css, selector).map((v) => `${file}：${v}`),
+    );
+    expect(failures).toEqual([]);
+  });
+
+  it('每个主题的取色都过四条主题判据', () => {
+    const failures = themeFiles.flatMap((theme) =>
+      inlineCodeThemeViolations(theme.file, swatchesOf(theme)),
+    );
+    expect(failures).toEqual([]);
+  });
+
+  it('每条规则都被真的检查到（不是只测第一条）', () => {
+    // lsp.css 里行内代码出现两处（hover 与签名文档）。只校验第一处会让第二处静默漂移 ——
+    // 与「git 徽标三套 DOM」同型。这里钉住「每个文件的规则数」与「全部通过」。
+    const counts = CSS_FILES.map(
+      ({ file, css, selector }) => [file, inlineCodeBlocks(css, selector).length] as const,
+    );
+    expect(counts).toEqual([
+      ['components/markdown.css', 1],
+      ['components/agent-chat.css', 1],
+      ['components/lsp.css', 2],
+    ]);
+  });
+
+  it('反证：底色重新出现会被判违规', () => {
+    const bad =
+      '.markdown-preview code:not(pre code) { background: var(--bg-tertiary); color: var(--code-inline-fg); }';
+    expect(inlineCodeStyleViolations(bad).join('|')).toContain('仍在声明 background');
+  });
+
+  it('反证：前景色写成 accent / --mono-fg / 裸值都会被判违规', () => {
+    const failures: string[] = [];
+    for (const value of ['var(--accent-green)', 'var(--mono-fg)', '#a626a4']) {
+      const bad = `.rich code:not(pre code) { color: ${value}; }`;
+      if (!inlineCodeStyleViolations(bad).join('|').includes('必须是 var(--code-inline-fg)')) {
+        failures.push(`前景色写成 ${value} 未被判违规`);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('反证：选择器被改写、判据对象消失会被判违规（不许静默空转）', () => {
+    expect(inlineCodeStyleViolations('.rich code { color: var(--code-inline-fg); }')).toHaveLength(
+      1,
+    );
+  });
+
+  it('反证：对比度不足 / 与正文同色 / 偏离调色板 / 撞链接 都各有明确的失败信息', () => {
+    const light = themeFiles.find((t) => t.file === 'light.css');
+    expect(light).toBeDefined();
+    const base = swatchesOf(light!);
+
+    // ① 对比度不足：把前景色换成浅灰（模拟「用了一个亮绿」）
+    const lowContrast = { ...base, [INLINE_CODE_FG]: colorOf(light!, '--text-muted') };
+    expect(inlineCodeThemeViolations('light.css', lowContrast).join('|')).toContain('对比');
+
+    // ② 与正文同色（用户报的「区分不了」）
+    const sameAsBody = { ...base, [INLINE_CODE_FG]: colorOf(light!, '--text-primary') };
+    expect(inlineCodeThemeViolations('light.css', sameAsBody).join('|')).toContain('区分不了');
+
+    // ③ 偏离本主题调色板：把一个不存在的色相当前景色
+    const offPalette = { ...base, [INLINE_CODE_FG]: [0.3, 0.6, 0.9] };
+    const offFailures = inlineCodeThemeViolations('light.css', offPalette).join('|');
+    expect(offFailures).toContain('色相不属于本主题调色板');
+
+    // ④ 撞链接色
+    const likeLink = { ...base, [INLINE_CODE_FG]: colorOf(light!, INLINE_CODE_LINK) };
+    expect(inlineCodeThemeViolations('light.css', likeLink).join('|')).toContain('会被当成链接');
+
+    // ⑤ 缺 token（契约位被删 / 主题漏配）
+    const missing = { ...base, [INLINE_CODE_FG]: null };
+    expect(inlineCodeThemeViolations('light.css', missing).join('|')).toContain('无法解析');
+
+    // ⑥ 缺宿主表面 / 缺正文色：判据不能静默跳过（否则「测了但没测到」）
+    const noSurface = { ...base, '--bg-secondary': null };
+    expect(inlineCodeThemeViolations('light.css', noSurface).join('|')).toContain(
+      '无法解析 --bg-secondary',
+    );
+    const noBody = { ...base, '--text-secondary': null };
+    expect(inlineCodeThemeViolations('light.css', noBody).join('|')).toContain(
+      '无法解析 --text-secondary',
+    );
+
+    // ⑦ 一个调色板槽位都取不到（契约被改名）：必须报错，不能当成「合规」
+    const noPalette = Object.fromEntries(
+      Object.entries(base).filter(([key]) => !INLINE_CODE_PALETTE.includes(key as never)),
+    );
+    expect(inlineCodeThemeViolations('light.css', noPalette).join('|')).toContain(
+      '找不到任何可比的调色板槽位',
+    );
+
+    // ⑧ 色相对得上但被打灰（彩度坍缩）：同色相、C 从 0.19 掉到 0.02
+    const washed = { ...base, [INLINE_CODE_FG]: parseColor('oklch(0.55 0.02 329)') };
+    expect(inlineCodeThemeViolations('light.css', washed).join('|')).toContain('洗淡成灰');
+
+    // ⑨ 缺链接色：跳过该条判据即可，不得报错（链接色缺失不是行内代码的缺陷）
+    const noLink = Object.fromEntries(
+      Object.entries(base).filter(([key]) => key !== INLINE_CODE_LINK),
+    );
+    expect(
+      inlineCodeThemeViolations('light.css', noLink).filter((v) => v.includes('链接色')),
+    ).toEqual([]);
+  });
+
+  it('嵌套块（`& b { ... }`）不会让规则块被截断在半路', () => {
+    const nested =
+      '.x code:not(pre code) { color: var(--code-inline-fg); & b { color: var(--accent-red); } }';
+    expect(inlineCodeBlocks(nested)).toHaveLength(1);
+    expect(inlineCodeStyleViolations(nested)).toEqual([]);
+  });
+
+  it('反证：选择器命中但规则块没写完（CSS 截断）时，判据报「对象消失」而不是崩溃', () => {
+    expect(inlineCodeBlocks('.x code:not(pre code)')).toEqual([]);
+    expect(inlineCodeStyleViolations('.x code:not(pre code)')).toHaveLength(1);
   });
 });
 
