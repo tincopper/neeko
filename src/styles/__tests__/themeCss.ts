@@ -26,26 +26,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-/**
- * 剥掉 CSS 注释。
- *
- * ## 为什么必须剥（2026-10-28 踩到）
- *
- * 判据只能在**源码**上跑，注释不是源码。不剥时实测过的三种假阳性：
- *
- * 1. 文档注释里写一句 `--terminal-bg: var(--bg-secondary)` → `[^;]+` 吃到下一个
- *    `;`（跨行），把一个**从不存在于该主题的变量**登记进变量清单，报「多出未登记变量」；
- * 2. 注释里举例一个 `:root { }` 块 → `BLOCK_RE` 当真块解析；
- * 3. 注释里提一句 `color-scheme:` → `lacksColorScheme` 假通过。
- *
- * 失效方向都是「注释的内容被当成声明」，即**误导维护者去改正确的东西**。
- *
- * 只剥块注释（斜杠星号开头到星号斜杠），不碰 `//`：CSS 没有行注释，
- * 而 `url(https://…)` 里的双斜杠会被误剥。
- */
-export function stripComments(css: string): string {
-  return css.replace(/\/\*[\s\S]*?\*\//g, ' ');
-}
+import { stripComments } from './cssRules';
 
 /** 一个主题文件的解析结果 */
 export interface ThemeFile {

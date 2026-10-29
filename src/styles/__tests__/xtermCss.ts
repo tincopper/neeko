@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { SCROLL_IDLE_CLASS } from '@/shared/utils/scrollAutoHide';
 
+import { parseRules } from './cssRules';
+
 /**
  * 终端滚动条 CSS 契约的**判据**（xterm.css）。
  *
@@ -13,27 +15,6 @@ import { SCROLL_IDLE_CLASS } from '@/shared/utils/scrollAutoHide';
  * 3. 空闲态滚动条容器 `pointer-events: none`（透明 6px 不能吃掉终端最右列点击/选区）
  * 4. 基础滑块半透明（浮在已铺满的网格之上）
  */
-
-interface CssRule {
-  selector: string;
-  body: string;
-}
-
-function stripComments(css: string): string {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '');
-}
-
-/** 浅层解析：`选择器 { 声明 }`（`@layer` 前缀会并进选择器文本）。 */
-export function parseRules(css: string): CssRule[] {
-  const rules: CssRule[] = [];
-  const source = stripComments(css);
-  const re = /([^{}]+)\{([^{}]*)\}/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(source)) !== null) {
-    rules.push({ selector: match[1].trim().replace(/\s+/g, ' '), body: match[2].trim() });
-  }
-  return rules;
-}
 
 /** 返回契约违规清单（空数组 = 合规）。 */
 export function autohideViolations(css: string): string[] {

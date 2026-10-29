@@ -11,7 +11,8 @@
  *   属于本主题调色板 + 不像链接」。
  */
 
-import { type Rgb, contrastRatio, deltaE, hueDelta, stripComments, toOklch } from './themeCss';
+import { parseRules } from './cssRules';
+import { type Rgb, contrastRatio, deltaE, hueDelta, toOklch } from './themeCss';
 
 /** 行内代码前景色 token（契约位，见 `shared/utils/themeVariables.ts` 的 `code` 组） */
 export const INLINE_CODE_FG = '--code-inline-fg';
@@ -70,24 +71,10 @@ export const INLINE_CODE_SELECTOR = /code:not\(\s*pre\s+code\s*\)/;
  * 只校验一处会让另一处静默漂移 —— 与「徽标三套 DOM」是同型问题。
  */
 export function inlineCodeBlocks(css: string, selector: RegExp = INLINE_CODE_SELECTOR): string[] {
-  const src = stripComments(css);
-  const blocks: string[] = [];
-  for (const match of src.matchAll(new RegExp(selector.source, 'g'))) {
-    const open = src.indexOf('{', match.index + match[0].length);
-    if (open < 0) continue;
-    let depth = 0;
-    for (let i = open; i < src.length; i += 1) {
-      if (src[i] === '{') depth += 1;
-      else if (src[i] === '}') {
-        depth -= 1;
-        if (depth === 0) {
-          blocks.push(src.slice(open + 1, i));
-          break;
-        }
-      }
-    }
-  }
-  return blocks;
+  // `selector` 必须是非全局正则（全局正则带 lastIndex 状态，连续 test 会跳着匹配）
+  return parseRules(css)
+    .filter((rule) => selector.test(rule.selector))
+    .map((rule) => rule.body);
 }
 
 /**
