@@ -13,9 +13,23 @@
 
 ### 2.1 设计决策：适配器模式
 
-**为什么不用统一格式？** 7 个内置 Agent 各有自己的会话文件格式（JSONL 平铺 / JSONL 树形 / SQLite / 纯 JSON），无法统一解析。
+**为什么不用统一格式？** 10 个内置 Agent 各有自己的会话文件格式（JSONL 平铺 / JSONL 树形 / SQLite / 纯 JSON），无法统一解析。
 
 **方案**：`AgentSessionAdapter` trait — 每个 Agent 一个适配器实现，统一对外接口。
+
+模块布局（`mod.rs` 只做声明与 re-export，红线 9）：
+
+```
+conversation/text.rs              文本原语：strip_ansi / strip_image_references / truncate（LazyLock 正则）
+conversation/normalize.rs         标题/预览净化 + recent_messages_from(_rev)（预览策略归属地）
+conversation/adapters/mod.rs      仅 mod 声明 + pub use / pub(crate) use
+conversation/adapters/registry.rs all_adapters()（「有哪些适配器」的单一事实源）
+conversation/adapters/shared.rs   read_jsonl / parse_timestamp / linearize_tree_entries / message_role / CONVERSATION_ROLES
+conversation/adapters/content_blocks.rs  内容块抽取（Anthropic 风格块数组方言）
+```
+
+依赖方向单向：`adapters::* → {normalize, text, types}`、`normalize → text`。
+**禁止**再次出现 `normalize → adapters` 的反向边（历史缺陷：二者互相引用，文本原语与预览策略错位）。
 
 ```rust
 pub trait AgentSessionAdapter: Send + Sync {
@@ -40,8 +54,24 @@ cache: Mutex<HashMap<String, ConversationMeta>>,   // key = "{agent_id}:{native_
 
 ### 2.3 设计决策：parse_meta / parse_messages 分离
 
-- `parse_meta()` — 只读文件头部（前几十行），毫秒级完成，用于列表展示
-- `parse_messages()` — 读完整文件，用户点击查看时按需调用
+- `parse_meta()` — 列表展示用（标题 / 预览 / 计数 / 时间 / 模型）
+- `parse_messages()` — 用户点击查看时按需调用，读完整文件
+
+**成本约束（真实实现，勿照抄「只读头部」）**：`parse_meta` 通过 `read_jsonl` 读**整个文件**
+（受 `scan_cache` 按 mtime/增长命中缓存），因此它的成本上限必须靠「不做事」守住：
+
+| 需要的量 | 允许的做法 | 禁止 |
+|---|---|---|
+| 计数 | `content_blocks::has_visible_text`（O(1)/条，不建块） | 逐条 `extract_message_content` 后丢块 |
+| 标题（P3 首条用户消息） | 只对 `role == "user"` 的记录抽取 | 遍历全量抽取 |
+| 预览（最近 5 条） | `normalize::recent_messages_from_rev` + 反向惰性迭代，凑满即停 | 先物化全量 `(role, text)` 再裁剪 |
+
+正文分页（§4.6.4）另有一条成本约束：`get_messages_page` 通过单槽缓存
+（`CachedTranscript`，以文件长度 + 修改时间失效）保证**整段会话只解析一次**；
+否则每一页都重读整份文件（实测 4293 条会话 7 页 = 3.7s，对比单次解析 0.5s）。
+
+事故（2026-10）：Pi 适配器修复后一度在 `parse_meta` 里对每条消息做全量抽取并克隆整段正文，
+266 个会话的列表扫描从 7.9s 退化到 26–30s（3.3×）；按上表改回惰性路径后为 5.8s。
 
 ## 3. 签名
 
@@ -70,20 +100,23 @@ fn scan_conversations(
     state: State<AppStateWrapper>,
 ) -> Result<Vec<ScanReport>, AppError>;
 
-// 列出会话（从缓存读取）
+// 列出会话（从缓存读取；limit=0 表示返回剩余全部）
 #[tauri::command]
 fn list_conversations(
     project_path: Option<String>,          // 过滤项目路径
     agent_id: Option<String>,              // 过滤 agent
+    offset: Option<u32>,
+    limit: Option<u32>,
     state: State<AppStateWrapper>,
-) -> Result<Vec<ConversationMeta>, AppError>;
+) -> Result<ConversationListPage, AppError>;   // { items, total, offset, limit, has_more }
 
-// 获取消息列表
+// 获取一页正文（红线 4：单次载荷 ≤2MB；前端按 hasMore 组装完整会话）
 #[tauri::command]
 fn get_conversation_messages(
     id: String,                            // "{agent_id}:{native_id}"
+    offset: Option<u32>,                   // 省略 = 从头
     state: State<AppStateWrapper>,
-) -> Result<Vec<ConversationMessage>, AppError>;
+) -> Result<ConversationMessagePage, AppError>;   // { items, total, offset, limit, has_more }
 
 // 搜索（空 query 返回空结果）
 #[tauri::command]
@@ -128,20 +161,24 @@ pub struct ConversationMeta {
     pub title: String,
     pub started_at: i64,                   // Unix 毫秒
     pub updated_at: i64,
-    pub message_count: u32,
-    pub preview: String,                   // 前 200 字符
+    pub message_count: u32,                // 正文视图可见的回合数（见 §4.6 口径）
+    pub preview: String,                   // 最近 5 条消息拼接（每条 ≤220 字符）
     pub file_path: PathBuf,                // Agent 原生文件绝对路径
     pub project_path: Option<String>,
     pub user_title: Option<String>,
     pub tags: Vec<String>,
+    pub model: Option<String>,
+    pub supports_resume: bool,             // Resume 按钮显隐依据（§4.3）
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationMessage {
-    pub role: String,                      // "user" | "assistant" | "system"
-    pub content: String,
+    pub role: String,                      // "user" | "assistant"（正文视图角色白名单）
+    pub content: String,                   // 拍平后的纯文本（标题/预览/导出同源）
+    pub blocks: Vec<MessageBlock>,         // text / thinking / toolUse / toolResult，供块级渲染
+    pub model: Option<String>,             // 消息级模型（会话中途可切换）
     pub timestamp: i64,
-    pub seq: u32,
+    pub seq: u32,                          // 树线性化序号；过滤后**可能不连续**，仅作渲染 key
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,9 +241,9 @@ get_resume_command(conversation_id) → split(':') 取 [0] 为 agent_id
 |-------|--------|------------------|
 | Codex | `~/.codex/sessions/**/rollout-*.jsonl`；`$CODEX_HOME` 优先 | 现代消息在 `response_item.payload.content[{type:input_text\|output_text,text}]`，不是 `delta`/`transcript`。标题：meta → `session_index.jsonl` → 首条真实 user。过滤 worker/subagent。 |
 | Reasonix | 列表：`~/.reasonix/projects/**/sessions/*.jsonl` | **多轮正文在兄弟文件 `*.events.jsonl`（replace/append）**；主 jsonl 常为 stub。Resume：交互式 `reasonix --dir <cwd> --resume <path\|id>`（需 TTY）；`run --resume PATH` 是一次性任务模式，History 不要用。 |
-| OMP | `~/.omp/agent/sessions/<sanitized>/*.jsonl` | 仅主会话深度（`<sanitized>/<file>.jsonl`），排除 session 子目录 trace。 |
+| OMP | `~/.omp/agent/sessions/<sanitized>/*.jsonl` | 仅主会话深度（`<sanitized>/<file>.jsonl`），排除 session 子目录 trace。标题来自 `type:"title"` 行。`message.content` 为块数组；工具结果独立成 `role:"toolResult"` 记录，另有 `developer` / `bashExecution` 噪声行。 |
 | Grok | `~/.grok/sessions/<urlenc-cwd>/<uuid>/summary.json` | 消息来自 sibling `updates.jsonl` 分块合并。 |
-| Pi / Claude | 嵌套 jsonl | 依赖 L0 自动 `**/`；勿写仅顶层的 basename pattern 而不测 WalkDir。 |
+| Pi / Claude | 嵌套 jsonl | 依赖 L0 自动 `**/`；勿写仅顶层的 basename pattern 而不测 WalkDir。**Pi：`message.content` 恒为块数组**（text / thinking / toolCall / image），session 头部**从不写 name/title**（标题只能靠 P3 首条用户消息），工具结果独立成 `role:"toolResult"` 记录。 |
 
 ### 4.4 搜索行为
 
@@ -219,6 +256,74 @@ get_resume_command(conversation_id) → split(':') 取 [0] 为 agent_id
 - `project_path` 为 `None` → 不过滤，返回所有
 - `project_path` 非 `None` → 在 `ConversationMeta.project_path` 中做子串匹配
 - 支持 worktree 路径匹配（子路径包含关系）
+
+## 4.6 内容块契约与视图口径（强制）
+
+会话正文的解析与展示有三条硬约束，违反会导致「列表徽标 / 预览 / 正文」互相矛盾。
+
+### 4.6.1 内容抽取只有一个实现
+
+`message.content` 可能是**字符串**，也可能是**块数组**（text / thinking / toolCall / tool_result / image）。
+所有适配器统一走 `adapters/content_blocks.rs`，禁止各自实现形态判断：
+
+```rust
+let rich  = extract_message_content(entry); // → MessageContent { text, blocks }
+let light = has_visible_text(entry);        // 只回答「这条算不算一条对话消息」，不建块
+```
+
+- `text`：标题（P3）、预览、Markdown 导出；`blocks`：前端块级渲染（思考折叠 / 工具卡片）。
+- 方言差异（块 `type` 别名、tool 入参 `input` vs `arguments`）**只允许**改
+  `content_blocks::block_kind` / `tool_input`；新增同类 agent 只加别名。
+- `has_visible_text` 与 `extract_message_content` 必须等价（`should_agree_with_full_extraction` 守护）；
+  轻量版存在的唯一理由是 `parse_meta` 的成本约束（§2.3）。
+- `tool_result` 只映射为结构化块，**不并入** `text`：工具输出体量不可控（红线 4），
+  也不该在正文里冒充用户发言。
+
+### 4.6.2 视图角色白名单
+
+`shared::CONVERSATION_ROLES = ["user", "assistant"]`。工具结果与系统注入记录
+（Pi `toolResult`、OMP `toolResult` / `developer` / `bashExecution`）**不进正文、不进预览、不计数**。
+
+### 4.6.3 三个用户可见量必须同源
+
+| 量 | 口径 |
+|---|---|
+| `ConversationMeta.message_count` | 正文可见回合数（角色白名单 + 有可见正文） |
+| `ConversationMeta.preview` | 同一集合的最近 `PREVIEW_MESSAGE_LIMIT` 条 |
+| `ConversationMessage[]` | 同一条过滤规则（`parse_messages`） |
+
+实测校验方式：对全部会话断言 `meta.message_count == get_messages(id).len()`。
+
+**合规现状（2026-10 真实会话核对，勿假设全仓已满足）**：
+
+| Adapter | 不一致会话 / 总会话 | 结论 |
+|---|---|---|
+| pi | 0 / 266 | ✅ |
+| omp | 0 / 122 | ✅ |
+| claude-code | 0 / 175 | ✅（`recent_pairs.len()` 即视图条数） |
+| codex | 62 / 119（最大差 1656） | ⚠️ 待统一：`message_count` 来自 `collect_chat_text_pairs`，与 `parse_messages` 的遍历不同源 |
+| opencode | 317 / 399（最大差 1023） | ⚠️ 待统一：计数走 SQL 聚合，正文来自 parts 表 |
+| reasonix | 16 / 21（最大差 18） | ⚠️ 待统一：计数取 events 派生值 |
+
+新增适配器**必须**满足该规则（`message_count` 取自与 `parse_messages` 相同的过滤结果）。
+
+### 4.6.4 正文载荷边界（红线 4）
+
+`get_conversation_messages` 返回 `ConversationMessagePage`，每页由 manager 按
+「≤800 条 / ≤1.5MB 序列化字节」切分，且**至少 1 条**（超大单条消息不会让 offset 卡死）。
+前端 `conversationApi.getConversationMessages(id)` 负责逐页组装、保持「整段会话」的语义，
+因此视图渲染 / 统计 / 工具面板 / 会话恢复都不需要感知分页；需要按需加载时直接用
+`getConversationMessagesPage(id, offset)`。
+
+事故背景：修复前单命令返回全量正文，最大会话 4293 条消息序列化 8.7MB。
+
+### 4.6.5 标题素材的净化
+
+图片引用（`[Image #1]`、`[[Image #1]](file:///…/blobs/<sha>.png)`）不是标题素材，
+由 `normalize`（Title / Preview 目标）统一剥离；适配器只提供原文，不做展示决策。
+
+**fixture 必须与真实磁盘格式一致**：用字符串写 `content` 夹具会让「只兼容字符串」的实现全绿，
+从而掩盖真实格式缺陷（Pi 曾因此把标题退化成 `pi <id8>`、正文解析成 0 条消息）。
 
 ## 5. 错误边界
 
