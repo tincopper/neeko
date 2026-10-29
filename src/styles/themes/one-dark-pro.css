@@ -101,6 +101,8 @@
   /* Mono 前景角色 */
   --mono-fg: #abb2bf;
   --mono-fg-dim: #5c6370;
+  /* 行内代码：本主题 --cm-keyword 的关键字紫（提亮到 AA；One Dark 的第三支主色，避开字符串绿/函数蓝） */
+  --code-inline-fg: #e091f8;
 
   /* Border（= editor.selectionBackground 一档，在卡片/区块上都看得见） */
   --border-color: #3e4451;

@@ -67,6 +67,21 @@ export const THEME_VARIABLE_GROUPS = {
   /** 边框与控件轨道 */
   border: ['--border-color', '--switch-track'],
 
+  /**
+   * 代码文本前景色（正文里的等宽文本：行内代码 / 键名等）。
+   *
+   * 为什么独立成位（两个方向都试过，均不成立）：
+   * ① 复用 `--accent-*`：accent 是强调 / 状态语义，中等亮度高饱和，压在浅色表面上
+   *    正文级不达标（light 2.84 / claude 3.04）；
+   * ② 复用 `--mono-fg`：one-dark-pro 里它与 `--text-primary` 同值（#abb2bf），
+   *    代码与正文完全分不开（2026-11 用户反馈「字体颜色没有了，区分不了」）。
+   * 判据：`styles/__tests__/themeTokens.test.ts`「行内代码前景色」—— 对比度 ≥ 4.5（读得清）、
+   * ΔE ≥ 0.10 vs 正文（看得出）、色相/彩度取自本主题调色板某个槽位（±6°、彩度 ≥ 60%）、
+   * 且与链接色 ΔE ≥ 0.12（不长得像链接）。槽位逐主题自选（琥珀 / 紫 / 砖红 / 绿），
+   * **不是固定某个色** —— 固定槽位会让五个主题同色。
+   */
+  code: ['--code-inline-fg'],
+
   /** 终端选区 */
   terminal: ['--terminal-selection'],
 

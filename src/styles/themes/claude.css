@@ -34,6 +34,8 @@
   /* Mono 前景角色（claude 暖调，取偏冷灰避免过黄） */
   --mono-fg: #4a3326;
   --mono-fg-dim: #a89282;
+  /* 行内代码：本主题 --accent-brick 的砖红（压暗到 AA；比链接的赭红 #c96442 更深，不会误认为链接） */
+  --code-inline-fg: #8b382f;
 
   /* Border */
   --border-color: #d8cdc0;  /* Switch 轨道底色（判据见上方主题块的长注释） */

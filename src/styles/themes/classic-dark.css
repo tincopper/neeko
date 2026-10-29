@@ -33,6 +33,8 @@
   /* Mono 前景角色 */
   --mono-fg: #abb2bf;
   --mono-fg-dim: #5c6370;
+  /* 行内代码：本主题 --accent-green 的 Apple 系统绿（招牌色，与 --accent-blue 链接区分度最高） */
+  --code-inline-fg: #30d158;
 
   /* Border */
   --border-color: #3b3b40;

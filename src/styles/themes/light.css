@@ -33,6 +33,8 @@
   /* Mono 前景角色 */
   --mono-fg: #383a42;
   --mono-fg-dim: #696c77;
+  /* 行内代码：本主题 --cm-keyword 的 Atom 关键字紫（原生过 AA；Atom One Light 最有辨识度的色） */
+  --code-inline-fg: #a626a4;
 
   /* Border */
   --border-color: #dadbdd;  /* Switch 轨道底色（判据见上方主题块的长注释） */

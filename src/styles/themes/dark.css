@@ -36,6 +36,8 @@
   /* Mono 前景角色 */
   --mono-fg: #abb2bf;
   --mono-fg-dim: #5c6370;
+  /* 行内代码：本主题 --cm-number 的琥珀（暖调中性底上最自然，且与链接蓝、正文白都分得开） */
+  --code-inline-fg: #dea052;
 
   /* Border */
   --border-color: oklch(1 0 0 / 10%);  /* Switch 轨道底色（判据见上方主题块的长注释） */
