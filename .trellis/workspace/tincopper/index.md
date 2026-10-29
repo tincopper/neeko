@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 375
+- **Total Sessions**: 376
 - **Last Active**: 2026-10-29
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~640 | Active |
+| `journal-8.md` | ~677 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 376 | 2026-10-29 | Inline code foreground token | `906395f1`, `dd3cd19d`, `b44e8d32`, `a6c3c8bf` | `main` |
 | 375 | 2026-10-29 | 按 neeko-check 清单重构滚动条补偿（逐元素实测 + 单一实现） | - | `main` |
 | 374 | 2026-10-29 | 终端网格右侧 14px 幻影根因修复（addon-fit 补丁）+ 半透明 overlay 滚动条 | - | `main` |
 | 373 | 2026-10-29 | 终端滚动条接入 3s 自动隐藏 | - | `main` |

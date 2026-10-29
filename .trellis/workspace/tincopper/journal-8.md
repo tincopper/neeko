@@ -638,3 +638,40 @@ Session summary was not supplied.
 ### Next Steps
 
 - 真机目视：markdown/图片/agent-chat/PDF/会话五处左右留白等宽；升级 @xterm/addon-fit 时无版本补丁会硬失败，按提示重打
+
+
+## Session 376: Inline code foreground token
+<!-- trellis-session: v=2 fp=73ad3f0d2eb96217 -->
+
+**Date**: 2026-10-29
+**Task**: Inline code foreground token
+**Branch**: `main`
+
+### Summary
+
+Replace the inline-code background chip with a per-theme foreground colour guarded by contrast, delta-E, palette and link-separation criteria
+
+### Main Changes
+
+- Add --code-inline-fg contract slot with one explicit value per theme (amber / Atom purple / Claude brick / Apple green / One Dark purple)
+- Drop the background chip in document preview, agent chat and LSP hover so all three markdown surfaces match
+- Add pure predicates in styles/__tests__/inlineCodeCss.ts with bad-data cases; pin the module at 100% coverage
+- Record pitfall 10 in design-tokens.md and move the contract size from 59 to 60 variables
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `906395f1` | feat(theme): add per-theme code foreground token |
+| `dd3cd19d` | feat(markdown): colour inline code instead of a background chip |
+| `b44e8d32` | test(styles): guard inline code legibility and palette fit |
+| `a6c3c8bf` | docs(trellis): record the inline code foreground contract |
+
+### Testing
+
+- [OK] pnpm check (full): 36/37 gates ok, test_fe hit a wall-clock flake in useFileTreeSync
+- [OK] pnpm test:fe re-run: 667 files / 6208 tests passed
+
+### Status
+
+[OK] **Completed**
