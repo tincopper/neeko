@@ -10,6 +10,9 @@ patchedDependencies:
   '@codemirror/lint@6.9.5': patches/@codemirror__lint@6.9.5.patch
   '@codemirror/lsp-client@6.2.5': patches/@codemirror__lsp-client@6.2.5.patch
   '@xterm/addon-canvas': patches/@xterm__addon-canvas.patch
+  # 无版本键（与 addon-canvas 一致）：升级 addon 时补丁会**尝试应用**，
+  # 打不上就硬失败；精确版本键在升级后会静默不应用（14px 幻影无声回归）。
+  '@xterm/addon-fit': patches/@xterm__addon-fit.patch
 
 overrides:
   # 单实例 @codemirror/view：@codemirror/lint/theme-one-dark 经间接依赖曾锁定

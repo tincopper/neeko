@@ -74,6 +74,12 @@ export interface BuildTerminalOptionsParams extends TerminalTypeOptions {
  * **不带 overviewRuler**：xterm 6.1-beta 已移除该选项（改走 scrollbar.width，
  * 缺省即不启用 ruler，等价于旧 `overviewRuler: { width: 0 }`）。不要因为想要
  * 「无 ruler 的干净视图」把它加回来 —— 那是一个已废弃的 API。
+ *
+ * **但 `@xterm/addon-fit` 仍在为它预留宽度**：`proposeDimensions()` 里写的是
+ * `scrollback === 0 ? 0 : options.overviewRuler?.width || 14` —— 选项已被移除 ⇒
+ * 恒取 14，终端网格右侧凭空少 14px（表现为「右边留白比左边宽」）。该常量已用
+ * `patches/@xterm__addon-fit@0.11.0.patch` 改成默认 0（升级 addon 时要同步重打
+ * 补丁，否则 pnpm 会直接报 patch 不匹配）。见 `components/xterm.css` 的滚动条段。
  */
 export function buildTerminalOptions(params: BuildTerminalOptionsParams): ITerminalOptions {
   const fontSize = resolveTerminalFontSizeFromConfig(params.terminalFontSize);

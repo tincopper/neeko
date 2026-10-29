@@ -12,6 +12,7 @@ patchedDependencies:
   '@codemirror/lint@6.9.5': 954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd
   '@codemirror/lsp-client@6.2.5': 6727f815eeb02dbc0f6e7b6f97eeba99fd1b0e023085831cf61937a20d7e5208
   '@xterm/addon-canvas': f39b8eee64b365d9705304af53d2f5733ccb841664e3caf291a18e026a6ecc77
+  '@xterm/addon-fit': 0cd119e13f8e42e4a156025bf86d403bb881d3871d8c6086aa90e0fd9d694726
 
 importers:
 
@@ -178,7 +179,7 @@ importers:
         version: 0.8.0-beta.48(patch_hash=f39b8eee64b365d9705304af53d2f5733ccb841664e3caf291a18e026a6ecc77)(@xterm/xterm@6.1.0-beta.287)
       '@xterm/addon-fit':
         specifier: ^0.11.0
-        version: 0.11.0
+        version: 0.11.0(patch_hash=0cd119e13f8e42e4a156025bf86d403bb881d3871d8c6086aa90e0fd9d694726)
       '@xterm/addon-unicode11':
         specifier: ^0.9.0
         version: 0.9.0
@@ -8398,7 +8399,7 @@ snapshots:
     dependencies:
       '@xterm/xterm': 6.1.0-beta.287
 
-  '@xterm/addon-fit@0.11.0': {}
+  '@xterm/addon-fit@0.11.0(patch_hash=0cd119e13f8e42e4a156025bf86d403bb881d3871d8c6086aa90e0fd9d694726)': {}
 
   '@xterm/addon-unicode11@0.9.0': {}
 
