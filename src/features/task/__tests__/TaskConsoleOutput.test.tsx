@@ -44,6 +44,12 @@ const terminalMocks = vi.hoisted(() => {
 
     scrollToBottom() {}
 
+    // xterm 的滚动事件订阅：TaskConsoleOutput 用它驱动滚动条自动隐藏
+    //（停止滚动 3s 后挂 .scroll-idle，见 components/xterm.css）。
+    onScroll() {
+      return { dispose: () => {} };
+    }
+
     focus() {}
 
     dispose() {}

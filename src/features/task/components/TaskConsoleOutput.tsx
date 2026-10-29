@@ -14,6 +14,7 @@ import { useAppContext } from '@/shared/contexts/AppContext';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { observeContainerSize } from '@/shared/utils/containerObserver';
+import { createScrollIdleTag } from '@/shared/utils/scrollAutoHide';
 import { applyRenderer, buildTerminalOptions, safeDisposeTerminal } from '@/shared/utils/terminal';
 import { setupTerminalInput, type TerminalInputController } from '@/shared/utils/terminalInput';
 
@@ -79,6 +80,11 @@ function TaskConsoleOutput({ run, active }: Props) {
     fitRef.current = fit;
     writtenLenRef.current = 0;
 
+    // 停止滚动 3s 后隐藏 xterm 自绘滚动条（xterm 只在指针移出滚动区时隐藏，
+    // 指针停在这个面板里就永远可见）。见 components/xterm.css。
+    const scrollIdle = createScrollIdleTag();
+    const scrollDisposable = term.onScroll(() => scrollIdle.reveal(el));
+
     // Initial buffer (may already have content if panel reopened mid-run)
     if (run.output) {
       term.write(run.output);
@@ -104,6 +110,8 @@ function TaskConsoleOutput({ run, active }: Props) {
     containerObserver.observe(el);
 
     return () => {
+      scrollDisposable.dispose();
+      scrollIdle.dispose();
       containerObserver.disconnect();
       inputControllerRef.current?.dispose();
       inputControllerRef.current = null;

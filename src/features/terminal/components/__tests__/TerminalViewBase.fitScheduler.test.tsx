@@ -106,6 +106,15 @@ describe('TerminalViewBase fit 调度器归属', () => {
     expect(resizeMock).toHaveBeenCalledWith('session-1', 100, 30);
     resizeMock.mockClear();
 
+    // 壳层几何：**只留左侧内边**。终端的滚动条由 xterm 自绘（overlay，贴在
+    // xterm 元素的右边缘），给壳层加右内边会把滚动条一起从右边缘推进去 ——
+    // 2026-11 实测后回退 px-2。网格右侧的余量（<1 字宽）是字符网格固有的。
+    // eslint-disable-next-line testing-library/no-node-access -- 结构断言：xterm 宿主容器类名
+    const wrapper = document.querySelector('.terminal-wrapper');
+    expect(wrapper).toHaveClass('pl-2');
+    expect(wrapper).not.toHaveClass('pr-2');
+    expect(wrapper).not.toHaveClass('px-2');
+
     // 切到 tab B：同一个组件实例，cacheKey 变（真实 app 的切换形态）
     view.rerender(<TerminalViewBase strategy={strategyB} tabAgentId={null} activeTabId="tB" />);
     await vi.advanceTimersByTimeAsync(200);

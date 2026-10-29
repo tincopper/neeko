@@ -8,6 +8,7 @@ import { resolveAgent } from '@/shared/store/agentStore';
 import { observeContainerSize } from '@/shared/utils/containerObserver';
 import { createDrainTransportScheduler } from '@/shared/utils/drainLoop';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
+import { createScrollIdleTag, type ScrollIdleTag } from '@/shared/utils/scrollAutoHide';
 import {
   applyRenderer,
   buildTerminalOptions,
@@ -71,6 +72,17 @@ export default React.memo(function TerminalViewBase({
   const [rebuildCount, setRebuildCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  // 滚动空闲标记：停止滚动 3s 后给壳层挂 `.scroll-idle`，让 xterm 自绘滚动条淡出
+  //（xterm 自己只在指针移出滚动区时隐藏，指针停在终端里就永远可见）。
+  const scrollIdleRef = useRef<ScrollIdleTag | null>(null);
+  useEffect(() => {
+    const tag = createScrollIdleTag();
+    scrollIdleRef.current = tag;
+    return () => {
+      tag.dispose();
+      scrollIdleRef.current = null;
+    };
+  }, []);
   // 调度器句柄：**按 effect 实例归属**（每 cacheKey 一份），绝不挂组件级 ref。
   // 挂组件级会让去重基线跨 tab 存活——上一个 tab 的 lastFit 尺寸被新 tab 继承，
   // 新 tab 的首次 PTY 同步被早退闸吃掉（格式混乱的根因，见 fitScheduler.ts 不变式）。
@@ -184,6 +196,7 @@ export default React.memo(function TerminalViewBase({
         setIsAtBottom(
           existingCache.term.buffer.active.viewportY >= existingCache.term.buffer.active.baseY,
         );
+        scrollIdleRef.current?.reveal(wrapperRef.current);
       });
     } else {
       const element = document.createElement('div');
@@ -224,6 +237,7 @@ export default React.memo(function TerminalViewBase({
         currentTermRef.current = term;
         scrollDisposable = term.onScroll(() => {
           setIsAtBottom(term.buffer.active.viewportY >= term.buffer.active.baseY);
+          scrollIdleRef.current?.reveal(wrapperRef.current);
         });
 
         const entry = {
