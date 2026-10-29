@@ -22,6 +22,7 @@ import { Button } from '@/ui/Button';
 import { getConversationMessages, exportConversation } from '../api/conversationApi';
 import { useConversationSearch } from '../hooks/useConversationSearch';
 import type { ConversationMessage as ConversationMessageType, ConversationMeta } from '../types';
+import { buildConversationStats } from '../utils/conversationStats';
 import { messageToText } from '../utils/messageToText';
 import { getToolSummary } from '../utils/toolPresentation';
 
@@ -41,14 +42,6 @@ interface ConversationViewerProps {
 }
 const INITIAL_LOAD = 100;
 const LOAD_MORE = 50;
-
-// 工具调用侧边栏项
-interface ToolCallItem {
-  msgIdx: number;
-  blockIdx: number;
-  name: string;
-  input: unknown;
-}
 
 interface MessageGroup {
   role: 'user' | 'assistant';
@@ -144,38 +137,8 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       setAtTop(scrollTop < 60);
     }, []);
 
-    // 计算统计信息和分组
-    const stats = useMemo(() => {
-      const toolCalls: ToolCallItem[] = [];
-      let thinkingCount = 0;
-
-      messages.forEach((msg, msgIdx) => {
-        if (!msg.blocks) return;
-        msg.blocks.forEach((block, blockIdx) => {
-          if (block.type === 'toolUse') {
-            toolCalls.push({
-              msgIdx,
-              blockIdx,
-              name: block.name,
-              input: block.input,
-            });
-          }
-          if (block.type === 'thinking') {
-            thinkingCount++;
-          }
-        });
-      });
-
-      const uniqueTools = [...new Set(toolCalls.map((tc) => tc.name))];
-
-      return {
-        totalMessages: messages.length,
-        toolCalls: toolCalls.length,
-        thinkingCount,
-        uniqueTools,
-        toolCallList: toolCalls,
-      };
-    }, [messages]);
+    // 统计信息（纯派生，见 utils/conversationStats.ts）
+    const stats = useMemo(() => buildConversationStats(messages), [messages]);
 
     const visibleMessages = messages.slice(-displayCount);
     const visibleStartIdx = messages.length - displayCount;
