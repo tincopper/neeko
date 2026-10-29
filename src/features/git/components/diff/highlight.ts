@@ -1,7 +1,5 @@
 import hljs from 'highlight.js/lib/core';
 
-import type { WordDiffPart } from './diffAlgorithm';
-
 const LANGUAGE_MAP: Record<string, () => Promise<unknown>> = {
   javascript: () => import('highlight.js/lib/languages/javascript'),
   typescript: () => import('highlight.js/lib/languages/typescript'),
@@ -127,38 +125,17 @@ export function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function highlightLine(text: string, language: string): string {
+/**
+ * 单行语法高亮：语言未注册 / 高亮抛错时降级为纯转义文本（宁可无色，不可白屏）。
+ *
+ * 唯一出口 —— 不要拆成「同名转发 + 内部实现」两层：词级差分（`renderWordDiffHtml`）删除后，
+ * 分片高亮与整行高亮已无区别，保留两个名字只会让「该用哪个」变成新的漂移点。
+ */
+export function renderHighlightedHtml(text: string, language: string): string {
   if (!language || !hljs.getLanguage(language)) return escapeHtml(text);
   try {
-    const result = hljs.highlight(text, { language, ignoreIllegals: true });
-    return result.value;
+    return hljs.highlight(text, { language, ignoreIllegals: true }).value;
   } catch {
     return escapeHtml(text);
   }
-}
-
-export function renderHighlightedHtml(text: string, language: string): string {
-  return highlightLine(text, language);
-}
-
-export function renderWordDiffHtml(
-  parts: WordDiffPart[],
-  side: 'old' | 'new',
-  language: string,
-): string {
-  return parts
-    .map((part) => {
-      const escaped = highlightLine(part.value, language);
-      if (part.type === 'equal') {
-        return escaped;
-      }
-      if (side === 'old' && part.type === 'removed') {
-        return `<span class="word-diff-removed">${escaped}</span>`;
-      }
-      if (side === 'new' && part.type === 'added') {
-        return `<span class="word-diff-added">${escaped}</span>`;
-      }
-      return escaped;
-    })
-    .join('');
 }

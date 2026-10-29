@@ -11,8 +11,7 @@ export type {
   ViewMode,
 } from './types';
 
-export { tokenizeForDiff, computeLCS, computeWordDiff, buildSplitRows } from './diffAlgorithm';
-export type { WordDiffPart } from './diffAlgorithm';
+export { buildSplitRows } from './diffAlgorithm';
 
 export { detectLanguage, escapeHtml } from './highlight';
 

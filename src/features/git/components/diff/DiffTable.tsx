@@ -2,11 +2,10 @@ import React, { useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
 
-import { computeWordDiff } from './diffAlgorithm';
 import { lineNumColumnWidth } from './diffLineNumbers';
 import { lastSelectedKeyOf, type SelectionMode } from './diffSelection';
 import ExpandedSectionRows from './ExpandedSectionRows';
-import { renderHighlightedHtml, renderWordDiffHtml } from './highlight';
+import { renderHighlightedHtml } from './highlight';
 import type { DiffHunk, DiffResult } from './types';
 import { getLineContent, getLineType } from './useDiffData';
 import { useDiffDragSelect } from './useDiffDragSelect';
@@ -148,20 +147,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
                       inBlock = false;
                     }
 
-                    let view = renderHighlightedHtml(content, language);
-                    if (lineType === 'removed') {
-                      const nextLine = hunk.lines[lineIndex + 1];
-                      if (nextLine?.Added !== undefined) {
-                        const { oldParts } = computeWordDiff(content, nextLine.Added);
-                        view = renderWordDiffHtml(oldParts, 'old', language);
-                      }
-                    } else if (lineType === 'added') {
-                      const prevLine = hunk.lines[lineIndex - 1];
-                      if (prevLine?.Removed !== undefined) {
-                        const { newParts } = computeWordDiff(prevLine.Removed, content);
-                        view = renderWordDiffHtml(newParts, 'new', language);
-                      }
-                    }
+                    const view = renderHighlightedHtml(content, language);
 
                     const lineKey = `${hunkIndex}:${lineIndex}`;
                     const isSelected =

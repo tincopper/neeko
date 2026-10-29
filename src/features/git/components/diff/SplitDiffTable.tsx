@@ -2,11 +2,11 @@ import React, { useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
 
-import { buildSplitRows, computeWordDiff } from './diffAlgorithm';
+import { buildSplitRows } from './diffAlgorithm';
 import { lineNumColumnWidth } from './diffLineNumbers';
 import { lastSelectedKeyOf, type SelectionMode } from './diffSelection';
 import ExpandedSectionRows from './ExpandedSectionRows';
-import { renderHighlightedHtml, renderWordDiffHtml } from './highlight';
+import { renderHighlightedHtml } from './highlight';
 import type { DiffHunk, DiffResult } from './types';
 import { useDiffDragSelect } from './useDiffDragSelect';
 
@@ -161,18 +161,10 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                   oldCellHtml = view;
                   newCellHtml = view;
                 } else if (row.type === 'change') {
-                  if (
-                    row.oldType === 'removed' &&
-                    row.newType === 'added' &&
-                    row.oldContent &&
-                    row.newContent
-                  ) {
-                    const { oldParts, newParts } = computeWordDiff(row.oldContent, row.newContent);
-                    oldCellHtml = renderWordDiffHtml(oldParts, 'old', language);
-                    newCellHtml = renderWordDiffHtml(newParts, 'new', language);
-                  } else if (row.oldType === 'removed' && row.oldContent) {
+                  if (row.oldType === 'removed' && row.oldContent) {
                     oldCellHtml = renderHighlightedHtml(row.oldContent, language);
-                  } else if (row.newType === 'added' && row.newContent) {
+                  }
+                  if (row.newType === 'added' && row.newContent) {
                     newCellHtml = renderHighlightedHtml(row.newContent, language);
                   }
                 }

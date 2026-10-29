@@ -1,13 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import {
-  detectLanguage,
-  escapeHtml,
-  tokenizeForDiff,
-  computeLCS,
-  computeWordDiff,
-  buildSplitRows,
-} from '@/features/git/components/diff';
+import { detectLanguage, escapeHtml, buildSplitRows } from '@/features/git/components/diff';
 import type { DiffHunk, DiffLine, DiffSource } from '@/features/git/components/diff';
 
 describe('detectLanguage', () => {
@@ -64,88 +57,6 @@ describe('escapeHtml', () => {
 
   it('空字符串返回空字符串', () => {
     expect(escapeHtml('')).toBe('');
-  });
-});
-
-describe('tokenizeForDiff', () => {
-  it('按单词和空白分词', () => {
-    expect(tokenizeForDiff('hello world')).toEqual(['hello', ' ', 'world']);
-  });
-
-  it('标点符号单独成 token', () => {
-    expect(tokenizeForDiff('a+b')).toEqual(['a', '+', 'b']);
-  });
-
-  it('CJK 字符被分组', () => {
-    const tokens = tokenizeForDiff('你好 world');
-    expect(tokens).toContain('你好');
-    expect(tokens).toContain('world');
-  });
-
-  it('空字符串返回空数组', () => {
-    expect(tokenizeForDiff('')).toEqual([]);
-  });
-
-  it('连续空格被保留', () => {
-    expect(tokenizeForDiff('a  b')).toEqual(['a', ' ', ' ', 'b']);
-  });
-});
-
-describe('computeLCS', () => {
-  it('完全相同返回完整对角线', () => {
-    const a = ['a', 'b', 'c'];
-    const lcs = computeLCS(a, a);
-    expect(lcs[0][0]).toBe(true);
-    expect(lcs[1][1]).toBe(true);
-    expect(lcs[2][2]).toBe(true);
-  });
-
-  it('完全不同返回空 LCS', () => {
-    const lcs = computeLCS(['a', 'b'], ['c', 'd']);
-    expect(lcs.flat().every((v) => !v)).toBe(true);
-  });
-
-  it('部分相同', () => {
-    const lcs = computeLCS(['a', 'b', 'c'], ['a', 'x', 'c']);
-    expect(lcs[0][0]).toBe(true); // a
-    expect(lcs[2][2]).toBe(true); // c
-  });
-
-  it('空数组返回空', () => {
-    const lcs = computeLCS([], ['a']);
-    expect(lcs).toEqual([]);
-  });
-});
-
-describe('computeWordDiff', () => {
-  it('相同文本返回全 equal', () => {
-    const { oldParts, newParts } = computeWordDiff('hello', 'hello');
-    expect(oldParts).toEqual([{ value: 'hello', type: 'equal' }]);
-    expect(newParts).toEqual([{ value: 'hello', type: 'equal' }]);
-  });
-
-  it('单词替换产生 removed + added', () => {
-    const { oldParts, newParts } = computeWordDiff('hello', 'world');
-    expect(oldParts).toEqual([{ value: 'hello', type: 'removed' }]);
-    expect(newParts).toEqual([{ value: 'world', type: 'added' }]);
-  });
-
-  it('空字符串 vs 有内容', () => {
-    const { oldParts, newParts } = computeWordDiff('', 'new');
-    expect(oldParts).toEqual([]);
-    expect(newParts).toEqual([{ value: 'new', type: 'added' }]);
-  });
-
-  it('添加后缀时保留相等部分', () => {
-    const { oldParts, newParts } = computeWordDiff('hello', 'hello world');
-    // old 全部 equal
-    expect(oldParts).toEqual([{ value: 'hello', type: 'equal' }]);
-    // new 有 equal + added
-    expect(newParts[0]).toEqual({ value: 'hello', type: 'equal' });
-    const addedParts = newParts.filter((p) => p.type === 'added');
-    expect(addedParts.length).toBeGreaterThan(0);
-    const addedText = addedParts.map((p) => p.value).join('');
-    expect(addedText).toContain('world');
   });
 });
 

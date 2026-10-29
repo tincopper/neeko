@@ -25,7 +25,7 @@ const diffResult: DiffResult = {
  * 回归测试（2026-09-05）：
  * SingleDiffBody 曾把 filePath 误传给 ensureLanguageRegistered（应为
  * detectLanguage 的语言名），LANGUAGE_MAP 查不到 → 语言永不注册 →
- * highlightLine 永久降级 escapeHtml，single 模式 Diff 高亮整体消失
+ * renderHighlightedHtml 永久降级 escapeHtml，single 模式 Diff 高亮整体消失
  * （引入于 3f14eea4 组件拆分重构）。
  *
  * 本文件隔离运行（vitest 模块隔离，hljs 单例不跨文件）：

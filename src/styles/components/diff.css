@@ -1,5 +1,5 @@
 /* -- Diff view -- 
- * 高内聚：diff 表格 split/unified、词级高亮、AI 行选中。
+ * 高内聚：diff 表格 split/unified、行级变更底色、AI 行选中。
  * 低耦合：颜色一律走 tokens（--diff-* / --cm-* / --accent-blue-rgb）。
  */
 
@@ -20,23 +20,8 @@
   .split-cell.empty, .split-linenum.empty { background-color: var(--bg-tertiary); opacity: 0.4; }
   .split-cell.context, .split-linenum.context { background-color: transparent; }
 
-  /* Diff word highlights (embedded in dangerouslySetInnerHTML) */
-  .word-diff-added {
-    color: var(--diff-added-text);
-    font-weight: 600;
-    background-color: color-mix(in srgb, var(--diff-added-text) 20%, transparent);
-    border-radius: 2px;
-    padding: 0 2px;
-    text-decoration: none;
-  }
-  .word-diff-removed {
-    color: var(--diff-removed-text);
-    font-weight: 600;
-    background-color: color-mix(in srgb, var(--diff-removed-text) 20%, transparent);
-    border-radius: 2px;
-    padding: 0 2px;
-    text-decoration: line-through;
-  }
+  /* 行内不做词级高亮（无 `.word-diff-*`）：行底色已标明「哪一行变了」，
+   * 片段再叠一层底/字重会盖掉语法色、长行里碎成色带；口径同编辑器 git 行高亮。 */
 
   /* Syntax highlighting — driven by CodeMirror theme variables */
   .diff-line .line-content .hljs-keyword, .diff-line .line-content .hljs-selector-tag { color: var(--cm-keyword); }
