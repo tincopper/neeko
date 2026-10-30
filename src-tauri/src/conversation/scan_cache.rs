@@ -46,6 +46,35 @@ pub fn source_signature(path: &Path) -> Option<SourceSignature> {
     })
 }
 
+/// Snapshot of a source file **plus** SQLite-style sidecars (`-wal`) — `len` summed、`mtime` 取最大。
+///
+/// 为什么不能只看主文件：SQLite 在 WAL 模式下把新提交先写进 `-wal`，主文件要到 checkpoint
+/// 才变。只看主文件时指纹会报「没变」⇒ 批量元数据缓存返回旧快照，新会话在 checkpoint 前
+/// 一直不可见（2026-10-30 opencode v2 升级后的实测形态）。
+///
+/// 侧文件不存在时结果与原函数完全相同。所有 SQLite 源都只经主文件传入 —— 调用方显式给出后缀，
+/// 本模块不猜扩展名。
+#[must_use]
+pub fn source_signature_with_sidecars(path: &Path, sidecars: &[&str]) -> Option<SourceSignature> {
+    let base = source_signature(path)?;
+    let mut len = base.len;
+    let mut modified = base.modified;
+    for suffix in sidecars {
+        let mut side = path.as_os_str().to_os_string();
+        side.push(suffix);
+        let Ok(meta) = std::fs::metadata(PathBuf::from(side)) else {
+            continue;
+        };
+        len += meta.len();
+        if let Ok(side_modified) = meta.modified() {
+            if side_modified > modified {
+                modified = side_modified;
+            }
+        }
+    }
+    Some(SourceSignature { len, modified })
+}
+
 #[derive(Debug, Clone)]
 struct FileMetaEntry {
     signature: SourceSignature,
@@ -410,6 +439,53 @@ mod tests {
         let second = read_jsonl_cached(tmp.path()).unwrap();
         assert_eq!(second.len(), 1);
         assert_eq!(second[0]["n"], 9);
+    }
+
+    /// WAL 侧文件增长必须改变指纹 —— 否则 SQLite 源的新数据在 checkpoint 前不可见。
+    #[test]
+    fn signature_changes_when_only_wal_sidecar_grows() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("opencode.db");
+        let wal = dir.path().join("opencode.db-wal");
+        std::fs::write(&db, b"main").unwrap();
+        std::fs::write(&wal, b"").unwrap();
+
+        let before = source_signature_with_sidecars(&db, &["-wal"]).unwrap();
+        std::fs::write(&wal, b"committed pages").unwrap();
+        let after = source_signature_with_sidecars(&db, &["-wal"]).unwrap();
+
+        assert_ne!(before, after, "只写 -wal 时指纹必须变化");
+        // mtime 取最大值 ⇒ 侧文件更新会让指纹更「新」（多解析一次，无害）；len 必须只算实际字节。
+        assert_eq!(
+            before.len,
+            source_signature(&db).unwrap().len,
+            "空侧文件不计字节"
+        );
+        assert_eq!(after.len, before.len + b"committed pages".len() as u64);
+    }
+
+    #[test]
+    fn sidecar_signature_matches_plain_when_no_sidecar_exists() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("opencode.db");
+        std::fs::write(&db, b"main").unwrap();
+
+        assert_eq!(
+            source_signature_with_sidecars(&db, &["-wal"]).unwrap(),
+            source_signature(&db).unwrap()
+        );
+    }
+
+    #[test]
+    fn sidecar_signature_still_detects_main_file_growth() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("opencode.db");
+        std::fs::write(&db, b"main").unwrap();
+        let before = source_signature_with_sidecars(&db, &["-wal"]).unwrap();
+        std::fs::write(&db, b"main plus a checkpoint").unwrap();
+        let after = source_signature_with_sidecars(&db, &["-wal"]).unwrap();
+
+        assert_ne!(before, after);
     }
 
     #[test]
