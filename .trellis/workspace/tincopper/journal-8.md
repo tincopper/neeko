@@ -993,3 +993,37 @@ PiRpcAdapter 实现 resume/supports_chat_resume，前端入口按 chat 侧能力
 ### Next Steps
 
 - 归档任务；可选：Rust 侧 ratchet 规模门禁（存量大文件另论）
+
+
+## Session 386: Markdown 图片渲染与 PDF 预览：归档前复核
+<!-- trellis-session: v=2 fp=972753597621dadc -->
+
+**Date**: 2026-10-30
+**Task**: Markdown 图片渲染与 PDF 预览：归档前复核
+**Branch**: `main`
+
+### Summary
+
+复核 10-29-md-image-pdf-preview：代码已合入（asset 协议 dotfile、read_file_bytes range 通道、pdf.js legacy + 显式运行时资源、四类渲染点接管 img）；本轮实跑 Rust reader_bytes 16 passed、前端 PDF/fileBytes/localAsset 44 passed。AC6 的「不整读文件」为构造性保证（seek+take(want)，want≤1MB）；唯一残留是 ≥200MB PDF 真机滚动验收（PRD 已标 [~]，无 GUI 不可代验）。
+
+### Main Changes
+
+- 无代码改动（仅任务产物复核记录）
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9e2b1d05` | feat(editor): preview images and PDFs in the file editor |
+
+### Testing
+
+- [OK] cargo test --lib reader_bytes（16 passed）；npx vitest run pdf + fileBytes + localAsset（44 passed / 4 files）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 归档任务；残留项：≥200MB PDF 真机滚动 + 远程 InProject scope 强校验（既有欠账）
