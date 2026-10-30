@@ -859,3 +859,38 @@ omp 改用共享 content_blocks 层（思考/工具块不再丢）；pi+omp 补�
 ### Next Steps
 
 - useChatRestore 仍按整段会话恢复聊天（分页组装，单次载荷已受约束）；真实 home 目录类测试存在一次不可复现 flake
+
+
+## Session 382: 历史会话删除（三态能力）+ 确认框结算缺陷
+<!-- trellis-session: v=2 fp=ab107df0b92fd886 -->
+
+**Date**: 2026-10-30
+**Task**: 历史会话删除（三态能力）+ 确认框结算缺陷
+**Branch**: `main`
+
+### Summary
+
+Conversations 面板支持删除历史会话：Native 委派 CLI（codex --force / opencode session delete）、Storage 删 adapter 定义的存储单元（pi blobs 永不删）、Unsupported 隐藏入口；命令只收 id、路径由后端缓存解析并校验在 session_root 内；成功后才退缓存/失效扫描缓存/落盘索引。修复 ConfirmDialog 确认按钮先把在途请求按取消结算导致 await confirmAction 恒 false 的全仓级缺陷。
+
+### Main Changes
+
+- conversation/adapter.rs 三态 SessionDeleteSupport + delete_command/delete_targets；manager.delete 执行链与路径防线；delete_conversation 薄命令；ConversationMeta.deleteSupport；ConversationItem 删除入口 + useConversationDeleteAction 编排 + confirmStore 复用；ConfirmDialog 确认按钮只调 onConfirm
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e705163b` | feat(conversation): delete history sessions via a three-state capability |
+| `2862900d` | fix(ui): settle store-driven confirmations as confirmed |
+
+### Testing
+
+- [OK] cargo test --lib 2360 passed；vitest 相关套件 3010 passed；check:quick 35/35；真机验收 pi / claude-code / omp / codex 四条删除路径
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- AC2 opencode 真机删除（需授权删一条可弃会话）；AC4 pi blobs 逐一比对；omp trace 目录清理
