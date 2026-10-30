@@ -88,16 +88,31 @@ content 项：`text{text}`、`reasoning{text}`、`tool{id, name, state}`
 
 ## Acceptance Criteria
 
-- [x] AC1 真机 DB 上，opencode 列表条数与最新时间从「索引 184 条 / 最新 2026-09-28」变为
-      「`/…/neeko` 前缀 227 条 / 最新 2026-10-30」（临时探针实测：`store=V2`、顶层 473 条；
-      抽查 4 条会话 `message_count == parse_messages().len()`）。
-- [ ] AC2 对每个夹具会话断言 `meta.message_count == parse_messages().len()`（v2 与 v1 各一条）。
-- [ ] AC3 v2 夹具：子会话 / 归档 / `system`+`compaction` 等噪声行都不出现在列表与正文。
-- [ ] AC4 v2 夹具：assistant 的 `reasoning`→Thinking、`tool` completed→ToolUse+ToolResult 成对、
-      error→`is_error=true`，且工具输出不进预览。
-- [ ] AC5 判定：`session_v2` 有数据 → V2；只有 v1 表 → V1；`session_v2` 空表 + v1 有数据 → V1。
-- [ ] AC6 WAL：只写 `-wal` 时指纹变化（缓存不再复用旧快照）。
-- [ ] AC7 既有 v1 用例全绿且未改断言；`cargo test --lib conversation` / clippy / fmt / `pnpm check:quick` 绿。
+- [x] AC1 真机 DB 上，opencode 列表不再停在升级前：索引从「184 条 / 最新 2026-09-28」变为
+      「`/…/neeko` 前缀 216 条 / 最新 **2026-10-30**」。
+      *真机探针（对提交后的代码重跑，跑完删除）：`store=V2`、顶层 **462** 条、scoped **216** 条；
+      抽查 40 条有正文的会话 `message_count == parse_messages().len()` 全部相等；7 条空标题会话
+      由「首条用户消息」补上（`first_user_message` 修复在真数据上生效）。*
+- [x] AC2 对每个夹具会话断言 `meta.message_count == parse_messages().len()`
+      → `v2/tests/content.rs::message_count_matches_parsed_message_count`（v2 夹具全部会话）+ v1 经
+      `opencode/tests/messages.rs::should_parse_messages`；真机另外抽 40 条核对。
+- [x] AC3 v2 夹具：子会话 / 归档 / `system`+`compaction` 等噪声行都不出现在列表与正文
+      → `v2/tests/listing.rs::lists_top_level_unarchived_sessions_newest_first`（子会话+归档排除）、
+      `v2/tests/content.rs::counts_only_conversation_turns`（只有 user/assistant 计数）、
+      `parses_messages_in_seq_order_and_skips_metadata_rows`（正文不含 system/compaction 行）。
+- [x] AC4 v2 夹具：`reasoning`→Thinking、`tool` completed→ToolUse+ToolResult 成对、
+      error→`is_error=true`，且工具输出不进预览
+      → `v2/tests/content.rs::{maps_content_items_to_text_thinking_and_tool_blocks, maps_failed_tool_to_error_result}`
+      + `v2/tests/listing.rs::{preview_uses_text_items_only, preview_window_reaches_past_tool_only_turns}`。
+- [x] AC5 判定三态 → `store.rs::tests::{detects_v2_when_v2_tables_have_rows,
+      detects_v1_when_v2_tables_exist_but_are_empty, detects_v1_when_only_one_v2_table_exists,
+      detects_v1_for_legacy_database}`；**判据被谁用**由 `v2/tests/dispatch.rs` 4 条钉住
+      （`read_db` 两臂写反 → 2 红；`parse_meta` 分录写反 → 1 红）。
+- [x] AC6 只写 `-wal` 时指纹变化 → `scan_cache.rs::tests::signature_changes_when_only_wal_sidecar_grows`
+      + `opencode/tests/listing.rs::bulk_cache_signature_tracks_wal_sidecar`（常量漏 `-wal` → 红）。
+- [x] AC7 既有 v1 用例全绿且未改断言（v1 只搬文件、SQL 与口径未动）；本轮实测
+      `cargo test --lib` **2391 passed / 5 ignored**、`clippy -D warnings` 与 `fmt --check` 干净；
+      `pnpm check:quick` 因工作树干净而跳过（该命令的既定行为，非失败）。
 
 ## Out of Scope
 

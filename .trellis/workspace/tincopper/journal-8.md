@@ -958,3 +958,38 @@ PiRpcAdapter 实现 resume/supports_chat_resume，前端入口按 chat 侧能力
 ### Next Steps
 
 - 归档任务；可选：把三条真机探针落成常驻 #[ignore] 用例
+
+
+## Session 385: opencode v2 存储兼容：归档前复核（真机 462 条 / scoped 216 条）
+<!-- trellis-session: v=2 fp=8544a8a23ef0e8f2 -->
+
+**Date**: 2026-10-30
+**Task**: opencode v2 存储兼容：归档前复核（真机 462 条 / scoped 216 条）
+**Branch**: `main`
+
+### Summary
+
+对提交后的代码重跑真机探针：store=V2、顶层 462 条、/neeko 前缀 216 条、最新 2026-10-30；抽查 40 条有正文会话 message_count == parse_messages().len()；7 条空标题会话由首条用户消息补上（first_user_message 修复在真数据生效）。cargo test --lib 2391 passed / 5 ignored，clippy/fmt 干净。AC1-AC7 逐条勾验。
+
+### Main Changes
+
+- 无代码改动（仅任务产物 AC 勾验与复核记录）
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c6c92a19` | feat(conversation): read opencode v2 storage while keeping v1 |
+| `8d1662da` | fix(conversation): include the sqlite wal sidecar in the scan fingerprint |
+
+### Testing
+
+- [OK] cargo test --lib 2391 passed；真机 opencode 库探针（跑完删除）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 归档任务；可选：Rust 侧 ratchet 规模门禁（存量大文件另论）

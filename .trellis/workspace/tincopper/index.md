@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 384
+- **Total Sessions**: 385
 - **Last Active**: 2026-10-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~960 | Active |
+| `journal-8.md` | ~995 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 385 | 2026-10-30 | opencode v2 存储兼容：归档前复核（真机 462 条 / scoped 216 条） | `c6c92a19`, `8d1662da` | `main` |
 | 384 | 2026-10-30 | pi 会话恢复为 Agent Chat（能力单一真相）+ 真机验收 | - | `main` |
 | 383 | 2026-10-30 | opencode v2 存储兼容（v1 保留） | - | `main` |
 | 382 | 2026-10-30 | 历史会话删除（三态能力）+ 确认框结算缺陷 | `e705163b`, `2862900d` | `main` |
