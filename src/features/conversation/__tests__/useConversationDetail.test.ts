@@ -31,6 +31,7 @@ describe('useConversationDetail', () => {
     expect(mockInvoke).toHaveBeenCalledWith('get_conversation_messages', {
       id: 'pi:s1',
       offset: 0,
+      fromEnd: false,
     });
   });
 

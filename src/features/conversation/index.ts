@@ -8,7 +8,7 @@ export {
   searchConversations,
   updateConversation,
   getResumeCommand,
-  exportConversation,
+  copyConversationMarkdown,
 } from './api/conversationApi';
 
 export { useConversationList } from './hooks/useConversationList';

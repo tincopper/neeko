@@ -40,11 +40,26 @@ const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidt
 
 beforeEach(() => {
   mockInvoke.mockReset();
-  mockInvoke.mockImplementation(async (cmd: string) => {
+  mockInvoke.mockImplementation(async (cmd: string, args?: { query?: string }) => {
     if (cmd === 'get_conversation_messages')
       // 正文按页传输（红线 4）：单页覆盖全部消息，hasMore=false
       return { items: makeMessages(40), total: 40, offset: 0, limit: 40, hasMore: false };
-    if (cmd === 'export_conversation') return '# export';
+    if (cmd === 'get_conversation_stats')
+      return {
+        totalMessages: 40,
+        toolCalls: 0,
+        thinkingCount: 0,
+        uniqueTools: [],
+        toolCallList: [],
+        toolCallListTruncated: false,
+      };
+    if (cmd === 'search_conversation_messages') {
+      // 与旧客户端实现等价：命中所有含 "reply" 的助手消息
+      return makeMessages(40)
+        .filter((m) => m.content.includes(args?.query ?? ''))
+        .map((m) => ({ seq: m.seq, role: m.role, snippet: m.content }));
+    }
+    if (cmd === 'copy_conversation_markdown') return 123;
     return undefined;
   });
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {

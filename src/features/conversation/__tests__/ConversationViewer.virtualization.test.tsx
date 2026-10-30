@@ -40,11 +40,26 @@ const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidt
 
 beforeEach(() => {
   mockInvoke.mockReset();
-  mockInvoke.mockImplementation(async (cmd: string) => {
+  mockInvoke.mockImplementation(async (cmd: string, args?: { query?: string }) => {
     if (cmd === 'get_conversation_messages')
       // 正文按页传输（红线 4）：单页覆盖全部消息，hasMore=false
       return { items: makeMessages(120), total: 120, offset: 0, limit: 120, hasMore: false };
-    if (cmd === 'export_conversation') return '# export';
+    if (cmd === 'get_conversation_stats')
+      return {
+        totalMessages: 120,
+        toolCalls: 0,
+        thinkingCount: 0,
+        uniqueTools: [],
+        toolCallList: [],
+        toolCallListTruncated: false,
+      };
+    if (cmd === 'search_conversation_messages') {
+      // 与旧客户端实现等价：命中所有含 "reply" 的助手消息
+      return makeMessages(120)
+        .filter((m) => m.content.includes(args?.query ?? ''))
+        .map((m) => ({ seq: m.seq, role: m.role, snippet: m.content }));
+    }
+    if (cmd === 'copy_conversation_markdown') return 123;
     return undefined;
   });
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
@@ -76,7 +91,7 @@ describe('ConversationViewer virtualization', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/user message 20/)).toBeInTheDocument();
+      expect(screen.getByText(/user message 0/)).toBeInTheDocument();
     });
 
     // 120 messages → ~90 groups; virtualized DOM must mount far fewer rows.
@@ -99,13 +114,13 @@ describe('ConversationViewer virtualization', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/user message 20/)).toBeInTheDocument();
+      expect(screen.getByText(/user message 0/)).toBeInTheDocument();
     });
 
     // 滚动元素归 VirtualList 所有 ⇒ 补偿模式以 prop 下传，落地为 data 标记
     //（实际内边调整在 useScrollbarCompensation 内，见 scrollbarCompensation.test.ts）
     // eslint-disable-next-line testing-library/no-node-access -- 结构关系断言（滚动祖先）
-    const scroller = screen.getByText(/user message 20/).closest('[data-scrollbar-compensation]');
+    const scroller = screen.getByText(/user message 0/).closest('[data-scrollbar-compensation]');
     expect(scroller).toHaveAttribute('data-scrollbar-compensation', 'center');
   });
 });

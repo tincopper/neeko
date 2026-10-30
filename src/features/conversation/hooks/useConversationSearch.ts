@@ -1,45 +1,75 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import type { ConversationMessage } from '../types';
-import { findMessageMatches } from '../utils/conversationSearch';
+import { searchConversationMessages } from '../api/conversationApi';
+import type { ConversationSearchHit } from '../types';
+
+/** 输入停顿多久后才向后端发起搜索。 */
+const SEARCH_DEBOUNCE_MS = 200;
 
 /**
- * 会话内消息搜索状态：query → 匹配消息索引列表 + 当前匹配位置（循环导航）。
+ * 会话内消息搜索：query → 后端命中列表（定位 + 片段）+ 当前命中位置（循环导航）。
+ *
+ * 搜索在 Rust 侧扫描整段正文，因此前端不需要持有全量消息；命中只带 `seq`，
+ * 视图按 `seq` 加载定位页（见 ConversationViewer 的 jumpToSeq）。
  */
-export function useConversationSearch(messages: ConversationMessage[]) {
+export function useConversationSearch(conversationId: string | null) {
   const [query, setQueryRaw] = useState('');
+  const [hits, setHits] = useState<ConversationSearchHit[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
 
-  const matches = useMemo(() => findMessageMatches(messages, query), [messages, query]);
-
-  // query 变化时重置当前匹配到第一个
   const setQuery = useCallback((value: string) => {
     setQueryRaw(value);
     setCurrentIdx(0);
   }, []);
 
-  const current = matches.length > 0 ? matches[Math.min(currentIdx, matches.length - 1)] : -1;
+  useEffect(() => {
+    const trimmed = query.trim();
+    // 空 query 直接不请求；展示侧用 effectiveHits 兜掉上一次搜索的残留
+    if (!conversationId || trimmed.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      searchConversationMessages(conversationId, trimmed)
+        .then((next) => {
+          if (!cancelled) setHits(next);
+        })
+        .catch((err) => {
+          console.error('[useConversationSearch] Search failed:', err);
+          if (!cancelled) setHits([]);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [conversationId, query]);
+
+  const effectiveHits = query.trim().length === 0 ? [] : hits;
+  const activeIndex =
+    effectiveHits.length > 0 ? Math.min(currentIdx, effectiveHits.length - 1) : -1;
+  const currentSeq = activeIndex >= 0 ? effectiveHits[activeIndex].seq : -1;
 
   const goToNext = useCallback(() => {
-    setCurrentIdx((prev) => (prev + 1) % Math.max(matches.length, 1));
-  }, [matches.length]);
+    setCurrentIdx((prev) => (prev + 1) % Math.max(effectiveHits.length, 1));
+  }, [effectiveHits.length]);
 
   const goToPrev = useCallback(() => {
-    setCurrentIdx((prev) => (prev - 1 + matches.length) % Math.max(matches.length, 1));
-  }, [matches.length]);
+    setCurrentIdx((prev) => (prev - 1 + effectiveHits.length) % Math.max(effectiveHits.length, 1));
+  }, [effectiveHits.length]);
 
   const clear = useCallback(() => {
     setQuery('');
+    setHits([]);
     setCurrentIdx(0);
   }, [setQuery]);
 
   return {
     query,
     setQuery,
-    matches,
-    current,
-    /** 当前匹配在 matches 中的序号（0-based），无匹配时为 -1。 */
-    activeIndex: matches.length > 0 ? Math.min(currentIdx, matches.length - 1) : -1,
+    hits: effectiveHits,
+    activeIndex,
+    currentSeq,
     goToNext,
     goToPrev,
     clear,

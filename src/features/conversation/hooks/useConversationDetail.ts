@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getConversationMessages, exportConversation } from '../api/conversationApi';
+import { copyConversationMarkdown, getConversationMessages } from '../api/conversationApi';
 import type { ConversationMessage } from '../types';
 
 export function useConversationDetail(conversationId: string | null) {
@@ -33,14 +33,19 @@ export function useConversationDetail(conversationId: string | null) {
     }
   }, [conversationId, loadMessages]);
 
-  const handleExport = useCallback(async (id: string): Promise<string | null> => {
+  /**
+   * 整段会话写入剪贴板（Rust 侧生成并直写，不经 IPC 回传正文）。
+   *
+   * 返回写入的字符数；失败返回 null。
+   */
+  const handleExport = useCallback(async (id: string): Promise<number | null> => {
     try {
-      return await exportConversation(id);
+      return await copyConversationMarkdown(id);
     } catch (err) {
       console.error('[useConversationDetail] Export failed:', err);
       return null;
     }
   }, []);
 
-  return { messages: conversationId ? messages : [], loading, exportConversation: handleExport };
+  return { messages: conversationId ? messages : [], loading, copyMarkdown: handleExport };
 }

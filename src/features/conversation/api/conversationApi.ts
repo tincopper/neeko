@@ -5,6 +5,8 @@ import type {
   ConversationMeta,
   ConversationMessage,
   ConversationMessagePage,
+  ConversationSearchHit,
+  ConversationStats,
   ScanReport,
 } from '../types';
 
@@ -29,12 +31,34 @@ export function listConversations(
   });
 }
 
-/** 拉取一页正文；每页由 Rust 侧按 1.5MB 预算切分（红线 4）。 */
+/**
+ * 拉取一页正文；每页由 Rust 侧按 1.5MB 预算切分（红线 4）。
+ *
+ * `fromEnd: true` 时 `offset` 表示「跳过末尾多少条」，正文视图用它取尾页与更早的页。
+ */
 export function getConversationMessagesPage(
   id: string,
   offset = 0,
+  options?: { fromEnd?: boolean },
 ): Promise<ConversationMessagePage> {
-  return invoke<ConversationMessagePage>('get_conversation_messages', { id, offset });
+  return invoke<ConversationMessagePage>('get_conversation_messages', {
+    id,
+    offset,
+    fromEnd: options?.fromEnd ?? false,
+  });
+}
+
+/** 正文统计（工具调用清单 / thinking 计数）：Rust 侧计算，避免前端为计数持有全量正文。 */
+export function getConversationStats(id: string): Promise<ConversationStats> {
+  return invoke<ConversationStats>('get_conversation_stats', { id });
+}
+
+/** 正文内搜索：返回命中定位与片段（视图按 `seq` 加载定位页）。 */
+export function searchConversationMessages(
+  id: string,
+  query: string,
+): Promise<ConversationSearchHit[]> {
+  return invoke<ConversationSearchHit[]>('search_conversation_messages', { id, query });
 }
 
 /**
@@ -71,8 +95,13 @@ export function getResumeCommand(id: string): Promise<string[] | null> {
   return invoke<string[] | null>('get_resume_command', { id });
 }
 
-export function exportConversation(id: string): Promise<string> {
-  return invoke<string>('export_conversation', { id });
+/**
+ * 把整段会话以 Markdown 写入系统剪贴板，返回写入的字符数。
+ *
+ * 正文在 Rust 侧生成并直接写剪贴板 —— 不经 IPC 回传（红线 4）。
+ */
+export function copyConversationMarkdown(id: string): Promise<number> {
+  return invoke<number>('copy_conversation_markdown', { id });
 }
 
 /** Backend emits this while `scan_conversations` runs (Stage C progress). */

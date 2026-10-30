@@ -19,12 +19,12 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 
-import { getConversationMessages, exportConversation } from '../api/conversationApi';
+import { copyConversationMarkdown } from '../api/conversationApi';
 import { useConversationSearch } from '../hooks/useConversationSearch';
+import { useConversationStats } from '../hooks/useConversationStats';
+import { useConversationWindow } from '../hooks/useConversationWindow';
 import type { ConversationMessage as ConversationMessageType, ConversationMeta } from '../types';
-import { buildConversationStats } from '../utils/conversationStats';
 import { messageToText } from '../utils/messageToText';
-import { getToolSummary } from '../utils/toolPresentation';
 
 import ConversationMessage from './ConversationMessage';
 import { MessageBlockList, ToolIcon } from './MessageBlocks';
@@ -40,9 +40,6 @@ interface ConversationViewerProps {
   onResume?: (meta: ConversationMeta) => void;
   showToast?: (message: string, type?: 'info' | 'error') => void;
 }
-const INITIAL_LOAD = 100;
-const LOAD_MORE = 50;
-
 interface MessageGroup {
   role: 'user' | 'assistant';
   messages: ConversationMessageType[];
@@ -75,18 +72,30 @@ function groupMessages(messages: ConversationMessageType[], startIdx: number): M
 
 const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
   ({ conversationId, agentId, conversationMeta, agents = [], onBack, onResume, showToast }) => {
-    const [messages, setMessages] = useState<ConversationMessageType[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [displayCount, setDisplayCount] = useState(INITIAL_LOAD);
+    // 正文只保留「当前窗口」（尾页 + 向上按需加载）；窗口逻辑见 useConversationWindow
+    const {
+      messages,
+      startIndex: windowStart,
+      loading,
+      loadingEarlier,
+      hasEarlier,
+      hasLater,
+      loadEarlier,
+      jumpToSeq,
+      jumpToLatest,
+    } = useConversationWindow(conversationId);
     const [exporting, setExporting] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [atTop, setAtTop] = useState(true);
     const [copiedGroup, setCopiedGroup] = useState<number | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
     const listHandleRef = useRef<VirtualListHandle | null>(null);
+    // 跳转目标：窗口切换是异步的，等 messages/groups 更新后再滚（否则用的是过期分组）
+    const pendingScrollRef = useRef<{ kind: 'seq'; seq: number } | { kind: 'latest' } | null>(null);
     const copyToClipboard = useCopyToClipboard();
 
-    const search = useConversationSearch(messages);
+    const search = useConversationSearch(conversationId);
+    const stats = useConversationStats(conversationId);
 
     const handleCopyGroup = useCallback(
       async (msgs: ConversationMessageType[], firstIdx: number) => {
@@ -111,43 +120,12 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
     const projectName = activeProject?.name ?? null;
     const projectColor = activeProject?.avatar_color ?? null;
 
-    // Load messages
-    useEffect(() => {
-      let cancelled = false;
-      setLoading(true);
-      setDisplayCount(INITIAL_LOAD);
-      getConversationMessages(conversationId)
-        .then((msgs) => {
-          if (!cancelled) {
-            setMessages(msgs);
-            setLoading(false);
-          }
-        })
-        .catch((err) => {
-          console.error('[ConversationViewer] Failed to load messages:', err);
-          if (!cancelled) setLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [conversationId]);
-
     // Track scroll position for nav button
     const handleScroll = useCallback((scrollTop: number) => {
       setAtTop(scrollTop < 60);
     }, []);
 
-    // 统计信息（纯派生，见 utils/conversationStats.ts）
-    const stats = useMemo(() => buildConversationStats(messages), [messages]);
-
-    const visibleMessages = messages.slice(-displayCount);
-    const visibleStartIdx = messages.length - displayCount;
-    const hasMore = messages.length > displayCount;
-
-    const groups = useMemo(
-      () => groupMessages(visibleMessages, visibleStartIdx),
-      [visibleMessages, visibleStartIdx],
-    );
+    const groups = useMemo(() => groupMessages(messages, windowStart), [messages, windowStart]);
 
     // Jump to bottom on first load (instant — smooth animation janks on long transcripts)
     useEffect(() => {
@@ -156,30 +134,30 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       }
     }, [loading, messages.length, groups.length]);
 
-    const handleLoadMore = useCallback(() => {
+    /** 向上拉一页：保持滚动位置（新内容插在顶部）。 */
+    const handleLoadEarlier = useCallback(async () => {
       const prevHeight = listHandleRef.current?.getScrollElement()?.scrollHeight ?? 0;
-      setDisplayCount((prev) => prev + LOAD_MORE);
+      const loaded = await loadEarlier();
+      if (!loaded) return;
       requestAnimationFrame(() => {
         const el = listHandleRef.current?.getScrollElement();
-        if (el) {
-          el.scrollTop = el.scrollHeight - prevHeight;
-        }
+        if (el) el.scrollTop = el.scrollHeight - prevHeight;
       });
-    }, []);
+    }, [loadEarlier]);
 
     const handleExport = useCallback(async () => {
       setExporting(true);
       try {
-        const markdown = await exportConversation(conversationId);
-        const ok = await copyToClipboard(markdown, 'conversation');
-        if (ok) showToast?.('Conversation exported to clipboard', 'info');
+        // Rust 侧生成 Markdown 并直接写剪贴板：大会话不再回传数 MB 字符串（红线 4）
+        const chars = await copyConversationMarkdown(conversationId);
+        showToast?.(`Conversation copied to clipboard (${chars} chars)`, 'info');
       } catch (err) {
         console.error('[ConversationViewer] Export failed:', err);
         showToast?.('Failed to export conversation', 'error');
       } finally {
         setExporting(false);
       }
-    }, [conversationId, showToast, copyToClipboard]);
+    }, [conversationId, showToast]);
 
     const scrollToMessage = useCallback(
       (msgIdx: number) => {
@@ -191,6 +169,30 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       [groups],
     );
 
+    /** 跳到 `seq`：命中不在窗口内时切换定位页，等窗口落定后再滚到所在分组。 */
+    const handleJumpToSeq = useCallback(
+      async (seq: number) => {
+        const inWindow = messages.some((m) => m.seq === seq);
+        if (inWindow) {
+          scrollToMessage(messages.findIndex((m) => m.seq === seq));
+          return;
+        }
+        pendingScrollRef.current = { kind: 'seq', seq };
+        await jumpToSeq(seq);
+      },
+      [jumpToSeq, messages, scrollToMessage],
+    );
+
+    /** 回到最新消息：窗口已是尾部就直接滚到底，否则拉回尾页后等窗口落定再滚。 */
+    const handleJumpToLatest = useCallback(async () => {
+      if (!hasLater) {
+        listHandleRef.current?.scrollToIndex(groups.length - 1, 'end');
+        return;
+      }
+      pendingScrollRef.current = { kind: 'latest' };
+      await jumpToLatest();
+    }, [groups.length, hasLater, jumpToLatest]);
+
     const scrollToTop = useCallback(() => {
       listHandleRef.current?.getScrollElement()?.scrollTo({ top: 0, behavior: 'smooth' });
     }, []);
@@ -201,11 +203,27 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
 
     // 搜索导航：当前匹配变化时滚动到对应消息
     useEffect(() => {
-      if (search.current >= 0) {
-        scrollToMessage(search.current);
+      if (search.currentSeq >= 0) {
+        void handleJumpToSeq(search.currentSeq);
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- search 为自定义 hook 返回对象，仅需监听 current 变化
-    }, [search.current, scrollToMessage]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- search 为自定义 hook 返回对象，仅需监听 currentSeq 变化
+    }, [search.currentSeq, jumpToSeq, scrollToMessage]);
+
+    // 窗口落定后执行挂起的滚动
+    useEffect(() => {
+      const pending = pendingScrollRef.current;
+      const handle = listHandleRef.current;
+      if (!pending || !handle) return;
+      if (pending.kind === 'latest') {
+        handle.scrollToIndex(groups.length - 1, 'end');
+      } else {
+        const idx = messages.findIndex((m) => m.seq === pending.seq);
+        if (idx < 0) return; // 目标页还没到，等下一次窗口更新
+        const groupIdx = groups.findIndex((g) => g.indices.includes(idx));
+        if (groupIdx >= 0) handle.scrollToIndex(groupIdx, 'center');
+      }
+      pendingScrollRef.current = null;
+    }, [groups, messages]);
 
     const agentName = agent?.name ?? agentId ?? 'Conversation';
     const modelLabel = conversationMeta?.model;
@@ -277,12 +295,12 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                   aria-label="Search messages"
                   className="w-40 bg-transparent text-xs text-text-primary outline-none placeholder:text-text-muted/60"
                 />
-                {search.matches.length > 0 ? (
+                {search.hits.length > 0 ? (
                   <span
                     className="shrink-0 text-[10px] text-text-muted tabular-nums"
                     data-testid="search-count"
                   >
-                    {search.activeIndex + 1} / {search.matches.length}
+                    {search.activeIndex + 1} / {search.hits.length}
                   </span>
                 ) : search.query ? (
                   <span className="shrink-0 text-[10px] text-text-muted/60">0 / 0</span>
@@ -293,7 +311,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                   onClick={search.goToPrev}
                   title="Previous match"
                   aria-label="Previous match"
-                  disabled={search.matches.length === 0}
+                  disabled={search.hits.length === 0}
                 >
                   <ChevronUp className="w-3.5 h-3.5" />
                 </button>
@@ -303,7 +321,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                   onClick={search.goToNext}
                   title="Next match"
                   aria-label="Next match"
-                  disabled={search.matches.length === 0}
+                  disabled={search.hits.length === 0}
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
                 </button>
@@ -372,15 +390,16 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
         <div className="flex-1 flex overflow-hidden relative">
           {/* Messages */}
           <div className="flex-1 flex flex-col min-w-0">
-            {hasMore && (
+            {hasEarlier && (
               <div className="flex justify-center pt-2 pb-1 shrink-0">
                 <Button
                   variant="ghost"
                   size="sm"
                   className="text-xs text-text-secondary/60"
-                  onClick={handleLoadMore}
+                  onClick={() => void handleLoadEarlier()}
+                  disabled={loadingEarlier}
                 >
-                  Load older messages
+                  {loadingEarlier ? 'Loading older messages…' : 'Load older messages'}
                 </Button>
               </div>
             )}
@@ -480,7 +499,9 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
             variant="secondary"
             size="icon"
             className="absolute bottom-4 right-4 w-8 h-8 rounded-full shadow-md z-10"
-            onClick={atTop ? scrollToBottom : scrollToTop}
+            onClick={
+              atTop ? (hasLater ? () => void handleJumpToLatest() : scrollToBottom) : scrollToTop
+            }
             title={atTop ? 'Scroll to bottom' : 'Scroll to top'}
           >
             {atTop ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
@@ -491,16 +512,21 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
             <div className="w-56 shrink-0 border-l border-border bg-bg-secondary/30 overflow-y-auto">
               <div className="p-2 text-[11px] font-medium text-text-secondary/60 border-b border-border">
                 Tool Calls ({stats.toolCalls})
+                {stats.toolCallListTruncated ? (
+                  <span className="block font-normal text-text-secondary/40">
+                    showing first {stats.toolCallList.length}
+                  </span>
+                ) : null}
               </div>
               <div className="p-1">
                 {stats.toolCallList.map((call, idx) => {
-                  const summary = getToolSummary(call.name, call.input);
+                  const summary = call.summary;
                   return (
                     <button
                       key={idx}
                       type="button"
                       className="flex items-start gap-2 w-full px-2 py-1.5 text-xs hover:bg-bg-hover rounded transition-colors text-left"
-                      onClick={() => scrollToMessage(call.msgIdx)}
+                      onClick={() => void handleJumpToSeq(call.seq)}
                     >
                       <ToolIcon
                         name={call.name}
