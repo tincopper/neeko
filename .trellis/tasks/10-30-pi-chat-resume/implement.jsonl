@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/agent-chat-transports.md", "reason": "pi rpc 传输契约：握手/能力位/launch_args 后写者胜；resume 设计必须与既有能力声明一致"}
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "conversation 域 nativeSessionId/resume_command 语义；resume 目标 id 的权威来源"}
+{"file": ".trellis/spec/backend/command-execution.md", "reason": "进程 spawn 只经 core::exec 的规则（红线 1/2）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppError 变体选择与错误信息可归因要求"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "invoke 只允许出现在 feature API 门面（chatResumeSupport 的落点约束）"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useChatResumableAgents / useChatRestore 的 hook 规范"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试夹具：duplex 假进程注入，不起真进程"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端 renderHook/组件测试规范"}
