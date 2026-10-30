@@ -485,6 +485,216 @@
         }
       ],
       "red_line": 12
+    },
+    {
+      "id": "team-idle-never-auto-upgrades-to-done",
+      "title": "Agent Team：Idle 永不自动升级为 Done —— 完成的唯一权威是任务板的显式声明",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/completion.rs",
+          "note": "completion::tests::{turn_completed_lands_idle_and_marks_unverified, repeated_turn_completed_never_upgrades_idle_to_done, no_signal_combination_manufactures_a_done_task}；全组合穷举"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/manager.rs",
+          "note": "manager::tests::turn_completed_leaves_the_task_in_progress_and_the_member_unverified"
+        }
+      ]
+    },
+    {
+      "id": "team-task-has-exactly-one-owner",
+      "title": "Agent Team：认领是原子的 —— 同一任务不会有第二个 owner",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/manager.rs",
+          "note": "manager::tests::{exactly_one_of_two_concurrent_claims_wins, second_sequential_claim_is_rejected, cross_team_claim_is_rejected}；双线程真实竞态"
+        }
+      ]
+    },
+    {
+      "id": "team-lease-reclaim-cap",
+      "title": "Agent Team：租约回收有上限 —— 回收超过 3 次转 Blocked，不再自动回收（防死锁与无限重试）",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/lease.rs",
+          "note": "lease::tests::{auto_release_allowed_up_to_third_reclaim_only, huge_ttl_saturates_instead_of_overflowing}"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/manager.rs",
+          "note": "manager::tests::{reclaim_over_limit_blocks_the_task_for_good, expired_lease_returns_task_to_pending_and_stalls_owner}"
+        }
+      ]
+    },
+    {
+      "id": "team-workspace-immutable-after-claim",
+      "title": "Agent Team：任务的 workspace 在 pending 之后不可变（隔离单元必须 claim 前定死）",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/manager.rs",
+          "note": "manager::tests::{workspace_is_immutable_once_claimed, workspace_is_mutable_while_pending}"
+        }
+      ]
+    },
+    {
+      "id": "team-done-only-by-owner-or-lead",
+      "title": "Agent Team：Done 只由任务 owner 或队长 force_done 触达，且后者必须留审计",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/manager.rs",
+          "note": "manager::tests::{done_is_reachable_only_by_the_owner, force_done_by_lead_records_an_audit_row, force_done_by_a_worker_is_rejected, terminal_tasks_cannot_be_reopened}"
+        }
+      ]
+    },
+    {
+      "id": "team-verification-is-per-task",
+      "title": "Agent Team：完成取证按任务重置、只由在飞任务驱动 —— L1（回合结束）无权撤回 L2（显式声明）的裁决",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/completion.rs",
+          "note": "completion::tests::verified_survives_a_late_turn_completed；一致三元组：任务仍在飞时 Verified 属不一致输入，降级即修复"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/manager.rs",
+          "note": "manager::tests::{explicit_done_is_verified_and_survives_late_signals, claim_resets_verification_for_the_new_task, reload_restores_the_board_and_derives_verification}；observe_signal 无在飞任务时只推进成员态不改写取证"
+        }
+      ]
+    },
+    {
+      "id": "team-task-summary-is-bounded",
+      "title": "Agent Team：任务摘要硬上限 4KiB —— 板上只放摘要，成员 transcript 永不进团队事件",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/store.rs",
+          "note": "store::tests 中 clamp_task_summary 的截断 + truncated 标记断言"
+        }
+      ],
+      "red_line": 4
+    },
+    {
+      "id": "team-report-seq-is-monotonic",
+      "title": "Agent Team：hook 上报按成员级水位线去重 —— 迟到/乱序的 turn_completed 不得覆盖更新的 approval_requested",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/observe.rs",
+          "note": "observe::tests::{stale_seq_is_dropped_and_state_stays_put, missing_seq_is_processed_even_when_watermark_is_high, seq_zero_is_stale_against_the_initial_watermark, unknown_event_key_is_skipped_and_keeps_watermark}；`seq=None`（旧模板）必须照常处理 —— 缺字段不等于序号 0"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/manager.rs",
+          "note": "TeamManager::note_signal_seq：≤ 水位线返回 false 并落 audit；> 水位线持久化新水位"
+        }
+      ]
+    },
+    {
+      "id": "team-attribution-refuses-incomplete-identity",
+      "title": "Agent Team：团队上下文里身份残缺一律拒绝归因，不回退 cwd 前缀 —— 宁可丢一条通知，不可把 A 的结果记到 B 账上",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/identity/verdict.rs",
+          "note": "identity::verdict::tests::{team_without_member_is_refused, member_without_team_is_refused, blank_values_are_treated_as_missing}"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/observe.rs",
+          "note": "observe::tests::{incomplete_identity_is_skipped_not_attributed_by_cwd, cross_team_identity_is_skipped}"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/hooks/ingest/attribution.rs",
+          "note": "attribution::tests::team_env_does_not_change_the_notification_attribution —— 团队 env 不得改变既有通知降级链（回归面隔离）"
+        }
+      ]
+    },
+    {
+      "id": "team-sentinel-scan-is-bounded",
+      "title": "Agent Team：sentinel 扫描流式有界 —— 单行 ≤2KiB、超界整行丢弃、carry 恒 ≤ 单行上限（该 pump 出过 5.2GB 事故）",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/sentinel.rs",
+          "note": "sentinel::tests::{over_long_line_is_dropped_and_carry_stays_bounded, line_exactly_at_the_limit_is_accepted_and_one_byte_more_is_dropped, carry_budget_is_larger_than_the_line_budget, hit_split_across_two_feeds_is_reassembled, invalid_payload_is_dropped_silently}"
+        }
+      ],
+      "red_line": 4
+    },
+    {
+      "id": "auth-gate-is-the-only-token-check",
+      "title": "鉴权门是进程内唯一的 token 裁决点 —— `ct_eq` 调用点 = 1；成员身份靠 sha256 查表，不新增第二次比较",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/server/gate.rs",
+          "note": "gate::tests::constant_time_comparison_has_exactly_one_call_site；源码计数自检，已用变异验证（插第二个调用点 → 立刻红）"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/identity/token.rs",
+          "note": "identity::token::token_tests::module_contains_no_constant_time_comparison；读自身源码断言不含那两个原生语（连文档里都不许出现）"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/mcp/server.rs",
+          "note": "server::tests::{unauthorized_requests_are_json_rpc_errors_over_http_200, outsider_token_is_scoped_by_its_principal_team}；身份缺失/错误 → JSON-RPC -32001，跨队隔离靠 principal.team_id 而非端口"
+        }
+      ]
+    },
+    {
+      "id": "team-wait-is-pinned-and-truly-woken",
+      "title": "Agent Team：team_wait 是事件驱动且按身份钉住 —— 不轮询、不被接手者满足、目标消亡立即返回",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/wait.rs",
+          "note": "wait::tests 中「真唤醒」条：变更后 20ms 量级返回（timeout 2s），同时卡上界 500ms **与下界 15ms** —— 下界防的是「快照/判据为假导致的立刻返回」"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/wait.rs",
+          "note": "钉住条：waiter 等 A；A 消亡 → TargetGone{A}；随后 B 接手同一任务并 done。断言 ① 报的是 A ② 快照只含 A ③ **先证 B 真的 Verified**（防空断言）④ 再查 A 的判据仍不可被满足"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/wait.rs",
+          "note": "`satisfied` 纯函数表驱动：3 个 until × 满足/部分/全不满足；TargetGone 只对 Dead/Failed 生效"
+        }
+      ],
+      "red_line": 4
+    },
+    {
+      "id": "team-wait-snapshot-carries-no-transcript",
+      "title": "Agent Team：team_wait 的快照是恒定小载荷 —— 只含成员行与任务行，无任何对话正文",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/agent/team/wait.rs",
+          "note": "快照键集断言：成员仅 id/name/role/state/verification，任务仅 id/state/owner/reclaim_count/租约剩余秒"
+        }
+      ],
+      "red_line": 4
     }
   ]
 }

@@ -1041,3 +1041,21 @@ HookTarget { source: "dsh", dir: || None, shapes: &[] }
 // ✅ 显式字段
 rows.filter((r) => !r.selfSupplied)
 ```
+
+## 消费者投影文件的位置（例外：团队观察者）
+
+`ingest/mod.rs` 的既定约定是「新增消费者时读 `HookEvent`，**自己写一个投影文件**」，
+暗示投影落在 `agent/hooks/ingest/` 下。
+
+**已知例外**：Agent Team 的观察者（`agent/team/observe.rs`）**故意放在消费方域内**，不在 `ingest/`。
+
+判据是依赖方向：
+
+| 放法 | 依赖边 | 后果 |
+| --- | --- | --- |
+| 放 `ingest/team.rs`（照文档） | `hooks → team` | hooks 是 **fail-open 常开路径**（承载 8 个 CLI 上报、与用户终端里的 agent 生死相关），认识团队域后，团队域的任何编译错误/语义变更都会波及上报链路 |
+| 放 `team/observe.rs`（现状） | `team → hooks` | hooks 保持对消费方无知；团队域整体可删而不影响上报 |
+
+所以判据不是「投影文件放生产者还是消费者」，而是「**让谁依赖谁**」。
+新增消费者时按此判定；若你选择把投影放进 `ingest/`，必须在同一 diff 里说明为什么它值得
+让 hooks 依赖你的域。
