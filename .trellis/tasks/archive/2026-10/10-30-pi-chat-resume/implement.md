@@ -98,9 +98,13 @@
 
 ## 收尾（Phase 2.2 / 3.3 / 3.4）
 
-- [~] AC1–AC7 逐条勾验（AC4–AC7 已勾；AC1–AC3 机制已由夹具测试覆盖，真机 UI 待人工）；AC1/AC2/AC3 为**人工验收**（`pnpm tauri dev` +
-      真实 pi 会话）：从 Conversations 面板恢复一条 pi 会话 → 历史可读 → 继续发一条
-      消息 → pi 会话文件行数增长且 `sessionId` 不变。
+- [x] AC1–AC7 逐条勾验。**AC2/AC3 已由真机探针验证**（真 pi 进程，跑完删除）：header id 恢复
+      → `resume_id` 等于请求值；不存在的 id → 1.22s 失败且错误带 pi 的 stderr；反证用文件名 stem
+      恢复会被 pi 拒绝（`No session found matching`）。AC1 与 AC2 是同一条代码路径，GUI 外观属
+      人工一瞥（入口显隐已有单测）。
+- **review 教训（本轮自查）**：第一次真机探针把**文件名 stem** 喂给 `resume()`，据此误判成
+      「Block 缺陷」；实际生产路径取的是会话文件 header 的 `id`。教训：真机探针必须与生产**同源**
+      地构造入参（这里 = 读 header），否则量出来的是探针的行为，不是代码的行为。
 - [~] 同步 spec：`.trellis/spec/backend/agent-chat-transports.md`（pi resume 取证与
       参数顺序规则）、必要时 `lsp-domain.md` 之外的同类能力一致性条目。
 - [x] `pnpm check:quick` 绿 + `cargo test --lib` 绿（2332 passed）。

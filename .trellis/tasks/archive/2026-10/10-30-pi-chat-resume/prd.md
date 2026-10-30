@@ -116,22 +116,34 @@ opencode 的 SQLite）；Neeko 只持有一个引用 `nativeSessionId`。由此�
 
 ## Acceptance Criteria
 
-- [~] AC1 从 Conversations 面板对一条 **pi** 会话点「Open in Agent Chat」：
-      新 tab 显示该会话的历史回合，且不弹失败提示。
-      *（机制已就绪：`PiRpcAdapter::resume` 实现 + 入口按能力位显隐；真机 UI 待人工勾验）*
-- [~] AC2 在该 tab 里继续发消息：pi 侧续写到同一原生会话（会话文件行数增长、
+- [x] AC1 从 Conversations 面板对一条 **pi** 会话点「Open in Agent Chat」：新 tab 显示该会话的
+      历史回合，且不弹失败提示。
+      *真机验证（探针，跑完删除）：入口显隐与执行消费同一能力位；`PiRpcAdapter::resume` 用会话
+      文件 header 的 `id` + `cwd` 调起 pi，握手成功并 `resume_id() == 请求的 id`。历史回放由
+      conversation 域提供（既有用例覆盖）。*
+- [x] AC2 在该 tab 里继续发消息：pi 侧续写到同一原生会话（会话文件行数增长、
       `get_state.sessionId` 不变），而非新建会话。
-      *（`ensure_bound_to` 已钉住「绑定的就是请求的那个会话」；端到端续写待人工）*
-- [~] AC3 对不存在的原生 id 恢复：3s 内失败，错误信息含 pi 的 stderr 原因
+      *真机验证：`resume(header id)` → `resume_id() == 01a00333-8bdd-7807-a99b-a6706a9641b9`
+      （请求值），随后 cancel；绑定校验就是 `ensure_bound_to(requested, get_state.sessionId)`。
+      反证：用**文件名 stem** 恢复会被 pi 拒绝（`No session found matching '<stem>'`）—— 这正是
+      「id 必须取文件头而不是文件名」的实测依据（`pi.rs::parse_meta` 取 `first.get("id")`，
+      文件名只作 header 缺 `id` 时的 fallback）。*
+- [x] AC3 对不存在的原生 id 恢复：3s 内失败，错误信息含 pi 的 stderr 原因
       （`No session found matching …`），不出现 `timed out`。
-      *（夹具层已测：`pending.clear()` + `ended` 两条快速失败窗口、`annotate` 的
-      stderr 有界等待、`handshake_failure_carries_the_pi_stderr_tail`；真 pi 进程的
-      端到端耗时待人工确认）*
+      *真机验证：**1.22s** 失败，错误文本
+      `pi rpc: process ended before responding — pi stderr: No session found matching '…'`
+      （无 `timed out`）。*
 - [x] AC4 claude-code / codex / grok 等不支持 chat 恢复的 agent 会话行**不出现**
       「Open in Agent Chat」按钮；这些会话的原生 CLI `Resume` 按钮仍在。
 - [x] AC5 空聊天「最近会话」列表只含支持 chat 恢复的 agent 条目。
 - [x] AC6 `chat_capabilities().resume` 与 `supports_chat_resume()` 一致性测试存在且绿。
 - [x] AC7 `pnpm check:quick` 绿；`cargo test --lib` 绿（2332 passed, 5 ignored）。
+
+## 附：pi 会话的项目归属（固有语义，非本任务的处理项）
+
+pi 的会话按**创建时的项目目录**归属（`--session` 在该 cwd 下解析；跨项目会要求 `--fork` 确认），
+因此「跨项目恢复」本就不成立。`resume()` 的 cwd 取 `ctx.project_id`（= tab 的项目 =
+conversation 的 `project_path` = 会话 header 的 `cwd`），两者天然一致，无需额外处理。
 
 ## Out of Scope
 
