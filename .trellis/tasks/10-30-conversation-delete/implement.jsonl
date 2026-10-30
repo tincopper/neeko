@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "conversation 域的适配器契约/缓存/错误边界；删除能力与删除单元的落点"}
+{"file": ".trellis/spec/backend/command-execution.md", "reason": "委派 CLI 只经 core::exec；argv 形态与 shell 选择禁止自造（红线 1/2）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "删除失败的错误分类与可归因（含 stderr 摘要）"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "invoke 只在 api 门面；确认弹窗与能力派生的落点约束"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "tempdir 夹具与不起真进程的委派测试手法"}
