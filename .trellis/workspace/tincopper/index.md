@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 380
-- **Last Active**: 2026-10-29
+- **Total Sessions**: 381
+- **Last Active**: 2026-10-30
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~824 | Active |
+| `journal-8.md` | ~861 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 381 | 2026-10-30 | 会话正文按需加载：统计/搜索/剪贴板下沉到 Rust，三个适配器计数口径统一 | - | `main` |
 | 380 | 2026-10-29 | 第二轮审查：修掉分页重复解析、计数口径与切会话竞态 | - | `main` |
 | 379 | 2026-10-29 | 关闭会话适配器审查清单：性能回归、分层收敛与正文载荷分页 | - | `main` |
 | 378 | 2026-10-29 | 补齐 pi/omp 适配器缺口：共享块抽取、模型字段与视图口径 | - | `main` |

@@ -822,3 +822,40 @@ omp 改用共享 content_blocks 层（思考/工具块不再丢）；pi+omp 补�
 ### Next Steps
 
 - codex(62/119)/opencode(317/399)/reasonix(16/21) 计数口径仍未统一；export_conversation 仍 sync + 无载荷上限
+
+
+## Session 381: 会话正文按需加载：统计/搜索/剪贴板下沉到 Rust，三个适配器计数口径统一
+<!-- trellis-session: v=2 fp=279e383c08cd425d -->
+
+**Date**: 2026-10-30
+**Task**: 会话正文按需加载：统计/搜索/剪贴板下沉到 Rust，三个适配器计数口径统一
+**Branch**: `main`
+
+### Summary
+
+从根本上解决剩余三项：正文视图只持有窗口（尾页+按需更早）、统计与搜索移到 Rust、导出直写剪贴板；codex/opencode/reasonix 徽标改为与正文同源，六个适配器实测 0 不一致
+
+### Main Changes
+
+- 正文窗口：新增 useConversationWindow（fromEnd 尾页 + 向上加载 + 按 seq 定位页），ConversationViewer 587→526 行
+- Rust 新增 get_conversation_stats / search_conversation_messages / copy_conversation_markdown（ClhipboardExt 直写），移除 export_conversation 的整段回传
+- manager: 尾页分页 page_start_from_end、统计 tool_call_summary、搜索 snippet（≤200 命中）；commands 全部 async + block_in_place
+- codex/reasonix 抽出 collect_*_messages 与 parse_messages 共用遍历；opencode 用一次分组聚合替代逐会话计数并修正「必须有 part」条件
+- spec: §3.2 命令清单、§4.6.3 口径合规表（六条全绿）、§4.6.4 按需加载、§4.6.6 工具摘要双实现
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test 2310 + 120；clippy --all-targets -D warnings；pnpm check:quick 21/21；前端 conversation 24 文件 114 测试
+- [OK] 实测：pi/omp/claude/codex/reasonix/opencode 计数与正文 0 不一致（原 codex 62、opencode 304、reasonix 16）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- useChatRestore 仍按整段会话恢复聊天（分页组装，单次载荷已受约束）；真实 home 目录类测试存在一次不可复现 flake
