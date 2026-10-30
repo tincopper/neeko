@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 383
+- **Total Sessions**: 384
 - **Last Active**: 2026-10-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~928 | Active |
+| `journal-8.md` | ~960 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 384 | 2026-10-30 | pi 会话恢复为 Agent Chat（能力单一真相）+ 真机验收 | - | `main` |
 | 383 | 2026-10-30 | opencode v2 存储兼容（v1 保留） | - | `main` |
 | 382 | 2026-10-30 | 历史会话删除（三态能力）+ 确认框结算缺陷 | `e705163b`, `2862900d` | `main` |
 | 381 | 2026-10-30 | 会话正文按需加载：统计/搜索/剪贴板下沉到 Rust，三个适配器计数口径统一 | - | `main` |

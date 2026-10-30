@@ -926,3 +926,35 @@ opencode 升级 v2 后 Conversations 面板只显示到 09-28：v2 把会话写�
 ### Next Steps
 
 - 真机面板人工确认（AC1）；opencode v2 的 session_inbox/event 表与工具输出长度上界另开任务
+
+
+## Session 384: pi 会话恢复为 Agent Chat（能力单一真相）+ 真机验收
+<!-- trellis-session: v=2 fp=2097f135458249d3 -->
+
+**Date**: 2026-10-30
+**Task**: pi 会话恢复为 Agent Chat（能力单一真相）+ 真机验收
+**Branch**: `main`
+
+### Summary
+
+PiRpcAdapter 实现 resume/supports_chat_resume，前端入口按 chat 侧能力位门控，消除 claude-code/codex/grok 等死入口。本轮补做真机验收：用会话文件 header 的 id + cwd 调 resume → resume_id 等于请求值（AC2）；不存在的 id → 1.22s 失败且错误带 pi 的 stderr（AC3）；反证文件名 stem 会被 pi 拒绝（No session found matching），确认 id 必须取 header 而非文件名。
+
+### Main Changes
+
+- 无代码改动（仅任务产物 PRD/implement.md 勾验与教训记录）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test --lib agent::chat::adapter::pi_rpc：96 passed；真机探针 3 条全过（跑完删除）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 归档任务；可选：把三条真机探针落成常驻 #[ignore] 用例
