@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 
+import { useChatResumableAgents } from '@/features/agent-chat';
 import {
   conversationTabTitle,
   ConversationPanel,
@@ -20,6 +21,18 @@ import type { Tab } from '@/shared/types';
 const ConversationsPanelWrapper: React.FC = React.memo(() => {
   const { project, worktreePath } = useActiveProject();
   const { agents, showToast } = useAppContext();
+
+  /**
+   * 「哪些 agent 能把原生会话恢复为 Agent Chat」的**唯一派生点**。
+   *
+   * 入口显隐必须与执行走同一个事实（后端 `agent_chat_supports_resume`），
+   * 否则会出现「按钮在、点了报错」或「能用但没入口」。
+   */
+  const chatResumableAgents = useChatResumableAgents(agents);
+  const canChatResume = useCallback(
+    (agentId: string) => chatResumableAgents.has(agentId),
+    [chatResumableAgents],
+  );
 
   const projectPath = worktreePath ?? project?.path ?? null;
   const isActive = useDockStore((s) => {
@@ -155,6 +168,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
       onOpenConversationTab={handleOpenConversationTab}
       onResumeConversation={handleResumeConversation}
       onChatResumeConversation={handleChatResumeConversation}
+      canChatResume={canChatResume}
     />
   );
 });

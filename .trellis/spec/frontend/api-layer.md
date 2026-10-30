@@ -83,6 +83,13 @@ export function removeProject(projectId: string): Promise<void> {
 3. **始终提供泛型返回类型**，不使用 `any`
 4. **函数仅做 invoke 封装**，不包含业务逻辑、错误处理或状态管理
 5. **相同的 Rust 命令只在一个 API 文件中暴露**，不重复包装
+6. **能力/策略门面不住 `api/`**：带缓存、失效键、或失败口径（如「查不到就当不支持」）的
+   「能不能做 X」门面属于**领域策略**，放 `features/<domain>/utils/`，自身 `import`
+   对应的 api 薄封装即可。判据：**换掉传输层（IPC → 其它）它是否仍然成立** ——
+   成立就不属于 `api/`。
+   实例：`features/agent-chat/utils/chatResumeSupport.ts`（2026-10-30）。它一度写在
+   `api/` 里，虽然能跑，但让第 4 条判据失真；移动后 `api/` 仍只有薄封装，
+   `utils → api` 依赖方向单向。
 
 ### 跨 domain 类型依赖
 
@@ -497,6 +504,7 @@ useEffect(() => {
 
 | 日期 | 变更 |
 |------|------|
+| 2026-10-30 | 补原则 6：能力/策略门面放 `features/<domain>/utils/`，不住 `api/`（实例 `chatResumeSupport`） |
 | 2026-07-29 | 新增 `libraryApi.ts`（Prompts + Actions IPC） |
 | 2026-05-30 | 重写为 Feature API Wrapper 模式文档（从直接调用迁移） |
 | 2026-05-06 | `src/adapters/` 移除记录 |

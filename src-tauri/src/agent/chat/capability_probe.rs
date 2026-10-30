@@ -175,6 +175,118 @@ mod tests {
         assert!(!caps.uses_session_config());
     }
 
+    mod resume_contract {
+        //! `resume` 能力位 ⇔ [`AgentAdapter::supports_chat_resume`] / [`AgentAdapter::resume`]
+        //! 的一致性（红线 14 同源）。
+        //!
+        //! # 为什么在这里而不是各 adapter 自己的测试里
+        //!
+        //! 前端入口显隐的唯一数据源是 `agent_chat_supports_resume`（它直接读
+        //! `supports_chat_resume()`）。一旦某个 adapter 的两位分叉，用户看到的就是
+        //! 「按钮在、点了报错」或「能用但没入口」—— 两种都不报错、都不崩溃。
+        //! 这条断言把四条传输放在一起对齐，新增传输忘填时它就会红。
+        use super::*;
+        use crate::agent::chat::adapter::opencode::ServeAdapter;
+        use crate::agent::chat::adapter::pi_rpc::PiRpcAdapter;
+        use crate::common::agent::chat_launch::ChatTransport;
+        use crate::common::error::AppError;
+
+        /// **每条传输一个适配器**，`binary` 控制真实 / 假二进制。
+        ///
+        /// 用表而不是各用例内联数组：这张表必须覆盖 `ChatTransport::ALL` 的每一条
+        /// （等长断言见 `every_transport_list_stays_in_sync_with_the_variant_list`）——
+        /// 否则「新增第五条传输」时本次护栏会静默漏掉它，而漏掉的表现恰好是
+        /// 静默降级（正是本模块要防的东西）。
+        fn every_transport(binary: &str) -> Vec<Box<dyn AgentAdapter>> {
+            vec![
+                Box::new(AcpAdapter::mock()),
+                Box::new(ServeAdapter::new(
+                    vec![binary.into(), "serve".into()],
+                    Default::default(),
+                )),
+                Box::new(DeepSeekHarnessAdapter::new(
+                    vec![binary.into()],
+                    Default::default(),
+                )),
+                Box::new(PiRpcAdapter::new(
+                    vec![binary.into(), "--mode".into(), "rpc".into()],
+                    Default::default(),
+                )),
+            ]
+        }
+
+        /// 表与枚举变体清单等长：新增传输**必须**同时进 `every_transport()`。
+        #[test]
+        fn every_transport_list_stays_in_sync_with_the_variant_list() {
+            assert_eq!(
+                every_transport("probe").len(),
+                ChatTransport::ALL.len(),
+                "新增传输时把它追加到 every_transport()，否则 resume 护栏覆盖不到它"
+            );
+        }
+
+        /// 每条传输：声明位与 `supports_chat_resume()` 必须相等。
+        #[test]
+        fn resume_bit_matches_supports_chat_resume_on_every_transport() {
+            for adapter in every_transport("pi") {
+                assert_eq!(
+                    adapter.chat_capabilities().resume,
+                    adapter.supports_chat_resume(),
+                    "{:?}: resume 位与 supports_chat_resume() 分叉（入口会显隐错）",
+                    adapter.kind()
+                );
+            }
+
+            // 实测能恢复的两条（opencode serve / pi rpc）；ACP 的会话恢复不在本期。
+            // 数量断言而不是逐个点名：新增一条声明 `resume: true` 的传输时本用例不需要改，
+            // 但「少一条」说明某条位被改掉了（入口会静默消失）。
+            let capable = every_transport("pi")
+                .into_iter()
+                .filter(|a| a.chat_capabilities().resume)
+                .count();
+            assert_eq!(capable, 2, "pi 与 opencode serve 是本期两条可恢复传输");
+        }
+
+        /// **位为 true ⇒ `resume()` 有覆写。**
+        ///
+        /// 判据是「走不走默认实现」：用不存在的二进制，失败必须是 spawn 类错误。
+        /// 若覆写被删，会退回默认实现并返回一句 `does not support chat resume`，
+        /// 前端入口随之变成死入口（本任务要消灭的形态）。
+        ///
+        /// 遍历的是**全部传输**、按能力位过滤：新增一条声明 `resume: true` 的传输
+        /// 自动进入覆盖，不需要改本用例。
+        #[tokio::test]
+        async fn resume_bit_implies_resume_is_not_the_default_impl() {
+            const NO_SUCH_BINARY: &str = "definitely-not-a-real-binary-mention-slash";
+            let mut covered = 0;
+            for adapter in every_transport(NO_SUCH_BINARY) {
+                if !adapter.supports_chat_resume() {
+                    continue;
+                }
+                covered += 1;
+                let err = match adapter.resume(&ctx("pi"), "abc").await {
+                    // 进程内实现（mock）可能真的恢复成功 —— 同为「非默认实现」的证明。
+                    Ok(_) => continue,
+                    Err(e) => e,
+                };
+                assert!(
+                    !matches!(err, AppError::Unsupported(_)),
+                    "{:?}: resume 覆写不见了: {err:?}",
+                    adapter.kind()
+                );
+                assert!(
+                    !err.to_string().contains("does not support chat resume"),
+                    "{:?}: 走的是 trait 默认实现: {err}",
+                    adapter.kind()
+                );
+            }
+            assert!(
+                covered >= 2,
+                "pi 与 opencode serve 声明了 resume，覆盖数 {covered} 说明位被改掉了"
+            );
+        }
+    }
+
     mod commands_contract {
         //! `commands` 能力位 ⇔ [`AgentAdapter::list_commands`] 实现的一致性
         //! （红线 14 同源：声明了却没人实现 = 静默功能缺失；该声明却没声明

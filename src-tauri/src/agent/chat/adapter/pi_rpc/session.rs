@@ -36,6 +36,7 @@ use crate::agent::chat::capabilities::ChatCapabilities;
 use crate::agent::chat::events::{
     Capabilities, ContextManifest, SessionRequest, StreamEvent, TurnEndReason, Usage,
 };
+use crate::common::agent::types::ModelInfo;
 use crate::common::error::AppError;
 
 /// `get_session_stats` 的专用超时。
@@ -127,55 +128,25 @@ pub struct PiSession {
 }
 
 impl PiSession {
-    /// 建立会话：spawn → 握手（拿配置项）→ 发 `SessionStart` + `ContextInit`。
-    pub async fn start(
-        cmd: &[String],
-        ctx: &AgentContext,
-        caps: ChatCapabilities,
-        env: &std::collections::BTreeMap<String, String>,
-    ) -> Result<Self, AppError> {
-        let program = cmd
-            .first()
-            .ok_or_else(|| AppError::InvalidInput("pi-rpc: empty command".into()))?;
-        // 用户配置的 args 必须生效 —— 只说「这是 pi」的适配器不能忽略
-        // `AgentConfig` 的 chat 参数（那是用户表达「怎么启动我」的唯一通道）。
-        let extra: Vec<&str> = cmd[1..].iter().map(String::as_str).collect();
-
-        let env_ref: Vec<(&str, &str)> =
-            env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let proc = PiRpcProcess::spawn(program, &ctx.project_id, &extra, &env_ref).await?;
-        Self::start_with(proc, ctx, caps).await
-    }
-
     /// 握手 + 事件队列初始化 + 请求 pump 启动。
     ///
-    /// 与 [`Self::start`] 拆开是为了让测试注入假连接 —— 否则测试只能复制一遍
-    /// 握手逻辑，实现被改坏时测试仍绿（本项目已踩过这个坑）。
+    /// 与 spawn 拆开（spawn 在 `PiRpcAdapter::spawn_process`）是为了让测试注入假连接
+    /// —— 否则测试只能复制一遍握手逻辑，实现被改坏时测试仍绿（本项目已踩过这个坑）。
     pub async fn start_with(
         proc: PiRpcProcess,
         ctx: &AgentContext,
         caps: ChatCapabilities,
     ) -> Result<Self, AppError> {
-        let models = {
-            let data = proc
-                .request(json!({"type": "get_available_models"}), None)
-                .await?;
-            models_from_response(&data)
-        };
-        let levels = {
-            let data = proc
-                .request(json!({"type": "get_available_thinking_levels"}), None)
-                .await?;
-            levels_from_response(&data)
-        };
-        let (current, native_session_id) = {
-            let data = proc.request(json!({"type": "get_state"}), None).await?;
-            (
-                CurrentSelection::from_state(&data),
-                data.get("sessionId")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-            )
+        // 握手失败时附上 pi 自己的 stderr 尾部（如 `No session found matching '<id>'`）
+        // —— 否则用户只会看到一句「超时」或「响应通道关闭」，而真实原因就在 stderr 里。
+        let Handshake {
+            models,
+            levels,
+            current,
+            native_session_id,
+        } = match handshake(&proc).await {
+            Ok(hs) => hs,
+            Err(e) => return Err(proc.annotate(e).await),
         };
 
         let configs = Arc::new(ConfigOptionsState::new(project_config_options(
@@ -278,6 +249,44 @@ impl PiSession {
             request_tx,
         })
     }
+}
+
+/// 握手结果：三份会话级查询的产物（模型 / 档位 / 当前选择 + pi 自己的会话 id）。
+///
+/// 抽成结构体只为了让 [`handshake`] 能把它们一次交付出去 —— 不引入任何行为。
+struct Handshake {
+    models: Vec<ModelInfo>,
+    levels: Vec<String>,
+    current: CurrentSelection,
+    /// `get_state.sessionId` —— pi 自己回报的权威会话 id。
+    native_session_id: Option<String>,
+}
+
+/// 三段握手查询（**纯 I/O 序列**，不持有状态）。
+///
+/// 抽成自由函数是为了让 [`PiSession::start_with`] 的 `map_err(annotate)` 只写一次，
+/// 且测试可以拿假连接直测失败路径（`from_split_with_stderr`）。
+async fn handshake(proc: &PiRpcProcess) -> Result<Handshake, AppError> {
+    let data = proc
+        .request(json!({"type": "get_available_models"}), None)
+        .await?;
+    let models = models_from_response(&data);
+
+    let data = proc
+        .request(json!({"type": "get_available_thinking_levels"}), None)
+        .await?;
+    let levels = levels_from_response(&data);
+
+    let data = proc.request(json!({"type": "get_state"}), None).await?;
+    Ok(Handshake {
+        models,
+        levels,
+        current: CurrentSelection::from_state(&data),
+        native_session_id: data
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
 }
 
 /// 处理一条页面 → 会话的请求，返回要交给前端的额外事件。
@@ -703,8 +712,14 @@ impl AgentSession for PiSession {
 
     /// pi 的 native session id（来自握手时的 `get_state`）。
     ///
-    /// 消费方是 `conversation/adapters/pi.rs::resume_command`，它拼成
-    /// `pi --session <id>`。返回 `None` 会让「历史会话 → 继续聊」这条入口消失。
+    /// 两个消费方：
+    /// 1. `conversation/adapters/pi.rs::resume_command` —— 拼成 `pi --session <id>`
+    ///    （终端侧原生恢复）；
+    /// 2. `PiRpcAdapter::resume` —— 用它校验这次 spawn **确实绑定到了请求的那个会话**
+    ///    （`ensure_bound_to`）。绑定错会话比失败更糟：用户以为在续写原会话，实际在
+    ///    污染另一条会话的上下文。
+    ///
+    /// 返回 `None` 会让「历史会话 → 继续聊」这条入口消失。
     fn resume_id(&self) -> Option<String> {
         self.native_session_id.clone()
     }
@@ -782,7 +797,7 @@ mod tests {
 
     /// 假 pi：从 `stdin` 读命令，按 `type` 回对应响应。
     ///
-    /// 这样 `PiSession::start()` 的**真实握手路径**（三次 request/response 配对）
+    /// 这样 `start_with` 的**真实握手路径**（三次 request/response 配对）
     /// 会被完整执行 —— 而不是在测试里复制一遍它的逻辑。
     /// 测试复制实现的话，实现被改坏时测试仍绿（本项目已踩过这个坑）。
     fn fake_pi() -> (PiRpcProcess, tokio::task::JoinHandle<()>) {
@@ -899,6 +914,46 @@ mod tests {
         (proc, handle, cmd_rx)
     }
 
+    /// 假 pi：握手第一枪就失败（模拟 `pi --session <不存在>` → 立即 exit 1）。
+    ///
+    /// 真实形态：stdout **一条响应都没有**，原因只写在 stderr。
+    ///
+    /// 返回的 `release` 只是为了让测试**确定**：测试先等 stderr 落进有界尾部，
+    /// 再放行错误响应 —— 否则「stderr 读线程 vs stdout 错误响应」两条异步路径
+    /// 存在竞态，断言会时绿时红。
+    fn fake_pi_failing_handshake(
+        stderr_text: &str,
+    ) -> (PiRpcProcess, tokio::sync::oneshot::Sender<()>) {
+        let (session_in, pi_in) = tokio::io::duplex(64 * 1024);
+        let (pi_out, session_out) = tokio::io::duplex(64 * 1024);
+        let (mut err_out, err_in) = tokio::io::duplex(4 * 1024);
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let stderr_text = stderr_text.to_string();
+
+        tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+            let _ = err_out
+                .write_all(format!("{stderr_text}\n").as_bytes())
+                .await;
+            let _ = release_rx.await;
+
+            let mut write_half = pi_out;
+            let mut lines = BufReader::new(pi_in).lines();
+            if let Ok(Some(line)) = lines.next_line().await {
+                if let Ok(cmd) = serde_json::from_str::<Value>(&line) {
+                    let id = cmd.get("id").cloned().unwrap_or(Value::Null);
+                    let resp = json!({"type": "response", "id": id,
+                                        "success": false, "error": "unknown command"});
+                    let _ = write_half.write_all(format!("{resp}\n").as_bytes()).await;
+                    let _ = write_half.flush().await;
+                }
+            }
+        });
+
+        let proc = PiRpcProcess::from_split_with_stderr(session_out, session_in, Some(err_in));
+        (proc, release_tx)
+    }
+
     /// 测试用的能力快照（与 `PiRpcAdapter::chat_capabilities` 一致）。
     fn test_caps() -> ChatCapabilities {
         ChatCapabilities {
@@ -931,6 +986,37 @@ mod tests {
     /// 本地绿而 Windows CI 红。与 `serve.rs` 的夹具同口径。
     fn cwd() -> String {
         std::env::temp_dir().display().to_string()
+    }
+
+    /// **失败可归因（AC3）**：握手失败必须带上 pi 自己的 stderr 尾部。
+    ///
+    /// 实测 `pi --mode rpc --session <不存在>` → exit 1 + stderr
+    /// `No session found matching '<id>'`，stdout 零响应。旧行为把这个原因丢在
+    /// `_stderr` 里，用户只看到 `timed out after 5s` —— 慢且原因错误。
+    ///
+    /// 变异验证：`start_with` 里去掉 `.map_err(|e| proc.annotate(e))` → 本用例红。
+    #[tokio::test]
+    async fn handshake_failure_carries_the_pi_stderr_tail() {
+        let (proc, release) = fake_pi_failing_handshake("No session found matching 'abc'");
+        for _ in 0..200 {
+            if proc.stderr_tail().contains("No session found") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert!(
+            proc.stderr_tail().contains("No session found"),
+            "夹具必须先写入 stderr"
+        );
+        release.send(()).unwrap();
+
+        let err = match PiSession::start_with(proc, &ctx(), test_caps()).await {
+            Ok(_) => panic!("握手已失败，不得返回会话"),
+            Err(e) => e,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("No session found matching 'abc'"), "{msg}");
+        assert!(!msg.contains("timed out"), "不得退化成超时: {msg}");
     }
 
     /// **首轮 prompt 护栏（真机缺陷）**：`create()` 必须把 `ctx.prompt` 发出去。

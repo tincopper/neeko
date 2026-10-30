@@ -433,6 +433,11 @@ cache 计数（拆分在 draft RFD `end-turn-token-usage`）→ 命中率行降�
 | 把 `provider` 从模型 id 里拆 | Pi 的 provider 是字段，拆了会得到错误值 |
 | 档位列表缓存一次用到底 | 换模型后档位选项与真实能力不符 |
 | 为「从不触发的 prelude」写展示链路 | 无验证手段的死重量 |
+| 声明 `resume: true` 却不覆写 `resume()` / `supports_chat_resume()` | 前端入口成死入口（红线 14：声明了没人实现 = 静默功能缺失） |
+| 恢复参数（`--session`）排在用户 args **之前** | 用户配置的 `--session` / `-c` 后写者胜，**静默劫持恢复目标** |
+| 恢复后不校验 `get_state.sessionId` | 部分 UUID 歧义会绑到别的会话，静默污染它 |
+| 进程退出只 `log::debug!` 不 settle pending | 在途请求退化成 5s 超时，原因完全错误 |
+| 丢弃 stderr | 真实原因（`No session found matching …`）永远看不到 |
 
 ## 7. 测试清单
 
@@ -440,7 +445,10 @@ cache 计数（拆分在 draft RFD `end-turn-token-usage`）→ 命中率行降�
 | --- | --- |
 | `common/agent/types.rs` | `pi-rpc` 解析 / 往返 / 不被兜底吞掉 |
 | `pi_rpc/translate.rs` | 文本/推理增量、空 delta 丢弃、**压缩场景序列**、扩展请求不是审批、畸形事件不 panic |
-| `pi_rpc/process.rs` | 响应按 id 配对不广播、无 id 广播、非 JSON 行不杀循环、迟到响应丢弃 |
+| `pi_rpc/process.rs` | 响应按 id 配对不广播、无 id 广播、非 JSON 行不杀循环、迟到响应丢弃、**进程结束→在途请求快速失败**、stderr 尾部有界 + `append_stderr` / `tail_of` |
+| `pi_rpc/adapter.rs` | `extra_args` 顺序（tail 在用户 args 后）、`ensure_bound_to` 三态、`caps.resume == supports_chat_resume()`、`resume()` 覆写存在（假二进制→spawn 类错误） |
+| `pi_rpc/session.rs` | 握手失败时错误带 pi stderr 尾部、`resume_id` 来自握手 |
+| `capability_probe.rs` | 四条传输的 `resume` 位 ↔ `supports_chat_resume()` 一致；位 true ⇒ `resume()` 非默认实现 |
 | `pi_rpc/config.rs` | 模型映射（provider 放 `group`）、缺字段降级 |
 | `agent/builtin/tests.rs` | Pi 走 `PiRpc` 传输 + **不得**声明 `model_list_args` |
 | `agent/model_discovery.rs` | 表格解析器已删除的反向护栏 `pi_table_output_is_not_parsed_any_more` |
@@ -613,6 +621,111 @@ opencode 走 `serve` 传输，命令列表来自 **`GET /api/command`**（实测
 会话文件只在发过消息后写入。`resume_id` 因此是「保存用的句柄」而非立即可用的句柄；
 对空会话立即恢复会失败，那是 `conversation` 域该加的防护。
 
+#### 9.5.1 chat 侧恢复：能力位早就是 `true`，缺的是实现（2026-10-30 实测）
+
+`ChatCapabilities.resume` 的契约是「`resume_id` 有真实值 **且** `resume` 可用」
+（`capabilities.rs`）。pi 一侧早已两件齐一半：位声明 `true`、`resume_id()` 也实现了，
+**但 `AgentAdapter::resume` / `supports_chat_resume` 都没覆写** ——
+于是 `agent_chat_supports_resume("pi")` 返 `false`、`agent_chat_resume` 直接 `Err`，
+而前端入口当时只看 conversation 侧 `meta.supportsResume`，用户得到的是一个死入口
+（「按钮在、点了没反应」）。
+
+一手实测（pi 已装，`pi --mode rpc --session <uuid>`）：
+
+| 场景 | 结果 |
+| --- | --- |
+| id 存在 | `get_state.sessionId` **相同**、`messageCount: 55` ⇒ 可恢复，非能力缺失 |
+| id 不存在 | 进程 **exit 1**，stderr `No session found matching '<id>'`，stdout 零响应 |
+
+#### 9.5.2 两条实现在 `adapter.rs`，四个判据
+
+```rust
+extra_args(cmd, tail)           // cmd[1..] + tail —— 恢复参数拼在用户 args **之后**
+ensure_bound_to(requested, actual)  // get_state.sessionId 必须等于请求的那个 id
+spawn_process(ctx, tail)        // spawn 的唯一入口（create 传 &[]，resume 传 ["--session", id]）
+supports_chat_resume() -> caps.resume   // 单一真相，不另写一份
+```
+
+**为什么 `--session` 必须排在用户 args 之后**：pi 对重复选项是**后写者胜**
+（同 §4.0.5 的 `--mode` 实测）。用户在 `AgentConfig.chat.args` 里写了
+`--session <别的 id>` 或 `-c` 时，若适配器的 `--session` 在前面，user args 会**静默
+劫持恢复目标**：界面显示 A 会话历史，实际续写 B。
+
+**为什么必须校验绑定**：`--session` 接受**部分 UUID**，匹配有歧义（0 或 1 个候选），
+命中多个时 pi 可能取第一个。绑定错会话比失败更糟 —— 用户以为在续写原会话，实际在
+污染另一条。校验用的是 pi 自己回报的 `get_state.sessionId`，**不自己扫
+`~/.pi/agent/sessions/**` 预判存在性**（那会造出第二份真相，pi 改布局就静默走偏）。
+校验失败要 `cancel()` 回收进程，别让一条绑错会话的进程活着。
+
+恢复是**静默**的（`ctx.prompt` 空 → `start_with` 不发首轮，与 `create` 同一条路径）：
+历史回放归 conversation 域，塞成 prompt 会双写 + 双倍 token + 污染原生会话。
+
+#### 9.5.3 失败必须「快且可归因」（进程层两条修正）
+
+旧实现把两个已有信号吞掉了，导致恢复失败要等满 `AUX_TIMEOUT`(5s) 且原因错误：
+
+| 缺陷 | 修正 | 判据 |
+| --- | --- | --- |
+| `spawn` 丢弃 stderr（`_stderr`） | 后台按行累积**有界**尾部（2KB，`STDERR_TAIL_LIMIT`），`stderr_tail()` + `annotate(err)` | `append_stderr` 纯函数：空尾部原样返回，否则 `AppError::Agent("{err} — pi stderr: {tail}")` |
+| 读循环结束只 `log::debug!` | 结束即 `ended = true` + `pending.clear()`（drop sender ⇒ 在途 `rx.await` 立刻 `Err`） | 文案 `pi rpc: process ended before responding`，不是超时 |
+
+**`pending.clear()` 需要 `ended` 标志配合**，两者管的窗口不同（都保留，别只留一个）：
+
+| 窗口 | 谁兜住 |
+| --- | --- |
+| 请求已注册 → 进程随后退出 | `pending.clear()` |
+| 进程先退出 / `clear()` 已跑完 → 请求才注册 | `ended` 标志（`request` 写完后检查） |
+
+后一个窗口是真实存在的：pi 在 `--session <不存在>` 上**瞬间** exit 1，握手第一条
+请求可能落在 `clear()` 之后 —— 只做 `clear()` 时那条请求会等满 5s，报一句假的
+「超时」（AC3 直接不达标）。
+
+stderr 尾部只用于**装饰错误**，不进任何数据通道；`annotate` 只在
+`PiSession::start_with` 的握手失败点调用（`handshake()` 抽成自由函数，装饰只写一次）。
+
+**`annotate` 必须是有界等待（`async`）**：进程退出时 stdout 与 stderr **同时** EOF，
+但两个读循环是两个独立 task，谁先被调度不确定。stdout 先 EOF 的瞬间取尾部会拿到空串
+—— 错误信息**随机**丢掉真实原因，而保留 stderr 的全部目的就是让原因可见。
+实现：尾部为空且 `ended` 已置位 → **同步**注册 `Notify`（`notified().enable()`）再查 `done`
+→ 最多等 300ms 让 stderr 排空，再取一次尾部。
+
+> 必须用 `enable()` 而不是只创建 future：**只创建不 poll 不算注册**，那时写入方的
+> `notify_waiters()` 会打空 —— 尾部其实早写好了却白等满 300ms。写入方的顺序
+> （先置 `done`、后 `notify`）+ 这里的「先注册、后查标志」两种交错都不丢唤醒。
+
+护栏：`annotate_waits_for_stderr_to_settle_after_the_process_ends`（删掉等待即红；
+构造上先让子任务跑到等待点才喂 stderr，**不用 sleep 赌调度顺序**）。
+
+护栏：`extra_args` 顺序 / `ensure_bound_to` 三态 / `caps.resume ==
+supports_chat_resume()` / 「位 true ⇒ `resume()` 非默认实现（不存在的二进制 → spawn 类
+错误，而非 `does not support chat resume`）」/ `in_flight_request_fails_fast_…` /
+`request_after_the_process_ended_fails_fast` / `append_stderr_*` / `tail_of` 字符边界 /
+`stderr_tail_is_bounded` / `handshake_failure_carries_the_pi_stderr_tail`。
+
+**扩展性护栏**：`capability_probe::resume_contract` 里适配器清单必须是表
+（`every_transport()`），并由 `every_transport_list_stays_in_sync_with_the_variant_list`
+断言它与 `ChatTransport::ALL` **等长** —— 否则「新增第五条传输」时这条护栏会静默漏掉它，
+而漏掉的表现恰好是静默降级。判据：**新增传输只要在枚举里加一个变体，本用例就必须红一次**，
+逼作者把它接进表。
+
+> 前端入口显隐**只能**读后端 `agent_chat_supports_resume`。按 agentId 白名单、或把
+> conversation 侧 `meta.supportsResume` 当判据，都会造出死入口 —— 那是本节问题的原始形态。
+>
+> 两条必须分开的轴（2026-10-30 review 修正）：
+>
+> | 入口 | 判据 |
+> | --- | --- |
+> | Open in Agent Chat | 有 `nativeSessionId` **且** `agent_chat_supports_resume(agentId)` |
+> | Resume（终端原生恢复） | conversation 侧 `meta.supportsResume`（CLI 能 `--resume`） |
+>
+> 把前者嵌进后者的 gate 是**另一端**的死入口：chat 适配器能重新绑定、但 CLI 没有
+> `--resume` 的 agent（例如将来只经 ACP `session/load` 恢复的 CLI）会静默没有入口。
+>
+> 前端缓存（`chatResumeSupport.ts`）的键是 `agentId + 启动签名（chat / chat_enabled）`：
+> 能力只对**同一份配置**静态，用户改完 chat 传输后同一个 id 的答案会变 —— 只按 id 缓存
+> 会让入口显隐失真到重启。`useChatResumableAgents` 的依赖用同一份签名（数组身份变不重查、
+> 配置变要重查）。
+
 ## 10. 新传输的会话配置检查清单（2026-08-24）
 
 > 这一节是 `08-24-agent-config-unify` 的产物。它把「新接一个 agent 会把同一批坑
@@ -630,7 +743,7 @@ match caps.config {
 }
 ```
 
-**三条强制规则**：
+**强制规则**（每条都对应一次已发生的缺陷）：
 
 1. **`SessionConfig` 是三条承诺的合取**：① 握手带 `config_options` ② 接受
    `SetConfigOption` 并真的下发 ③ 变更后产生 `ConfigOptionUpdate`（全量）。
@@ -650,6 +763,15 @@ match caps.config {
    `Unsupported`；位 true ⇔ 有真实现（用不存在二进制验证覆写存在，CI 不起真进程）。
    ACP 的 `available_commands_update` 是**会话内**推送通告，不是会话外查询，
    故 ACP 维持 false；若要接属会话内增量。
+5. **`resume` 位与 `resume()` / `supports_chat_resume()` 是一回事**
+   （`10-30-pi-chat-resume`，spec §9.5）：位为 `true` ⇒ 必须覆写两个方法，且
+   `supports_chat_resume()` 直接返回 `chat_capabilities().resume`（不另写一份）。
+   前端入口显隐的唯一数据源是 `agent_chat_supports_resume`（它读
+   `supports_chat_resume()`）—— 按 agentId 白名单、只看 conversation 侧
+   `meta.supportsResume`、或把后者当前者的外层 gate，都会造出死入口（§10.1 与 §9.5.3
+   的两轴表）。一致性由
+   `capability_probe.rs::resume_contract` 钉住（四条传输位 ↔ 方法相等 + 位 true ⇒
+   非默认实现，用不存在二进制验证，CI 不起真进程）。
 
 ### 10.2 五个已知断点与对应护栏
 

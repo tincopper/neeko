@@ -12,9 +12,10 @@ import type { ConversationMeta } from '@/shared/types/session';
 import type { AgentChatTabData } from '@/shared/types/tab';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
-import { resumeAgentChat, supportsAgentChatResume } from '../api/agentChatApi';
+import { resumeAgentChat } from '../api/agentChatApi';
 import type { ChatMessage } from '../components/messageModel';
 import { nextBlockId, nextMsgId } from '../components/messageModel';
+import { supportsChatResume } from '../utils/chatResumeSupport';
 import { convertHistory } from '../utils/historyConvert';
 import { matchModel } from '../utils/historyRestore';
 
@@ -83,14 +84,21 @@ export function useChatRestore(params: {
   const [resumableList, setResumableList] = useState<ConversationMeta[]>([]);
   const [resumableLoading, setResumableLoading] = useState(false);
 
-  /** 拉取当前项目的最近可恢复会话列表（跨 agent，由条目自带 agentId）。 */
+  /**
+   * 拉取当前项目的最近可恢复会话列表（跨 agent，由条目自带 agentId）。
+   *
+   * 过滤条件是「有原生会话 id **且** 该 agent 支持 chat 恢复」：只按
+   * `nativeSessionId` 过滤会列出 claude-code / codex 这类 CLI 能 `--resume`
+   * 但 chat 侧没实现恢复的会话 —— 点击只会得到一句失败提示（死入口）。
+   */
   const loadResumableList = useCallback(async () => {
     if (!projectPath) return;
     setResumableLoading(true);
     try {
       const page = await listConversations(projectPath, undefined, { limit: 20 });
-      // 仅列出有原生会话 id 的条目（resume 依赖 nativeSessionId）。
-      setResumableList(page.items.filter((c) => c.nativeSessionId));
+      const candidates = page.items.filter((c) => c.nativeSessionId);
+      const supported = await Promise.all(candidates.map((c) => supportsChatResume(c.agentId)));
+      setResumableList(candidates.filter((_, i) => supported[i]));
     } catch {
       setResumableList([]);
     } finally {
@@ -183,7 +191,7 @@ export function useChatRestore(params: {
     doneRef.current = true;
     void (async () => {
       try {
-        if (await supportsAgentChatResume(fallbackAgentId)) {
+        if (await supportsChatResume(fallbackAgentId)) {
           await restoreConversation({
             id: resumeConversationId,
             nativeSessionId: resumeNativeSessionId,
