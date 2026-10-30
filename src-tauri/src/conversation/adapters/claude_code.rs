@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
+use crate::common::text::strip_ansi;
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
 use crate::conversation::adapters::content_blocks::extract_message_content;
 use crate::conversation::adapters::{parse_timestamp, read_jsonl};
 use crate::conversation::normalize::recent_messages_from;
-use crate::conversation::text::strip_ansi;
 
 /// Claude Code 会话适配器
 ///

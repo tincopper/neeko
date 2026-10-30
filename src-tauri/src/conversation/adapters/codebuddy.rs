@@ -2,10 +2,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+use crate::common::text::strip_ansi;
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
 use crate::conversation::adapters::parse_timestamp;
 use crate::conversation::normalize::recent_messages_from;
-use crate::conversation::text::strip_ansi;
 
 /// CodeBuddy 会话适配器
 ///

@@ -2,13 +2,14 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+use crate::common::text::strip_ansi;
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
 use crate::conversation::adapters::content_blocks::{extract_message_content, has_visible_text};
 use crate::conversation::adapters::{
     linearize_tree_entries, message_role, parse_timestamp, read_jsonl, CONVERSATION_ROLES,
 };
 use crate::conversation::normalize::recent_messages_from_rev;
-use crate::conversation::text::{strip_ansi, strip_image_references};
+use crate::conversation::text::strip_image_references;
 
 /// Pi CLI 会话适配器
 ///

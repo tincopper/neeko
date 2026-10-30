@@ -1,21 +1,23 @@
-//! 会话文本原语：ANSI 剥离、图片引用剥离、字符边界截断。
+//! 会话**专属**文本原语：图片引用剥离、字符边界截断。
 //!
 //! 这一层是 `normalize`（标题/预览净化）与 `adapters`（原生格式解析）的**共同下游**，
 //! 自身不依赖 `conversation` 内任何模块 —— 依赖方向因此保持单向（adapters → normalize → text），
 //! 不会出现 `normalize ↔ adapters` 的循环。
 //!
-//! 正则一律用 [`LazyLock`] 编译一次：`strip_ansi` 在 `parse_messages` 里是逐条消息调用，
-//! 每次 `Regex::new` 会把整文件解析的开销抬到同量级。
+//! # ANSI 剥离不在这里
+//!
+//! 它已移到 [`crate::common::text::strip_ansi`]：那是**零域语义**的变换，且 `git` 曾为同一件事
+//! 手写第二份实现（两份行为不同）—— 只有放在 `common` 才能保证全仓一个口径。
+//! 本模块的调用方直接 `use crate::common::text::strip_ansi`。
+//!
+//! 正则一律用 [`LazyLock`] 编译一次：`strip_image_references` 在 `parse_messages` 里是逐条消息
+//! 调用，每次 `Regex::new` 会把整文件解析的开销抬到同量级。
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::sync::LazyLock;
 
 use regex::Regex;
-
-/// ANSI 转义序列（颜色 / 光标控制）。
-static ANSI_ESCAPE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\x1B\[[0-9;]*[a-zA-Z]").expect("infallible: static pattern"));
 
 /// 图片引用：markdown 图片与 harness 占位式引用。
 ///
@@ -26,11 +28,6 @@ static IMAGE_REFERENCE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)!?\[+Image\s*#\d+\]+(?:\([^)]*\))?|!\[[^\]]*\]\([^)]*\)")
         .expect("infallible: static pattern")
 });
-
-/// 剥离 ANSI 转义序列
-pub(crate) fn strip_ansi(s: &str) -> String {
-    ANSI_ESCAPE.replace_all(s, "").to_string()
-}
 
 /// 剥离图片引用。
 ///
@@ -52,7 +49,7 @@ pub(crate) fn truncate(s: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{strip_ansi, strip_image_references, truncate};
+    use super::{strip_image_references, truncate};
 
     #[test]
     fn should_strip_blob_image_reference() {
@@ -81,11 +78,6 @@ mod tests {
     fn should_keep_prose_mentioning_image() {
         let s = "图片渲染不出来，请在 markdown 里支持 image 标签";
         assert_eq!(strip_image_references(s), s);
-    }
-
-    #[test]
-    fn should_strip_ansi_sequences() {
-        assert_eq!(strip_ansi("\x1B[31mred\x1B[0m"), "red");
     }
 
     #[test]

@@ -28,10 +28,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
+use crate::common::text::strip_ansi;
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
 use crate::conversation::adapters::{parse_timestamp, read_jsonl, saturating_count};
 use crate::conversation::normalize::recent_messages_from;
-use crate::conversation::text::strip_ansi;
 use crate::conversation::types::MessageBlock;
 
 /// Reasonix CLI session adapter.

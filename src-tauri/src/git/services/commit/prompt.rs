@@ -1,5 +1,7 @@
 #![allow(unused_imports, missing_docs)]
 
+use crate::common::text::strip_ansi;
+
 /// Build a commit prompt containing the diff and recent commit style reference.
 #[must_use]
 pub fn build_commit_prompt(diff: &str, recent_messages: &[String]) -> String {
@@ -204,27 +206,6 @@ pub fn clean_ai_output(raw: &str) -> String {
     }
 
     result_lines.join("\n").trim().to_string()
-}
-
-/// Remove ANSI escape sequences (color codes) from a string.
-fn strip_ansi(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\x1b' {
-            if chars.peek() == Some(&'[') {
-                chars.next();
-                for ch in chars.by_ref() {
-                    if ch.is_ascii_alphabetic() {
-                        break;
-                    }
-                }
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result
 }
 
 #[cfg(test)]

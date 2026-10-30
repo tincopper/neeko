@@ -5,7 +5,8 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::conversation::text::{strip_ansi, strip_image_references};
+use crate::common::text::strip_ansi;
+use crate::conversation::text::strip_image_references;
 
 /// 标题字符上限（按 Unicode 标量，代理对安全）
 pub(crate) const TITLE_MAX_CHARS: usize = 96;

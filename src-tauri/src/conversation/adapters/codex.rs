@@ -8,11 +8,11 @@ use std::time::SystemTime;
 use anyhow::{Context, Result};
 use regex::Regex;
 
+use crate::common::text::strip_ansi;
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
 use crate::conversation::adapters::{parse_timestamp, read_jsonl, saturating_count};
 use crate::conversation::normalize::is_harness_injected_user_turn;
 use crate::conversation::normalize::recent_messages_from;
-use crate::conversation::text::strip_ansi;
 use crate::conversation::types::MessageBlock;
 
 /// Codex CLI 会话适配器
