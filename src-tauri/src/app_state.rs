@@ -15,7 +15,6 @@ use crate::project::ProjectManager;
 use crate::session::StorageManager;
 use crate::terminal::TerminalRouter;
 use crate::AppError;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 
 /// Central application state holding all managers and shared resources.
@@ -355,10 +354,7 @@ impl AppStateWrapper {
         // Falls back to in-memory if the file cannot be opened.
         let session_store: Arc<dyn crate::agent::chat::session_store::SessionStore> = Arc::new(
             crate::agent::chat::session_store::SqliteSessionStore::open(
-                &dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("."))
-                    .join(".neeko")
-                    .join("agent_sessions.db"),
+                &crate::common::paths::agent_sessions_db_path(),
             )
             .unwrap_or_else(|e| {
                 log::error!("Failed to open agent session store, falling back to in-memory: {e}");

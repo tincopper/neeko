@@ -37,6 +37,39 @@
 
 ---
 
+## 0.1 库目录可以隔离：`NEEKO_DB_DIR`（多 worktree / CI 必读）
+
+`user_version` 是**整个文件一个整数**，不能协商：某个 build 把库迁到 v14 之后，早于它的
+checkout 必须拒绝打开（`common/db/migrations.rs` 的 fail-closed 判据 —— 旧代码写新 schema 会
+静默损坏数据）。所以「两个 worktree 共用 `~/.neeko/neeko.db`」等价于互相踢出局：
+
+> 2026-10-30 实测事故：`multi-agent` worktree 的**未提交**迁移把 `LATEST_VERSION` 提到 14 并跑过一次，
+> 共享库被升到 14；随后 main（支持 13）启动即 panic ——
+> `Failed to create library store: Database schema version (14) is newer than this app supports (13)`。
+> 恢复只需 `PRAGMA user_version = 13`（那条迁移是纯新增表且全 `IF NOT EXISTS`，两向安全）。
+
+隔离旋钮（`common/paths.rs`）：
+
+| 函数 | 目录 | 内容 |
+| --- | --- | --- |
+| `paths::app_dir()` | `~/.neeko/` | 无版本门禁的状态：`config.json` / `sessions.json` / 冷启动索引 / skills 仓库 / 用户工程 worktree |
+| `paths::db_dir()` | 默认同 `app_dir()`，可被 **`NEEKO_DB_DIR`** 覆写 | `neeko.db` + `agent_sessions.db`（两个版本化库同目录，隔离单位是**目录**） |
+
+```bash
+# 一个 worktree 独占一套库（首次可从共享库拷一份，保留 library / skills 数据）
+mkdir -p ~/.neeko-db-dev && cp ~/.neeko/neeko.db* ~/.neeko-db-dev/ 2>/dev/null
+NEEKO_DB_DIR=~/.neeko-db-dev pnpm tauri dev
+```
+
+判据与例外：
+
+- **覆写值必须是绝对路径**：相对路径会随 cwd 漂移（同一进程换目录就建出第二个库，那不是隔离是随机）；
+  空值 / 相对路径一律当未设置并回退默认 —— 认不出覆写值就绝不把库放到意料之外。
+- **只覆盖库目录，不覆盖整个 `~/.neeko/`**：`worktrees/` 是用户工程的真实 git worktree，路径已写进
+  各自仓库与 session 记录；搬走整根目录会让它们落在「预期根之外」并触发路径守卫（红线 8 的同源校验）。
+- 切换目录后 `agent_sessions.db` 也会跟着走；只搬 `neeko.db` 会让两库的 `user_version` 分别漂移。
+- **不要**为此加自动搬迁逻辑：两个 build 争抢同一份数据比隔离更危险。
+
 ## 1. 库里有两个独立 SQLite 库（先认清再动手）
 
 | 库 | 文件 | 迁移 | 状态 |

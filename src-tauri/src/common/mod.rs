@@ -15,6 +15,8 @@ pub mod executor;
 pub mod file;
 pub mod git;
 pub mod logger;
+/// 应用数据目录与版本化库目录（`NEEKO_DB_DIR` 隔离旋钮）。
+pub mod paths;
 pub mod runtime;
 /// 退出前的后台清理机制（组合根只声明任务表）。
 pub mod shutdown;
