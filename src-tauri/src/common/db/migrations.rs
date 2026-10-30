@@ -14,7 +14,7 @@ use rusqlite::{Connection, TransactionBehavior};
 
 /// Current schema version. Bump this in the same commit as the migration
 /// that creates the change.
-pub const LATEST_VERSION: u32 = 13;
+pub const LATEST_VERSION: u32 = 14;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &mut Connection) -> Result<()> {
@@ -50,6 +50,7 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
     match from_version {
         0..=11 => crate::library::migrations::step(conn, from_version),
         12 => crate::common::cache::v12_to_v13(conn),
+        13 => crate::agent::team::store::v13_to_v14(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -98,6 +99,10 @@ mod tests {
             "mcp_tag_group_server_agents",
             "project_mcp_tag_groups",
             "mcp_server_targets",
+            "team",
+            "team_member",
+            "team_task",
+            "team_event",
         ] {
             assert!(
                 tables.contains(&needed.to_string()),
@@ -232,8 +237,8 @@ mod upgrade_tests {
             let v: u32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .unwrap();
+            // 版本号只在这里断言一次：第二个字面量会随每次 bump 变成一条需要手工追的债。
             assert_eq!(v, LATEST_VERSION);
-            assert_eq!(v, 13);
         }
 
         let conn = Connection::open(&path).unwrap();
@@ -245,6 +250,15 @@ mod upgrade_tests {
             )
             .unwrap();
         assert_eq!(has_cache, 1, "cache_entries must exist after the upgrade");
+
+        let has_team: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name='team_task'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_team, 1, "team_task must exist after the upgrade");
 
         assert_eq!(
             snapshot_library_rows(&path),

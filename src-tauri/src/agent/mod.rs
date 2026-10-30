@@ -16,5 +16,6 @@ pub mod model_discovery;
 pub mod path_resolver;
 pub mod plugin;
 pub mod resource_deployer;
+pub mod team;
 
 pub use manager::AgentManager;
