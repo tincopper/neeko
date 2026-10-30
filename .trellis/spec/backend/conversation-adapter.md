@@ -71,6 +71,12 @@ cache: Mutex<HashMap<String, ConversationMeta>>,   // key = "{agent_id}:{native_
 | 标题（P3 首条用户消息） | 只对 `role == "user"` 的记录抽取 | 遍历全量抽取 |
 | 预览（最近 5 条） | `normalize::recent_messages_from_rev` + 反向惰性迭代，凑满即停 | 先物化全量 `(role, text)` 再裁剪 |
 
+**缓存指纹必须覆盖 SQLite 侧文件**（2026-10-30 事故）：`opencode.db` 是 WAL 模式，新提交先落
+`opencode.db-wal`，主文件在 checkpoint 前 `(len, mtime)` 不变 ⇒ 只看主文件的 `source_signature`
+会让批量元数据缓存返回旧快照，表现为「新会话不出现，重启才恢复」。opencode 适配器因此用
+`scan_cache::source_signature_with_sidecars(path, &["-wal"])`（`len` 求和、`mtime` 取最大；
+侧文件缺失时与原函数一致）。**新增任何 SQLite 源都要照此传 `-wal`**。
+
 正文分页（§4.6.4）另有一条成本约束：`get_messages_page` 通过单槽缓存
 （`CachedTranscript`，以文件长度 + 修改时间失效）保证**整段会话只解析一次**；
 否则每一页都重读整份文件（实测 4293 条会话 7 页 = 3.7s，对比单次解析 0.5s）。
@@ -255,7 +261,74 @@ get_resume_command(conversation_id) → split(':') 取 [0] 为 agent_id
 | Reasonix | 列表：`~/.reasonix/projects/**/sessions/*.jsonl` | **多轮正文在兄弟文件 `*.events.jsonl`（replace/append）**；主 jsonl 常为 stub。Resume：交互式 `reasonix --dir <cwd> --resume <path\|id>`（需 TTY）；`run --resume PATH` 是一次性任务模式，History 不要用。 |
 | OMP | `~/.omp/agent/sessions/<sanitized>/*.jsonl` | 仅主会话深度（`<sanitized>/<file>.jsonl`），排除 session 子目录 trace。标题来自 `type:"title"` 行。`message.content` 为块数组；工具结果独立成 `role:"toolResult"` 记录，另有 `developer` / `bashExecution` 噪声行。 |
 | Grok | `~/.grok/sessions/<urlenc-cwd>/<uuid>/summary.json` | 消息来自 sibling `updates.jsonl` 分块合并。 |
+| OpenCode | `~/.local/share/opencode/opencode*.db`（SQLite，WAL） | **两套布局共存**：v1 = `session`/`message`/`part`，v2 = `session_v2`/`session_message`。判据见 §4.3.3。会话标识是合成路径 `<dbPath>#<sessionId>`，不是真实文件。 |
 | Pi / Claude | 嵌套 jsonl | 依赖 L0 自动 `**/`；勿写仅顶层的 basename pattern 而不测 WalkDir。**Pi：`message.content` 恒为块数组**（text / thinking / toolCall / image），session 头部**从不写 name/title**（标题只能靠 P3 首条用户消息），工具结果独立成 `role:"toolResult"` 记录。 |
+
+### 4.3.3 opencode v1/v2 双存储（判据 = 表状态，不是版本号）
+
+opencode 2.x 起把会话写进 `session_v2` + `session_message`，旧表 `session`/`message`/`part`
+变成**迁移快照**（升级那一刻复制一次，之后不再写入）。两者在同一个 `opencode*.db` 里共存，
+所以「读哪套」必须由表状态判定 —— Neeko 不持有 opencode 版本事实，`OPENCODE_CONFIG_DIR`
+也可能指向旧库，按版本号分支只会把「agent 内部实现」写进通用模块（红线 10 的同源风险）。
+
+文件布局（每个文件都在 300 行内，实现 / SQL / 内容映射 / 夹具分开）：
+
+```
+adapters/opencode.rs          adapter trait 实现 + 布局分派（read_db）
+adapters/opencode/common.rs   两套布局共享的常量与小工具（合成路径、预览条数、时间戳、model JSON）
+adapters/opencode/store.rs    布局判定 + 只读打开 + WAL 侧文件指纹
+adapters/opencode/v1.rs       v1 读取（列表 / 计数 / 预览 / 单会话 meta）
+adapters/opencode/v1/messages.rs  v1 正文解析（message JOIN part）
+adapters/opencode/v2.rs       v2 入口（列表 / 单会话 meta / 正文）
+adapters/opencode/v2/query.rs v2 的 SQL 层（列表 / 计数 / 预览 / 首条用户消息）
+adapters/opencode/v2/blocks.rs v2 的 content[] → 文本 + 块映射
+```
+
+判据（`adapters/opencode/store.rs`）：`session_v2` **与** `session_message` 都存在
+**且 `session_v2` 有行** → v2，否则 v1。两侧最坏情况都只能是「显示旧数据」：
+
+| 库状态 | 判定 | 理由 |
+| --- | --- | --- |
+| 只有 v1 表 | V1 | 未升级的库 |
+| v2 表已建但空（迁移未跑完） | V1 | 判 v2 会把历史整体隐藏 |
+| v2 表有行 | V2 | 唯一还在被写的布局；v1 表只是快照 |
+
+同一 DB **只读一套**，不合并：混读会复活 v2 已删的孤儿会话，且计数与正文来自不同来源。
+
+事故形态（2026-10-30）：升级 5 周后 Neeko 仍只显示 09-28 之前的历史（旧表冻结在 10-23，
+新表已到 10-30）；实测 `/…/neeko` 目录 v1 157 条 vs v2 227 条。同一事故还有一个独立成因：
+`opencode.db` 是 WAL 模式，指纹只盯主文件 ⇒ 批量元数据缓存命中旧快照（见 §2.3 末段）。
+
+v2 行模型（`v2.rs`）：`session_message.type` 列 + `data` JSON ——
+
+| `type` | `data` | 是否对话回合 |
+| --- | --- | --- |
+| `user` | `{text, time.created, files?, metadata?}`（`text` 平铺） | 是 |
+| `assistant` | `{content:[{type:text\|reasoning\|tool}], model{id,…}, time.created}` | 是 |
+| `system` / `synthetic` / `compaction` / `idle` / `model-switched` / `agent-switched` / `location-switched` | 各自的元数据 | 否 |
+
+块映射与 v1 的 part 同形：`text`→`Text`、`reasoning`→`Thinking`、`tool`→`ToolUse`
++ completed（`state.content[].text` 拼接）或 error（`state.error`，`is_error=true`）的
+`ToolResult`。预览只取文本项（工具输出、thinking 不进预览，红线 4）。
+`session_v2.title` **可空**（实测 7/746）⇒ 靠首条用户消息兜底。兜底素材必须是**真正最早的
+用户回合**（`ORDER BY seq ASC LIMIT 1`，绑定参数传角色，不要拼 `"user"` —— SQLite 的双引号
+是标识符引号，只靠已弃用的 DQS 回退才当字符串），**不能**从预览窗口（最近 5 个回合）里找：
+实测 `ses_e8a035681…` 有 3 条 user、最近 5 回合一条都没有，从窗口里找会退化成 `opencode <id8>`。
+v1 读取器仍从预览窗口取（历史行为，`title` 列 NOT NULL 时几乎不触发），属已知差异。
+
+**计数判据 = 类型白名单，不是「有没有可见文本」**：`json_extract(data,'$.content')` 对 27k 行
+大 JSON 实测 **9.9s**（列表扫描会卡死），按类型走 `(session_id, type, seq)` 索引 **0.018s**。
+代价是 `content` 为空的 assistant 行（中断回合，实测 288/24734、涉及 127 个会话）也算一个回合，
+换来的是计数与正文**天然同源**（同一常量派生的同一 SQL 过滤，不存在两套口径漂移）。
+这类空回合在前端渲染时被 `ConversationViewer` 的 `hasAnyContent` 跳过（看不到空卡片），
+所以实际差异只是「徽标比 v1 多算这一小类」。
+
+白名单本身**不新开常量**：直接复用 `shared::CONVERSATION_ROLES`（§4.6.2 的单一来源），
+`turn_types_in(column)` 从它生成 `type IN ('user','assistant')`。
+
+预览另有一条不能省的细节：v1 把 `part.type='text'` 压进 SQL 再 `LIMIT 5`，所以稳定拿满 5 条；
+v2 只能在 Rust 侧过滤，因此窗口必须放大（`PREVIEW_LIMIT * 3` + 凑够即停 + 反序），
+否则最近 5 个回合全是工具/思考时预览会变短甚至为空（实测 686 个会话中 621 个不足 5 条、15 个为空）。
 
 ### 4.4 搜索行为
 
@@ -291,6 +364,14 @@ let light = has_visible_text(entry);        // 只回答「这条算不算一条
 - `tool_result` 只映射为结构化块，**不并入** `text`：工具输出体量不可控（红线 4），
   也不该在正文里冒充用户发言。
 
+**例外（opencode v1/v2，2026-10-30 登记）**：opencode 的 `part` / `content` 项里，工具是
+**一个元素同时携带调用与终态**（`{type:"tool", id, name, state:{status,input,content[]|error}}`），
+要拆成 `ToolUse` + `ToolResult` **两个**块；而 [`content_blocks`] 的模型是「一个 part → 至多一个块」
+（`block_kind` 方言表 + `block_from_part`）。硬塞进去要改 pi / claude / omp / codex 共用的表，
+收益为零、回归面是全部适配器 ⇒ opencode 的两个读取器各自实现这段映射（v1 的 `"tool"` 分支与
+`v2/blocks.rs::push_tool_blocks`），**只允许在这两处**扩方言。将来若有第三个 agent 也「1 元素 → 2 块」，
+再把 `content_blocks` 的返回类型改成 `Vec<MessageBlock>` 一并收敛。
+
 ### 4.6.2 视图角色白名单
 
 `shared::CONVERSATION_ROLES = ["user", "assistant"]`。工具结果与系统注入记录
@@ -314,7 +395,8 @@ let light = has_visible_text(entry);        // 只回答「这条算不算一条
 | omp | 0 / 122 | 同上 |
 | claude-code | 0 / 175 | `recent_pairs.len()` |
 | codex | 0 / 119 | `collect_codex_messages().len()`（与 `parse_messages` 同一次遍历） |
-| opencode | 0 / 399 | 一次分组聚合 `count_messages_per_session`（含「必须有 part」条件） |
+| opencode v1 | 0 / 399 | 一次分组聚合 `count_messages_per_session`（含「必须有 part」条件） |
+| opencode v2 | 0 / 686（真机逐会话核对 count == parse_messages().len()） | 同一分组聚合，按 `TURN_TYPES` 类型白名单（§4.3.3） |
 | reasonix | 0 / 21 | `collect_reasonix_messages().len()`（与 `parse_messages` 同一次遍历） |
 
 新增适配器**必须**满足该规则：`message_count` 只能取自 `parse_messages` 的**同一遍历/同一 SQL 条件**，
@@ -383,7 +465,7 @@ and a session UUID`。Neeko 是 headless 调用（确认由自己的对话框负
 | Agent | 态 | 删除单元 |
 | --- | --- | --- |
 | codex | Native | `codex delete --force <uuid>`（它维护 `session_index.jsonl`） |
-| opencode | Native | `opencode session delete <id>`（SQLite 行 + 子会话级联） |
+| opencode | Native | `opencode session delete <id>`（SQLite 行 + 子会话级联；v2 删的是 `session_v2`，所以 §4.3.3 判成 v2 才谈得上「删的就是列出的那条」） |
 | claude-code / gemini / qoder / codebuddy | Storage | 会话 `*.jsonl` / `*.json` 单文件 |
 | pi | Storage | 会话 `*.jsonl`（**`~/.pi/agent/blobs/**` 永不删**：内容寻址、跨会话共享） |
 | omp | Storage | 主会话 `*.jsonl`（附属 trace 子目录不在本期单元内） |

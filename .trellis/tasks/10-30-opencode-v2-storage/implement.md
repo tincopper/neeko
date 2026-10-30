@@ -38,7 +38,9 @@
 
 ## P4 · 收尾
 
-- [x] 4.1 真机核对（人工）：opencode 列表最新时间从 09-28 前进到 10-30 量级；条数 157 → 200。
+- [x] 4.1 真机核对（临时探针，跑完删除）：`store=V2`、顶层 473 条、`/…/neeko` 前缀 **227** 条
+      （冷启动索引修前 184 条 / 最新 09-28），最新 **2026-10-30**；抽查 4 条会话
+      `message_count == parse_messages().len()`（18/33/4/10）。
 - [x] 4.2 同步 spec：`backend/conversation-adapter.md`（§4.3.2 opencode 行改双存储、§4.6.3 计数
       来源、§4.7 删除里 opencode 的「v2 权威」一句）。
 - [x] 4.3 `pnpm check:quick`（收尾跑一次）+ `cargo test --lib`；`add_session.py` 记录；**不主动提交**。

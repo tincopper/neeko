@@ -52,14 +52,19 @@ content 项：`text{text}`、`reasoning{text}`、`tool{id, name, state}`
 - R2.2 角色白名单 `user` / `assistant`；`system`/`synthetic`/`compaction`/`idle`/`*-switched`
   一律不进列表、不进预览、不计数（与既有 `CONVERSATION_ROLES` 口径一致）。
 - R2.3 `message_count` 与 `parse_messages().len()` **必须相等**（`conversation-adapter.md` §4.6.3），
-  两侧用同一个判据：user ⇒ `text` 非空；assistant ⇒ `content` 非空。
+  两侧用同一个判据：**类型白名单**（`user` / `assistant`，来源 `shared::CONVERSATION_ROLES`）。
+  *实现期实测修正：原写「user text 非空 / assistant content 非空」，但 `json_extract(content)`
+  对 27k 行大 JSON 实测 9.9s（列表扫描按 0.018s 索引 vs 9.9s 全表 JSON 解析），代价不能接受。
+  改按类型判定后 `content` 为空的 assistant 行（中断回合，实测 288/24734、涉及 127 个会话）
+  也算一个回合；它们在前端渲染时被 `hasAnyContent` 跳过，看不到空卡片，徽标比 v1 多算这一小类。*
 - R2.4 预览只取**文本**（user 的 `text`、assistant 的 `content[].type=="text"`），
   工具输出与 thinking 不进预览（工具输出体量不可控，红线 4）。
 - R2.5 内容块映射：`text`→`Text`、`reasoning`→`Thinking`、`tool`→`ToolUse` +（completed
   ⇒ `ToolResult(content=state.content[].text 拼接)`；error ⇒ `ToolResult(content=state.error,
   is_error=true)`），与 v1 的 `tool` part 映射保持同一形状（前端按 callId 配对的既有管线不变）。
 - R2.6 `title` 在 v2 可空（实测 7/746）⇒ 走既有「首条用户消息」兜底。
-- R2.7 单会话 meta（`parse_meta`）的计数也用 R2.3 同一判据（v2 侧自洽；v1 侧保持原样不动）。
+- R2.7 单会话 meta（`parse_meta`）的计数也用 R2.3 同一判据（与列表、正文同一个 `CONVERSATION_ROLES`
+  派生的 SQL 过滤；v1 侧保持原样不动）。
 
 ### R3 新鲜度：SQLite 的 WAL 不能被指纹忽略
 
@@ -83,8 +88,9 @@ content 项：`text{text}`、`reasoning{text}`、`tool{id, name, state}`
 
 ## Acceptance Criteria
 
-- [ ] AC1 真机 DB 上，opencode 列表条数与最新时间从「最新 09-28」变为「最新 10-30、200 条」量级
-      （以 `/…/neeko` 目录为准；人工核对）。
+- [x] AC1 真机 DB 上，opencode 列表条数与最新时间从「索引 184 条 / 最新 2026-09-28」变为
+      「`/…/neeko` 前缀 227 条 / 最新 2026-10-30」（临时探针实测：`store=V2`、顶层 473 条；
+      抽查 4 条会话 `message_count == parse_messages().len()`）。
 - [ ] AC2 对每个夹具会话断言 `meta.message_count == parse_messages().len()`（v2 与 v1 各一条）。
 - [ ] AC3 v2 夹具：子会话 / 归档 / `system`+`compaction` 等噪声行都不出现在列表与正文。
 - [ ] AC4 v2 夹具：assistant 的 `reasoning`→Thinking、`tool` completed→ToolUse+ToolResult 成对、

@@ -24,10 +24,19 @@ adapter 契约不变（`parse_all_metas(_for_project)` / `parse_meta` / `parse_m
 `extract_session_id` / `resume_command` / `delete_*`）。变化只在 adapter 内部：由 `Store` 分派。
 
 ```
-adapters/opencode.rs            adapter + v1 读取（原样保留）+ 分派
-adapters/opencode/store.rs      open_detected(path) -> (Connection, Store)；SQLite 侧文件指纹
-adapters/opencode/v2.rs         v2 读取（新）+ v2 夹具测试
+adapters/opencode.rs            adapter trait 实现 + 分派（read_db）
+adapters/opencode/common.rs     两套布局共享的常量 / 小工具
+adapters/opencode/store.rs      布局判定 + 只读打开 + WAL 侧文件指纹
+adapters/opencode/v1.rs (+ v1/messages.rs)   v1 读取（行为保持不变）
+adapters/opencode/v2.rs          v2 入口
+adapters/opencode/v2/query.rs    v2 的 SQL 层
+adapters/opencode/v2/blocks.rs   v2 的内容块映射
 ```
+
+**为什么拆到这一粒度**：`v2` 曾是一个 1131 行的单文件（实现 458 + 夹具 672）。按「SQL 层 /
+内容映射 / 入口 / 夹具」四类职责分开后每个文件 ≤300 行（仓内 frontend 红线与 backend
+`lsp-domain.md` 的「非测试源码 <300 行」口径），`v1` 也顺势从 adapter 文件里搬出（纯移动、
+零行为变化，用例守护）。
 
 为什么不用 `agent_id ==`/版本分支：存储形态是 adapter 的知识，分派点只有一个（`store::detect`），
 新增 v3 时只加一个变体与一个读取模块，manager/命令层/UI 零改动（开闭原则）。
@@ -35,15 +44,18 @@ adapters/opencode/v2.rs         v2 读取（新）+ v2 夹具测试
 ## 2. 读取映射（v2 → 既有类型）
 
 ```rust
-// 可见性判据（列表计数与正文解析共用同一实现，§4.6.3 的结构性保证）
-fn is_turn(kind: &str, data: &Value) -> bool {
-    match kind {
-        "user" => data["text"].as_str().is_some_and(|s| !s.trim().is_empty()),
-        "assistant" => data["content"].as_array().is_some_and(|a| !a.is_empty()),
-        _ => false,   // system / synthetic / compaction / idle / *-switched
-    }
+// 可见性判据：**类型白名单**，来源是全仓唯一的 shared::CONVERSATION_ROLES（§4.6.2）。
+// 列表计数、单会话计数、正文解析三处都从这一个常量派生 SQL 过滤 ⇒ §4.6.3 结构性成立。
+fn turn_types_in(column: &'static str) -> String {
+    // "type IN ('user','assistant')" / "sm.type IN ('user','assistant')"
 }
 ```
+
+**为什么不是「有没有可见文本」**（实现期实测否决的方案 C）：`json_extract(data,'$.content')`
+要对 27k 行大 JSON 做解析，实测 **9.9s**；按类型走 `(session_id,type,seq)` 索引 **0.018s**。
+代价是 `content` 为空的 assistant 行（中断回合，实测 288/24734、涉及 127 个会话）也算一个回合：
+前端渲染时被 `hasAnyContent` 跳过（看不到空卡片），徽标比 v1 多算这一小类。
+换来的是**计数与正文不可能漂移**（同一常量、同一 SQL 过滤），以及列表扫描不退化 500 倍。
 
 块映射（与 v1 的 part 映射同形，前端配对管线不变）：
 
@@ -56,9 +68,11 @@ fn is_turn(kind: &str, data: &Value) -> bool {
 - 排序：`ORDER BY session_message.seq ASC`（v2 里 `seq` 是 `(session_id,seq)` 唯一索引，比时间戳权威）；
   输出 `ParsedMessage.seq` 仍是 `enumerate()` 序号（与 v1 一致 —— 前端只把它当渲染/定位 key，
   契约允许不连续，改成 DB seq 会让两条路径行为分叉）。
-- 预览：`ORDER BY seq DESC LIMIT 5` 后反转，只取文本项（user 的 `text`、assistant 的 `text` 项拼接），
-  空文本跳过。工具输出与 thinking 不进预览（红线 4）。
-- 单会话 meta：一次 `session_v2` 行 + 同一 `is_turn` 判据的 `COUNT`，保证与列表徽标同源。
+- 预览：`ORDER BY seq DESC LIMIT 15`（= `PREVIEW_LIMIT * 3`）→ 新到旧逐行取文本 → 凑够 5 条即停
+  → 反转为正序。**窗口必须大于 5 行**：v1 是先把 `part.type='text'` 压进 SQL 再 LIMIT，所以稳定
+  拿满 5 条；只在 Rust 侧过滤时，最近 5 个回合可能全是工具/思考/空回合（实测 686 个会话里 621 个
+  的最近 5 回合文本不足 5 条、15 个一条不剩）。工具输出与 thinking 不进预览（红线 4）。
+- 单会话 meta：一次 `session_v2` 行 + 同一白名单 `COUNT`，保证与列表徽标同源。
 
 ## 3. WAL 指纹（第二个独立缺陷）
 
