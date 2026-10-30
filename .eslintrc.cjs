@@ -1,11 +1,16 @@
 // Import/Export Firewall: 跨 feature 仅允许导入公开面（index 门面 + store/types 直导）。
 // zone 语义：target 目录内的文件不得从 from 目录导入（except 豁免），见
 // eslint-plugin-import/no-restricted-paths。
+// 覆盖面由 `tools/guards/checks/check_feature_firewall_coverage.py` 钉死：
+// 本清单必须与 `src/features/*` 的**每一个**目录一一对应 —— 漏一个目录不等于「少一条规则」，
+// 而是那个域的跨域私有导入**完全不受约束**（2026-10-30 实测：`agent-chat` / `search` 缺席，
+// 于是 app 层可直引 `agent-chat/hooks/*` 而 ESLint 一声不响）。新增 feature 目录时
+// **本清单必须在同一 diff 内追加一行**，否则护栏红。
 const FEATURE_DIRS = [
-  'action-menu', 'agent', 'browser', 'connection', 'conversation', 'debug',
+  'action-menu', 'agent', 'agent-chat', 'browser', 'connection', 'conversation',
   'editor', 'file', 'git', 'library', 'lsp', 'notification', 'project',
-  'quick-open', 'runner', 'session', 'settings', 'skill', 'status-bar', 'symbol-nav',
-  'task', 'terminal', 'theme',
+  'quick-open', 'runner', 'search', 'session', 'settings', 'skill', 'status-bar',
+  'symbol-nav', 'task', 'terminal', 'theme',
 ];
 // except 相对 from（feature 根）解析。store/types/api 兼容单文件与目录形态。
 const FIREWALL_EXCEPT = [

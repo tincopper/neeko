@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Loader2, Search, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef } from 'react';
 
-import { openProjectFile } from '@/features/quick-open/openFile';
+import { openProjectFile } from '@/features/quick-open';
 import { useSearch } from '@/features/search/hooks/useSearch';
 import { useSearchPagination } from '@/features/search/hooks/useSearchPagination';
 import { useSearchStore } from '@/features/search/store/searchStore';
