@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{parse_timestamp, read_jsonl};
+use crate::conversation::adapters::{parse_timestamp, read_jsonl, saturating_count};
 use crate::conversation::normalize::recent_messages_from;
 use crate::conversation::text::strip_ansi;
 use crate::conversation::types::MessageBlock;
@@ -327,7 +327,9 @@ impl AgentSessionAdapter for ReasonixAdapter {
 
         // Prefer events-backed transcript when richer than the main stub jsonl.
         let entries = load_transcript_entries(file_path);
-        let derived_count = chat_entry_weight(&entries) as u32;
+        // 徽标必须等于正文视图条数：用与 `parse_messages` 同一次遍历得出的条数，
+        // 而不是 events 行数（后者会把空文本行、被过滤行也算进去）。
+        let derived_count = saturating_count(collect_reasonix_messages(&entries).len());
         // meta.turns is often under-counted vs full event log — take the max.
         message_count = message_count.max(derived_count);
 
@@ -409,155 +411,9 @@ impl AgentSessionAdapter for ReasonixAdapter {
         if !is_main_reasonix_session(file_path) {
             bail!("skip: Reasonix not a main session file");
         }
-        // Multi-turn history is usually in sibling `*.events.jsonl` (replace/append).
-        let entries = load_transcript_entries(file_path);
-        let mut messages = Vec::new();
-        let mut seq = 0u32;
-        let mut first_user_done = false;
-
-        for entry in entries {
-            let role = entry
-                .get("role")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-
-            match role.as_str() {
-                "system" => continue,
-                "user" => {
-                    let content_val = entry
-                        .get("content")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null);
-                    let raw = content_as_text(&content_val);
-                    let text = if first_user_done {
-                        strip_ansi(raw.trim())
-                    } else {
-                        first_user_done = true;
-                        strip_ansi(extract_human_user_prompt(&raw).trim())
-                    };
-                    if text.is_empty() {
-                        continue;
-                    }
-                    messages.push(ParsedMessage {
-                        role: "user".to_string(),
-                        content: text.clone(),
-                        blocks: vec![MessageBlock::Text { text }],
-                        model: None,
-                        timestamp: 0,
-                        seq,
-                    });
-                    seq = seq.saturating_add(1);
-                }
-                "assistant" => {
-                    let mut blocks = Vec::new();
-                    let content_val = entry
-                        .get("content")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null);
-                    let text = strip_ansi(content_as_text(&content_val).trim());
-                    if !text.is_empty() {
-                        blocks.push(MessageBlock::Text { text: text.clone() });
-                    }
-                    if let Some(rc) = entry.get("reasoning_content").and_then(|v| v.as_str()) {
-                        let t = strip_ansi(rc.trim());
-                        if !t.is_empty() {
-                            blocks.push(MessageBlock::Thinking { thinking: t });
-                        }
-                    }
-                    if let Some(calls) = entry.get("tool_calls").and_then(|v| v.as_array()) {
-                        for (i, call) in calls.iter().enumerate() {
-                            let id = call
-                                .get("id")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string())
-                                .unwrap_or_else(|| format!("call-{i}"));
-                            // Real Reasonix: {id, name, arguments} (not OpenAI nested function)
-                            let name = call
-                                .get("name")
-                                .or_else(|| call.pointer("/function/name"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("tool")
-                                .to_string();
-                            let input = call
-                                .get("arguments")
-                                .cloned()
-                                .or_else(|| call.pointer("/function/arguments").cloned())
-                                .or_else(|| call.get("input").cloned())
-                                .unwrap_or(serde_json::Value::Null);
-                            let input = parse_tool_arguments(&input);
-                            blocks.push(MessageBlock::ToolUse { id, name, input });
-                        }
-                    }
-                    if blocks.is_empty() {
-                        continue;
-                    }
-                    let content = if text.is_empty() {
-                        blocks
-                            .iter()
-                            .map(|b| match b {
-                                MessageBlock::Text { text } => text.clone(),
-                                MessageBlock::Thinking { thinking } => thinking.clone(),
-                                MessageBlock::ToolUse { name, .. } => {
-                                    format!("[tool:{name}]")
-                                }
-                                MessageBlock::ToolResult { content, .. } => content.clone(),
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    } else {
-                        text
-                    };
-                    messages.push(ParsedMessage {
-                        role: "assistant".to_string(),
-                        content,
-                        blocks,
-                        model: None,
-                        timestamp: 0,
-                        seq,
-                    });
-                    seq = seq.saturating_add(1);
-                }
-                "tool" => {
-                    let tool_use_id = entry
-                        .get("tool_call_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
-                    let raw =
-                        content_as_text(entry.get("content").unwrap_or(&serde_json::Value::Null));
-                    let cleaned = strip_ansi(raw.trim());
-                    if cleaned.is_empty() {
-                        continue;
-                    }
-                    // Truncate huge tool dumps for UI
-                    let cleaned = if cleaned.chars().count() > 6000 {
-                        format!("{}…", cleaned.chars().take(6000).collect::<String>())
-                    } else {
-                        cleaned
-                    };
-                    let is_error = cleaned.starts_with("blocked:")
-                        || cleaned.starts_with("error:")
-                        || cleaned.starts_with("Error");
-                    messages.push(ParsedMessage {
-                        role: "assistant".to_string(),
-                        content: format!("[{name}] {cleaned}"),
-                        blocks: vec![MessageBlock::ToolResult {
-                            tool_use_id,
-                            content: cleaned,
-                            is_error,
-                        }],
-                        model: None,
-                        timestamp: 0,
-                        seq,
-                    });
-                    seq = seq.saturating_add(1);
-                }
-                _ => {}
-            }
-        }
-        Ok(messages)
+        Ok(collect_reasonix_messages(&load_transcript_entries(
+            file_path,
+        )))
     }
 
     fn extract_session_id(&self, file_path: &Path) -> Option<String> {
@@ -624,6 +480,158 @@ impl AgentSessionAdapter for ReasonixAdapter {
             ])
         }
     }
+}
+
+/// 把 Reasonix 记录映射成正文视图消息（`parse_meta` 与 `parse_messages` 共用同一次遍历语义，
+/// 保证列表徽标与正文条数一致）。
+fn collect_reasonix_messages(entries: &[serde_json::Value]) -> Vec<ParsedMessage> {
+    let mut messages = Vec::new();
+    let mut seq = 0u32;
+    let mut first_user_done = false;
+
+    for entry in entries {
+        let role = entry
+            .get("role")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        match role.as_str() {
+            "system" => continue,
+            "user" => {
+                let content_val = entry
+                    .get("content")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let raw = content_as_text(&content_val);
+                let text = if first_user_done {
+                    strip_ansi(raw.trim())
+                } else {
+                    first_user_done = true;
+                    strip_ansi(extract_human_user_prompt(&raw).trim())
+                };
+                if text.is_empty() {
+                    continue;
+                }
+                messages.push(ParsedMessage {
+                    role: "user".to_string(),
+                    content: text.clone(),
+                    blocks: vec![MessageBlock::Text { text }],
+                    model: None,
+                    timestamp: 0,
+                    seq,
+                });
+                seq = seq.saturating_add(1);
+            }
+            "assistant" => {
+                let mut blocks = Vec::new();
+                let content_val = entry
+                    .get("content")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let text = strip_ansi(content_as_text(&content_val).trim());
+                if !text.is_empty() {
+                    blocks.push(MessageBlock::Text { text: text.clone() });
+                }
+                if let Some(rc) = entry.get("reasoning_content").and_then(|v| v.as_str()) {
+                    let t = strip_ansi(rc.trim());
+                    if !t.is_empty() {
+                        blocks.push(MessageBlock::Thinking { thinking: t });
+                    }
+                }
+                if let Some(calls) = entry.get("tool_calls").and_then(|v| v.as_array()) {
+                    for (i, call) in calls.iter().enumerate() {
+                        let id = call
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| format!("call-{i}"));
+                        // Real Reasonix: {id, name, arguments} (not OpenAI nested function)
+                        let name = call
+                            .get("name")
+                            .or_else(|| call.pointer("/function/name"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("tool")
+                            .to_string();
+                        let input = call
+                            .get("arguments")
+                            .cloned()
+                            .or_else(|| call.pointer("/function/arguments").cloned())
+                            .or_else(|| call.get("input").cloned())
+                            .unwrap_or(serde_json::Value::Null);
+                        let input = parse_tool_arguments(&input);
+                        blocks.push(MessageBlock::ToolUse { id, name, input });
+                    }
+                }
+                if blocks.is_empty() {
+                    continue;
+                }
+                let content = if text.is_empty() {
+                    blocks
+                        .iter()
+                        .map(|b| match b {
+                            MessageBlock::Text { text } => text.clone(),
+                            MessageBlock::Thinking { thinking } => thinking.clone(),
+                            MessageBlock::ToolUse { name, .. } => {
+                                format!("[tool:{name}]")
+                            }
+                            MessageBlock::ToolResult { content, .. } => content.clone(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                } else {
+                    text
+                };
+                messages.push(ParsedMessage {
+                    role: "assistant".to_string(),
+                    content,
+                    blocks,
+                    model: None,
+                    timestamp: 0,
+                    seq,
+                });
+                seq = seq.saturating_add(1);
+            }
+            "tool" => {
+                let tool_use_id = entry
+                    .get("tool_call_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
+                let raw = content_as_text(entry.get("content").unwrap_or(&serde_json::Value::Null));
+                let cleaned = strip_ansi(raw.trim());
+                if cleaned.is_empty() {
+                    continue;
+                }
+                // Truncate huge tool dumps for UI
+                let cleaned = if cleaned.chars().count() > 6000 {
+                    format!("{}…", cleaned.chars().take(6000).collect::<String>())
+                } else {
+                    cleaned
+                };
+                let is_error = cleaned.starts_with("blocked:")
+                    || cleaned.starts_with("error:")
+                    || cleaned.starts_with("Error");
+                messages.push(ParsedMessage {
+                    role: "assistant".to_string(),
+                    content: format!("[{name}] {cleaned}"),
+                    blocks: vec![MessageBlock::ToolResult {
+                        tool_use_id,
+                        content: cleaned,
+                        is_error,
+                    }],
+                    model: None,
+                    timestamp: 0,
+                    seq,
+                });
+                seq = seq.saturating_add(1);
+            }
+            _ => {}
+        }
+    }
+
+    messages
 }
 
 #[cfg(test)]
@@ -800,6 +808,11 @@ mod tests {
             meta.message_count >= 4,
             "message_count should reflect events, got {}",
             meta.message_count
+        );
+        // 徽标必须等于正文视图条数（meta.turns 与 events 行数都会偏）
+        assert_eq!(
+            meta.message_count as usize,
+            ReasonixAdapter.parse_messages(&jsonl).unwrap().len()
         );
     }
 

@@ -442,6 +442,7 @@ fn parse_opencode_db(
         })
         .context("Failed to query sessions")?;
 
+    let counts = count_messages_per_session(&conn);
     let mut results = Vec::new();
     for (index, row) in rows.enumerate() {
         let (id, title, directory, time_created, time_updated, model_json) = row?;
@@ -451,13 +452,12 @@ fn parse_opencode_db(
         let updated_at = normalize_timestamp(time_updated);
         let model = model_json.as_deref().and_then(extract_model_id_from_json);
 
-        // Rib: only enrich recent sessions; list spine only needs title + times.
-        let (message_count, recent_messages) = if index < PREVIEW_ENRICH_LIMIT {
-            let msg_count = count_user_assistant_messages(&conn, &id);
-            let recent = build_preview_messages(&conn, &id);
-            (msg_count, recent)
+        // 徽标对所有会话都有值（分组聚合一次算完）；预览仍只给最近的 N 个会话。
+        let message_count = counts.get(&id).copied().unwrap_or(0);
+        let recent_messages = if index < PREVIEW_ENRICH_LIMIT {
+            build_preview_messages(&conn, &id)
         } else {
-            (0_u32, Vec::new())
+            Vec::new()
         };
 
         let first_user_raw = recent_messages
@@ -485,17 +485,38 @@ fn parse_opencode_db(
 
 /// COUNT user/assistant messages for one session (list enrich path only).
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn count_user_assistant_messages(conn: &rusqlite::Connection, session_id: &str) -> u32 {
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM message m
-             WHERE m.session_id = ?1
-               AND json_extract(m.data, '$.role') IN ('user','assistant')",
-            [session_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-    count.clamp(0, i64::from(u32::MAX)) as u32
+/// 每个会话的正文条数（一次分组聚合，覆盖**全部**会话）。
+///
+/// 两个必须与 `parse_messages` 对齐的点：
+/// - 只算 `user` / `assistant` 角色的消息；
+/// - 必须有 part 行（正文取数走 INNER JOIN part，无 part 的消息不会渲染）。
+///
+/// 早期实现只给最近 `PREVIEW_ENRICH_LIMIT` 个会话计数（其余为 0），导致老会话的
+/// 徽标恒为 0 而正文有上千条 —— 徽标与正文必须是同一口径。
+fn count_messages_per_session(
+    conn: &rusqlite::Connection,
+) -> std::collections::HashMap<String, u32> {
+    let mut counts = std::collections::HashMap::new();
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT m.session_id, COUNT(*)
+         FROM message m
+         WHERE json_extract(m.data, '$.role') IN ('user','assistant')
+           AND EXISTS (SELECT 1 FROM part p WHERE p.message_id = m.id)
+         GROUP BY m.session_id",
+    ) else {
+        return counts;
+    };
+    let Ok(rows) = stmt.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let count: i64 = row.get(1)?;
+        Ok((id, count))
+    }) else {
+        return counts;
+    };
+    for row in rows.flatten() {
+        counts.insert(row.0, row.1.clamp(0, i64::from(u32::MAX)) as u32);
+    }
+    counts
 }
 
 /// Build preview messages for a given session.
@@ -775,7 +796,11 @@ mod tests {
         assert_eq!(meta.native_session_id, "ses-001");
         assert_eq!(meta.title.as_deref(), Some("Fix UI bug"));
         assert_eq!(meta.model.as_deref(), Some("claude-sonnet-4-5"));
-        assert_eq!(meta.message_count, 3);
+        // 徽标必须等于正文视图条数（无 part 的消息不会渲染，也不该计数）
+        assert_eq!(
+            meta.message_count as usize,
+            OpenCodeAdapter.parse_messages(syn_path).unwrap().len()
+        );
         assert_eq!(meta.project_path.as_deref(), Some("/projects/test"));
         assert_eq!(meta.started_at, 1736935200000);
         assert_eq!(meta.updated_at, 1736938800000);

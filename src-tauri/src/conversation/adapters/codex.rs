@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use regex::Regex;
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{parse_timestamp, read_jsonl};
+use crate::conversation::adapters::{parse_timestamp, read_jsonl, saturating_count};
 use crate::conversation::normalize::is_harness_injected_user_turn;
 use crate::conversation::normalize::recent_messages_from;
 use crate::conversation::text::strip_ansi;
@@ -191,9 +191,11 @@ impl AgentSessionAdapter for CodexAdapter {
                 .map(|s| s.to_string())
         });
 
-        // Collect chat-facing message pairs (current + legacy formats)
+        // Collect chat-facing message pairs (current + legacy formats) for the preview,
+        // and derive the badge from the same traversal the viewer uses — otherwise the
+        // list says 300 while the transcript renders 1956 rows.
         let chat_pairs = collect_chat_text_pairs(&entries);
-        let message_count = chat_pairs.len() as u32;
+        let message_count = saturating_count(collect_codex_messages(&entries).len());
 
         let first_user_raw = chat_pairs
             .iter()
@@ -238,226 +240,7 @@ impl AgentSessionAdapter for CodexAdapter {
 
     fn parse_messages(&self, file_path: &Path) -> Result<Vec<ParsedMessage>> {
         let entries = read_jsonl(file_path)?;
-        let mut messages = Vec::new();
-        let mut seq = 0u32;
-
-        for entry in &entries {
-            let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            let timestamp = entry
-                .get("timestamp")
-                .and_then(parse_timestamp)
-                .unwrap_or(0);
-
-            match entry_type {
-                // ── Current format: response_item message ───────────────
-                "response_item" => {
-                    let payload = entry
-                        .get("payload")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null);
-                    let payload_type = payload.get("type").and_then(|v| v.as_str()).unwrap_or("");
-
-                    match payload_type {
-                        "message" => {
-                            let role = payload
-                                .get("role")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("assistant");
-                            // Skip pure developer system prompts in the viewer
-                            if role == "developer" || role == "system" {
-                                continue;
-                            }
-                            let content_val = payload
-                                .get("content")
-                                .cloned()
-                                .unwrap_or(serde_json::Value::Null);
-                            let text = extract_message_text(&content_val);
-                            // Legacy delta fallback
-                            let text = if text.is_empty() {
-                                payload
-                                    .get("delta")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string()
-                            } else {
-                                text
-                            };
-                            let cleaned = strip_ansi(text.trim());
-                            if cleaned.is_empty() || looks_like_injected_context(&cleaned) {
-                                continue;
-                            }
-                            let role_out = if role == "user" { "user" } else { "assistant" };
-                            messages.push(ParsedMessage {
-                                role: role_out.to_string(),
-                                content: cleaned.clone(),
-                                blocks: vec![MessageBlock::Text { text: cleaned }],
-                                model: None,
-                                timestamp,
-                                seq,
-                            });
-                            seq = seq.saturating_add(1);
-                        }
-                        "function_call" | "custom_tool_call" => {
-                            let id = payload
-                                .get("call_id")
-                                .or_else(|| payload.get("id"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("tool")
-                                .to_string();
-                            let name = payload
-                                .get("name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("tool")
-                                .to_string();
-                            let input = payload
-                                .get("arguments")
-                                .cloned()
-                                .or_else(|| payload.get("input").cloned())
-                                .unwrap_or(serde_json::Value::Null);
-                            // arguments often a JSON string
-                            let input = if let serde_json::Value::String(s) = &input {
-                                serde_json::from_str(s).unwrap_or(input.clone())
-                            } else {
-                                input
-                            };
-                            messages.push(ParsedMessage {
-                                role: "assistant".to_string(),
-                                content: format!("[tool:{name}]"),
-                                blocks: vec![MessageBlock::ToolUse { id, name, input }],
-                                model: None,
-                                timestamp,
-                                seq,
-                            });
-                            seq = seq.saturating_add(1);
-                        }
-                        "function_call_output" | "custom_tool_call_output" => {
-                            let tool_use_id = payload
-                                .get("call_id")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let content = payload
-                                .get("output")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let cleaned = strip_ansi(&content);
-                            if cleaned.trim().is_empty() {
-                                continue;
-                            }
-                            // Truncate huge tool outputs for UI
-                            let cleaned = if cleaned.chars().count() > 4000 {
-                                format!("{}…", cleaned.chars().take(4000).collect::<String>())
-                            } else {
-                                cleaned
-                            };
-                            messages.push(ParsedMessage {
-                                role: "assistant".to_string(),
-                                content: cleaned.clone(),
-                                blocks: vec![MessageBlock::ToolResult {
-                                    tool_use_id,
-                                    content: cleaned,
-                                    is_error: false,
-                                }],
-                                model: None,
-                                timestamp,
-                                seq,
-                            });
-                            seq = seq.saturating_add(1);
-                        }
-                        "reasoning" => {
-                            let thinking = payload
-                                .pointer("/summary/0/text")
-                                .and_then(|v| v.as_str())
-                                .or_else(|| payload.get("content").and_then(|v| v.as_str()))
-                                .unwrap_or("");
-                            let cleaned = strip_ansi(thinking.trim());
-                            if cleaned.is_empty() {
-                                continue;
-                            }
-                            messages.push(ParsedMessage {
-                                role: "assistant".to_string(),
-                                content: cleaned.clone(),
-                                blocks: vec![MessageBlock::Thinking { thinking: cleaned }],
-                                model: None,
-                                timestamp,
-                                seq,
-                            });
-                            seq = seq.saturating_add(1);
-                        }
-                        _ => {}
-                    }
-                }
-                // ── Legacy: turn_context.transcript ─────────────────────
-                "turn_context" => {
-                    let content = entry
-                        .pointer("/payload/transcript")
-                        .or_else(|| entry.get("transcript"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    let cleaned = strip_ansi(content);
-                    if cleaned.is_empty() {
-                        continue;
-                    }
-                    messages.push(ParsedMessage {
-                        role: "user".to_string(),
-                        content: cleaned.clone(),
-                        blocks: vec![MessageBlock::Text { text: cleaned }],
-                        model: None,
-                        timestamp,
-                        seq,
-                    });
-                    seq = seq.saturating_add(1);
-                }
-                // Prefer not to double-count event_msg if response_item already has messages.
-                // Only used as fallback when no response_item messages collected yet — handled after loop.
-                _ => {}
-            }
-        }
-
-        // Fallback: if no chat messages from response_item/turn_context, use event_msg
-        if messages.is_empty() {
-            for entry in &entries {
-                if entry.get("type").and_then(|v| v.as_str()) != Some("event_msg") {
-                    continue;
-                }
-                let pl = entry
-                    .get("payload")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null);
-                let et = pl.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                let (role, text) = match et {
-                    "user_message" => (
-                        "user",
-                        pl.get("message").and_then(|v| v.as_str()).unwrap_or(""),
-                    ),
-                    "agent_message" => (
-                        "assistant",
-                        pl.get("message").and_then(|v| v.as_str()).unwrap_or(""),
-                    ),
-                    _ => continue,
-                };
-                let cleaned = strip_ansi(text.trim());
-                if cleaned.is_empty() || looks_like_injected_context(&cleaned) {
-                    continue;
-                }
-                let ts = entry
-                    .get("timestamp")
-                    .and_then(parse_timestamp)
-                    .unwrap_or(0);
-                messages.push(ParsedMessage {
-                    role: role.to_string(),
-                    content: cleaned.clone(),
-                    blocks: vec![MessageBlock::Text { text: cleaned }],
-                    model: None,
-                    timestamp: ts,
-                    seq,
-                });
-                seq = seq.saturating_add(1);
-            }
-        }
-
-        Ok(messages)
+        Ok(collect_codex_messages(&entries))
     }
 
     fn extract_session_id(&self, file_path: &Path) -> Option<String> {
@@ -467,6 +250,231 @@ impl AgentSessionAdapter for CodexAdapter {
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec!["resume".to_string(), native_session_id.to_string()])
     }
+}
+
+/// 把 Codex 记录映射成正文视图消息（`parse_meta` 与 `parse_messages` 共用同一次遍历语义，
+/// 保证列表徽标与正文条数一致）。
+fn collect_codex_messages(entries: &[serde_json::Value]) -> Vec<ParsedMessage> {
+    let mut messages = Vec::new();
+    let mut seq = 0u32;
+
+    for entry in entries {
+        let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        let timestamp = entry
+            .get("timestamp")
+            .and_then(parse_timestamp)
+            .unwrap_or(0);
+
+        match entry_type {
+            // ── Current format: response_item message ───────────────
+            "response_item" => {
+                let payload = entry
+                    .get("payload")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let payload_type = payload.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+                match payload_type {
+                    "message" => {
+                        let role = payload
+                            .get("role")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("assistant");
+                        // Skip pure developer system prompts in the viewer
+                        if role == "developer" || role == "system" {
+                            continue;
+                        }
+                        let content_val = payload
+                            .get("content")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null);
+                        let text = extract_message_text(&content_val);
+                        // Legacy delta fallback
+                        let text = if text.is_empty() {
+                            payload
+                                .get("delta")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string()
+                        } else {
+                            text
+                        };
+                        let cleaned = strip_ansi(text.trim());
+                        if cleaned.is_empty() || looks_like_injected_context(&cleaned) {
+                            continue;
+                        }
+                        let role_out = if role == "user" { "user" } else { "assistant" };
+                        messages.push(ParsedMessage {
+                            role: role_out.to_string(),
+                            content: cleaned.clone(),
+                            blocks: vec![MessageBlock::Text { text: cleaned }],
+                            model: None,
+                            timestamp,
+                            seq,
+                        });
+                        seq = seq.saturating_add(1);
+                    }
+                    "function_call" | "custom_tool_call" => {
+                        let id = payload
+                            .get("call_id")
+                            .or_else(|| payload.get("id"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("tool")
+                            .to_string();
+                        let name = payload
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("tool")
+                            .to_string();
+                        let input = payload
+                            .get("arguments")
+                            .cloned()
+                            .or_else(|| payload.get("input").cloned())
+                            .unwrap_or(serde_json::Value::Null);
+                        // arguments often a JSON string
+                        let input = if let serde_json::Value::String(s) = &input {
+                            serde_json::from_str(s).unwrap_or(input.clone())
+                        } else {
+                            input
+                        };
+                        messages.push(ParsedMessage {
+                            role: "assistant".to_string(),
+                            content: format!("[tool:{name}]"),
+                            blocks: vec![MessageBlock::ToolUse { id, name, input }],
+                            model: None,
+                            timestamp,
+                            seq,
+                        });
+                        seq = seq.saturating_add(1);
+                    }
+                    "function_call_output" | "custom_tool_call_output" => {
+                        let tool_use_id = payload
+                            .get("call_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let content = payload
+                            .get("output")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let cleaned = strip_ansi(&content);
+                        if cleaned.trim().is_empty() {
+                            continue;
+                        }
+                        // Truncate huge tool outputs for UI
+                        let cleaned = if cleaned.chars().count() > 4000 {
+                            format!("{}…", cleaned.chars().take(4000).collect::<String>())
+                        } else {
+                            cleaned
+                        };
+                        messages.push(ParsedMessage {
+                            role: "assistant".to_string(),
+                            content: cleaned.clone(),
+                            blocks: vec![MessageBlock::ToolResult {
+                                tool_use_id,
+                                content: cleaned,
+                                is_error: false,
+                            }],
+                            model: None,
+                            timestamp,
+                            seq,
+                        });
+                        seq = seq.saturating_add(1);
+                    }
+                    "reasoning" => {
+                        let thinking = payload
+                            .pointer("/summary/0/text")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| payload.get("content").and_then(|v| v.as_str()))
+                            .unwrap_or("");
+                        let cleaned = strip_ansi(thinking.trim());
+                        if cleaned.is_empty() {
+                            continue;
+                        }
+                        messages.push(ParsedMessage {
+                            role: "assistant".to_string(),
+                            content: cleaned.clone(),
+                            blocks: vec![MessageBlock::Thinking { thinking: cleaned }],
+                            model: None,
+                            timestamp,
+                            seq,
+                        });
+                        seq = seq.saturating_add(1);
+                    }
+                    _ => {}
+                }
+            }
+            // ── Legacy: turn_context.transcript ─────────────────────
+            "turn_context" => {
+                let content = entry
+                    .pointer("/payload/transcript")
+                    .or_else(|| entry.get("transcript"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let cleaned = strip_ansi(content);
+                if cleaned.is_empty() {
+                    continue;
+                }
+                messages.push(ParsedMessage {
+                    role: "user".to_string(),
+                    content: cleaned.clone(),
+                    blocks: vec![MessageBlock::Text { text: cleaned }],
+                    model: None,
+                    timestamp,
+                    seq,
+                });
+                seq = seq.saturating_add(1);
+            }
+            // Prefer not to double-count event_msg if response_item already has messages.
+            // Only used as fallback when no response_item messages collected yet — handled after loop.
+            _ => {}
+        }
+    }
+
+    // Fallback: if no chat messages from response_item/turn_context, use event_msg
+    if messages.is_empty() {
+        for entry in entries {
+            if entry.get("type").and_then(|v| v.as_str()) != Some("event_msg") {
+                continue;
+            }
+            let pl = entry
+                .get("payload")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let et = pl.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            let (role, text) = match et {
+                "user_message" => (
+                    "user",
+                    pl.get("message").and_then(|v| v.as_str()).unwrap_or(""),
+                ),
+                "agent_message" => (
+                    "assistant",
+                    pl.get("message").and_then(|v| v.as_str()).unwrap_or(""),
+                ),
+                _ => continue,
+            };
+            let cleaned = strip_ansi(text.trim());
+            if cleaned.is_empty() || looks_like_injected_context(&cleaned) {
+                continue;
+            }
+            let ts = entry
+                .get("timestamp")
+                .and_then(parse_timestamp)
+                .unwrap_or(0);
+            messages.push(ParsedMessage {
+                role: role.to_string(),
+                content: cleaned.clone(),
+                blocks: vec![MessageBlock::Text { text: cleaned }],
+                model: None,
+                timestamp: ts,
+                seq,
+            });
+            seq = seq.saturating_add(1);
+        }
+    }
+
+    messages
 }
 
 /// Collect (role, text) pairs for preview / counts from current + legacy formats.
@@ -739,7 +747,11 @@ mod tests {
             "123e4567-e89b-12d3-a456-426614174000"
         );
         assert_eq!(meta.title.as_deref(), Some("Fix login bug"));
-        assert!(meta.message_count >= 2);
+        // 徽标必须等于正文视图条数（列表与详情同一口径）
+        assert_eq!(
+            meta.message_count as usize,
+            CodexAdapter.parse_messages(&path).unwrap().len()
+        );
         assert!(meta
             .recent_messages
             .iter()
