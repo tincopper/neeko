@@ -139,3 +139,15 @@ pnpm test:fe                                        # 全量前端单测（push/
 本地无可验证环境，已在 spec 与错误文案中写明）；`PdfFileView` 滚动的 rAF 节流（性能项，
 不影响正确性）；远程 `InProject` scope 强校验（既有欠账，需远程 realpath）。
 
+## 归档前复核（2026-10-30）
+
+- **代码已合入**：`9e2b1d05 feat(editor): preview images and PDFs in the file editor`；工作树干净。
+- **测试现状**（本轮实跑）：Rust `reader_bytes` **16 passed**（range 精确窗口 / 到尾 /
+  越界截断而非报错 / 超上限短读 / 连续短读重组 / size 一致 / 越界拒绝）；
+  前端 PDF + `fileBytes` + `localAsset` **44 passed**（4 个文件）。
+- **AC6 的「不整读文件」是构造性保证，不是测试碰巧**：`read_bytes_local_blocking` 的路径是
+  `metadata → plan_range(start,want) → File::open → seek(start) → take(want).read_to_end`，
+  `want ≤ max_chunk`(=1MB) ⇒ 任何大小的 PDF 单次只读一个分片；前端 `RANGE_CHUNK_SIZE = 1MB` +
+  `disableAutoFetch: true`，可视页虚拟化。
+- **唯一残留（PRD 已标 `[~]`）**：≥200MB PDF 的**真机滚动**验收（虚拟化流畅度/内存观感）——
+  无 GUI 环境无法代为验证，属任务自述的「未在本轮验证路径内」。归档保留该标记，不冒充已验。
