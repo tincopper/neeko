@@ -1,32 +1,44 @@
+//! OpenCode 会话适配器（`~/.local/share/opencode/opencode*.db`）。
+//!
+//! **两套布局共存**：v1 = `session` / `message` / `part`（升级后的迁移快照），
+//! v2 = `session_v2` / `session_message`（升级后唯一被写入的）。判据在 `store.rs`，
+//! 读取实现分别是 `v1.rs`（保持历史行为）与 `v2.rs`（新布局）；本文件只做 trait 实现与分派。
+//!
+//! 会话标识是合成路径 `<dbPath>#<sessionId>`，不是真实文件。判据与事故背景见
+//! `.trellis/spec/backend/conversation-adapter.md` §4.3.3。
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use rusqlite::OpenFlags;
 
+use self::common::{matches_db_pattern, split_synthetic_path, SYNTHETIC_SEP};
+use self::store::Store;
+use self::v1::{parse_messages_v1, parse_opencode_db, parse_opencode_session};
 use crate::conversation::adapter::{
     AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
 };
-use crate::conversation::normalize::recent_messages_from;
-use crate::conversation::types::MessageBlock;
 
-/// Maximum number of preview messages to load from the database.
-const PREVIEW_LIMIT: u32 = 5;
-/// Only the N most recently updated sessions get COUNT + preview joins.
-/// Older sessions stay light (title/time only) so list scan stays responsive
-/// even when `opencode.db` is multi-GB.
-const PREVIEW_ENRICH_LIMIT: usize = 80;
-/// Separator between DB path and session ID in synthetic file paths
-const SYNTHETIC_SEP: char = '#';
+mod common;
+mod store;
+mod v1;
+mod v2;
+
+#[cfg(test)]
+mod tests;
+
 /// Pattern for OpenCode SQLite database filenames
 const DB_PATTERN: &str = "opencode*.db";
+
+/// SQLite 侧文件：WAL 模式下的提交先落在这里（参与扫描指纹）。
+const SQLITE_SIDECARS: &[&str] = &["-wal"];
 
 /// OpenCode 会话适配器
 ///
 /// 会话格式：`~/.local/share/opencode/opencode*.db`
 /// - 单 SQLite 文件存储所有会话
-/// - 使用 session / message / part 三表
-/// - 角色、摘要等元数据存储在 message.data JSON 中
-/// - 文本内容存储在 part.data JSON 中
+/// - **两套布局共存**：v1 = `session` / `message` / `part`（迁移快照），
+///   v2 = `session_v2` / `session_message`（升级后唯一写入的）。由 `store::detect` 判定，
+///   v1 的读取逻辑保持原样（判据见 `conversation-adapter.md` §4.3.3）。
 /// - 每个会话通过合成路径 `<dbPath>#<sessionId>` 标识
 pub struct OpenCodeAdapter;
 
@@ -90,7 +102,11 @@ impl AgentSessionAdapter for OpenCodeAdapter {
 
             // Full-DB fingerprint only applies when no project filter (filter changes result set).
             if project_path.is_none() {
-                if let Some(sig) = crate::conversation::scan_cache::source_signature(path) {
+                // SQLite 的 WAL 侧文件也参与指纹：新提交先落 `-wal`，只盯主文件会命中旧快照。
+                if let Some(sig) = crate::conversation::scan_cache::source_signature_with_sidecars(
+                    path,
+                    SQLITE_SIDECARS,
+                ) {
                     if let Some(cached) =
                         crate::conversation::scan_cache::get_cached_bulk_metas(path, &sig)
                     {
@@ -98,7 +114,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                         continue;
                     }
 
-                    match parse_opencode_db(path, None) {
+                    match read_db(path, None) {
                         Ok(sessions) => {
                             crate::conversation::scan_cache::put_cached_bulk_metas(
                                 path.to_path_buf(),
@@ -115,7 +131,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                 }
             }
 
-            match parse_opencode_db(path, project_path) {
+            match read_db(path, project_path) {
                 Ok(sessions) => results.extend(sessions),
                 Err(e) => {
                     log::error!("Failed to parse OpenCode DB {}: {e}", path.display());
@@ -128,7 +144,11 @@ impl AgentSessionAdapter for OpenCodeAdapter {
 
     fn parse_meta(&self, file_path: &Path) -> Result<ParsedMeta> {
         if let Some((db_path, session_id)) = split_synthetic_path(file_path) {
-            return parse_opencode_session(&db_path, &session_id);
+            let (conn, store) = store::open_detected(&db_path)?;
+            return match store {
+                Store::V1 => parse_opencode_session(&conn, &session_id),
+                Store::V2 => v2::parse_session_meta(&conn, &session_id),
+            };
         }
         anyhow::bail!(
             "OpenCode adapter requires parse_all_metas; parse_meta called with: {}",
@@ -136,205 +156,14 @@ impl AgentSessionAdapter for OpenCodeAdapter {
         );
     }
 
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::type_complexity
-    )]
     fn parse_messages(&self, file_path: &Path) -> Result<Vec<ParsedMessage>> {
         let (db_path, session_id) = split_synthetic_path(file_path)
             .context("Invalid synthetic path; expected <dbPath>#<sessionId>")?;
-
-        let conn =
-            rusqlite::Connection::open_with_flags(&db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-                .with_context(|| format!("Failed to open OpenCode DB: {}", db_path.display()))?;
-        let _ = conn.execute_batch("PRAGMA query_only = ON");
-
-        // Messages with their parts, ordered by time
-        let mut stmt = conn
-            .prepare(
-                "SELECT m.id, json_extract(m.data, '$.role') AS role,
-                        m.time_created,
-                        json_extract(m.data, '$.model') AS model_json,
-                        p.data AS part_data,
-                        p.time_created AS part_time
-                 FROM message m
-                 JOIN part p ON p.message_id = m.id
-                 WHERE m.session_id = ?1
-                   AND json_extract(m.data, '$.role') IN ('user', 'assistant')
-                 ORDER BY m.time_created ASC, p.time_created ASC",
-            )
-            .context("Failed to prepare message query")?;
-
-        // Group parts by message
-        let mut msg_map: Vec<(String, String, i64, Option<String>, Vec<serde_json::Value>)> =
-            Vec::new();
-
-        let rows = stmt
-            .query_map([&session_id], |row| {
-                let msg_id: String = row.get(0)?;
-                let role: String = row.get(1)?;
-                let ts: i64 = row.get(2)?;
-                let model_json: Option<String> = row.get(3)?;
-                let part_data_str: String = row.get(4)?;
-                let _part_time: i64 = row.get(5)?;
-                let part_data: serde_json::Value =
-                    serde_json::from_str(&part_data_str).unwrap_or_default();
-                Ok((msg_id, role, ts, model_json, part_data))
-            })
-            .context("Failed to query messages")?
-            .filter_map(|r| r.ok());
-
-        for (msg_id, role, ts, model_json, part_data) in rows {
-            if let Some(pos) = msg_map.iter().position(|(id, _, _, _, _)| *id == msg_id) {
-                msg_map[pos].4.push(part_data);
-            } else {
-                msg_map.push((msg_id, role, ts, model_json, vec![part_data]));
-            }
+        let (conn, store) = store::open_detected(&db_path)?;
+        match store {
+            Store::V1 => parse_messages_v1(&conn, &session_id),
+            Store::V2 => v2::parse_messages(&conn, &session_id),
         }
-
-        // Build ParsedMessages
-        let messages: Vec<ParsedMessage> = msg_map
-            .into_iter()
-            .enumerate()
-            .map(|(seq, (_msg_id, role, ts, model_json, parts))| {
-                let ts_ms = if ts > 1_000_000_000_000 {
-                    ts
-                } else {
-                    ts * 1000
-                };
-
-                let mut content = String::new();
-                let mut blocks: Vec<MessageBlock> = Vec::new();
-
-                for part in &parts {
-                    let part_type = part.get("type").and_then(|v| v.as_str()).unwrap_or("text");
-                    match part_type {
-                        "text" => {
-                            if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                                if !content.is_empty() {
-                                    content.push('\n');
-                                }
-                                content.push_str(text);
-                                blocks.push(MessageBlock::Text {
-                                    text: text.to_string(),
-                                });
-                            }
-                        }
-                        // opencode 的思考部件（Claude Code 对应 "thinking"）
-                        "reasoning" => {
-                            if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                                blocks.push(MessageBlock::Thinking {
-                                    thinking: text.to_string(),
-                                });
-                            }
-                        }
-                        "tool_use" => {
-                            let id = part
-                                .get("id")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let name = part
-                                .get("name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("unknown")
-                                .to_string();
-                            let input = part
-                                .get("input")
-                                .cloned()
-                                .unwrap_or(serde_json::Value::Null);
-                            blocks.push(MessageBlock::ToolUse { id, name, input });
-                        }
-                        "tool_result" => {
-                            let tool_use_id = part
-                                .get("tool_use_id")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let text = part.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                            let is_error = part
-                                .get("is_error")
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false);
-                            blocks.push(MessageBlock::ToolResult {
-                                tool_use_id,
-                                content: text.to_string(),
-                                is_error,
-                            });
-                        }
-                        // opencode 的工具部件：单个 part 自带调用与终态，拆成
-                        // ToolUse + ToolResult 成对块，复用前端按 callId 配对
-                        // 回填输出/状态的既有管线（historyConvert.pushToolResult）。
-                        "tool" => {
-                            let call_id = part
-                                .get("callID")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or_default();
-                            if call_id.is_empty() {
-                                continue;
-                            }
-                            let name = part
-                                .get("tool")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("unknown");
-                            let state = part.get("state");
-                            let input = state
-                                .and_then(|s| s.get("input"))
-                                .cloned()
-                                .unwrap_or(serde_json::Value::Null);
-                            blocks.push(MessageBlock::ToolUse {
-                                id: call_id.to_string(),
-                                name: name.to_string(),
-                                input,
-                            });
-                            let status =
-                                state.and_then(|s| s.get("status")).and_then(|v| v.as_str());
-                            match status {
-                                Some("completed") => {
-                                    let output = state
-                                        .and_then(|s| s.get("output"))
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or_default();
-                                    blocks.push(MessageBlock::ToolResult {
-                                        tool_use_id: call_id.to_string(),
-                                        content: output.to_string(),
-                                        is_error: false,
-                                    });
-                                }
-                                Some("error") => {
-                                    let err = state
-                                        .and_then(|s| s.get("error"))
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or_default();
-                                    blocks.push(MessageBlock::ToolResult {
-                                        tool_use_id: call_id.to_string(),
-                                        content: err.to_string(),
-                                        is_error: true,
-                                    });
-                                }
-                                // pending/running：快照无终态输出，仅保留 ToolUse
-                                _ => {}
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-
-                let model = model_json.as_deref().and_then(extract_model_id_from_json);
-
-                ParsedMessage {
-                    role,
-                    content,
-                    blocks,
-                    model,
-                    timestamp: ts_ms,
-                    seq: seq as u32,
-                }
-            })
-            .collect();
-
-        Ok(messages)
     }
 
     fn extract_session_id(&self, file_path: &Path) -> Option<String> {
@@ -375,747 +204,16 @@ impl AgentSessionAdapter for OpenCodeAdapter {
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn matches_db_pattern(filename: &str) -> bool {
-    filename.starts_with("opencode") && filename.ends_with(".db")
-}
-
-/// Split a synthetic path `<dbPath>#<sessionId>` into its components.
-fn split_synthetic_path(path: &Path) -> Option<(PathBuf, String)> {
-    let path_str = path.to_string_lossy();
-    let (db_part, session_id) = path_str.rsplit_once(SYNTHETIC_SEP)?;
-    if db_part.is_empty() || session_id.is_empty() {
-        return None;
-    }
-    Some((PathBuf::from(db_part), session_id.to_string()))
-}
-
-/// Parse sessions from an OpenCode SQLite database.
-///
-/// When `project_path` is set, only rows whose `directory` equals the project or
-/// is nested under it are returned (SQL-side filter).
-fn parse_opencode_db(
+/// 打开 DB 并按存储布局分派。判据见 `store.rs`，分派点全仓仅此一处。
+pub(super) fn read_db(
     db_path: &Path,
     project_path: Option<&str>,
 ) -> Result<Vec<(ParsedMeta, PathBuf)>> {
-    let conn = rusqlite::Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .with_context(|| format!("Failed to open OpenCode DB: {}", db_path.display()))?;
-    let _ = conn.execute_batch("PRAGMA query_only = ON");
-
-    // Verify the session table exists
-    let has_session_table: bool = conn
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='session'",
-            [],
-            |_| Ok(true),
-        )
-        .unwrap_or(false);
-    if !has_session_table {
-        return Ok(Vec::new());
-    }
-
-    // Light discovery: session row only (no correlated COUNT, no part JOIN).
-    // Enrichment for preview/count is deferred to the most recent N sessions.
-    let (sql, params): (String, Vec<String>) =
-        match project_path.map(str::trim).filter(|s| !s.is_empty()) {
-            Some(pp) => {
-                let base = pp.trim_end_matches('/').to_string();
-                let nested_prefix = format!("{base}/");
-                (
-                    "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
-                 FROM session s
-                 WHERE s.parent_id IS NULL
-                   AND s.time_archived IS NULL
-                   AND s.directory IS NOT NULL
-                   AND (s.directory = ?1 OR s.directory LIKE ?2)
-                 ORDER BY s.time_updated DESC"
-                        .to_string(),
-                    vec![base, format!("{nested_prefix}%")],
-                )
-            }
-            None => (
-                "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
-             FROM session s
-             WHERE s.parent_id IS NULL
-               AND s.time_archived IS NULL
-             ORDER BY s.time_updated DESC"
-                    .to_string(),
-                Vec::new(),
-            ),
-        };
-
-    let mut stmt = conn
-        .prepare(&sql)
-        .context("Failed to prepare session query")?;
-
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
-        .iter()
-        .map(|s| s as &dyn rusqlite::types::ToSql)
-        .collect();
-
-    let rows = stmt
-        .query_map(param_refs.as_slice(), |row| {
-            let id: String = row.get(0)?;
-            let title: Option<String> = row.get(1)?;
-            let directory: Option<String> = row.get(2)?;
-            let time_created: i64 = row.get(3)?;
-            let time_updated: i64 = row.get(4)?;
-            let model_json: Option<String> = row.get(5)?;
-            Ok((id, title, directory, time_created, time_updated, model_json))
-        })
-        .context("Failed to query sessions")?;
-
-    let counts = count_messages_per_session(&conn);
-    let mut results = Vec::new();
-    for (index, row) in rows.enumerate() {
-        let (id, title, directory, time_created, time_updated, model_json) = row?;
-
-        let synthetic_path = PathBuf::from(format!("{}{}{}", db_path.display(), SYNTHETIC_SEP, id));
-        let started_at = normalize_timestamp(time_created);
-        let updated_at = normalize_timestamp(time_updated);
-        let model = model_json.as_deref().and_then(extract_model_id_from_json);
-
-        // 徽标对所有会话都有值（分组聚合一次算完）；预览仍只给最近的 N 个会话。
-        let message_count = counts.get(&id).copied().unwrap_or(0);
-        let recent_messages = if index < PREVIEW_ENRICH_LIMIT {
-            build_preview_messages(&conn, &id)
-        } else {
-            Vec::new()
-        };
-
-        let first_user_raw = recent_messages
-            .iter()
-            .find(|(role, _)| role == "user")
-            .map(|(_, text)| text.clone());
-
-        let meta = ParsedMeta {
-            native_session_id: id,
-            title,
-            first_user_message: first_user_raw,
-            recent_messages,
-            model,
-            started_at,
-            updated_at,
-            message_count,
-            project_path: directory,
-        };
-
-        results.push((meta, synthetic_path));
-    }
-
-    Ok(results)
-}
-
-/// COUNT user/assistant messages for one session (list enrich path only).
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-/// 每个会话的正文条数（一次分组聚合，覆盖**全部**会话）。
-///
-/// 两个必须与 `parse_messages` 对齐的点：
-/// - 只算 `user` / `assistant` 角色的消息；
-/// - 必须有 part 行（正文取数走 INNER JOIN part，无 part 的消息不会渲染）。
-///
-/// 早期实现只给最近 `PREVIEW_ENRICH_LIMIT` 个会话计数（其余为 0），导致老会话的
-/// 徽标恒为 0 而正文有上千条 —— 徽标与正文必须是同一口径。
-fn count_messages_per_session(
-    conn: &rusqlite::Connection,
-) -> std::collections::HashMap<String, u32> {
-    let mut counts = std::collections::HashMap::new();
-    let Ok(mut stmt) = conn.prepare(
-        "SELECT m.session_id, COUNT(*)
-         FROM message m
-         WHERE json_extract(m.data, '$.role') IN ('user','assistant')
-           AND EXISTS (SELECT 1 FROM part p WHERE p.message_id = m.id)
-         GROUP BY m.session_id",
-    ) else {
-        return counts;
-    };
-    let Ok(rows) = stmt.query_map([], |row| {
-        let id: String = row.get(0)?;
-        let count: i64 = row.get(1)?;
-        Ok((id, count))
-    }) else {
-        return counts;
-    };
-    for row in rows.flatten() {
-        counts.insert(row.0, row.1.clamp(0, i64::from(u32::MAX)) as u32);
-    }
-    counts
-}
-
-/// Build preview messages for a given session.
-fn build_preview_messages(conn: &rusqlite::Connection, session_id: &str) -> Vec<(String, String)> {
-    let query = conn.prepare(
-        "SELECT json_extract(m.data, '$.role') AS role,
-                p.data AS part_data,
-                p.time_created
-         FROM message m
-         JOIN part p ON p.message_id = m.id
-         WHERE m.session_id = ?1
-           AND json_extract(m.data, '$.role') IN ('user','assistant')
-           AND json_extract(p.data, '$.type') = 'text'
-         ORDER BY p.time_created DESC
-         LIMIT ?2",
-    );
-
-    let mut stmt = match query {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
-
-    let rows: Vec<(String, String, i64)> =
-        match stmt.query_map([session_id, &PREVIEW_LIMIT.to_string()], |row| {
-            let role: String = row.get(0)?;
-            let part_data_str: String = row.get(1)?;
-            let ts: i64 = row.get(2)?;
-            Ok((role, part_data_str, ts))
-        }) {
-            Ok(r) => r.filter_map(|r| r.ok()).collect(),
-            Err(_) => return Vec::new(),
-        };
-
-    // Reverse-iterate (query returns newest first, we want oldest-first for the ring buffer)
-    let mut pairs: Vec<(String, String)> = Vec::new();
-    for (role, part_data_str, _ts) in rows.into_iter().rev() {
-        if let Some(text) = extract_part_text(&part_data_str) {
-            if !text.trim().is_empty() {
-                pairs.push((role, text));
-            }
-        }
-    }
-
-    recent_messages_from(pairs)
-}
-
-/// Parse a single session from a synthetic path reference.
-fn parse_opencode_session(db_path: &Path, session_id: &str) -> Result<ParsedMeta> {
-    let conn = rusqlite::Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .with_context(|| format!("Failed to open OpenCode DB: {}", db_path.display()))?;
-    let _ = conn.execute_batch("PRAGMA query_only = ON");
-
-    let row = conn
-        .query_row(
-            "SELECT s.title, s.directory, s.time_created, s.time_updated,
-                s.model, COALESCE(s.tokens_input, 0), COALESCE(s.tokens_output, 0),
-                COALESCE(s.tokens_reasoning, 0),
-                (SELECT COUNT(*) FROM message m
-                 WHERE m.session_id = s.id
-                   AND json_extract(m.data, '$.role') IN ('user','assistant')
-                ) AS msg_count
-         FROM session s
-         WHERE s.id = ?1
-         LIMIT 1",
-            [session_id],
-            |row| {
-                let title: Option<String> = row.get(0)?;
-                let directory: Option<String> = row.get(1)?;
-                let time_created: i64 = row.get(2)?;
-                let time_updated: i64 = row.get(3)?;
-                let model_json: Option<String> = row.get(4)?;
-                let tokens_input: i64 = row.get(5)?;
-                let tokens_output: i64 = row.get(6)?;
-                let tokens_reasoning: i64 = row.get(7)?;
-                let msg_count: i64 = row.get(8)?;
-                Ok((
-                    title,
-                    directory,
-                    time_created,
-                    time_updated,
-                    model_json,
-                    tokens_input,
-                    tokens_output,
-                    tokens_reasoning,
-                    msg_count,
-                ))
-            },
-        )
-        .context("Session not found in OpenCode database")?;
-
-    let (
-        title,
-        directory,
-        time_created,
-        time_updated,
-        model_json,
-        _tokens_input,
-        _tokens_output,
-        _tokens_reasoning,
-        msg_count,
-    ) = row;
-
-    let recent_messages = build_preview_messages(&conn, session_id);
-
-    let first_user_raw = recent_messages
-        .iter()
-        .find(|(role, _)| role == "user")
-        .map(|(_, text)| text.clone());
-
-    Ok(ParsedMeta {
-        native_session_id: session_id.to_string(),
-        title,
-        first_user_message: first_user_raw,
-        recent_messages,
-        model: model_json.as_deref().and_then(extract_model_id_from_json),
-        started_at: normalize_timestamp(time_created),
-        updated_at: normalize_timestamp(time_updated),
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        message_count: msg_count.clamp(0, i64::from(u32::MAX)) as u32,
-        project_path: directory,
-    })
-}
-
-/// Extract model ID from OpenCode's JSON model column.
-///
-/// Supports two formats:
-/// - `{"id": "glm-5.2", "providerID": "zai-coding-plan"}`
-/// - `{"modelID": "claude-sonnet-4-5"}`
-fn extract_model_id_from_json(json_str: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(json_str).ok()?;
-    value
-        .get("id")
-        .and_then(|v| v.as_str())
-        .or_else(|| value.get("modelID").and_then(|v| v.as_str()))
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-}
-
-/// Extract text content from a part.data JSON string.
-fn extract_part_text(part_data: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(part_data).ok()?;
-    value
-        .get("text")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
-/// Normalize timestamp to milliseconds.
-const fn normalize_timestamp(ts: i64) -> i64 {
-    if ts > 1_000_000_000_000 {
-        ts
-    } else {
-        ts * 1000
+    let (conn, store) = store::open_detected(db_path)?;
+    match store {
+        Store::V1 => parse_opencode_db(&conn, db_path, project_path),
+        Store::V2 => v2::parse_db(&conn, db_path, project_path),
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    fn create_opencode_fixture(dir: &TempDir) -> PathBuf {
-        let db_path = dir.path().join("opencode.db");
-        let conn = rusqlite::Connection::open(&db_path).expect("Failed to create DB");
-
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS session (
-                id TEXT PRIMARY KEY,
-                title TEXT,
-                directory TEXT,
-                time_created INTEGER,
-                time_updated INTEGER,
-                model TEXT,
-                tokens_input INTEGER DEFAULT 0,
-                tokens_output INTEGER DEFAULT 0,
-                tokens_reasoning INTEGER DEFAULT 0,
-                parent_id TEXT,
-                time_archived INTEGER
-            );
-            CREATE TABLE IF NOT EXISTS message (
-                id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL,
-                time_created INTEGER,
-                time_updated INTEGER,
-                data TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS part (
-                id TEXT PRIMARY KEY,
-                message_id TEXT NOT NULL,
-                session_id TEXT NOT NULL,
-                time_created INTEGER,
-                time_updated INTEGER,
-                data TEXT NOT NULL
-            );
-
-            -- Session 1: active, with messages
-            INSERT INTO session (id, title, directory, time_created, time_updated, model)
-            VALUES ('ses-001', 'Fix UI bug', '/projects/test', 1736935200000, 1736938800000,
-                    '{\"id\":\"claude-sonnet-4-5\"}');
-
-            INSERT INTO message (id, session_id, time_created, data)
-            VALUES ('m1', 'ses-001', 1736935201000,
-                    '{\"role\":\"user\",\"summary\":{\"title\":\"UI bug report\",\"body\":\"The button is broken\"}}');
-            INSERT INTO part (id, message_id, session_id, time_created, data)
-            VALUES ('p1', 'm1', 'ses-001', 1736935201000,
-                    '{\"type\":\"text\",\"text\":\"The button is not rendering correctly\"}');
-
-            INSERT INTO message (id, session_id, time_created, data)
-            VALUES ('m2', 'ses-001', 1736935202000,
-                    '{\"role\":\"assistant\",\"model\":{\"id\":\"claude-sonnet-4-5\"}}');
-            INSERT INTO part (id, message_id, session_id, time_created, data)
-            VALUES ('p2', 'm2', 'ses-001', 1736935202000,
-                    '{\"type\":\"text\",\"text\":\"Let me check the CSS. It seems like there is a z-index conflict.\"}');
-
-            INSERT INTO message (id, session_id, time_created, data)
-            VALUES ('m3', 'ses-001', 1736935203000,
-                    '{\"role\":\"user\"}');
-            INSERT INTO part (id, message_id, session_id, time_created, data)
-            VALUES ('p3', 'm3', 'ses-001', 1736935203000,
-                    '{\"type\":\"text\",\"text\":\"How do I fix the z-index?\"}');
-
-            -- Session 2: archived (should be excluded)
-            INSERT INTO session (id, title, directory, time_created, time_updated, time_archived)
-            VALUES ('ses-archived', 'Archived session', '/projects/test', 1736935200000, 1736938800000, 1736940000000);
-
-            -- Session 3: child session (should be excluded)
-            INSERT INTO session (id, title, directory, time_created, time_updated, parent_id)
-            VALUES ('ses-child', 'Child session', '/projects/test', 1736935200000, 1736938800000, 'ses-001');
-            "
-        ).expect("Failed to insert fixture data");
-
-        db_path
-    }
-
-    #[test]
-    fn should_reuse_parse_all_metas_when_db_unchanged() {
-        crate::conversation::scan_cache::reset_scan_parse_cache_for_tests();
-        let dir = TempDir::new().unwrap();
-        // Point adapter root at temp dir with one fixture DB.
-        let db_path = create_opencode_fixture(&dir);
-        // parse_opencode_db is used by parse_all_metas via session_root walk —
-        // exercise fingerprint via direct parse + cache helpers first.
-        let sig = crate::conversation::scan_cache::source_signature(&db_path).unwrap();
-        let first = parse_opencode_db(&db_path, None).unwrap();
-        crate::conversation::scan_cache::put_cached_bulk_metas(db_path.clone(), sig, first.clone());
-        let hit = crate::conversation::scan_cache::get_cached_bulk_metas(&db_path, &sig).unwrap();
-        assert_eq!(hit.len(), first.len());
-        assert_eq!(hit[0].0.native_session_id, first[0].0.native_session_id);
-    }
-
-    #[test]
-    fn should_filter_opencode_db_by_project_path() {
-        let dir = TempDir::new().unwrap();
-        let db_path = create_opencode_fixture(&dir);
-        let only_alpha = parse_opencode_db(&db_path, Some("/projects/test")).unwrap();
-        assert_eq!(only_alpha.len(), 1);
-        assert_eq!(
-            only_alpha[0].0.project_path.as_deref(),
-            Some("/projects/test")
-        );
-
-        let other = parse_opencode_db(&db_path, Some("/projects/other")).unwrap();
-        assert!(other.is_empty());
-    }
-
-    #[test]
-    fn should_parse_all_metas() {
-        let dir = TempDir::new().unwrap();
-        let db_path = create_opencode_fixture(&dir);
-
-        let metas = parse_opencode_db(&db_path, None).expect("should succeed");
-
-        // Should have 1 session (archived and child are excluded)
-        assert_eq!(metas.len(), 1);
-        let (meta, syn_path) = &metas[0];
-        assert_eq!(meta.native_session_id, "ses-001");
-        assert_eq!(meta.title.as_deref(), Some("Fix UI bug"));
-        assert_eq!(meta.model.as_deref(), Some("claude-sonnet-4-5"));
-        // 徽标必须等于正文视图条数（无 part 的消息不会渲染，也不该计数）
-        assert_eq!(
-            meta.message_count as usize,
-            OpenCodeAdapter.parse_messages(syn_path).unwrap().len()
-        );
-        assert_eq!(meta.project_path.as_deref(), Some("/projects/test"));
-        assert_eq!(meta.started_at, 1736935200000);
-        assert_eq!(meta.updated_at, 1736938800000);
-
-        // Synthetic path should contain the DB path and session ID
-        let syn_str = syn_path.to_string_lossy();
-        assert!(syn_str.contains("#ses-001"));
-        assert!(syn_str.contains("opencode.db"));
-
-        // Preview messages should include recent messages
-        assert!(meta
-            .recent_messages
-            .iter()
-            .any(|(_, t)| t.contains("button")));
-    }
-
-    #[test]
-    fn should_parse_messages() {
-        let dir = TempDir::new().unwrap();
-        let db_path = create_opencode_fixture(&dir);
-        let adapter = OpenCodeAdapter;
-
-        let synthetic_path = PathBuf::from(format!("{}#ses-001", db_path.display()));
-        let messages = adapter.parse_messages(&synthetic_path).unwrap();
-        assert_eq!(messages.len(), 3);
-        assert_eq!(messages[0].role, "user");
-        assert!(messages[0].content.contains("button"));
-        assert_eq!(messages[1].role, "assistant");
-        assert!(messages[1].content.contains("z-index"));
-        assert_eq!(messages[2].role, "user");
-        assert!(messages[2].content.contains("z-index"));
-    }
-
-    #[test]
-    fn should_handle_archived_sessions() {
-        let dir = TempDir::new().unwrap();
-        let db_path = create_opencode_fixture(&dir);
-
-        let metas = parse_opencode_db(&db_path, None).expect("should succeed");
-
-        // Archived and child sessions should be excluded
-        let ids: Vec<&str> = metas
-            .iter()
-            .map(|(m, _)| m.native_session_id.as_str())
-            .collect();
-        assert!(!ids.contains(&"ses-archived"));
-        assert!(!ids.contains(&"ses-child"));
-        assert!(ids.contains(&"ses-001"));
-    }
-
-    #[test]
-    fn should_extract_model_id() {
-        let json = r#"{"id":"claude-sonnet-4-5","providerID":"anthropic"}"#;
-        assert_eq!(
-            extract_model_id_from_json(json),
-            Some("claude-sonnet-4-5".to_string())
-        );
-
-        let old_json = r#"{"modelID":"claude-sonnet-4-5"}"#;
-        assert_eq!(
-            extract_model_id_from_json(old_json),
-            Some("claude-sonnet-4-5".to_string())
-        );
-
-        assert_eq!(extract_model_id_from_json("null"), None);
-        assert_eq!(extract_model_id_from_json("{}"), None);
-    }
-
-    #[test]
-    fn should_extract_part_text() {
-        let json = r#"{"type":"text","text":"Hello world"}"#;
-        assert_eq!(extract_part_text(json), Some("Hello world".to_string()));
-
-        let tool_json = r#"{"type":"tool_use","name":"bash"}"#;
-        assert_eq!(extract_part_text(tool_json), None);
-    }
-
-    #[test]
-    fn should_split_synthetic_path() {
-        let path = Path::new("/tmp/opencode.db#ses-abc123");
-        let (db, sid) = split_synthetic_path(path).unwrap();
-        assert_eq!(db, Path::new("/tmp/opencode.db"));
-        assert_eq!(sid, "ses-abc123");
-    }
-
-    #[test]
-    fn should_return_resume_command() {
-        let cmd = OpenCodeAdapter.resume_command("ses-abc123", "/projects/test");
-        assert_eq!(
-            cmd,
-            Some(vec!["--session".to_string(), "ses-abc123".to_string()])
-        );
-    }
-
-    #[test]
-    fn should_handle_nonexistent_db() {
-        let path = Path::new("/nonexistent/opencode.db");
-        let result =
-            OpenCodeAdapter.parse_messages(&PathBuf::from(format!("{}#s1", path.display())));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn should_extract_session_id() {
-        let path = Path::new("/tmp/opencode.db");
-        let id = OpenCodeAdapter.extract_session_id(path);
-        assert_eq!(id, Some("opencode".to_string()));
-
-        // Synthetic path
-        let syn_path = Path::new("/tmp/opencode.db#ses-001");
-        let id = OpenCodeAdapter.extract_session_id(syn_path);
-        assert_eq!(id, Some("ses-001".to_string()));
-    }
-
-    /// 真实 opencode 部件形状的 fixture（部件 JSON 逐字取自本地
-    /// `~/.local/share/opencode/opencode.db` 实测数据）。
-    ///
-    /// 回归背景：旧实现只映射 Claude Code 约定的 `text`/`tool_use`/`tool_result`
-    /// 三种类型，opencode 实际的 `reasoning`/`tool`/`step-*`/`patch` 全部落入
-    /// `_ => {}` 被静默丢弃 —— 恢复会话后工具卡片与思考过程渲染成空白。
-    fn create_parts_fixture(dir: &TempDir) -> PathBuf {
-        let db_path = dir.path().join("opencode-parts.db");
-        let conn = rusqlite::Connection::open(&db_path).expect("Failed to create DB");
-
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS session (
-                id TEXT PRIMARY KEY,
-                title TEXT,
-                directory TEXT,
-                time_created INTEGER,
-                time_updated INTEGER,
-                model TEXT,
-                parent_id TEXT,
-                time_archived INTEGER
-            );
-            CREATE TABLE IF NOT EXISTS message (
-                id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL,
-                time_created INTEGER,
-                time_updated INTEGER,
-                data TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS part (
-                id TEXT PRIMARY KEY,
-                message_id TEXT NOT NULL,
-                session_id TEXT NOT NULL,
-                time_created INTEGER,
-                time_updated INTEGER,
-                data TEXT NOT NULL
-            );
-            INSERT INTO session (id, title, directory, time_created, time_updated)
-            VALUES ('ses-parts', 'parts fixture', '/projects/test', 1736935200000, 1736938800000);
-
-            INSERT INTO message (id, session_id, time_created, data)
-            VALUES ('ma', 'ses-parts', 1736935202000, '{\"role\":\"assistant\"}');
-            ",
-        )
-        .expect("Failed to insert parts fixture");
-
-        // 部件按 time_created 升序插入，模拟一次真实回复的到达顺序。
-        let parts: &[(&str, &str)] = &[
-            ("pa1", r#"{"type":"step-start","snapshot":"307f33e0"}"#),
-            (
-                "pa2",
-                r#"{"type":"reasoning","text":"先分析根因再动手。","time":{"start":1787368960000,"end":1787368970000}}"#,
-            ),
-            (
-                "pa3",
-                r#"{"type":"text","text":"开始执行。**红灯**：补 `exec_command` 用例：","time":{"start":1787368970223,"end":1787368979910}}"#,
-            ),
-            (
-                "pa4",
-                r#"{"type":"tool","callID":"call_edit1","tool":"edit","state":{"status":"completed","input":{"filePath":"/projects/test/src/lib.rs","oldString":"fn old() {}","newString":"fn new() {}"},"output":"+ fn new() {}\n- fn old() {}"}}"#,
-            ),
-            (
-                "pa5",
-                r#"{"type":"patch","hash":"f198039c","files":["/projects/test/src/lib.rs"]}"#,
-            ),
-            (
-                "pa6",
-                r#"{"type":"tool","callID":"call_bash1","tool":"bash","state":{"status":"error","input":{"command":"cargo test"},"error":"compile error"}}"#,
-            ),
-        ];
-        for (i, (pid, data)) in parts.iter().enumerate() {
-            conn.execute(
-                "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
-                 VALUES (?1, 'ma', 'ses-parts', ?2, ?2, ?3)",
-                rusqlite::params![
-                    pid,
-                    1736935202000 + i64::try_from(i).expect("part index fits i64"),
-                    data
-                ],
-            )
-            .expect("insert part");
-        }
-
-        db_path
-    }
-
-    #[test]
-    fn should_map_reasoning_part_to_thinking_block() {
-        let dir = TempDir::new().unwrap();
-        let db_path = create_parts_fixture(&dir);
-        let adapter = OpenCodeAdapter;
-        let synthetic_path = PathBuf::from(format!("{}#ses-parts", db_path.display()));
-
-        let messages = adapter.parse_messages(&synthetic_path).unwrap();
-        assert_eq!(messages.len(), 1);
-        assert!(
-            messages[0]
-                .blocks
-                .iter()
-                .any(|b| matches!(b, MessageBlock::Thinking { thinking } if thinking == "先分析根因再动手。")),
-            "reasoning part must map to Thinking block, got {:?}",
-            messages[0].blocks
-        );
-    }
-
-    #[test]
-    fn should_map_tool_part_to_paired_use_and_result() {
-        let dir = TempDir::new().unwrap();
-        let db_path = create_parts_fixture(&dir);
-        let adapter = OpenCodeAdapter;
-        let synthetic_path = PathBuf::from(format!("{}#ses-parts", db_path.display()));
-
-        let messages = adapter.parse_messages(&synthetic_path).unwrap();
-        let blocks = &messages[0].blocks;
-
-        // completed 工具 → ToolUse(callID/tool/state.input) + ToolResult(output) 成对出现
-        let use_at = blocks
-            .iter()
-            .position(|b| matches!(b, MessageBlock::ToolUse { id, .. } if id == "call_edit1"))
-            .expect("edit tool part must produce ToolUse with callID as id");
-        match &blocks[use_at] {
-            MessageBlock::ToolUse { name, input, .. } => {
-                assert_eq!(name, "edit");
-                assert_eq!(
-                    input.get("filePath").and_then(|v| v.as_str()),
-                    Some("/projects/test/src/lib.rs")
-                );
-            }
-            other => panic!("expected ToolUse, got {other:?}"),
-        }
-
-        let result_at = blocks
-            .iter()
-            .position(|b| matches!(b, MessageBlock::ToolResult { tool_use_id, .. } if tool_use_id == "call_edit1"))
-            .expect("completed tool part must synthesize ToolResult for pairing");
-        match &blocks[result_at] {
-            MessageBlock::ToolResult {
-                content, is_error, ..
-            } => {
-                assert_eq!(content, "+ fn new() {}\n- fn old() {}");
-                assert!(!is_error);
-            }
-            other => panic!("expected ToolResult, got {other:?}"),
-        }
-        // 配对块保持时序相邻（前端 WorkRows 卡片依赖该顺序）
-        assert_eq!(result_at, use_at + 1);
-    }
-
-    #[test]
-    fn should_map_failed_tool_to_error_result() {
-        let dir = TempDir::new().unwrap();
-        let db_path = create_parts_fixture(&dir);
-        let adapter = OpenCodeAdapter;
-        let synthetic_path = PathBuf::from(format!("{}#ses-parts", db_path.display()));
-
-        let messages = adapter.parse_messages(&synthetic_path).unwrap();
-        assert!(
-            messages[0].blocks.iter().any(|b| matches!(
-                b,
-                MessageBlock::ToolResult { tool_use_id, content, is_error }
-                    if tool_use_id == "call_bash1" && content == "compile error" && *is_error
-            )),
-            "error tool part must produce failed ToolResult, got {:?}",
-            messages[0].blocks
-        );
-    }
-
-    #[test]
-    fn should_ignore_step_and_patch_parts() {
-        let dir = TempDir::new().unwrap();
-        let db_path = create_parts_fixture(&dir);
-        let adapter = OpenCodeAdapter;
-        let synthetic_path = PathBuf::from(format!("{}#ses-parts", db_path.display()));
-
-        let messages = adapter.parse_messages(&synthetic_path).unwrap();
-        // step-start/step-finish/patch 是生命周期元数据，不产生内容块；
-        // 总块数 = Thinking(1) + Text(1) + ToolUse(2) + ToolResult(2) = 6
-        assert_eq!(messages[0].blocks.len(), 6, "{:?}", messages[0].blocks);
-    }
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
