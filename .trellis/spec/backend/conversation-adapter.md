@@ -110,13 +110,20 @@ fn list_conversations(
     state: State<AppStateWrapper>,
 ) -> Result<ConversationListPage, AppError>;   // { items, total, offset, limit, has_more }
 
-// 获取一页正文（红线 4：单次载荷 ≤2MB；前端按 hasMore 组装完整会话）
+// 获取一页正文（红线 4：单次载荷 ≤2MB）
 #[tauri::command]
 fn get_conversation_messages(
     id: String,                            // "{agent_id}:{native_id}"
     offset: Option<u32>,                   // 省略 = 从头
+    from_end: Option<bool>,                // true 时 offset 表示「跳过末尾多少条」（正文视图取尾页）
     state: State<AppStateWrapper>,
 ) -> Result<ConversationMessagePage, AppError>;   // { items, total, offset, limit, has_more }
+
+// 正文统计（工具调用清单 / thinking 计数）；前端不再为计数持有全量正文
+fn get_conversation_stats(id) -> Result<ConversationStats, AppError>;
+
+// 正文内搜索：只回传 { seq, role, snippet }（≤200 条），视图按 seq 加载定位页
+fn search_conversation_messages(id, query) -> Result<Vec<ConversationSearchHit>, AppError>;
 
 // 搜索（空 query 返回空结果）
 #[tauri::command]
@@ -142,12 +149,8 @@ fn get_resume_command(
     state: State<AppStateWrapper>,
 ) -> Result<Option<Vec<String>>, AppError>;
 
-// 导出 Markdown
-#[tauri::command]
-fn export_conversation(
-    id: String,
-    state: State<AppStateWrapper>,
-) -> Result<String, AppError>;
+// 整段会话以 Markdown 直接写入系统剪贴板（返回字符数；不经 IPC 回传正文）
+fn copy_conversation_markdown(id) -> Result<u32, AppError>;
 ```
 
 ### 3.3 数据结构
@@ -296,24 +299,29 @@ let light = has_visible_text(entry);        // 只回答「这条算不算一条
 
 **合规现状（2026-10 真实会话核对，勿假设全仓已满足）**：
 
-| Adapter | 不一致会话 / 总会话 | 结论 |
+| Adapter | 不一致会话 / 总会话 | 计数来源 |
 |---|---|---|
-| pi | 0 / 266 | ✅ |
-| omp | 0 / 122 | ✅ |
-| claude-code | 0 / 175 | ✅（`recent_pairs.len()` 即视图条数） |
-| codex | 62 / 119（最大差 1656） | ⚠️ 待统一：`message_count` 来自 `collect_chat_text_pairs`，与 `parse_messages` 的遍历不同源 |
-| opencode | 317 / 399（最大差 1023） | ⚠️ 待统一：计数走 SQL 聚合，正文来自 parts 表 |
-| reasonix | 16 / 21（最大差 18） | ⚠️ 待统一：计数取 events 派生值 |
+| pi | 0 / 266 | 角色白名单 + `has_visible_text` |
+| omp | 0 / 122 | 同上 |
+| claude-code | 0 / 175 | `recent_pairs.len()` |
+| codex | 0 / 119 | `collect_codex_messages().len()`（与 `parse_messages` 同一次遍历） |
+| opencode | 0 / 399 | 一次分组聚合 `count_messages_per_session`（含「必须有 part」条件） |
+| reasonix | 0 / 21 | `collect_reasonix_messages().len()`（与 `parse_messages` 同一次遍历） |
 
-新增适配器**必须**满足该规则（`message_count` 取自与 `parse_messages` 相同的过滤结果）。
+新增适配器**必须**满足该规则：`message_count` 只能取自 `parse_messages` 的**同一遍历/同一 SQL 条件**，
+并补一条 `message_count == parse_messages().len()` 的夹具断言。
 
 ### 4.6.4 正文载荷边界（红线 4）
 
 `get_conversation_messages` 返回 `ConversationMessagePage`，每页由 manager 按
 「≤800 条 / ≤1.5MB 序列化字节」切分，且**至少 1 条**（超大单条消息不会让 offset 卡死）。
-前端 `conversationApi.getConversationMessages(id)` 负责逐页组装、保持「整段会话」的语义，
-因此视图渲染 / 统计 / 工具面板 / 会话恢复都不需要感知分页；需要按需加载时直接用
-`getConversationMessagesPage(id, offset)`。
+- **正文视图（ConversationViewer）真正按需加载**：首屏只取尾页（`fromEnd: true`），向上点
+  「Load older messages」再取更早的页；窗口外的跳转（搜索命中 / 工具调用）按 `seq` 取定位页。
+  前端常驻内存 = 已加载窗口，而不是整段会话。
+- **依赖全量的四件事已移出视图**：统计 → `get_conversation_stats`；会话内搜索 →
+  `search_conversation_messages`；整段复制 / 导出 → `copy_conversation_markdown`（Rust 直写剪贴板）。
+- `conversationApi.getConversationMessages(id)` 仍保留「整段会话」签名（逐页组装），
+  供真正需要完整历史的调用方（如 agent-chat 会话恢复）使用。
 
 事故背景：修复前单命令返回全量正文，最大会话 4293 条消息序列化 8.7MB。
 
@@ -324,6 +332,17 @@ let light = has_visible_text(entry);        // 只回答「这条算不算一条
 
 **fixture 必须与真实磁盘格式一致**：用字符串写 `content` 夹具会让「只兼容字符串」的实现全绿，
 从而掩盖真实格式缺陷（Pi 曾因此把标题退化成 `pi <id8>`、正文解析成 0 条消息）。
+
+### 4.6.6 工具调用摘要的双实现
+
+侧边栏要展示「哪个命令 / 哪个文件」，但这些摘要来自**后端统计**（不回传入参载荷，
+因为 `Write` 的入参可能是一整个文件）。因此同一规则有两份实现：
+
+- Rust `manager::tool_call_summary` —— 侧边栏用（`ConversationStats.toolCallList[].summary`）；
+- TS `utils/toolPresentation.getToolSummary` —— 消息块内渲染用（手上有真实 `input`）。
+
+两者都按「路径 / 命令 / pattern 优先，其余截断序列化」取值，各自的测试必须同步更新；
+新增工具名时**两边都要加**，否则侧边栏会退化成序列化预览。
 
 ## 5. 错误边界
 
