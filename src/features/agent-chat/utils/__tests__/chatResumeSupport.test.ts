@@ -6,11 +6,12 @@ import { createAgent } from '@/testing/factories';
 /**
  * `supportsChatResume` 是前端**唯一**的「能不能恢复为 Agent Chat」判据门面。
  *
- * 这里钉四件事：
+ * 这里钉五件事：
  * 1. 同一个 agent 在**同一份配置**下只发一次 IPC（列表每行都会问，不缓存就是每行一次）；
- * 2. 查询失败缓存为 `false`（入口隐藏比死入口安全）；
- * 3. 空 agentId 短路，不发 IPC；
- * 4. **配置一变就失效**：能力是 `(agent, 传输)` 的属性，用户改完 chat 命令后
+ * 2. 并发调用合并到同一次查询；
+ * 3. **失败不缓存**：`false`（后端真的说不支持）是答案，查询失败不是 —— 后者一律重问；
+ * 4. 空 agentId 短路，不发 IPC；
+ * 5. **配置一变就失效**：能力是 `(agent, 传输)` 的属性，用户改完 chat 命令后
  *    同一个 agentId 的答案会变 —— 只按 id 缓存会让入口显隐失真到重启。
  */
 
@@ -77,17 +78,6 @@ describe('supportsChatResume', () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
-  /** 失败（IPC 报错 / agent 已删除）→ `false`，且**不重试**：一次失败不该让列表每行重打一遍。 */
-  it('caches failures as unsupported', async () => {
-    const { supportsChatResume } = await load();
-    invoke.mockRejectedValue(new Error('no such agent'));
-
-    await expect(supportsChatResume('ghost')).resolves.toBe(false);
-    await expect(supportsChatResume('ghost')).resolves.toBe(false);
-
-    expect(invoke).toHaveBeenCalledTimes(1);
-  });
-
   /**
    * **配置变更必须失效**：同一个 agentId 从 `--mode rpc` 改成 `acp` 后，旧的答案
    * 已经不成立（后端会解析出另一个适配器）。
@@ -148,5 +138,40 @@ describe('supportsChatResume', () => {
     await expect(supportsChatResume('pi')).resolves.toBe(true);
     await expect(supportsChatResume('codex')).resolves.toBe(false);
     expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * **答不出 ≠ 答 false**：查询失败（IPC 层问题）不得被缓存成「不支持」。
+   *
+   * `agent_chat_supports_resume` 自己从不返回 Err，所以 reject 只可能是 bridge 未就绪 /
+   * 命令未注册。旧实现把这种失败缓存成 false，于是一次抖动把入口隐藏到下次配置变更
+   * —— 实际就是重启。现在失败只删本次条目，下一次调用重新问。
+   *
+   * 变异验证：把 catch 里的 `cache.delete` 去掉 → 本用例红（invoke 只被调用 1 次）。
+   */
+  it('does not cache a failed query', async () => {
+    const { supportsChatResume, setAgents } = await load();
+    setAgents(createAgent({ id: 'pi', chat: PI_RPC }));
+
+    invoke.mockRejectedValueOnce(new Error('ipc bridge not ready'));
+    await expect(supportsChatResume('pi')).resolves.toBe(false);
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    // 第二次必须重新问，而不是命中刚才那个 false。
+    invoke.mockResolvedValueOnce(true);
+    await expect(supportsChatResume('pi')).resolves.toBe(true);
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
+  /** 并发调用合并到同一次查询（列表首屏会同时问多个 agent，不能重复打）。 */
+  it('dedupes concurrent queries for the same agent', async () => {
+    const { supportsChatResume, setAgents } = await load();
+    setAgents(createAgent({ id: 'pi', chat: PI_RPC }));
+    invoke.mockResolvedValue(true);
+
+    const [a, b] = await Promise.all([supportsChatResume('pi'), supportsChatResume('pi')]);
+
+    expect([a, b]).toEqual([true, true]);
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 });

@@ -90,6 +90,9 @@ export function removeProject(projectId: string): Promise<void> {
    实例：`features/agent-chat/utils/chatResumeSupport.ts`（2026-10-30）。它一度写在
    `api/` 里，虽然能跑，但让第 4 条判据失真；移动后 `api/` 仍只有薄封装，
    `utils → api` 依赖方向单向。
+   **缓存只存「确定答案」**：查询失败（bridge 未就绪 / 命令未注册）不是「不支持」，
+   缓存成 `false` 会让一次抖动把入口隐藏到下次配置变更（= 重启）。失败只丢本次条目，
+   下一次调用重问；本轮调用方拿 `false`（fail-closed 显示）。
 
 ### 跨 domain 类型依赖
 

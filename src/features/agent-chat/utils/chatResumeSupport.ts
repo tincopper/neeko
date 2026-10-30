@@ -54,8 +54,8 @@ const cache = new Map<string, CachedCapability>();
  * 该 agent 是否支持「历史会话 → Agent Chat」。
  *
  * - 空 id 直接 `false`，不发 IPC（列表里可能有历史遗留的空 agentId）；
- * - 失败缓存为 `false`：查不到能力就当不支持（入口隐藏比死入口安全）；
- * - 同一个 agent 在同一份配置下只发一次 IPC。
+ * - 同一个 agent 在同一份配置下只发一次 IPC；并发调用合并到同一次查询；
+ * - **失败不缓存**：见下方 `supportsChatResume` 的注释 —— 「答不出」≠「答 false」。
  *
  * 签名从 `agentStore`（唯一的前端 agent 配置读入口，写操作后 `refresh()`）现取，
  * 而不是由调用方传入：调用方有两处（Conversations 面板与空聊天列表），让它们各自
@@ -68,7 +68,17 @@ export function supportsChatResume(agentId: string): Promise<boolean> {
   const cached = cache.get(agentId);
   if (cached?.signature === signature) return cached.answer;
 
-  const answer = supportsAgentChatResume(agentId).catch(() => false);
+  // 失败**不是答案**：`agent_chat_supports_resume` 自己从不返回 Err（它读本地配置后
+  // `unwrap_or(false)`），所以走到 catch 一定是 IPC 层的问题（bridge 未就绪 / 命令未注册 /
+  // dev 重载）。把这种「答不出」缓存成 `false`，会让一次抖动把入口隐藏到**下一次配置变更**
+  // —— 实际上就是重启。因此：失败时只把本次条目删掉，下一次调用重新问。
+  //
+  // 本轮调用方仍拿到 `false`（fail-closed 显示：宁可不显示入口，也不显示死入口）。
+  const answer: Promise<boolean> = supportsAgentChatResume(agentId).catch(() => {
+    // 按**条目身份**删：期间配置变了会写入新条目，别误删那一条。
+    if (cache.get(agentId)?.answer === answer) cache.delete(agentId);
+    return false;
+  });
   cache.set(agentId, { signature, answer });
   return answer;
 }
