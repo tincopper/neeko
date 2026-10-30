@@ -702,6 +702,23 @@ supports_chat_resume()` / 「位 true ⇒ `resume()` 非默认实现（不存在
 `request_after_the_process_ended_fails_fast` / `append_stderr_*` / `tail_of` 字符边界 /
 `stderr_tail_is_bounded` / `handshake_failure_carries_the_pi_stderr_tail`。
 
+#### 9.5.4 进程生命周期 ⊆ 句柄生命周期（`Drop`，2026-10-30）
+
+`PiRpcProcess` 有 `impl Drop` 调 `dispose()`。判据：**持有它的代码消失，子进程就该终止** ——
+不靠调用点在每个 `?` 前记得清理。
+
+- 缺陷形态：`PiSession::start_with` 按值拿走 `proc` 后握手 `?` 早退 → `proc` 被 drop，
+  而当时没有 `Drop` 实现 ⇒ 每次恢复失败漏一个活着的 pi 进程（只在应用退出时由退出收敛表
+  兜底）。`create` / `resume` / 未来的任何新校验路径同构 —— 所以修在类型上，不修在调用点。
+- `dispose()` 的 kill **句柄是同步调用的**（`(self.kill_fn)()`）⇒「已请求终止」同步可观测，
+  契约用例不必 sleep 赌调度；实际只杀一次由 `killed` 标志保证（`cancel()` 后再 drop 不二次杀）。
+- 无 tokio runtime 时 `tokio::spawn` 会 panic（Drop 里 panic = abort），故 `dispose` 走
+  `Handle::try_current()`，取不到只 `log::warn` 并交给退出收敛表 —— 留痕优先于静默。
+- **反向护栏**（缺了就会「开关一次 tab 杀掉活会话」）：持有句柄期间不得终止。
+  用例：`a_held_handle_does_not_kill_the_child_process` /
+  `dropping_the_handle_kills_the_child_process` / `dispose_then_drop_kills_exactly_once` /
+  `failed_handshake_reclaims_the_spawned_process`（会话层）。
+
 **扩展性护栏**：`capability_probe::resume_contract` 里适配器清单必须是表
 （`every_transport()`），并由 `every_transport_list_stays_in_sync_with_the_variant_list`
 断言它与 `ChatTransport::ALL` **等长** —— 否则「新增第五条传输」时这条护栏会静默漏掉它，

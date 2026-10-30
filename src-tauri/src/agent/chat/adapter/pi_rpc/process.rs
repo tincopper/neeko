@@ -208,6 +208,21 @@ impl PiRpcProcess {
         stdin: tokio::io::DuplexStream,
         stderr: Option<tokio::io::DuplexStream>,
     ) -> Self {
+        Self::from_split_with_hooks(stdout, stdin, stderr, Self::noop_kill())
+    }
+
+    /// 全参夹具：`kill_fn` 注入让「进程到底有没有被回收」**可观测**。
+    ///
+    /// 存在的理由：[`Drop`] 契约的判据是「子进程被终止」，而进程内假连接没有真实
+    /// pid，只能通过 kill 句柄被调用来观察。没有这个注入口，`Drop` 契约只能靠
+    /// 读代码确认（本仓吃过「测试复制一遍逻辑，实现被改坏仍绿」的亏）。
+    #[cfg(test)]
+    pub fn from_split_with_hooks(
+        stdout: tokio::io::DuplexStream,
+        stdin: tokio::io::DuplexStream,
+        stderr: Option<tokio::io::DuplexStream>,
+        kill_fn: crate::common::executor::KillFn,
+    ) -> Self {
         let pending: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let (event_tx, events) = mpsc::channel(64);
@@ -233,10 +248,16 @@ impl PiRpcProcess {
             pending,
             events: std::sync::Mutex::new(Some(events)),
             killed: std::sync::atomic::AtomicBool::new(false),
-            kill_fn: Arc::new(|| Box::pin(async { Ok(()) }) as crate::common::executor::KillFuture),
+            kill_fn,
             ended,
             stderr: stderr_tail,
         }
+    }
+
+    /// 夹具默认 kill 句柄：假连接没有真进程可杀。
+    #[cfg(test)]
+    fn noop_kill() -> crate::common::executor::KillFn {
+        std::sync::Arc::new(|| Box::pin(async { Ok(()) }) as crate::common::executor::KillFuture)
     }
 
     /// 保留的 stderr 尾部（无内容时为空串）。
@@ -389,10 +410,74 @@ impl PiRpcProcess {
             return;
         }
         // kill 返回 future，必须 poll 才生效；丢到后台驱动，dispose 立刻返回。
+        //
+        // 但 kill **句柄本身是同步调用的**（`(self.kill_fn)()`）—— 「已请求终止」这件事
+        // 在返回时就可观测，所以契约类测试不需要 sleep 去赌调度。
         let fut = (self.kill_fn)();
-        tokio::spawn(async move {
-            let _ = fut.await;
-        });
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(async move {
+                    let _ = fut.await;
+                });
+            }
+            // 没有 runtime 时 `tokio::spawn` 会 **panic**（比泄漏更糟，且 Drop 里 panic
+            // 会 aborts）。此时 kill future 无人驱动 —— 进程由执行层的**退出收敛表**
+            // 兜底（长驻 spawn 开 `kill_tree` 即自动登记），至少不是永久孤儿。
+            // 必须留痕：不然「这次没杀成」是静默的。
+            Err(_) => log::warn!(
+                "[pi-rpc] dispose() 在无 tokio runtime 的线程上调用：kill 交给退出收敛表兜底"
+            ),
+        }
+    }
+}
+
+/// **所有权契约**：句柄一旦 drop，子进程必须终止。
+///
+/// # 为什么是 `Drop`，而不是每处 `?` 前面记得调 `dispose()`
+///
+/// `spawn` 到「会话接管」之间有多条提前返回路径：握手失败、绑定校验失败、以及将来
+/// 新增的任何校验。靠调用点自觉清理 = 要求每个作者记住每一个 `?`；`Drop` 把
+/// 「**进程生命周期 ⊆ 句柄生命周期**」变成类型级的保证 —— 谁最后持有句柄，谁就负责
+/// 带走进程，新增路径自动继承。
+///
+/// # 实测背景（2026-10-30）
+///
+/// `agent_chat_resume` 对不存在的会话 spawn 出的 pi 进程，在握手失败后无人回收：
+/// `PiSession::start_with` 按值拿走 `proc` 后 `?` 早退，`proc` 被 drop，而当时没有
+/// `Drop` 实现 ⇒ 子进程活到应用退出（退出收敛表兜底）。每失败一次漏一个。
+impl Drop for PiRpcProcess {
+    fn drop(&mut self) {
+        self.dispose();
+    }
+}
+
+/// 测试用 kill 探针：kill 句柄被调用即计数。
+///
+/// 为什么放在**生产代码区**而不是 `mod tests` 里：进程生命周期契约在进程层，
+/// 消费点却分布在会话层（握手失败的早退）与适配器层，探针必须能被它们共用。
+/// 判据是「kill 句柄被调用」而不是「进程死没死」—— 进程内假连接没有真 pid，
+/// 而 `dispose()` 是**同步**调用句柄的，所以计数同步可见，用例不必 sleep 赌调度。
+#[cfg(test)]
+pub(crate) struct KillProbe(Arc<std::sync::atomic::AtomicUsize>);
+
+#[cfg(test)]
+impl KillProbe {
+    pub(crate) fn new() -> Self {
+        Self(Arc::new(std::sync::atomic::AtomicUsize::new(0)))
+    }
+
+    /// 注入给 [`PiRpcProcess::from_split_with_hooks`] 的 kill 句柄。
+    pub(crate) fn kill_fn(&self) -> crate::common::executor::KillFn {
+        let counter = Arc::clone(&self.0);
+        std::sync::Arc::new(move || {
+            counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Box::pin(async { Ok(()) }) as crate::common::executor::KillFuture
+        })
+    }
+
+    /// 累计被调用的次数。
+    pub(crate) fn count(&self) -> usize {
+        self.0.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -904,5 +989,57 @@ mod tests {
             err.to_string().contains("No session found matching 'late'"),
             "必须等 stderr 收尾后再取尾部: {err}"
         );
+    }
+
+    /// **所有权契约**：句柄 drop 时子进程必须终止。
+    ///
+    /// 缺陷背景（2026-10-30）：`agent_chat_resume` 对不存在的会话 spawn 出的 pi 进程，
+    /// 在握手失败后无人回收 —— `start_with` 按值拿走 `proc` 后 `?` 早退，`proc` 被 drop
+    /// 而当时没有 `Drop` 实现 ⇒ 每次失败漏一个活着的 pi 进程（应用退出才由收敛表兜底）。
+    ///
+    /// 变异验证：删掉 `impl Drop for PiRpcProcess` → 本用例红（计数 0）。
+    #[tokio::test]
+    async fn dropping_the_handle_kills_the_child_process() {
+        let probe = KillProbe::new();
+        let (_pi_out, session_in) = tokio::io::duplex(1024);
+        let (_cmd_out, our_in) = tokio::io::duplex(1024);
+        let proc = PiRpcProcess::from_split_with_hooks(session_in, our_in, None, probe.kill_fn());
+
+        drop(proc);
+
+        assert_eq!(probe.count(), 1, "drop 必须回收子进程");
+    }
+
+    /// **不得提前杀**：句柄还在手上时不能终止进程（否则「开关一次 tab 就杀掉活会话」）。
+    ///
+    /// 与上一条配对才构成完整契约 —— 只有「drop 就杀」的话，把 Drop 写成无条件 kill
+    /// 也能让那条用例绿，但正常会话会被误杀。
+    #[tokio::test]
+    async fn a_held_handle_does_not_kill_the_child_process() {
+        let probe = KillProbe::new();
+        let (_pi_out, session_in) = tokio::io::duplex(1024);
+        let (_cmd_out, our_in) = tokio::io::duplex(1024);
+        let proc = PiRpcProcess::from_split_with_hooks(session_in, our_in, None, probe.kill_fn());
+
+        assert_eq!(probe.count(), 0, "持有句柄期间不得终止");
+
+        drop(proc);
+    }
+
+    /// 幂等：显式 `dispose()` 之后 drop 不得再杀一次。
+    ///
+    /// 真实路径：`PiSession::cancel()` 会先 `dispose()`，随后会话被 drop。
+    /// 重复调用 kill 句柄是「已杀」的信号，不该被当作二次动作。
+    #[tokio::test]
+    async fn dispose_then_drop_kills_exactly_once() {
+        let probe = KillProbe::new();
+        let (_pi_out, session_in) = tokio::io::duplex(1024);
+        let (_cmd_out, our_in) = tokio::io::duplex(1024);
+        let proc = PiRpcProcess::from_split_with_hooks(session_in, our_in, None, probe.kill_fn());
+
+        proc.dispose();
+        drop(proc);
+
+        assert_eq!(probe.count(), 1, "kill 句柄必须只被调用一次");
     }
 }

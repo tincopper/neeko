@@ -792,6 +792,8 @@ mod tests {
     use crate::agent::chat::adapter::session_config::{
         find_by_category, CATEGORY_MODEL, CATEGORY_THOUGHT_LEVEL,
     };
+    // 进程层的位置：`process` 是 `pi_rpc` 的私有子模块，`tests` 是它的后代所以可见。
+    use super::super::process::KillProbe;
     use serde_json::json;
     use std::time::Duration;
 
@@ -924,6 +926,15 @@ mod tests {
     fn fake_pi_failing_handshake(
         stderr_text: &str,
     ) -> (PiRpcProcess, tokio::sync::oneshot::Sender<()>) {
+        // 一次性探针：不为「是否被回收」断言的用例不需要它，但夹具要保持单一路径。
+        fake_pi_failing_handshake_probed(stderr_text, &KillProbe::new())
+    }
+
+    /// 同上，但注入 kill 探针 —— 用来断言「握手失败后 spawn 的进程被回收」。
+    fn fake_pi_failing_handshake_probed(
+        stderr_text: &str,
+        probe: &KillProbe,
+    ) -> (PiRpcProcess, tokio::sync::oneshot::Sender<()>) {
         let (session_in, pi_in) = tokio::io::duplex(64 * 1024);
         let (pi_out, session_out) = tokio::io::duplex(64 * 1024);
         let (mut err_out, err_in) = tokio::io::duplex(4 * 1024);
@@ -950,7 +961,12 @@ mod tests {
             }
         });
 
-        let proc = PiRpcProcess::from_split_with_stderr(session_out, session_in, Some(err_in));
+        let proc = PiRpcProcess::from_split_with_hooks(
+            session_out,
+            session_in,
+            Some(err_in),
+            probe.kill_fn(),
+        );
         (proc, release_tx)
     }
 
@@ -994,6 +1010,28 @@ mod tests {
     /// `No session found matching '<id>'`，stdout 零响应。旧行为把这个原因丢在
     /// `_stderr` 里，用户只看到 `timed out after 5s` —— 慢且原因错误。
     ///
+    /// **所有权契约（缺陷回归）**：握手失败必须**回收**被 spawn 的进程。
+    ///
+    /// 缺陷背景（2026-10-30）：`start_with` 按值拿到 `proc` 后 `?` 早退，`proc` 被 drop，
+    /// 而当时 `PiRpcProcess` 没有 `Drop` 实现 ⇒ 每次恢复失败漏一个活着的 pi 进程
+    /// （应用退出才由收敛表兜底）。修复是进程层 `impl Drop`，本用例从会话层钉住它。
+    ///
+    /// 变异验证：删掉 `impl Drop for PiRpcProcess` → 本用例红（计数 0）。
+    #[tokio::test]
+    async fn failed_handshake_reclaims_the_spawned_process() {
+        let probe = KillProbe::new();
+        let (proc, release) = fake_pi_failing_handshake_probed("boom", &probe);
+        release.send(()).unwrap();
+
+        assert!(
+            PiSession::start_with(proc, &ctx(), test_caps())
+                .await
+                .is_err(),
+            "夹具故意让握手失败"
+        );
+        assert_eq!(probe.count(), 1, "握手失败必须终止被 spawn 的进程");
+    }
+
     /// 变异验证：`start_with` 里去掉 `.map_err(|e| proc.annotate(e))` → 本用例红。
     #[tokio::test]
     async fn handshake_failure_carries_the_pi_stderr_tail() {
