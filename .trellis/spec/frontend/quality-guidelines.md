@@ -64,6 +64,24 @@ ESLint：`import/no-restricted-paths` 禁止 layout→features/app；**无** doc
 - 禁止 `window.__neeko*` 全局函数桥接跨层通信（改用 Context，如 `TerminalInsertContext`：Provider + register/unregister + 消费方降级）
 - 禁止 dock wrapper 内嵌业务编排（git 刷新、tab 创建等）——下沉 feature 域 hooks（`useRefreshGitInfo` / `useOpenDiffTab` / `useGitLogKeyboardNav`）
 - **禁止跨 feature 深导入**：`@/features/<f>/components|hooks|utils|contexts/...` 一律走 feature `index.ts` 门面（白名单 `store/` `types/` `api/` 可直导，`export type` 类型直导豁免）；门面缺符号时先行补导出再改消费方。`shared/` 层反向引用 features 为 pre-existing 豁免（带 `import/no-restricted-paths` disable 注释），不得门面化（会引入循环依赖）。
+
+#### 防火墙的**覆盖面**由护栏钉死（2026-10-30）
+
+规则的判据集是 `.eslintrc.cjs` 里手写的 `FEATURE_DIRS` 数组，而 `import/no-restricted-paths`
+只对**清单里出现过的**目录生成 zone。于是「新增 feature 目录却没加清单」不是「少一条规则」，
+而是**那个域的跨域私有导入完全不受约束**，ESLint 一声不响 —— 2026-10-30 实测：
+`agent-chat` 与 `search` 双双缺席（`src/app` 因此能直引 `agent-chat/hooks/*`），
+另有一条陈旧条目 `debug`（`features/debug/` 已在 `570463bd` 删除）。
+
+现在由 `check_feature_firewall_coverage` 双向校验收紧：
+
+| 漂移方向 | 后果 | 判据 |
+| --- | --- | --- |
+| 磁盘有、清单无 | 该域（及别人引用它）**无任何约束** | 违规，指到 `.eslintrc.cjs` 的 `FEATURE_DIRS` 行 |
+| 清单有、磁盘无 | 清单不再描述现实，zone 指向不存在路径 | 同上 |
+
+判据只覆盖「清单 ↔ 现实」映射，**不复制规则正文**（正文单一事实源仍在 `.eslintrc.cjs`）。
+`FEATURE_DIRS` 块被改名/重构时护栏报**失效**（退出码 2），不静默通过。
 `shared/` 不得 import `layout/`（dockStore 只依赖 `shared/dock`）。
 
 当前 Git 相关 dock panel 只有 **`gitControl`**（title: Git Control）。旧的 `gitCommit` / `gitLog` 已合并进其内部 Changes | History tabs，不要再注册为独立 dock panel。

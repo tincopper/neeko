@@ -9,6 +9,26 @@
   },
   "invariants": [
     {
+      "id": "feature-firewall-covers-every-domain",
+      "title": "跨 feature 防火墙的判据集（FEATURE_DIRS）必须与 src/features 的目录一一对应",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_feature_firewall_coverage"
+        },
+        {
+          "kind": "lint",
+          "ref": "import/no-restricted-paths",
+          "note": "规则正文在 .eslintrc.cjs；由 FEATURE_DIRS 派生 zone（本护栏保证该清单不漏目录）"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_feature_firewall_coverage.py"
+        }
+      ]
+    },
+    {
       "id": "repo-unit-key-single-source",
       "title": "Workspace身份只能由 WorkspaceRef / workspaceKeyOf 产出（唯一派生点）",
       "tier": "guard",
