@@ -31,6 +31,8 @@
 
 mod adapter;
 mod config;
+#[cfg(test)]
+mod integ;
 mod process;
 mod session;
 mod translate;

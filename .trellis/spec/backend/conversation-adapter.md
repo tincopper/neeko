@@ -326,6 +326,10 @@ v1 读取器仍从预览窗口取（历史行为，`title` 列 NOT NULL 时几�
 白名单本身**不新开常量**：直接复用 `shared::CONVERSATION_ROLES`（§4.6.2 的单一来源），
 `turn_types_in(column)` 从它生成 `type IN ('user','assistant')`。
 
+真机验收入口：`adapters/opencode/tests/real_db.rs::real_opencode_database_reads_through_the_detected_layout`
+（`#[ignore]`，`cargo test --lib real_opencode -- --ignored --nocapture`）—— 在真实库上验判据选中的路径、
+徽标与正文条数相等、合成路径可用；布局无关，v1 库与 v2 库都能跑。
+
 预览另有一条不能省的细节：v1 把 `part.type='text'` 压进 SQL 再 `LIMIT 5`，所以稳定拿满 5 条；
 v2 只能在 Rust 侧过滤，因此窗口必须放大（`PREVIEW_LIMIT * 3` + 凑够即停 + 反序），
 否则最近 5 个回合全是工具/思考时预览会变短甚至为空（实测 686 个会话中 621 个不足 5 条、15 个为空）。

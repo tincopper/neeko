@@ -568,6 +568,22 @@ assert!(!matches!(err, AppError::Unsupported(_)));  // 覆写仍在
 `adapter/opencode/integ.rs::serve_round_trip_streams_text_delta`、
 `tests/unit/acp_test.rs::acp_opencode_real_roundtrip`。
 
+**真机探针（常驻，`#[ignore]`，不进 CI 默认列表）**：夹具保证「逻辑自洽」，保证不了
+「真实存储/协议的形态还对得上」—— 那一层只能靠真机。已沉淀两个入口，跑法见文件头：
+
+| 入口 | 钉住什么 | 前提（缺失则跳过、不红） |
+| --- | --- | --- |
+| `agent/chat/adapter/pi_rpc/integ.rs::real_pi_*` | 传输层**身份形态**：会话 header 的 `id` 能恢复、文件名 stem 不能、不存在的 id 快失败且错误带 stderr | 本机 `pi` + 至少一条原项目目录仍存在的会话 |
+| `conversation/adapters/opencode/tests/real_db.rs::real_opencode_*` | 真实库上的**布局判据 + 计数同源 + 合成路径** | 本机 `opencode*.db`（或 `OPENCODE_CONFIG_DIR`） |
+
+两条硬要求（都踩过）：
+
+- **入参必须与生产同源**。探针自己拼一个「看起来像」的 id / 路径，量到的是探针的行为，不是代码的
+  行为（实际事故：把 pi 的文件名 stem 当 id 喂给 `resume()`，据此误报了一个 Block 缺陷，
+  而生产读的是会话 header 的 `id`）。
+- **只在真机上验，不要往夹具里搬**。夹具里两边都由我们编造，怎么写都自洽 —— 它无法回答
+  「这个字符串到底是不是一个可用句柄」。
+
 **顺带代价**：真进程用例还会把 `STARTUP_TIMEOUT`(10s) + 命令发现重试(8×250ms) 拖进单元
 测试的墙钟——修掉后该用例 0.78s → 0.01s。
 
