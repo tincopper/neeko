@@ -91,6 +91,7 @@ mod tests {
             detail: None,
             title: None,
             hints: Default::default(),
+            seq: None,
         }
     }
 
