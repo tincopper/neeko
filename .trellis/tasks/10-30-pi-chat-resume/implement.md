@@ -83,6 +83,19 @@
       块缺失报失效）+ 8 条用例 + `invariants.json` 登记；`test_gates.py` 的进程内护栏
       计数 32 → 33。spec `frontend/quality-guidelines.md` 记录判据。
 
+## 审查轮补充 2（评审遗留项，独立于 pi 恢复本身 —— 建议单独 commit）
+
+- [x] 5.1 **进程生命周期 ⊆ 句柄生命周期**：`PiRpcProcess` 加 `impl Drop { dispose() }`。
+      缺陷是握手失败（`start_with` 的 `?` 早退）后 spawn 的 pi 进程无人回收 —— 每失败一次
+      漏一个；`create` / `resume` 同构，所以修在类型上而不是每个调用点。
+      `dispose()` 改用 `Handle::try_current()`（无 runtime 时原先会 panic，Drop 里 panic = abort）。
+      可观测性：`from_split_with_hooks` 注入 `KillProbe`（kill 句柄同步调用 ⇒ 计数同步可见，
+      用例不 sleep），4 条用例（含反向护栏「持有期间不得杀」）。
+- [x] 5.2 **答不出 ≠ 答 false**：`supportsChatResume` 的失败不再入缓存（只删本次条目，下一次
+      重问），本轮仍返回 false（fail-closed 显示）。`agent_chat_supports_resume` 自身从不返回
+      Err，故 reject 只可能是 IPC 层问题 —— 旧实现让一次抖动把入口隐藏到重启。用例：失败重问 +
+      并发合并。
+
 ## 收尾（Phase 2.2 / 3.3 / 3.4）
 
 - [~] AC1–AC7 逐条勾验（AC4–AC7 已勾；AC1–AC3 机制已由夹具测试覆盖，真机 UI 待人工）；AC1/AC2/AC3 为**人工验收**（`pnpm tauri dev` +
