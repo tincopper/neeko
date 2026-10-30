@@ -897,6 +897,28 @@ import type { Project, AgentConfig } from "@/shared/types";
 **禁止**为每种危险操作新建 `XxxConfirmDialog`。差异（标题、文案、按钮名）都是**数据**，
 通过 props 注入即可 —— 见下方 `DeleteConfirmDialog`。
 
+#### 确认按钮只调 `onConfirm()`，**不得**先 `onOpenChange(false)`（2026-10-30 实测缺陷）
+
+`ConfirmDialog` 的确认按钮曾写 `onClick={() => { onOpenChange(false); onConfirm(); }}`。在
+store 驱动通道（`ConfirmHost`）里，`onOpenChange(false)` 的语义是「用户把弹窗关了」⇒
+`confirmStore.resolve(false)`：在途请求按**取消**结算、`resolver` 被清空，紧接着的
+`onConfirm()` → `resolve(true)` 变成**空操作**。
+
+后果是 **`await confirmAction(...)` 恒为 `false`** —— 所有靠它门控的动作静默不执行
+（历史会话删除表现为「点了删除没反应、也没有 toast」，LSP 导入确认同理）。而且它不会报错：
+四次既有用例都是直接 `resolve(false)` 结算的，**从没点过那个按钮**。
+
+判据与修法：
+
+| 责任 | 归属 |
+| --- | --- |
+| 确认按钮 | 只调 `onConfirm()` |
+| 关闭弹窗 | 调用方自己：store 通道清 `pending` 即关闭；`Exit` / `BulkClose` / `DeleteConfirmDialog` 各自的 `onConfirm` 关闭自己的状态 |
+
+护栏：`ConfirmHost.test.tsx` 的「点确认时把请求结算为 true（不是取消）」——把
+`onOpenChange(false)` 加回确认按钮，该用例立即红。**任何 store 驱动的弹窗都要有这条
+「真的点了按钮」的用例**，只测 `resolve(false)` 等于没测。
+
 ---
 
 ### `DeleteConfirmDialog<T>` —— 待定条目类确认（首选）

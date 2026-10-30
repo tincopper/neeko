@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { confirmAction, setConfirmHostMounted, useConfirmStore } from '@/shared/store/confirmStore';
@@ -51,5 +51,44 @@ describe('ConfirmHost — 通用确认宿主（store ↔ UI 的唯一连接点�
 
     await expect(answer).resolves.toBe(false);
     expect(useConfirmStore.getState().pending).toBeNull();
+  });
+
+  /**
+   * **点「确认」必须真的确认**（2026-10-30 实测缺陷）。
+   *
+   * `ConfirmDialog` 的确认按钮曾先调 `onOpenChange(false)` 再 `onConfirm()`：
+   * 前者把在途请求按取消结算（`resolve(false)` 已清掉 resolver），后者的
+   * `resolve(true)` 成为空操作 ⇒ `await confirmAction(...)` **恒为 false**，
+   * 调用方静默不动作（历史会话删除表现为「点了没反应」）。
+   *
+   * 变异验证：把 `onOpenChange(false)` 加回确认按钮 → 本用例红。
+   */
+  it('点确认时把请求结算为 true（不是取消）', async () => {
+    render(<ConfirmHost />);
+
+    let answer!: Promise<boolean>;
+    act(() => {
+      answer = confirmAction(REQUEST);
+    });
+    const confirmButton = await screen.findByRole('button', { name: /proceed/i });
+
+    fireEvent.click(confirmButton);
+
+    await expect(answer).resolves.toBe(true);
+    expect(useConfirmStore.getState().pending).toBeNull();
+  });
+
+  it('点取消时结算为 false', async () => {
+    render(<ConfirmHost />);
+
+    let answer!: Promise<boolean>;
+    act(() => {
+      answer = confirmAction(REQUEST);
+    });
+    const cancelButton = await screen.findByRole('button', { name: /cancel/i });
+
+    fireEvent.click(cancelButton);
+
+    await expect(answer).resolves.toBe(false);
   });
 });
