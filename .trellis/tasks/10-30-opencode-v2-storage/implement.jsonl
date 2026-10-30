@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "adapter 契约、§4.6.3 计数同源、§4.7 删除三态"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "tempdir 夹具、不 spawn 真二进制、确定性断言"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "anyhow 内部 / AppError 边界"}

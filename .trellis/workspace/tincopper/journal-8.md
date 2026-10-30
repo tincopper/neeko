@@ -894,3 +894,35 @@ Conversations 面板支持删除历史会话：Native 委派 CLI（codex --force
 ### Next Steps
 
 - AC2 opencode 真机删除（需授权删一条可弃会话）；AC4 pi blobs 逐一比对；omp trace 目录清理
+
+
+## Session 383: opencode v2 存储兼容（v1 保留）
+<!-- trellis-session: v=2 fp=f967ab7d1771a233 -->
+
+**Date**: 2026-10-30
+**Task**: opencode v2 存储兼容（v1 保留）
+**Branch**: `main`
+
+### Summary
+
+opencode 升级 v2 后 Conversations 面板只显示到 09-28：v2 把会话写进 session_v2 + session_message，旧表 session/message/part 变成迁移快照（冻结在 10-23）。新增 store::detect 按「v2 两表存在且有行」判定布局，v1 读取逻辑一字未改；v2 读取器映射 text/reasoning/tool → Text/Thinking/ToolUse+ToolResult，计数与正文共用 TURN_TYPES 白名单（json_extract 过滤实测 9.9s，索引计数 0.018s）。另修 WAL 指纹：SQLite 提交先落 -wal，只盯主文件会让批量元数据缓存命中旧快照。
+
+### Main Changes
+
+- adapters/opencode/store.rs（Store + open_detected）、adapters/opencode/v2.rs（v2 列表/meta/正文/预览）、opencode.rs 分派与 v1 读取器签名改 conn、scan_cache::source_signature_with_sidecars、conversation-adapter.md §2.3/§4.3.2/§4.3.3/§4.6.3/§4.7
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test --lib 2381 passed / 5 ignored（+21 新用例）；clippy -D warnings 与 fmt --check 干净；check:quick 10/10；变异验证 4 条（detect 空表、工具字段名、计数含 system、漏 -wal）均变红后还原；真机探针 store=V2、顶层 473、/neeko 227 条（修前 157）、最新 10-30，抽查 count==parse_messages().len()
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真机面板人工确认（AC1）；opencode v2 的 session_inbox/event 表与工具输出长度上界另开任务
