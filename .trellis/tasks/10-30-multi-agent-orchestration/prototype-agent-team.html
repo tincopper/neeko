@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · Agent Team 原型（任务板 + 完成判定 + 混编）</title>
+<style>
+/* ============================================================================
+   这份是 **交互原型**，不是实现。它要定下来的只有四件事：
+
+   ① 团队面板的形状 —— 成员花名册 / 共享任务板 / 队长对话 怎么落进 Neeko 的
+      dock 布局（复用 07-26-unified-task-hub 与 07-26-ui-design-audit 的 token）。
+   ② **完成判定必须可区分** —— Idle / Awaiting / Done✓ / Done⚠ / Stalled / Dead
+      六种徽标长什么样、凭什么不同。这是 design §6 的视觉契约，也是本设计最
+      容易被后续实现简化错的地方（一旦有人只看 turn_completed 就退化成 3 种）。
+   ③ **CLI 成员准入** —— 本期只有 CLI 成员。哪些 CLI 能当完整成员、哪些只能当
+      一次性工人、哪些被直接拒绝，必须在 UI 上可见，而不是假装统一。
+   ④ 一次完整流程：spawn → claim → 等待审批 → 批准 → 声明完成。
+
+   它**不**演示：真实 xterm 渲染、真实 diff/工具卡的内容形态（属 agent-chat
+   既有能力，不在这里重画）、主题切换、键盘导航全路径。
+   ============================================================================ */
+
+:root, :root[data-theme="dark"] {
+  --bg-primary: oklch(0.178 0 0);
+  --bg-secondary: oklch(0.205 0 0);
+  --bg-tertiary: oklch(0.269 0 0);
+  --bg-hover: oklch(0.3 0 0);
+  --bg-selected: oklch(0.35 0 0);
+  --text-primary: oklch(0.985 0 0);
+  --text-secondary: oklch(0.85 0 0);
+  --text-muted: oklch(0.708 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --border-strong: oklch(1 0 0 / 20%);
+  --accent: oklch(0.7 0.1 250);
+  --accent-soft: oklch(0.7 0.1 250 / 14%);
+  --text-on-accent: oklch(0.205 0 0);
+  --success: oklch(0.72 0.15 152);
+  --success-soft: oklch(0.72 0.15 152 / 14%);
+  --warning: oklch(0.82 0.15 88);
+  --warning-soft: oklch(0.82 0.15 88 / 14%);
+  --danger: oklch(0.68 0.19 22);
+  --danger-soft: oklch(0.68 0.19 22 / 14%);
+  --purple: oklch(0.72 0.13 300);
+  --purple-soft: oklch(0.72 0.13 300 / 14%);
+  --page-bg: oklch(0.14 0 0);
+  --shadow: 0 16px 40px oklch(0 0 0 / 45%);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--page-bg); color: var(--text-primary);
+  font-size: 12px; line-height: 1.45; height: 100vh; display: flex; flex-direction: column;
+  overflow: hidden;
+}
+button, input, select { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; font-variant-ligatures: none; }
+.muted { color: var(--text-muted); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 原型专用顶栏（真实实现里不存在这一条）──────────────────────────── */
+.proto-bar {
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  background: var(--bg-primary); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.proto-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--warning); background: var(--warning-soft); border-radius: 4px; padding: 2px 6px;
+}
+.tab {
+  padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tab[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+.proto-bar .spacer { margin-left: auto; }
+.btn {
+  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg-secondary); font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.btn-primary { background: var(--accent); color: var(--text-on-accent); border-color: transparent; }
+.btn-primary:hover { filter: brightness(1.08); }
+
+/* ── App shell（照真实 Neeko dock 布局）────────────────────────────── */
+.app { display: flex; flex: 1; min-height: 0; gap: 6px; padding: 6px; }
+.dock-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 4px; width: 44px; flex-shrink: 0; }
+.dock-btn {
+  width: 34px; height: 34px; border-radius: 6px; display: grid; place-items: center;
+  color: var(--text-secondary); font-size: 10px; font-weight: 700;
+}
+.dock-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.dock-btn[aria-current="true"] { background: var(--bg-selected); color: var(--accent); }
+
+.views { flex: 1; min-width: 0; display: flex; }
+.view { flex: 1; min-width: 0; display: none; gap: 6px; }
+.view[data-active="true"] { display: flex; }
+.col { display: flex; flex-direction: column; min-height: 0; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.col-head {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border); background: var(--bg-secondary); flex-shrink: 0;
+}
+.col-title { font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.col-body { flex: 1; min-height: 0; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+.pill { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-muted); }
+
+/* ── 状态徽标（design §6 的视觉契约）───────────────────────────────── */
+.st { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 999px; white-space: nowrap; }
+.st::before { content: ""; width: 5px; height: 5px; border-radius: 999px; background: currentColor; flex-shrink: 0; }
+.st-running   { color: var(--accent);  background: var(--accent-soft); }
+.st-running::before { animation: pulse 1.4s ease-in-out infinite; }
+.st-idle      { color: var(--text-muted); background: var(--bg-tertiary); }
+.st-awaiting  { color: var(--warning); background: var(--warning-soft); }
+.st-done      { color: var(--success); background: var(--success-soft); }
+.st-unverified{ color: var(--warning); background: transparent; border: 1px dashed var(--warning); }
+.st-unverified::before { background: transparent; border: 1px solid currentColor; }
+.st-stalled   { color: var(--purple); background: var(--purple-soft); }
+.st-dead      { color: var(--danger); background: var(--danger-soft); }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+
+/* ── 成员行 ─────────────────────────────────────────────────────── */
+.member { border: 1px solid var(--border); border-radius: 7px; padding: 7px 8px; background: var(--bg-secondary); }
+.member[data-lead="true"] { border-color: var(--accent); background: linear-gradient(180deg, var(--accent-soft), var(--bg-secondary) 60%); }
+.member-row1 { display: flex; align-items: center; gap: 6px; }
+.avatar { width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center; font-size: 9px; font-weight: 800; color: oklch(0.18 0 0); flex-shrink: 0; }
+.m-name { font-weight: 700; font-size: 11px; }
+.m-meta { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+.chip {
+  font-size: 9px; padding: 1px 5px; border-radius: 4px;
+  background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid transparent;
+}
+.chip-path { background: transparent; border-color: var(--border-strong); color: var(--text-muted); }
+.chip-warn { background: transparent; border-color: var(--warning); color: var(--warning); }
+.chip-task { color: var(--accent); }
+
+/* ── 任务板 ─────────────────────────────────────────────────────── */
+.board { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; flex: 1; min-height: 0; padding: 6px; }
+.bcol { display: flex; flex-direction: column; min-height: 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 7px; }
+.bcol-head { padding: 5px 7px; border-bottom: 1px solid var(--border); font-size: 10px; font-weight: 700; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+.bcol-body { flex: 1; min-height: 0; overflow: auto; padding: 5px; display: flex; flex-direction: column; gap: 5px; }
+.tcard { border: 1px solid var(--border); border-radius: 6px; padding: 6px 7px; background: var(--bg-primary); }
+.tcard[data-hot="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+.tcard-title { font-size: 11px; font-weight: 600; }
+.tcard-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 5px; }
+.lease { font-size: 9px; color: var(--text-muted); }
+.lease[data-urgent="true"] { color: var(--warning); font-weight: 700; }
+.reclaim { font-size: 9px; font-weight: 700; color: var(--danger); background: var(--danger-soft); padding: 1px 4px; border-radius: 3px; }
+
+/* ── 队长对话 ───────────────────────────────────────────────────── */
+.chat { flex: 1; min-height: 0; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.msg { display: flex; flex-direction: column; gap: 3px; }
+.msg-who { font-size: 9px; font-weight: 700; color: var(--text-muted); letter-spacing: .03em; }
+.bubble { border-radius: 7px; padding: 6px 8px; font-size: 11px; background: var(--bg-secondary); border: 1px solid var(--border); }
+.bubble-user { background: var(--accent-soft); border-color: transparent; }
+.tool-call { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); overflow: hidden; }
+.tool-head { display: flex; align-items: center; gap: 5px; padding: 4px 7px; background: var(--bg-tertiary); font-size: 10px; font-weight: 700; }
+.tool-body { padding: 6px 7px; font-size: 10px; color: var(--text-secondary); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; font-size: 10px; }
+.kv dt { color: var(--text-muted); }
+.blocked-note {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px;
+  background: var(--warning-soft); border: 1px solid var(--warning); font-size: 10px; color: var(--warning);
+}
+
+/* ── 通用内容面板（视图 2/3/4）──────────────────────────────────── */
+.doc { flex: 1; min-width: 0; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; overflow: auto; padding: 14px 16px; }
+.doc h2 { font-size: 13px; margin-bottom: 4px; }
+.doc h3 { font-size: 11px; margin: 16px 0 6px; color: var(--text-secondary); letter-spacing: .02em; }
+.doc p { font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; max-width: 92ch; }
+.doc ul { margin: 0 0 8px 16px; font-size: 11px; color: var(--text-secondary); }
+.doc li { margin-bottom: 3px; }
+.doc code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px; color: var(--text-primary); }
+table { border-collapse: collapse; width: 100%; font-size: 10.5px; margin-bottom: 8px; }
+th, td { text-align: left; padding: 5px 7px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--text-muted); font-weight: 700; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; }
+td.yes { color: var(--success); font-weight: 700; }
+td.no  { color: var(--danger); }
+td.na  { color: var(--text-muted); }
+.legend-grid { display: grid; grid-template-columns: max-content 1fr 1fr; gap: 8px 14px; align-items: start; font-size: 11px; }
+.legend-grid > .src { color: var(--text-muted); font-size: 10px; }
+.legend-grid > .why { color: var(--text-secondary); font-size: 10px; }
+.hr { height: 1px; background: var(--border); margin: 14px 0; }
+.seq { display: flex; flex-direction: column; gap: 0; }
+.seq-step { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding-bottom: 12px; position: relative; }
+.seq-step:not(:last-child)::before { content: ""; position: absolute; left: 10px; top: 22px; bottom: 0; width: 1px; background: var(--border); }
+.seq-dot { width: 21px; height: 21px; border-radius: 999px; display: grid; place-items: center; font-size: 9px; font-weight: 800; background: var(--bg-tertiary); color: var(--text-secondary); z-index: 1; }
+.seq-step[data-done="true"] .seq-dot { background: var(--success); color: oklch(0.18 0 0); }
+.seq-step[data-now="true"] .seq-dot { background: var(--accent); color: var(--text-on-accent); }
+.seq-body { padding-top: 1px; }
+.seq-t { font-size: 11px; font-weight: 700; }
+.seq-d { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div class="proto-bar">
+  <span class="proto-tag">原型 · 非实现</span>
+  <button class="tab" role="tab" aria-selected="true"  data-view="1">① 团队面板</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="2">② 完成判定六态</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="3">③ CLI 准入与能力</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="4">④ 一次完整流程</button>
+  <span class="spacer"></span>
+  <button class="btn" id="toggle-lead">切换到队长视角</button>
+  <button class="btn btn-primary" id="advance">推进演示 →</button>
+</div>
+
+<div class="app">
+  <nav class="dock-bar" aria-label="Activity">
+    <button class="dock-btn" title="Projects">PJ</button>
+    <button class="dock-btn" title="Agent Chat">AC</button>
+    <button class="dock-btn" aria-current="true" title="Agent Team">TM</button>
+    <button class="dock-btn" title="Tasks">TK</button>
+    <button class="dock-btn" title="Launch">LN</button>
+    <button class="dock-btn" title="Git">GT</button>
+  </nav>
+
+  <div class="views">
+
+    <!-- ══════════ 视图 1：团队面板 ══════════ -->
+    <section class="view" data-active="true" data-id="1">
+      <!-- 成员花名册 -->
+      <div class="col" style="width: 268px; flex-shrink: 0;">
+        <div class="col-head">
+          <span class="col-title">refactor</span>
+          <span class="pill">4 成员</span>
+          <span class="spacer" style="margin-left:auto"></span>
+          <span class="pill" style="color:var(--warning);background:var(--warning-soft)">1 待批</span>
+        </div>
+        <div class="col-body" id="roster">
+          <div class="member" data-lead="true" data-member="lead">
+            <div class="member-row1">
+              <div class="avatar" style="background:var(--accent)">L</div>
+              <span class="m-name">lead</span>
+              <span class="st st-running">运行中</span>
+            </div>
+            <div class="m-meta">
+              <span class="chip">claude-code</span>
+              <span class="chip chip-path">CLI · PTY</span>
+              <span class="chip">Mcp</span>
+              <span class="chip">共享工作区</span>
+            </div>
+          </div>
+
+          <div class="member" data-member="researcher">
+            <div class="member-row1">
+              <div class="avatar" style="background:var(--purple)">R</div>
+              <span class="m-name">researcher</span>
+              <span class="st st-running">运行中</span>
+            </div>
+            <div class="m-meta">
+              <span class="chip">gemini</span>
+              <span class="chip chip-path">CLI · PTY</span>
+              <span class="chip chip-warn">C 档 · sentinel only</span>
+              <span class="chip">只读</span>
+              <span class="chip chip-task">t1</span>
+            </div>
+          </div>
+
+          <div class="member" data-member="frontend">
+            <div class="member-row1">
+              <div class="avatar" style="background:var(--success)">F</div>
+              <span class="m-name">frontend</span>
+              <span class="st st-unverified" id="st-frontend">空闲 ⚠ 未声明</span>
+            </div>
+            <div class="m-meta">
+              <span class="chip">qoder</span>
+              <span class="chip chip-path">CLI · PTY</span>
+              <span class="chip">Mcp</span>
+              <span class="chip">worktree feat-auth-ui</span>
+              <span class="chip chip-task">t2</span>
+            </div>
+          </div>
+
+          <div class="member" data-member="backend">
+            <div class="member-row1">
+              <div class="avatar" style="background:var(--warning)">B</div>
+              <span class="m-name">backend</span>
+              <span class="st st-awaiting" id="st-backend">待批准</span>
+            </div>
+            <div class="m-meta">
+              <span class="chip">codex</span>
+              <span class="chip chip-path">CLI · PTY</span>
+              <span class="chip">Mcp</span>
+              <span class="chip">worktree feat-auth-api</span>
+              <span class="chip chip-task">t3</span>
+            </div>
+          </div>
+
+          <div class="blocked-note" style="margin-top:2px">
+            <span><b>C 档成员</b>（<code class="mono">gemini</code> 等）：完成能报（sentinel），但
+            <b>卡住永远不可知</b> → UI 只能写「可能等待输入」，禁止写「正在工作」</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 共享任务板 -->
+      <div class="col" style="flex:1; min-width:0">
+        <div class="col-head">
+          <span class="col-title">共享任务板</span>
+          <span class="pill">CLI-only · create 仅队长 · claim 原子 · 租约 1800s</span>
+        </div>
+        <div class="board">
+          <div class="bcol">
+            <div class="bcol-head">待认领 <span class="pill" id="c-pending">1</span></div>
+            <div class="bcol-body" id="col-pending">
+              <div class="tcard" data-task="t4">
+                <div class="tcard-title">补充 auth 失败路径的集成测试</div>
+                <div class="tcard-meta">
+                  <span class="chip">只读</span>
+                  <span class="chip">依赖 t2</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bcol">
+            <div class="bcol-head">进行中 <span class="pill" id="c-progress">2</span></div>
+            <div class="bcol-body" id="col-progress">
+              <div class="tcard" data-hot="true" data-task="t1">
+                <div class="tcard-title">调研 RSC 最佳实践与现有用法</div>
+                <div class="tcard-meta">
+                  <span class="chip chip-task">researcher</span>
+                  <span class="lease">租约剩 27:14</span>
+                </div>
+              </div>
+              <div class="tcard" data-task="t2">
+                <div class="tcard-title">登录页骨架 + 表单校验</div>
+                <div class="tcard-meta">
+                  <span class="chip chip-task">frontend</span>
+                  <span class="st st-unverified">未声明</span>
+                </div>
+                <div class="lease" style="margin-top:4px">
+                  成员已空闲，但没人认领这次「完成」→ 任务仍留在此列
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bcol">
+            <div class="bcol-head">待批准 <span class="pill" id="c-awaiting" style="color:var(--warning);background:var(--warning-soft)">1</span></div>
+            <div class="bcol-body" id="col-awaiting">
+              <div class="tcard" data-hot="true" data-task="t3">
+                <div class="tcard-title">迁移 token 存储到 httpOnly cookie</div>
+                <div class="tcard-meta">
+                  <span class="chip chip-task">backend</span>
+                  <span class="chip chip-warn">等待批准：write src/server/auth/**</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bcol">
+            <div class="bcol-head">已完成 <span class="pill" id="c-done">0</span></div>
+            <div class="bcol-body" id="col-done">
+              <div class="muted" style="font-size:10px;padding:4px">—</div>
+            </div>
+          </div>
+          <div class="bcol">
+            <div class="bcol-head">阻塞 <span class="pill" id="c-blocked">0</span></div>
+            <div class="bcol-body" id="col-blocked">
+              <div class="muted" style="font-size:10px;padding:4px">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 队长对话 -->
+      <div class="col" style="width: 330px; flex-shrink: 0;" id="lead-pane">
+        <div class="col-head">
+          <span class="col-title">队长对话</span>
+          <span class="pill">team_wait 阻塞中</span>
+        </div>
+        <div class="chat">
+          <div class="msg">
+            <div class="msg-who">你</div>
+            <div class="bubble bubble-user">用团队把 auth 重构做完，前端后端并行。</div>
+          </div>
+
+          <div class="msg">
+            <div class="msg-who">lead</div>
+            <div class="tool-call">
+              <div class="tool-head"><span class="mono">team_spawn</span> <span class="muted">×3</span></div>
+              <div class="tool-body">
+                <dl class="kv">
+                  <dt>frontend</dt><dd class="mono">qoder · worktree feat-auth-ui</dd>
+                  <dt>backend</dt><dd class="mono">codex · worktree feat-auth-api</dd>
+                  <dt>researcher</dt><dd class="mono">gemini · read_only · C 档</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+
+          <div class="msg">
+            <div class="msg-who">lead</div>
+            <div class="tool-call">
+              <div class="tool-head"><span class="mono">task_create</span> <span class="muted">×3</span></div>
+              <div class="tool-body">
+                <dl class="kv">
+                  <dt>t1</dt><dd>调研 RSC 最佳实践与现有用法</dd>
+                  <dt>t2</dt><dd>登录页骨架 + 表单校验</dd>
+                  <dt>t3</dt><dd>迁移 token 存储到 httpOnly cookie</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+
+          <div class="msg">
+            <div class="msg-who">lead</div>
+            <div class="tool-call">
+              <div class="tool-head">
+                <span class="mono">team_wait</span>
+                <span class="muted" style="margin-left:auto">阻塞 2m14s</span>
+              </div>
+              <div class="tool-body">
+                <dl class="kv">
+                  <dt>until</dt><dd class="mono">declared</dd>
+                  <dt>on</dt><dd class="mono">t1, t2, t3</dd>
+                  <dt>timeout</dt><dd class="mono">1800s</dd>
+                </dl>
+                <div class="muted" style="margin-top:5px;font-size:10px">
+                  后端持有等待，队长不轮询。返回时只带摘要，不带 transcript。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="blocked-note">
+            <span><b>backend</b> 需要批准 <code class="mono">write src/server/auth/**</code> —— 已进待批队列，未冒泡到这里</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════ 视图 2：完成判定六态 ══════════ -->
+    <section class="view" data-id="2">
+      <div class="doc">
+        <h2>完成判定的六种状态 —— 为什么不能合并</h2>
+        <p>业界最普遍的 bug 是把「这一轮说完了」当成「活干完了」。Claude Code 的官方文档自己承认 task status 会滞后并阻塞依赖任务。所以这里刻意做成六个互不相同的徽标，<b>任何两个合并都会丢失信息</b>。</p>
+
+        <h3>徽标契约（design §6 的可视化）</h3>
+        <div class="legend-grid">
+          <span class="st st-running">运行中</span>
+          <span class="src">L1 · <code>TurnStart</code> / hook <code>turn_completed</code> 之前</span>
+          <span class="why">实心点 + 呼吸动画。有活动才出现。</span>
+
+          <span class="st st-idle">空闲</span>
+          <span class="src">L1 · <code>TurnEnd{Completed}</code> / hook <code>turn_completed</code></span>
+          <span class="why">灰点、无动画。<b>它说完了</b>，但没声明干完。</span>
+
+          <span class="st st-awaiting">待批准</span>
+          <span class="src">L1 · <code>RequestApproval</code> / hook <code>approval_requested</code></span>
+          <span class="why">琥珀。人必须动手。进待批队列，不冒泡进队长对话。</span>
+
+          <span class="st st-done">完成</span>
+          <span class="src">L2 · <code>task_update(state=done)</code></span>
+          <span class="why">绿。<b>唯一权威</b>：任务板 <code>state == done</code>。</span>
+
+          <span class="st st-unverified">未声明</span>
+          <span class="src">L1 有、L2 无</span>
+          <span class="why">琥珀虚线圈 + 空心点。结果可用但必须标黄 —— 没人认领这次「完成」。</span>
+
+          <span class="st st-stalled">可能等待输入</span>
+          <span class="src">L3 · 超阈值静默，且该 CLI 无 <code>input_requested</code></span>
+          <span class="why">紫。<b>文案不许写「正在工作」</b>。诚实优先于好看。</span>
+
+          <span class="st st-dead">已退出</span>
+          <span class="src">L4 · <code>SessionDone</code> / 进程退出</span>
+          <span class="why">红。触发租约回收，任务退回待认领。</span>
+        </div>
+
+        <div class="hr"></div>
+
+        <h3>三条不变量（要写成测试）</h3>
+        <ul>
+          <li><b>空闲永不自动升级为完成。</b>否则「它说完了」会被当成「它做完了」。</li>
+          <li><b>完成的唯一权威是任务板</b>，不是成员状态。成员可以 <code>idle</code> 而任务仍 <code>in_progress</code>。</li>
+          <li><b>未声明只降级、不消失。</b>标黄的结果仍可被队长使用，但使用者必须知道它没被认领。</li>
+        </ul>
+
+        <h3>两条执行路径的信号差异</h3>
+        <table>
+          <thead><tr><th>信号</th><th>Chat（StreamEvent）· 延期</th><th>CLI（hooks）· 本期</th></tr></thead>
+          <tbody>
+            <tr><td>轮次结束</td><td class="yes">三态 Completed / Stopped / Error</td><td class="no">只有 turn_completed，无 Stopped</td></tr>
+            <tr><td>等待批准</td><td class="yes">RequestApproval</td><td class="yes">approval_requested</td></tr>
+            <tr><td>等待输入</td><td class="yes">RequestInput</td><td class="no">仅 pi 有（ui_prompt_start）</td></tr>
+            <tr><td>内容</td><td class="yes">事件流即内容</td><td class="na">需回读会话文件（conversation 域）</td></tr>
+            <tr><td>进程死亡</td><td class="na">SessionDone</td><td class="yes">process_reaper（更硬）</td></tr>
+          </tbody>
+        </table>
+        <p class="muted">所以 CLI 路径<b>更</b>依赖 L2 显式声明，而不是更不需要 —— 它没有 Chat 路径那种「事件流兜底」。本期只实现右列。</p>
+      </div>
+    </section>
+
+    <!-- ══════════ 视图 3：CLI 准入与能力 ══════════ -->
+    <section class="view" data-id="3">
+      <div class="doc">
+        <h2>CLI 成员准入 —— 三档，不许假装统一</h2>
+        <p>本期队长与成员<b>都是 PTY 里的 CLI agent</b>。但「能跑在 PTY 里」远不等于「能当队员」：一个成员至少要能被观测到「这一轮结束了」，否则它完成了也没人知道。所以准入必须分档，且<b>每一档在 UI 上都要看得见</b>。</p>
+
+        <table>
+          <thead><tr><th>档</th><th>条件</th><th>完成</th><th>结果</th><th>卡住</th><th>UI 表现</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="yes">A</td>
+              <td>hook + MCP 齐全</td>
+              <td class="yes">hook</td><td class="yes">MCP</td><td class="yes">hook</td>
+              <td>无提示，正常操作</td>
+            </tr>
+            <tr>
+              <td class="na">B</td>
+              <td>有 hook，缺 MCP</td>
+              <td class="yes">hook</td><td>sentinel</td><td class="yes">hook</td>
+              <td>结果多一跳，可信度不降</td>
+            </tr>
+            <tr>
+              <td class="no">C</td>
+              <td>只有 sentinel</td>
+              <td>sentinel</td><td>sentinel</td><td class="no">❌ 不可知</td>
+              <td><span class="chip chip-warn">C 档 · sentinel only</span> + 卡住只能「可能等待输入」</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="muted"><b>两个维度别合并</b>：<code>channel</code>（怎么<u>发</u>给它：Mcp / Pty / None）与 <code>result_channel</code>（它怎么<u>报</u>：Mcp / Sentinel / None）是分开声明的 —— 一个成员可以 MCP 收消息、但结果仍靠 sentinel 打印。</p>
+
+        <h3>P0 准入矩阵（第①②③列必须在 P0 实测，不许按字段存在推断）</h3>
+        <table>
+          <thead><tr><th>CLI</th><th>① 完成信号</th><th>② MCP 配置面</th><th>③ MCP 传输</th><th>档位</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">claude-code</td><td class="yes">Stop</td><td>settings.json</td><td>待实测</td><td class="yes">A（预期）</td></tr>
+            <tr><td class="mono">codebuddy</td><td class="yes">Claude 兼容面</td><td>待实测</td><td>待实测</td><td class="yes">A（预期）</td></tr>
+            <tr><td class="mono">qoder</td><td class="yes">Claude 兼容面</td><td>待实测</td><td>待实测</td><td class="yes">A（预期）</td></tr>
+            <tr><td class="mono">codex</td><td class="yes">agent-turn-complete</td><td>TOML（非 JSON）</td><td>待实测</td><td class="yes">A（预期）</td></tr>
+            <tr><td class="mono">opencode</td><td class="yes">plugin v2（仅 completed）</td><td>待实测</td><td>待实测</td><td class="na">A 或 B</td></tr>
+            <tr><td class="mono">pi</td><td class="yes">agent_end</td><td>待实测</td><td>待实测</td><td class="na">A 或 B</td></tr>
+            <tr><td class="mono">omp</td><td class="yes">agent_end</td><td>待实测</td><td>待实测</td><td class="na">A 或 B</td></tr>
+            <tr><td class="mono">dsh</td><td class="yes">自带上报</td><td class="na">无 AgentConfig</td><td class="na">—</td><td class="no">不可被选中</td></tr>
+            <tr><td class="mono">gemini</td><td class="no">无 hook 目标</td><td>—</td><td>—</td><td class="no">C（sentinel only）</td></tr>
+            <tr><td class="mono">grok</td><td class="no">无 hook 目标</td><td>—</td><td>—</td><td class="no">C（sentinel only）</td></tr>
+            <tr><td class="mono">reasonix</td><td class="no">无 hook 目标</td><td>—</td><td>—</td><td class="no">C（sentinel only）</td></tr>
+          </tbody>
+        </table>
+        <p class="muted"><b>为什么必须实测 ②③</b>：9 个 shell agent 的 <code>DeploySpec.mcp_config</code> 全是同一个默认模板 <code>{{home}}/.&lt;id&gt;/config.json</code>（<code>providers.rs:shell_agent</code>）。那只是<b>路径模板</b>，不代表该 CLI 真的从那里读 MCP，更不代表它吃 Neeko 提供的传输。<b>「字段存在」不是「能用」。</b></p>
+
+        <div class="hr"></div>
+
+        <h3>本队构成（视图 ① 的成员表）</h3>
+        <table>
+          <thead><tr><th>成员</th><th>Agent</th><th>发 / 报</th><th>工作区</th><th>为什么是它</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">lead</td><td>claude-code</td><td class="yes">Mcp / Mcp</td><td>共享</td><td>队长必须有工具面；claude 的 hook 面最全（Stop / PermissionRequest / StopFailure）</td></tr>
+            <tr><td class="mono">researcher</td><td>gemini</td><td class="na">None / Sentinel</td><td>只读</td><td>无 hook 目标 ⇒ <b>C 档</b>：结果靠 sentinel，卡住不可知。调研类任务可接受这个缺口</td></tr>
+            <tr><td class="mono">frontend</td><td>qoder</td><td class="yes">Mcp / Mcp</td><td>worktree</td><td>Claude 兼容 hook 面，MCP 走 settings.json</td></tr>
+            <tr><td class="mono">backend</td><td>codex</td><td class="yes">Mcp / Mcp</td><td>worktree</td><td>有 <code>agent-turn-complete</code> + hooks.json 审批腿</td></tr>
+          </tbody>
+        </table>
+
+        <h3>队长的等待为什么是「物理阻塞」</h3>
+        <p>本期队长<b>也是 CLI</b>，所以 <code>team_wait</code> 发生在一个 MCP 工具调用内部：<b>工具不返回 → 队长这一回合就不会结束</b>。它在物理上没有「边等边自己去干活」的机会。</p>
+        <p class="muted">这正是 Claude Code 那个官方缺陷（lead 自己动手不等队友，"修法"是改 prompt）的克星：它把等待做成了提示词行为，我们把它做成了工具调用语义。</p>
+
+        <h3>结果取证（L1b）</h3>
+        <ul>
+          <li><code>turn_completed</code> 到达后，按 <code>(agent_id, native_session_id)</code> 回读该 CLI 的会话文件，取最后一轮 assistant 文本 —— <b>不解析屏幕</b>。</li>
+          <li>复用 <code>conversation/</code> 已有 10 个 adapter（已归一化 + 已按字节预算分页）。</li>
+          <li>无 MCP 的成员拿不到 <code>task_update</code>，所以结果<b>永远显示「未声明」</b> —— 这是诚实，不是缺陷。</li>
+        </ul>
+
+        <div class="hr"></div>
+        <h3>sentinel：零集成的结果通道（你提的那条）</h3>
+        <p>成员把结果打印到<b>自己的 stdout</b>，Neeko 从 PTY 字节流里扫这一行 —— 不需要 hook、不需要 MCP：</p>
+        <pre class="mono" style="font-size:10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:8px;overflow:auto;margin-bottom:8px">NEEKO_RESULT 7f3a91 {"executionId":"e-42","task_id":"t1","status":"completed","summary":"…"}</pre>
+        <p>接受条件四条（缺一即静默丢弃）：① 前缀 + <code>nonce</code> 精确匹配 ② JSON 可解析且 <code>status</code> 合法 ③ <code>task_id</code> 存在且 <b>owner == 本成员、state ∈ {in_progress, awaiting_approval}</b> ④ <code>executionId</code> 未消费过。</p>
+        <p class="muted">第 ③ 条是关键：<b>回显出来的模板</b>里 task_id 通常是占位符或旧值，会被权威状态校验直接杀掉。扫描器本身<b>流式有界</b>（carry ≤8KB / 单行 ≤2KB），绝不无界累积 —— 那个 pump 的历史事故是 WebView 8 分钟涨到 5.2GB，红线 4 就是那次写的。</p>
+
+        <h3>审批策略（每成员，`approval_policy`）</h3>
+        <table>
+          <thead><tr><th>值</th><th>行为</th><th>用在哪</th></tr></thead>
+          <tbody>
+            <tr><td class="yes">Queue</td><td>请求进待批队列，人来批</td><td><b>默认</b></td></tr>
+            <tr><td class="na">Interactive</td><td>在成员自己的 PTY 里交互</td><td>用户就坐在那个 pane 前</td></tr>
+            <tr><td class="no">Bypass</td><td>用该 CLI 的旁路开关启动</td><td>只读调研 / 沙箱内；UI 必须有非隐蔽警示</td></tr>
+          </tbody>
+        </table>
+        <p class="muted">旁路开关是 <b>per-CLI 数据</b>（落插件数据，红线 15），四家写法各不相同：<code>codex --dangerously-bypass-approvals-and-sandbox</code> · <code>gemini --skip-trust --approval-mode yolo</code> · <code>grok --always-approve</code> · <code>claude --dangerously-skip-permissions --permission-mode bypassPermissions</code>。团队代码里<b>禁止</b>按 CLI 名分支。</p>
+
+        <div class="hr"></div>
+        <h3>为什么成员 transcript 默认不进前端</h3>
+        <p>成员各自在自己的 PTY 里由 xterm 渲染，走既有终端通道 —— 团队事件只带<b>状态与摘要（≤4KB）</b>。点开成员时走 <code>conversation</code> 分页（已有 ≤1.5MB/页 预算）。这是红线 4 的直接要求。</p>
+      </div>
+    </section>
+
+    <!-- ══════════ 视图 4：一次完整流程 ══════════ -->
+    <section class="view" data-id="4">
+      <div class="doc">
+        <h2>一次完整流程（点顶栏「推进演示 →」走一遍）</h2>
+        <p>这条链路要验证的是：<b>队长从不轮询、审批不冒泡、完成必须被声明</b>。</p>
+        <div class="seq" id="seq">
+          <div class="seq-step" data-step="0" data-now="true">
+            <div class="seq-dot">1</div>
+            <div class="seq-body">
+              <div class="seq-t">建队 + 派活</div>
+              <div class="seq-d">队长调 <span class="mono">team_spawn ×3</span> 和 <span class="mono">task_create ×3</span>。只有队长能 create；成员只能 claim 或 propose。</div>
+            </div>
+          </div>
+          <div class="seq-step" data-step="1">
+            <div class="seq-dot">2</div>
+            <div class="seq-body">
+              <div class="seq-t">成员原子认领 + 起租约</div>
+              <div class="seq-d">task_claim 是原子的：两人抢同一任务只有一个成功。租约 1800s 起算，任务进 in_progress。</div>
+            </div>
+          </div>
+          <div class="seq-step" data-step="2">
+            <div class="seq-dot">3</div>
+            <div class="seq-body">
+              <div class="seq-t">队长阻塞等待</div>
+              <div class="seq-d">team_wait(until=declared) 在后端阻塞。<b>队长没有机会「自己去干活」</b> —— 这正是 Claude Code 那个官方缺陷的根因。</div>
+            </div>
+          </div>
+          <div class="seq-step" data-step="3">
+            <div class="seq-dot">4</div>
+            <div class="seq-body">
+              <div class="seq-t">成员撞到审批门</div>
+              <div class="seq-d">backend 要写 <span class="mono">src/server/auth/**</span> → 进<b>待批队列</b>，任务转 awaiting_approval。队长看到的是队友「待批准」，而不是对话里多一条审批卡。</div>
+            </div>
+          </div>
+          <div class="seq-step" data-step="4">
+            <div class="seq-dot">5</div>
+            <div class="seq-body">
+              <div class="seq-t">人批准 → 成员继续</div>
+              <div class="seq-d">后端把状态推回 Running。审批不经过任何 agent 转交 —— 成员不能代替人批准，也不能把被拒的动作转交同伴绕过。</div>
+            </div>
+          </div>
+          <div class="seq-step" data-step="5">
+            <div class="seq-dot">6</div>
+            <div class="seq-body">
+              <div class="seq-t">首个成员轮次结束但未声明</div>
+              <div class="seq-d">frontend 的 Stop hook 到达 → 成员 Idle。但没调 <span class="mono">task_update(done)</span> → 落 <b>完成⚠ 未声明</b>。队长拿得到结果，但知道它没被认领。</div>
+            </div>
+          </div>
+          <div class="seq-step" data-step="6">
+            <div class="seq-dot">7</div>
+            <div class="seq-body">
+              <div class="seq-t">声明完成 → team_wait 返回</div>
+              <div class="seq-d">成员调 task_update(state=done, summary, artifacts) → 任务 done。全部目标达 declared → 队长被唤醒，拿到摘要。</div>
+            </div>
+          </div>
+          <div class="seq-step" data-step="7">
+            <div class="seq-dot">8</div>
+            <div class="seq-body">
+              <div class="seq-t">失败路径：成员被杀 → 租约回收</div>
+              <div class="seq-d">进程退出 → Dead → 租约到期任务退回 pending（reclaim_count +1）。超过 3 次转 blocked，不再自动回收。这是防死锁的唯一机制。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── 视图切换 ──────────────────────────────────────────────
+  var tabs = [].slice.call(document.querySelectorAll('.tab'));
+  var views = [].slice.call(document.querySelectorAll('.view'));
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      var id = t.dataset.view;
+      tabs.forEach(function (x) { x.setAttribute('aria-selected', String(x === t)); });
+      views.forEach(function (v) { v.dataset.active = String(v.dataset.id === id); });
+    });
+  });
+
+  // ── 「队长视角」：把待批提示从队列挪进对话，演示「不该这样」 ─────────
+  var leadToggle = document.getElementById('toggle-lead');
+  var leadPane = document.getElementById('lead-pane');
+  var leadMode = false;
+  leadToggle.addEventListener('click', function () {
+    leadMode = !leadMode;
+    leadToggle.textContent = leadMode ? '← 回到推荐形态' : '切换到队长视角';
+    var note = leadPane.querySelector('.blocked-note');
+    if (leadMode) {
+      note.innerHTML = '<span style="color:var(--danger)"><b>✗ 反模式</b>：审批冒泡进队长对话 —— ' +
+        '队长被迫处理队友的权限，对话被污染，且同一请求在成员 tab 与这里出现两份。' +
+        '（这是 Claude Code 的做法，其文档自承是摩擦点。）</span>';
+      note.style.background = 'var(--danger-soft)';
+      note.style.borderColor = 'var(--danger)';
+      note.style.color = 'var(--danger)';
+    } else {
+      note.innerHTML = '<span><b>backend</b> 需要批准 <code class="mono">write src/server/auth/**</code> —— 已进待批队列，未冒泡到这里</span>';
+      note.style.background = '';
+      note.style.borderColor = '';
+      note.style.color = '';
+    }
+  });
+
+  // ── 演示推进：驱动状态迁移，让六种徽标可见 ───────────────────────
+  var steps = [
+    function () { /* 初始态：不加改动 */ },
+    function () { setSt('frontend', 'st-running', '运行中'); },
+    function () { setSt('frontend', 'st-unverified', '空闲 ⚠ 未声明'); },
+    function () { setSt('frontend', 'st-done', '完成'); moveT2Done(); },
+    function () { setSt('backend', 'st-running', '运行中'); },
+    function () { setSt('backend', 'st-done', '完成'); moveT3Done(); },
+    function () { setSt('researcher', 'st-stalled', '可能等待输入'); },
+    function () { setSt('researcher', 'st-dead', '已退出'); markReclaim(); },
+    function () { setSt('researcher', 'st-idle', '空闲'); }
+  ];
+
+  var cursor = 0;
+  var advance = document.getElementById('advance');
+  var seqSteps = [].slice.call(document.querySelectorAll('.seq-step'));
+
+  advance.addEventListener('click', function () {
+    cursor = (cursor + 1) % steps.length;
+    steps[cursor]();
+    fillEmpty();
+    seqSteps.forEach(function (s) {
+      var i = Number(s.dataset.step);
+      s.dataset.now = String(i === cursor);
+      s.dataset.done = String(i < cursor);
+    });
+  });
+
+  function setSt(member, cls, label) {
+    var el = document.querySelector('[data-member="' + member + '"] .st');
+    if (!el) return;
+    el.className = 'st ' + cls;
+    el.textContent = label;
+  }
+
+  // 把某张任务卡搬到指定列（不清空目标列 —— 清空会连带删掉先前搬过去的卡）
+  function clearPlaceholder(body) {
+    if (!body) return;
+    var ph = body.querySelector('.muted[style*="padding:4px"]');
+    if (ph) ph.remove();
+  }
+
+  function moveCard(taskId, targetColId, doneLabel) {
+    var card = document.querySelector('[data-task="' + taskId + '"]');
+    var body = document.getElementById(targetColId);
+    if (!card || !body) return;
+    card.removeAttribute('data-hot');
+    if (doneLabel) {
+      var b = card.querySelector('.st-unverified') || card.querySelector('.st');
+      if (!b) {
+        b = document.createElement('span');
+        card.querySelector('.tcard-meta').appendChild(b);
+      }
+      b.className = 'st st-done';
+      b.textContent = doneLabel;
+    }
+    clearPlaceholder(body);
+    body.appendChild(card);
+  }
+
+  // 列空了就补回一个占位，避免看起来像「加载失败」
+  function fillEmpty() {
+    ['col-pending','col-progress','col-awaiting','col-done','col-blocked'].forEach(function (id) {
+      var body = document.getElementById(id);
+      if (body && !body.querySelector('.tcard')) {
+        body.innerHTML = '<div class="muted" style="font-size:10px;padding:4px">—</div>';
+      }
+    });
+  }
+
+  function bump(id, delta) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = String(Math.max(0, Number(el.textContent) + delta));
+  }
+
+  // 成员补交了 task_update(done) → 任务才真正进「已完成」，并清掉那句旧说明
+  function moveT2Done() {
+    moveCard('t2', 'col-done', '完成');
+    var stale = document.querySelector('[data-task="t2"] .lease');
+    if (stale) stale.remove();
+    bump('c-progress', -1); bump('c-done', +1);
+  }
+
+  function moveT3Done() {
+    moveCard('t3', 'col-done', '完成');
+    var warn = document.querySelector('[data-task="t3"] .chip-warn');
+    if (warn) warn.remove();
+    bump('c-awaiting', -1); bump('c-done', +1);
+  }
+
+  // researcher 进程退出且租约到期 → t1 退回「阻塞」（reclaim 超限）
+  function markReclaim() {
+    var card = document.querySelector('[data-task="t1"]');
+    var blocked = document.getElementById('col-blocked');
+    if (card && blocked) {
+      card.removeAttribute('data-hot');
+      card.querySelector('.tcard-meta').innerHTML =
+        '<span class="reclaim">租约回收 ×1</span><span class="chip">只读</span>';
+      clearPlaceholder(blocked);
+      blocked.appendChild(card);
+    }
+    bump('c-progress', -1); bump('c-blocked', +1);
+  }
+})();
+</script>
+</body>
+</html>

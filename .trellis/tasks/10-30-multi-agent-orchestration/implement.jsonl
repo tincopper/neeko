@@ -1,0 +1,24 @@
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/prd.md", "reason": "本任务需求、验收标准与三处待裁决缺一不可"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/design.md", "reason": "技术裁决全文：分层、数据模型、状态机、授权矩阵、已否决方案——实现时逐条对照"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/implement.md", "reason": "分期与每步的测试先行清单，按此顺序执行"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/research/01-research-notes.md", "reason": "三信源合并笔记；含 Neeko 代码测绘与业界四个必避的坑"}
+{"file": ".trellis/spec/backend/agent-chat-transports.md", "reason": "4 条传输的契约与 StreamEvent 语义；团队观察者挂在 spawn_session_pipeline 上，必须先懂这条管道"}
+{"file": ".trellis/spec/backend/agent-hooks-domain.md", "reason": "CLI 成员的状态来源（turn_completed 等语义键）与 hook 安装/信任机制"}
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "CLI 成员结果取证路径：按 (agent_id, native_session_id) 回读会话文件的归一化模型"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "红线 4（IPC 载荷上限）与红线 6（命令层极薄）的判据与例外"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "红线 3（spawn_blocking）与 AppState 锁形状；团队域大量并发 spawn 与租约回收"}
+{"file": ".trellis/spec/backend/persistence-and-cache.md", "reason": "SQLite 迁移与缓存失效模式；team/team_member/team_task 的持久化照此"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "红线 9（mod.rs 极薄）与新域目录形状"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "红线 14（能力声明与实现一致）的落地方式与护栏测试写法"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "P4 worktree 隔离复用其 create_worktree/WorkspaceRef 契约"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量门禁：check:quick 的覆盖面、红绿反馈用单测而非全量"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "团队面板的派生状态与 hook 契约（useWorkingStatus 同族）"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "团队状态存放位置：后端持有、前端派生，禁止双真相源"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TS 事件常量镜像（src/shared/events.ts）的写法与红线 5"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试组织、夹具路径 tempdir（红线 13）、纯函数 100% 覆盖"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "组件/hook 测试的 renderHook + act 模式"}
+{"file": ".trellis/spec/security/allowlist.md", "reason": "成员 token 的授权矩阵与 allowlist 判据；红线 8 路径白名单"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/research/02-herdr-comparison.md", "reason": "herdr 的 CLI+socket 模型、seq 单调、agent.wait 钉住、blocked 严格匹配；CLI-only 与 daemon 化判断的旁证"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/research/03-sentinel-channel.md", "reason": "sentinel 通道的五个坑与四条接受条件；nonce 的能力边界；三档准入的由来"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/research/04-rmux-demo-close-reading.md", "reason": "Pty 写入必须 text 与 CR 分两次写 +150ms；literal 模式；approval_bypass_args 落插件数据；协议 preamble 落 skill"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/research/admission-matrix.md", "reason": "P0 实测产物：9 个 CLI 的 hook/MCP/传输/审批旁路四列；四条改变设计的结论（--mcp-config 优先、HTTP 优先、claude 配置面写错、channel/result 分离）"}

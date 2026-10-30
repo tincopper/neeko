@@ -1,0 +1,1859 @@
+
+
+本文深入分析 Claude Code 源码中 Agent Teams（多代理团队协作系统）的架构设计和实现细节。
+目标读者：Harness 工程研究者、多 Agent 系统设计者源码版本：基于 Claude Code 主分支最新代码
+
+第1章 概述
+1.1 什么是 Agent Teams
+Agent Teams 是 Claude Code 内置的多代理协作框架，允许多个 AI Agent 以团队形式协同工作。当单一 Agent 面对复杂任务力有不逮时，Agent Teams 能将工作分解为可并行的子任务，分派给多个独立的 Claude Code 实例并行执行。
+在这个框架中，每个团队成员是一个独立的 Claude Code 实例。它们各自拥有独立的对话上下文、工具权限和执行状态，通过以下机制协调工作：
+消息传递系统：基于文件邮箱（Mailbox)的异步通信，Agent 之间通过写入 JSON 文件交换信息
+
+共享任务列表:所有团队成员共享一个基于文件系统的 TaskList，用于追踪和分配工作
+
+统一领导管理:由 team-lead 角色统一管理团队生命周期、任务分配和成员调度
+
+关键源码位置如下:
+模块
+路径
+职责
+团队创建
+src/tools/TeamCreateTool/创建团队、初始化状态
+消息发送
+src/tools/SendMessageTool/Agent 间消息传递
+团队删除
+src/tools/TeamDeleteTool/清理团队资源
+核心工具集
+src/utils/swarm/后端选择、Agent 生成、布局管理
+身份管理
+src/utils/teammate.tsAgent 身份解析与上下文管理
+邮箱系统
+src/utils/teammateMailbox.ts文件邮箱读写与消息协议
+上下文隔离
+src/utils/teammateContext.tsAsyncLocalStorage 上下文隔离
+执行后端
+src/utils/swarm/backends/tmux/iTerm2/进程内三种执行模式
+任务系统
+src/utils/tasks.ts共享任务列表管理
+UI 组件
+src/components/teams/团队状态展示与交互
+
+1.2 快速使用指南
+理解源码之前，先看 Agent Teams 怎么用。用户不需要直接调用底层 API，而是通过自然语言告诉 Claude Code 要做什么，Claude Code 会自动调用 TeamCreate、SendMessage、Agent 等工具完成团队编排。
+1.2.1 最简单的用法：一句话创建团队
+在 Claude Code 对话中输入：
+用团队来帮我重构这个项目的前端和后端
+Claude Code 会自动执行以下步骤：
+调用 TeamCreate 创建团队
+
+通过 Agent 工具生成多个队友（frontend-worker、backend-worker）
+
+使用 TaskCreate 创建任务并分配给各队友
+
+通过 SendMessage 协调队友工作
+
+完成后调用 TeamDelete 清理团队
+
+对应的源码调用链：
+sequenceDiagram
+ participant U as 用户
+ participant CC as Claude Code
+ participant TC as TeamCreateTool
+ participant AG as Agent Tool
+ participant SM as SendMessageTool
+
+ U->>CC: 用团队来帮我重构前端和后端
+ CC->>TC: TeamCreate(team_name: "refactor")
+ TC-->>CC: 团队已创建
+ CC->>AG: Agent(subagent_type: "general-purpose", team_name: "refactor", name: "frontend")
+ CC->>AG: Agent(subagent_type: "general-purpose", team_name: "refactor", name: "backend")
+ CC->>SM: SendMessage(to: "frontend", message: "重构 src/components/...")
+ CC->>SM: SendMessage(to: "backend", message: "重构 src/api/...")
+ Note over CC: 等待队友完成工作...
+ SM-->>CC: frontend 空闲通知
+ SM-->>CC: backend 空闲通知
+ CC->>U: 前后端重构已完成
+图：团队使用全流程
+1.2.2 典型使用场景
+场景一：并行代码审查
+帮我审查这次 PR 涉及的所有文件，用多个 agent 并行审查
+系统会创建一个团队，每个 agent 负责审查一部分文件（安全性审查、性能审查、代码风格审查等），最后汇总结果。
+场景二：全栈功能开发
+创建一个团队来开发用户认证功能，前端和后端并行工作
+frontend 队友：开发登录页面、注册表单、Token 管理
+
+backend 队友：开发 API 端点、数据库 Schema、中间件
+
+team-lead（用户会话）：协调接口定义、审查代码、合并结果
+
+场景三：研究 + 实现
+先让一个 agent 研究 React Server Components 的最佳实践，
+然后让另一个 agent 基于研究结果来重构我们的页面组件
+researcher 队友：搜索文档、阅读源码、总结最佳实践
+
+implementer 队友：等待研究结果后执行重构
+
+1.2.3 最佳实践
+这些实践来源于 TeamCreate prompt 中的官方指导（src/tools/TeamCreateTool/prompt.ts）：
+1. 选择合适的 Agent 类型
+任务类型
+推荐 subagent_type
+原因
+需要修改文件
+general-purpose有完整的文件编辑和 Bash 工具
+只做搜索和分析
+Explore只读工具，不会误改代码
+规划和设计
+Plan只读工具，专注架构设计
+
+2. 任务分配策略
+不要这样做：
+ 创建一个队友，让它做完所有事情
+
+应该这样做：
+ 创建多个队友，每个负责一个明确的子任务
+ 用 TaskCreate 创建任务，用 TaskUpdate 分配
+3. 沟通方式
+源码中的 SendMessage prompt 明确指出：
+用 SendMessage 与队友通信（你的文字输出对队友不可见）
+
+用 to: "*" 广播消息（仅在所有队友确实需要知道时使用）
+
+不要发送结构化 JSON 状态消息——用 TaskUpdate 更新任务状态
+
+4. 耐心等待空闲
+TeamCreate prompt 强调：
+Teammates go idle after every turn—this is completely normal and expected. A teammate going idle immediately after sending you a message does NOT mean they are done or unavailable.
+
+队友在每个回合结束后自动变为空闲。空闲 ≠ 完成，也不等于不可用。发送消息给空闲队友会自动唤醒它。
+5. 执行模式选择
+环境
+推荐模式
+说明
+tmux 会话内
+Pane-Based（自动）
+可视化 Swarm View，每队友一个面板
+iTerm2 + it2
+Pane-Based（自动）
+原生分屏体验更流畅
+普通终端 / IDE
+In-Process（自动）
+无需 tmux，同进程运行
+非交互模式（-p）
+In-Process（强制）
+无终端 UI，必须用进程内模式
+
+后端选择由 registry.ts 的 isInProcessEnabled() 自动决定，通常无需手动配置。
+1.2.4 完整代码调用示例
+以下伪代码展示了一个完整的团队生命周期（对应源码中的工具调用序列）：
+# Step 1: 创建团队
+TeamCreate(team_name: "my-project", description: "全栈功能开发")
+
+# Step 2: 创建任务
+TaskCreate(subject: "开发登录 API", description: "实现 /api/auth/login 端点")
+TaskCreate(subject: "开发登录页面", description: "实现 React 登录组件")
+
+# Step 3: 生成队友（Agent 工具，team_name 参数使其加入团队）
+Agent(subagent_type: "general-purpose", team_name: "my-project", name: "backend-dev",
+ prompt: "你是后端开发者，负责 API 开发")
+Agent(subagent_type: "general-purpose", team_name: "my-project", name: "frontend-dev",
+ prompt: "你是前端开发者，负责 UI 开发")
+
+# Step 4: 分配任务
+TaskUpdate(taskId: "1", owner: "backend-dev")
+TaskUpdate(taskId: "2", owner: "frontend-dev")
+
+# Step 5: 等待完成（队友会自动发送空闲通知）
+# ... backend-dev 完成任务后自动变 idle ...
+# ... frontend-dev 完成任务后自动变 idle ...
+
+# Step 6: 关机
+SendMessage(to: "backend-dev", message: {type: "shutdown_request"})
+SendMessage(to: "frontend-dev", message: {type: "shutdown_request"})
+
+# Step 7: 清理
+TeamDelete()
+这个流程覆盖了团队创建（TeamCreate）、任务管理（TaskCreate/TaskUpdate）、队友生成（Agent）、消息协调（SendMessage）和清理（TeamDelete）的完整生命周期。后续章节将深入分析每个步骤背后的源码实现。
+1.3 核心设计理念
+Agent Teams 的架构建立在五个核心设计理念之上。这些理念贯穿于整个代码库，理解它们是把握系统全貌的关键。
+1.3.1 文件即协调
+Agent Teams 选择文件系统作为跨进程协调的核心机制。团队配置(config.json)、成员邮箱(inboxes/{name}.json)、任务列表(tasks/{team-name}/)均为磁盘上的 JSON 文件。这一设计带来三个关键优势:
+进程无关性:无论是同进程的 In-Process Agent，还是通过 tmux/iTerm2 独立启动的 Agent,都使用同一套文件协议通信
+
+天然持久化:Agent 崩溃后消息不会丢失,重启后可以继续处理未读消息
+
+调试友好:开发者可以直接查看文件内容理解系统状态
+
+邮箱系统使用文件锁(lockfile)来防止并发写入冲突:
+// src/utils/teammateMailbox.ts:36-41
+const LOCK_OPTIONS = {
+ retries: {
+ retries: 10,
+ minTimeout: 5,
+ maxTimeout: 100,
+ },
+}
+每次写入邮箱时,先获取文件锁,读取最新消息列表,追加新消息,再写回磁盘,最后释放锁。这一"读-改-写"原子操作确保了多个 Agent 并发写入时数据不丢失.
+1.3.2 双模式执行
+Agent Teams 支持两种执行模式:Pane-Based(终端面板模式) 和 In-Process(同进程模式).
+Pane-Based 模式通过 tmux 或 iTerm2 的原生面板功能,为每个 Agent 创建独立的终端窗口.每个 Agent 是一个完整的操作系统进程,拥有自己的 Node.js 运行时。
+In-Process 模式则在同一个 Node.js 进程内运行所有 Agent.通过 Node.js 的 AsyncLocalStorage API 实现上下文隔离,使多个 Agent 的身份信息(agentId、teamName、color 等)互不干扰.这种方式资源消耗更低,且 Agent 之间可以共享 API 客户端和 MCP 连接. 后端选择由 registry.ts 中的 isInProcessEnabled() 自动决定,逻辑如下:
+// src/utils/swarm/backends/registry.ts:351-389
+exportfunction isInProcessEnabled(): boolean {
+// 非交互式会话强制使用进程内模式
+if (getIsNonInteractiveSession()) {
+ returntrue
+ }
+
+const mode = getTeammateMode()
+
+let enabled: boolean
+if (mode === 'in-process') {
+ enabled = true
+ } elseif (mode === 'tmux') {
+ enabled = false
+ } else {
+ // 'auto' 模式:如果在 tmux 或 iTerm2 中,使用面板后端;否则使用进程内模式
+ const insideTmux = isInsideTmuxSync()
+ const inITerm2 = isInITerm2()
+ enabled = !insideTmux && !inITerm2
+ }
+return enabled
+}
+1.3.3 统一抽象
+TeammateExecutor 接口屏蔽了不同执行后端的差异,使上层代码无需关心 Agent 是运行在 tmux 面板中还是同一进程内:
+// src/utils/swarm/backends/types.ts:279-300
+export type TeammateExecutor = {
+ readonly type: BackendType
+ isAvailable(): Promise<boolean>
+ spawn(config: TeammateSpawnConfig): Promise<TeammateSpawnResult>
+ sendMessage(agentId: string, message: TeammateMessage): Promise<void>
+ terminate(agentId: string, reason?: string): Promise<boolean>
+ kill(agentId: string): Promise<boolean>
+ isActive(agentId: string): Promise<boolean>
+}
+这一接口有两个实现:
+InProcessBackend(src/utils/swarm/backends/InProcessBackend.ts):通过 AsyncLocalStorage 管理生命周期,使用 AbortController 终止
+
+PaneBackendExecutor(src/utils/swarm/backends/PaneBackendExecutor.ts):适配器模式,将 PaneBackend(tmux/iTerm2)包装为 TeammateExecutor
+
+通过 registry.ts 中的 getTeammateExecutor() 方法,调用者可以透明地获取适合当前环境的执行器.
+1.3.4 身份隔离
+对于同进程内的多个 Agent,Node.js 的全局状态(如环境变量、模块级变量)天然是共享的.Agent Teams 使用 AsyncLocalStorage 为每个 Agent 提供隔离的身份上下文:
+// src/utils/teammateContext.ts:22-41
+export type TeammateContext = {
+ agentId: string // 完整 Agent ID,如 "researcher@my-team"
+ agentName: string // 显示名称,如 "researcher"
+ teamName: string // 所属团队名
+ color?: string // UI 颜色标识
+ planModeRequired: boolean // 是否需要计划审批
+ parentSessionId: string // 领导者的会话 ID
+ isInProcess: true // 类型判别标志
+ abortController: AbortController // 生命周期管理
+}
+
+const teammateContextStorage = new AsyncLocalStorage<TeammateContext>()
+身份解析遵循三级优先级:
+AsyncLocalStorage(进程内 Agent) -- 最高优先级
+
+dynamicTeamContext(运行时加入的 Agent)
+
+环境变量(tmux/iTerm2 Agent,通过 CLI 参数传递)
+
+// src/utils/teammate.ts:88-92
+export function getAgentId(): string | undefined {
+ const inProcessCtx = getTeammateContext()
+ if (inProcessCtx) return inProcessCtx.agentId
+ return dynamicTeamContext?.agentId
+}
+1.3.5 任务驱动
+团队共享一个 TaskList 作为协调核心.TeamCreate 工具在创建团队时同时创建对应的任务目录:
+// src/tools/TeamCreateTool/TeamCreateTool.ts:183-191
+// 重置并创建对应的任务列表目录(Team = Project = TaskList)
+// 这确保每个新团队的任务编号从 1 开始
+const taskListId = sanitizeName(finalTeamName)
+await resetTaskList(taskListId)
+await ensureTasksDir(taskListId)
+
+// 注册团队名,使 getTaskListId() 为领导者返回团队名
+setLeaderTeamName(sanitizeName(finalTeamName))
+团队与任务列表是 1:1 对应关系(Team = TaskList).所有团队成员都可以访问 ~/.claude/tasks/{team-name}/ 目录下的任务文件,通过 TaskCreate、TaskUpdate 等操作进行任务的创建、分配和完成标记.
+1.4 文件系统布局
+Agent Teams 使用 ~/.claude/ 作为根目录,所有团队相关的持久化数据均存储在其下:
+~/.claude/
+├── teams/
+│ └── {team-name}/
+│ ├── config.json # 团队配置文件
+│ └── inboxes/
+│ ├── team-lead.json # leader 收件箱
+│ ├── researcher.json # researcher 收件箱
+│ └── tester.json # tester 收件箱
+└── tasks/
+ └── {team-name}/ # 共享任务目录
+ ├── task-1.json
+ ├── task-2.json
+ └── task-3.json
+graph TD
+ A["~/.claude/"] --> B["teams/"]
+ A --> C["tasks/"]
+ B --> D["{team-name}/"]
+ D --> E["config.json"]
+ D --> F["inboxes/"]
+ F --> G["team-lead.json"]
+ F --> H["researcher.json"]
+ F --> I["tester.json"]
+ C --> J["{team-name}/"]
+ J --> K["task-1.json"]
+ J --> L["task-2.json"]
+ J --> M["task-3.json"]
+
+ style A fill:#f5f5f5,stroke:#333
+ style B fill:#e3f2fd,stroke:#1565c0
+ style C fill:#e8f5e9,stroke:#2e7d32
+ style D fill:#fff3e0,stroke:#e65100
+ style F fill:#fce4ec,stroke:#c62828
+ style J fill:#f3e5f5,stroke:#6a1b9a
+图：Agent Teams 文件系统布局
+graph TD
+ subgraph Tools["工具层"]
+ TC["TeamCreateTool"]
+ SM["SendMessageTool"]
+ TD["TeamDeleteTool"]
+ end
+
+ subgraph Execution["执行层"]
+ REG["Backend Registry"]
+ IPB["InProcessBackend"]
+ PBE["PaneBackendExecutor"]
+ TB["TmuxBackend"]
+ IB["ITermBackend"]
+ end
+
+ subgraph Coordination["协调层"]
+ MBX["Mailbox 邮箱系统"]
+ TSK["TaskList 任务系统"]
+ CTX["TeammateContext 上下文"]
+ TF["TeamFile 配置文件"]
+ end
+
+ TC --> REG
+ TC --> TF
+ SM --> MBX
+ TD --> TF
+ REG --> IPB
+ REG --> PBE
+ PBE --> TB
+ PBE --> IB
+ IPB --> CTX
+ MBX --> TF
+ TSK --> TF
+
+ style Tools fill:#e3f2fd,stroke:#1565c0
+ style Execution fill:#fff3e0,stroke:#e65100
+ style Coordination fill:#e8f5e9,stroke:#2e7d32
+图：Agent Teams 核心组件关系
+第2章 总体架构
+2.1 三层架构
+Agent Teams 采用清晰的三层架构设计,将系统划分为工具层、执行层和协调层:
+graph TB
+ subgraph ToolLayer["工具层 - 用户/AI 交互入口"]
+ TC["TeamCreateTool\n创建团队"]
+ SM["SendMessageTool\n消息传递"]
+ TD["TeamDeleteTool\n清理团队"]
+ end
+
+ subgraph ExecLayer["执行层 - Agent 实际运行"]
+ REG["Backend Registry\n后端注册与选择"]
+ IPB["InProcessBackend\n同进程执行"]
+ PBE["PaneBackendExecutor\n终端面板执行"]
+ end
+
+ subgraph CoordLayer["协调层 - 通信与任务管理"]
+ MBX["Mailbox\n文件邮箱系统"]
+ TSK["TaskList\n共享任务列表"]
+ CTX["TeammateContext\n身份上下文隔离"]
+ end
+
+ ToolLayer --> ExecLayer
+ ToolLayer --> CoordLayer
+ ExecLayer --> CoordLayer
+
+ style ToolLayer fill:#e3f2fd,stroke:#1565c0
+ style ExecLayer fill:#fff3e0,stroke:#e65100
+ style CoordLayer fill:#e8f5e9,stroke:#2e7d32
+图：Agent Teams 三层架构
+工具层(TeamCreate/SendMessage/TeamDelete) 是用户和 AI 交互的入口.这三个工具被注册为 Claude Code 的内置工具,AI 模型可以在对话中直接调用它们.工具层不直接执行 Agent,而是委托给执行层.
+执行层(Backends) 负责实际运行 Agent.通过 TeammateExecutor 接口提供统一的 spawn/sendMessage/terminate/kill/isActive 操作.执行层会自动检测运行环境并选择最合适的后端.
+协调层(Mailbox/TaskList/TeammateContext) 负责团队间通信、任务分配和身份隔离.所有协调机制都基于文件系统,确保进程无关性.
+2.2 核心组件
+2.2.1 TeamCreateTool -- 创建团队
+TeamCreateTool 是团队生命周期的起点.它负责:
+检查是否已在团队中(每个 leader 只能管理一个团队)
+
+生成唯一的团队名(如果请求的名称已存在,自动生成随机词组)
+
+创建 TeamFile 配置文件
+
+初始化共享任务列表目录
+
+更新 AppState 中的 teamContext
+
+// src/tools/TeamCreateTool/TeamCreateTool.ts:128-237（核心逻辑简化）
+async call(input, context) {
+const { setAppState, getAppState } = context
+
+// 检查是否已在团队中
+const existingTeam = appState.teamContext?.teamName
+if (existingTeam) {
+ thrownewError(
+ `Already leading team "${existingTeam}". A leader can only manage one team at a time.`
+ )
+ }
+
+// 生成唯一团队名
+const finalTeamName = generateUniqueTeamName(team_name)
+
+// 创建 TeamFile
+const teamFile: TeamFile = {
+ name: finalTeamName,
+ createdAt: Date.now(),
+ leadAgentId: formatAgentId(TEAM_LEAD_NAME, finalTeamName),
+ leadSessionId: getSessionId(),
+ members: [{
+ agentId: leadAgentId,
+ name: TEAM_LEAD_NAME,
+ agentType: leadAgentType,
+ model: leadModel,
+ joinedAt: Date.now(),
+ tmuxPaneId: '',
+ cwd: getCwd(),
+ subscriptions: [],
+ }],
+ }
+
+// 写入磁盘
+await writeTeamFileAsync(finalTeamName, teamFile)
+ registerTeamForSessionCleanup(finalTeamName)
+
+// 创建任务目录
+await resetTaskList(taskListId)
+await ensureTasksDir(taskListId)
+ setLeaderTeamName(sanitizeName(finalTeamName))
+
+// 更新内存状态
+ setAppState(prev => ({
+ ...prev,
+ teamContext: {
+ teamName: finalTeamName,
+ teamFilePath,
+ leadAgentId,
+ teammates: { [leadAgentId]: { ... } },
+ },
+ }))
+}
+TeamFile 是团队的核心数据结构,定义在 teamHelpers.ts 中:
+// src/utils/swarm/teamHelpers.ts:64-90
+exporttype TeamFile = {
+ name: string
+ description?: string
+ createdAt: number
+ leadAgentId: string
+ leadSessionId?: string
+ hiddenPaneIds?: string[]
+ teamAllowedPaths?: TeamAllowedPath[]
+ members: Array<{
+ agentId: string
+ name: string
+ agentType?: string
+ model?: string
+ prompt?: string
+ color?: string
+ planModeRequired?: boolean
+ joinedAt: number
+ tmuxPaneId: string
+ cwd: string
+ worktreePath?: string
+ sessionId?: string
+ subscriptions: string[]
+ backendType?: BackendType
+ isActive?: boolean
+ mode?: PermissionMode
+ }>
+}
+值得注意的是,leader 的 Agent ID 不会设置到环境变量中.这是因为 isTeammate() 函数依赖 Agent ID 的存在来判断当前实例是否为团队成员,而 leader 不应被视为 "teammate":
+// src/tools/TeamCreateTool/TeamCreateTool.ts:224-228
+// 注意:我们有意不为 team lead 设置 CLAUDE_CODE_AGENT_ID,因为:
+// 1. leader 不是 "teammate" -- isTeammate() 应该返回 false
+// 2. 其 ID 是确定性的 (team-lead@teamName),需要时可推导
+// 3. 设置它会导致 isTeammate() 返回 true,破坏 inbox 轮询
+2.2.2 SendMessageTool -- 消息传递
+SendMessageTool 是团队通信的核心工具.它支持五种操作:
+普通消息(string):写入收件人邮箱
+
+广播消息(to: "*"):写入所有非发送者的邮箱
+
+关机请求(shutdown_request):请求 Agent 终止
+
+关机响应(shutdown_response):接受或拒绝关机
+
+计划审批(plan_approval_response):批准或驳回 Agent 的实施计划
+
+// src/tools/SendMessageTool/SendMessageTool.ts:876-913（核心路由逻辑）
+if (typeof input.message === 'string') {
+if (input.to === '*') {
+ return handleBroadcast(input.message, input.summary, context)
+ }
+return handleMessage(input.to, input.message, input.summary, context)
+}
+
+switch (input.message.type) {
+case'shutdown_request':
+ return handleShutdownRequest(input.to, input.message.reason, context)
+case'shutdown_response':
+ if (input.message.approve) {
+ return handleShutdownApproval(input.message.request_id, context)
+ }
+ return handleShutdownRejection(input.message.request_id, input.message.reason!)
+case'plan_approval_response':
+ if (input.message.approve) {
+ return handlePlanApproval(input.to, input.message.request_id, context)
+ }
+ return handlePlanRejection(input.to, input.message.request_id, input.message.feedback!)
+}
+2.2.3 TeamDeleteTool -- 清理团队
+TeamDeleteTool 负责团队的优雅终止和资源清理.其核心流程:
+检查是否有活跃成员(非 leader 且非 idle 的成员)
+
+如果有活跃成员,拒绝删除并提示先终止它们
+
+清理 git 工作树、团队目录和任务目录
+
+清理颜色分配和 leader 团队名
+
+清除 AppState 中的团队上下文和收件箱
+
+// src/tools/TeamDeleteTool/TeamDeleteTool.ts:71-135（简化）
+async call(_input, context) {
+const teamName = appState.teamContext?.teamName
+
+if (teamName) {
+ const teamFile = readTeamFile(teamName)
+ if (teamFile) {
+ const activeMembers = nonLeadMembers.filter(m => m.isActive !== false)
+ if (activeMembers.length > 0) {
+ return { success: false, message: 'Cannot cleanup with active members' }
+ }
+ }
+
+ await cleanupTeamDirectories(teamName)
+ unregisterTeamForSessionCleanup(teamName)
+ clearTeammateColors()
+ clearLeaderTeamName()
+ }
+
+ setAppState(prev => ({
+ ...prev,
+ teamContext: undefined,
+ inbox: { messages: [] },
+ }))
+}
+2.2.4 Mailbox -- 文件邮箱系统
+邮箱系统是 Agent 间通信的基础设施.每个团队成员拥有一个独立的收件箱文件,路径格式为 ~/.claude/teams/{team-name}/inboxes/{agent-name}.json. 消息的数据结构:
+// src/utils/teammateMailbox.ts:43-51
+export type TeammateMessage = {
+ from: string // 发送者名称
+ text: string // 消息内容
+ timestamp: string // ISO 时间戳
+ read: boolean // 是否已读
+ color?: string // 发送者颜色
+ summary?: string // 5-10 字摘要,用于 UI 预览
+}
+邮箱系统支持的操作:
+操作
+函数
+说明
+读取全部消息
+readMailbox()返回所有消息
+读取未读消息
+readUnreadMessages()过滤 read === false
+写入消息
+writeToMailbox()带文件锁的原子写入
+标记单条已读
+markMessageAsReadByIndex()按索引标记
+按条件标记已读
+markMessagesAsReadByPredicate()按谓词筛选标记
+全部标记已读
+markMessagesAsRead()批量标记
+清空邮箱
+clearMailbox()删除所有消息
+
+邮箱还定义了多种结构化消息类型,用于特定的协议交互:
+IdleNotificationMessage -- Agent 空闲通知
+
+PermissionRequestMessage / PermissionResponseMessage -- 权限请求/响应
+
+ShutdownRequestMessage / ShutdownApprovedMessage / ShutdownRejectedMessage -- 关机协议
+
+PlanApprovalRequestMessage / PlanApprovalResponseMessage -- 计划审批协议
+
+TaskAssignmentMessage -- 任务分配通知
+
+TeamPermissionUpdateMessage -- 团队权限更新广播
+
+2.2.5 TeammateContext -- 身份隔离
+TeammateContext 使用 Node.js 的 AsyncLocalStorage API 为同进程内的多个 Agent 提供独立的身份上下文.每个 Agent 的上下文包含其 agentId、名称、团队、颜色等身份信息,以及用于生命周期管理的 AbortController.
+// src/utils/teammateContext.ts:59-64
+export function runWithTeammateContext<T>(
+ context: TeammateContext,
+ fn: () => T,
+): T {
+ return teammateContextStorage.run(context, fn)
+}
+当 In-Process Agent 启动时,它的整个执行循环都被包裹在 runWithTeammateContext 中.此后,任何对 getAgentId()、getAgentName()、getTeamName() 等身份查询函数的调用,都会自动返回当前异步执行流所属的 Agent 的身份信息.
+2.2.6 Backend Registry -- 后端选择
+Backend Registry 是执行层的中枢.它负责检测运行环境并选择最合适的执行后端.检测优先级如下:
+1. 如果在 tmux 内 -> 使用 tmux 后端
+2. 如果在 iTerm2 内且 it2 CLI 可用 -> 使用 iTerm2 后端
+3. 如果在 iTerm2 内但 it2 不可用 -> 回退到 tmux(推荐安装 it2)
+4. 否则 -> 检查 tmux 是否可用,可用则使用 tmux 外部会话
+5. 都不可用 -> 抛出错误,提示安装 tmux
+// src/utils/swarm/backends/registry.ts:136-254（核心逻辑简化）
+exportasyncfunction detectAndGetBackend(): Promise<BackendDetectionResult> {
+// Priority 1: 在 tmux 内 -> 始终使用 tmux
+if (insideTmux) {
+ return { backend: createTmuxBackend(), isNative: true }
+ }
+
+// Priority 2: 在 iTerm2 内 -> 尝试原生面板
+if (inITerm2) {
+ if (it2Available) {
+ return { backend: createITermBackend(), isNative: true }
+ }
+ // 回退到 tmux
+ if (tmuxAvailable) {
+ return { backend: createTmuxBackend(), isNative: false }
+ }
+ thrownewError('iTerm2 detected but it2 CLI not installed.')
+ }
+
+// Priority 3: 外部 tmux 会话
+if (tmuxAvailable) {
+ return { backend: createTmuxBackend(), isNative: false }
+ }
+
+thrownewError(getTmuxInstallInstructions())
+}
+检测结果会被缓存,在整个进程生命周期内只检测一次.这意味着团队创建后的后端选择是固定的. 通过 getTeammateExecutor() 方法,调用者无需了解后端细节即可获取执行器:
+// src/utils/swarm/backends/registry.ts:425-436
+export async function getTeammateExecutor(
+ preferInProcess: boolean = false,
+): Promise<TeammateExecutor> {
+ if (preferInProcess && isInProcessEnabled()) {
+ return getInProcessBackend()
+ }
+ return getPaneBackendExecutor()
+}
+2.3 数据流
+2.3.1 完整数据流
+从创建团队到任务完成的完整数据流可以分为五个阶段:
+graph LR
+ subgraph Phase1["阶段一: 创建"]
+ TC1["TeamCreate.call()"]
+ TC2["writeTeamFileAsync()"]
+ TC3["config.json"]
+ TC4["AppState.teamContext"]
+ TC1 --> TC2 --> TC3
+ TC1 --> TC4
+ end
+
+ subgraph Phase2["阶段二: 添加成员"]
+ A1["Agent Tool"]
+ A2["getTeammateExecutor()"]
+ A3["backend.spawn()"]
+ A4["config.json 更新"]
+ A1 --> A2 --> A3
+ A3 --> A4
+ end
+
+ subgraph Phase3["阶段三: 通信"]
+ S1["SendMessage.call()"]
+ S2["writeToMailbox()"]
+ S3["inbox JSON"]
+ S4["inbox polling"]
+ S5["消息投递"]
+ S1 --> S2 --> S3 --> S4 --> S5
+ end
+
+ subgraph Phase4["阶段四: 任务"]
+ T1["TaskCreate"]
+ T2["共享 tasks/"]
+ T3["TaskUpdate"]
+ T4["notifyTasksUpdated"]
+ T1 --> T2 --> T3 --> T4
+ end
+
+ subgraph Phase5["阶段五: 清理"]
+ D1["TeamDelete.call()"]
+ D2["cleanupTeamDirectories()"]
+ D3["清除 AppState"]
+ D1 --> D2 --> D3
+ end
+
+ Phase1 --> Phase2 --> Phase3 --> Phase4 --> Phase5
+
+ style Phase1 fill:#e3f2fd,stroke:#1565c0
+ style Phase2 fill:#fff3e0,stroke:#e65100
+ style Phase3 fill:#fce4ec,stroke:#c62828
+ style Phase4 fill:#e8f5e9,stroke:#2e7d32
+ style Phase5 fill:#f3e5f5,stroke:#6a1b9a
+图：Agent Teams 数据流
+阶段一：创建阶段TeamCreateTool 被调用时,创建 TeamFile 对象并写入 ~/.claude/teams/{name}/config.json.同时,在 AppState 中设置 teamContext,包含团队名、文件路径、leader ID 和成员映射.创建对应的任务目录 ~/.claude/tasks/{name}/.
+阶段二：添加成员Agent Tool(或用户通过 UI)请求添加新成员时,首先通过 getTeammateExecutor() 获取合适的执行后端.对于 In-Process 模式,调用 InProcessBackend.spawn();对于 Pane-Based 模式,调用 PaneBackendExecutor.spawn().spawn 成功后,更新 config.json 的 members 数组,并将成员信息添加到 AppState.
+阶段三：通信阶段SendMessageTool 处理消息发送请求.普通消息通过 writeToMailbox() 写入目标 Agent 的邮箱文件.接收方通过 inbox polling 机制定期检查邮箱,发现未读消息后标记为已读并投递到对话上下文中.
+阶段四：任务阶段任何团队成员都可以通过 TaskCreate 创建新任务.任务被写入共享的文件系统目录,所有成员都能通过 TaskList 查看.TaskUpdate 用于分配任务(设置 owner)、更新状态(pending -> in_progress -> completed).任务变更通过 notifyTasksUpdated() 信号通知 UI 刷新.
+阶段五：清理阶段TeamDeleteTool 首先检查是否有活跃成员.如果所有非 leader 成员都已空闲或退出,则执行清理:删除 git 工作树、团队目录和任务目录,最后清除 AppState 中的团队上下文.
+2.3.2 团队创建序列
+以下序列图展示了 TeamCreateTool 被调用时各组件之间的交互:
+sequenceDiagram
+ participant User as 用户/AI
+ participant TCT as TeamCreateTool
+ participant TH as teamHelpers
+ participant FS as 文件系统
+ participant AS as AppState
+ participant Task as tasks.ts
+
+ User->>TCT: call(team_name, description)
+ TCT->>TCT: 检查是否已在团队中
+ TCT->>TH: readTeamFile(team_name)
+ TH->>FS: 读取 config.json
+ FS-->>TH: null(不存在)
+ TH-->>TCT: null
+ TCT->>TCT: generateUniqueTeamName()
+ TCT->>TCT: 构建 TeamFile 对象
+ TCT->>TH: writeTeamFileAsync(team_name, teamFile)
+ TH->>FS: mkdir teams/{name}/
+ TH->>FS: 写入 config.json
+ TCT->>TH: registerTeamForSessionCleanup()
+ TCT->>Task: resetTaskList(sanitizedName)
+ TCT->>Task: ensureTasksDir(sanitizedName)
+ Task->>FS: mkdir tasks/{name}/
+ TCT->>Task: setLeaderTeamName(sanitizedName)
+ TCT->>AS: setAppState(更新 teamContext)
+ TCT-->>User: 返回 team_name, team_file_path, lead_agent_id
+图：团队创建序列
+这个序列揭示了几个重要的设计细节:
+同步与异步分离:readTeamFile 是同步操作(用于快速检查),而 writeTeamFileAsync 是异步操作(用于工具处理器).这种设计允许在同步上下文(如 React 渲染路径)中使用文件读取,而文件写入则在异步上下文中完成.
+
+幂等性保障:generateUniqueTeamName 确保即使请求的名称已存在,也不会失败,而是自动生成新的唯一名称.
+
+防御性注册:registerTeamForSessionCleanup 确保即使用户忘记调用 TeamDelete,系统也能在会话结束时自动清理团队资源.
+
+任务与团队绑定:任务列表的 ID 使用 sanitizeName(teamName) 生成,确保团队成员无论是 leader 还是 teammate,都能通过相同的路径访问同一个任务列表.
+
+第3章 消息传递系统
+3.1 邮箱架构
+Agent Teams 使用基于文件系统的邮箱（Mailbox）作为跨 Agent 通信的核心基础设施。每个团队成员拥有独立的收件箱文件，路径格式为 ~/.claude/teams/{team-name}/inboxes/{agent-name}.json。
+这一设计选择有三个关键考量：
+跨进程兼容：无论是同进程运行的 In-Process Agent，还是通过 tmux/iTerm2 独立启动的进程级 Agent，都使用同一套文件协议
+
+崩溃恢复：Agent 异常终止后，已写入邮箱的消息不会丢失，重启后可以继续处理未读消息
+
+调试透明：开发者可以直接查看 JSON 文件内容，理解系统当前状态
+
+邮箱文件存储的是一个 TeammateMessage 数组：
+// src/utils/teammateMailbox.ts:43-50
+export type TeammateMessage = {
+ from: string // 发送者名称
+ text: string // 消息内容
+ timestamp: string // ISO 时间戳
+ read: boolean // 是否已读
+ color?: string // 发送者颜色标识
+ summary?: string // 5-10 字摘要，用于 UI 预览
+}
+写入流程是邮箱系统最核心的操作，使用文件锁实现并发安全：
+// src/utils/teammateMailbox.ts:134-192
+exportasyncfunction writeToMailbox(
+ recipientName: string,
+ message: Omit<TeammateMessage, 'read'>,
+ teamName?: string,
+): Promise<void> {
+await ensureInboxDir(teamName)
+const inboxPath = getInboxPath(recipientName, teamName)
+const lockFilePath = `${inboxPath}.lock`
+
+// 原子创建文件（wx flag 在文件已存在时抛出 EEXIST）
+try {
+ await writeFile(inboxPath, '[]', { encoding: 'utf-8', flag: 'wx' })
+ } catch (error) {
+ const code = getErrnoCode(error)
+ if (code !== 'EEXIST') {
+ logError(error)
+ return
+ }
+ }
+
+let release: (() => Promise<void>) | undefined
+try {
+ release = awaitlockfile.lock(inboxPath, {
+ lockfilePath: lockFilePath,
+ ...LOCK_OPTIONS, // retries: 10, minTimeout: 5ms, maxTimeout: 100ms
+ })
+ constmessages = awaitreadMailbox(recipientName, teamName)
+ constnewMessage: TeammateMessage = { ...message, read: false }
+ messages.push(newMessage)
+ awaitwriteFile(inboxPath, jsonStringify(messages, null, 2), 'utf-8')
+ } catch (error) {
+ logError(error)
+ } finally {
+ if (release) awaitrelease()
+ }
+}
+解读：这是经典的"读-改-写"并发控制模式。writeToMailbox 先用 wx flag 原子创建文件（文件已存在则静默跳过），然后获取文件锁。锁策略配置了 10 次重试、5-100ms 退避，确保多个 Agent 并发写入时不会永久阻塞。获取锁后重新读取最新消息列表，追加新消息再写回。
+邮箱系统提供以下操作集：
+操作
+函数
+说明
+读取全部
+readMailbox()返回所有消息（含已读/未读）
+读取未读
+readUnreadMessages()过滤 read === false 的消息
+写入消息
+writeToMailbox()带文件锁的原子追加写入
+标记单条已读
+markMessageAsReadByIndex()按索引标记，同样使用文件锁
+按条件标记
+markMessagesAsReadByPredicate()按谓词筛选标记，用于过滤结构化消息
+全部标记已读
+markMessagesAsRead()批量标记
+清空邮箱
+clearMailbox()将文件内容重置为 []
+
+3.2 消息类型体系
+邮箱系统承载的消息并非只有简单的文本。teammateMailbox.ts 定义了丰富的结构化消息类型，构成了 Agent Teams 的通信协议层。
+graph TD
+ MSG["TeammateMessage<br/>基础消息"] --> PLAIN["普通文本消息"]
+ MSG --> STRUCT["结构化协议消息"]
+
+ STRUCT --> IDLE["IdleNotification<br/>空闲通知"]
+ STRUCT --> SHUT["Shutdown 协议"]
+ STRUCT --> PLAN["Plan Approval 协议"]
+ STRUCT --> PERM["Permission 协议"]
+ STRUCT --> SANDBOX["Sandbox Permission 协议"]
+ STRUCT --> MODE["Mode Set 请求"]
+ STRUCT --> TASK_ASSIGN["Task Assignment<br/>任务分配"]
+ STRUCT --> TEAM_PERM["Team Permission Update<br/>团队权限广播"]
+
+ SHUT --> SHUT_REQ["ShutdownRequest"]
+ SHUT --> SHUT_APP["ShutdownApproved"]
+ SHUT --> SHUT_REJ["ShutdownRejected"]
+
+ PLAN --> PLAN_REQ["PlanApprovalRequest"]
+ PLAN --> PLAN_RES["PlanApprovalResponse"]
+
+ PERM --> PERM_REQ["PermissionRequest"]
+ PERM --> PERM_RES["PermissionResponse"]
+
+ style MSG fill:#e3f2fd,stroke:#1565c0
+ style STRUCT fill:#fff3e0,stroke:#e65100
+ style IDLE fill:#e8f5e9,stroke:#2e7d32
+ style SHUT fill:#fce4ec,stroke:#c62828
+ style PLAN fill:#f3e5f5,stroke:#6a1b9a
+ style PERM fill:#e0f7fa,stroke:#00695c
+图：消息类型层次
+这些结构化消息通过 text 字段以 JSON 字符串形式存储在邮箱中，接收方通过 isXxx() 系列函数解析和识别：
+消息类型
+方向
+用途
+IdleNotificationWorker → Leader
+Agent 完成当前回合后通知 Leader 自己空闲
+ShutdownRequestLeader → Worker
+请求 Agent 终止运行
+ShutdownApprovedWorker → Leader
+Agent 同意终止
+ShutdownRejectedWorker → Leader
+Agent 拒绝终止（附理由）
+PlanApprovalRequestWorker → Leader
+Agent 请求 Leader 审批实施计划
+PlanApprovalResponseLeader → Worker
+Leader 批准或驳回计划
+PermissionRequestWorker → Leader
+Agent 请求 Leader 代为授权工具使用
+PermissionResponseLeader → Worker
+Leader 授权或拒绝工具使用
+SandboxPermissionRequestWorker → Leader
+请求沙箱网络访问权限
+SandboxPermissionResponseLeader → Worker
+批准或拒绝网络访问
+ModeSetRequestLeader → Worker
+切换 Agent 的权限模式
+TaskAssignmentLeader → Worker
+分配任务给 Agent
+TeamPermissionUpdateLeader → All
+广播团队级权限更新
+
+关键设计点在于 isStructuredProtocolMessage() 函数——它判断一条消息是否是结构化协议消息，避免将协议消息当作普通文本投递到 LLM 上下文：
+// src/utils/teammateMailbox.ts:1073-1095
+exportfunction isStructuredProtocolMessage(messageText: string): boolean {
+try {
+ const parsed = jsonParse(messageText)
+ if (!parsed || typeof parsed !== 'object' || !('type'in parsed)) {
+ returnfalse
+ }
+ consttype = (parsed as { type: unknown }).type
+ return (
+ type === 'permission_request' ||
+ type === 'permission_response' ||
+ type === 'sandbox_permission_request' ||
+ type === 'sandbox_permission_response' ||
+ type === 'shutdown_request' ||
+ type === 'shutdown_approved' ||
+ type === 'team_permission_update' ||
+ type === 'mode_set_request' ||
+ type === 'plan_approval_request' ||
+ type === 'plan_approval_response'
+ )
+ } catch {
+ returnfalse
+ }
+}
+解读：协议消息有专用的处理队列（如 workerPermissions、workerSandboxPermissions），如果被 getTeammateMailboxAttachments 作为普通文本消费，就无法到达正确的处理器。因此，收件箱轮询器（inbox poller）会先用此函数过滤，将协议消息路由到各自的队列。
+3.3 SendMessage 工具
+SendMessageTool 是消息传递的用户/AI 入口。它支持五种消息路由模式，通过 call 方法的消息分发逻辑实现：
+// src/tools/SendMessageTool/SendMessageTool.ts:876-912（核心路由逻辑）
+// 1. 先尝试路由到 in-process subagent（按名称或 agentId）
+if (typeof input.message === 'string' && input.to !== '*') {
+const registered = appState.agentNameRegistry.get(input.to)
+const agentId = registered ?? toAgentId(input.to)
+if (agentId) {
+ const task = appState.tasks[agentId]
+ if (isLocalAgentTask(task) && !isMainSessionTask(task)) {
+ if (task.status === 'running') {
+ queuePendingMessage(agentId, input.message, ...)
+ return { data: { success: true, message: 'Message queued for delivery' } }
+ }
+ // task 已停止 -> 自动恢复
+ const result = await resumeAgentBackground({ agentId, prompt: input.message, ... })
+ return { data: { success: true, message: `Agent resumed in background` } }
+ }
+ }
+}
+
+// 2. 普通文本消息路由
+if (typeof input.message === 'string') {
+if (input.to === '*') {
+ return handleBroadcast(input.message, input.summary, context)
+ }
+return handleMessage(input.to, input.message, input.summary, context)
+}
+
+// 3. 结构化协议消息路由
+switch (input.message.type) {
+case'shutdown_request':
+ return handleShutdownRequest(input.to, input.message.reason, context)
+case'shutdown_response':
+ if (input.message.approve) {
+ return handleShutdownApproval(input.message.request_id, context)
+ }
+ return handleShutdownRejection(input.message.request_id, input.message.reason!)
+case'plan_approval_response':
+ if (input.message.approve) {
+ return handlePlanApproval(input.to, input.message.request_id, context)
+ }
+ return handlePlanRejection(input.to, input.message.request_id, input.message.feedback!)
+}
+解读：SendMessage 的路由逻辑有三个层次。首先检查目标是否是已注册的 in-process subagent，如果是，直接通过内存消息队列投递（更高效），如果 subagent 已停止还能自动恢复。其次处理普通文本消息（点对点或广播）。最后处理结构化协议消息，每种类型有专用的处理函数。
+3.3.1 点对点消息
+handleMessage 实现简单的点对点投递：
+// src/tools/SendMessageTool/SendMessageTool.ts:149-189
+asyncfunction handleMessage(
+ recipientName: string,
+ content: string,
+ summary: string | undefined,
+ context: ToolUseContext,
+): Promise<{ data: MessageOutput }> {
+const senderName = getAgentName() || (isTeammate() ? 'teammate' : TEAM_LEAD_NAME)
+const senderColor = getTeammateColor()
+
+await writeToMailbox(recipientName, {
+ from: senderName, text: content, summary,
+ timestamp: newDate().toISOString(),
+ color: senderColor,
+ }, teamName)
+
+return { data: {
+ success: true,
+ message: `Message sent to ${recipientName}'s inbox`,
+ routing: { sender: senderName, senderColor, target: `@${recipientName}`, ... },
+ }}
+}
+3.3.2 广播消息
+handleBroadcast 向所有非发送者的团队成员投递消息：
+// src/tools/SendMessageTool/SendMessageTool.ts:195-266
+asyncfunction handleBroadcast(
+ content: string, summary: string | undefined, context: ToolUseContext,
+): Promise<{ data: BroadcastOutput }> {
+const teamFile = await readTeamFileAsync(teamName)
+const recipients = teamFile.members
+ .filter(m => m.name.toLowerCase() !== senderName.toLowerCase())
+ .map(m => m.name)
+
+for (const recipientName of recipients) {
+ await writeToMailbox(recipientName, { from: senderName, text: content, ... }, teamName)
+ }
+return { data: { success: true, recipients, ... } }
+}
+解读：广播的实现很直接——遍历团队成员列表，跳过自己，逐个写入邮箱。这意味着广播的开销是线性的（O(n)），成员越多越慢。Prompt 中也明确提示："expensive (linear in team size), use only when everyone genuinely needs it"。
+3.3.3 关机协议
+关机是一个请求-响应式的协商协议：
+sequenceDiagram
+ participant Lead as Team Lead
+ participant Worker as Worker Agent
+
+ Lead->>Worker: shutdown_request<br/>(写入 Worker 邮箱)
+ Worker->>Worker: 处理请求
+ alt 同意关机
+ Worker->>Lead: shutdown_approved<br/>(写入 Lead 邮箱)
+ Worker->>Worker: abortController.abort()
+ else 拒绝关机
+ Worker->>Lead: shutdown_rejected<br/>(reason: "还有未完成的任务")
+ Worker->>Worker: 继续工作
+ end
+图：关机协议序列
+对于 In-Process 队友，handleShutdownApproval 会直接调用 task.abortController.abort() 终止执行循环：
+// src/tools/SendMessageTool/SendMessageTool.ts:348-367
+if (ownBackendType === 'in-process') {
+ if (agentId) {
+ const task = findTeammateTaskByAgentId(agentId, appState.tasks)
+ if (task?.abortController) {
+ task.abortController.abort()
+ }
+ }
+}
+对于 Pane-Based 队友，则通过 gracefulShutdown() 让进程自行退出。
+第4章 执行后端系统
+4.1 三种后端类型
+Agent Teams 支持三种执行后端，定义在 backends/types.ts 中：
+// src/utils/swarm/backends/types.ts:8
+export type BackendType = 'tmux' | 'iterm2' | 'in-process'
+后端类型
+运行方式
+通信方式
+终止方式
+适用场景
+tmux独立进程，tmux 面板
+文件邮箱
+kill pane
+终端环境，可视化
+iterm2独立进程，iTerm2 原生分屏
+文件邮箱
+kill pane
+macOS iTerm2 环境
+in-process同一 Node.js 进程
+文件邮箱
+AbortController
+无终端环境、非交互式
+
+三种后端共享同一个文件邮箱通信机制，区别仅在于 Agent 的运行位置和生命周期管理方式。
+4.1.1 统一执行接口
+TeammateExecutor 接口屏蔽了后端差异：
+// src/utils/swarm/backends/types.ts:279-300
+export type TeammateExecutor = {
+ readonly type: BackendType
+ isAvailable(): Promise<boolean>
+ spawn(config: TeammateSpawnConfig): Promise<TeammateSpawnResult>
+ sendMessage(agentId: string, message: TeammateMessage): Promise<void>
+ terminate(agentId: string, reason?: string): Promise<boolean>
+ kill(agentId: string): Promise<boolean>
+ isActive(agentId: string): Promise<boolean>
+}
+PaneBackendExecutor 是一个适配器，将 PaneBackend（tmux/iTerm2 的底层面板操作）包装为 TeammateExecutor 接口。而 InProcessBackend 则直接实现了该接口。
+4.2 后端检测链
+后端检测由 registry.ts 中的 detectAndGetBackend() 函数完成，遵循严格的优先级：
+flowchart TD
+ START["开始检测"] --> TMUX_IN{"在 tmux 内？"}
+ TMUX_IN -- 是 --> TMUX_NATIVE["使用 TmuxBackend\nisNative: true"]
+ TMUX_IN -- 否 --> ITERM_IN{"在 iTerm2 内？"}
+
+ ITERM_IN -- 是 --> PREF_TMUX{"用户偏好 tmux？"}
+ PREF_TMUX -- 是 --> TMUX_EXT
+ PREF_TMUX -- 否 --> IT2_AVAIL{"it2 CLI 可用？"}
+ IT2_AVAIL -- 是 --> ITERM_NATIVE["使用 ITermBackend\nisNative: true"]
+ IT2_AVAIL -- 否 --> TMUX_FALLBACK{"tmux 可用？"}
+ TMUX_FALLBACK -- 是 --> TMUX_FALLBACK_RESULT["使用 TmuxBackend\nisNative: false\nneedsIt2Setup: true"]
+ TMUX_FALLBACK -- 否 --> ERROR_IT2["错误: 需安装 it2"]
+
+ ITERM_IN -- 否 --> TMUX_EXT{"tmux 可用？"}
+ TMUX_EXT -- 是 --> TMUX_EXTERNAL["使用 TmuxBackend\nisNative: false\n外部会话模式"]
+ TMUX_EXT -- 否 --> ERROR_NOPE["错误: 需安装 tmux"]
+
+ style TMUX_NATIVE fill:#e8f5e9,stroke:#2e7d32
+ style ITERM_NATIVE fill:#e3f2fd,stroke:#1565c0
+ style TMUX_EXTERNAL fill:#fff3e0,stroke:#e65100
+ style ERROR_IT2 fill:#fce4ec,stroke:#c62828
+ style ERROR_NOPE fill:#fce4ec,stroke:#c62828
+图：后端检测决策树
+关键代码逻辑：
+// src/utils/swarm/backends/registry.ts:136-254
+exportasyncfunction detectAndGetBackend(): Promise<BackendDetectionResult> {
+await ensureBackendsRegistered()
+if (cachedDetectionResult) return cachedDetectionResult // 只检测一次
+
+const insideTmux = await isInsideTmux()
+const inITerm2 = isInITerm2()
+
+// Priority 1: tmux 内 -> 始终使用 tmux
+if (insideTmux) {
+ return { backend: createTmuxBackend(), isNative: true, needsIt2Setup: false }
+ }
+
+// Priority 2: iTerm2 内 -> 尝试原生面板
+if (inITerm2) {
+ const preferTmux = getPreferTmuxOverIterm2()
+ if (!preferTmux) {
+ const it2Available = await isIt2CliAvailable()
+ if (it2Available) {
+ return { backend: createITermBackend(), isNative: true }
+ }
+ }
+ const tmuxAvailable = await isTmuxAvailable()
+ if (tmuxAvailable) {
+ return { backend: createTmuxBackend(), isNative: false, needsIt2Setup: !preferTmux }
+ }
+ thrownewError('iTerm2 detected but it2 CLI not installed.')
+ }
+
+// Priority 3: 外部 tmux 会话
+if (await isTmuxAvailable()) {
+ return { backend: createTmuxBackend(), isNative: false }
+ }
+
+thrownewError(getTmuxInstallInstructions())
+}
+解读：检测结果会被缓存在 cachedDetectionResult 中，整个进程生命周期内只检测一次。这意味着后端选择在团队创建后就固定了。isNative 标志区分了"运行在 tmux/iTerm2 原生环境中"和"使用外部会话"两种模式，影响布局策略。
+4.3 In-Process 后端
+In-Process 后端是三种后端中最特殊的一个。它让所有 Agent 运行在同一个 Node.js 进程内，通过 AsyncLocalStorage 实现上下文隔离。
+// src/utils/swarm/backends/InProcessBackend.ts:38-143
+exportclass InProcessBackend implements TeammateExecutor {
+ readonly type = 'in-process'asconst
+private context: ToolUseContext | null = null
+
+ setContext(context: ToolUseContext): void {
+ this.context = context
+ }
+
+async spawn(config: TeammateSpawnConfig): Promise<TeammateSpawnResult> {
+ const result = await spawnInProcessTeammate({
+ name: config.name, teamName: config.teamName, prompt: config.prompt,
+ color: config.color, planModeRequired: config.planModeRequired ?? false,
+ }, this.context)
+
+ if (result.success && result.taskId && result.teammateContext && result.abortController) {
+ startInProcessTeammate({
+ identity: { agentId: result.agentId, agentName: config.name, ... },
+ taskId: result.taskId,
+ prompt: config.prompt,
+ teammateContext: result.teammateContext,
+ toolUseContext: { ...this.context, messages: [] }, // 不传递父对话
+ abortController: result.abortController,
+ model: config.model,
+ systemPrompt: config.systemPrompt,
+ ...
+ })
+ }
+ return { success: result.success, agentId: result.agentId, taskId: result.taskId, ... }
+ }
+}
+解读：InProcessBackend.spawn() 分两步走。先通过 spawnInProcessTeammate 创建 Agent 的身份上下文和 AbortController，注册到 AppState。然后通过 startInProcessTeammate 启动 Agent 的执行循环。注意 toolUseContext: { ...this.context, messages: [] } —— 故意不传递父进程的对话历史，因为子 Agent 不需要（也不应该）看到 Leader 的对话。
+In-Process 模式的启用条件由 isInProcessEnabled() 决定：
+// src/utils/swarm/backends/registry.ts:351-389
+exportfunction isInProcessEnabled(): boolean {
+// 非交互式会话(-p 模式)强制 in-process
+if (getIsNonInteractiveSession()) returntrue
+
+const mode = getTeammateMode() // 从 settings 读取: auto/tmux/in-process
+if (mode === 'in-process') returntrue
+if (mode === 'tmux') returnfalse
+
+// auto 模式: 如果之前已经降级到 in-process, 保持
+if (inProcessFallbackActive) returntrue
+
+// 不在 tmux 也不在 iTerm2 -> 使用 in-process
+const insideTmux = isInsideTmuxSync()
+const inITerm2 = isInITerm2()
+return !insideTmux && !inITerm2
+}
+解读：In-Process 模式的决策链有四层。非交互式会话（-p 模式）强制使用，因为没有终端 UI，tmux 面板没有意义。用户显式配置优先。如果运行环境中既没有 tmux 也没有 iTerm2，则自动降级为 In-Process。inProcessFallbackActive 标志确保一旦降级，后续 spawn 不会反复尝试不可用的 pane 后端。
+4.4 Pane 后端
+Pane 后端分为 TmuxBackend 和 ITermBackend 两个实现，都实现了 PaneBackend 接口：
+// src/utils/swarm/backends/types.ts:39-168
+exporttype PaneBackend = {
+ readonly type: BackendType
+ readonly displayName: string
+ readonly supportsHideShow: boolean
+
+ isAvailable(): Promise<boolean>
+ isRunningInside(): Promise<boolean>
+ createTeammatePaneInSwarmView(name: string, color: AgentColorName): Promise<CreatePaneResult>
+ sendCommandToPane(paneId: PaneId, command: string, useExternalSession?: boolean): Promise<void>
+ setPaneBorderColor(paneId: PaneId, color: AgentColorName, ...): Promise<void>
+ setPaneTitle(paneId: PaneId, name: string, color: AgentColorName, ...): Promise<void>
+ enablePaneBorderStatus(windowTarget?: string, ...): Promise<void>
+ rebalancePanes(windowTarget: string, hasLeader: boolean): Promise<void>
+ killPane(paneId: PaneId, useExternalSession?: boolean): Promise<boolean>
+ hidePane(paneId: PaneId, ...): Promise<boolean>
+ showPane(paneId: PaneId, targetWindowOrPane: string, ...): Promise<boolean>
+}
+4.4.1 TmuxBackend
+TmuxBackend 是最常用的 Pane 后端。它有两种运行模式：
+内部模式（isNative: true）：用户已在 tmux 会话中，直接 split 当前窗口
+
+外部模式（isNative: false）：创建独立的 tmux 会话（claude-swarm），用 socket 隔离
+
+布局策略：Leader 占左侧 30%，队友占据右侧 70%。第一个队友创建时执行垂直分割，后续队友水平分割右侧区域。
+4.4.2 ITermBackend
+ITermBackend 利用 iTerm2 的 it2 CLI 工具实现原生分屏。它提供了更流畅的视觉体验，但需要额外安装 it2（pip install it2）。
+4.4.3 Swarm View
+无论使用哪种 Pane 后端，都遵循"Swarm View"布局理念：
+graph LR
+ subgraph SwarmView["Swarm View 布局"]
+ LEAD_PANE["Leader\n30% 宽度"]
+ subgraph Teammates["队友区域 70%"]
+ W1["Worker 1"]
+ W2["Worker 2"]
+ W3["Worker 3"]
+ end
+ end
+
+ style LEAD_PANE fill:#e3f2fd,stroke:#1565c0
+ style Teammates fill:#fff3e0,stroke:#e65100
+ style W1 fill:#e8f5e9,stroke:#2e7d32
+ style W2 fill:#fce4ec,stroke:#c62828
+ style W3 fill:#f3e5f5,stroke:#6a1b9a
+图：Swarm View 布局
+每个队友面板的边框颜色使用 assignTeammateColor 分配的唯一颜色，标题显示 Agent 名称，使团队成员一目了然。队友面板还支持 hide/show 操作——通过 addHiddenPaneId 将面板移到隐藏窗口，需要时再移回主布局。
+第5章 身份与权限系统
+5.1 Agent ID 体系
+Agent ID 是整个身份系统的基石，格式为 {agentName}@{teamName}。这个设计有两个关键特性：
+可解析：通过 parseAgentId() 可以从 ID 中提取 agentName 和 teamName
+
+确定性：相同的 agentName + teamName 组合总是生成相同的 ID
+
+// src/utils/agentId.ts
+exportfunction formatAgentId(agentName: string, teamName: string): string {
+return`${sanitizeAgentName(agentName)}@${sanitizeName(teamName)}`
+}
+
+exportfunction parseAgentId(agentId: string): { agentName: string; teamName: string } | null {
+const parts = agentId.split('@')
+if (parts.length !== 2) returnnull
+return { agentName: parts[0]!, teamName: parts[1]! }
+}
+Leader 的 Agent ID 固定为 team-lead@{teamName}。所有团队成员的 ID 都在创建时写入 config.json 的 members 数组。
+sanitizeAgentName 的作用是消除歧义——将 @ 替换为 -，防止 agentName 中包含 @ 时与 ID 格式冲突：
+// src/utils/swarm/teamHelpers.ts:109
+export function sanitizeAgentName(name: string): string {
+ return name.replace(/@/g, '-')
+}
+5.2 三层身份解析
+身份解析是 Agent Teams 中最微妙的部分之一。同一个 Node.js 进程中可能同时运行多个 Agent（In-Process 模式），每个 Agent 需要知道"我是谁"。系统采用三层优先级：
+flowchart TD
+ QUERY["getAgentId()<br/>getAgentName()<br/>getTeamName()"]
+
+ L1["Layer 1: AsyncLocalStorage<br/>in-process teammates"]
+ L2["Layer 2: dynamicTeamContext<br/>tmux teammates (runtime join)"]
+ L3["Layer 3: AppState.teamContext<br/>team lead"]
+
+ QUERY --> CHECK_L1{"getTeammateContext()<br/>有值？"}
+ CHECK_L1 -- 是 --> L1
+ CHECK_L1 -- 否 --> CHECK_L2{"dynamicTeamContext<br/>有值？"}
+ CHECK_L2 -- 是 --> L2
+ CHECK_L2 -- 否 --> L3
+
+ style L1 fill:#e8f5e9,stroke:#2e7d32
+ style L2 fill:#fff3e0,stroke:#e65100
+ style L3 fill:#e3f2fd,stroke:#1565c0
+图：身份解析优先级
+核心代码：
+// src/utils/teammate.ts:88-131
+exportfunction getAgentId(): string | undefined {
+const inProcessCtx = getTeammateContext() // Layer 1: AsyncLocalStorage
+if (inProcessCtx) return inProcessCtx.agentId
+return dynamicTeamContext?.agentId // Layer 2: runtime context
+}
+
+exportfunction getAgentName(): string | undefined {
+const inProcessCtx = getTeammateContext()
+if (inProcessCtx) return inProcessCtx.agentName
+return dynamicTeamContext?.agentName
+}
+
+exportfunction getTeamName(teamContext?): string | undefined {
+const inProcessCtx = getTeammateContext()
+if (inProcessCtx) return inProcessCtx.teamName // Layer 1
+if (dynamicTeamContext?.teamName) return dynamicTeamContext.teamName // Layer 2
+return teamContext?.teamName // Layer 3
+}
+
+exportfunction isTeammate(): boolean {
+const inProcessCtx = getTeammateContext()
+if (inProcessCtx) returntrue // in-process 一定是 teammate
+return !!(dynamicTeamContext?.agentId && dynamicTeamContext?.teamName) // 需要 ID + team
+}
+
+exportfunction isTeamLead(teamContext): boolean {
+if (!teamContext?.leadAgentId) returnfalse
+const myAgentId = getAgentId()
+if (myAgentId === teamContext.leadAgentId) returntrue// ID 匹配
+if (!myAgentId) returntrue // 无 ID = 原始会话（向后兼容）
+returnfalse
+}
+解读：isTeammate() 和 isTeamLead() 是两个互补的判断。isTeammate() 对 in-process Agent 直接返回 true（因为有 AsyncLocalStorage 上下文），对 tmux Agent 需要同时有 agentId 和 teamName（防止误判）。isTeamLead() 有一个向后兼容逻辑：如果当前实例没有设置 agentId 但有 teamContext，就认为是创建团队的原始会话（Leader）。
+5.2.1 为什么 Leader 不设置 Agent ID
+TeamCreateTool 的代码注释揭示了一个精心设计的不设置：
+// src/tools/TeamCreateTool/TeamCreateTool.ts:224-228
+// Note: We intentionally don't set CLAUDE_CODE_AGENT_ID for the team lead because:
+// 1. The lead is not a "teammate" - isTeammate() should return false for them
+// 2. Their ID is deterministic (team-lead@teamName) and can be derived when needed
+// 3. Setting it would cause isTeammate() to return true, breaking inbox polling
+如果 Leader 设置了 Agent ID，isTeammate() 就会返回 true，导致系统把 Leader 当作普通队友处理——启动收件箱轮询器（inbox poller）、发送空闲通知等，这些都是不期望的。
+5.3 TeammateContext -- AsyncLocalStorage 隔离
+TeammateContext 是 In-Process Agent 的身份容器，基于 Node.js 的 AsyncLocalStorage：
+// src/utils/teammateContext.ts:22-41
+exporttype TeammateContext = {
+ agentId: string // 完整 ID: "researcher@my-team"
+ agentName: string // 显示名: "researcher"
+ teamName: string // 团队名
+ color?: string // UI 颜色
+ planModeRequired: boolean// 是否需要计划审批
+ parentSessionId: string // Leader 的 session ID
+ isInProcess: true // 类型判别标志
+ abortController: AbortController // 生命周期管理
+}
+
+const teammateContextStorage = new AsyncLocalStorage<TeammateContext>()
+
+exportfunction getTeammateContext(): TeammateContext | undefined {
+return teammateContextStorage.getStore()
+}
+
+exportfunction runWithTeammateContext<T>(context: TeammateContext, fn: () => T): T {
+return teammateContextStorage.run(context, fn)
+}
+解读：AsyncLocalStorage 的工作原理类似线程局部存储（Thread-Local Storage）。每个异步调用链都有独立的存储空间。当 runWithTeammateContext 执行时，它会为 fn 及其所有异步子调用建立一个独立的存储区域。之后，fn 内部任何位置的 getTeammateContext() 调用都会返回正确的 Agent 身份——即使多个 Agent 在同一个事件循环中并发运行。
+AbortController 被包含在上下文中，用于生命周期管理。Leader 可以通过 task.abortController.abort() 终止 In-Process Agent 的所有异步操作。
+5.4 权限模型
+Agent Teams 的权限系统分为四个层次：
+flowchart TD
+ subgraph L1["第1层: 团队级权限"]
+ TAP["teamAllowedPaths<br/>团队共享编辑路径"]
+ end
+
+ subgraph L2["第2层: 模式权限"]
+ PMR["planModeRequired<br/>强制计划审批"]
+ MODE["PermissionMode<br/>工具使用模式"]
+ end
+
+ subgraph L3["第3层: 工具权限"]
+ PERM["toolPermissionContext<br/>工具访问规则"]
+ INHERIT["mode inheritance<br/>从 Leader 继承模式"]
+ end
+
+ subgraph L4["第4层: 沙箱权限"]
+ SANDBOX["sandboxPermission<br/>网络访问控制"]
+ PROXY["权限代理<br/>Worker → Leader → 用户"]
+ end
+
+ L1 --> L2 --> L3 --> L4
+
+ style L1 fill:#e8f5e9,stroke:#2e7d32
+ style L2 fill:#e3f2fd,stroke:#1565c0
+ style L3 fill:#fff3e0,stroke:#e65100
+ style L4 fill:#fce4ec,stroke:#c62828
+图：权限层次模型
+5.4.1 团队级权限
+teamAllowedPaths 定义在 TeamFile 中，允许团队级别的路径共享。队友初始化时从 config.json 读取并应用：
+// src/utils/swarm/teammateInit.ts:45-79
+if (teamFile.teamAllowedPaths && teamFile.teamAllowedPaths.length > 0) {
+for (const allowedPath of teamFile.teamAllowedPaths) {
+ const ruleContent = allowedPath.path.startsWith('/')
+ ? `/${allowedPath.path}/**` // 绝对路径: //path/**
+ : `${allowedPath.path}/**` // 相对路径: path/**
+
+ setAppState(prev => ({
+ ...prev,
+ toolPermissionContext: applyPermissionUpdate(
+ prev.toolPermissionContext,
+ {
+ type: 'addRules',
+ rules: [{ toolName: allowedPath.toolName, ruleContent }],
+ behavior: 'allow',
+ destination: 'session',
+ },
+ ),
+ }))
+ }
+}
+解读：团队权限在 initializeTeammateHooks 中应用——这是每个 Agent 启动时执行的初始化函数。它遍历 teamAllowedPaths 数组，为每个路径创建 allow 规则。注意绝对路径前面额外加了一个 /，形成 //path/** 模式——这是因为权限系统用 // 前缀标识绝对路径。
+5.4.2 Plan Mode 审批流
+当 planModeRequired 为 true 时，Agent 必须先制定计划并获得 Leader 批准后才能实施。这是一个两步走流程：
+sequenceDiagram
+ participant W as Worker Agent
+ participant M as Mailbox
+ participant L as Team Lead
+ participant U as 用户
+
+ W->>W: 进入 Plan Mode
+ W->>W: 制定实施计划
+ W->>W: 写入计划文件
+ W->>L: PlanApprovalRequest<br/>(写入 Leader 邮箱)
+ L->>L: 读取计划文件
+ L->>U: 展示计划给用户
+ alt 用户批准
+ L->>W: PlanApprovalResponse<br/>(approve: true, permissionMode: ...)
+ W->>W: 退出 Plan Mode
+ W->>W: 开始实施
+ else 用户驳回
+ L->>W: PlanApprovalResponse<br/>(approve: false, feedback: "...")
+ W->>W: 修改计划
+ W->>W: 重新提交
+ end
+图：Plan Mode 审批序列
+关键设计点：Leader 在审批计划时，会将自己的权限模式传递给 Worker（除非 Leader 在 plan 模式中，则降级为 default）：
+// src/tools/SendMessageTool/SendMessageTool.ts:434-476
+asyncfunction handlePlanApproval(recipientName, requestId, context) {
+if (!isTeamLead(appState.teamContext)) {
+ thrownewError('Only the team lead can approve plans.')
+ }
+const leaderMode = appState.toolPermissionContext.mode
+const modeToInherit = leaderMode === 'plan' ? 'default' : leaderMode
+
+const approvalResponse = {
+ type: 'plan_approval_response',
+ requestId, approved: true,
+ permissionMode: modeToInherit,
+ }
+await writeToMailbox(recipientName, { from: TEAM_LEAD_NAME, text: jsonStringify(approvalResponse), ... }, teamName)
+}
+解读：权限模式继承确保 Worker 获得的权限不会超过 Leader。如果 Leader 自己在 plan 模式中（受限），Worker 会获得 default 模式（正常权限），避免双重限制。
+5.4.3 权限代理
+当 Worker Agent 需要使用未授权的工具时，它通过权限代理机制请求 Leader 批准：
+Worker 检测到需要权限
+
+Worker 发送 PermissionRequestMessage 到 Leader 邮箱
+
+Leader 收到后向用户展示请求
+
+用户批准/拒绝
+
+Leader 发送 PermissionResponseMessage 回 Worker
+
+对于沙箱权限（网络访问），流程类似但使用 SandboxPermissionRequest/Response 消息类型。
+第6章 任务系统与生命周期
+6.1 Task-Team 绑定
+Agent Teams 的核心设计之一是 Team 和 TaskList 的 1:1 映射关系。创建团队时自动创建对应的任务目录：
+// src/tools/TeamCreateTool/TeamCreateTool.ts:183-191
+const taskListId = sanitizeName(finalTeamName)
+await resetTaskList(taskListId) // 清空已有任务
+await ensureTasksDir(taskListId) // 创建目录
+setLeaderTeamName(sanitizeName(finalTeamName)) // 注册 team name
+任务文件存储在 ~/.claude/tasks/{sanitized-team-name}/ 目录下，所有团队成员（无论是 Leader 还是 Worker）都通过相同的路径访问同一个任务列表。
+setLeaderTeamName 的作用是让 getTaskListId() 在 Leader 进程中返回团队名而非 session ID：
+// src/utils/tasks.ts (简化)
+let leaderTeamName: string | null = null
+
+exportfunction setLeaderTeamName(name: string): void {
+ leaderTeamName = name
+}
+
+exportfunction getTaskListId(): string {
+if (isTeammate()) {
+ // Worker 使用从上下文/环境变量获取的 team name
+ return sanitizeName(getTeamName()!)
+ }
+if (leaderTeamName) {
+ return leaderTeamName // Leader 使用注册的 team name
+ }
+return getSessionId() // 兜底：使用 session ID
+}
+解读：这个函数确保 Leader 和所有 Worker 都能找到同一个任务目录。Leader 通过 setLeaderTeamName 设置团队名，Worker 通过身份上下文（AsyncLocalStorage 或环境变量）获取团队名，两者最终都指向同一个 sanitizeName(teamName) 路径。
+6.2 InProcessTeammateTask
+InProcessTeammateTask 是 In-Process Agent 的任务状态管理器，定义了丰富的状态字段：
+// src/tasks/InProcessTeammateTask/types.ts (简化)
+exporttype InProcessTeammateTaskState = TaskStateBase & {
+type: 'in_process_teammate'
+ identity: {
+ agentId: string
+ agentName: string
+ teamName: string
+ color?: string
+ planModeRequired?: boolean
+ parentSessionId: string
+ }
+ status: 'running' | 'idle' | 'completed' | 'failed' | 'killed'
+ messages: Message[] // 对话历史（用于缩放视图）
+ pendingUserMessages: string[] // 等待注入的用户消息
+ isIdle: boolean // 是否空闲
+ shutdownRequested: boolean // 是否已收到关机请求
+ abortController: AbortController // 生命周期控制器
+ onIdleCallbacks: Array<() =>void> // 空闲回调
+}
+InProcessTeammateTask.tsx 提供了管理此状态的核心函数：
+// src/tasks/InProcessTeammateTask/InProcessTeammateTask.tsx:24-30
+export const InProcessTeammateTask: Task = {
+ name: 'InProcessTeammateTask',
+ type: 'in_process_teammate',
+ async kill(taskId, setAppState) {
+ killInProcessTeammate(taskId, setAppState)
+ },
+}
+6.2.1 消息注入
+当用户在 UI 中查看 Agent 的对话记录并输入消息时，通过 injectUserMessageToTeammate 注入：
+// src/tasks/InProcessTeammateTask/InProcessTeammateTask.tsx:68-84
+export function injectUserMessageToTeammate(
+ taskId: string, message: string, setAppState: SetAppState,
+): void {
+ updateTaskState<InProcessTeammateTaskState>(taskId, setAppState, task => {
+ if (isTerminalTaskStatus(task.status)) {
+ logForDebugging(`Dropping message: task status is "${task.status}"`)
+ return task // 终态下丢弃消息
+ }
+ return {
+ ...task,
+ pendingUserMessages: [...task.pendingUserMessages, message],
+ messages: appendCappedMessage(task.messages, createUserMessage({ content: message })),
+ }
+ })
+}
+解读：消息同时添加到两个地方：pendingUserMessages 队列（被 Agent 执行循环消费）和 messages 数组（立即显示在 UI 的对话记录中）。appendCappedMessage 限制对话历史长度，防止内存泄漏。
+6.3 空闲检测与通知
+Agent 的空闲状态是团队协调的关键信号。系统通过 Stop Hook 实现自动的空闲通知：
+// src/utils/swarm/teammateInit.ts:97-128
+addFunctionHook(setAppState, sessionId, 'Stop', '', async (messages, _signal) => {
+// 标记为 idle（fire and forget）
+void setMemberActive(teamName, agentName, false)
+
+// 发送空闲通知给 Leader
+const notification = createIdleNotification(agentName, {
+ idleReason: 'available',
+ summary: getLastPeerDmSummary(messages), // 附带最后发送的消息摘要
+ })
+await writeToMailbox(leadAgentName, {
+ from: agentName,
+ text: jsonStringify(notification),
+ timestamp: newDate().toISOString(),
+ color: getTeammateColor(),
+ })
+returntrue// 不阻止 Stop
+}, 'Failed to send idle notification to team leader', { timeout: 10000 })
+解读：每个 Agent 完成一个回合（Stop 事件）时，自动向 Leader 发送空闲通知。setMemberActive(teamName, agentName, false) 更新 config.json 中的 isActive 状态。getLastPeerDmSummary(messages) 从当前回合的对话历史中提取最后一条发给同事的私信摘要——这让 Leader 能在空闲通知中看到 Agent 刚才在和谁沟通。
+6.3.1 等待队友空闲
+Leader 有时需要等待所有工作队友变为空闲后再执行操作（如关机）。waitForTeammatesToBecomeIdle 提供了这个能力：
+// src/utils/teammate.ts:241-292
+exportfunction waitForTeammatesToBecomeIdle(
+ setAppState: (f: (prev: AppState) => AppState) => void,
+ appState: AppState,
+): Promise<void> {
+const workingTaskIds: string[] = []
+for (const [taskId, task] of Object.entries(appState.tasks)) {
+ if (task.type === 'in_process_teammate' && task.status === 'running' && !task.isIdle) {
+ workingTaskIds.push(taskId)
+ }
+ }
+if (workingTaskIds.length === 0) returnPromise.resolve()
+
+returnnewPromise<void>(resolve => {
+ let remaining = workingTaskIds.length
+ const onIdle = (): void => {
+ remaining--
+ if (remaining === 0) resolve()
+ }
+ setAppState(prev => {
+ const newTasks = { ...prev.tasks }
+ for (const taskId of workingTaskIds) {
+ const task = newTasks[taskId]
+ if (task && task.type === 'in_process_teammate') {
+ if (task.isIdle) {
+ onIdle() // 竞态处理：可能在我们检查后已经空闲了
+ } else {
+ newTasks[taskId] = {
+ ...task,
+ onIdleCallbacks: [...(task.onIdleCallbacks ?? []), onIdle],
+ }
+ }
+ }
+ }
+ return { ...prev, tasks: newTasks }
+ })
+ })
+}
+解读：这个函数使用回调模式实现等待。它扫描所有运行中且非空闲的 In-Process Agent，为每个注册 onIdleCallback。当 Agent 变为空闲时，回调递减计数器，全部归零时 resolve Promise。注意竞态处理——如果 Agent 在我们扫描和注册回调之间变为空闲，直接调用 onIdle()。
+6.4 生命周期管理
+6.4.1 Terminate vs Kill
+In-Process Agent 有两种终止方式，语义不同：
+操作
+方法
+语义
+实现
+terminateterminate(agentId)优雅关机，发送协商请求
+写入 shutdown_request 到邮箱
+killkill(agentId)强制终止，立即停止
+abortController.abort() + 状态设为 'killed'
+
+// InProcessBackend.ts:192-253
+async terminate(agentId: string, reason?: string): Promise<boolean> {
+const task = findTeammateTaskByAgentId(agentId, state.tasks)
+if (task?.shutdownRequested) returntrue// 防止重复发送
+
+const shutdownRequest = createShutdownRequestMessage({
+ requestId: `shutdown-${agentId}-${Date.now()}`,
+ from: 'team-lead', reason,
+ })
+await writeToMailbox(teammateAgentName, { from: 'team-lead', text: jsonStringify(shutdownRequest), ... }, teamName)
+ requestTeammateShutdown(task.id, this.context.setAppState) // 标记 shutdownRequested
+returntrue
+}
+
+async kill(agentId: string): Promise<boolean> {
+const task = findTeammateTaskByAgentId(agentId, state.tasks)
+const killed = killInProcessTeammate(task.id, this.context.setAppState) // abort()
+return killed
+}
+解读：terminate 是协商式的——它发送关机请求，Agent 可以接受（退出）或拒绝（继续工作）。kill 是强制式的——直接调用 AbortController.abort()，取消所有异步操作。通常应该先 terminate，只在 Agent 无响应时才 kill。
+6.4.2 Session Cleanup
+创建团队时通过 registerTeamForSessionCleanup 注册到 Session 级别的清理集合。如果用户忘记调用 TeamDelete（如直接 Ctrl+C），cleanupSessionTeams 会在进程退出时执行：
+// src/utils/swarm/teamHelpers.ts:576-590
+exportasyncfunction cleanupSessionTeams(): Promise<void> {
+const sessionCreatedTeams = getSessionCreatedTeams()
+if (sessionCreatedTeams.size === 0) return
+const teams = Array.from(sessionCreatedTeams)
+// 先杀面板，再清目录
+awaitPromise.allSettled(teams.map(name => killOrphanedTeammatePanes(name)))
+awaitPromise.allSettled(teams.map(name => cleanupTeamDirectories(name)))
+ sessionCreatedTeams.clear()
+}
+解读：清理分两步。先通过 killOrphanedTeammatePanes 终止所有 Pane-Based Agent（防止孤立进程），再通过 cleanupTeamDirectories 删除团队目录、任务目录和 git 工作树。Promise.allSettled 确保某个团队清理失败不影响其他团队。
+6.5 团队发现与 UI
+teamDiscovery.ts 提供 UI 展示所需的状态信息：
+// src/utils/teamDiscovery.ts:39-79
+exportfunction getTeammateStatuses(teamName: string): TeammateStatus[] {
+const teamFile = readTeamFile(teamName)
+if (!teamFile) return []
+
+const hiddenPaneIds = new Set(teamFile.hiddenPaneIds ?? [])
+
+return teamFile.members
+ .filter(m => m.name !== 'team-lead') // 排除 Leader
+ .map(member => ({
+ name: member.name,
+ agentId: member.agentId,
+ status: member.isActive !== false ? 'running' : 'idle', // undefined/true = running
+ color: member.color,
+ tmuxPaneId: member.tmuxPaneId,
+ isHidden: hiddenPaneIds.has(member.tmuxPaneId),
+ backendType: isPaneBackend(member.backendType) ? member.backendType : undefined,
+ mode: member.mode,
+ }))
+}
+解读：isActive 字段设计为三态：undefined（未设置，默认活跃）、true（活跃）、false（空闲）。isActive !== false 意味着只有显式设为 false 才算空闲——这是一个防御性设计，防止网络延迟或文件读取失败误判 Agent 状态。
+6.6 总结：关键设计模式
+模式
+应用位置
+价值
+文件即协调
+Mailbox, TeamFile, TaskList
+跨进程兼容、可调试、崩溃恢复
+AsyncLocalStorage 隔离
+TeammateContext
+同进程多 Agent 并发无冲突
+AbortController 生命周期
+InProcessBackend
+优雅终止和强制终止的语义区分
+三级身份优先级
+teammate.ts
+统一不同后端的身份解析
+协商式关机
+Shutdown 协议
+Agent 可以拒绝关机并说明理由
+回调式等待
+waitForTeammatesToBecomeIdle
+高效等待，无轮询开销
+防御性注册
+registerTeamForSessionCleanup
+防止资源泄漏
+
+附录：术语表
+英文术语
+中文翻译
+说明
+Agent Teams
+多代理团队
+Claude Code 内置的多 Agent 协作框架
+Team Lead / Leader
+团队领导者
+创建和管理团队的 Agent 实例
+Teammate / Worker
+团队成员 / Worker
+被领导者招募的子 Agent
+TeamFile
+团队配置文件
+存储团队元信息和成员列表的 JSON 文件（config.json）
+Mailbox
+文件邮箱
+基于文件的异步消息传递系统
+Inbox
+收件箱
+每个团队成员的独立消息文件（inboxes/{name}.json）
+TeammateMessage
+队友消息
+邮箱中存储的消息数据结构
+TaskList
+共享任务列表
+团队共享的基于文件系统的任务管理器
+TaskCreate / TaskUpdate / TaskList
+任务工具
+用于创建、更新和查询任务的内置工具
+TeammateExecutor
+队友执行器
+统一的 Agent 执行接口，屏蔽后端差异
+Backend Type
+后端类型
+Agent 的运行方式：tmux / iterm2 / in-process
+In-Process Backend
+同进程后端
+在同一 Node.js 进程内运行 Agent
+Pane Backend
+终端面板后端
+通过 tmux 或 iTerm2 面板运行 Agent
+TmuxBackend
+Tmux 后端
+基于 tmux 的 Pane 后端实现
+ITermBackend
+iTerm2 后端
+基于 iTerm2 原生分屏的 Pane 后端实现
+PaneBackendExecutor
+面板后端执行器
+将 PaneBackend 适配为 TeammateExecutor 的适配器
+Backend Registry
+后端注册中心
+负责检测环境并选择执行后端
+AsyncLocalStorage
+异步本地存储
+Node.js API，用于在同进程内隔离 Agent 上下文
+TeammateContext
+队友上下文
+In-Process Agent 的身份信息容器
+Agent ID
+Agent 标识符
+格式为 {agentName}@{teamName} 的唯一标识
+Agent Name
+Agent 名称
+Agent 的显示名称（如 "researcher"）
+Identity Resolution
+身份解析
+通过三级优先级确定当前 Agent 身份的机制
+AppState
+应用状态
+Claude Code 的全局内存状态管理
+toolPermissionContext
+工具权限上下文
+管理工具访问规则的上下文对象
+PermissionMode
+权限模式
+工具使用的权限级别（如 plan / default）
+Plan Mode
+计划模式
+Agent 必须先制定计划并获批准后才能实施
+planModeRequired
+强制计划审批
+标记 Agent 是否必须经过计划审批流程
+Permission Proxy
+权限代理
+Worker 通过 Leader 向用户请求工具权限的机制
+Sandbox Permission
+沙箱权限
+网络访问等受限操作的权限控制
+teamAllowedPaths
+团队共享路径
+团队级别的文件编辑路径白名单
+Shutdown Protocol
+关机协议
+Leader 与 Worker 之间的协商式终止协议
+ShutdownRequest / ShutdownApproved / ShutdownRejected
+关机请求 / 关机批准 / 关机拒绝
+关机协议的三种消息类型
+PlanApprovalRequest / PlanApprovalResponse
+计划审批请求 / 计划审批响应
+计划审批协议的消息类型
+IdleNotification
+空闲通知
+Agent 完成回合后发送给 Leader 的状态信号
+Idle Callback
+空闲回调
+Agent 变为空闲时触发的回调函数
+InProcessTeammateTask
+进程内队友任务
+In-Process Agent 的任务状态管理器
+AbortController
+中止控制器
+Node.js API，用于终止 Agent 的异步操作
+terminate
+优雅终止
+发送协商请求后终止 Agent
+kill
+强制终止
+立即中止 Agent 的所有异步操作
+Session Cleanup
+会话清理
+进程退出时自动清理团队资源的机制
+Swarm View
+Swarm 视图
+Leader 占左侧 30%、队友占右侧 70% 的终端布局
+File Lock / Lockfile
+文件锁
+防止并发写入冲突的锁机制
+Worktree
+Git 工作树
+为 Agent 创建的独立 Git 工作目录
+Inbox Polling
+收件箱轮询
+定期检查邮箱中未读消息的机制
+Broadcast
+广播
+向所有团队成员（除发送者外）发送消息
+TeamCreateTool
+团队创建工具
+创建团队并初始化状态的内置工具
+SendMessageTool
+消息发送工具
+Agent 间消息传递的内置工具
+TeamDeleteTool
+团队删除工具
+清理团队资源的内置工具
+Hook
+钩子
+在特定事件（如 Stop）触发的回调函数
+Stop Hook
+停止钩子
+Agent 完成回合时触发的钩子，用于发送空闲通知
+Message Injection
+消息注入
+将用户消息注入到 Agent 对话中的机制
+pendingUserMessages
+待处理用户消息
+等待被 Agent 执行循环消费的消息队列
+dynamicTeamContext
+动态团队上下文
+运行时加入的 Agent 的身份上下文（Layer 2）
+isTeammate()
+队友判断
+判断当前实例是否为团队成员的函数
+isTeamLead()
+领导者判断
+判断当前实例是否为团队领导者的函数
+sanitizeAgentName
+名称清洗
+将 @ 替换为 - 以消除 Agent 名称歧义
+config.json
+团队配置文件
+存储团队元信息和成员列表的核心文件
+
