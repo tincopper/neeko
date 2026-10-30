@@ -96,6 +96,16 @@ export function getResumeCommand(id: string): Promise<string[] | null> {
 }
 
 /**
+ * 删除一条历史会话。
+ *
+ * **只传 id**：目标路径由后端从自己的缓存解析 —— 渲染层无法指定要删哪个文件
+ * （红旗 8 的同源风险：传路径 = 任意文件删除口子）。
+ */
+export function deleteConversation(id: string): Promise<void> {
+  return invoke<void>('delete_conversation', { id });
+}
+
+/**
  * 把整段会话以 Markdown 写入系统剪贴板，返回写入的字符数。
  *
  * 正文在 Rust 侧生成并直接写剪贴板 —— 不经 IPC 回传（红线 4）。

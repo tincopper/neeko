@@ -117,6 +117,7 @@ mod tests {
             user_title: None,
             tags: vec![],
             supports_resume: false,
+            delete_support: crate::conversation::adapter::SessionDeleteSupport::Storage,
         }
     }
 

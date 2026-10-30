@@ -1,4 +1,4 @@
-import { SquareTerminal, Eye, MessageSquare } from 'lucide-react';
+import { SquareTerminal, Eye, MessageSquare, Trash2 } from 'lucide-react';
 import React, { useMemo } from 'react';
 
 import { AgentIcon } from '@/features/agent';
@@ -6,6 +6,7 @@ import type { AgentConfig } from '@/features/agent/types';
 import { cn } from '@/lib/utils';
 
 import type { ConversationMeta } from '../types';
+import { canDeleteConversation } from '../utils/conversationDelete';
 import { HighlightedText } from '../utils/HighlightedText';
 
 interface ConversationItemProps {
@@ -32,6 +33,13 @@ interface ConversationItemProps {
    * 静默退回死入口，而这正是本入口要消灭的形态。
    */
   canChatResume?: (agentId: string) => boolean;
+  /**
+   * 删除这条会话（可选；由容器层提供，内部负责确认 / 使用中保护 / IPC）。
+   *
+   * 组件不自发 IPC：这里只负责「按能力显入口 + 把点击交回去」。
+   * 未传 = 不显示入口（纯展示场景 / 测试）。
+   */
+  onDelete?: (meta: ConversationMeta) => void;
 }
 
 function formatRelativeTime(ts: number): string {
@@ -58,6 +66,7 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(
     onResume,
     onChatResume,
     canChatResume,
+    onDelete,
   }) => {
     const agent = useMemo(
       () => agents.find((a) => a.id === meta.agentId) ?? null,
@@ -142,6 +151,23 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(
             >
               <Eye className="w-3.5 h-3.5" />
             </button>
+            {/*
+              删除入口：`deleteSupport` 为 `native` / `storage` 才出现，
+              `unsupported` 与缺失（旧载荷）一律不显现（宁缺不错）。
+            */}
+            {onDelete && canDeleteConversation(meta) ? (
+              <button
+                type="button"
+                className="p-1 rounded-md text-text-muted hover:text-accent-red hover:bg-accent-red/10 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(meta);
+                }}
+                title="Delete"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
           </div>
         </div>
 

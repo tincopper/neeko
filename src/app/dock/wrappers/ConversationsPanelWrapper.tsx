@@ -2,17 +2,24 @@ import React, { useCallback } from 'react';
 
 import { useChatResumableAgents } from '@/features/agent-chat';
 import {
+  conversationLiveChatTabRefs,
   conversationTabTitle,
+  conversationViewerTabRefs,
   ConversationPanel,
+  flattenTabSpaces,
+  runConversationDelete,
   type ConversationMeta,
 } from '@/features/conversation';
+import { deleteConversation } from '@/features/conversation/api/conversationApi';
 import { useActiveProject } from '@/features/project';
 import { useAppContext } from '@/shared/contexts';
+import { confirmAction } from '@/shared/store/confirmStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { activeWorkspaceSession, useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
+import { logFrontendError } from '@/shared/utils/errorReporting';
 
 /**
  * Conversations dock 面板适配层：读取 project context + agent 列表透传
@@ -135,6 +142,51 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
     [currentProjectId, tabKey, showToast],
   );
 
+  /**
+   * 删除编排的**容器层入口**。
+   *
+   * 三件事都在这里定：
+   * 1. 「是否使用中」用**全量 tab**（跨 workspace 展平）——只看当前 tab 空间会漏；
+   * 2. 确认文案拿 agent 显示名（用户认的是名字，不是 id）；
+   * 3. 删除只传 id（路径由后端从自己的缓存解析，红线 8）。
+   *
+   * 返回 `true` 时面板才本地移除行（失败不乐观移除）。
+   */
+  const handleDeleteConversation = useCallback(
+    async (meta: ConversationMeta): Promise<boolean> => {
+      const tabsBySpace = useEditorStore.getState().tabs;
+      const agentName = agents.find((a) => a.id === meta.agentId)?.name ?? null;
+      const deleted = await runConversationDelete(meta, {
+        tabs: flattenTabSpaces(tabsBySpace),
+        showToast,
+        confirm: confirmAction,
+        deleteConversation,
+        agentName,
+        // 删除成功后关掉两类占用：活 Agent Chat tab（否则那条 chat 指向已删会话）与
+        // 只读查看器 tab（文件没了，留着就是打不开的面板）。顺序在删除之后 —— 失败时
+        // 用户还能继续看那份仍存在的会话。
+        closeTabs: () => {
+          const store = useEditorStore.getState();
+          const refs = [
+            ...conversationLiveChatTabRefs(store.tabs, meta),
+            ...conversationViewerTabRefs(store.tabs, meta),
+          ];
+          for (const ref of refs) store.closeTab(ref.spaceKey, ref.tabId);
+        },
+        // 失败原因与阶段埋点落后端日志：toast 一闪而过、而「没反应」的三种成因
+        // （没走到 / 确认框没弹 / 弹了没结算）在屏幕上完全一样（见 2026-10-30 排查）。
+        reportError: (message) => {
+          void logFrontendError({ source: `conversation.delete:${meta.id}`, message });
+        },
+        trace: (step) => {
+          void logFrontendError({ source: `conversation.delete:${meta.id}`, message: step });
+        },
+      });
+      return deleted;
+    },
+    [agents, showToast],
+  );
+
   const handleOpenConversationTab = useCallback(
     (meta: ConversationMeta) => {
       if (!currentProjectId) return; // 无项目身份不开 tab（原 `?? tabKey ?? 'conversation'` 隐患已根除）
@@ -169,6 +221,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
       onResumeConversation={handleResumeConversation}
       onChatResumeConversation={handleChatResumeConversation}
       canChatResume={canChatResume}
+      onDeleteConversation={handleDeleteConversation}
     />
   );
 });

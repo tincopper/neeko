@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapter::{
+    AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
+};
 use crate::conversation::adapters::{parse_timestamp, read_jsonl};
 use crate::conversation::normalize::recent_messages_from;
 use crate::conversation::text::strip_ansi;
@@ -221,6 +223,13 @@ impl AgentSessionAdapter for QoderAdapter {
 
     fn resume_command(&self, _native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         None
+    }
+
+    /// **不委派** `qoder --delete-session <index>`：它删的是 `~/.qoder/` 库，
+    /// 而 Neeko 读 `~/.qodercli/projects/` —— 委派会删错数据；且该命令按索引寻址，
+    /// 索引随删除漂移。所以这里删 Neeko 实际读取的那个 jsonl。
+    fn delete_support(&self) -> SessionDeleteSupport {
+        SessionDeleteSupport::Storage
     }
 }
 

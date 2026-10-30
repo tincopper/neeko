@@ -9,10 +9,12 @@ import { buildScrollKey } from '@/shared/utils/scrollMemory';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 
+import { useConversationDeleteAction } from '../hooks/useConversationDeleteAction';
 import { useConversationList } from '../hooks/useConversationList';
 import { useConversationResume } from '../hooks/useConversationResume';
 import { useFilterRowOverflow } from '../hooks/useFilterRowOverflow';
 import type { ConversationMeta } from '../types';
+import { buildAgentOptions, countByAgent, filterConversations } from '../utils/conversationFilters';
 
 import ConversationList from './ConversationList';
 
@@ -31,14 +33,8 @@ interface ConversationPanelProps {
   onChatResumeConversation?: (meta: ConversationMeta) => void;
   /** 该 agent 能否恢复为 Agent Chat（唯一真相，由 wrapper 下传）。 */
   canChatResume?: (agentId: string) => boolean;
-}
-function matchesSearch(meta: ConversationMeta, query: string): boolean {
-  if (!query) return true;
-  const q = query.toLowerCase();
-  const title = (meta.userTitle ?? meta.title ?? '').toLowerCase();
-  const preview = (meta.preview ?? '').toLowerCase();
-  const agentId = (meta.agentId ?? '').toLowerCase();
-  return title.includes(q) || preview.includes(q) || agentId.includes(q);
+  /** 删除会话（容器层编排；返回 `true` = 磁盘已删。未传 = 无删除入口）。 */
+  onDeleteConversation?: (meta: ConversationMeta) => Promise<boolean>;
 }
 
 const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
@@ -52,6 +48,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
     onResumeConversation,
     onChatResumeConversation,
     canChatResume,
+    onDeleteConversation,
   }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [agentFilter, setAgentFilter] = useState<string | null>(null);
@@ -67,22 +64,38 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
       refreshing,
       forceRefresh,
       loadMore,
+      removeConversation,
     } = useConversationList(projectPath, isActive, agentFilter ?? undefined);
     const { isResuming } = useConversationResume(projectId);
 
     // 滚动记忆：面板互切（保活期引擎丢位置）与卸载重建都恢复列表位置；按项目隔离。
     const scrollRef = useScrollMemory<HTMLDivElement>(buildScrollKey(SCROLL_SURFACE, projectId));
 
-    // Keep the unfiltered project total for the "All" chip while an agent filter is active.
+    // 「All」计数与 chip 目录保留上次未筛选页的值（口径见 utils/conversationFilters）。
     const projectTotalRef = useRef(0);
-    if (!agentFilter && total > 0) {
-      projectTotalRef.current = total;
-    } else if (!agentFilter && conversations.length === 0 && !loading && !refreshing) {
+    if (!agentFilter && total > 0) projectTotalRef.current = total;
+    else if (!agentFilter && conversations.length === 0 && !loading && !refreshing)
       projectTotalRef.current = 0;
-    }
     const allChipCount = agentFilter
       ? projectTotalRef.current || conversations.length
       : total || conversations.length;
+
+    const agentCatalogRef = useRef<Map<string, number>>(new Map());
+    if (!agentFilter) {
+      const next = countByAgent(conversations);
+      // Prefer non-empty catalog; avoid wiping chips during empty skeleton/hydrate.
+      if (next.size > 0 || agentCatalogRef.current.size === 0) agentCatalogRef.current = next;
+    }
+    const agentOptions = useMemo(
+      () => buildAgentOptions({ catalog: agentCatalogRef.current, agents, agentFilter, total }),
+      [agents, agentFilter, total],
+    );
+    const filteredConversations = useMemo(
+      () => filterConversations(conversations, searchQuery),
+      [conversations, searchQuery],
+    );
+    const hasClientSearch = Boolean(searchQuery.trim());
+    const hasActiveFilters = Boolean(hasClientSearch || agentFilter);
 
     const handleRefresh = useCallback(() => {
       void forceRefresh();
@@ -95,6 +108,17 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
       },
       [onOpenConversationTab],
     );
+
+    /**
+     * 删除动作装配（成功才清选中 + 移除行；编排抛错必须可见）。
+     * 细节与判据见 `useConversationDeleteAction`。
+     */
+    const handleDelete = useConversationDeleteAction({
+      requestDelete: onDeleteConversation,
+      removeConversation,
+      showToast,
+      onDeleted: (id) => setActiveId((prev) => (prev === id ? null : prev)),
+    });
 
     const handleResume = useCallback(
       async (meta: ConversationMeta) => {
@@ -115,52 +139,8 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
       [isResuming, showToast, onResumeConversation, forceRefresh],
     );
 
-    // Agent chips should reflect the project catalog, not the current server-filtered page.
-    // Rebuild counts only when viewing "All"; keep last catalog while an agent chip is active.
-    const agentCatalogRef = useRef<Map<string, number>>(new Map());
-    if (!agentFilter) {
-      const next = new Map<string, number>();
-      for (const c of conversations) {
-        next.set(c.agentId, (next.get(c.agentId) ?? 0) + 1);
-      }
-      // Prefer non-empty catalog; avoid wiping chips during empty skeleton/hydrate.
-      if (next.size > 0 || agentCatalogRef.current.size === 0) {
-        agentCatalogRef.current = next;
-      }
-    }
-
-    const agentOptions = useMemo(() => {
-      const counts = agentCatalogRef.current;
-      const ids = [...counts.keys()];
-      if (agentFilter && !ids.includes(agentFilter)) {
-        ids.push(agentFilter);
-      }
-      ids.sort((a, b) => {
-        const nameA = agents.find((x) => x.id === a)?.name ?? a;
-        const nameB = agents.find((x) => x.id === b)?.name ?? b;
-        return nameA.localeCompare(nameB);
-      });
-      return ids.map((id) => ({
-        id,
-        // Selected agent uses server total; others keep last unfiltered page catalog counts.
-        count: agentFilter === id ? total : (counts.get(id) ?? 0),
-        agent: agents.find((a) => a.id === id) ?? null,
-      }));
-    }, [agents, agentFilter, total]);
-
     // 折叠态筛选行是否溢出单行（测量逻辑见 useFilterRowOverflow）。
     const filterOverflow = useFilterRowOverflow(filterRowRef, agentOptions.length, filterExpanded);
-
-    // Agent filter is applied server-side via list_page so infinite scroll stays correct.
-    // Search remains client-side over the currently loaded pages.
-    const filteredConversations = useMemo(() => {
-      const q = searchQuery.trim();
-      if (!q) return conversations;
-      return conversations.filter((meta) => matchesSearch(meta, q));
-    }, [conversations, searchQuery]);
-
-    const hasClientSearch = Boolean(searchQuery.trim());
-    const hasActiveFilters = Boolean(searchQuery.trim() || agentFilter);
 
     if (!projectPath) {
       return (
@@ -346,6 +326,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
               onResume={handleResume}
               onChatResume={onChatResumeConversation}
               canChatResume={canChatResume}
+              onDelete={onDeleteConversation ? handleDelete : undefined}
             />
           )}
         </div>

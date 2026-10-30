@@ -40,6 +40,11 @@ pub trait AgentSessionAdapter: Send + Sync {
     fn parse_messages(&self, file_path: &Path) -> Result<Vec<ParsedMessage>>;
     fn extract_session_id(&self, file_path: &Path) -> Option<String>;
     fn resume_command(&self, native_session_id: &str, project_path: &str) -> Option<Vec<String>>;
+
+    // 删除能力（§4.7）：默认 fail-closed，新增 adapter 不表态 = 不提供入口
+    fn delete_support(&self) -> SessionDeleteSupport;                       // 默认 Unsupported
+    fn delete_command(&self, id: &str, project: Option<&str>, f: &Path) -> Option<Vec<String>>;  // Native 用
+    fn delete_targets(&self, file_path: &Path, native_session_id: &str) -> Vec<PathBuf>;        // Storage 用
 }
 ```
 
@@ -151,6 +156,9 @@ fn get_resume_command(
 
 // 整段会话以 Markdown 直接写入系统剪贴板（返回字符数；不经 IPC 回传正文）
 fn copy_conversation_markdown(id) -> Result<u32, AppError>;
+
+// 删除一条会话：**只收 id**，路径由后端从自己的缓存解析（§4.7）
+fn delete_conversation(id) -> Result<(), AppError>;
 ```
 
 ### 3.3 数据结构
@@ -172,6 +180,7 @@ pub struct ConversationMeta {
     pub tags: Vec<String>,
     pub model: Option<String>,
     pub supports_resume: bool,             // Resume 按钮显隐依据（§4.3）
+    pub delete_support: SessionDeleteSupport,  // 删除入口显隐依据（§4.7，默认 Unsupported）
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -344,6 +353,69 @@ let light = has_visible_text(entry);        // 只回答「这条算不算一条
 两者都按「路径 / 命令 / pattern 优先，其余截断序列化」取值，各自的测试必须同步更新；
 新增工具名时**两边都要加**，否则侧边栏会退化成序列化预览。
 
+### 4.7 删除能力三态与删除单元（强制）
+
+会话数据的**拥有者是各个 agent CLI**，Neeko 只有内存索引（§2.2）。所以删除必须由拥有者执行：
+绕过 CLI 直接删文件会留下陈旧索引 / 孤儿行，而且**不报错**。由此推出三态能力，不是 bool：
+
+```rust
+pub enum SessionDeleteSupport { Native, Storage, Unsupported }  // serde: "native"|"storage"|"unsupported"
+```
+
+| 态 | 含义 | 判据 |
+| --- | --- | --- |
+| `Native` | 委派 agent 自己的 CLI | **CLI 删的就是 Neeko 列出的那一条**（同一处存储） |
+| `Storage` | adapter 删这条会话独占的存储单元 | 无二级索引、不与其它会话共享 |
+| `Unsupported` | 无安全路径 → UI 不显示入口 | 表里没有可靠答案时的**默认值** |
+
+**委派必须带上 CLI 的「非交互」旗标**（2026-10-30 实测）：`codex delete <uuid>` 在无 TTY 时
+直接失败 —— `cannot confirm session deletion without an interactive terminal; rerun with --force
+and a session UUID`。Neeko 是 headless 调用（确认由自己的对话框负责），所以 argv 必须带 `--force`；
+而 `--force` 要求 `SESSION` 是 **UUID** —— codex 的 `native_session_id` 由
+`rollout-<ts>-<uuid>.jsonl` 的文件名提取，天然满足。**新接一个 Native agent 时先在无 TTY 环境跑一次，
+把它的旗标要求写进 adapter 的 argv 与测试**，否则「每条会话都删不掉」只在用户点击时暴露。
+
+**「有命令」≠「该委派」**：qoder 有 `--delete-session <index>`，但 CLI 用 `~/.qoder/`、Neeko 读
+`~/.qodercli/projects/` —— 委派就是删别人的数据；它按**索引**寻址也会随删除漂移 ⇒ `Storage`。
+
+删除单元（`delete_targets`）由存储形态决定，**不许写 `agent_id == …` 分支**（红线 10）：
+
+| Agent | 态 | 删除单元 |
+| --- | --- | --- |
+| codex | Native | `codex delete --force <uuid>`（它维护 `session_index.jsonl`） |
+| opencode | Native | `opencode session delete <id>`（SQLite 行 + 子会话级联） |
+| claude-code / gemini / qoder / codebuddy | Storage | 会话 `*.jsonl` / `*.json` 单文件 |
+| pi | Storage | 会话 `*.jsonl`（**`~/.pi/agent/blobs/**` 永不删**：内容寻址、跨会话共享） |
+| omp | Storage | 主会话 `*.jsonl`（附属 trace 子目录不在本期单元内） |
+| grok | Storage | 会话**目录**（`summary.json` + `updates.jsonl`） |
+| reasonix | Storage | `<id>.jsonl` + `<id>.events.jsonl` + `<id>.jsonl.meta` |
+
+契约（缺一即「声明了没人实现」，红线 14 形态）：
+`Native ⇒ delete_command() 非空`；`Storage ⇒ delete_targets() 非空且每个目标都在 `session_root()` 之内`。
+`adapters/registry.rs` 的台账用例要求**注册表里的每个 adapter 都在表里表态**（新增 agent 忘表态 → 红）。
+
+执行序（`ConversationManager::delete`，命令层只做 `id` 校验 + 调度）：
+
+1. id → 缓存 meta；不存在 → `AppError::NotFound`，**不触盘**（前端永远不能指定路径）；
+2. 防线：`meta.file_path` 与每个 target 必须落在该 adapter 的 `session_root()` 之下
+   （词法 `starts_with` + 拒绝 `..`；`path == root` 也算越界）→ 否则 `AppError::InvalidInput`；
+3. `Native` → `core::exec::run`（红线 1/2），非零退出 → `AppError::Agent(stderr 尾部 ≤400B)`，
+   起不来 → `AppError::Io`；成功后弃 `scan_cache` 的该路径 + 全部 bulk 快照（CLI 改了自己的库）；
+4. `Storage` → `common::file::services::delete_path`（Local `spawn_blocking` = 红线 3，
+   且自带 canonicalize 逃逸校验）；**缺失目标跳过**（兄弟文件缺失是常态），真实 IO 错误中止并在
+   错误里列出「已删哪些」；
+5. **成功之后**才 `cache.remove` + 丢弃单槽正文缓存（失败不乐观移除）；
+6. 冷启动索引由命令层 `persist_disk_index()` 刷新（与 `update_conversation` 同一模式），失败只 warn。
+
+UI 侧（R5）：`delete_support !== 'unsupported'` 才出现删除按钮；点击先判「是否**活的 chat 会话**占用」
+（agent-chat tab 的 `resumeConversationId` / `resumeNativeSessionId` / `sessionId`），命中则提示
+「先关闭该会话」；否则确认框展示 agent · 标题 · 将发生什么（`native` = 委派 CLI；`storage` = 具体路径）
+→ 成功才本地移除行，并关掉指向它的只读查看器 tab。
+
+> **只读查看器 tab 不算「使用中」**（2026-10-30 实测事故）：面板里点一行即打开查看器，把它判成占用
+> 会让「点开 → 删除」100% 被挡 —— 删除功能实际不可用。占用判定只对「可能有进程正在写该会话文件」
+> 的活 chat 会话成立。
+
 ## 5. 错误边界
 
 | 场景 | 行为 |
@@ -352,6 +424,11 @@ let light = has_visible_text(entry);        // 只回答「这条算不算一条
 | adapter `parse_messages` 失败 | `get_conversation_messages` 返回 `AppError` |
 | adapter ID 不存在 | `get_messages` / `get_resume_command` 返回 `AppError::NotFound` |
 | 文件被删除/不存在 | `parse_messages` 返回 IO 错误，转换为 `AppError` |
+| 删除不存在的 id | `delete_conversation` 返回 `AppError::NotFound`，不触盘 |
+| 删除路径越界（缓存被污染） | `AppError::InvalidInput`，不执行任何删除 |
+| 删除能力 `Unsupported` | `AppError::Unsupported`（UI 正常不显入口，命令层仍拦） |
+| 委派 CLI 非零退出 | `AppError::Agent`，带 stderr 尾部；缓存与列表**不**移除 |
+| 委派 CLI 起不来 | `AppError::Io`（环境问题，与「CLI 说删不掉」区分） |
 | 空适配器列表（scan_all） | 返回空 Vec，不报错 |
 | 缓存空（先 list 再 scan） | `list_conversations` 返回空 Vec |
 
@@ -377,6 +454,16 @@ impl AgentSessionAdapter for TestAdapter { ... }
 - `search("")` 返回空
 - `get_resume_command` 返回 `Some` 或 `None`
 - `export_markdown` 输出的消息顺序正确
+
+删除能力（§4.7）的必测点：
+
+- 契约：`Native ⇒ delete_command` 非空；`Storage ⇒ targets 非空且都在 `session_root` 内`；
+  registry 台账覆盖每个 adapter（新增 agent 忘表态 → 红）；
+- 纯函数：`delete_targets` 的形态（grok 目录 / reasonix 文件对 / 默认单文件）、`delete_command` 的 argv；
+- manager（tempdir 夹具，红线 13）：不存在的 id 不触盘、缓存路径越界被拒、单文件 / 多目标 /
+  兄弟文件缺失时跳过、删后 cache 与正文缓存都查不到；
+- 委派路径**不真跑 codex/opencode**（不可逆）：用假二进制断言 argv 送达与错误分支
+  （不存在二进制 → `Io`；非零退出 → `Agent` 且含 stderr）。
 
 ## 7. 错误 vs 正确
 

@@ -23,3 +23,12 @@ export { default as ConversationMsg } from './components/ConversationMessage';
 
 // Utils
 export { conversationTabTitle } from './utils/conversationTabTitle';
+
+// Utils（容器层编排）
+export { runConversationDelete, canDeleteConversation } from './utils/conversationDelete';
+export {
+  isConversationLiveInChat,
+  conversationLiveChatTabRefs,
+  conversationViewerTabRefs,
+  flattenTabSpaces,
+} from './utils/conversationInUse';

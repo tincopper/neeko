@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapter::{
+    AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
+};
 use crate::conversation::adapters::parse_timestamp;
 use crate::conversation::normalize::recent_messages_from;
 use crate::conversation::text::strip_ansi;
@@ -183,6 +185,11 @@ impl AgentSessionAdapter for GeminiAdapter {
 
     fn resume_command(&self, _native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         None
+    }
+
+    /// Gemini 无官方删除命令 ⇒ 删会话 json 单文件（`chats/` 下按会话独立，无二级索引）。
+    fn delete_support(&self) -> SessionDeleteSupport {
+        SessionDeleteSupport::Storage
     }
 }
 

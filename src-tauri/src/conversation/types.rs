@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use super::adapter::SessionDeleteSupport;
+
 /// 会话元数据（扫描时提取，存在内存中）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +39,12 @@ pub struct ConversationMeta {
     /// Frontend hides the Resume button when false (D4).
     #[serde(default)]
     pub supports_resume: bool,
+    /// 这条会话的删除能力（扫描期定事实，UI 零查询）。
+    ///
+    /// `#[serde(default)]` = `Unsupported`：旧磁盘索引没有该字段时不提供删除入口
+    /// （fail-closed），而不是让整份索引解析失败。
+    #[serde(default)]
+    pub delete_support: SessionDeleteSupport,
 }
 
 /// 消息内容块 - 表示 Agent 执行过程中的不同类型内容

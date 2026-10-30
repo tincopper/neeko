@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapter::{
+    AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
+};
 use crate::conversation::adapters::content_blocks::extract_message_content;
 use crate::conversation::adapters::{parse_timestamp, read_jsonl};
 use crate::conversation::normalize::recent_messages_from;
@@ -248,6 +250,12 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec!["--resume".into(), native_session_id.into()])
+    }
+
+    /// `claude rm` 只删 background session、`claude purge` 是全清，都不匹配「删这一条」；
+    /// 会话本身是 `~/.claude/projects/**/<uuid>.jsonl` 单文件 ⇒ adapter 删存储单元。
+    fn delete_support(&self) -> SessionDeleteSupport {
+        SessionDeleteSupport::Storage
     }
 }
 

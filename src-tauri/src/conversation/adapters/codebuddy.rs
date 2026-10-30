@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapter::{
+    AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
+};
 use crate::conversation::adapters::parse_timestamp;
 use crate::conversation::normalize::recent_messages_from;
 use crate::conversation::text::strip_ansi;
@@ -210,6 +212,16 @@ impl AgentSessionAdapter for CodeBuddyAdapter {
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec!["--resume".to_string(), native_session_id.to_string()])
+    }
+
+    /// 显式 `Unsupported`（**不是「忘了写」**）。
+    ///
+    /// 本 adapter 的文件头声称 CodeBuddy 可能把会话存在 `~/.codebuddy/` 的 SQLite 里
+    /// （“优先尝试从 SQLite 读取”），而实现只读 `sessions/*.json`。到底哪边是权威未实测：
+    /// 若真有 SQLite 索引，删 JSON 会留下一个在 CLI 里“复活”的孤儿行 —— 正是 qoder 的
+    /// 失败形态。宁可不提供入口，也不提供一个删不干净的按钮。
+    fn delete_support(&self) -> SessionDeleteSupport {
+        SessionDeleteSupport::Unsupported
     }
 }
 

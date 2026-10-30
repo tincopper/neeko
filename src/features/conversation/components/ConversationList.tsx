@@ -30,6 +30,8 @@ interface ConversationListProps {
   onChatResume?: (meta: ConversationMeta) => void;
   /** 该 agent 能否恢复为 Agent Chat（唯一真相，由容器层下传）。 */
   canChatResume?: (agentId: string) => boolean;
+  /** 删除会话（容器层提供；未传则无删除入口）。 */
+  onDelete?: (meta: ConversationMeta) => void;
 }
 
 const ConversationList: React.FC<ConversationListProps> = React.memo(
@@ -47,6 +49,7 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(
     onResume,
     onChatResume,
     canChatResume,
+    onDelete,
   }) => {
     const handleView = useCallback(
       (meta: ConversationMeta) => {
@@ -140,6 +143,7 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(
                   onResume={handleResume}
                   onChatResume={onChatResume}
                   canChatResume={canChatResume}
+                  onDelete={onDelete}
                 />
               ))}
             </div>

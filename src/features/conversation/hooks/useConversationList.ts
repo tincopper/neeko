@@ -26,6 +26,13 @@ export interface UseConversationListResult extends ListLoadState {
   forceRefresh: () => Promise<void>;
   /** Load next page (infinite scroll). No-op when !hasMore. */
   loadMore: () => Promise<void>;
+  /**
+   * Drop one row from the local page (a delete succeeded on disk).
+   *
+   * 只改本地已加载的窗口 + 总数，**不重拉**（R5.3：删后无需整页刷新）；
+   * 失败时不调用（乐观移除 = 静默谎报）。
+   */
+  removeConversation: (id: string) => void;
 }
 
 /**
@@ -182,6 +189,22 @@ export function useConversationList(
     await runLoad({ forceScan: false });
   }, [runLoad]);
 
+  /**
+   * Remove one row after a successful delete.
+   *
+   * Why local (not re-list): the disk is already correct, and a re-list would
+   * either flash the skeleton or resurrect a not-yet-reindexed row (the agent's
+   * own scan cache may still hold it for one cycle).
+   */
+  const removeConversation = useCallback((id: string) => {
+    setConversations((prev) => {
+      const next = prev.filter((meta) => meta.id !== id);
+      conversationsRef.current = next;
+      return next;
+    });
+    setTotal((prev) => Math.max(0, prev - 1));
+  }, []);
+
   const forceRefresh = useCallback(async () => {
     await runLoad({ forceScan: true });
   }, [runLoad]);
@@ -243,5 +266,6 @@ export function useConversationList(
     refresh,
     forceRefresh,
     loadMore,
+    removeConversation,
   };
 }

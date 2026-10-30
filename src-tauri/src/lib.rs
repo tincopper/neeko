@@ -193,6 +193,7 @@ macro_rules! neeko_invoke_handler {
             $crate::conversation::commands::search_conversation_messages,
             $crate::conversation::commands::search_conversations,
             $crate::conversation::commands::update_conversation,
+            $crate::conversation::commands::delete_conversation,
             $crate::conversation::commands::get_resume_command,
             $crate::conversation::commands::copy_conversation_markdown,
             // ── agent chat ───────────────────────────────────────────────────

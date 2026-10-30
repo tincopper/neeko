@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapter::{
+    AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
+};
 use crate::conversation::adapters::{parse_timestamp, read_jsonl};
 use crate::conversation::normalize::recent_messages_from;
 use crate::conversation::text::strip_ansi;
@@ -299,6 +301,19 @@ impl AgentSessionAdapter for GrokAdapter {
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec!["--resume".into(), native_session_id.into()])
+    }
+
+    /// Grok 无官方删除命令 ⇒ 删**会话目录**（`summary.json` + `updates.jsonl` 同属一条会话）。
+    fn delete_support(&self) -> SessionDeleteSupport {
+        SessionDeleteSupport::Storage
+    }
+
+    fn delete_targets(&self, file_path: &Path, _native_session_id: &str) -> Vec<PathBuf> {
+        match file_path.parent() {
+            // 只删 summary.json 会留下孤儿 updates.jsonl（下次扫描又不完整）。
+            Some(dir) if dir.file_name().is_some() => vec![dir.to_path_buf()],
+            _ => vec![file_path.to_path_buf()],
+        }
     }
 }
 

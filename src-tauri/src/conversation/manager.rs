@@ -8,13 +8,14 @@ use chrono::DateTime;
 use regex::Regex;
 use walkdir::WalkDir;
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage};
+use crate::conversation::adapter::{is_owned_path, AgentSessionAdapter, ParsedMessage};
 use crate::conversation::adapters::saturating_count;
 use crate::conversation::normalize::{build_preview_messages, normalize_session_text, NormTarget};
 use crate::conversation::types::{
     ConversationListPage, ConversationMessage, ConversationMessagePage, ConversationMeta,
     ConversationSearchHit, ConversationStats, ScanReport, ToolCallRef,
 };
+use crate::AppError;
 
 /// 会话标题三优先级解析（供 `scan` 循环与单测复用）。
 ///
@@ -752,6 +753,118 @@ impl ConversationManager {
         Ok(())
     }
 
+    /// 删除一条会话（R2.1：**只接受会话 id**，存储路径只从后端缓存解析）。
+    ///
+    /// 为什么返回 `AppError` 而不是 `anyhow::Error`：错误**分类**是跨层契约——
+    /// 「id 不存在」与「CLI 删失败」对用户是完全不同的两件事，压成 `Unknown` 就只能
+    /// 显示一坨字符串（AC6/AC7）。
+    ///
+    /// 执行序：先查缓存（永不触盘）→ 定位 adapter → 路径防线 → 按三态执行 →
+    /// **成功之后**才动缓存（失败不乐观移除）。
+    pub async fn delete(&self, conversation_id: &str) -> std::result::Result<(), AppError> {
+        use crate::conversation::adapter::SessionDeleteSupport;
+
+        // 1) id → 缓存 meta。不存在就直接失败：不可信输入根本到不了路径（AC6）。
+        let meta = {
+            let cache = self
+                .cache
+                .lock()
+                .map_err(|e| AppError::LockPoisoned(format!("Cache lock poisoned: {e}")))?;
+            cache.get(conversation_id).cloned()
+        }
+        .ok_or_else(|| AppError::NotFound(format!("Conversation not found: {conversation_id}")))?;
+
+        // 2) 定位 adapter（与扫描同一注册表 = 同一份存储知识）。
+        let adapter = self.adapters.get(&meta.agent_id).ok_or_else(|| {
+            AppError::NotFound(format!("No session adapter for agent: {}", meta.agent_id))
+        })?;
+        let root = adapter.session_root();
+
+        // 3) 防线（R2.4）：缓存被污染也不越界。词法判定先于任何磁盘/进程操作。
+        if !is_owned_path(&meta.file_path, &root) {
+            return Err(AppError::InvalidInput(format!(
+                "Refusing to delete {} — outside the `{}` session root",
+                meta.file_path.display(),
+                meta.agent_id
+            )));
+        }
+
+        // 4) 按三态执行。
+        match adapter.delete_support() {
+            SessionDeleteSupport::Native => {
+                let argv = adapter
+                    .delete_command(
+                        &meta.native_session_id,
+                        meta.project_path.as_deref(),
+                        &meta.file_path,
+                    )
+                    .ok_or_else(|| {
+                        AppError::Agent(format!(
+                            "{} declares native deletion but gave no command",
+                            meta.agent_id
+                        ))
+                    })?;
+                run_native_delete(&meta.agent_id, &argv).await?;
+                // CLI 刚改了自己的库 / 索引（SQLite、session_index.jsonl）⇒ 丢弃
+                // 进程内的解析快照，否则下次扫描可能命中旧快照把已删会话复活。
+                crate::conversation::scan_cache::invalidate_path(&meta.file_path);
+                crate::conversation::scan_cache::invalidate_bulk_sources();
+            }
+            SessionDeleteSupport::Storage => {
+                let targets = adapter.delete_targets(&meta.file_path, &meta.native_session_id);
+                if targets.is_empty() {
+                    return Err(AppError::Unsupported(format!(
+                        "{} declares storage deletion but gave no targets",
+                        meta.agent_id
+                    )));
+                }
+                // 每个目标都要过防线：兄弟文件 / 目录同样可能被缓存污染带歪。
+                for target in &targets {
+                    if !is_owned_path(target, &root) {
+                        return Err(AppError::InvalidInput(format!(
+                            "Refusing to delete {} — outside the `{}` session root",
+                            target.display(),
+                            meta.agent_id
+                        )));
+                    }
+                }
+                remove_storage_targets(&root, &targets).await?;
+                for target in &targets {
+                    crate::conversation::scan_cache::invalidate_path(target);
+                }
+            }
+            SessionDeleteSupport::Unsupported => {
+                return Err(AppError::Unsupported(format!(
+                    "Agent `{}` has no safe way to delete this conversation",
+                    meta.agent_id
+                )));
+            }
+        }
+
+        // 5) 只有成功才动缓存（AC7：失败不乐观移除）。
+        {
+            let mut cache = self
+                .cache
+                .lock()
+                .map_err(|e| AppError::LockPoisoned(format!("Cache lock poisoned: {e}")))?;
+            cache.remove(conversation_id);
+        }
+        self.drop_transcript_cache(conversation_id);
+        Ok(())
+    }
+
+    /// 丢掉单槽正文缓存里属于 `conversation_id` 的那份（删后不应再命中）。
+    fn drop_transcript_cache(&self, conversation_id: &str) {
+        if let Ok(mut slot) = self.transcript.lock() {
+            let matches = slot
+                .as_ref()
+                .is_some_and(|cached| cached.conversation_id == conversation_id);
+            if matches {
+                *slot = None;
+            }
+        }
+    }
+
     /// 搜索会话
     ///
     /// - `query`: 搜索关键词，为空时返回空列表
@@ -1081,6 +1194,7 @@ fn build_conversation_meta(
         user_title: None,
         tags: Vec::new(),
         supports_resume,
+        delete_support: adapter.delete_support(),
     }
 }
 
@@ -1134,6 +1248,114 @@ pub(crate) fn normalize_file_pattern(pattern: &str) -> String {
     } else {
         format!("**/{p}")
     }
+}
+
+/// stderr 尾部上限：确认框 / toast 只需能归因的那两句，不是整屏 traceback。
+const STDERR_TAIL_BYTES: usize = 400;
+
+/// `Native` 委派：跑 CLI 并**把非零退出当失败**（绝不假装成功）。
+///
+/// - 走 `core::exec::run`（红线 1/2：shell 选择与进程启动只由执行层决定）；
+/// - `ExecError::Io`（二进制不在 PATH / 无法派发）归 `AppError::Io` —— 这是「执行环境
+///   问题」而不是「CLI 说删不掉」，用户要做的修复不同；
+/// - 非零退出归 `AppError::Agent`，带 stderr 尾部（AC7 可归因）。
+async fn run_native_delete(agent_id: &str, argv: &[String]) -> std::result::Result<(), AppError> {
+    use crate::common::executor::factory::ExecTarget;
+    use crate::common::executor::ExecError;
+
+    let (bin, rest) = argv
+        .split_first()
+        .ok_or_else(|| AppError::Agent(format!("{agent_id}: empty delete command")))?;
+    let args: Vec<&str> = rest.iter().map(String::as_str).collect();
+
+    match crate::core::exec::run(&ExecTarget::Local, bin, &args).await {
+        Ok(_stdout) => Ok(()),
+        Err(ExecError::CommandFailed { code, stderr, .. }) => {
+            let tail = stderr_tail(&stderr, STDERR_TAIL_BYTES);
+            if tail.is_empty() {
+                Err(AppError::Agent(format!(
+                    "{agent_id} delete failed (exit {code})"
+                )))
+            } else {
+                Err(AppError::Agent(format!(
+                    "{agent_id} delete failed (exit {code}): {tail}"
+                )))
+            }
+        }
+        Err(ExecError::Io(e)) => Err(AppError::Io(format!(
+            "{agent_id} delete failed to start `{bin}`: {e}"
+        ))),
+        Err(e) => Err(AppError::Agent(format!("{agent_id} delete failed: {e}"))),
+    }
+}
+
+/// stderr 尾部（按**字符边界**截断，避免把 UTF-8 切成半个字符）。
+fn stderr_tail(raw: &[u8], limit: usize) -> String {
+    let text = String::from_utf8_lossy(raw);
+    let trimmed = text.trim();
+    if trimmed.len() <= limit {
+        return trimmed.to_string();
+    }
+    let mut start = trimmed.len() - limit;
+    while start < trimmed.len() && !trimmed.is_char_boundary(start) {
+        start += 1;
+    }
+    format!("…{}", &trimmed[start..])
+}
+
+/// `Storage` 删除：逐个目标删（文件 / 目录均由 `path_ops::delete_path` 决定）。
+///
+/// 为什么复用 `common::file::services::delete_path` 而不是新写 `remove_file` 循环：
+/// 它已经做了「最深已存在祖先 canonicalize 必须在根内」（防符号链接逃逸）与
+/// Local `spawn_blocking`（红线 3），正是这里要的两件事。
+///
+/// 缺失的目标按**已删除**处理（幂等）：reasonix 老会话没有 `*.events.jsonl`、
+/// grok 目录里缺 `updates.jsonl` 都是常态，报错会让整次删除无谓失败。真实的 IO
+/// 错误则立即中止，并在错误里告知哪些已删（部分成功可归因）。
+async fn remove_storage_targets(
+    root: &std::path::Path,
+    targets: &[std::path::PathBuf],
+) -> std::result::Result<(), AppError> {
+    use crate::common::executor::factory::ExecTarget;
+
+    let root_str = root.to_str().ok_or_else(|| {
+        AppError::InvalidInput(format!(
+            "session root is not valid UTF-8: {}",
+            root.display()
+        ))
+    })?;
+
+    let mut deleted: Vec<String> = Vec::new();
+    for target in targets {
+        let rel = target.strip_prefix(root).map_err(|_| {
+            AppError::InvalidInput(format!(
+                "Refusing to delete {} — outside {}",
+                target.display(),
+                root.display()
+            ))
+        })?;
+        // 分隔符统一成 `/`：`delete_path` 的穿越检查按 `/` 拆分。
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+
+        match crate::common::file::services::delete_path(&ExecTarget::Local, root_str, &rel_str)
+            .await
+        {
+            Ok(()) => deleted.push(target.display().to_string()),
+            Err(AppError::NotFound(_)) => {}
+            Err(e) => {
+                let already = if deleted.is_empty() {
+                    "none".to_string()
+                } else {
+                    deleted.join(", ")
+                };
+                return Err(AppError::File(format!(
+                    "Failed to delete {}: {e} (already deleted: {already})",
+                    target.display()
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Convert a simple glob pattern into a regular expression.
@@ -1197,7 +1419,7 @@ fn format_timestamp(ts: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversation::adapter::{ParsedMessage, ParsedMeta};
+    use crate::conversation::adapter::{ParsedMessage, ParsedMeta, SessionDeleteSupport};
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
@@ -1208,6 +1430,21 @@ mod tests {
         file_pattern: String,
         /// 解析次数（验证分页复用缓存、文件变动时失效）
         parse_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        /// 删除能力（真实 adapter 由各自存储形态决定，这里是夹具开关）
+        delete: TestDelete,
+    }
+
+    /// 夹具的删除能力形态。
+    #[derive(Clone, Debug)]
+    enum TestDelete {
+        /// 默认（不表态）
+        Default,
+        /// 单文件存储
+        Storage,
+        /// 单文件 + 兄弟文件（后缀列表，如 `.events.jsonl`）
+        StorageWithSiblings(Vec<&'static str>),
+        /// 委派 CLI（完整 argv）
+        Native(Vec<String>),
     }
 
     impl TestAdapter {
@@ -1217,7 +1454,13 @@ mod tests {
                 root,
                 file_pattern: "*.jsonl".to_string(),
                 parse_calls: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                delete: TestDelete::Default,
             }
+        }
+
+        fn with_delete(mut self, delete: TestDelete) -> Self {
+            self.delete = delete;
+            self
         }
 
         fn counting(mut self, counter: std::sync::Arc<std::sync::atomic::AtomicUsize>) -> Self {
@@ -1352,6 +1595,45 @@ mod tests {
                 "resume".to_string(),
                 native_session_id.to_string(),
             ])
+        }
+
+        fn delete_support(&self) -> SessionDeleteSupport {
+            match self.delete {
+                TestDelete::Default => SessionDeleteSupport::Unsupported,
+                TestDelete::Storage | TestDelete::StorageWithSiblings(_) => {
+                    SessionDeleteSupport::Storage
+                }
+                TestDelete::Native(_) => SessionDeleteSupport::Native,
+            }
+        }
+
+        fn delete_command(
+            &self,
+            _native_session_id: &str,
+            _project_path: Option<&str>,
+            _file_path: &Path,
+        ) -> Option<Vec<String>> {
+            match &self.delete {
+                TestDelete::Native(argv) => Some(argv.clone()),
+                _ => None,
+            }
+        }
+
+        fn delete_targets(&self, file_path: &Path, _native_session_id: &str) -> Vec<PathBuf> {
+            match &self.delete {
+                TestDelete::StorageWithSiblings(suffixes) => {
+                    let mut targets = vec![file_path.to_path_buf()];
+                    let stem = file_path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    for suffix in suffixes {
+                        targets.push(file_path.with_file_name(format!("{stem}{suffix}")));
+                    }
+                    targets
+                }
+                _ => vec![file_path.to_path_buf()],
+            }
         }
     }
 
@@ -2737,5 +3019,369 @@ mod tests {
     fn should_fall_back_when_first_message_is_image_only() {
         let title = resolve_title(None, Some("[Image #1]"), "pi", "01a187b7-f5da");
         assert_eq!(title, "pi 01a187b7");
+    }
+
+    // ── delete（三态删除能力）────────────────────────────────────────────────
+    //
+    // 每条用例的「变异验证」写在注释里：把被测实现改回去必须变红。
+
+    /// 扫描期把 adapter 的能力位写进 meta（R1.2：UI 零查询）。
+    ///
+    /// 变异验证：`build_conversation_meta` 里删掉 `delete_support: adapter.delete_support()`
+    /// （改回默认值）→ 本用例红。
+    #[test]
+    fn should_record_delete_support_during_scan() {
+        let dir = TempDir::new().unwrap();
+        create_fixture(&dir, "session-1.jsonl", Some("/projects/test"));
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf())
+            .with_delete(TestDelete::Storage);
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+
+        let list = manager.list(None, None).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].delete_support, SessionDeleteSupport::Storage);
+    }
+
+    /// 不存在的 id → `NotFound`，且**磁盘没有任何变化**（AC6）。
+    ///
+    /// 变异验证：把 `delete` 开头的缓存查询改成「从磁盘反查路径」→ 本用例仍绿但
+    /// `delete_unknown_id...` 的 `assert!(file.exists())` 会暴露被触碰的痕迹；
+    /// 把错误改成 `AppError::Unknown` → 第一条断言红。
+    #[tokio::test]
+    async fn should_return_not_found_without_touching_disk_for_unknown_id() {
+        let dir = TempDir::new().unwrap();
+        let fixture = create_fixture(&dir, "session-1.jsonl", Some("/projects/test"));
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf())
+            .with_delete(TestDelete::Storage);
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+
+        let err = manager
+            .delete("test-agent:does-not-exist")
+            .await
+            .expect_err("unknown id must fail");
+        assert!(
+            matches!(err, AppError::NotFound(_)),
+            "expected NotFound, got {err:?}"
+        );
+        assert!(fixture.exists(), "no disk write allowed for unknown id");
+    }
+
+    /// 缓存被污染（路径指到 session_root 之外）→ 拒绝执行，文件保持原样（R2.4）。
+    ///
+    /// 这里同时有词法防线（`is_owned_path`）与真实路径防线（`delete_path` 的
+    /// strip_prefix + canonicalize），所以**单独删掉任一层本用例仍绿** —— 冗余是故意的
+    /// （词法防线是唯一对 `Native` 生效的那层，见下一个用例）。真正的红点是把两层都去掉：
+    /// 那时 `victim` 会被真删。
+    #[tokio::test]
+    async fn should_refuse_to_delete_path_outside_session_root() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("sessions");
+        std::fs::create_dir_all(&root).unwrap();
+        let sessions = TempDir::new_in(&root).unwrap();
+        let fixture = create_fixture(&sessions, "session-1.jsonl", Some("/projects/test"));
+
+        let outside = TempDir::new().unwrap();
+        let victim = outside.path().join("victim.jsonl");
+        std::fs::write(&victim, "{}\n").unwrap();
+
+        let adapter = TestAdapter::new("test-agent", root.clone()).with_delete(TestDelete::Storage);
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+
+        // 污染缓存：把已登记会话的文件路径改到根之外。
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+        {
+            let mut cache = manager.cache.lock().unwrap();
+            cache.get_mut(&id).unwrap().file_path = victim.clone();
+        }
+
+        let err = manager.delete(&id).await.expect_err("must refuse escape");
+        assert!(
+            matches!(err, AppError::InvalidInput(_)),
+            "expected InvalidInput, got {err:?}"
+        );
+        assert!(victim.exists(), "must not delete outside session_root");
+        assert!(fixture.exists());
+    }
+
+    /// **只有词法防线能拦住的分支**：`Native` 委派不碰磁盘，因此没有 `delete_path`
+    /// 做第二层校验 —— 缓存路径越界时，CLI 绝不能被执行。
+    ///
+    /// 变异验证：删掉 `delete` 里的 `is_owned_path` 判定 → 假 CLI 被执行，
+    /// argv 日志出现、本用例红。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn should_never_run_native_cli_when_cached_path_escapes_root() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("sessions");
+        std::fs::create_dir_all(&root).unwrap();
+        let sessions = TempDir::new_in(&root).unwrap();
+        create_fixture(&sessions, "session-1.jsonl", Some("/projects/test"));
+
+        let log = dir.path().join("argv.log");
+        let fake = dir.path().join("fake-codex");
+        std::fs::write(
+            &fake,
+            format!(
+                "#!/bin/sh\nprintf '%s' \"$*\" > '{}'\nexit 0\n",
+                log.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let adapter =
+            TestAdapter::new("test-agent", root.clone()).with_delete(TestDelete::Native(vec![
+                fake.to_string_lossy().to_string(),
+                "delete".to_string(),
+            ]));
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+        {
+            let mut cache = manager.cache.lock().unwrap();
+            cache.get_mut(&id).unwrap().file_path = dir.path().join("elsewhere.jsonl");
+        }
+
+        let err = manager.delete(&id).await.expect_err("must refuse escape");
+        assert!(
+            matches!(err, AppError::InvalidInput(_)),
+            "expected InvalidInput, got {err:?}"
+        );
+        assert!(!log.exists(), "native CLI must not run for an escaped path");
+    }
+
+    /// `Storage` 单文件：删掉文件、列表立刻消失、正文缓存不再命中。
+    ///
+    /// 变异验证：把 `cache.remove` 挪到执行前（乐观移除）→ 上一个失败用例的
+    /// `list` 断言变绿在这里就露馅；删掉 `cache.remove` → 本用例红。
+    #[tokio::test]
+    async fn should_delete_single_file_and_forget_it() {
+        let dir = TempDir::new().unwrap();
+        let fixture = create_fixture(&dir, "session-1.jsonl", Some("/projects/test"));
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf())
+            .with_delete(TestDelete::Storage);
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+        // 先让正文缓存装上这份会话，验证删除后不会命中。
+        assert_eq!(manager.get_messages(&id).unwrap().len(), 3);
+
+        manager.delete(&id).await.expect("delete should succeed");
+
+        assert!(!fixture.exists(), "session file must be gone");
+        assert!(
+            manager.list(None, None).unwrap().is_empty(),
+            "cache must drop it"
+        );
+        assert!(
+            manager.get_messages(&id).is_err(),
+            "transcript cache must not resurrect a deleted conversation"
+        );
+    }
+
+    /// `Storage` 多目标：兄弟文件一起删；**缺失的兄弟文件跳过**（幂等）。
+    ///
+    /// 变异验证：把 `remove_storage_targets` 的 `Err(AppError::NotFound(_))` 分支
+    /// 改成 `return Err(..)` → 本用例红（reasonix 老会话没有 events 文件时删不掉）。
+    #[tokio::test]
+    async fn should_delete_sibling_files_and_skip_missing_ones() {
+        let dir = TempDir::new().unwrap();
+        let fixture = create_fixture(&dir, "20260101-abc.jsonl", Some("/projects/test"));
+        let events = dir.path().join("20260101-abc.events.jsonl");
+        std::fs::write(&events, "{}\n").unwrap();
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf()).with_delete(
+            TestDelete::StorageWithSiblings(vec![
+                ".events.jsonl",
+                ".jsonl.meta", // 故意不存在
+            ]),
+        );
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        manager.delete(&id).await.expect("delete should succeed");
+
+        assert!(!fixture.exists());
+        assert!(!events.exists(), "sibling event log must be removed too");
+    }
+
+    /// `Native` 委派：真跑一个**假二进制**，断言 argv 被如实送达且退出码 0 → 成功。
+    ///
+    /// 不真跑 codex / opencode（不可逆且 CI 没装）；这里用临时脚本记录 argv，
+    /// 与 pi 的 `command_capability_matches_each_transports_reality` 同一手法。
+    ///
+    /// 变异验证：把 `run_native_delete` 换成「直接按 `delete_targets` 删文件」→
+    /// argv 日志不存在 → 红。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn should_delegate_native_delete_to_the_declared_argv() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        create_fixture(&dir, "session-1.jsonl", Some("/projects/test"));
+
+        let fake = dir.path().join("fake-codex");
+        let log = dir.path().join("argv.log");
+        let script = format!(
+            "#!/bin/sh\nprintf '%s' \"$*\" > '{}'\nexit 0\n",
+            log.display()
+        );
+        std::fs::write(&fake, script).unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf()).with_delete(
+            TestDelete::Native(vec![
+                fake.to_string_lossy().to_string(),
+                "delete".to_string(),
+                "abc123".to_string(),
+            ]),
+        );
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        manager
+            .delete(&id)
+            .await
+            .expect("native delete should succeed");
+
+        assert_eq!(
+            std::fs::read_to_string(&log).expect("fake CLI must have been executed"),
+            "delete abc123",
+            "argv must reach the CLI unchanged (no shell re-quoting)"
+        );
+        assert!(manager.list(None, None).unwrap().is_empty());
+    }
+
+    /// `Native` 失败分支：进程起不来 → `AppError::Io`，且缓存**未**移除（AC7）。
+    ///
+    /// 变异验证：把 `Err(ExecError::Io(e))` 分支改成 `Ok(())`（或把失败吞掉）→ 红。
+    #[tokio::test]
+    async fn should_keep_cache_when_native_delete_cannot_start() {
+        let dir = TempDir::new().unwrap();
+        create_fixture(&dir, "session-1.jsonl", Some("/projects/test"));
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf()).with_delete(
+            TestDelete::Native(vec![
+                "definitely-not-a-real-binary-neeko-delete-test".to_string(),
+                "delete".to_string(),
+                "abc123".to_string(),
+            ]),
+        );
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        let err = manager
+            .delete(&id)
+            .await
+            .expect_err("must not fake success");
+        assert!(matches!(err, AppError::Io(_)), "expected Io, got {err:?}");
+        assert_eq!(
+            manager.list(None, None).unwrap().len(),
+            1,
+            "failure must not optimistically drop the row"
+        );
+    }
+
+    /// `Native` 非零退出 → `AppError::Agent` 且带 stderr 尾部（可归因）。
+    ///
+    /// 变异验证：把 `CommandFailed` 分支的 stderr 去掉 → 第二条断言红。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn should_report_stderr_tail_when_native_delete_exits_nonzero() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        create_fixture(&dir, "session-1.jsonl", Some("/projects/test"));
+
+        let fake = dir.path().join("fake-opencode");
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\necho 'no such session: abc123' >&2\nexit 7\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf()).with_delete(
+            TestDelete::Native(vec![
+                fake.to_string_lossy().to_string(),
+                "session".to_string(),
+            ]),
+        );
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        let err = manager
+            .delete(&id)
+            .await
+            .expect_err("nonzero exit is a failure");
+        match &err {
+            AppError::Agent(msg) => {
+                assert!(
+                    msg.contains("exit 7"),
+                    "message must carry the exit code: {msg}"
+                );
+                assert!(
+                    msg.contains("no such session: abc123"),
+                    "message must carry stderr: {msg}"
+                );
+            }
+            other => panic!("expected Agent error, got {other:?}"),
+        }
+        assert_eq!(manager.list(None, None).unwrap().len(), 1);
+    }
+
+    /// `Unsupported`：没有安全路径时明确拒绝，不猜、不降级成删文件。
+    ///
+    /// 变异验证：把默认 `delete_support` 改成 `Storage` → 本用例红。
+    #[tokio::test]
+    async fn should_reject_deletion_when_adapter_is_unsupported() {
+        let dir = TempDir::new().unwrap();
+        let fixture = create_fixture(&dir, "session-1.jsonl", Some("/projects/test"));
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        let err = manager
+            .delete(&id)
+            .await
+            .expect_err("unsupported must fail");
+        assert!(
+            matches!(err, AppError::Unsupported(_)),
+            "expected Unsupported, got {err:?}"
+        );
+        assert!(fixture.exists());
+    }
+
+    /// stderr 尾部按字符边界截断（不能把 UTF-8 切成半个字符）。
+    ///
+    /// 变异验证：把 `is_char_boundary` 循环删掉 → 中文用例 panic / 断言红。
+    #[test]
+    fn should_truncate_stderr_tail_on_char_boundary() {
+        let long = format!("{}{}", "x".repeat(500), "错误信息");
+        let tail = stderr_tail(long.as_bytes(), 8);
+        assert!(tail.starts_with('…'));
+        // 8 字节只能装下 2 个汉字：截断点必须往前退到字符边界，不能切断字符。
+        assert!(
+            tail.ends_with("信息"),
+            "tail must not split UTF-8: {tail:?}"
+        );
+        assert!(tail.len() <= 8 + '…'.len_utf8());
+
+        assert_eq!(stderr_tail(b"  boom  ", 400), "boom");
     }
 }

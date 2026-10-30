@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapter::{
+    AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
+};
 use crate::conversation::adapters::content_blocks::{extract_message_content, has_visible_text};
 use crate::conversation::adapters::{
     linearize_tree_entries, message_role, parse_timestamp, read_jsonl, CONVERSATION_ROLES,
@@ -216,6 +218,14 @@ impl AgentSessionAdapter for PiAdapter {
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec!["--session".into(), native_session_id.into()])
     }
+
+    /// Pi 无官方删除命令 ⇒ 删会话 jsonl 本身（默认 `delete_targets`）。
+    ///
+    /// **共享资产不删**：`~/.pi/agent/blobs/<sha>.png` 是内容寻址、跨会话共享的
+    /// 图片存储，删它会让其它会话的图片一起消失，因此不在删除单元内。
+    fn delete_support(&self) -> SessionDeleteSupport {
+        SessionDeleteSupport::Storage
+    }
 }
 
 #[cfg(test)]
@@ -409,6 +419,36 @@ mod tests {
 
         let id = PiAdapter.extract_session_id(&path);
         assert_eq!(id, Some(SESSION_ID.to_string()));
+    }
+
+    /// 删除单元 = 会话 jsonl 本身，且真实 pi 路径形态（`sessions/--<sanitized-cwd>--/…`）
+    /// 必须通过 `session_root` 的所有权判定 —— 那个 `--` 前缀目录是最容易被词法判定搞错的一层。
+    ///
+    /// 变异验证：把 `delete_support()` 改回默认 `Unsupported` → 第一条断言红。
+    #[test]
+    fn delete_unit_is_the_session_file_inside_the_session_root() {
+        use crate::conversation::adapter::{is_owned_path, SessionDeleteSupport};
+
+        let adapter = PiAdapter;
+        assert_eq!(adapter.delete_support(), SessionDeleteSupport::Storage);
+
+        let file = adapter
+            .session_root()
+            .join("--Users-tomgs-proj--")
+            .join("2026-10-30T01-58-39-172Z_01a18a87-d144-7518-a2bb-a149376aec48.jsonl");
+        assert_eq!(
+            adapter.delete_targets(&file, "01a18a87"),
+            vec![file.clone()]
+        );
+        assert!(is_owned_path(&file, &adapter.session_root()));
+        // 共享 blob 目录**不在** sessions 之下，因此永远过不了所有权判定（不会被删）。
+        let blob = adapter
+            .session_root()
+            .parent()
+            .expect("sessions has a parent")
+            .join("blobs")
+            .join("abc.png");
+        assert!(!is_owned_path(&blob, &adapter.session_root()));
     }
 
     #[test]

@@ -209,6 +209,44 @@ pub fn update_conversation(
     Ok(())
 }
 
+/// Delete one conversation by id (红线 6：只校验 + 调度).
+///
+/// **只收 id，不收路径**（R2.1）：目标路径由后端从自己的缓存解析，前端永远无法指定
+/// 要删哪个文件/目录——这是「任意文件删除」的唯一入口防线。
+///
+/// 失败不乐观：错误就原样回传（`NotFound` / `Unsupported` / `Agent(stderr)`），
+/// 只有成功后才刷新冷启动索引。
+#[tauri::command]
+pub async fn delete_conversation(
+    id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let id = id.trim();
+    if id.is_empty() {
+        return Err(AppError::InvalidInput(
+            "conversation id is required".to_string(),
+        ));
+    }
+
+    if let Err(e) = state.conversation_manager.delete(id).await {
+        // 删除失败必须留痕：前端只看到一句 toast，没有日志就无从判断是「路径被拒」
+        // 「文件已不存在」「CLI 非零退出」还是别的（2026-10-30 排查 pi 删除时就缺这一行）。
+        log::warn!("[delete_conversation] failed for {id}: {e}");
+        return Err(e);
+    }
+
+    // 成功也留痕：一次「点了没反应」的排查里，只有失败日志无法区分
+    // 「没走到后端」与「走到了但成功了」—— 后者在本机表现为列表没刷新。
+    log::info!("[delete_conversation] deleted {id}");
+
+    // 冷启动索引跟着缓存走（与 `update_conversation` 同一模式）。失败只告警：
+    // 磁盘已经删了，把一次索引写入失败报成「删除失败」才是误报。
+    if let Err(e) = state.conversation_manager.persist_disk_index() {
+        log::warn!("persist conversation disk index after delete failed: {e:#}");
+    }
+    Ok(())
+}
+
 /// Get the native CLI resume command for a conversation, if supported.
 #[tauri::command]
 pub fn get_resume_command(

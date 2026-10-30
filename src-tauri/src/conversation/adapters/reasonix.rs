@@ -28,7 +28,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapter::{
+    AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
+};
 use crate::conversation::adapters::{parse_timestamp, read_jsonl, saturating_count};
 use crate::conversation::normalize::recent_messages_from;
 use crate::conversation::text::strip_ansi;
@@ -479,6 +481,24 @@ impl AgentSessionAdapter for ReasonixAdapter {
                 format!("--resume={}", query),
             ])
         }
+    }
+
+    /// Reasonix 无官方删除命令 ⇒ 删主 jsonl 与其兄弟文件。
+    fn delete_support(&self) -> SessionDeleteSupport {
+        SessionDeleteSupport::Storage
+    }
+
+    /// 删除单元 = `<id>.jsonl` + `<id>.events.jsonl` + `<id>.jsonl.meta`。
+    ///
+    /// 三者都是这条会话独占、且**不共享**的存储（events 是多轮正文的唯一来源，
+    /// meta 是 reasonix 的列表元数据；只删主文件会留下一个会“复活”的孤儿）。
+    /// 缺失的兄弟文件由 manager 跳过（旧会话没有 events / meta 是常态）。
+    fn delete_targets(&self, file_path: &Path, _native_session_id: &str) -> Vec<PathBuf> {
+        vec![
+            file_path.to_path_buf(),
+            events_path_for(file_path),
+            meta_path_for(file_path),
+        ]
     }
 }
 

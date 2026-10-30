@@ -14,7 +14,7 @@
     "src/features/browser/hooks/useBrowserWebview.ts": 378,
     "src/features/connection/components/RemoteDialog.tsx": 732,
     "src/features/connection/components/WSLDialog.tsx": 614,
-    "src/features/conversation/components/ConversationPanel.tsx": 365,
+    "src/features/conversation/components/ConversationPanel.tsx": 339,
     "src/features/conversation/components/ConversationViewer.tsx": 566,
     "src/features/editor/hooks/useLspNavigation.ts": 342,
     "src/features/file/hooks/useFilePanelState.ts": 233,

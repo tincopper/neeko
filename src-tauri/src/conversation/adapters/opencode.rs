@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use rusqlite::OpenFlags;
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapter::{
+    AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
+};
 use crate::conversation::normalize::recent_messages_from;
 use crate::conversation::types::MessageBlock;
 
@@ -348,6 +350,28 @@ impl AgentSessionAdapter for OpenCodeAdapter {
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec!["--session".into(), native_session_id.into()])
+    }
+
+    /// 委派 `opencode session delete <id>`：SQLite 行 + 子会话级联由 opencode 自己处理。
+    ///
+    /// Neeko 读的就是同一个 `opencode*.db`（同一处存储）—— 这是可以委派的前提
+    /// （qoder 就是反例：CLI 用 `~/.qoder/`，Neeko 读 `~/.qodercli/projects/`）。
+    fn delete_support(&self) -> SessionDeleteSupport {
+        SessionDeleteSupport::Native
+    }
+
+    fn delete_command(
+        &self,
+        native_session_id: &str,
+        _project_path: Option<&str>,
+        _file_path: &Path,
+    ) -> Option<Vec<String>> {
+        Some(vec![
+            "opencode".to_string(),
+            "session".to_string(),
+            "delete".to_string(),
+            native_session_id.to_string(),
+        ])
     }
 }
 

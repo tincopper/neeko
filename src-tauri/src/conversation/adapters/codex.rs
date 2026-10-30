@@ -8,7 +8,9 @@ use std::time::SystemTime;
 use anyhow::{Context, Result};
 use regex::Regex;
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapter::{
+    AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
+};
 use crate::conversation::adapters::{parse_timestamp, read_jsonl, saturating_count};
 use crate::conversation::normalize::is_harness_injected_user_turn;
 use crate::conversation::normalize::recent_messages_from;
@@ -249,6 +251,38 @@ impl AgentSessionAdapter for CodexAdapter {
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec!["resume".to_string(), native_session_id.to_string()])
+    }
+
+    /// 委派 `codex delete <uuid>`：codex 自己维护 `~/.codex/sessions/**` 与
+    /// `session_index.jsonl`，绕过 CLI 直接删文件会留下陈旧索引（无报错）。
+    fn delete_support(&self) -> SessionDeleteSupport {
+        SessionDeleteSupport::Native
+    }
+
+    /// `codex delete --force <uuid>`。
+    ///
+    /// # `--force` 是必需的（2026-10-30 实测，由 CLI 自己指出）
+    ///
+    /// 无 `--force` 时 codex 拒绝在非交互环境删除：
+    /// `cannot confirm session deletion without an interactive terminal;
+    ///  rerun with --force and a session UUID` —— 我们是 headless 调用，
+    /// 没有 TTY 可确认，所以必须显式 `--force`（确认由 Neeko 的对话框负责）。
+    ///
+    /// `--force` 同时要求 `SESSION` 必须是 **UUID**（`codex delete --help`：
+    /// “Delete without prompting. SESSION must be a UUID”）—— 我们传的正是
+    /// `native_session_id`（从 `rollout-<ts>-<uuid>.jsonl` 提取的 UUID），符合要求。
+    fn delete_command(
+        &self,
+        native_session_id: &str,
+        _project_path: Option<&str>,
+        _file_path: &Path,
+    ) -> Option<Vec<String>> {
+        Some(vec![
+            "codex".to_string(),
+            "delete".to_string(),
+            "--force".to_string(),
+            native_session_id.to_string(),
+        ])
     }
 }
 
@@ -850,6 +884,37 @@ mod tests {
         let path = Path::new("other-file.jsonl");
         let id = CodexAdapter.extract_session_id(path);
         assert!(id.is_none());
+    }
+
+    /// **`--force` 是必需项**（2026-10-30 实测，原话来自 CLI）：
+    /// `cannot confirm session deletion without an interactive terminal;
+    ///  rerun with --force and a session UUID`。
+    ///
+    /// 我们是 headless 调用（没有 TTY 可供确认，确认由 Neeko 的对话框负责），
+    /// 少这个旗标 ⇒ 每条 codex 会话都删不掉，且错误只在用户点击时才暴露。
+    ///
+    /// 变异验证：删掉 `--force` → 本用例红。
+    #[test]
+    fn delete_command_forces_non_interactive_deletion() {
+        let argv = CodexAdapter
+            .delete_command(
+                "01a14431-5037-7e80-8342-361304911df2",
+                None,
+                Path::new("/home/u/.codex/sessions/2026/10/16/rollout-x.jsonl"),
+            )
+            .expect("codex is Native");
+        // 逐位断言而不是整体 `assert_eq!(argv, vec![...])`：整体比较的**字面量形状**
+        // 与实现相同，删掉实现里的那一行时测试里的期望值会被同样的改动顺手删掉 ——
+        // 变异测试就失效了（本用例第一版正是这样假绿）。逐位断言会让「少一个参数」
+        // 直接越界 panic。
+        assert_eq!(argv.len(), 4, "{argv:?}");
+        assert_eq!(argv[0], "codex");
+        assert_eq!(argv[1], "delete");
+        assert_eq!(
+            argv[2], "--force",
+            "--force 必须出现在位置参数之前，否则 codex 在非交互环境拒绝删除"
+        );
+        assert_eq!(argv[3], "01a14431-5037-7e80-8342-361304911df2");
     }
 
     #[test]

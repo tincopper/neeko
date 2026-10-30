@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 
-use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
+use crate::conversation::adapter::{
+    AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
+};
 use crate::conversation::adapters::content_blocks::{extract_message_content, has_visible_text};
 use crate::conversation::adapters::{
     linearize_tree_entries, message_role, parse_timestamp, read_jsonl, CONVERSATION_ROLES,
@@ -275,6 +277,11 @@ impl AgentSessionAdapter for OmpAdapter {
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec![format!("--resume={native_session_id}")])
+    }
+
+    /// OMP 无官方删除命令 ⇒ 删主会话 jsonl（附属 trace 子目录不在本期删除单元内）。
+    fn delete_support(&self) -> SessionDeleteSupport {
+        SessionDeleteSupport::Storage
     }
 }
 

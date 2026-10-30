@@ -327,6 +327,27 @@ pub fn read_jsonl_from_offset(
     Ok((entries, consumed))
 }
 
+/// Drop cached parse state for `path` (a session storage unit was deleted).
+///
+/// Needed in addition to the signature check: `source_signature` returns `None` for a
+/// missing file, but keeping the entry would still hold a full `ParsedMeta` (and its
+/// preview strings) for a conversation that no longer exists.
+pub fn invalidate_path(path: &Path) {
+    with_cache(|c| {
+        c.file_meta.remove(path);
+        c.jsonl.remove(path);
+    });
+}
+
+/// Drop every bulk snapshot (`opencode*.db` etc.).
+///
+/// Called after a `Native` delete: the agent's CLI rewrote its own store, and a
+/// delete does not necessarily change `(len, mtime)` in a way we can detect
+/// (WAL / page reuse), so trusting the fingerprint could resurrect the row.
+pub fn invalidate_bulk_sources() {
+    with_cache(|c| c.bulk_meta.clear());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,6 +465,63 @@ mod tests {
         let hit = get_cached_bulk_metas(&path, &sig).unwrap();
         assert_eq!(hit.len(), 1);
         assert_eq!(hit[0].0.native_session_id, "bulk-1");
+    }
+
+    /// 删除后必须能在进程内查不到：否则下次扫描可能命中旧快照把已删会话“复活”。
+    ///
+    /// 变异验证：把 `invalidate_path` 实现改成空操作 → 本用例红。
+    #[test]
+    fn should_forget_file_meta_and_jsonl_after_invalidate_path() {
+        reset_scan_parse_cache_for_tests();
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_path_buf();
+        let sig = source_signature(&path).unwrap();
+
+        let meta = ParsedMeta {
+            native_session_id: "gone".into(),
+            title: None,
+            first_user_message: None,
+            recent_messages: vec![],
+            model: None,
+            started_at: 0,
+            updated_at: 0,
+            message_count: 0,
+            project_path: None,
+        };
+        put_cached_file_meta(path.clone(), sig, meta);
+        assert!(get_cached_file_meta(&path, &sig).is_some());
+
+        invalidate_path(&path);
+
+        assert!(get_cached_file_meta(&path, &sig).is_none());
+    }
+
+    /// `Native` 删除后整库快照不再可信（WAL / 页复用可能不改 len+mtime）。
+    ///
+    /// 变异验证：把 `invalidate_bulk_sources` 实现改成空操作 → 本用例红。
+    #[test]
+    fn should_clear_bulk_snapshots_when_agent_cli_rewrote_its_store() {
+        reset_scan_parse_cache_for_tests();
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_path_buf();
+        let sig = source_signature(&path).unwrap();
+        let meta = ParsedMeta {
+            native_session_id: "s1".into(),
+            title: None,
+            first_user_message: None,
+            recent_messages: vec![],
+            model: None,
+            started_at: 0,
+            updated_at: 0,
+            message_count: 0,
+            project_path: None,
+        };
+        put_cached_bulk_metas(path.clone(), sig, vec![(meta, PathBuf::from("syn#s1"))]);
+        assert!(get_cached_bulk_metas(&path, &sig).is_some());
+
+        invalidate_bulk_sources();
+
+        assert!(get_cached_bulk_metas(&path, &sig).is_none());
     }
 
     #[test]
