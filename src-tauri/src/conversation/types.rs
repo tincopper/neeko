@@ -112,6 +112,53 @@ pub struct ConversationMessagePage {
     pub has_more: bool,
 }
 
+/// 工具调用定位（前端侧边栏回跳：`seq` 定位消息，`block_idx` 定位消息内块）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallRef {
+    /// 消息序号（树线性化序号，与 `ConversationMessage.seq` 对齐）
+    pub seq: u32,
+    /// 消息内的块下标
+    pub block_idx: u32,
+    /// 工具名
+    pub name: String,
+    /// 短摘要（路径 / 命令 / pattern 等，≤120 字符）
+    pub summary: String,
+}
+
+/// 会话正文统计（顶部信息条 + 工具调用侧边栏的数据源）。
+///
+/// 由 Rust 计算的意义：前端不需要为了「数一数有几个工具调用」而把整段会话读进内存
+/// （红线 4 的同一动机：载荷与常驻内存都要与实际展示量匹配）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationStats {
+    /// 正文消息总数（与正文视图条数一致）
+    pub total_messages: u32,
+    /// 工具调用总数
+    pub tool_calls: u32,
+    /// thinking 块总数
+    pub thinking_count: u32,
+    /// 出现过的工具名（去重，按首次出现顺序）
+    pub unique_tools: Vec<String>,
+    /// 工具调用清单（按出现顺序，供侧边栏渲染与回跳；超过上限时截断）
+    pub tool_call_list: Vec<ToolCallRef>,
+    /// 清单是否被截断（`tool_calls` 仍是真实总数）
+    pub tool_call_list_truncated: bool,
+}
+
+/// 会话内搜索命中（只回传定位与摘要，不回传正文）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSearchHit {
+    /// 命中消息序号（供前端按需加载定位页）
+    pub seq: u32,
+    /// 角色（user / assistant）
+    pub role: String,
+    /// 命中片段（前后各留少量上下文）
+    pub snippet: String,
+}
+
 /// 扫描报告
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

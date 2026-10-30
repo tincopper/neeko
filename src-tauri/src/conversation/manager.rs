@@ -9,10 +9,11 @@ use regex::Regex;
 use walkdir::WalkDir;
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage};
+use crate::conversation::adapters::saturating_count;
 use crate::conversation::normalize::{build_preview_messages, normalize_session_text, NormTarget};
 use crate::conversation::types::{
     ConversationListPage, ConversationMessage, ConversationMessagePage, ConversationMeta,
-    ScanReport,
+    ConversationSearchHit, ConversationStats, ScanReport, ToolCallRef,
 };
 
 /// 会话标题三优先级解析（供 `scan` 循环与单测复用）。
@@ -576,16 +577,74 @@ impl ConversationManager {
         offset: u32,
     ) -> Result<ConversationMessagePage> {
         let all = self.load_transcript(conversation_id)?;
-        let total = all.len();
-        let start = (offset as usize).min(total);
+        let start = (offset as usize).min(all.len());
         let end = page_end(&all, start);
-        Ok(ConversationMessagePage {
-            items: all[start..end].to_vec(),
-            total: saturating_u32(total),
-            offset: saturating_u32(start),
-            limit: saturating_u32(end - start),
-            has_more: end < total,
-        })
+        Ok(build_message_page(&all, start, end, end < all.len()))
+    }
+
+    /// 取「以尾部为锚」的一页正文：`offset_from_end` 表示跳过末尾多少条。
+    ///
+    /// 正文视图从最新消息开始看，所以首屏要的是尾页；`offset_from_end = 0` 即最后一页。
+    /// `has_more` 的语义随之变成「更早的方向还有」。
+    pub fn get_messages_page_from_end(
+        &self,
+        conversation_id: &str,
+        offset_from_end: u32,
+    ) -> Result<ConversationMessagePage> {
+        let all = self.load_transcript(conversation_id)?;
+        let end = all.len().saturating_sub(offset_from_end as usize);
+        let start = page_start_from_end(&all, end);
+        Ok(build_message_page(&all, start, end, start > 0))
+    }
+
+    /// 正文统计（工具调用清单 / thinking 计数）。由 Rust 计算，避免前端为计数持有全量正文。
+    pub fn conversation_stats(&self, conversation_id: &str) -> Result<ConversationStats> {
+        let all = self.load_transcript(conversation_id)?;
+        Ok(summarize_transcript(&all))
+    }
+
+    /// 正文内搜索：返回命中定位 + 片段（不返回正文，载荷与命中数成正比）。
+    pub fn search_messages(
+        &self,
+        conversation_id: &str,
+        query: &str,
+    ) -> Result<Vec<ConversationSearchHit>> {
+        /// 单次搜索最多返回的命中数（超出即截断，前端提示可继续输入缩小范围）。
+        const MAX_HITS: usize = 200;
+        /// 命中片段前后保留的字符数。
+        const SNIPPET_RADIUS: usize = 40;
+
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Ok(Vec::new());
+        }
+        // 大小写不敏感匹配必须直接在**原串**上做：`to_lowercase()` 可能改变字节长度（如 `İ`），
+        // 用它算出的偏移会让片段错位甚至切坏多字节字符。
+        let pattern = regex::RegexBuilder::new(&regex::escape(trimmed))
+            .case_insensitive(true)
+            .build()
+            .context("invalid search pattern")?;
+        let all = self.load_transcript(conversation_id)?;
+
+        let mut hits: Vec<ConversationSearchHit> = Vec::new();
+        for message in all.iter() {
+            if hits.len() >= MAX_HITS {
+                break;
+            }
+            if let Some(matched) = pattern.find(&message.content) {
+                hits.push(ConversationSearchHit {
+                    seq: message.seq,
+                    role: message.role.clone(),
+                    snippet: snippet_around(
+                        &message.content,
+                        matched.start(),
+                        matched.end() - matched.start(),
+                        SNIPPET_RADIUS,
+                    ),
+                });
+            }
+        }
+        Ok(hits)
     }
 
     /// 取（缓存的）完整正文。分页是传输边界，解析只做一次。
@@ -832,6 +891,132 @@ const MESSAGE_PAGE_BYTE_BUDGET: usize = 1_500_000;
 /// 单页条数上限：避免「极小消息」把单页条数拉爆（也限制前端单次渲染批次）。
 const MESSAGE_PAGE_MAX_ITEMS: usize = 800;
 
+/// 工具调用清单上限：清单随会话线性增长（每条约 60 字节），超出即截断；
+/// `tool_calls` 仍是真实总数，`tool_call_list_truncated` 告知前端（红线 4 的同一约束）。
+const MAX_TOOL_CALL_REFS: usize = 2000;
+
+/// 单页正文的装配（头分页 / 尾分页共用）。
+fn build_message_page(
+    all: &[ConversationMessage],
+    start: usize,
+    end: usize,
+    has_more: bool,
+) -> ConversationMessagePage {
+    ConversationMessagePage {
+        items: all[start..end].to_vec(),
+        total: saturating_count(all.len()),
+        offset: saturating_count(start),
+        limit: saturating_count(end - start),
+        has_more,
+    }
+}
+
+/// 正文统计（纯函数，便于直测）：工具调用 / thinking 计数 + 侧边栏清单。
+fn summarize_transcript(messages: &[ConversationMessage]) -> ConversationStats {
+    use crate::conversation::types::MessageBlock;
+
+    let mut tool_call_list: Vec<ToolCallRef> = Vec::new();
+    let mut tool_calls: u32 = 0;
+    let mut thinking_count: u32 = 0;
+    let mut unique_tools: Vec<String> = Vec::new();
+
+    for message in messages {
+        for (block_idx, block) in message.blocks.iter().enumerate() {
+            match block {
+                MessageBlock::ToolUse { name, input, .. } => {
+                    tool_calls += 1;
+                    if !unique_tools.iter().any(|known| known == name) {
+                        unique_tools.push(name.clone());
+                    }
+                    if tool_call_list.len() < MAX_TOOL_CALL_REFS {
+                        tool_call_list.push(ToolCallRef {
+                            seq: message.seq,
+                            block_idx: saturating_count(block_idx),
+                            name: name.clone(),
+                            summary: tool_call_summary(name, input),
+                        });
+                    }
+                }
+                MessageBlock::Thinking { .. } => thinking_count += 1,
+                _ => {}
+            }
+        }
+    }
+
+    ConversationStats {
+        total_messages: saturating_count(messages.len()),
+        tool_calls,
+        thinking_count,
+        unique_tools,
+        tool_call_list_truncated: tool_calls > saturating_count(tool_call_list.len()),
+        tool_call_list,
+    }
+}
+
+/// 计算「以 `end` 为右端」的一页起点：与 [`page_end`] 同构，方向相反，
+/// 同样保证至少 1 条（超大单条消息不会让 offset 卡死）。
+fn page_start_from_end(messages: &[ConversationMessage], end: usize) -> usize {
+    let end = end.min(messages.len());
+    let mut bytes = 0usize;
+    let mut start = end;
+    while start > 0 {
+        let index = start - 1;
+        if end - start >= MESSAGE_PAGE_MAX_ITEMS || bytes >= MESSAGE_PAGE_BYTE_BUDGET {
+            break;
+        }
+        bytes += serde_json::to_vec(&messages[index]).map_or(0, |v| v.len());
+        start = index;
+    }
+    start
+}
+
+/// 工具调用摘要：路径 / 命令 / pattern 优先，其余截断序列化（与前端
+/// `getToolSummary` 同一规则，两侧各自有测试；侧边栏用这份，块内渲染用前端那份）。
+fn tool_call_summary(name: &str, input: &serde_json::Value) -> String {
+    /// 摘要字符上限。
+    const SUMMARY_MAX_CHARS: usize = 120;
+
+    let pick = |keys: &[&str]| -> Option<String> {
+        keys.iter()
+            .find_map(|key| input.get(*key).and_then(|v| v.as_str()))
+            .map(|s| s.trim().to_string())
+    };
+    let picked = match name {
+        "Read" | "Write" | "Edit" | "LS" | "Cat" => pick(&["file_path", "path"]),
+        "Bash" => pick(&["command"]),
+        "Grep" | "Glob" | "GlobSearch" => pick(&["pattern"]),
+        _ => None,
+    };
+    let raw = picked.unwrap_or_else(|| {
+        serde_json::to_string(input)
+            .unwrap_or_default()
+            .chars()
+            .take(60)
+            .collect()
+    });
+    crate::conversation::text::truncate(&raw, SUMMARY_MAX_CHARS)
+}
+
+/// 命中片段：围绕命中位置取前后若干字符，折叠换行（供搜索列表展示）。
+fn snippet_around(content: &str, byte_idx: usize, needle_len: usize, radius: usize) -> String {
+    let chars_before: String = {
+        let prefix = content.get(..byte_idx).unwrap_or_default();
+        let mut chars: Vec<char> = prefix.chars().collect();
+        let skip = chars.len().saturating_sub(radius);
+        chars.drain(..skip);
+        chars.into_iter().collect()
+    };
+    let tail_start = content
+        .get(byte_idx + needle_len..)
+        .map(|rest| rest.chars().take(radius).collect::<String>())
+        .unwrap_or_default();
+    let needle = content
+        .get(byte_idx..byte_idx + needle_len)
+        .unwrap_or_default();
+    let snippet = format!("{chars_before}{needle}{tail_start}");
+    snippet.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// 会话文件指纹（长度 + 修改时间）。会话文件 append-only，靠这两项即可判定缓存失效。
 fn transcript_stamp(path: &std::path::Path) -> (u64, Option<std::time::SystemTime>) {
     match std::fs::metadata(path) {
@@ -839,11 +1024,6 @@ fn transcript_stamp(path: &std::path::Path) -> (u64, Option<std::time::SystemTim
         // 文件不可读时给一个必然不匹配的指纹：让缓存失效，由解析路径报出真实错误
         Err(_) => (u64::MAX, None),
     }
-}
-
-/// 条数 → u32（会话条数不可能接近 `u32::MAX`；显式饱和胜过 `as` 强转）。
-fn saturating_u32(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
 }
 
 /// 计算本页结束下标（`start..end` 即本页切片）。
@@ -1139,10 +1319,14 @@ mod tests {
                     .and_then(|s| s.as_u64())
                     .unwrap_or(seq as u64);
                 let seq_value = u32::try_from(raw_seq).expect("seq fits u32");
+                let blocks = entry
+                    .get("blocks")
+                    .and_then(|b| serde_json::from_value(b.clone()).ok())
+                    .unwrap_or_default();
                 messages.push(ParsedMessage {
                     role,
                     content,
-                    blocks: Vec::new(),
+                    blocks,
                     model: None,
                     timestamp,
                     seq: seq_value,
@@ -2185,6 +2369,212 @@ mod tests {
         path
     }
 
+    /// 工具调用清单有上限：计数保持精确，清单截断并打标（红线 4）。
+    #[test]
+    fn should_cap_tool_call_list_but_keep_exact_count() {
+        let mut blocks = Vec::new();
+        for i in 0..(MAX_TOOL_CALL_REFS + 5) {
+            blocks.push(
+                serde_json::from_value(serde_json::json!({
+                    "type": "toolUse",
+                    "id": format!("c{i}"),
+                    "name": "Bash",
+                    "input": { "command": "ls" }
+                }))
+                .expect("valid block"),
+            );
+        }
+        let messages = vec![ConversationMessage {
+            role: "assistant".into(),
+            content: "many tools".into(),
+            blocks,
+            model: None,
+            timestamp: 0,
+            seq: 0,
+        }];
+
+        let stats = summarize_transcript(&messages);
+        assert_eq!(stats.tool_calls as usize, MAX_TOOL_CALL_REFS + 5);
+        assert_eq!(stats.tool_call_list.len(), MAX_TOOL_CALL_REFS);
+        assert!(stats.tool_call_list_truncated);
+    }
+
+    /// 非 ASCII / 大小写混排时片段不能错位（`to_lowercase` 会改变字节长度）。
+    #[test]
+    fn should_snippet_non_ascii_matches_without_corruption() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("unicode.jsonl");
+        let body = [
+            r#"{"role":"user","content":"İstanbul 会话：请 ROTATE 这个密钥","timestamp":1}"#,
+            r#"{"role":"assistant","content":"已按 rotate 处理","timestamp":2}"#,
+        ]
+        .join("\n");
+        std::fs::write(&path, format!("{body}\n")).unwrap();
+
+        let manager = ConversationManager::new(vec![Box::new(TestAdapter::new(
+            "pi",
+            dir.path().to_path_buf(),
+        ))]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        let hits = manager.search_messages(&id, "rotate").unwrap();
+        assert_eq!(
+            hits.len(),
+            2,
+            "case-insensitive match on both turns: {hits:?}"
+        );
+        assert!(
+            hits[0].snippet.contains("ROTATE"),
+            "snippet={:?}",
+            hits[0].snippet
+        );
+        assert!(
+            hits[0].snippet.contains("İstanbul") || hits[0].snippet.contains("会话"),
+            "snippet must keep neighbouring text: {:?}",
+            hits[0].snippet
+        );
+    }
+
+    /// 尾页起点：方向相反、同样至少 1 条。
+    #[test]
+    fn should_compute_tail_page_start() {
+        let messages: Vec<ConversationMessage> = (0..900u32)
+            .map(|i| message_of(i, format!("m{i}")))
+            .collect();
+        assert_eq!(page_start_from_end(&messages, messages.len()), 100);
+        assert_eq!(page_start_from_end(&messages, 300), 0);
+        assert_eq!(page_start_from_end(&messages, 0), 0);
+
+        let huge = vec![message_of(0, "x".repeat(MESSAGE_PAGE_BYTE_BUDGET * 2))];
+        assert_eq!(page_start_from_end(&huge, 1), 0);
+    }
+
+    fn write_rich_fixture(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        let body = [
+            r#"{"role":"user","content":"please run the tests","timestamp":1700000000001}"#,
+            r#"{"role":"assistant","content":"running","timestamp":1700000000002,"blocks":[{"type":"thinking","thinking":"plan"},{"type":"toolUse","id":"c1","name":"Bash","input":{"command":"pnpm test"}}]}"#,
+            r#"{"role":"assistant","content":"also read","timestamp":1700000000003,"blocks":[{"type":"toolUse","id":"c2","name":"Read","input":{"file_path":"src/lib.rs"}}]}"#,
+            r#"{"role":"user","content":"thanks, run the tests again","timestamp":1700000000004}"#,
+        ]
+        .join("\n");
+        std::fs::write(&path, format!("{body}\n")).unwrap();
+        path
+    }
+
+    #[test]
+    fn should_report_stats_from_backend() {
+        let dir = TempDir::new().unwrap();
+        write_rich_fixture(dir.path(), "stats.jsonl");
+        let manager = ConversationManager::new(vec![Box::new(TestAdapter::new(
+            "pi",
+            dir.path().to_path_buf(),
+        ))]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        let stats = manager.conversation_stats(&id).unwrap();
+        assert_eq!(stats.total_messages, 4);
+        assert_eq!(stats.tool_calls, 2);
+        assert_eq!(stats.thinking_count, 1);
+        assert_eq!(
+            stats.unique_tools,
+            vec!["Bash".to_string(), "Read".to_string()]
+        );
+        assert_eq!(stats.tool_call_list[0].seq, 1);
+        assert_eq!(stats.tool_call_list[0].block_idx, 1);
+        assert_eq!(stats.tool_call_list[0].summary, "pnpm test");
+        assert_eq!(stats.tool_call_list[1].summary, "src/lib.rs");
+        assert!(!stats.tool_call_list_truncated);
+    }
+
+    #[test]
+    fn should_search_messages_without_returning_bodies() {
+        let dir = TempDir::new().unwrap();
+        write_rich_fixture(dir.path(), "search.jsonl");
+        let manager = ConversationManager::new(vec![Box::new(TestAdapter::new(
+            "pi",
+            dir.path().to_path_buf(),
+        ))]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        let hits = manager.search_messages(&id, "TESTS").unwrap();
+        assert_eq!(hits.len(), 2, "case-insensitive match on both user turns");
+        assert_eq!(hits[0].seq, 0);
+        assert_eq!(hits[1].seq, 3);
+        assert!(hits[0].snippet.contains("tests"));
+        assert!(hits[0].snippet.len() < 200, "snippet must stay short");
+
+        assert!(manager.search_messages(&id, "   ").unwrap().is_empty());
+        assert!(manager
+            .search_messages(&id, "no-such-text")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn should_summarise_tool_calls_like_the_frontend() {
+        let args = |value: serde_json::Value| value;
+        assert_eq!(
+            tool_call_summary("Read", &args(serde_json::json!({ "file_path": "a.rs" }))),
+            "a.rs"
+        );
+        assert_eq!(
+            tool_call_summary("Edit", &args(serde_json::json!({ "path": "b.rs" }))),
+            "b.rs"
+        );
+        assert_eq!(
+            tool_call_summary("Bash", &args(serde_json::json!({ "command": "pnpm test" }))),
+            "pnpm test"
+        );
+        assert_eq!(
+            tool_call_summary("Grep", &args(serde_json::json!({ "pattern": "useEffect" }))),
+            "useEffect"
+        );
+        assert_eq!(
+            tool_call_summary("CustomTool", &args(serde_json::json!({ "a": 1 }))),
+            r#"{"a":1}"#
+        );
+        // 超长摘要按字符边界截断（不 panic、不切坏 UTF-8）
+        let long = tool_call_summary(
+            "Bash",
+            &args(serde_json::json!({ "command": "x".repeat(500) })),
+        );
+        assert!(long.chars().count() <= 123, "got {long}");
+        assert!(long.ends_with("..."));
+    }
+
+    #[test]
+    fn should_page_from_the_tail() {
+        let dir = TempDir::new().unwrap();
+        write_fixture(dir.path(), "tail.jsonl", 900);
+        let manager = ConversationManager::new(vec![Box::new(TestAdapter::new(
+            "pi",
+            dir.path().to_path_buf(),
+        ))]);
+        manager.scan_all(None).unwrap();
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+
+        let tail = manager.get_messages_page_from_end(&id, 0).unwrap();
+        assert_eq!(tail.total, 900);
+        assert!(tail.has_more, "earlier messages still exist");
+        assert_eq!(
+            tail.items.last().map(|m| m.content.clone()),
+            Some("m899".to_string())
+        );
+
+        let earlier = manager
+            .get_messages_page_from_end(&id, u32::try_from(tail.items.len()).unwrap())
+            .unwrap();
+        assert_eq!(earlier.offset, 0);
+        assert!(!earlier.has_more);
+        // 两页拼起来正好覆盖全部，且无重叠
+        assert_eq!(earlier.items.len() + tail.items.len(), 900);
+        assert_eq!(earlier.items.last().map(|m| m.seq), Some(99));
+    }
+
     /// 红线 4 端到端：分页拼接 = 全量，且各项分页元信息自洽。
     #[test]
     fn should_page_messages_end_to_end() {
@@ -2287,7 +2677,7 @@ mod tests {
     /// 红线 4：单页条数上限守住传输边界。
     #[test]
     fn should_cap_page_by_item_limit() {
-        let count = saturating_u32(MESSAGE_PAGE_MAX_ITEMS) + 100;
+        let count = saturating_count(MESSAGE_PAGE_MAX_ITEMS) + 100;
         let messages: Vec<ConversationMessage> =
             (0..count).map(|i| message_of(i, format!("m{i}"))).collect();
         assert_eq!(page_end(&messages, 0), MESSAGE_PAGE_MAX_ITEMS);

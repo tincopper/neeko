@@ -189,10 +189,12 @@ macro_rules! neeko_invoke_handler {
             $crate::conversation::commands::scan_conversations,
             $crate::conversation::commands::list_conversations,
             $crate::conversation::commands::get_conversation_messages,
+            $crate::conversation::commands::get_conversation_stats,
+            $crate::conversation::commands::search_conversation_messages,
             $crate::conversation::commands::search_conversations,
             $crate::conversation::commands::update_conversation,
             $crate::conversation::commands::get_resume_command,
-            $crate::conversation::commands::export_conversation,
+            $crate::conversation::commands::copy_conversation_markdown,
             // ── agent chat ───────────────────────────────────────────────────
             $crate::agent::chat::commands::agent_stream,
             $crate::agent::chat::commands::agent_chat_open,

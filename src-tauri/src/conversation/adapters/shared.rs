@@ -21,6 +21,11 @@ pub(crate) fn message_role(entry: &serde_json::Value) -> Option<&str> {
     entry.pointer("/message/role").and_then(|v| v.as_str())
 }
 
+/// 条数 → u32（会话条数不可能接近 `u32::MAX`；显式饱和胜过 `as` 强转）。
+pub(crate) fn saturating_count(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
 /// 解析常见时间戳格式为 Unix 毫秒时间戳
 ///
 /// 支持：

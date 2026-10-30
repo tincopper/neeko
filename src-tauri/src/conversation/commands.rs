@@ -1,10 +1,12 @@
 use crate::conversation::manager::ScanProgressEvent;
 use crate::conversation::types::{
-    ConversationListPage, ConversationMessagePage, ConversationMeta, ScanReport,
+    ConversationListPage, ConversationMessagePage, ConversationMeta, ConversationSearchHit,
+    ConversationStats, ScanReport,
 };
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 /// Resolve agent ids that should participate in a full multi-agent scan.
 ///
@@ -124,14 +126,48 @@ pub fn list_conversations(
 pub async fn get_conversation_messages(
     id: String,
     offset: Option<u32>,
+    from_end: Option<bool>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<ConversationMessagePage, AppError> {
     // 解析要读整份会话文件（实测大会话约 0.5s）：异步命令 + block_in_place 把它挪出
     // 主线程，避免打开大会话时卡住 UI 事件循环（红线 3 的同一动机）。
     tokio::task::block_in_place(|| {
+        let manager = &state.conversation_manager;
+        let offset = offset.unwrap_or(0);
+        if from_end.unwrap_or(false) {
+            manager.get_messages_page_from_end(&id, offset)
+        } else {
+            manager.get_messages_page(&id, offset)
+        }
+        .map_err(AppError::from)
+    })
+}
+
+/// 正文统计（工具调用清单 / thinking 计数），避免前端为计数持有全量正文。
+#[tauri::command]
+pub async fn get_conversation_stats(
+    id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<ConversationStats, AppError> {
+    tokio::task::block_in_place(|| {
         state
             .conversation_manager
-            .get_messages_page(&id, offset.unwrap_or(0))
+            .conversation_stats(&id)
+            .map_err(AppError::from)
+    })
+}
+
+/// 正文内搜索：只回传命中定位与片段（分页视图按 seq 加载定位页）。
+#[tauri::command]
+pub async fn search_conversation_messages(
+    id: String,
+    query: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<ConversationSearchHit>, AppError> {
+    tokio::task::block_in_place(|| {
+        state
+            .conversation_manager
+            .search_messages(&id, &query)
             .map_err(AppError::from)
     })
 }
@@ -186,10 +222,24 @@ pub fn get_resume_command(
 }
 
 /// Export a conversation as Markdown.
+/// 把整段会话以 Markdown 直接写入系统剪贴板（红线 4：不经 IPC 回传正文）。
+///
+/// 旧实现把 Markdown 字符串回传给前端再写剪贴板，大会话相当于一次数 MB 的 IPC 载荷。
 #[tauri::command]
-pub fn export_conversation(id: String, state: State<AppStateWrapper>) -> Result<String, AppError> {
-    state
-        .conversation_manager
-        .export_markdown(&id)
-        .map_err(AppError::from)
+pub async fn copy_conversation_markdown(
+    id: String,
+    app: AppHandle,
+    state: State<'_, AppStateWrapper>,
+) -> Result<u32, AppError> {
+    let markdown = tokio::task::block_in_place(|| {
+        state
+            .conversation_manager
+            .export_markdown(&id)
+            .map_err(AppError::from)
+    })?;
+    let chars = u32::try_from(markdown.chars().count()).unwrap_or(u32::MAX);
+    app.clipboard()
+        .write_text(markdown)
+        .map_err(|e| AppError::Unknown(format!("clipboard write failed: {e}")))?;
+    Ok(chars)
 }
