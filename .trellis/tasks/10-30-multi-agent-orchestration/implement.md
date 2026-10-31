@@ -266,15 +266,77 @@
       `spawn_blocking`、通知在前（装配规则收在 `compose_consumers`，可测）
 - [x] 团队侧 fail-open：`team::deliver::observe` 只记日志、不返回 `Result`、不 `panic`
 
-### 2.5b（接线段，下一步）
+### 2.5c 接线段的六个前置结论（2026-10-31 复审取证，**需拍板 C1 / C3 / C5**）
 
-- [ ] 执行层消费 `MemberCreated`：`issue_token` → 写 MCP 配置 → 起 PTY → 注入 env
-      （env = `identity::member_env`，注入点 `terminal/manager.rs` 的 env 组装点）
-- [ ] 团队 MCP 独立 listener（组合根 bind + 自己的 `AuthGate::with_tokens` +
-      从成员行组装 `principals`，**过滤空 hash**）—— 目前 `server::route_group` 已就绪但
-      **组合根尚未 mount**，所以工具面对任何 CLI 都还不可见
-- [ ] sentinel 扫描器包装 `services.rs` 的 `flush` 闭包（**不碰 `pump.rs`**）
-- [ ] `team_send` 的原子 send+wait（AC14）
+> 这六条都是**实测代码之后**才看清的：每条都意味着「按原计划写会写错」，不是风格偏好。
+> 括号里是取证位置。
+
+**C1 队长从哪来 —— 原形态技术上不成立**
+
+`create_team` 在 `src-tauri/src` 里**没有任何生产调用方**（只有 app_state 的测试），也没有
+任何 team 相关的 `#[tauri::command]`；而 CLI 的 MCP 配置是**启动时读取**的 —— 一个已经在跑的
+CLI 进程无法被塞进新的 MCP server（`grok mcp add` / `--mcp-config` 都只在启动期生效）。
+
+⇒ 「把已在跑的会话提升为队长」做不到。两个候选：
+
+| 方案 | 代价 |
+| --- | --- |
+| **A（建议）** 队长也由 Neeko 起 PTY，"提升" = UI 上「以队长身份开会话」 | 与成员同一条执行路径，promote 代码量为 0；代价是队长会话不是用户原来那个 |
+| B 把 `neeko-team` 预置进全局 MCP 配置，token 用 hooks 的进程 token | 任何持有 hook token 的进程都能当队长 —— design §3.1b 明令禁止 |
+
+**C2 MCP 注入是**三**档，不是两档**（`agent/team/admission.rs` 的 `McpInjection`）
+
+`Argv` 只对 `--mcp-config <json>` 的三家成立（claude / codebuddy / qoder）。grok / opencode / pi 是
+**一次性子命令**（`grok mcp add --transport http …`）写自己的配置，codex 是 TOML + `-c` 覆盖。
+现在表里 `grok = Argv` ⇒ 执行层会传一个它不认的参数：**成员起得来、tool 面静默不可见**。
+
+⇒ `McpInjection` 扩为 `Argv | Subcommand | ConfigFile | None`；v1 只实现 `Argv`，其余档在
+`team_spawn` 明确 `Unsupported` + 可读理由（红线 14：别声明用不了的能力）。
+
+**C3 `ConfigFile` 注入会污染用户配置文件**（`agent/resource_deployer.rs:379` `merge_mcp_json`）
+
+`deploy_mcp` 直接 merge 进用户的 `~/.claude/settings.json` 之类；而 design §5.5 已记：claude 的
+`DeploySpec.mcp_config` 路径**是错的**（MCP 实际在 `~/.claude.json → projects[].mcpServers`）。
+
+⇒ v1 不碰用户配置文件。`ConfigFile` / `Subcommand` 档与「纠正 `DeploySpec` 路径」单独立项，
+且必须先有**备份 / 幂等 / 拆除**三件套。
+
+**C4 sentinel 的四条接受条件没有数据模型**（design §5.7 vs `agent/team/types.rs:157`）
+
+§5.7 要求「nonce 绑定 team/member/task/attempt」与「executionId 幂等」，但 `TeamTask` **没有**这两个
+字段，派活时也没有注入 nonce 的路径。扫描器（`team/sentinel.rs`，纯函数，已测）算出来的 nonce
+无处校验 ⇒ 接线会得到一个「永远丢包」的通道。
+
+⇒ sentinel 接线排到 **P3.5（`neeko-team` skill 部署）之后**，先落 `TeamTask.nonce` +
+`team_execution` 表（迁移 v15）。
+
+**C5 tier B/C 成员无 MCP 面（`channel = None`，omp / reasonix）收不到任务**
+
+`has_mcp() == false` 的成员没有任何投递通道（`Pty` 通道也还没落），spawn 出来只会是个
+「花名册里能看见、永远不动」的进程。
+
+⇒ 建议 v1 `team_spawn` 对 `has_mcp() == false` 返回 `Unsupported`（理由可读），
+等 `Pty` 投递落地再放开 —— 现在的测试 `tier_b_agent_has_no_mcp_channel` 断言的是"能建"，届时同步改。
+
+**C6 `terminal` 没有 env 参数**（`terminal/manager.rs:91`）
+
+design §5.1 说"不需要新抽象"，实测**不成立**：`create_session(cwd, cols, rows, shell_override,
+command, app_handle)` 没有 env 位，而成员身份全在 env 里。
+
+⇒ `create_session` 收一个**不透明**的 `env: &[(String, String)]`（terminal 域不认识 team 词汇，
+只做透传）；env 的**装配**留在 `identity::member_env`（纯函数，可测）。PTY 侧不可单测
+（需 `AppHandle`），由 `check_unit_tests_spawn_real_binaries` 的既定口径兜底：装配测纯函数，
+真实起进程靠集成 / 手测。
+
+#### 建议落地顺序（拍板后即可开工）
+
+1. `terminal` env 透传（C6）→ `agent/team/execution.rs`：`SpawnPlan` 纯计划层（cwd / env / argv，
+   仅 `Argv` 档）→ `team_spawn` 对 `Subcommand`/`ConfigFile`/`None` 明确 `Unsupported`（C2/C5）
+2. 团队 MCP listener mount：独立 loopback + 自己的 `AuthGate::with_tokens` + 从成员行组装
+   `principals`（**过滤空 hash**）—— `server::route_group` 已就绪，缺的只是组合根那 20 行
+3. 队长 PTY 启动（C1 方案 A）：一个命令 / UI 入口，复用第 1 步的 `SpawnPlan`
+4. `Pty` 投递 + `team_send` 原子 send+wait（AC14 的「text 与 CR 分两次写入」）
+5. sentinel 接线（C4 的模型 + 迁移先落地）
 
 ### 2.5 `team_spawn` 的准入校验（原始清单，已被 2.5a/b 取代）
 
