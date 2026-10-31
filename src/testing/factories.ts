@@ -6,6 +6,7 @@ import type {
   FileChange,
   FileNode,
   ManagedSkillDto,
+  LaunchableAgent,
   MemberStatusView,
   TagGroup,
   TaskCard,
@@ -213,4 +214,17 @@ export function createTeamSession(overrides?: Partial<TeamSession>): TeamSession
     endpointUrl: 'http://127.0.0.1:0/mcp',
     ...overrides,
   };
+}
+
+/**
+ * `team_launchable_agents` 的一行夹具（默认**可启动**）。
+ *
+ * 默认 `refusal: null` 是有意为之：绝大多数用例关心的是「可启动」那条路径，
+ * 被拒的行必须在用例里**显式**写出来 —— 这样「忘了设 refusal」不会变成
+ * 「以为测了拒绝路径、其实测的是正常路径」。
+ */
+export function createLaunchableAgent(
+  overrides: Partial<LaunchableAgent> & Pick<LaunchableAgent, 'agentId'>,
+): LaunchableAgent {
+  return { refusal: null, ...overrides };
 }

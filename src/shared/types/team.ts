@@ -142,6 +142,27 @@ export interface TeamSnapshot {
   tasksTruncated: boolean;
 }
 
+/**
+ * 一个 CLI 的**启动可行性**（`team_launchable_agents`，真相源是
+ * `src-tauri/src/agent/team/admission.rs` 的 `LaunchableAgent` / `launch_refusal`）。
+ *
+ * 为什么它是数据而不是 UI 的判断：
+ *
+ * - 「能不能起来」是三个输入的函数（技能面 / MCP 注入档 / 凭证路），其中两个今天还在变；
+ * - 它与 `team_spawn` / `start_team_session` 的拒绝**同一份判据**。前端另写一份
+ *   （哪怕是「`enabled` 且有 `command`」这种看起来最无害的筛法）必然漂移，
+ *   而漂移的表现是「用户点到必然失败的按钮」或「明明能跑的成员被置灰」。
+ *
+ * 覆盖准入表里的**每个** CLI，包括不在表里的（`dsh` / 用户自定义）—— 后者也有
+ * `refusal`，内容是「不在准入表，已准入的是哪些」。
+ */
+export interface LaunchableAgent {
+  /** `AgentConfig.id`。 */
+  agentId: string;
+  /** `null` = 现在能拉起队长/成员；`Some(理由)` = 置灰理由（人读，已含注入方式 / 缺什么）。 */
+  refusal: string | null;
+}
+
 /** 团队变更事件（`AGENT_TEAM_EVENT`）的载荷：**失效脉冲，只有代数**。 */
 export interface TeamPulse {
   /** 写之后的团队代数（单调递增）。它不含团队 id —— 触发器里不放语义。 */

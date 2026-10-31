@@ -2,16 +2,23 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import { AGENT_TEAM_EVENT } from '@/shared/events';
-import type { TaskDetail, TeamPulse, TeamSession, TeamSnapshot } from '@/shared/types/team';
+import type {
+  LaunchableAgent,
+  TaskDetail,
+  TeamPulse,
+  TeamSession,
+  TeamSnapshot,
+} from '@/shared/types/team';
 
 /**
  * Agent Team 域的 Tauri 命令 wrapper。
  *
- * 三条命令的**真相源**是 `src-tauri/src/agent/team/commands.rs`（入参名、返回形状）；
+ * 四条命令的**真相源**是 `src-tauri/src/agent/team/commands.rs`（入参名、返回形状）；
  * 两条读命令的区别是红线 4 的结构性落点：
  *
  * | wrapper | 命令 | 载荷 |
  * | --- | --- | --- |
+ * | [`fetchLaunchableAgents`] | `team_launchable_agents` | 每个 CLI 一条 `{ agentId, refusal }`（面板置灰依据）|
  * | [`fetchTeamSnapshot`] | `team_snapshot` | 团队 + 花名册 + 任务板列（**无 task body**）|
  * | [`fetchTaskDetail`] | `team_task_detail` | 列视图 + 派活正文（**点开才拉**）|
  *
@@ -36,6 +43,18 @@ export function startTeamSession(params: StartTeamSessionParams): Promise<TeamSe
     projectPath: params.projectPath,
     name: params.name ?? null,
   });
+}
+
+/**
+ * 面板的**能力面**：每个可选 CLI 一条 `{ agentId, refusal }`。
+ *
+ * 真相源是 `src-tauri/src/agent/team/admission.rs` 的 `launchable_agents()`（准入表 ×
+ * `launch_refusal`），与 `team_spawn` / `start_team_session` 的拒绝**同一份判据**。
+ * 因此队长入口的候选**只能**来自这个返回值 —— 前端自己筛一遍（`enabled` + 有 `command`）
+ * 就是第二套判据，后端判据一变，面板还在按老规则放行。
+ */
+export function fetchLaunchableAgents(): Promise<LaunchableAgent[]> {
+  return invoke<LaunchableAgent[]>('team_launchable_agents');
 }
 
 /** 拉一次团队快照（面板的唯一数据源；无 task body）。 */

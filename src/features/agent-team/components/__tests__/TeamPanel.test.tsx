@@ -8,6 +8,7 @@ import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 import {
   createAgent,
+  createLaunchableAgent,
   createMemberStatus,
   createProject,
   createTaskCard,
@@ -82,6 +83,12 @@ describe('TeamPanel — 空态队长入口', () => {
     const session = createTeamSession();
     const snapshot = createTeamSnapshot();
     mockInvoke.mockImplementation(async (cmd) => {
+      // 候选清单由后端给（`team_launchable_agents`）—— 面板不再自己筛 agent 配置。
+      if (cmd === 'team_launchable_agents')
+        return [
+          createLaunchableAgent({ agentId: 'claude-code' }),
+          createLaunchableAgent({ agentId: 'codex' }),
+        ];
       if (cmd === 'start_team_session') return session;
       if (cmd === 'team_snapshot') return snapshot;
       return undefined;
@@ -91,12 +98,15 @@ describe('TeamPanel — 空态队长入口', () => {
     const onOpenLeaderTerminal = vi.fn();
     render(<TeamPanel onShowToast={onShowToast} onOpenLeaderTerminal={onOpenLeaderTerminal} />);
 
-    // 候选只列 enabled 且有 command 的 agent（禁用的不出现）
+    // 候选只来自后端清单：`agentStore` 里那个禁用且不在清单里的 agent 不会出现在面板上。
+    await screen.findByRole('button', { name: /Claude Code/ });
     expect(screen.queryByRole('button', { name: /Disabled Agent/ })).not.toBeInTheDocument();
     expect(screen.getByText(WORKTREE_PATH)).toBeInTheDocument();
 
     // 选第二个候选：证明 agentId 来自用户选择，而不是硬编码第一个
-    fireEvent.click(screen.getByRole('button', { name: /Codex/ }));
+    const codexRow = await screen.findByRole('button', { name: /Codex/ });
+    fireEvent.click(codexRow);
+    await waitFor(() => expect(codexRow).toHaveAttribute('aria-pressed', 'true'));
     fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
 
     await waitFor(() =>
@@ -122,11 +132,16 @@ describe('TeamPanel — 空态队长入口', () => {
 
   it('失败时显示后端拒绝原因原文（不改写、不吞掉）', async () => {
     setActiveProject();
-    mockInvoke.mockRejectedValueOnce(
-      'Unsupported: agent `gemini` cannot reach the team tool surface',
-    );
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_launchable_agents') return [createLaunchableAgent({ agentId: 'gemini' })];
+      // 准入在 `start_team_session` 里才判（清单说能起，也可能连不上工具面）。
+      if (cmd === 'start_team_session')
+        throw 'Unsupported: agent `gemini` cannot reach the team tool surface';
+      return undefined;
+    });
 
     render(<TeamPanel />);
+    await screen.findByRole('button', { name: /Gemini|gemini/ });
     fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
 
     const alert = await screen.findByRole('alert');
