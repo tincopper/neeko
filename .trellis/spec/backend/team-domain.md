@@ -98,6 +98,11 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 - `unverified` 字段是**诚实面**：B 级证据（配置已装、未跑一轮）必须原样回给队长。
 - `McpTransport` 的变体集合 = **本仓已实现的传输集合**。加变体必须与它的 bridge 同一个 diff，
   否则 `has_mcp()` 会把一条发不进去的配置宣传成 `channel = Mcp`。
+- `McpInjection` 三档的区别是**生效时机**，不是便利性：`Argv` = 启动参数（本次启动生效，
+  claude-code / codebuddy / qoder）、`Subcommand` = 该 CLI 自己的 `mcp add`（写配置、下次启动生效，
+  grok / codex / opencode / pi）、`ConfigFile` = 直接改配置文件（降级兜底，gemini / reasonix）。
+  把「子命令写配置」记成 `Argv` 的后果是执行层传一个 CLI 不认的启动参数 —— **成员起得来，
+  MCP 面静默不可见**。代码侧目前只实现 `Argv`，其余两档由执行层明确拒绝。
 - 准入表与 `builtin_configs()` 是两个真相源，中间只有一条机器桥：
   `every_admitted_agent_has_an_agent_config`（`dsh` 被拒的理由正是「没有 `AgentConfig`」）。
 

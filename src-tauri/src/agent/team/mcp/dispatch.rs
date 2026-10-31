@@ -2412,7 +2412,10 @@ mod tests {
             ResultChannel::Sentinel,
             "但它报不上来"
         );
-        assert_eq!(member.mcp_injection, McpInjection::Argv);
+        // grok 的注入方式是 `grok mcp add` 子命令（不是启动参数）—— 档位与注入方式是**两列**，
+        // 不能互相推。写错这一列的后果是执行层给它传一个它不认的启动参数：
+        // 成员起得来、tool 面静默不可见。
+        assert_eq!(member.mcp_injection, McpInjection::Subcommand);
         // 传输仍然在准入表里（= 执行层能拿到“怎么发”的全部信息）。
         assert_eq!(
             admission_for("grok").unwrap().transport,

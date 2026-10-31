@@ -172,7 +172,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
     AgentAdmission {
         agent_id: "codex",
         hooks: true,
-        mcp_injection: McpInjection::ConfigFile,
+        mcp_injection: McpInjection::Subcommand,
         transport: Some(McpTransport::Http),
         bypass_args: &["--dangerously-bypass-approvals-and-sandbox"],
         unverified: &[
@@ -194,7 +194,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
     AgentAdmission {
         agent_id: "grok",
         hooks: false,
-        mcp_injection: McpInjection::Argv,
+        mcp_injection: McpInjection::Subcommand,
         transport: Some(McpTransport::Http),
         bypass_args: &["--always-approve"],
         unverified: &[
@@ -216,7 +216,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
     AgentAdmission {
         agent_id: "opencode",
         hooks: true,
-        mcp_injection: McpInjection::ConfigFile,
+        mcp_injection: McpInjection::Subcommand,
         transport: Some(McpTransport::Http),
         bypass_args: &["--auto"],
         unverified: &[
@@ -227,7 +227,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
     AgentAdmission {
         agent_id: "pi",
         hooks: true,
-        mcp_injection: McpInjection::ConfigFile,
+        mcp_injection: McpInjection::Subcommand,
         transport: Some(McpTransport::Http),
         bypass_args: &["--approve"],
         unverified: &[
@@ -412,7 +412,7 @@ mod tests {
             (
                 "codex",
                 true,
-                McpInjection::ConfigFile,
+                McpInjection::Subcommand,
                 Some(McpTransport::Http),
                 &["--dangerously-bypass-approvals-and-sandbox"],
             ),
@@ -426,7 +426,7 @@ mod tests {
             (
                 "grok",
                 false,
-                McpInjection::Argv,
+                McpInjection::Subcommand,
                 Some(McpTransport::Http),
                 &["--always-approve"],
             ),
@@ -434,14 +434,14 @@ mod tests {
             (
                 "opencode",
                 true,
-                McpInjection::ConfigFile,
+                McpInjection::Subcommand,
                 Some(McpTransport::Http),
                 &["--auto"],
             ),
             (
                 "pi",
                 true,
-                McpInjection::ConfigFile,
+                McpInjection::Subcommand,
                 Some(McpTransport::Http),
                 &["--approve"],
             ),

@@ -278,12 +278,25 @@ pub enum ApprovalPolicy {
 }
 
 /// MCP 配置怎么塞给这个 CLI —— P0 实测得出，属插件数据（红线 15）。
+///
+/// # 三档的区别是**什么时候**生效，不是“哪种更方便”
+///
+/// | 档 | 生效时机 | 典型 CLI |
+/// | --- | --- | --- |
+/// | [`McpInjection::Argv`] | **本次启动**（`--mcp-config <json>`） | claude-code / codebuddy / qoder |
+/// | [`McpInjection::Subcommand`] | **一次性的 `mcp add` 子命令**，写进它自己的配置 | grok / opencode / pi |
+/// | [`McpInjection::ConfigFile`] | 直接改它的配置文件（`DeploySpec.mcp_config`） | codex（TOML）/ gemini / reasonix |
+///
+/// 把「子命令写配置」归到 `Argv` 会让执行层给 CLI 传一个它不认的启动参数：**成员起得来，
+/// MCP 面却静默不可见**（那就是本轮复审从 `research/admission-matrix.md` 里纠出来的错）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum McpInjection {
-    /// 启动参数注入（claude / codebuddy / qoder 实测支持）。
+    /// 启动参数注入（含 MCP 配置的 JSON，**本次启动**生效）。
     Argv,
-    /// 写配置文件（`Argv` 不支持时的降级）。
+    /// 用该 CLI 自己的 `mcp add` 子命令写配置（**下一次启动**生效）。
+    Subcommand,
+    /// 直接写它的配置文件（`Argv` / `Subcommand` 都不支持时的降级）。
     ConfigFile,
     /// 没有 MCP 表面。
     None,
@@ -398,6 +411,7 @@ mod tests {
         roundtrip(ApprovalPolicy::Queue);
         roundtrip(ApprovalPolicy::Bypass);
         roundtrip(McpInjection::Argv);
+        roundtrip(McpInjection::Subcommand);
         roundtrip(McpInjection::ConfigFile);
         roundtrip(McpInjection::None);
         roundtrip(MemberSignal::TurnCompleted);
