@@ -53,6 +53,27 @@ pub struct AppStateWrapper {
     /// Shares the pool with `library_store` on purpose: one pool per database
     /// file, so there is a single owner for the handle.
     pub cache_store: Arc<crate::common::cache::CacheStore>,
+    /// 团队域管理器（团队 / 成员 / 任务板 / 租约 / 审计的唯一写入口）。
+    ///
+    /// 与 `cache_store` 同理**共享** `library_store` 的池：一个数据库一个池
+    /// （[`library::LibraryStore::with_pool`] 的注释已钉住这条），而且迁移链
+    /// （含 v14 的团队建表）只在那个入口跑过一次。
+    ///
+    /// 因果链（换池之前先读完这条）：`app/boot.rs` 的 `open_pool` →
+    /// `LibraryStore::with_pool` → `common::db::run_migrations` →
+    /// `migrate_step(13)` → [`crate::agent::team::store::v13_to_v14`]。
+    /// [`crate::agent::team::TeamStore::with_pool`] **自己不起池、也不跑迁移**（它是
+    /// `const fn`），文档写明的唯一前置条件就是「调用方已在这个池上跑过迁移链」——
+    /// 换一个池的后果不是慢，而是每一条团队查询都以 `no such table: team` 失败。
+    ///
+    /// # 构造必须走 `load`（hydrate）而不是 `new`
+    ///
+    /// 库是**真相源**，内存镜像是**缓存** —— 所以「缓存初始化」是启动的硬步骤，不是可选优化。
+    /// [`crate::agent::team::TeamManager::new`] 给的是空镜像，第二次启动起 `team()` /
+    /// `member()` 恒 `None`，而 `add_member` 的团队存在性判据读的正是空镜像（于是对一个库里
+    /// 真实存在的团队报 `NotFound`）。机器判据是
+    /// `a_restart_hydrates_the_team_domain_from_the_database`（本文件 `tests`）。
+    pub team_manager: Arc<crate::agent::team::TeamManager>,
     /// Language Server Protocol session manager.
     pub lsp_manager: Arc<crate::lsp::LspManager>,
     /// 应用级通知中心（业务无关裁决+投递；业务域单向依赖其门面，design.md T4/D6）。
@@ -410,6 +431,17 @@ impl AppStateWrapper {
             cache_store: Arc::new(crate::common::cache::CacheStore::with_pool(
                 library_store.pool().clone(),
             )),
+            // 同上：池在 `library_store` 里已经跑过迁移链（含 v14 的团队建表），
+            // 这里只借用同一个池（字段文档记着整条因果链；"借池不借迁移" = `no such table`）。
+            //
+            // `load` 而不是 `new`：它与 `new` 的唯一区别就是多一步 hydrate，而团队域
+            // 的内存镜像就是库的缓存。用 `new` 会得到「库里有、内存里没有」的第二个真相源。
+            team_manager: Arc::new(
+                crate::agent::team::TeamManager::load(crate::agent::team::TeamStore::with_pool(
+                    library_store.pool().clone(),
+                ))
+                .expect("Failed to hydrate the team manager from the library pool"),
+            ),
             library_store,
             lsp_manager,
             dap_manager,
@@ -462,6 +494,8 @@ fn agent_manager_with_overrides(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::team::fixtures::{fixture_member, fixture_team, TEAM, W1};
+    use crate::agent::team::types::{MemberState, TeamState};
     use crate::common::testing::isolated_state;
 
     #[test]
@@ -475,6 +509,130 @@ mod tests {
         assert!(
             matches!(err, AppError::InvalidInput(ref m) if m == "Invalid project id"),
             "expected InvalidInput(\"Invalid project id\"), got {err:?}"
+        );
+    }
+
+    /// 不变量：`isolated_state` 的池上**确实跑过** v14 的团队建表。
+    ///
+    /// [`crate::agent::team::TeamStore::with_pool`] 是 `const fn`，它**不跑迁移** ——
+    /// 本用例是那条前置条件的机器判据：表若不在共享池上，第一次团队写就会以
+    /// `no such table: team` 失败。“组合根借了池却没借到迁移后的池” 是这条的失败形态。
+    #[test]
+    fn team_manager_is_wired_on_a_v14_migrated_pool() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+        state
+            .team_manager
+            .create_team(fixture_team(TEAM))
+            .expect("create_team 必须成功：v14 表缺失时这里是 `no such table: team`");
+        state
+            .team_manager
+            .add_member(fixture_member(W1, TEAM))
+            .expect("add_member 必须成功：成员表同属 v14");
+        assert_eq!(
+            state.team_manager.member(W1).map(|m| m.state),
+            Some(MemberState::Spawned),
+            "写入必须落到同一个管理器镜像里（否则第二份真相源）"
+        );
+    }
+
+    /// 夹具：在**同一个库文件**上组一份 `AppStateWrapper`（= 模拟一次进程启动）。
+    fn state_on_db(db: &std::path::Path, tmp: &tempfile::TempDir) -> AppStateWrapper {
+        let storage =
+            StorageManager::with_dir(tmp.path().join(".neeko")).expect("fixture: storage manager");
+        let store =
+            Arc::new(crate::library::LibraryStore::open(db).expect("fixture: library store"));
+        AppStateWrapper::new_with_storage_and_library(storage, store)
+    }
+
+    /// **重启即恢复**：库是真相源、内存镜像是缓存，所以启动必须 hydrate（`load`，不是 `new`）。
+    ///
+    /// 这条用例是 `TeamManager::new` 的失败形态，三处会同时红：
+    /// ① `team()` 恒 `None`（花名册空）；② `member()` 恒 `None`；
+    /// ③ `issue_token()` 报 `member not found` —— 一个库里确实存在的成员。
+    ///
+    /// 断言止于「读得到」不够：第 ③ 条同时证明**写路径**也活了（`add_member` 的团队存在性
+    /// 判据读的正是内存镜像，空镜像会让它 `NotFound(team …)`）。
+    #[test]
+    fn a_restart_hydrates_the_team_domain_from_the_database() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let db = tmp.path().join("neeko.db");
+
+        // 第一次启动：建团队 + 成员，随后整体丢弃（= 进程退出）。
+        {
+            let first = state_on_db(&db, &tmp);
+            first
+                .team_manager
+                .create_team(fixture_team(TEAM))
+                .expect("create_team");
+            first
+                .team_manager
+                .add_member(fixture_member(W1, TEAM))
+                .expect("add_member");
+        }
+
+        // 第二次启动：同一个库文件，全新的 `AppStateWrapper`。
+        let second = state_on_db(&db, &tmp);
+        assert_eq!(
+            second.team_manager.team(TEAM).map(|t| t.state),
+            Some(TeamState::Active),
+            "重启后团队必须可见（`TeamManager::new` 会让这里是 None）"
+        );
+        assert_eq!(
+            second.team_manager.member(W1).map(|m| m.state),
+            Some(MemberState::Spawned),
+            "重启后成员必须可见"
+        );
+        // 写路径同样是活的：空镜像下这里会以 `member not found` 失败。
+        second
+            .team_manager
+            .issue_token(W1, 1_000)
+            .expect("重启后签发必须找得到成员（= 内存镜像已 hydrate）");
+    }
+
+    /// 不变量：`team_manager` 与 `library_store` 是**同一个池**（不是同一文件的两个池）。
+    ///
+    /// # 为什么不是指针比较
+    ///
+    /// `r2d2::Pool` 内部是 `Arc<SharedPool<_>>`，但它既**不暴露那个 `Arc`** 也没有池 id；
+    /// 而 `&DbPool` 在这里是两个不同字段的引用，地址天然不同，`ptr::eq` 恒为假。
+    ///
+    /// # 可复现的证据形式：库身份
+    ///
+    /// `isolated_state` 的库是 `LibraryStore::open_in_memory()`，而
+    /// `SqliteConnectionManager::memory()` **每次调用**生成一个新 uuid
+    /// （`file:<uuid>?mode=memory&cache=shared`，见 `common/db/pool.rs`）——
+    /// 即 “两个 in-memory 池 = 两个不同的数据库”。
+    /// 所以 “`team_manager` 写的行能被 `library_store.pool()` 读到” 只在共用池时成立。
+    /// 末尾的**反证**（另起一个 in-memory 库读不到这一行）证明本断言有判别力 ——
+    /// 没有它，一个 “团队域自建库” 的实现也可能让前半段变绿。
+    #[test]
+    fn team_manager_shares_the_library_pool() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+        state
+            .team_manager
+            .create_team(fixture_team(TEAM))
+            .expect("create_team");
+
+        // 走 **library 自己的池** 读同一张表（不用 team_manager 的访问器）。
+        let conn = state.library_store.pool().get().expect("library pool conn");
+        let name: String = conn
+            .query_row("SELECT name FROM team WHERE id = ?1", [TEAM], |row| {
+                row.get(0)
+            })
+            .expect("team_manager 写入的行必须能被 library_store 的池读到（同一个池）");
+        assert_eq!(name, fixture_team(TEAM).name);
+
+        // 反证：另一个 in-memory 库（= 另一个池）看不见这一行。
+        let other = crate::library::LibraryStore::open_in_memory().expect("second store");
+        let other_conn = other.pool().get().expect("second pool conn");
+        let found = other_conn.query_row("SELECT name FROM team WHERE id = ?1", [TEAM], |row| {
+            row.get::<_, String>(0)
+        });
+        assert!(
+            found.is_err(),
+            "独立的 in-memory 池必须看不见这个团队 —— 否则本用例没有判别力"
         );
     }
 }
