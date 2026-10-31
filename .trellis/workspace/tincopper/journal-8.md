@@ -1027,3 +1027,45 @@ PiRpcAdapter 实现 resume/supports_chat_resume，前端入口按 chat 侧能力
 ### Next Steps
 
 - 归档任务；残留项：≥200MB PDF 真机滚动 + 远程 InProject scope 强校验（既有欠账）
+
+
+## Session 387: agent-chat 地址寻址：审核修复（wire/持久化/护栏三处闭环）
+<!-- trellis-session: v=2 fp=e2579ca22c4b9d67 -->
+
+**Date**: 2026-10-31
+**Task**: agent-chat 地址寻址：审核修复（wire/持久化/护栏三处闭环）
+**Branch**: `main`
+
+### Summary
+
+按审核清单修完 3 Block + 9 Warning：地址在 wire 与持久化上各只剩一个表示，护栏 E/F 补上逃逸口
+
+### Main Changes
+
+- 删 StreamRequest.project_id，项目身份只从 workspace.project_id 派生（单点 project_id()）
+- ContextManifest.workspace(Option<分量>) → workspace_key: String；删重复的 WorkspaceManifest；AgentContext.workspace 转必填（WorkspaceSession::main 声明项目级通道）
+- ResumeCursor.cwd 写解析后的执行根（原写项目 id，原生 resume 会 cwd 错配）
+- 删 SessionHandle.project_id 死字段；AgentContext.project_id → cwd（它本就是路径）
+- 护栏：新增判据 F（禁手写 WorkspaceSession 字面量，扫全部 Rust 文件）+ #[cfg(test)] 豁免落地为 core/rust_cfg.mask_cfg_test（同时消掉两份重复实现）
+- project_display → project_name（只给 name）；env 取解析器权威值，不再二次读项目记录
+- resolve_workspace_ctx 收 &AppStateWrapper，补 AC1/AC2 单测；React 两处 useCallback 补 workspace 依赖
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test --lib agent::chat common::git → 696 passed
+- [OK] cargo test --test unit → 120 passed
+- [OK] pnpm vitest run src/features/agent-chat → 563 passed（71 文件）
+- [OK] pnpm check:quick → 35/35 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- worktree 里人工过一遍 AC1（context_init.workspace_key 尾段 + cwd 指向工作树根）
+- LSP / conversation 扫描 / task hub 的同源收口进台账，后续逐个处理

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 386
-- **Last Active**: 2026-10-30
+- **Total Sessions**: 387
+- **Last Active**: 2026-10-31
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1029 | Active |
+| `journal-8.md` | ~1071 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 387 | 2026-10-31 | agent-chat 地址寻址：审核修复（wire/持久化/护栏三处闭环） | - | `main` |
 | 386 | 2026-10-30 | Markdown 图片渲染与 PDF 预览：归档前复核 | `9e2b1d05` | `main` |
 | 385 | 2026-10-30 | opencode v2 存储兼容：归档前复核（真机 462 条 / scoped 216 条） | `c6c92a19`, `8d1662da` | `main` |
 | 384 | 2026-10-30 | pi 会话恢复为 Agent Chat（能力单一真相）+ 真机验收 | - | `main` |
