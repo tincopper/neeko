@@ -105,5 +105,12 @@
   （mock 载荷的 `workspace_key` / `cwd` 与真实路径同源，补 2 条用例）。
 
 ## 收尾
-- [x] AC1–AC6 勾验；spec 同步（`agent-chat-transports.md` 的契约表已按第二轮改写）；
-      `add_session.py`；**不主动提交**。
+- [x] AC1/AC2 单测 `workspace_ctx_cwd_follows_the_unit_not_the_project`（cwd 跟随单元）+
+      前端 `unitDisplayName`（显示单元名）；AC3 `owns_false_when_worktree_unit_differs`；
+      AC4 `stream_request_without_workspace_is_rejected` + `project_identity_comes_from_address_only`。
+- [x] AC5 判据 E / F / G 共 37 条护栏用例（正/反/豁免各方向），三份台账为空 = 结论。
+- [x] AC6 全量 `pnpm check` **38/38**（含 cargo test 2422 + 集成 120、vitest 6295、clippy/fmt、tsc）。
+- [x] spec 同步：`agent-chat-transports.md` §0.1 契约表（含判据 G）、`conversation-adapter.md` §3.2 / §4.5。
+- [x] 代码提交（用户确认后按功能分组）：`88aba6d5` 单元归属规则 · `7ac7f134` 判据 G ·
+      `cceafa5d` 会话按单元范围列出 · `92ae3f1c` 前端按 tab 地址取恢复列表 · `975ffa7d` 台账记录。
+- [x] `add_session.py` 记录会话（与归档同轮）。
