@@ -57,7 +57,8 @@ worktree 单元里打开 Agent Chat 时，agent 进程的 cwd 与界面显示的
 - [x] AC3 `owns()`：同 project 不同 workspace 的 session id 不得被复用续写（单测）。
 - [x] AC4 `StreamRequest` 缺 `workspace` ⇒ 反序列化失败（单测，钉住「必填」）；顶层残留 `projectId`
       被忽略，不能覆盖地址分量（`project_identity_comes_from_address_only`）。
-- [x] AC5 判据 E 有正/反用例；判据 F 有正/反用例；台账为空是结论（全仓无按 project 取 cwd 的命令）。
+- [x] AC5 判据 E / F / G 各有正/反用例；三份台账为空是结论（全仓无按 project 取 cwd 的命令、
+      无手写地址字面量、无可选地址）。
 - [x] AC6 `cargo test --lib` / clippy / fmt / `pnpm check:quick` 绿。
 
 > **AC 修订（2026-10-30 审核后）**：R3.1 原写「`ContextManifest` 增加 `workspace: Option<WorkspaceSession>`」，

@@ -69,6 +69,41 @@
 - **复用**：`worktreeNameOf` 走共享 `getFileName`（不再自造 `split(/[\\/]/).pop()`）；
   key 拼装收成 `mint_key` 单一实现（`WorkspaceRef::key` 与 `WorkspaceSession::key` 共用）。
 
+**第三轮（清单级修复，2026-10-30 审核后）**
+
+- **Block（护栏盲区）**：`Option<WorkspaceSession>` 对 A2/D 完全不可见（判据正则要求必填形态）。
+  变异实测：同一函数体把形参改成 `Option` 后由「违规」变「放行」。→ 新判据 **G**（可选地址必须
+  入 `ledger/optional_workspace_commands.json` 说明理由；台账为空是结论）+ 4 条正/反用例。
+- **Block（文档失真）**：四处把 worktree 默认落点写成 `<project>/.worktrees/*`（「主仓根的后代」）。
+  本仓默认是 `~/.neeko/worktrees/<name>`（项目根**之外**，见 `path_guard.rs` + 本机
+  `git worktree list`）⇒ 真实症状是「单元自己的会话匹配不到项目根 ⇒ 列表漏」，串门只发生在
+  仓内 `.worktrees` 约定与嵌套 worktree。文档改为两布局对照表。
+- **Block（新公共函数零测试）**：`list_worktrees` / `list_linked_worktree_roots` 补 4 条用例
+  （剔除主工作树 / 只有主工作树 / path 即身份 / git 失败上抛），夹具走 `tempdir()`（红线 13）。
+- **Warning（位置错一层 + 第三份前缀判定）**：规则搬到 `common/git/unit_scope.rs`（纯值对象 +
+  `deepest_root` 复用点），删除 `conversation/unit_scope.rs`；组合根加
+  `AppStateWrapper::resolve_unit_scope` 作为复用入口。
+- **Warning（身份铸造落在消费侧）**：单元根 identity 收进 `UnitScope::resolve`（内部唯一走
+  `CheckoutPath`），消费方不再直接碰 `CheckoutPath` / `ExecTarget`。
+- **Warning（`new` 吃裸 String）**：`UnitScope::new` 改 `pub(crate)`，生产只走 `resolve`。
+- **Warning（`inside()` 与身份字母表冲突）**：驱动器根的身份形态**故意**保留尾斜杠，字符串切片
+  判定恒假 ⇒ 改分量比较（`Path::starts_with` on identity strings），补驱动器根与反斜杠用例。
+- **Warning（深度用 len 代理）**：改分量计数，并抽成 `deepest_root(roots, path)` 单一规则。
+- **Nit（两个寻址维度并存）**：`list_conversations` 入参从 `project_path + workspace` 改为
+  **判别联合** `ConversationListScope`（`{kind:"project",path}` / `{kind:"unit",workspace}`）；
+  管理层的 `list_page` 同步收成 `ListScope{All|Project|Unit}`，删掉「谁优先」的隐式优先级。
+  前端 `useChatRestore` 只发单元范围（不再附带 `project.path`），`useConversationList` 发项目范围。
+- **Nit（夹具与生产不同源）**：worktree 单元的对级根不再包含主仓根（生产侧 `list_worktrees`
+  已剔除主工作树），并补一条「默认布局（根不相交）」用例。
+- **Nit（spec 缺缓存前提）**：§4.5 补「恢复列表只 list 不 scan」的扫描覆盖前提。
+- **护栏判据 G 的扫描面**：与判据 F 同为**全部 Rust 文件**（请求结构体可以住在
+  `conversation/types.rs` 这类非 commands 文件里）；整行注释先剔除（docstring 会提到该类型）。
+  真机变异实测：在 `types.rs` 里加一个 `Option<WorkspaceSession>` 字段 → 违规，还原 → 通过。
+- **死参数清理**：地址已取代 `projectId` 作为执行身份 ⇒ `useChatRestore` /
+  `useAgentSessionLifecycle` / `useAgentChat` 的 `projectId` 形参退化为纯透传（`useChatRestore`
+  里更是只剩 `if (!projectPath) return` 一处用途），全部删除；`useMockEventSchedule` 改收地址
+  （mock 载荷的 `workspace_key` / `cwd` 与真实路径同源，补 2 条用例）。
+
 ## 收尾
 - [x] AC1–AC6 勾验；spec 同步（`agent-chat-transports.md` 的契约表已按第二轮改写）；
       `add_session.py`；**不主动提交**。

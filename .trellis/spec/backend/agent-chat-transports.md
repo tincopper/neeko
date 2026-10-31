@@ -20,7 +20,7 @@
 | 上下文 | `AgentContext.cwd`（执行根，**不是**项目 id）+ `AgentContext.workspace`（必填地址） |
 | 事件回显 | `ContextManifest.workspace_key: String` + `cwd`。地址**只以 key 字符串**出现在 wire 上（与 `git.ts` / `file.ts` 同形），分量经 `WorkspaceSession.fromKeyOrId` 唯一 codec 取。项目级调用（`agent_chat_context`）用 `WorkspaceSession::main(id)` 回显主 checkout 的 key —— 地址是**总存在的**，不存在「没有地址」这种状态 |
 | 持久化 | `ResumeCursor.cwd` = 解析后的执行根（不是项目 id）—— 原生 resume 要求 cwd == 会话 origin |
-| 防复发 | 护栏 `check_workspace_session_addressing`：判据 **E**（命令体按 project 取 cwd/根必须入台账说明理由）、判据 **F**（生产代码禁写 `WorkspaceSession { .. }` 字面量，项目级通道用 `WorkspaceSession::main`） |
+| 防复发 | 护栏 `check_workspace_session_addressing`：判据 **E**（命令体按 project 取 cwd/根必须入台账说明理由）、判据 **F**（生产代码禁写 `WorkspaceSession { .. }` 字面量，项目级通道用 `WorkspaceSession::main`）、判据 **G**（地址不得可选：`Option<WorkspaceSession>` 必须入台账说明理由 —— A2/D 的判据是必填形态，看不见 `Option` 这种「没传就退回按 project 取根」的合法路径） |
 
 **为什么不给 `Option` 兼容**：回退主仓会把「必然 cwd 错配的会话」变成正常路径；pi / opencode 的
 原生 resume 还要求 cwd == 会话 origin（跨目录直接被拒），错误会被推迟到用户点恢复时才炸。
