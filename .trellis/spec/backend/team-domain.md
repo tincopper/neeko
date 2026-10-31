@@ -204,13 +204,70 @@ loopback 而非 `localhost` —— 后者在某些平台先解析到 `::1`，而
 - `unverified` 字段是**诚实面**：B 级证据（配置已装、未跑一轮）必须原样回给队长。
 - `McpTransport` 的变体集合 = **本仓已实现的传输集合**。加变体必须与它的 bridge 同一个 diff，
   否则 `has_mcp()` 会把一条发不进去的配置宣传成「有工具面」。
-- `McpInjection` 三档的区别是**生效时机**，不是便利性：`Argv` = 启动参数（本次启动生效，
-  claude-code / codebuddy / qoder）、`Subcommand` = 该 CLI 自己的 `mcp add`（写配置、下次启动生效，
-  grok / codex / opencode / pi）、`ConfigFile` = 直接改配置文件（降级兜底，gemini / reasonix）。
+- `McpInjection` **四档的区别是「谁来写配置、写到哪里」**，不是便利性：
+  - `Argv` = 启动参数（**不写任何文件**，本次启动生效）：claude-code / codebuddy / qoder 用
+    `--mcp-config <json>`；**codex 用 `-c mcp_servers.<name>.…` 覆盖**（同一个目录下 `-c` 覆盖也能
+    在 `codex mcp list` 里看到 —— 这是把它从 `Subcommand` 改成 `Argv` 的依据）。
+  - `ConfigDir` = **重定向该 CLI 的配置目录**，在其中用**它自己的** `mcp add` 写 → 用户配置零写入：`pi`
+    （`PI_CODING_AGENT_DIR`）。这是「`Subcommand` 但不污染用户配置」的形态，也是「不碰用户配置」这条约束下唯一干净的路。
+    它的事实全在兄弟字段 [`ConfigDirSpec`]（`env` / `mcp_file` / `add_argv` / `home_subdir` / `mirror`）——
+    档位本身不带负载：它是持久化列（`team_member.mcp_injection`）又是 `static` 数据，负载会变成第二份真相。
+  - `Subcommand` = 该 CLI 自己的 `mcp add` **写用户全局配置**（grok / opencode）—— v1 不做（C3：
+    必须先有备份 / 幂等 / 拆除三件套）。
+  - `ConfigFile` = 直改配置文件（gemini）—— 同上，v1 不做。
   把「子命令写配置」记成 `Argv` 的后果是执行层传一个 CLI 不认的启动参数 —— **成员起得来，
-  MCP 面静默不可见**。代码侧目前只实现 `Argv`，其余两档由执行层明确拒绝。
+  MCP 面静默不可见**。因此 `launch_refusal()` 是**单一判据**：`team_spawn` 写库之前、
+  执行层起进程之前、以及面板的 CLI 清单（`team_launchable_agents`）三处都问它。
 - 准入表与 `builtin_configs()` 是两个真相源，中间只有一条机器桥：
   `every_admitted_agent_has_an_agent_config`（`dsh` 被拒的理由正是「没有 `AgentConfig`」）。
+
+### 3.1 模板占位符（不是字符串拼接）
+
+`mcp_argv` / `add_argv` 是 `&'static [&'static str]` 模板，由 `render_argv` 做**元素内**替换：
+`{{mcp_config}}`（JSON 整段）/ `{{url}}` / `{{token}}` / `{{token_env}}`。
+**未知或未闭合占位符 → 报错**（静默留字面量等于把 `{{token}}` 当参数发给 CLI）。
+`pi --header x-neeko-team-token={{token}}` 这种嵌在参数里的形态是它存在的理由 —— 「整元素等于占位符」的旧实现会
+把它原样发出去。
+
+### 3.2 凭证可以进 env 的唯一例外
+
+`SpawnPlan.env` 是**身份**（不含凭证）；`SpawnPlan.credentials_env` 是唯一的含密通道，
+且**只有 `bearer_token_env_var` 那一族需要**（CLI 的鉴权通道就是 env，argv 里只放 env 名）。
+判据挂在**模板**上（含 `{{token_env}}` ⇒ 注入一条 `(TEAM_TOKEN_ENV, token)`），不是 `agent_id` 分支。
+可见性评估：argv（`--mcp-config` JSON）与 env 都只在本机同用户边界内可见，Neeko 不外发、不写日志，
+且两者都不进 `team_event` 审计行。
+
+### 3.3 配置目录的 provisioning 与清理归属
+
+隔离目录放在 Neeko 自己的状态根下（`state_root/team/<team>/<member>/`，根由**组合根**传，
+域里不硬编码临时目录）。副作用全部在 `app/team_executor.rs`（与起 PTY 同层），域只产出
+`ConfigDirPlan`（纯）。
+
+| 阶段 | 谁负责 | 失败后的行为 |
+| --- | --- | --- |
+| mkdir + 镜像（symlink）| `provision_config_dir`（阻塞池）| 删目录 |
+| 跑 CLI 自己的 `mcp add`（`core::exec`，红线 1）| 同上 | 删目录（里面有 token 明文）|
+| 起 PTY | 同上 | 删目录 |
+| 成员正常跑起来 | — | **不删**：留给关队命令（它是唯一有权判「成员真的不在了」的地方）|
+
+两条实战约束：
+
+- **镜像只列能共享的项**：用户资产（`auth.json` / `models.json` / `settings.json` / `trust.json` /
+  `extensions` / `skills` / `themes`）必须镜像，否则成员是「未登录、无扩展」的裸进程；
+  运行时缓存（`npm` / `bin` / `models-store.json`）**也镜像** —— 不镜像时 pi 会在隔离目录里
+  现场跑 `npm install`（实测 ~10s 且**需要网络**，离线直接起不来）；
+  绝不镜像：`sessions/`（团队成员会话与用户历史分开）、MCP 配置文件本身、OAuth 态。
+- **Windows 无开发者模式**：`symlink` 失败（`PermissionDenied`）时**文件复制、目录跳过**并 warn。
+  代价是凭据可能多一份字节拷贝 —— 取舍是「未登录的成员」比「多一份拷贝」更糟。
+- 镜像源路径必须 `canonicalize`（红线 8），源目录不存在 ⇒ **拒绝启动**（配置目录不存在意味着
+  该 CLI 从未初始化，起一个未登录的成员在花名册上与正常成员一模一样）。
+
+### 3.4 能力缺口必须在 UI 上可见
+
+`team_launchable_agents() -> [{ agentId, refusal }]`（`admission::launchable_agents`）与
+`team_spawn` **同一份判据**。面板把 `refusal` 渲染成**可见文字**（不是 `title`：被拒行是
+`disabled` ⇒ 不可聚焦，键盘与读屏用户拿不到 tooltip），并在点击路径上再拦一次。
+不允许 UI 自己维护第二套「能不能启动」的判据 —— 那一定会与后端漂移。
 
 ## 4. 凭证：明文只在执行层出现一次
 

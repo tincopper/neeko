@@ -466,6 +466,48 @@ pub enum TerminalLaunch {
       （`manager` 只能返回 `anyhow`，会被归成 `Unknown` —— 编程错误报成未知错误会让排查跑偏）
 - [x] 入参收成 `SessionSpec` 值对象（9 个位置参数里三个是 `Option`/切片，`&[]` 读不出语义）
 
+#### C13 注入四档：`ConfigDir` + codex 改走 argv — ✅ 已落地（2026-10-31）
+
+**动机（用户实测）**：队长选 `pi` 被早拒 —— `Subcommand` 档没实现，而 `Argv` 只盖了
+claude-code / codebuddy / qoder。**影响面是四个 CLI**（codex / grok / opencode / pi），不是一家。
+
+**两条路都是实测走出来的（命令与输出在报告里）**：
+
+- **`pi` → 新增 `McpInjection::ConfigDir`**：`PI_CODING_AGENT_DIR` 把整个配置目录重定向到隔离目录，
+  再用 **pi 自己的** `pi mcp add --url … --header KEY=VALUE` 写进去 —— 用户全局 `mcp.json`
+  **未被创建**（实测校验）。隔离目录里用 symlink 镜像用户资产（`auth.json` / `models.json` /
+  `settings.json` / `trust.json` / `extensions` / `skills` / `themes`），`pi -p` 仍能登录并回答。
+- **`codex` → 改判 `Argv`**：`-c mcp_servers.neeko.url="…"` + `-c mcp_servers.neeko.bearer_token_env_var="NEEKO_TEAM_TOKEN"`，
+  `codex mcp list` 里能看到 `Auth = Bearer token`，且 `config.toml` 未被改动 —— 纯 argv，不写文件。
+
+落地：
+
+- [x] `render_argv`：元素内替换 `{{mcp_config}}` / `{{url}}` / `{{token}}` / `{{token_env}}`；
+      未知或未闭合占位符**报错**（旧实现只认「整元素等于占位符」，`--header KEY={{token}}` 会原样发出去）
+- [x] `SpawnPlan.credentials_env`：唯一含密通道，且**只由模板里的 `{{token_env}}` 触发**（不是 `agent_id` 分支）
+- [x] `ConfigDirSpec { env, mcp_file, add_argv, home_subdir, mirror }` 挂在准入行（红线 15）；
+      `McpInjection::ConfigDir` 本身**不带负载**（它同时是持久化列与 `static` 数据）
+- [x] `execution::ConfigDirPlan`（纯）+ `app/team_executor::provision_config_dir`（副作用，阻塞池）：
+      mkdir → symlink 镜像 → `core::exec` 跑 `mcp add` → 同一个 env 起 PTY；**任一步失败删目录**
+      （里面有 token 明文）；成功则留给关队命令
+- [x] `launch_refusal()` 是唯一判据：`team_spawn` 写库前、执行层起进程前、`team_launchable_agents`
+      （面板 CLI 清单）三处都问它
+- [x] 面板：被拒 CLI **禁用 + 理由作为可见文字**（`title` 不行：被拒行不可聚焦）；前端不再维护
+      「enabled + 有 command」的第二套判据
+- [x] 判据：`pi_add_argv_is_the_verified_key_value_form` / `codex_argv_is_the_verified_config_override` /
+      `codex_plan_puts_the_token_into_the_credentials_env_only` / `render_refuses_unknown_and_unclosed_placeholders` /
+      `a_failed_add_command_removes_the_isolated_directory` / `the_mirror_source_is_canonicalized` /
+      `launch_refusal_admits_the_implemented_gears_only`（各自变异验证过）
+- [x] `#[ignore]` 真实冒烟（装了 pi 才跑）：`pi mcp add` → 隔离目录出现 `mcp.json`、用户全局目录未被创建
+
+**仍缺（下一批）**：
+
+- [ ] `grok` / `opencode` 仍是 `Subcommand`（写用户全局配置）—— 要分别找它们的配置目录重定向变量
+      （opencode 可能是 `XDG_CONFIG_HOME`，未实测）；找不到就按 C3 维持拒绝
+- [ ] 关队命令里的隔离目录清理（现只在失败路径删）
+- [ ] `pi` 首次启动的 `npm install` 代价已通过镜像 `npm` / `bin` / `models-store.json` 消除（实测 ~6s，
+      与用户自己开 pi 同量级）；若将来发现并发写缓存的问题，退回冷启动的代价是 ~10s + 需要网络
+
 #### 执行者的生产实现 — ✅ 已落地（2026-10-31）
 
 `app/team_executor.rs`：`PtyMemberExecutor`（`MemberExecutor` 的唯一 impl，由 `app::boot` 注入）
