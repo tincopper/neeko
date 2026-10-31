@@ -40,6 +40,7 @@ from __future__ import annotations
 import pathlib
 import re
 
+from guards.core import rust_cfg
 from guards.core.contract import Context, Finding, Guard, GuardResult
 
 SCOPES = (
@@ -78,7 +79,6 @@ FORBIDDEN = (
 
 ASYNC_FN_RE = re.compile(r"\basync\s+fn\s+\w+")
 POOL_WRAPPER_RE = re.compile(r"\b(?:spawn_blocking|run_blocking(?:_result)?)\s*\(")
-CFG_TEST_RE = re.compile(r"#\s*\[\s*cfg\s*\(\s*test\s*\)")
 RAW_STRING_RE = re.compile(r"(?:b?r)(?P<hashes>#*)\"")
 
 
@@ -208,43 +208,8 @@ def async_fn_ranges(text: str) -> list:
 
 
 def cfg_test_ranges(lines: list) -> list:
-    """`#[cfg(test)] mod tests { ... }` 的行区间 [start, end)。
-
-    `mod tests;`（分号形态）**不产生区间** —— 它没有内联体，内容在 `tests.rs` 里（已由
-    [`is_test_file`] 排除）。若照旧向后找第一个 `{`，就会把后面某个真实代码块整段当成测试块
-    而豁免（漏报）。
-    """
-    ranges: list[tuple] = []
-    n = len(lines)
-    i = 0
-    while i < n:
-        if not CFG_TEST_RE.search(lines[i]):
-            i += 1
-            continue
-        j = i
-        if not lines[j].lstrip().startswith(("mod ", "pub mod ")):
-            j = i + 1
-            while j < n and (not lines[j].strip() or lines[j].strip().startswith("#[")):
-                j += 1
-        if j >= n or not lines[j].lstrip().startswith(("mod ", "pub mod ")):
-            i += 1
-            continue
-        brace = j
-        while brace < n and "{" not in lines[brace] and ";" not in lines[brace]:
-            brace += 1
-        if brace >= n or "{" not in lines[brace]:
-            i = brace + 1 if brace < n else n  # `mod tests;`：无内联体可豁免
-            continue
-        depth = 0
-        end = brace
-        for k in range(brace, n):
-            depth += lines[k].count("{") - lines[k].count("}")
-            if depth <= 0:
-                end = k
-                break
-        ranges.append((i, end + 1))
-        i = end + 1
-    return ranges
+    """`#[cfg(test)] mod tests { ... }` 的行区间（实现见 `core/rust_cfg`）。"""
+    return rust_cfg.cfg_test_line_ranges(lines)
 
 
 def touches(offset: int, ranges: list) -> bool:

@@ -255,3 +255,64 @@ def occurrences(index: dict, noise_free: list, name: str, low: int, high: int) -
         if low <= i <= high and not is_member_access(noise_free[i], start)
     }
     return sorted(lines)
+
+
+# ── 测试域（`#[cfg(test)] mod tests { … }`）───────────────────────────────────────
+# 抽取动机：同一段「按花括号配平切出内联测试块」此前在 `check_command_execution` 与
+# `check_blocking_fs_in_commands` 各写一份；第三个消费者（执行上下文台账 / 手搓地址）
+# 落地时再复制就会得到三份必然漂移的表示。等价性由两者既有单测证明。
+
+CFG_TEST_RE = re.compile(r"#\s*\[\s*cfg\s*\(\s*test\s*\)")
+
+
+def cfg_test_line_ranges(lines: list) -> list:
+    """`#[cfg(test)] mod tests { … }` 的行区间 `[start, end)`（0 基，end 开）。
+
+    `mod tests;`（分号形态）**不产生区间** —— 它没有内联体，内容在 `tests.rs` 里（由调用方的
+    路径判据排除）。若照旧向后找第一个 `{`，就会把后面某个真实代码块整段当成测试块而豁免（漏报）。
+    """
+    ranges: list[tuple] = []
+    n = len(lines)
+    i = 0
+    while i < n:
+        if not CFG_TEST_RE.search(lines[i]):
+            i += 1
+            continue
+        j = i
+        if not lines[j].lstrip().startswith(("mod ", "pub mod ")):
+            j = i + 1
+            while j < n and (not lines[j].strip() or lines[j].strip().startswith("#[")):
+                j += 1
+        if j >= n or not lines[j].lstrip().startswith(("mod ", "pub mod ")):
+            i += 1
+            continue
+        brace = j
+        while brace < n and "{" not in lines[brace] and ";" not in lines[brace]:
+            brace += 1
+        if brace >= n or "{" not in lines[brace]:
+            i = brace + 1 if brace < n else n  # `mod tests;`：无内联体可豁免
+            continue
+        depth = 0
+        end = brace
+        for k in range(brace, n):
+            depth += lines[k].count("{") - lines[k].count("}")
+            if depth <= 0:
+                end = k
+                break
+        ranges.append((i, end + 1))
+        i = end + 1
+    return ranges
+
+
+def in_cfg_test_block(line_no: int, ranges: list) -> bool:
+    """`line_no`（0 基）是否落在某个内联测试块内。"""
+    return any(start <= line_no < end for start, end in ranges)
+
+
+def mask_cfg_test(text: str) -> str:
+    """把内联测试块整体抹成空行 —— **行数与偏移保持不变**，调用方的行号 / offset 仍然有效。"""
+    lines = text.splitlines(keepends=True)
+    for start, end in cfg_test_line_ranges([ln.rstrip("\r\n") for ln in lines]):
+        for k in range(start, min(end, len(lines))):
+            lines[k] = "\n" if lines[k].endswith("\n") else ""
+    return "".join(lines)

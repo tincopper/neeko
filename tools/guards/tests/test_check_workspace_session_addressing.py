@@ -1,4 +1,4 @@
-"""git 寻址护栏用例：A/B/C 三判据的违规形态、正例零命中、豁免（值对象自身 / 测试域）。"""
+"""git 寻址护栏用例：A–F 六判据的违规形态、正例零命中、豁免（值对象自身 / 测试域）。"""
 from __future__ import annotations
 
 import unittest
@@ -16,6 +16,8 @@ TS_EXEMPT = "src/shared/utils/workspaceRef.ts"
 # 对侧干净基线：护栏要求 TS 与 Rust 两侧都非空（反空转判据），故每个夹具都补一份对侧干净文件。
 CLEAN_RS = RS_FIXTURE
 CLEAN_TS = TS_API
+# F 的扫描面宽于命令层：逃逸口就在这类非 commands 文件里。
+RS_NON_COMMAND = "src-tauri/src/agent/chat/translation.rs"
 
 
 class WorkspaceSessionAddressingTest(unittest.TestCase):
@@ -27,7 +29,7 @@ class WorkspaceSessionAddressingTest(unittest.TestCase):
         merged = dict(files)
         if not any(k.startswith("src/") for k in merged):
             merged[CLEAN_TS] = "export function noop() {}\n"
-        if not any(k.startswith("src-tauri/") for k in merged):
+        if not any("commands" in k for k in merged if k.startswith("src-tauri/")):
             merged[CLEAN_RS] = "pub fn noop() {}\n"
         make_repo(self.root, merged)
         return subject.check(context(self.root))
@@ -362,6 +364,163 @@ class WorkspaceSessionAddressingTest(unittest.TestCase):
                 "src-tauri/src/git/commands/tests.rs": (
                     "let (t, repo) = state.resolve_workspace(&id, None).await?;\n"
                 ),
+            }
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    # ── E：执行上下文台账（没有 workspace 形参的命令也必须说清理由）
+    LEDGER = "tools/guards/ledger/exec_context_commands.json"
+
+    def ledger(self, commands: dict):
+        import json
+
+        return {self.LEDGER: json.dumps({"note": "fixture", "commands": commands})}
+
+    def test_project_root_without_address_and_without_ledger_is_violation(self):
+        result = self.run_guard(
+            {
+                RS_AGENT_FIXTURE: (
+                    "pub async fn run_search(project_id: String) -> Result<(), AppError> {\n"
+                    "    let root = pm.get_project(&project_id).map(|p| p.path.clone())?;\n"
+                    "    Ok(())\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertIn("exec_context_commands.json", result.findings[0].message)
+        self.assertEqual(result.findings[0].line, 2)
+
+    def test_ledger_entry_with_reason_is_clean(self):
+        result = self.run_guard(
+            {
+                **self.ledger(
+                    {f"{RS_AGENT_FIXTURE}::run_search": "项目级操作：按项目统计，不执行进程"}
+                ),
+                RS_AGENT_FIXTURE: (
+                    "pub async fn run_search(project_id: String) -> Result<(), AppError> {\n"
+                    "    let root = pm.get_project(&project_id).map(|p| p.path.clone())?;\n"
+                    "    Ok(())\n"
+                    "}\n"
+                ),
+            }
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    def test_ledger_entry_with_blank_reason_is_violation(self):
+        result = self.run_guard(
+            {
+                **self.ledger({f"{RS_AGENT_FIXTURE}::run_search": "   "}),
+                RS_AGENT_FIXTURE: (
+                    "pub async fn run_search(project_id: String) -> Result<(), AppError> {\n"
+                    "    let root = pm.get_project(&project_id).map(|p| p.path.clone())?;\n"
+                    "    Ok(())\n"
+                    "}\n"
+                ),
+            }
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertIn("reason 为空", result.findings[0].message)
+
+    def test_resolve_project_ctx_call_is_violation(self):
+        result = self.run_guard(
+            {
+                RS_AGENT_FIXTURE: (
+                    "pub async fn open_chat(project_id: String) -> Result<(), AppError> {\n"
+                    "    let (name, env, root) = resolve_project_ctx(&state, &project_id)?;\n"
+                    "    Ok(())\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+
+    def test_project_metadata_without_path_is_clean(self):
+        result = self.run_guard(
+            {
+                RS_AGENT_FIXTURE: (
+                    "pub async fn project_manifest(project_id: String) -> Result<(), AppError> {\n"
+                    "    let (name, env) = project_display(&state, &project_id)?;\n"
+                    "    Ok(())\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    def test_hand_written_address_literal_outside_commands_is_violation(self):
+        """逃逸口形态：非命令层文件手写地址字面量，绕过整条地址链路。"""
+        result = self.run_guard(
+            {
+                RS_NON_COMMAND: (
+                    "pub async fn translation_stream(project_id: String) -> Result<(), AppError> {\n"
+                    "    let workspace = WorkspaceSession {\n"
+                    "        project_id: project_id.clone(),\n"
+                    "        worktree_path: None,\n"
+                    "    };\n"
+                    "    Ok(())\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertIn("WorkspaceSession::main", result.findings[0].message)
+        self.assertEqual(result.findings[0].line, 2)
+
+    def test_named_constructor_is_clean(self):
+        result = self.run_guard(
+            {
+                RS_NON_COMMAND: (
+                    "pub async fn translation_stream(project_id: String) -> Result<(), AppError> {\n"
+                    "    let workspace = WorkspaceSession::main(project_id);\n"
+                    "    Ok(())\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    def test_return_type_brace_is_not_a_literal(self):
+        """`-> WorkspaceSession {`（函数体起始括号）不是地址字面量。"""
+        result = self.run_guard(
+            {
+                RS_NON_COMMAND: (
+                    "pub fn address_of(project_id: &str) -> WorkspaceSession {\n"
+                    "    WorkspaceSession::main(project_id)\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    def test_literal_inside_inline_test_module_is_exempt(self):
+        """docstring 承诺的 `#[cfg(test)]` 豁免必须真的生效（否则夹具自己会撞线）。"""
+        result = self.run_guard(
+            {
+                RS_NON_COMMAND: (
+                    "pub fn production() {}\n"
+                    "#[cfg(test)]\n"
+                    "mod tests {\n"
+                    "    fn fixture() {\n"
+                    "        let w = WorkspaceSession { project_id: \"p1\".into(), worktree_path: None };\n"
+                    "    }\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    def test_address_module_itself_is_exempt(self):
+        result = self.run_guard(
+            {
+                "src-tauri/src/common/git/workspace_ref.rs": (
+                    "pub struct WorkspaceSession { pub project_id: String }\n"
+                    "impl WorkspaceSession {\n"
+                    "    pub fn of(project_id: String) -> Self {\n"
+                    "        Self { project_id, worktree_path: None }\n"
+                    "    }\n"
+                    "}\n"
+                )
             }
         )
         self.assertEqual(result.verdict, PASS)

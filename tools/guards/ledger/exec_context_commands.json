@@ -1,0 +1,4 @@
+{
+  "note": "执行上下文台账：命令体里以 project 取 cwd/根（`resolve_project_ctx(...)` 或 `get_project(...).path`）时，必须在此登记**为什么这确实是项目级操作**。空 reason 视为未登记。新增一条 = 声称一个执行上下文不需要地址，评审时必须解释；不许写「暂时」。**当前为空是结论而非待办**：全仓已无按 project 取 cwd 的命令（项目级通道一律用 `WorkspaceSession::main` 走同一解析入口，见判据 F）。",
+  "commands": {}
+}

@@ -7,17 +7,18 @@
 
 | 失真 | 形态 | 后果 | 判据 |
 | --- | --- | --- | --- |
-| **可手搓** | 前端 `worktreePath?: string \\| null` 可选散参 | 漏传 → 静默按主仓执行 | **B** |
-| **可拆分** | 后端 `(project_id, worktree_path)` 两个 wire 字段 | 两字段可独立缺失/错配 | **签名**（收单 `workspace` 对象，AC2 + 类型检查；半用对象由 **A2** 兜底） |
+| **可手搓** | 前端 `worktreePath?: string \\| null` 可选散参 / 后端手写 `WorkspaceSession { .. }` 字面量 | 漏传或按错单元 → 静默按主仓执行 | **B**（前端散签）/ **F**（后端字面量） |
+| **可拆分** | 后端 `(project_id, worktree_path)` 两个 wire 字段（请求体与事件回显各一份） | 两字段可独立缺失/错配 | **签名**（收单 `workspace` 对象，AC2 + 类型检查；半用对象由 **A2** 兜底）|
 | **可绕过** | 命令层直调 `resolve_workspace(&str, Option<&str>)` | 解析逻辑两个外观 | **A** |
 | **半迁移** | 签名收了 `workspace`，却仍从 `get_project(...).path` 取根 | worktree 视图扫主仓（签名看着对） | **D** |
+| **该有却没有** | 命令体按 project 取 cwd/根，签名里压根没有地址 | 项目级通道被当成免死金牌，静默跑主仓 | **E**（台账）|
 
 与前置任务 `10-09-file-io-workspace-scope` 的 `check_file_io_scope` 互补：那条管**文件 IO**的
 唯一命令面与旧编码，本条管**命令层**的地址形态（不限 git 域 —— file / terminal / search 同理）。
 两者的 B 判据作用域不同（那条管 `rootPath` 退役，本条管 `gitApi.ts` 的 `worktreePath` 散签），
 不重叠。
 
-## 判据（四条，均确定性可复现）
+## 判据（六条，均确定性可复现）
 
 - **A1 后端唯一解析入口（无条件）**：命令层（`src-tauri/src/**/commands*.rs` 与
   `**/commands/**/*.rs`，扣除 `RS_EXEMPT_DIRS`）内不得直调 `resolve_workspace(`
@@ -42,20 +43,31 @@
   根交给了下游（worktree 视图扫主仓）。2026-10-13 的 `search/commands.rs` 正是此形（旧形态
   `search_run` 无`workspace` 形参，与 `set_active_project` 这类**合法的 project 级命令**语法同形，
   无法用静态规则区分 —— 故本判据只钉「已收地址却还用另一个根」这个**可判定**的子集）。
+- **E 执行上下文台账**：命令体以 project 取 cwd/根（`resolve_project_ctx(...)` 或
+  `get_project(...)` + `.path`），签名里却**没有**地址 —— A2/D 只能看见「签名里已经有 workspace」
+  的形态，看不见「该有却没有」。这类函数必须入 `tools/guards/ledger/exec_context_commands.json`
+  登记**为什么它确实是项目级操作**（空 reason 视为未登记）。台账**只增需评审**：
+  新增一条 = 声称一个执行上下文不需要地址，正是必须有人看的地方。
+- **F 后端禁手搓地址**：`src-tauri/src/**` 生产代码不得写 `WorkspaceSession { … }` 字面量。
+  它是 C（前端禁伪造）的后端对应物，且是 E 的逃逸口：`translation.rs` 曾手写
+  `{ project_id, worktree_path: None }` 绕过整条地址链路 —— 项目级通道要用命名构造点
+  `WorkspaceSession::main(id)` 显式声明「按主 checkout 执行」，让意图可 grep、可评审。
 
 > **为何不拦裸 `{ projectId, worktreePath }`**：该形态在 `commandFactory.ts` 里是**合法 wire 载荷**
 > （`invoke('stage_files', { projectId, worktreePath })`，由 `gitApi` 内部解构产生），与「手搓地址」
 > 在语法上同形、语义上相反。用正则区分二者无稳定指纹（spec 结论：无稳定指纹时不硬上静态检查），
 > 故只拦**带类型意图**的两形 —— 那才是"我要造一个 session"的明确表达。
 
-> 豁免：`shared/utils/workspaceRef.ts`（值对象自身，字面量出现在 JSDoc 说明里）、
-> 测试文件（`__tests__` / `.test.ts` / `tests/`）与 `#[cfg(test)]`。
+> 豁免：`shared/utils/workspaceRef.ts` 与 `common/git/workspace_ref.rs`（值对象自身，字面量出现在
+> JSDoc 说明里）、测试文件（`__tests__` / `.test.ts` / `tests/`）与 `#[cfg(test)]`。
 """
 from __future__ import annotations
 
+import json
 import re
 
 from guards.core.contract import Context, Finding, Guard, GuardResult
+from guards.core.rust_cfg import mask_cfg_test
 
 TS_SCOPES = ("src/**/*.ts", "src/**/*.tsx")
 # 后端域：不限于 git —— 「在哪个 Workspace 执行」是**跨域**不变量（file / terminal / search …）。
@@ -104,8 +116,31 @@ FORGED_ANNOTATION_RE = re.compile(r":\s*WorkspaceSession\s*=\s*\{[^}]*?projectId
 # C 的豁免文件：值对象自身（JSDoc 里以字面量说明 wire 形态）
 C_EXEMPT_FILES = {"src/shared/utils/workspaceRef.ts"}
 
+# E：执行上下文台账 —— 「该不该有地址」也是可登记的事实。
+# A2/D 只能看见「签名里已经有 workspace」的形态，看不见「该有却没有」。这条补另一维：
+# 命令体里以 project 取 cwd/根，必须在台账登记**为什么这确实是项目级操作**，否则违规。
+# 台账只增需评审 —— 新增一条登记 = 声称一个执行上下文不需要地址，正是要人看的地方。
+EXEC_CTX_LEDGER = "tools/guards/ledger/exec_context_commands.json"
+RESOLVE_PROJECT_CTX_RE = re.compile(r"\bresolve_project_ctx\s*\(")
+# 「拿项目路径当根」的两个信号必须**同时**出现（与 D 同口径）：`get_project(` 可能只是读元数据
+# （名称 / 环境），单独的 `.path` 也可能是无关字段；合起来才是「用项目路径当工作目录」。
+# 形如 `pm.get_project(id).path` 与 `pm.get_project(id).map(|p| p.path.clone())` 都要命中。
+GET_PROJECT_CALL_RE = re.compile(r"\bget_project\s*\(")
+
 # 测试域豁免（与 check_command_execution 同口径）
 TEST_PATH_RE = re.compile(r"(^|/)(__tests__|tests)(/|$)|\.test\.(ts|tsx)$|_test\.rs$|/tests\.rs$")
+
+# F：后端禁手搓地址（C 的后端对应物）—— 生产代码不得写 `WorkspaceSession { .. }` 字面量。
+# 只匹配「字面量设置地址字段」的形态：`-> WorkspaceSession {`（函数体起始括号）与
+# `impl WorkspaceSession {` 都不命中（括号后不是 `field:`）。
+RS_ADDRESS_MODULE = "src-tauri/src/common/git/workspace_ref.rs"
+RS_FORGE_RE = re.compile(
+    r"\bWorkspaceSession\s*\{\s*(?:\n\s*)?(?:project_id|worktree_path)\s*:"
+)
+# F 的扫描面必须宽于命令层：逃逸口就在 `translation.rs` 这类非 commands 文件里。
+RS_ALL_SCOPE = "src-tauri/src/**/*.rs"
+# 整行注释（含 `///` / `//!` 文档）在 F 之前剔除：注释里写反例是合法的，且注释不是代码。
+LINE_COMMENT_RE = re.compile(r"^\s*//.*$", re.M)
 
 
 def _is_test(rel: str) -> bool:
@@ -149,6 +184,25 @@ def _owning_function(text: str, pos: int) -> str | None:
     return owner
 
 
+def _load_exec_context_registry(ctx: Context) -> dict:
+    """读台账（`{ "rel::fn": "reason" }`）。缺失/不可解析 ⇒ 空表，由判据报违规。"""
+    path = ctx.path(EXEC_CTX_LEDGER)
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    entries = data.get("commands") if isinstance(data, dict) else None
+    return entries if isinstance(entries, dict) else {}
+
+
+def _rs_fn_name(body: str) -> str | None:
+    """从函数块首行取 `fn <name>`。"""
+    m = re.search(r"\bfn\s+(\w+)", body[:200])
+    return m.group(1) if m else None
+
+
 def check(ctx: Context) -> GuardResult:
     ts_files = sorted({p for scope in TS_SCOPES for p in ctx.glob(scope)})
     # `mod.rs` 只允许声明 + re-export（红线 9），不可能承载命令体 —— 排除，免得它们充数。
@@ -163,6 +217,7 @@ def check(ctx: Context) -> GuardResult:
         )
 
     findings: list[Finding] = []
+    exec_ctx_registry = _load_exec_context_registry(ctx)
 
     # ── A1：后端唯一解析入口（无条件：命令层不得直调旧入口，AC3 字面零命中）
     # ── A2：收 workspace 的命令不得只按 project 解析（丢 worktree 维度，§10 戳错单元）
@@ -209,6 +264,67 @@ def check(ctx: Context) -> GuardResult:
                                 text.count("\n", 0, start + m.start()) + 1,
                             )
                         )
+
+    # ── E：执行上下文台账（没有 workspace 形参的命令也必须说清「为什么不需要地址」）
+    for path in rs_files:
+        rel = ctx.rel(path)
+        if _is_test(rel) or _is_exempt_dir(rel):
+            continue
+        # 内联 `#[cfg(test)] mod tests` 不是命令体（docstring 的豁免承诺必须实现）。
+        text = mask_cfg_test(ctx.read(rel))
+        for start, end in _iter_functions(text):
+            body = text[start:end]
+            name = _rs_fn_name(body)
+            if name is None:
+                continue
+            # 收了地址的命令由 A2/D 判（那是「半迁移」形态）；E 只管「压根没有地址」的命令。
+            if WS_PARAM_RE.search(body):
+                continue
+            hit = RESOLVE_PROJECT_CTX_RE.search(body)
+            if hit is None and (
+                GET_PROJECT_CALL_RE.search(body) and PROJECT_PATH_RE.search(body)
+            ):
+                hit = GET_PROJECT_CALL_RE.search(body)
+            if hit is None:
+                continue
+            line = text.count("\n", 0, start + hit.start()) + 1
+            key = f"{rel}::{name}"
+            reason = exec_ctx_registry.get(key)
+            if reason is None:
+                findings.append(
+                    Finding(
+                        "命令体从 project 取 cwd/根，但未在 `ledger/exec_context_commands.json` "
+                        "登记：执行地址必须是 `WorkspaceSession`（worktree 单元与主仓是两个执行上下文）。"
+                        "确属项目级操作请登记并写明理由",
+                        rel,
+                        line,
+                    )
+                )
+            elif not str(reason).strip():
+                findings.append(
+                    Finding(
+                        f"台账 {key} 的 reason 为空：登记必须说明「为什么这不是执行上下文」",
+                        rel,
+                        line,
+                    )
+                )
+
+    # ── F：后端禁手搓地址（扫全部 Rust 文件 —— 逃逸口不只在命令层）
+    for path in sorted(ctx.glob(RS_ALL_SCOPE)):
+        rel = ctx.rel(path)
+        if rel == RS_ADDRESS_MODULE or _is_test(rel):
+            continue
+        code = LINE_COMMENT_RE.sub("", mask_cfg_test(ctx.read(rel)))
+        for m in RS_FORGE_RE.finditer(code):
+            findings.append(
+                Finding(
+                    "手写 `WorkspaceSession { .. }` 字面量：地址只能由命名构造点产生"
+                    "（`WorkspaceSession::of` / `::main`，或前端 `activeWorkspaceSession`）。"
+                    "项目级通道用 `WorkspaceSession::main(id)` 显式声明「按主 checkout 执行」",
+                    rel,
+                    code.count("\n", 0, m.start()) + 1,
+                )
+            )
 
     # ── B：前端禁散签（只查 gitApi.ts 的形参；C 类命令的 worktreePath 是被操作目标，豁免）
     for path in ts_files:
