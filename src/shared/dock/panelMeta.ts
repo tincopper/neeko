@@ -50,9 +50,16 @@ export const DOCK_PANEL_META: Record<string, DockPanelMeta> = {
     defaultZone: 'right',
     defaultOrder: 4,
   },
+  team: {
+    id: 'team',
+    defaultZone: 'right',
+    // 紧跟 conversations（4）之后：团队面板是「聊完要看的下一步」。
+    // search 因此后移一位 —— 不给两处同序，同序意味着顺序取决于对象字面量的键序。
+    defaultOrder: 5,
+  },
   search: {
     id: 'search',
     defaultZone: 'right',
-    defaultOrder: 5,
+    defaultOrder: 6,
   },
 };

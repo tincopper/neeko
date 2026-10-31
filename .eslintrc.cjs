@@ -7,10 +7,10 @@
 // 于是 app 层可直引 `agent-chat/hooks/*` 而 ESLint 一声不响）。新增 feature 目录时
 // **本清单必须在同一 diff 内追加一行**，否则护栏红。
 const FEATURE_DIRS = [
-  'action-menu', 'agent', 'agent-chat', 'browser', 'connection', 'conversation',
-  'editor', 'file', 'git', 'library', 'lsp', 'notification', 'project',
-  'quick-open', 'runner', 'search', 'session', 'settings', 'skill', 'status-bar',
-  'symbol-nav', 'task', 'terminal', 'theme',
+  'action-menu', 'agent', 'agent-chat', 'agent-team', 'browser', 'connection',
+  'conversation', 'editor', 'file', 'git', 'library', 'lsp', 'notification',
+  'project', 'quick-open', 'runner', 'search', 'session', 'settings', 'skill',
+  'status-bar', 'symbol-nav', 'task', 'terminal', 'theme',
 ];
 // except 相对 from（feature 根）解析。store/types/api 兼容单文件与目录形态。
 const FIREWALL_EXCEPT = [

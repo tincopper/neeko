@@ -7,6 +7,7 @@ import {
   Library,
   MessagesSquare,
   Search,
+  Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { lazy } from 'react';
@@ -25,6 +26,7 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   Library,
   MessagesSquare,
   Search,
+  Users,
 };
 
 // ── Lazy-loaded panel components ────────────────────────────────────────────
@@ -54,6 +56,8 @@ const LazyBrowserPanel = lazy(() =>
 const LazyConversationsPanelWrapper = lazy(
   () => import('@/app/dock/wrappers/ConversationsPanelWrapper'),
 );
+
+const LazyTeamPanelWrapper = lazy(() => import('@/app/dock/wrappers/TeamPanelWrapper'));
 
 const LazyPullRequestsPanelWrapper = lazy(
   () => import('@/app/dock/wrappers/PullRequestsPanelWrapper'),
@@ -127,6 +131,15 @@ const UI_BINDINGS: Record<string, UiBinding> = {
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 240,
+  },
+  team: {
+    title: 'Team',
+    icon: 'Users',
+    component: LazyTeamPanelWrapper as React.LazyExoticComponent<
+      React.ComponentType<Record<string, unknown>>
+    >,
+    // 花名册 + 任务板纵向堆叠，再窄就会把每一行的状态徽标挤掉。
+    minPanelSize: 260,
   },
 };
 

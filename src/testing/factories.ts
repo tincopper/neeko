@@ -6,7 +6,13 @@ import type {
   FileChange,
   FileNode,
   ManagedSkillDto,
+  MemberStatusView,
   TagGroup,
+  TaskCard,
+  TaskDetail,
+  Team,
+  TeamSession,
+  TeamSnapshot,
   DiscoveredSkillDto,
 } from '@/shared/types';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
@@ -131,4 +137,80 @@ export function createFileNode(name: string, path: string): FileNode {
 /** 目录读取结果夹具：默认不截断，`truncated` 用例单独传入。 */
 export function createDirTreeResult(nodes: FileNode[], truncated = false): DirTreeResult {
   return { nodes, truncated };
+}
+
+/** 花名册一行夹具（团队面板的六态 + 取证维度）。 */
+export function createMemberStatus(
+  overrides: Partial<MemberStatusView> & Pick<MemberStatusView, 'memberId'>,
+): MemberStatusView {
+  return {
+    name: overrides.memberId,
+    role: 'worker',
+    state: 'idle',
+    verification: 'verified',
+    leaseRemainingSecs: null,
+    ...overrides,
+  };
+}
+
+/** 任务板一行夹具（**没有 body** —— 列载荷里本来就没有这个字段）。 */
+export function createTaskCard(overrides: Partial<TaskCard> & Pick<TaskCard, 'id'>): TaskCard {
+  return {
+    title: `task ${overrides.id}`,
+    state: 'pending',
+    owner: null,
+    workspace: 'shared',
+    dependsOn: [],
+    claimedAt: null,
+    leaseTtl: 1800,
+    summary: null,
+    summaryTruncated: false,
+    artifacts: [],
+    reclaimCount: 0,
+    ...overrides,
+  };
+}
+
+/** 任务详情夹具（列视图 + 派活正文）。 */
+export function createTaskDetail(
+  overrides: Partial<TaskDetail> & Pick<TaskDetail, 'id'>,
+): TaskDetail {
+  return { ...createTaskCard(overrides), body: '派活正文', ...overrides };
+}
+
+/** 团队行夹具。 */
+export function createTeam(overrides?: Partial<Team>): Team {
+  return {
+    id: 'tm_1',
+    name: 'refactor',
+    leadSessionId: 'sess-lead',
+    leadAgentId: 'claude-code',
+    projectPath: '/repo/main',
+    createdAt: 1_700_000_000_000,
+    closedAt: null,
+    state: 'active',
+    ...overrides,
+  };
+}
+
+/** 面板快照夹具（`team_snapshot` 的完整载荷）。 */
+export function createTeamSnapshot(overrides?: Partial<TeamSnapshot>): TeamSnapshot {
+  return {
+    team: createTeam(),
+    members: [createMemberStatus({ memberId: 'lead@tm_1', name: 'lead', role: 'lead' })],
+    tasks: [],
+    tasksTruncated: false,
+    ...overrides,
+  };
+}
+
+/** `start_team_session` 的返回夹具。 */
+export function createTeamSession(overrides?: Partial<TeamSession>): TeamSession {
+  return {
+    teamId: 'tm_1',
+    memberId: 'lead@tm_1',
+    terminalId: 'sess-lead',
+    endpointUrl: 'http://127.0.0.1:0/mcp',
+    ...overrides,
+  };
 }
