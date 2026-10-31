@@ -1069,3 +1069,42 @@ PiRpcAdapter 实现 resume/supports_chat_resume，前端入口按 chat 侧能力
 
 - worktree 里人工过一遍 AC1（context_init.workspace_key 尾段 + cwd 指向工作树根）
 - LSP / conversation 扫描 / task hub 的同源收口进台账，后续逐个处理
+
+
+## Session 388: 提交 workspace 寻址三件套（feature / guards / task）
+<!-- trellis-session: v=2 fp=b47e5f10206932a2 -->
+
+**Date**: 2026-10-31
+**Task**: 提交 workspace 寻址三件套（feature / guards / task）
+**Branch**: `main`
+
+### Summary
+
+按功能拆成三次提交；提交前跑过完整 pnpm check（38/38 护栏，含全量 test_fe / test_rust / test_host）
+
+### Main Changes
+
+- feat(agent-chat): 地址成为会话身份（wire 与持久化各只剩一个表示）
+- feat(guards): 判据 E/F + #[cfg(test)] 豁免落地，消掉两份重复的 cfg_test 切块实现
+- chore(trellis): 任务产物与 AC 勾验
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7ff2363a` | feat(agent-chat): address chat sessions by workspace instead of project id |
+| `b75d2dd3` | feat(guards): enforce workspace addressing on addresses and command bodies |
+| `adb3f1f3` | chore(trellis): record the workspace addressing task |
+
+### Testing
+
+- [OK] pnpm check → 38/38 通过（test_fe 207s / test_rust 55s / test_host 5s）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- worktree 里人工过 AC1：context_init.workspace_key 尾段与 cwd 指向工作树根
+- 任务 10-30 可 archive；LSP / conversation / task hub 的同源收口另开任务
