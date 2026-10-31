@@ -359,6 +359,17 @@ cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / serv
 `team_snapshot` / `team_task_detail` / `start_team_session` 是**本机用户**的入口，不做 principal 校验
 （否则像是漏了授权）；它们也**不得**顺手放宽矩阵里的任何一格。
 
+### 8.4a 命令载荷的 wire 键名（一次真实事故）
+
+`TeamSession` 少了 `#[serde(rename_all = "camelCase")]`：命令成功、队长 PTY 也在跑，前端却提示
+「团队『undefined』已建立，但队长进程没有落地」—— 它读的是 `session.teamId` / `session.terminalId`，
+收到的是 `team_id` / `terminal_id`。
+
+判据：**新增或修改任何跨 IPC 的载荷，都要有一条断言 JSON 键集的测试**。字段名对了不代表 wire 上
+名字对了；从结构体定义处看不出口径。`commands.rs` 的
+`every_command_payload_uses_camel_case_wire_keys` 用一张表钉住当前全部命令载荷，并顺带扫描
+「键名里有没有下划线」—— 新增载荷时**加一行**即可获得同样的保护。
+
 ### 8.5 终端接管的所有权（跨域契约，团队入口的前置）
 
 队长/成员 PTY 由**后端**创建（`start_team_session` 返回 `terminal_id`），前端只是**接管**：

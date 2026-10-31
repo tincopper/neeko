@@ -61,7 +61,12 @@ use crate::common::runtime::run_blocking_result;
 use crate::AppStateWrapper;
 
 /// `start_team_session` 的返回：**队长能行动的三样**（队 / 成员 / 落脚的终端）。
+///
+/// `rename_all = "camelCase"` **不是风格**：前端读的是 `session.teamId` / `session.terminalId`。
+/// 漏了它，表现是「团队『undefined』已建立，但队长进程没有落地」—— 命令成功、PTY 也在跑，
+/// 界面上却什么都没发生（`every_command_payload_uses_camel_case_wire_keys` 钉住这条）。
 #[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TeamSession {
     /// 新团队 id。
     pub team_id: String,
@@ -263,6 +268,7 @@ fn canonical_project_root(raw: &str) -> Result<PathBuf, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::team::admission::LaunchableAgent;
 
     /// 夹具路径由 manifest 目录推导（红线 13：不许手写平台相关的绝对路径）。
     const ROOT: &str = env!("CARGO_MANIFEST_DIR");
@@ -288,6 +294,65 @@ mod tests {
         let err =
             canonical_project_root(&missing.to_string_lossy()).expect_err("不存在的路径必须拒绝");
         assert!(matches!(err, AppError::Io(_)), "{err:?}");
+    }
+
+    /// 命令载荷的**线上键名**必须与前端镜像一致（camelCase）。
+    ///
+    /// 这条测试的存在理由是一次真实事故：`TeamSession` 少了 `#[serde(rename_all = "camelCase")]`，
+    /// 于是前端收到的是 `{ team_id, terminal_id, ... }`，而它读的是 `session.teamId` /
+    /// `session.terminalId` —— 表现是「团队『undefined』已建立，但队长进程没有落地」：
+    /// 命令成功、队长 PTY 也在跑，界面上却什么都没发生。
+    ///
+    /// 为什么断言**键集**而不是字段值：字段名对了不代表 wire 上名字对了，序列化口径只能从
+    /// JSON 侧看。为什么还要扫一遍下划线：新增载荷时漏加属性是同一个错误，而它在结构体
+    /// 定义处完全看不出来。
+    #[test]
+    fn every_command_payload_uses_camel_case_wire_keys() {
+        let session = TeamSession {
+            team_id: "tm_1".into(),
+            member_id: "lead@tm_1".into(),
+            terminal_id: Some("term-1".into()),
+            endpoint_url: "http://127.0.0.1:1/team/mcp".into(),
+        };
+        let launchable = LaunchableAgent {
+            agent_id: "pi".into(),
+            refusal: Some("nope".into()),
+        };
+
+        let payloads = [
+            ("TeamSession", serde_json::to_value(&session).unwrap()),
+            (
+                "LaunchableAgent",
+                serde_json::to_value(&launchable).unwrap(),
+            ),
+        ];
+
+        for (name, json) in payloads {
+            let keys: Vec<&str> = json
+                .as_object()
+                .unwrap_or_else(|| panic!("{name} 必须是对象"))
+                .keys()
+                .map(String::as_str)
+                .collect();
+            assert!(
+                keys.iter().all(|key| !key.contains('_')),
+                "{name} 的线上键名必须是 camelCase，实际 {keys:?}"
+            );
+        }
+
+        let session_json = serde_json::to_value(&session).unwrap();
+        let mut sorted: Vec<&str> = session_json
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        sorted.sort_unstable();
+        assert_eq!(
+            sorted,
+            vec!["endpointUrl", "memberId", "teamId", "terminalId"],
+            "前端的 TeamSession 镜像依赖这四个键"
+        );
     }
 
     /// 文件（不是目录）不能当团队根：成员 PTY 的 cwd 会是它，`create_session` 会失败得
