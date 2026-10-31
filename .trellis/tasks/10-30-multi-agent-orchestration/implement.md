@@ -230,7 +230,53 @@
 **触发条件（满足任一再做）**：非测试区 > 900 行 · 出现 > 60 行的单函数 · 第 9 个工具
 （`team_spawn`）落地后新增分支仍找不到位置。
 
-### 2.5 `team_spawn` 的准入校验（三档）
+### 2.5a `team_spawn`：准入 + 建成员（**决策层**）— ✅ 已完成
+
+> **两相位设计**（与既有 `team_send → NeedsDelivery` 同构）：
+> `dispatch` **决定**（准入、成员落库），返回 `ToolReply::MemberCreated`；
+> **执行**（签发 token、写 MCP 配置、起 PTY、注入 env）留在 2.5b 的接线段。
+>
+> 理由：`dispatch` 保持纯逻辑 + 可测；PTY 起来是唯一有进程副作用的一步，把它留在组合根，
+> 失败面才收得住（PTY 起不来时成员已落库的状态是可查询、可清理的，而不是半生不死的进程）。
+
+- [x] `admission.rs` 是**红线 15 的落点**：P0 实测结果编码成数据表，`tier_of` / `channel` /
+      `result_channel` / `bypass_args` 全是从数据推导的纯函数；源码级护栏
+      `per_cli_facts_live_only_in_the_table`（禁比较/`matches!`/`match` 分支形状，
+      且每个已准入 id 在生产段恰好出现一次）
+- [x] `unverified` 字段诚实列出未确认项，并**原样回给队长**
+- [x] 准入表 ↔ `builtin_configs()` 的交叉断言（`every_admitted_agent_has_an_agent_config`）——
+      `dsh` 被拒的理由（无 `AgentConfig`）从此是机器判据，不再是 10 行靠人肉对齐
+- [x] `McpTransport` 的变体集合 = 已实现的传输集合（删掉未落地的 `Stdio`）
+- [x] 入参 Schema 与 dispatch 实际读取的字段逐字对齐（`team_spawn_schema_matches_the_documented_shape`）
+- [x] `workspace.path` 入口即要求**绝对**路径（相对路径在 2.5b 会按进程 cwd 解析）
+- [x] 入口 sanitize：`name`（无 `@` / 无控制字符 / ≤64）· `model` 与 `workspace.path`
+      无控制字符 —— 三者最终进 env / argv / 文件系统，`\0` 在 2.5b 的 `Command::env` /
+      `Command::arg` 上会 panic（判据单实现：`reject_control_chars`）
+- [x] 工具返回只带**队长能行动的信息**（`member_id` / `tier` / `unverified`）；执行参数
+      一律从已落库的成员行推导，不随回复走（红线 14 的输出侧）
+- [x] 判据：`cargo test --lib agent::team`（含 `member_row_carries_everything_the_executor_needs`）
+
+### 2.5b-α 组合根接线（团队观察者挂上 hooks）— ✅ 已完成
+
+- [x] `AppStateWrapper.team_manager`（`Arc`，共用 `library_store` 的池）
+- [x] 构造走 `TeamManager::load`（**hydrate**）而不是 `new` —— 库是真相源、内存镜像是缓存，
+      否则第二次启动读到空花名册且 `add_member` 对库里存在的团队报 `NotFound`
+      （判据：`a_restart_hydrates_the_team_domain_from_the_database`）
+- [x] `handlers::route_group` 经端口 `ExtraConsumer` 挂第二个消费者，两者共用**同一次**
+      `spawn_blocking`、通知在前（装配规则收在 `compose_consumers`，可测）
+- [x] 团队侧 fail-open：`team::deliver::observe` 只记日志、不返回 `Result`、不 `panic`
+
+### 2.5b（接线段，下一步）
+
+- [ ] 执行层消费 `MemberCreated`：`issue_token` → 写 MCP 配置 → 起 PTY → 注入 env
+      （env = `identity::member_env`，注入点 `terminal/manager.rs` 的 env 组装点）
+- [ ] 团队 MCP 独立 listener（组合根 bind + 自己的 `AuthGate::with_tokens` +
+      从成员行组装 `principals`，**过滤空 hash**）—— 目前 `server::route_group` 已就绪但
+      **组合根尚未 mount**，所以工具面对任何 CLI 都还不可见
+- [ ] sentinel 扫描器包装 `services.rs` 的 `flush` 闭包（**不碰 `pump.rs`**）
+- [ ] `team_send` 的原子 send+wait（AC14）
+
+### 2.5 `team_spawn` 的准入校验（原始清单，已被 2.5a/b 取代）
 
 - [ ] 依据 P0 矩阵计算 `tier`（A/B/C），**调用方传入的档位被忽略**
 - [ ] A 档：hook + MCP 齐全；B 档：缺 MCP → `result_channel = Sentinel`；C 档：无 hook → `result_channel = Sentinel` 且**标记卡住不可检测**

@@ -798,8 +798,9 @@ match read_settings(&path) {
   **第一个落脚点**，不是它的定义域。
 - **Scope**：`src-tauri/src/server/`（引擎 + 门 + 路由组契约）、
   `agent/hooks/ingest/`（8 文件，按「一次请求经过的顺序」+ 正交关注点分层：
-  `handlers` 路由组 / `validation` 准入校验 / `event` 事件契约 / `notify` 通知投影 /
-  `dispatch` 投递链 / `attribution` 归属 / `endpoint` 坐标）、
+  `handlers` 路由组 + 消费者装配 / `validation` 准入校验 / `event` 事件契约 /
+  `notify` 通知投影 / `dispatch` 通知消费者（投递链的唯一有副作用实现）/
+  `attribution` 归属 / `endpoint` 坐标）、
   `agent/hooks/boot.rs`（bind → 建门 → 建组 → serve 接线）。
   **文件命名判据**：文件名必须回答「它做什么」，而不是「它属于哪个抽象层」——
   「kernel」是 OS 术语、「contract」是抽象分类词，两者都不描述行为，故不用作文件名。
@@ -821,12 +822,14 @@ pub fn validate(source: &str, body: &[u8], sink: impl FnMut(&str, HookEvent));
 
 // agent/hooks/ingest/event.rs     —— HookEvent：上报事件契约（公共数据资产）
 // agent/hooks/ingest/handlers.rs  —— handler + RouteGroup 声明 + 投递隔离
-pub fn route_group(app: AppHandle, runtime: Arc<AppRuntime>) -> RouteGroup;      // handlers.rs 生产入口
+// extra = 下游消费者端口（组合根注入；hooks 域不认识它是什么域）
+pub type Deliver = dyn Fn(&str, HookEvent) + Send + Sync;
+pub type ExtraConsumer = Arc<Deliver>;
+pub fn route_group(app: AppHandle, runtime: Arc<AppRuntime>, extra: ExtraConsumer) -> RouteGroup;
 pub fn route_group_with(deliver: impl Fn(&str, HookEvent) + Send + Sync + 'static) -> RouteGroup; // 测试缝
 
-// agent/hooks/ingest/dispatch.rs  —— 投递链（唯一有副作用；经 AppRuntime::spawn_blocking）
-pub fn via_blocking_pool(app: AppHandle, runtime: Arc<AppRuntime>)
-    -> impl Fn(&str, HookEvent) + Send + Sync + 'static;
+// agent/hooks/ingest/dispatch.rs  —— 投递链（唯一有副作用的投影；被下面两个消费者之一调用）
+pub(crate) fn deliver_notification(app: &AppHandle, source: &str, event: HookEvent); // 通知消费者
 ```
 
 ### 3. Contracts
@@ -847,8 +850,19 @@ pub fn via_blocking_pool(app: AppHandle, runtime: Arc<AppRuntime>)
   `TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, …)`（`-D warnings` 会拦旧 API）。
 - **投递必须隔离（红线 3）**：`deliver_notification`（`dispatch.rs`）同步持
   `project_manager` / `notification.policy` 两把 std `Mutex`；handler 跑在 Tauri 共享 runtime
-  worker 上，必须经 `AppRuntime::spawn_blocking` fire-and-forget 投递（生产闭包 =
-  `dispatch::via_blocking_pool`）。204 不依赖投递结果，响应不再含锁等待。
+  worker 上，必须经 `AppRuntime::spawn_blocking` fire-and-forget 投递（唯一装配点 =
+  `handlers.rs::compose_consumers`）。204 不依赖投递结果，响应不再含锁等待。
+- **一次 `spawn_blocking`，N 个消费者**：每个消费者各开一个阻塞任务会让每条 hook 占 N 个
+  worker（在途上限 16 ⇒ N 倍占用）；两个消费者读的还是同一份事件快照，分开投递会让它们
+  可能看到不同的中间状态。所以消费者一律**顺序**跑在同一次阻塞任务里，**通知在前**（下游
+  的失败 / panic 只能毁掉它自己：`Fn` 不返回 `Result`，panic 落进被丢弃的 `JoinHandle`）。
+  **每个消费者各自被 `catch_unwind` 隔离**（`run_guarded`）：顺序不等于依赖，通知侧一个
+  panic 不该让下游消费者整条消失，反之亦然。新增消费者的正确做法是往这个组合点里加一个
+  闭包（它会自动被隔离），**不是**再调一次 `spawn_blocking`。
+- **下游消费者经端口注入，不反向依赖**：`hooks` 只声明 `ExtraConsumer`（`Arc<Deliver>`），
+  由组合根（`app::boot`）接到具体域（今天是 `team::deliver::observe`）。依赖边因此是
+  `consumer_domain → hooks`，`hooks` 可脱离任何消费方编译 —— 它是 fail-open 的常开路径，
+  不该因为下游域的重构而受影响。
 - **token 校验唯一位置是门**：准入层（`validation`）不再持有 token、不做比较（`ct_eq` 调用点 = 1，AC7）。
 - **访问日志用自写 `log` 中间件**：`tower_http::TraceLayer` 发 `tracing` 事件，本仓日志是
   `log` crate、无 subscriber → 生产静默 no-op。

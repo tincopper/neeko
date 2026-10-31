@@ -29,6 +29,7 @@
 | [项目 Skill 同步](./project-skill-sync.md) | Project Tag Group、target Agent、项目本地部署与解绑契约 | 已填写 |
 | [Git 域](./git-domain.md) | 历史展示范围（HEAD）、refs 分类、stash 查询、换行/路径契约、只读 git 语义单点注入、写后快照新鲜度 | 已填写 |
 | [DAP 域](./dap-domain.md) | 调试域分层、断点单锁仓储、语言身份归一、事件端口、路径不降级 | 已填写 |
+| [Agent Team 域](./team-domain.md) | 多 Agent 编排：库为真相源（启动必须 hydrate）、两相位（决策/执行）与执行参数推导、准入表（红线 15 落点）、凭证只下发一次、唯一异步边界 | 已填写 |
 | [LSP 域](./lsp-domain.md) | 三通道模型、applyEdit 跨层转发契约、诊断单写点、失败诊断归属（证据锚键 + 环境同源）、F1-F7 重构台账 | 已填写 |
 | [Agent Hooks 域](./agent-hooks-domain.md) | 外部 Agent CLI 状态上报：多实例坐标目录 + 上报端 fan-out、私有目录/文件权限、旧单文件迁移 | 已填写 |
 

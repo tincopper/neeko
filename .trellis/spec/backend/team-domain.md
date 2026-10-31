@@ -1,0 +1,144 @@
+# Agent Team 域（多 Agent 编排）
+
+> 域目录：`src-tauri/src/agent/team/` · 任务板/队长的设计全文：`.trellis/tasks/10-30-multi-agent-orchestration/`
+> 本文只记录**契约与判据**（改这一域之前必须知道的那些「不然会静默坏掉」的事）。
+
+团队域是 Neeko 的**协调基质**：一个 CLI 会话被提升为队长，多个 CLI 成员认领任务板上的活。
+Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
+
+## 文件布局与职责
+
+| 文件 | 职责 | 改它的理由 |
+| --- | --- | --- |
+| `types.rs` | 数据模型 + serde 口径（camelCase / snake_case 两套） | 加字段 / 改 wire 名 |
+| `store.rs` | SQLite 持久化（v14 建表、迁移、分页） | 表结构 / 查询 |
+| `manager.rs` | **唯一写入口**（内存镜像 + 库在同一把锁内一起改） | 新状态迁移 |
+| `completion.rs` / `lease.rs` | 完成判定 / 租约（纯函数） | 状态机规则 |
+| `wait.rs` | `team_wait` 的阻塞等待（只读内存快照） | 等待语义 |
+| `identity/` | `env`（注入）/ `token`（签发与解析）/ `verdict`（归因） | 三者无共同变化理由，故分文件 |
+| `admission.rs` | **红线 15 落点**：per-CLI 准入事实表 + 纯函数推导 | P0 实测结果变了 |
+| `mcp/schema.rs` | 工具清单（`TOOLS`）与入参 Schema | 新增工具 |
+| `mcp/dispatch.rs` | 工具调用：翻译 → 授权 → 入参校验 → 委派 | 工具语义 |
+| `mcp/server.rs` | MCP over HTTP（JSON-RPC + header token → 主体） | 协议层 |
+| `authorize.rs` | 授权矩阵（9 工具 × 2 角色 = 18 格，表驱动测试） | 加减工具 |
+| `observe.rs` / `deliver.rs` | hook 事件的团队投影 / 投递入口（见 §6） | 新信号 |
+| `fixtures.rs` | `#[cfg(test)]` 夹具单一源（`Team` / `TeamMember` 全字段）；`store.rs` 的 round-trip 夹具是**刻意例外**（每列都要偏离默认值，否则"某列没写进库"会变绿） | 加字段时只改一处 |
+
+## 1. 真相源：库是真相、内存镜像是缓存 ⇒ 启动必须 `load`
+
+`TeamManager` 同时持有内存镜像（`HashMap`）与 SQLite。**唯一允许的真相源是库**；
+内存镜像只是缓存，所以它的初始化（hydrate）是启动的硬步骤。
+
+- 生产构造必须走 `TeamManager::load(store)`，**不是** `TeamManager::new(store)`。
+  `new` 给的是空镜像：第二次启动起 `team()` / `member()` 恒 `None`，而 `add_member` 的
+  团队存在性判据读的正是空镜像 —— 于是它对一个库里真实存在的团队报 `NotFound`。
+- 机器判据：`app_state::tests::a_restart_hydrates_the_team_domain_from_the_database`
+  （同一个库文件、两次 `AppStateWrapper`：读得到 + 写得进）。
+- 池的借用同样有前置条件：`TeamStore::with_pool` 是 `const fn`，**不起池也不跑迁移**。
+  组合根只借 `library_store` 那个已经跑过迁移链（含 v14 建表）的池，换池 = 每条查询
+  `no such table: team`。判据：`team_manager_shares_the_library_pool`。
+
+## 2. 两相位：`dispatch` 决定、执行层动手
+
+所有会产生**进程副作用**的工具都返回「意图」而不是「已生效」：
+
+| 工具 | 决策层返回 | 执行层（2.5b 接线段）动作 |
+| --- | --- | --- |
+| `team_spawn` | `ToolReply::MemberCreated`（成员已落库） | 写 MCP 配置 → 起 PTY → 注入 env |
+| `team_send` | `ToolReply::NeedsDelivery` | 经 `Pty` / `Mcp` 通道投递字节 |
+| `team_close` | `ToolReply::Closed`（已校验的关闭目标） | 关 PTY → 归档成员 |
+
+**理由**：PTY 起不来时成员必须是「已落库、可查询、可清理」的，而不是半生不死的进程；
+决策层因此保持纯逻辑 + 可单测（不需要 `AppHandle`）。
+
+### 执行参数不随工具返回走（红线 14 的**输出侧**）
+
+`team_spawn` 的回复只有三件事：`member_id` / `tier` / `unverified`。env、MCP 注入方式、
+传输、旁路参数**一律不出现**在回复里 —— 它们全部能从已落库的成员行重新推导：
+
+| 执行层需要 | 推导式 |
+| --- | --- |
+| env | `identity::member_env(team_id, member_id)` |
+| 注入方式 / 传输 | `admission_for(member.agent_id)` |
+| 旁路参数 | 上一行 `.bypass_args(member.approval_policy)` |
+| token 明文 | `TeamManager::issue_token(member_id, now)` |
+| 工作目录 | `member.workspace` |
+
+两个理由：① 把推导结果再传一遍就是给同一件事实造第二个源（成员行改过之后副本就是错的）；
+② 回复会进模型上下文，**多一个接收方无法行动的字段就是在邀请模型去重放它**——这与入参侧
+「Schema 里多一个 dispatch 不读的参数」是同一条规则。机器判据：
+`dispatch::tests::member_row_carries_everything_the_executor_needs`（把四个推导入口各走一遍；
+哪天有人从 `TeamMember` 上删字段，这里先红，而不是 2.5b 运行时才发现推不出来）。
+
+## 2.1 模型给的字符串在入口就 sanitize
+
+`team_spawn` 的三个入参最终会**离开 JSON 世界**（进入不能再转义的地方），所以判据在入口，
+且是「拒绝」不是「清洗」：
+
+| 字段 | 落点 | 判据 | 漏判的后果 |
+| --- | --- | --- | --- |
+| `name` | env（`NEEKO_TEAM_MEMBER_ID`）、`{name}@{team}` 解析、日志/sentinel 行 | 非空（`required_str`）· 无 `@` · 无控制字符 · ≤ 64 字符 | `\0` ⇒ 2.5b 的 `Command::env` **panic**；`@` ⇒ 身份可伪造；超长 ⇒ 花名册与每次 `tools/call` 载荷被撑大 |
+| `model` | argv（`--model <value>`） | 非空 · 无控制字符 | NUL ⇒ `Command::arg` panic；换行 ⇒ 把后面内容变成另一条参数 |
+| `workspace.path` | 文件系统（`git worktree` / PTY cwd） | 非空 · **绝对** · 无控制字符 | 相对路径按进程 cwd 解析；NUL 无法表示 |
+
+控制字符判据只有**一个实现**（`dispatch::reject_control_chars`）—— 三个字段各写一份，
+未来加第四个注入点必然漏一处，而漏掉只在 spawn 时爆。
+
+## 3. 准入表（红线 15 落点）
+
+「这个 CLI 能不能当成员、走哪条通道」是 **per-CLI 数据**，只允许是 `ADMISSIONS` 里的一行：
+
+- 通用模块禁止 `if agent_id == "…"`；`admission.rs` 有源码级护栏
+  （`per_cli_facts_live_only_in_the_table`：禁止比较/`matches!`/`match` 分支形状，
+  且每个已准入 id 在生产段**恰好出现一次** = 它自己那行）。
+- **档位由数据推导**（`tier_of`：无 hook ⇒ C；有 hook 有 MCP 面 ⇒ A；有 hook 无 MCP 面 ⇒ B），
+  调用方不可声明。
+- `channel`（怎么**发**）只由 MCP 面决定，`result_channel`（怎么**报**）只由 hooks 决定 ——
+  **两列不合并**：`grok` 是「能收不能报」的真实反例（C 档但 `channel = Mcp`）。
+- `unverified` 字段是**诚实面**：B 级证据（配置已装、未跑一轮）必须原样回给队长。
+- `McpTransport` 的变体集合 = **本仓已实现的传输集合**。加变体必须与它的 bridge 同一个 diff，
+  否则 `has_mcp()` 会把一条发不进去的配置宣传成 `channel = Mcp`。
+- 准入表与 `builtin_configs()` 是两个真相源，中间只有一条机器桥：
+  `every_admitted_agent_has_an_agent_config`（`dsh` 被拒的理由正是「没有 `AgentConfig`」）。
+
+## 4. 凭证：明文只在执行层出现一次
+
+- 落库只存 `sha256`（`member.token_hash`）；**明文从来不经工具返回**（那会进模型上下文、
+  会话 transcript 与导出）。
+- `team_spawn` 落库时 `token_hash` 为**空串 ⇒ 该成员不可认证**；执行层拿到 `member_id` 后调
+  `TeamManager::issue_token` 取一次并用掉。
+- `issue_token` **会轮换**：旧 hash 被覆盖，执行层重试不会留下两把能用的钥匙。
+  审计只记「何时签的」，不记明文也不记 hash（`team_event` 会被导出做排查）。
+- 落库的 `sha256` 就是 `principals` map 的 key：`resolve_principal` 只做查表，**不做恒定时间
+  比较**（攻击者无法控制 key 侧）；`server/gate.rs` 的「进程内比较落点 = 1」不变量因此仍成立。
+  组装 `principals` 时必须**过滤空 hash**，否则会把一个不可认证的成员塞进表里。
+
+## 5. 并发与阻塞（红线 3）
+
+- `TeamManager` 是**同步**的：唯一阻塞调用是 `rusqlite`，包成 `async` 只会让「锁跨 await」变成可能。
+  调用方负责把整次调用放进 `spawn_blocking`。
+- 唯一异步边界是 `dispatch::call_async`：`team_wait` 留在异步侧（等待循环只读内存快照，
+  阻塞它等于钉死一个 worker 直到超时），**其余工具一律进阻塞池**（它们是会写库的那一类）。
+  同步入口 `dispatch::call` 是 `#[cfg(test)]` —— 留一个能在 async 上下文直接调的同步入口，
+  等于给「把 SQLite 写回 tokio worker」留后门。
+- 写路径必须经 `manager.lock_writing()`（离开作用域时置代数 + `notify_waiters()`），
+  顺序固定「先置位、后 notify」；纯读用 `inner.lock()`，**不得**唤醒等待者。
+
+## 6. hook 事件的团队投影（依赖方向）
+
+`team/observe.rs` 是投影，`team/deliver.rs` 是投递入口，两者**故意放在消费方域内**。
+`hooks` 只声明端口 `ExtraConsumer`（`Arc<Deliver>`），具体接线在组合根（`app::boot`）。
+判据与例外全文：`agent-hooks-domain.md`「消费者投影文件的位置（例外：团队观察者）」。
+消费者与通知共享**同一次** `spawn_blocking`（通知在前），且各自被 `run_guarded` 隔离 panic ——
+顺序不等于依赖：任一侧崩溃都不该让另一侧收不到事件。理由见同一文件
+「一次 spawn_blocking，N 个消费者」。
+
+## 7. 验证入口
+
+```bash
+cargo test --lib agent::team        # 本域全集（含准入矩阵、状态机、租约、水位线、MCP 工具面）
+cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / server）
+```
+
+新增工具的清单：`ToolName` 变体 → `ALL_TOOL_NAMES` → `TOOLS`（含 `input_schema`）→
+`dispatch_tool` 的 `match` → `authorize.rs` 的 18 格表（编译器与表驱动测试会同时追着你补）。
