@@ -28,7 +28,7 @@ interface PaneTabBarProps {
   actionMenuItems: ReturnType<typeof getActionMenuItems>;
   onActionMenuClose: () => void;
   onActionMenuExecute: (item: ReturnType<typeof getActionMenuItems>[number]) => void;
-  onActionMenuAgentTerminal: (agentId: string) => void;
+  onActionMenuAgentTerminal: (agentId: string, agentName: string) => void;
   // Agent bar
   showAgentBarContent: boolean;
   showAgentBarRow: boolean;

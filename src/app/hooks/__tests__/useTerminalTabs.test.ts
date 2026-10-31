@@ -35,7 +35,7 @@ describe('useTerminalTabs', () => {
     expect(entry.tabs.filter((t) => t.data.kind === 'terminal')).toHaveLength(10);
   });
 
-  it('adds an agent terminal tab: 身份是 agentId，标题是中性的 Terminal N', () => {
+  it('adds an agent terminal tab named after the agent（会话起名前的占位）', () => {
     resetStore();
     const { result } = renderHook(() => useTerminalTabs('t1', 'p1'));
     const agent = { id: 'opencode', name: 'OpenCode' } as AgentConfig;
@@ -43,9 +43,9 @@ describe('useTerminalTabs', () => {
 
     const entry = useEditorStore.getState().tabs[SPACE];
     expect(entry.tabs).toHaveLength(1);
-    // agent 身份只走 data.agentId（tab 前导图标据此渲染）；标题不含 agent 名
+    // 身份走 data.agentId；标题用 agent 名占位，会话真标题到手后由渲染期覆盖
     expect(entry.tabs[0].data.agentId).toBe('opencode');
-    expect(entry.tabs[0].title).toBe('Terminal 1');
+    expect(entry.tabs[0].title).toBe('OpenCode');
   });
 
   it('no-ops without a tabKey or projectId', () => {

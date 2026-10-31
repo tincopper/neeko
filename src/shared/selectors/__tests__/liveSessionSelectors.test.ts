@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   dominantState,
+  isNamedSession,
   isSameSession,
   sessionTab,
   sessionsByUnit,
@@ -19,8 +20,8 @@ function session(overrides: Partial<SessionView> & { sessionId: string }): Sessi
     kind: 'terminal' as SessionKind,
     agentId: null,
     workspaceKey: MAIN_KEY,
-    title: 'Terminal',
-    titleSource: 'placeholder',
+    title: 'fix the parser',
+    titleSource: 'prompt',
     state: 'running' as SessionState,
     startedAt: '2026-10-31T10:00:00.000Z',
     updatedAt: '2026-10-31T10:00:00.000Z',
@@ -33,7 +34,34 @@ function tabWith(data: TabData, id = 'tab-1'): Tab {
   return { id, scope: { kind: 'app' }, title: `fallback-${id}`, data };
 }
 
+describe('isNamedSession', () => {
+  it('占位来源 / 空标题都算「还没有名字」', () => {
+    expect(isNamedSession(session({ sessionId: 'a', title: '', titleSource: 'placeholder' }))).toBe(
+      false,
+    );
+    // 兜底：来源非占位但标题是空白，同样不算有名字（渲染期兜底 tab.title）
+    expect(isNamedSession(session({ sessionId: 'b', title: '   ', titleSource: 'native' }))).toBe(
+      false,
+    );
+  });
+
+  it('真标题（prompt / native / user）才算有名字', () => {
+    for (const titleSource of ['prompt', 'native', 'user'] as const) {
+      expect(isNamedSession(session({ sessionId: 'a', title: 'x', titleSource }))).toBe(true);
+    }
+  });
+});
+
 describe('sessionsByUnit', () => {
+  it('无名会话不进分组（打开 tab 但还没有标题时不列条目）', () => {
+    const list = [
+      session({ sessionId: 'named', title: 'fix login', titleSource: 'prompt' }),
+      session({ sessionId: 'unnamed', title: '', titleSource: 'placeholder' }),
+    ];
+    const byUnit = sessionsByUnit(list);
+    expect(byUnit.get(MAIN_KEY)?.map((s) => s.sessionId)).toEqual(['named']);
+  });
+
   it('按 workspaceKey 分组，且保持后端顺序（不重排）', () => {
     const a = session({ sessionId: 'a', workspaceKey: MAIN_KEY });
     const b = session({ sessionId: 'b', workspaceKey: WT_KEY });

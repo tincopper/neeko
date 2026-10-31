@@ -44,9 +44,9 @@ export function useTerminalTabs() {
   );
 
   const addTab = useCallback(
-    // `agentName` 已不再参与标题：tab 的 agent 身份由前导图标表达，标题只说「第几个终端」
-    // 或会话真实标题（注册表里的 prompt / OSC）。`pi` 这类 id 当标题对用户没有意义。
-    (projectId: ProjectId, agentId?: string | null): TerminalTab | null => {
+    // 占位标题 = agent 名（初版行为）：会话还没起名时 tab 至少能认出是哪个 agent。
+    // 会话真标题到手后由 `resolveTabTitle` 在渲染期覆盖，不写回 tab.title。
+    (projectId: ProjectId, agentId?: string | null, agentName?: string): TerminalTab | null => {
       const state = useEditorStore.getState();
       // 配额与既有 tab 检查按 store 键（= tab.scope 推导键）寻址，与 addTab 落键同形
       const existing = state.tabs[activeWorkspaceSession(projectId).key];
@@ -54,7 +54,7 @@ export function useTerminalTabs() {
       if (terminalCount >= MAX_TERMINAL_TABS) return null;
 
       const tabId = generateTabId();
-      const title = nextTerminalTitle(existing);
+      const title = agentName ?? agentId ?? nextTerminalTitle(existing);
       const newTab: Tab = {
         id: tabId,
         scope: { kind: 'workspace', session: activeWorkspaceSession(projectId) },
@@ -102,7 +102,7 @@ export function useTerminalTabs() {
   const handleAgentClick = useCallback(
     (projectId: ProjectId, agent: AgentConfig): TerminalTab | null => {
       // Always create a new tab when clicking an agent
-      return addTab(projectId, agent.id);
+      return addTab(projectId, agent.id, agent.name);
     },
     [addTab],
   );

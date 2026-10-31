@@ -9,7 +9,6 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { AgentConfig, EditorGroupId, Tab } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
-import { nextTerminalTitle } from '@/shared/utils/terminalTabTitle';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { closeTabWithConfirmation } from '../store/closeConfirmStore';
@@ -134,16 +133,15 @@ export function usePaneActions({
   );
 
   const handleActionMenuAgentTerminal = useCallback(
-    // 标题不用 agent 名（agent 由 tab 前导图标表达），与另外两个建 tab 入口同一套占位标题。
-    (agentId: string) => {
+    // 占位标题 = agent 名（初版行为）；会话真标题到手后由 `resolveTabTitle` 覆盖。
+    (agentId: string, agentName: string) => {
       if (!projectIdForCheck) return;
       const tabId = `tab_${crypto.randomUUID()}`;
-      const spaceKey = activeWorkspaceSession(projectIdForCheck).key;
       useEditorStore.getState().addTab(
         {
           id: tabId,
           scope: { kind: 'workspace', session: activeWorkspaceSession(projectIdForCheck) },
-          title: nextTerminalTitle(useEditorStore.getState().tabs[spaceKey]),
+          title: agentName,
           data: {
             kind: 'terminal' as const,
             agentId,

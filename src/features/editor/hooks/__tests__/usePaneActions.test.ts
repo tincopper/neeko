@@ -241,7 +241,7 @@ describe('usePaneActions', () => {
     const { result } = renderHook(() => usePaneActions(defaultParams));
 
     act(() => {
-      result.current.handleActionMenuAgentTerminal('opencode');
+      result.current.handleActionMenuAgentTerminal('opencode', 'OpenCode');
     });
 
     const s = useEditorStore.getState();

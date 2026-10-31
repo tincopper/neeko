@@ -49,7 +49,20 @@ export function isSameSession(
 }
 
 /**
- * 按单元分组（`workspaceKey → 会话列表`）。
+ * 会话是否已经有名字（＝注册表里存在真标题）。
+ *
+ * **没名字的会话不进侧栏**：打开一个 agent tab 时 PTY / 静默会话就已经存在，但它既没有
+ * 首条 prompt 也没有 CLI 自报的 OSC 标题 —— 那时列出一行「只有一个图标」的条目，只是在
+ * 侧栏里多一条无法辨认的东西。等标题到手（`titleSource` 升到 `prompt` / `native` /
+ * `user`）它才成为「一条会话」。tab 侧不受影响：标题为空时 `resolveTabTitle` 回退
+ * agent 名（初版行为）。
+ */
+export function isNamedSession(session: SessionView): boolean {
+  return session.titleSource !== 'placeholder' && session.title.trim().length > 0;
+}
+
+/**
+ * 按单元分组（`workspaceKey → 会话列表`），**只含已命名的会话**。
  *
  * 单元归属只做 `workspaceKey` **相等比较**：key 是后端铸造的唯一地址表示，
  * 在这里拼分隔符或比路径前缀就是第二套身份判据（红线 12）。一次 O(n) 分组供所有
@@ -61,6 +74,7 @@ export function isSameSession(
 export function sessionsByUnit(sessions: readonly SessionView[]): Map<string, SessionView[]> {
   const byUnit = new Map<string, SessionView[]>();
   for (const session of sessions) {
+    if (!isNamedSession(session)) continue;
     const list = byUnit.get(session.workspaceKey);
     if (list) list.push(session);
     else byUnit.set(session.workspaceKey, [session]);

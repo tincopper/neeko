@@ -256,3 +256,26 @@ npx vitest run                                    # 694 files / 6373 tests passe
 `PaneTabBar` → `ActionMenuDropdown` 的 `onAddAgentTerminal(agentId, agentName)` 全部只传身份，
 标题统一走 `shared/utils/terminalTabTitle.ts::nextTerminalTitle`（`features` 不得依赖 `app`，
 所以它落在 `shared/`）。`setTabAgent` 现在**只改 agentId、不改标题** —— 标题属于会话，不是 agent 的副本。
+
+---
+
+## 12. 会话的「出现时机」修订（2026-10-31 第三轮反馈）
+
+前两轮把「没有真标题」表达成「侧栏只画图标」，实测仍不对：**打开 agent tab 的那一刻会话就该
+不存在于侧栏**，而不是先出现一个只有图标的条目。
+
+规则改成：**没有名字的会话不是一条会话**。
+
+| 位置 | 会话无名字（`titleSource === 'placeholder'` 或标题空白） | 会话有名字后 |
+| --- | --- | --- |
+| 侧栏会话子列表 | **不列出**（`isNamedSession` 在 `sessionsByUnit` 里过滤） | 出现，带图标 + 标题 + 时间 + 状态点 |
+| 单元角标 | 不画（角标与子列表同源，都取自过滤后的分组） | 画 `dominantState` |
+| tab 标题 | 回退 `tab.title` = **agent 名**（初版行为）/ 空白终端 `Terminal N` | 渲染期换成会话标题 |
+
+顺带回滚上一轮的「tab 标题去 agent 名」：那轮把 agent 名从 tab 标题里删掉，实测不符合预期 ——
+agent 名正是「会话起名前」唯一能辨认的信息。`agentName` 参数在 `taskTerminal` /
+`handleActionMenuAgentTerminal` / `useFileEditorState` 处全部恢复；`setTabAgent` 也恢复成
+「换 agent 同时换回该 agent 的默认标题」（会话级标题仍由注册表在渲染期覆盖）。
+
+后端不动：无名条目仍登记在注册表里（OSC 标题 / 首条 prompt 一到就要能升级），只是视图不列出来。
+已知取舍：完全不设 OSC 标题的纯 shell 终端不会出现在侧栏 —— 它确实没有可辨认的名字。

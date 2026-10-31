@@ -2088,11 +2088,15 @@ failed > ready > stopped`），**无会话返回 `null` 且不渲染状态点**�
 **标题来源（`TitleSource`）不进 UI**：它只决定「谁能覆盖谁」（后端 `title::should_upgrade`），
 界面只表达结果。展示它等于把内部优先级暴露成用户概念，且会诱导前端复刻升级规则。
 
-**没有真标题时只画图标**：侧栏会话行 = **agent 图标（+ 有标题时才有文字）+ 相对时间 + 状态点**。
-后端在 CLI 自报 OSC / 首条 prompt 之前把标题留空，前端**不得**用 `agent.name` / 项目名兜底 ——
-前者不可读且与图标重复，后者与单元行重复（2026-10-31 两轮反馈）。tab 侧同理：占位标题是
-`nextTerminalTitle` 的 `Terminal N`（`shared/utils/terminalTabTitle.ts`，两个建 tab 入口共用），
-不是 agent 名。
+**没有名字的会话不进侧栏**（`isNamedSession`：`titleSource !== 'placeholder'` 且标题非空白）。
+打开 agent tab 时 PTY / 静默会话已经存在，但既没有首条 prompt 也没有 CLI 自报的 OSC 标题；
+这时在侧栏列一行只有图标的东西，用户读不出它是什么。等标题到手（`prompt` / `native` / `user`）
+它才成为「一条会话」，单元角标也一起出现（`sessionsByUnit` 是唯一分组入口，过滤在那里做）。
+
+**tab 不受影响**：会话没名字时 `resolveTabTitle` 回退 `tab.title`，而 tab 的占位标题是
+**agent 名**（绑 agent 的 tab：`agent.name`）或 `Terminal N`（空白终端：
+`shared/utils/terminalTabTitle.ts`，两个建 tab 入口共用）。一旦会话有真标题，tab 标题在渲染期
+换成它 —— 不写回 `tab.title`，否则用户改名后 tab 会显示旧值。
 
 会话子列表**不画左侧竖线**，层级只靠缩进（`ml-[3.25rem]` 让会话图标对齐单元标签）——
 窄侧栏里那条线是持续噪声。

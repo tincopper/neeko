@@ -151,10 +151,16 @@ terminal 路径只服务于未来的持久化 / 统计，不要在文档或 PRD 
    且与行首的 agent 品牌图标重复一遍；
 2. **项目名也是冗余的**：会话行本身就挂在单元行下面，再写一遍项目名只是噪声。
 
-空标题由**视图**解释，不是后端兜底一个假名字：侧栏只画图标（`SessionList` 的 `hasTitle` 分支），
-tab 回退到自己的占位标题（`nextTerminalTitle` 的 `Terminal N`）。chat 的 `topic` / 首条 `prompt`
-一到就自动升级成真标题（`placeholder_title_is_empty_until_the_cli_names_itself` /
-`plain_shell_terminal_also_has_no_placeholder_name`）。
+空标题是**「这条会话还没有名字」的唯一表示**，由视图解释成「先不列出来」，不是后端兜底一个假名字：
+
+- 侧栏**不列出**无名会话（前端 `isNamedSession` 在 `sessionsByUnit` 里过滤；单元角标同源）。
+  打开 agent tab 就注册了 PTY / 静默会话，但那时它还没有任何可辨认的名字 —— 列出来只是一行
+  只有图标的东西。`topic` / 首条 `prompt` / CLI 的 OSC 标题一到，`titleSource` 升级，条目才出现。
+- tab 回退到自己的占位标题（绑 agent 的 tab 是 agent 名，空白终端是 `Terminal N`），会话有真标题
+  后于渲染期换成它。
+
+（`placeholder_title_is_empty_until_the_cli_names_itself` /
+`plain_shell_terminal_also_has_no_placeholder_name` 钉住后端不编名字。）
 
 `TitleSource` **不进 UI**：界面只表达结果（有真标题 / 占位），排名徽标是内部判据。
 标题也**不写回 tab store** —— 渲染期由 `resolveTabTitle(tab, session)` 派生，否则会出现
