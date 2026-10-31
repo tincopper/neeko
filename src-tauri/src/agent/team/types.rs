@@ -295,22 +295,37 @@ pub enum ApprovalPolicy {
 
 /// MCP 配置怎么塞给这个 CLI —— P0 实测得出，属插件数据（红线 15）。
 ///
-/// # 三档的区别是**什么时候**生效，不是“哪种更方便”
+/// # 四档的区别是**什么时候 / 往哪写**，不是“哪种更方便”
 ///
-/// | 档 | 生效时机 | 典型 CLI |
+/// | 档 | 生效时机与写入位置 | 典型 CLI |
 /// | --- | --- | --- |
-/// | [`McpInjection::Argv`] | **本次启动**（`--mcp-config <json>`） | claude-code / codebuddy / qoder |
-/// | [`McpInjection::Subcommand`] | **一次性的 `mcp add` 子命令**，写进它自己的配置 | grok / opencode / pi |
-/// | [`McpInjection::ConfigFile`] | 直接改它的配置文件（`DeploySpec.mcp_config`） | codex（TOML）/ gemini / reasonix |
+/// | [`McpInjection::Argv`] | **本次启动**（`--mcp-config <json>` / `-c key=value`），不写任何文件 | claude-code / codebuddy / qoder / codex |
+/// | [`McpInjection::ConfigDir`] | **重定向该 CLI 的配置目录**，再由它自己的 `mcp add` 写**隔离目录** | pi |
+/// | [`McpInjection::Subcommand`] | 一次性的 `mcp add` 子命令，写进**用户的全局配置** | grok / opencode |
+/// | [`McpInjection::ConfigFile`] | 直接改它的配置文件（`DeploySpec.mcp_config`） | gemini / reasonix |
 ///
 /// 把「子命令写配置」归到 `Argv` 会让执行层给 CLI 传一个它不认的启动参数：**成员起得来，
 /// MCP 面却静默不可见**（那就是本轮复审从 `research/admission-matrix.md` 里纠出来的错）。
+///
+/// # 为什么 `ConfigDir` 是**不带负载**的变体
+///
+/// 它需要的四个事实（重定向 env 名、目录内文件名、`mcp add` 命令、要镜像的条目）都是
+/// **per-CLI 数据**，只允许挂在该 CLI 自己那一行上（`AgentAdmission::config_dir`，红线 15）。
+/// 放进变体负载会有两个真实代价：① 本枚举要持久化（`team_member.mcp_injection` 列），
+/// 负载会写进**每一个成员行**，于是同一条事实有了第二份拷贝，CLI 升级后旧行与新表会漂移；
+/// ② 它会强制 owned 类型（`String` / `Vec`），而 `ADMISSIONS` 是 `static` 数据表 ——
+/// 静态表里只能放 `&'static str`，那又过不了 `Deserialize`。所以：**档位是标签，事实在表里**。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum McpInjection {
-    /// 启动参数注入（含 MCP 配置的 JSON，**本次启动**生效）。
+    /// 启动参数注入（含 MCP 配置的 JSON / 覆盖项，**本次启动**生效，不写文件）。
     Argv,
-    /// 用该 CLI 自己的 `mcp add` 子命令写配置（**下一次启动**生效）。
+    /// 重定向该 CLI 的配置目录，再由它自己的 `mcp add` 写出 MCP 配置。
+    ///
+    /// 与 [`McpInjection::Subcommand`] 的唯一差别是**写进哪里**：这里的目录是 Neeko 的
+    /// 隔离目录（`~/.neeko/team/<team>/<member>/`），用户自己的配置文件零写入。
+    ConfigDir,
+    /// 用该 CLI 自己的 `mcp add` 子命令写**用户全局**配置（**下一次启动**生效）。
     Subcommand,
     /// 直接写它的配置文件（`Argv` / `Subcommand` 都不支持时的降级）。
     ConfigFile,
@@ -442,6 +457,7 @@ mod tests {
         roundtrip(ApprovalPolicy::Queue);
         roundtrip(ApprovalPolicy::Bypass);
         roundtrip(McpInjection::Argv);
+        roundtrip(McpInjection::ConfigDir);
         roundtrip(McpInjection::Subcommand);
         roundtrip(McpInjection::ConfigFile);
         roundtrip(McpInjection::None);

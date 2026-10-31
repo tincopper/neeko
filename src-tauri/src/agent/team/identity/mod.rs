@@ -15,6 +15,6 @@ pub mod env;
 pub mod token;
 pub mod verdict;
 
-pub use env::{member_env, TEAM_ID_ENV, TEAM_MEMBER_ID_ENV};
+pub use env::{member_env, TEAM_ID_ENV, TEAM_MEMBER_ID_ENV, TEAM_TOKEN_ENV};
 pub use token::{hash_token, new_token, resolve_principal};
 pub use verdict::{attribution_verdict, AttributionVerdict};

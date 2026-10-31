@@ -10,9 +10,10 @@
 //! `--mcp-config`」这句实测结论会散落在通用模块的条件分支里，新增一个 CLI 就要改
 //! 通用代码，而「哪些 CLI 支持参数注入」这个问题也随之无法被一条测试问出来。
 //!
-//! 所以本文件只有三种东西：**数据**（[`ADMISSIONS`] / [`NOT_SPAWNABLE`]）、
-//! **查表**（[`admission_for`]）、**由数据推导的纯函数**（[`tier_of`] 与
-//! [`AgentAdmission::channel`] / [`AgentAdmission::result_channel`]）。
+//! 所以本文件只有四类东西，没有一类是分支：**数据**（[`ADMISSIONS`] / [`NOT_SPAWNABLE`]）、
+//! **查表**（[`admission_for`]）、**由数据推导的纯函数**（[`tier_of`] /
+//! [`AgentAdmission::result_channel`] / [`AgentAdmission::launch_refusal`] /
+//! [`launchable_agents`]）与**模板渲染**（[`render_argv`] —— 占位符的名字也是数据侧的事实）。
 //! `per_cli_facts_live_only_in_the_table` 会读本文件**生产段**的源码，断言两件事：
 //! 没有按 agent id 分支的形状，且每个已准入 id 只出现在它自己那行数据里。
 //!
@@ -23,13 +24,28 @@
 //! 与 A 级证据（实测）在矩阵里长得一样，只有把「我没验过这条」说出来，队长才不会
 //! 把不确定的能力当成确定的。
 
+use crate::agent::team::identity::TEAM_TOKEN_ENV;
 use crate::agent::team::types::{AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel};
+use crate::common::error::AppError;
 
-/// `mcp_argv` 模板里的占位符：执行层把它替换成 MCP 配置 JSON（含端点与成员 token）。
+/// `mcp_argv` / `ConfigDirSpec::add_argv` 模板里的占位符：执行层把它替换成 MCP 配置 JSON
+/// （含端点与成员 token）。
 ///
 /// 放在数据侧（而不是 `execution.rs`）：模板是**这台 CLI 的事实**，替换是执行层的动作。
 /// 两侧引用同一个常量，改占位符时编译器会追着改。
 pub const MCP_CONFIG_PLACEHOLDER: &str = "{{mcp_config}}";
+
+/// 占位符：团队 MCP 端点 URL（`--url <url>` 那一族要它）。
+pub const MCP_URL_PLACEHOLDER: &str = "{{url}}";
+
+/// 占位符：成员凭证**明文**（可以嵌在更长的一段里，例如 `x-neeko-team-token={{token}}`）。
+pub const TOKEN_PLACEHOLDER: &str = "{{token}}";
+
+/// 占位符：凭证 env 的**名字**（`bearer_token_env_var` 那一族只收名字，值从 env 读）。
+///
+/// 它渲染出的一定是 [`TEAM_TOKEN_ENV`] —— 同一个名字在模板、`credentials_env` 的 key
+/// 与端点读到的 header 值三处重合，所以不允许任何一处手写字面量。
+pub const TOKEN_ENV_PLACEHOLDER: &str = "{{token_env}}";
 
 /// 一个内置 agent 的准入事实。**全部来自 P0 实测**，逐字段注明证据来源。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,11 +63,54 @@ pub struct AgentAdmission {
     /// `McpInjection::Argv` 档的**启动参数模板**，含 [`MCP_CONFIG_PLACEHOLDER`]。
     ///
     /// 非 `Argv` 档为 `&[]` —— 不是"暂时留空"，而是那一档**不用启动参数**：
-    /// `Subcommand` 靠它自己的 `mcp add`，`ConfigFile` 靠写配置。执行层据此拒绝，
-    /// 而不是拿一个空模板静默启动一个连不上工具面的成员。
+    /// `ConfigDir` 靠它自己的 `mcp add` 写隔离目录，`Subcommand` 写用户全局配置，
+    /// `ConfigFile` 靠写配置文件。执行层据此拒绝，而不是拿一个空模板静默启动一个连不上
+    /// 工具面的成员。
     pub mcp_argv: &'static [&'static str],
+    /// `McpInjection::ConfigDir` 档的四个事实（其余档为 `None`）。
+    ///
+    /// 两处必须同时成立才算自洽：档位是 `ConfigDir` ⇒ 这里有值；档位不是 ⇒ 这里是 `None`。
+    /// 判据在 `config_dir_facts_live_exactly_on_the_config_dir_rows`。
+    pub config_dir: Option<ConfigDirSpec>,
     /// 仍未实测确认的点。**必须诚实列出**，会原样进工具返回给队长。
     pub unverified: &'static [&'static str],
+}
+
+/// 「重定向配置目录」注入所需的**per-CLI 事实**（红线 15：只许挂在该 CLI 自己那一行）。
+///
+/// 为什么不是一个可复用的机制里带 CLI 名分支：这五项每一项都是实测出来的事实
+/// （`PI_CODING_AGENT_DIR` 这个变量名、`mcp.json` 这个文件名、`--header` 收 `KEY=VALUE`
+/// 这个语法、`~/.pi/agent` 这个默认目录、哪几个条目要镜像）。换一个 CLI 当第三档成员时，
+/// 需要的是**加一行数据**，而不是在新代码里加一个 `if`。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConfigDirSpec {
+    /// 重定向用的环境变量名（该 CLI 的事实）。
+    pub env: &'static str,
+    /// 目录内的配置文件名（用于测试断言与清理，机制不解释其格式）。
+    pub mcp_file: &'static str,
+    /// 用该 CLI 自己的写配置命令（模板占位符同 `Argv`）。
+    ///
+    /// **语法是数据**：`--header KEY=VALUE` 与 `--header KEY: VALUE` 是两台 CLI 的事实，
+    /// 写错了 CLI 会直接报错（`pi` 实测如此）—— 所以它只能是行里的一串字面量。
+    pub add_argv: &'static [&'static str],
+    /// 用户配置目录（**家目录相对路径**；重定向 env 的默认值就是它）。
+    ///
+    /// 隔离目录里要镜像的源。用家目录相对路径而不是绝对路径：数据表是 `static`，
+    /// 而家目录是宿主环境事实，只能在执行期拼。
+    pub home_subdir: &'static str,
+    /// 从用户配置目录镜像到隔离目录的条目（缺失即跳过，**用符号链接而不是复制**，
+    /// 因此凭据不会多出一份拷贝；Windows 未开开发者模式时的退化见
+    /// `crate::app::team_executor` 的镜像文档）。
+    ///
+    /// # 只镜像**只读**的条目（实测教训）
+    ///
+    /// 该 CLI 会**写**的东西一律不列：会话（`sessions/`）、它会自己安装的依赖（`npm/`）、
+    /// 下载的二进制（`bin/`）、模型缓存（`models-store.json`）、以及它要写的 MCP 配置本身
+    /// （`mcp_file`）。符号链接会把写入透传给用户自己的目录 —— 那正是本档要避免的事。
+    /// 两条附带后果，都是可接受的：
+    /// - 成员首次启动会自建这些状态（`pi` 实测会在隔离目录里跑一次 `npm install`，约 10s）；
+    /// - 会话历史因此天然与用户自己的历史分开（design §7.3 的同一判据）。
+    pub mirror: &'static [&'static str],
 }
 
 impl AgentAdmission {
@@ -92,9 +151,16 @@ impl AgentAdmission {
     ///
     /// # 为什么要有这一条
     ///
-    /// 两个拒绝条件（无 MCP 面 / 注入档未实现）都属于「起得来但用不了」。放在**建成员
-    /// 之前**判，队长拿到的是一条可读理由；放到执行层再判，成员已经落库 —— 花名册里
-    /// 多出一个永远不动的名字，而队长以为它已开工（`implement.md` C5）。
+    /// 五条拒绝（无 MCP 面 / 模板缺失 / 注入档会写用户全局配置 / 写配置文件的档未实现 /
+    /// 数据自相矛盾）都属于「起得来但用不了」。放在**建成员之前**判，队长拿到的是一条
+    /// 可读理由；放到执行层再判，成员已经落库 —— 花名册里多出一个永远不动的名字，而队长
+    /// 以为它已开工（`implement.md` C5）。
+    ///
+    /// # 今天能起的两档
+    ///
+    /// [`McpInjection::Argv`]（本次启动的参数，零落盘）与 [`McpInjection::ConfigDir`]
+    /// （写进 Neeko 自己的隔离目录，用户配置零写入）。其余两档拒绝的理由不是「不会写」
+    /// 而是「不该写」：它们改的是**用户手改的那份配置**，需要备份 / 幂等 / 拆除三件套。
     ///
     /// # 判据的单一来源
     ///
@@ -104,24 +170,51 @@ impl AgentAdmission {
     #[must_use]
     pub fn launch_refusal(&self) -> Option<String> {
         if !self.has_mcp() {
-            return Some(format!(
-                "agent `{}` has no MCP surface, so a spawned member could never receive a task \
-                 (channel = none); refusing to create a member that can only sit in the roster",
+            return Some(no_surface_message(self.agent_id));
+        }
+        match self.mcp_injection {
+            // 启动参数注入：本次启动就生效、零落盘（`{{token_env}}` 那一族的凭证走
+            // `credentials_env`，见 `execution::SpawnPlan`）。
+            McpInjection::Argv if !self.mcp_argv.is_empty() => None,
+            McpInjection::Argv => Some(format!(
+                "agent `{}` is marked as launch-argument injection but carries no `mcp_argv` \
+                 template in the admission table; refusing instead of starting a member whose \
+                 tool surface would be silently missing",
                 self.agent_id
-            ));
-        }
-        // 只有 `Argv` 档有模板；另外两档的注入发生在该 CLI 自己的配置里（见
-        // `McpInjection` 的三档对照）。这里拒绝而不是回退 —— 回退等于声明了一个
-        // 「配置写出去了但客户端不知道」的能力（红线 14）。
-        if self.mcp_injection != McpInjection::Argv || self.mcp_argv.is_empty() {
-            return Some(format!(
-                "agent `{}` injects MCP via {:?}, which the executor does not implement yet \
-                 (only launch-argument injection is wired); starting it anyway would produce a \
-                 member whose tool surface is silently missing",
+            )),
+            // 隔离配置目录：写的是 Neeko 自己的目录，用户配置零写入。
+            McpInjection::ConfigDir => match self.config_dir {
+                Some(spec) if !spec.add_argv.is_empty() => None,
+                // 声明了档却没给命令 = 数据自相矛盾。失败方向必须是「不声明能力」。
+                _ => Some(format!(
+                    "agent `{}` is marked as config-directory injection but the admission table \
+                     carries no `mcp add` command for it, so the isolated directory would stay \
+                     empty and the member would start without a tool surface",
+                    self.agent_id
+                )),
+            },
+            // 写**用户全局**配置：v1 不做 —— 它需要备份 / 幂等 / 拆除三件套，
+            // 而现在一件都没有（implement.md C3）。
+            McpInjection::Subcommand => Some(format!(
+                "agent `{}` injects MCP via {:?}, which writes the user's own global config file \
+                 (`<cli> mcp add`); v1 refuses that because it mutates configuration the user edits \
+                 by hand. Only launch-argument injection ({:?}) and isolated config-directory \
+                 injection ({:?}) are implemented",
+                self.agent_id,
+                McpInjection::Subcommand,
+                McpInjection::Argv,
+                McpInjection::ConfigDir
+            )),
+            // 直接改配置文件：同样需要备份 / 幂等 / 拆除，且各家格式不一。
+            McpInjection::ConfigFile => Some(format!(
+                "agent `{}` injects MCP via {:?}, which the executor does not implement yet: \
+                 writing a CLI's config file needs backup / idempotency / teardown, and v1 has \
+                 none of them",
                 self.agent_id, self.mcp_injection
-            ));
+            )),
+            // `has_mcp()` 已在上面把 `None` 拦下；保留这条是为了让 match 穷尽且不撒谎。
+            McpInjection::None => Some(no_surface_message(self.agent_id)),
         }
-        None
     }
 
     /// `approval_policy = Bypass` 时要追加的启动参数（其余策略一律空）。
@@ -145,6 +238,177 @@ impl AgentAdmission {
             .iter()
             .map(|arg| (*arg).to_owned())
             .collect()
+    }
+}
+
+/// 「没有 MCP 面」的**唯一**文案（`has_mcp()` 与 `launch_refusal()` 两条路径共用）。
+///
+/// 两处各写一句的后果不是重复：面板（`team_launchable_agents`）看到的理由会与
+/// `team_spawn` 拒绝的理由长得不一样，用户会以为遇到两个不同的故障。
+fn no_surface_message(agent_id: &str) -> String {
+    format!(
+        "agent `{agent_id}` has no MCP surface, so a spawned member could never receive a task \
+         (channel = none); refusing to create a member that can only sit in the roster"
+    )
+}
+
+// ─────────────────────── 模板渲染（纯函数，无 I/O） ──────────────
+
+/// 一次渲染需要的四个值 —— 全部由调用方（`execution::plan_member_spawn`）组装。
+///
+/// 四个值必须是**已算好的字符串**而不是源数据：把 `serde_json` 拼装搬到这里会让
+/// 「模板渲染」认识 MCP 配置的形状，而那是执行层的事（同一依赖方向也避免 admission → execution）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RenderContext {
+    /// 完整 MCP 配置 JSON（`{{mcp_config}}` 的替换值）。
+    pub mcp_config: String,
+    /// 团队 MCP 端点 URL。
+    pub url: String,
+    /// 成员凭证**明文**。
+    pub token: String,
+    /// 凭证 env 的名字 —— **恒为 [`TEAM_TOKEN_ENV`]**（构造时填，不给调用方改的机会）。
+    pub token_env: String,
+}
+
+impl RenderContext {
+    /// 用三份输入 + 常量 [`TEAM_TOKEN_ENV`] 构造。
+    ///
+    /// `token_env` 没有参数位：它不是一个自由值，而是“本仓凭证 env 的名字”这件事本身。
+    #[must_use]
+    pub fn new(mcp_config: String, url: &str, token: &str) -> Self {
+        Self {
+            mcp_config,
+            url: url.to_owned(),
+            token: token.to_owned(),
+            token_env: TEAM_TOKEN_ENV.to_owned(),
+        }
+    }
+
+    /// 占位符名 → 它的值。**未知名字返回 `None`**（调用方据此报错，而不是留字面量）。
+    fn value(&self, name: &str) -> Option<&str> {
+        match name {
+            "mcp_config" => Some(&self.mcp_config),
+            "url" => Some(&self.url),
+            "token" => Some(&self.token),
+            "token_env" => Some(&self.token_env),
+            _ => None,
+        }
+    }
+}
+
+/// 把一份 argv 模板渲染成真实参数表。
+///
+/// # 行为（三条都是判据）
+///
+/// 1. 占位符可以**嵌在更长的参数里**：`--header x-neeko-team-token={{token}}` 是 pi 的
+///    实测写法，只做“整元素等于占位符”的替换会让它把 `{{token}}` 原样发给 CLI。
+/// 2. **未知占位符 = 错误**，不是原样保留：`--url {{uurl}}` 若无提示地发出去，成员会带着
+///    一个拼错的 URL 启动 —— “起得来、连不上”是最难查的失败形态（红线 14 的同一理由）。
+/// 3. 没有 `{{` 的参数原样输出（模板里大多数参数就是字面量）。
+///
+/// 错误类型是 `Unsupported`：模板来自静态数据表，走到这里说明数据本身不自洽 ——
+/// 宁可拒启动，不可静默降级。
+pub fn render_argv(template: &[&str], ctx: &RenderContext) -> Result<Vec<String>, AppError> {
+    template.iter().map(|arg| render_arg(arg, ctx)).collect()
+}
+
+/// 渲染**单个**参数（[`render_argv`] 的元素级实现）。
+fn render_arg(arg: &str, ctx: &RenderContext) -> Result<String, AppError> {
+    let mut out = String::with_capacity(arg.len());
+    let mut rest = arg;
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        // 没有配对的 `}}` ⇒ 名字就是后面剩下的全部（错误信息里能看见拼错的那段）。
+        let end = after.find("}}").unwrap_or(after.len());
+        let name = &after[..end];
+        let value = ctx.value(name).ok_or_else(|| unknown_placeholder(name))?;
+        out.push_str(value);
+        rest = if end < after.len() {
+            &after[end + 2..]
+        } else {
+            ""
+        };
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
+/// 未知占位符的**唯一**错误文报。
+fn unknown_placeholder(name: &str) -> AppError {
+    AppError::Unsupported(format!(
+        "an MCP argv template references the placeholder `{name}`, which no renderer knows; \
+         refusing instead of passing the literal text to the CLI (a literal placeholder on a \
+         command line is a silent misconfiguration), known placeholders are: \
+         mcp_config, url, token, token_env"
+    ))
+}
+
+/// 这份模板是否需要**凭证 env**（即它引用了 `{{token_env}}`）。
+///
+/// # 为何判断在模板上而不是在 CLI 上
+///
+/// `bearer_token_env_var` 那一族只收 env **名字**，值必须从子进程环境里读 —— 而要不要
+/// 注入那份 env，完全由「模板里有没有 `{{token_env}}`」决定。挂在模板上就不需要
+/// 按 agent id 的等值分支（红线 15），且新增一家 CLI 只需加一行数据。
+#[must_use]
+pub fn needs_credentials_env(template: &[&str]) -> bool {
+    template
+        .iter()
+        .any(|arg| arg.contains(TOKEN_ENV_PLACEHOLDER))
+}
+
+// ───────────────────── 能力面（面板置灰的数据面） ─────────────────
+
+/// 一个可选 agent 的**启动可行性**：面板据此置灰并显示原因（prd R0.4）。
+///
+/// # 为何要把它做成数据而不是让 UI 自己拼
+///
+/// “能不能启动”是三个输入的函数（技能面 / 注入档 / 凭证路），其中两个今天还在变。
+/// 让 UI 拼一遍，就多一个会漂移的阀值 —— 而它漂移的表现是「用户点到必然失败的按钮」
+/// 或「明明能跑的成员被置灰」。两侧读同一份纯函数就不会。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchableAgent {
+    /// `AgentConfig.id`。
+    pub agent_id: String,
+    /// `None` = 现在能拉起成员；`Some(理由)` = 置灰理由（可读，面向人）。
+    pub refusal: Option<String>,
+}
+
+/// 把一份 agent id 清单映射成能力面。**纯函数**，不读库、不读表以外的任何东西。
+///
+/// 输入由命令层给（`AgentManager::get_agents` — 含用户自定义 CLI，它们才是“不在准入表
+/// 里”那一类的主体）。输出按 `agent_id` 排序并去重：面板按这个顺序渲染，不排序会让
+/// 每次打开面板的顺序都有可能不同。
+#[must_use]
+pub fn launchable_agents(agent_ids: &[String]) -> Vec<LaunchableAgent> {
+    let mut ids: Vec<&str> = agent_ids.iter().map(String::as_str).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids.into_iter().map(launchable_agent).collect()
+}
+
+/// 单个 agent 的能力面：**准入表是唯一判据**（不在表里 = 也说清楚）。
+fn launchable_agent(agent_id: &str) -> LaunchableAgent {
+    let refusal = admission_for(agent_id)
+        .map(|admission| admission.launch_refusal())
+        // 不在准入表里（`dsh` / 用户自定义 CLI）：不说“不支持”而说清楚缺的是哪个事实，
+        // 否则用户会以为再试一次就会好。
+        .unwrap_or_else(|| {
+            Some(format!(
+                "agent `{agent_id}` is not in the team admission table, so Neeko does not know how \
+                 to give it the team tool surface; admitted agent ids: {}",
+                ADMISSIONS
+                    .iter()
+                    .map(|row| row.agent_id)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+        });
+    LaunchableAgent {
+        agent_id: agent_id.to_owned(),
+        refusal,
     }
 }
 
@@ -192,6 +456,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         bypass_args: &["--dangerously-skip-permissions"],
         unverified: &[],
         mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
+        config_dir: None,
     },
     // ① `--mcp-config <fileOrString>`；② `Stop` / `PermissionRequest` / `StopFailure` 已装。
     //    传输「由 `--mcp-config` 的 JSON 决定」⇒ 未实测确认，见 unverified。
@@ -205,19 +470,31 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
             "MCP transport is decided by the `--mcp-config` payload and was never probed on this machine",
         ],
         mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
+        config_dir: None,
     },
-    // ① `codex mcp add` → `config.toml [mcp_servers]` + `-c key=value` 覆盖；
-    //    ② `Stop` + `notify agent-turn-complete` 已装；传输 streamable HTTP。
+    // ① `codex mcp add` → `config.toml [mcp_servers]`，但 `-c key=value` 可在**本次启动**
+    //    覆盖而不碰文件（实测：`codex -c mcp_servers.neeko.url=… -c … mcp list` 看得到，
+    //    `config.toml` 未被修改）；② `Stop` + `notify agent-turn-complete` 已装；
+    //    传输 streamable HTTP；③ 鉴权用 `bearer_token_env_var`（`mcp list` 里显示
+    //    `Bearer token`），而 `codex mcp add` **没有** header 选项。
     AgentAdmission {
         agent_id: "codex",
         hooks: true,
-        mcp_injection: McpInjection::Subcommand,
+        mcp_injection: McpInjection::Argv,
         transport: Some(McpTransport::Http),
         bypass_args: &["--dangerously-bypass-approvals-and-sandbox"],
         unverified: &[
+            "codex's header form (`http_headers`) parses but was never proven to be sent, so only the \
+             verified `bearer_token_env_var` route is wired",
             "the complete approval-bypass switch set was not re-verified (only `--approve-for-me` was observed)",
         ],
-        mcp_argv: &[],
+        mcp_argv: &[
+            "-c",
+            "mcp_servers.neeko-team.url=\"{{url}}\"",
+            "-c",
+            "mcp_servers.neeko-team.bearer_token_env_var=\"{{token_env}}\"",
+        ],
+        config_dir: None,
     },
     // 未安装、无任何实测 ⇒ 只能按「有配置文件注入面」推断。C 档。
     AgentAdmission {
@@ -230,6 +507,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
             "not installed on this machine and never probed: hooks, transport and bypass args are all inferred",
         ],
         mcp_argv: &[],
+        config_dir: None,
     },
     // ① `grok mcp add --transport http|stdio|sse` + `-H`；② Neeko 无 grok hook 目标。C 档。
     AgentAdmission {
@@ -242,6 +520,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
             "Neeko has no grok hook target, so completion signals are invisible (tier C) even though the MCP surface works",
         ],
         mcp_argv: &[],
+        config_dir: None,
     },
     // ① 无 `mcp` 子命令、`config.yml` 无 mcp 键 ⇒ 无 MCP 表面；② `agent_end` 已装。B 档。
     AgentAdmission {
@@ -254,6 +533,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
             "no MCP surface at all: results can only be recovered from the sentinel channel (tier B)",
         ],
         mcp_argv: &[],
+        config_dir: None,
     },
     // ① `opencode mcp add --url` + `--header`；② 插件 v2 模板存在但 `plugin: []` ⇒ **未安装**。
     AgentAdmission {
@@ -264,20 +544,65 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         bypass_args: &["--auto"],
         unverified: &[
             "the Neeko plugin is not installed in this user's opencode config, so turn hooks will not fire yet",
+            "`opencode mcp add` writes the user's own config (`--global` or the project's), which v1 refuses",
         ],
         mcp_argv: &[],
+        config_dir: None,
     },
-    // ① `pi mcp add --url` → `~/.pi/agent/mcp.json`；② `agent_end` extension 已装。
+    // ① `pi mcp add --url <u> --header KEY=VALUE` → 写 `mcp.json`，且 `PI_CODING_AGENT_DIR`
+    //    能把整个配置目录重定向到隔离目录（实测：隔离目录里出现 `mcp.json`、用户全局
+    //    `mcp.json` 未被创建、symlink 的 `auth.json` 让 `pi -p` 仍能登录）；
+    //    ② `agent_end` extension 已装。
+    //
+    // 三个实测出来的坑写在这行数据里（不是机制里）：
+    // ① header 语法是 `KEY=VALUE`（`KEY: VALUE` 直接报错）；
+    // ② symlink 必须在**首次运行之前**建好（pi 会自己创建空 `auth.json` 占位）；
+    // ③ 镜像分两类（实测代价驱动的取舍）：
+    //    · **用户资产**（`auth.json` / `models.json` / `settings.json` / `trust.json` /
+    //      `extensions` / `skills` / `themes`）—— 必须镜像，否则成员是「未登录、无扩展」的裸进程；
+    //    · **运行时缓存**（`npm` / `bin` / `models-store.json`）—— 也镜像：不镜像时 pi 会在隔离
+    //      目录里现场跑一次 `npm install`（实测 ~10s **且需要网络**，离线时直接起不来）。
+    //      代价是成员的写入会透传回用户缓存目录 —— 那正是用户自己跑 pi 时发生的事，且它是缓存
+    //      （损坏即重建），不是用户编写的配置。
+    //    · **绝不镜像**：`sessions/`（团队成员会话与用户历史分开）、`mcp.json`（我们自己写的）、
+    //      `mcp-auth.json`（每成员 OAuth 态）。
     AgentAdmission {
         agent_id: "pi",
         hooks: true,
-        mcp_injection: McpInjection::Subcommand,
+        mcp_injection: McpInjection::ConfigDir,
         transport: Some(McpTransport::Http),
         bypass_args: &["--approve"],
         unverified: &[
             "`--approve` semantics were never verified: it trusts the project files, it may not waive every prompt",
         ],
         mcp_argv: &[],
+        config_dir: Some(ConfigDirSpec {
+            env: "PI_CODING_AGENT_DIR",
+            mcp_file: "mcp.json",
+            add_argv: &[
+                "mcp",
+                "add",
+                "neeko-team",
+                "--url",
+                MCP_URL_PLACEHOLDER,
+                "--header",
+                "x-neeko-team-token={{token}}",
+            ],
+            home_subdir: ".pi/agent",
+            mirror: &[
+                "auth.json",
+                "models.json",
+                "settings.json",
+                "trust.json",
+                "extensions",
+                "skills",
+                "themes",
+                // 运行时缓存：不镜像 = 每成员第一次启动付一次 `npm install` + 网络
+                "npm",
+                "bin",
+                "models-store.json",
+            ],
+        }),
     },
     // ① `--mcp-config` + `--strict-mcp-config` + `--allowed-mcp-server-names`；
     //    ② `Stop` / `PermissionRequest` / `StopFailure` 已装。传输同 codebuddy，未实测。
@@ -291,6 +616,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
             "MCP transport is decided by the `--mcp-config` payload and was never probed on this machine",
         ],
         mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER, "--strict-mcp-config"],
+        config_dir: None,
     },
     // ① 无 mcp 子命令实测；② Neeko 无 reasonix hook 目标 ⇒ 三档里最小的一种。C 档。
     AgentAdmission {
@@ -303,6 +629,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
             "Neeko has no reasonix hook target and no MCP transport was verified, so nothing can be injected or reported",
         ],
         mcp_argv: &[],
+        config_dir: None,
     },
 ];
 
@@ -459,7 +786,7 @@ mod tests {
             (
                 "codex",
                 true,
-                McpInjection::Subcommand,
+                McpInjection::Argv,
                 Some(McpTransport::Http),
                 &["--dangerously-bypass-approvals-and-sandbox"],
             ),
@@ -488,7 +815,7 @@ mod tests {
             (
                 "pi",
                 true,
-                McpInjection::Subcommand,
+                McpInjection::ConfigDir,
                 Some(McpTransport::Http),
                 &["--approve"],
             ),
@@ -571,19 +898,24 @@ mod tests {
         );
     }
 
-    /// `mcp_argv` 必须与注入档**逐行一致**（执行层按这一列拼启动参数）。
+    /// 模板必须与注入档**逐行一致**（执行层按档位决定用哪一列）。
     ///
-    /// 两条不变量：
-    /// - `Argv` 行必须有模板，且模板里含占位符（否则执行层拿到一条不带 MCP 配置的启动命令，
-    ///   成员起来但 tool 面静默不可见 —— 最难查的失败形态）；
-    /// - 其余行必须为空（有模板却不用 = 第二个真相源，改档时必然漏一处）。
+    /// 四条不变量（一条一档）：
+    /// - `Argv` 行必须有模板，且模板里含**至少一个**占位符 —— 否则执行层拿到一条不带 MCP
+    ///   配置的启动命令，成员起来但 tool 面静默不可见（最难查的失败形态）；
+    /// - `ConfigDir` 行必须有 `config_dir` 事实且 `add_argv` 含占位符（同理，写出的配置
+    ///   里没有端点/凭证 = 哑巴成员）；
+    /// - 两种“已实现”的档**不得同时**携带：有模板却不用 = 第二个真相源，改档时必然漏一处；
+    /// - 其余档两列都必须为空。
     ///
-    /// 这里只钉"档与模板同生共死"和几个**实测确定的**模板形状，不复制整张表：
-    /// 逐行内容由 `admission_rows_match_the_p0_matrix_column_by_column` 负责。
+    /// 这里只钉“档与数据同生共死”和几个**实测确定的**形状，不复制整张表：逐行内容由
+    /// `admission_rows_match_the_p0_matrix_column_by_column` 负责。
     #[test]
-    fn argv_templates_are_present_exactly_for_the_argv_mode() {
+    fn injection_gear_and_its_data_column_live_and_die_together() {
+        let has_placeholder = |template: &[&str]| template.iter().any(|arg| arg.contains("{{"));
         for row in ADMISSIONS {
             let is_argv = row.mcp_injection == McpInjection::Argv;
+            let is_config_dir = row.mcp_injection == McpInjection::ConfigDir;
             assert_eq!(
                 is_argv,
                 !row.mcp_argv.is_empty(),
@@ -591,10 +923,39 @@ mod tests {
                 row.agent_id,
                 row.mcp_injection
             );
+            assert_eq!(
+                is_config_dir,
+                row.config_dir.is_some(),
+                "`{}`: 注入档 {:?} 与 `config_dir` 事实列不一致",
+                row.agent_id,
+                row.mcp_injection
+            );
             if is_argv {
                 assert!(
-                    row.mcp_argv.contains(&MCP_CONFIG_PLACEHOLDER),
-                    "`{}`: Argv 档的模板必须含占位符 {MCP_CONFIG_PLACEHOLDER}，否则拼不出 MCP 配置",
+                    has_placeholder(row.mcp_argv),
+                    "`{}`: Argv 档的模板必须含占位符，否则拼不出 MCP 配置",
+                    row.agent_id
+                );
+            }
+            if let Some(spec) = row.config_dir {
+                assert!(
+                    has_placeholder(spec.add_argv),
+                    "`{}`: ConfigDir 档的 `add_argv` 必须含占位符，否则写出的配置没有端点/凭证",
+                    row.agent_id
+                );
+                assert!(
+                    !spec.env.is_empty(),
+                    "{}: 重定向 env 名不得为空",
+                    row.agent_id
+                );
+                assert!(
+                    !spec.mcp_file.is_empty(),
+                    "{}: 配置文件名不得为空",
+                    row.agent_id
+                );
+                assert!(
+                    !spec.mirror.is_empty(),
+                    "{}: 镜像条目不得为空",
                     row.agent_id
                 );
             }
@@ -612,6 +973,240 @@ mod tests {
         );
     }
 
+    /// 渲染：**四种**占位符都能替，且可以嵌在更长的参数里。
+    ///
+    /// 保护的不变量：pi 的 header 写法是 `x-neeko-team-token={{token}}`（实测）—— 只做
+    /// “整元素等于占位符”的替换会把 `{{token}}` 原样发给 CLI，于是成员带一个无效 header
+    /// 启动，而错误在 401 那一层才出现（离家很远）。
+    #[test]
+    fn render_substitutes_all_four_placeholders_even_inside_an_argument() {
+        let ctx = RenderContext::new("{}".to_owned(), "http://h/team/mcp", "tok");
+        let rendered = render_argv(
+            &[
+                "--json",
+                MCP_CONFIG_PLACEHOLDER,
+                MCP_URL_PLACEHOLDER,
+                TOKEN_PLACEHOLDER,
+                TOKEN_ENV_PLACEHOLDER,
+                "x-neeko-team-token={{token}}",
+                "plain",
+            ],
+            &ctx,
+        )
+        .expect("render");
+        assert_eq!(
+            rendered,
+            vec![
+                "--json".to_owned(),
+                "{}".to_owned(),
+                "http://h/team/mcp".to_owned(),
+                "tok".to_owned(),
+                TEAM_TOKEN_ENV.to_owned(),
+                "x-neeko-team-token=tok".to_owned(),
+                "plain".to_owned(),
+            ]
+        );
+    }
+
+    /// 四个占位符**常量**与渲染器认识的名字是同一份（改名即断链）。
+    ///
+    /// 保护的不变量：`render_arg` 里那张 `value()` 表用的是裸名（`"url"`），而常量带
+    /// 花括号（`"{{url}}"`）—— 两处各自手写就会在改名时只改一处，于是模板里的占位符变成
+    /// “未知”，每个成员都在启动期被拒。这条用例把它们钉在一起。
+    #[test]
+    fn every_placeholder_constant_is_known_to_the_renderer() {
+        let ctx = RenderContext::new("{cfg}".to_owned(), "u", "t");
+        for (placeholder, expected) in [
+            (MCP_CONFIG_PLACEHOLDER, "{cfg}"),
+            (MCP_URL_PLACEHOLDER, "u"),
+            (TOKEN_PLACEHOLDER, "t"),
+            (TOKEN_ENV_PLACEHOLDER, TEAM_TOKEN_ENV),
+        ] {
+            let rendered = render_argv(&[placeholder], &ctx)
+                .unwrap_or_else(|err| panic!("{placeholder}: {err}"));
+            assert_eq!(rendered[0], expected, "{placeholder} 渲染出的值不对");
+        }
+    }
+
+    /// 未知 / 未闭合的占位符 = **错误**，不是原样保留。
+    ///
+    /// 保护的不变量：静默保留字面量的错误形态是“成员带着 `{{token}}` 启动”——
+    /// 既能跑、又永远 401，且磁盘上没有任何一处能看出原因。
+    #[test]
+    fn render_refuses_unknown_and_unclosed_placeholders() {
+        let ctx = RenderContext::new("{}".to_owned(), "u", "t");
+        for template in [vec!["{{uurl}}"], vec!["--url", "x={{url}"], vec!["{{}}"]] {
+            let err = render_argv(&template, &ctx).expect_err("未知/未闭合的占位符必须报错");
+            assert!(
+                matches!(err, AppError::Unsupported(_)),
+                "{template:?}: {err:?}"
+            );
+            assert!(
+                err.to_string().contains("placeholder"),
+                "{template:?}: {err}"
+            );
+        }
+    }
+
+    /// codex 的启动参数：**逐字**钉住实测形状（`-c key=value` 覆盖，不写任何文件）。
+    ///
+    /// 三条判据串联，任一条单独都不够：
+    /// ① 形状是 `-c` + `mcp_servers.<server>.<key>="<value>"`（写错 codex 会静默忽略）；
+    /// ② 鉴权走 `bearer_token_env_var`，它的值必须**恰好**是 [`TEAM_TOKEN_ENV`]
+    ///    （否则子进程 env 里的凭证对不上，成 401）；
+    /// ③ 模板确实需要凭证 env（`needs_credentials_env`）—— 这就是执行层注入只那一条 env 的判据。
+    #[test]
+    fn codex_argv_is_the_verified_config_override() {
+        let row = admission_for("codex").expect("admitted");
+        let ctx = RenderContext::new("{}".to_owned(), "http://127.0.0.1:1/team/mcp", "tok");
+        let rendered = render_argv(row.mcp_argv, &ctx).expect("render");
+        assert_eq!(
+            rendered,
+            vec![
+                "-c".to_owned(),
+                "mcp_servers.neeko-team.url=\"http://127.0.0.1:1/team/mcp\"".to_owned(),
+                "-c".to_owned(),
+                format!("mcp_servers.neeko-team.bearer_token_env_var=\"{TEAM_TOKEN_ENV}\""),
+            ]
+        );
+        assert!(
+            needs_credentials_env(row.mcp_argv),
+            "codex 的 argv 只放 env 名字，值必须由 `credentials_env` 提供"
+        );
+        // 反例：`--mcp-config` 三家不需要凭证 env（凭证在 JSON 里）。
+        for agent_id in ["claude-code", "codebuddy", "qoder"] {
+            let row = admission_for(agent_id).expect("admitted");
+            assert!(
+                !needs_credentials_env(row.mcp_argv),
+                "{agent_id}: 凭证已在 `--mcp-config` 的 JSON 里，不该再注入 env"
+            );
+        }
+    }
+
+    /// pi 的 `mcp add` 命令：**逐字**钉住实测形状，特别是 `--header` 的 `KEY=VALUE` 语法。
+    ///
+    /// 保护的不变量（变异验证：把 `=` 改成 `: ` 本用例变红）：实测 `pi mcp add` 的 header
+    /// 参数只收 `KEY=VALUE`，写成 `KEY: VALUE` 直接报错。header 名还必须等于端点读的
+    /// [`crate::agent::team::mcp::protocol::TOKEN_HEADER`]（单源，否则成员带错 header 名登录）。
+    #[test]
+    fn pi_add_argv_is_the_verified_key_value_form() {
+        let row = admission_for("pi").expect("admitted");
+        let spec = row.config_dir.expect("pi 用 ConfigDir 档");
+        let ctx = RenderContext::new("{}".to_owned(), "http://127.0.0.1:1/team/mcp", "tok");
+        let rendered = render_argv(spec.add_argv, &ctx).expect("render");
+
+        assert_eq!(rendered[0], "mcp");
+        assert_eq!(rendered[1], "add");
+        // server 名必须与下发 JSON 用的是同一个（两处字面量不可避免，用例把它们钉在一起）。
+        assert_eq!(rendered[2], crate::agent::team::execution::TEAM_SERVER_NAME);
+        assert_eq!(rendered[3], "--url");
+        assert_eq!(rendered[4], "http://127.0.0.1:1/team/mcp");
+        assert_eq!(rendered[5], "--header");
+        // 实测的两条：语法是 `KEY=VALUE`；header 名与端点同源。
+        let header = rendered[6].as_str();
+        let (name, value) = header
+            .split_once('=')
+            .unwrap_or_else(|| panic!("header 必须是 KEY=VALUE 形式，实际 {header:?}"));
+        assert_eq!(name, crate::agent::team::mcp::protocol::TOKEN_HEADER);
+        assert_eq!(value, "tok");
+        assert!(
+            !header.contains(": "),
+            "`pi mcp add --header` 不收 `KEY: VALUE`，实测直接报错：{header:?}"
+        );
+        // 凭证走 header，不需要凭证 env。
+        assert!(!needs_credentials_env(spec.add_argv));
+    }
+
+    /// 启动可行性：**已实现的两档能起**，其余档拒绝且理由可读（含该 CLI 自己写全局配置这一句）。
+    ///
+    /// 保护的不变量（红线 14）：`launch_refusal` 是 `team_spawn` 与 `plan_member_spawn`
+    /// 共用的唯一判据。它变宽 = 声明了做不到的能力（成员永远不动）；变窄 = 一个能跑
+    /// 的 CLI 被莫名拒绝。
+    #[test]
+    fn launch_refusal_admits_the_implemented_gears_only() {
+        for agent_id in ["claude-code", "codebuddy", "qoder", "codex", "pi"] {
+            let row = admission_for(agent_id).expect("admitted");
+            assert_eq!(row.launch_refusal(), None, "{agent_id} 今天应该能起");
+        }
+        // `Subcommand`：拒绝理由必须说清“写的是用户全局配置”（而不是“执行层没实现”）。
+        for agent_id in ["grok", "opencode"] {
+            let why = admission_for(agent_id)
+                .expect("admitted")
+                .launch_refusal()
+                .unwrap_or_else(|| panic!("{agent_id} 必须被拒绝"));
+            assert!(why.contains("Subcommand"), "{agent_id}: {why}");
+            assert!(why.contains("global config"), "{agent_id}: {why}");
+        }
+        // `ConfigFile`：拒绝理由必须说清缺的是备份/幂等/拆除三件套。
+        // （`reasonix` 不在这条里：它连传输都没有，先被「没有 MCP 面」拦下 ——
+        // 所以今天的 `ConfigFile` 反例只有一家，不写成单元素循环。）
+        let why = admission_for("gemini")
+            .expect("admitted")
+            .launch_refusal()
+            .expect("gemini 必须被拒绝");
+        assert!(why.contains("ConfigFile"), "gemini: {why}");
+        assert!(why.contains("backup"), "gemini: {why}");
+        // 无 MCP 面：理由与 `no_surface_message` 同一句（面板与工具返回不得长得不一样）。
+        let why = admission_for("omp")
+            .expect("admitted")
+            .launch_refusal()
+            .expect("omp 必须被拒绝");
+        assert!(why.contains("no MCP surface"), "{why}");
+    }
+
+    /// 面板数据面：**每个 id 都过同一个判据**，不在表里的也说清缺什么。
+    ///
+    /// 保护的不变量（prd R0.4）：能力缺口必须在 UI 上可见。用一份“不在表里”的输入
+    /// （用户自定义 CLI / `dsh`）验证它不会静默变成“能启动”—— 那种失败形态正是用户
+    /// 点到一个必然报错的按钮。
+    #[test]
+    fn launchable_agents_maps_every_id_through_the_admission_table() {
+        let ids: Vec<String> = vec![
+            "pi".to_owned(),
+            "claude-code".to_owned(),
+            "grok".to_owned(),
+            "dsh".to_owned(),
+            "my-custom-cli".to_owned(),
+            // 重复项必须去重（面板不该出现两行同名）。
+            "pi".to_owned(),
+        ];
+        let rows = launchable_agents(&ids);
+        let ids_out: Vec<&str> = rows.iter().map(|row| row.agent_id.as_str()).collect();
+        assert_eq!(
+            ids_out,
+            vec!["claude-code", "dsh", "grok", "my-custom-cli", "pi"],
+            "输出按 id 排序且去重"
+        );
+
+        for row in &rows {
+            match row.agent_id.as_str() {
+                "claude-code" | "pi" => assert_eq!(row.refusal, None, "{} 应该能起", row.agent_id),
+                "grok" => {
+                    let why = row.refusal.as_deref().expect("grok 必须置灰");
+                    // 与 `launch_refusal` **同一句**（不是第二个判据）。
+                    assert_eq!(
+                        why,
+                        admission_for("grok").unwrap().launch_refusal().unwrap()
+                    );
+                }
+                // 不在准入表里：理由里必须点名这件事，而不是只说“不支持”。
+                other => {
+                    let why = row.refusal.as_deref().expect("不在表里必须置灰");
+                    assert!(
+                        why.contains("not in the team admission table"),
+                        "{other}: {why}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// 空输入 → 空输出（命令层不需要为“没有任何 agent”写特例）。
+    #[test]
+    fn launchable_agents_of_an_empty_list_is_empty() {
+        assert!(launchable_agents(&[]).is_empty());
+    }
+
     /// `McpInjection::None` ⇒ B 档（hook 在、MCP 面不在）。
     ///
     /// 保护的不变量：B 档的判据是**缺 MCP**，不是缺 hook。合并二者会把 `omp`
@@ -625,6 +1220,7 @@ mod tests {
             transport: None,
             bypass_args: &[],
             mcp_argv: &[],
+            config_dir: None,
             unverified: &[],
         };
         assert_eq!(tier_of(&omp), AdmissionTier::B);
@@ -654,6 +1250,7 @@ mod tests {
             transport: Some(McpTransport::Http),
             bypass_args: &[],
             mcp_argv: &[],
+            config_dir: None,
             unverified: &[],
         };
         assert_eq!(tier_of(&grok), AdmissionTier::C);

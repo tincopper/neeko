@@ -10,7 +10,7 @@
 //!
 //! | 组成 | 是什么 | 为什么在这一层 |
 //! | --- | --- | --- |
-//! | [`plan_member_spawn`] | 纯函数：成员行 → `cwd` / `env` / `args` | 全部输入可从库重建，可直测 |
+//! | [`plan_member_spawn`] | 纯函数：成员行 → `cwd` / `env` / `args` / `credentials_env` / `config_dir` | 全部输入可从库重建，可直测 |
 //! | [`MemberExecutor`] / [`CredentialLedger`] | 端口：进程副作用与凭证签发 | 端点只该「交出结论」，不该认识 PTY / 项目库 / 门 |
 //! | [`apply_reply`] | 回复 → 副作用的**唯一**映射 | 换一处 = 换全部；散在 handler 里会漂移 |
 //!
@@ -32,11 +32,13 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::agent::team::admission::{admission_for, MCP_CONFIG_PLACEHOLDER};
+use crate::agent::team::admission::{
+    admission_for, needs_credentials_env, render_argv, ConfigDirSpec, RenderContext,
+};
 use crate::agent::team::identity;
 use crate::agent::team::mcp::dispatch::ToolReply;
 use crate::agent::team::mcp::protocol::TOKEN_HEADER;
-use crate::agent::team::types::{Team, TeamMember, Workspace};
+use crate::agent::team::types::{McpInjection, Team, TeamMember, Workspace};
 use crate::common::error::AppError;
 
 /// MCP 配置里的 server 名（写进 `mcpServers` 的 key）。
@@ -57,29 +59,76 @@ pub struct SpawnPlan {
     pub env: Vec<(String, String)>,
     /// 追加到启动命令行的参数（`McpInjection::Argv` 档的 MCP 配置）。
     pub args: Vec<String>,
+    /// 需要注入子进程的**凭证** env（与 [`Self::env`] 分开：那份是身份，这份含密）。
+    ///
+    /// # 为什么凭证可以进 env（唯一例外）
+    ///
+    /// 今天只有 `bearer_token_env_var` 这一族需要它：那台 CLI 的鉴权通道**就是** env，
+    /// 而它的 argv 里只放 env **名字**（`-c mcp_servers.…bearer_token_env_var="NEEKO_TEAM_TOKEN"`）。
+    /// 于是凭证会在 argv 的 `--mcp-config <json>`（其它档）与这里的 env 各出现一次 ——
+    /// 两者的可见性差别是“同用户 `ps` / 同用户 `/proc`”，**都不出本机同用户边界**：
+    /// Neeko 不会把成员进程的 env 或 argv 发给任何人，也不写进日志。
+    ///
+    /// 存在的前提是 `{{token_env}}` 在模板里：判据 [`admission::needs_credentials_env`]，
+    /// 不靠 `agent_id` 分支（红线 15）。
+    pub credentials_env: Vec<(String, String)>,
+    /// `McpInjection::ConfigDir` 档的副作用计划（其余档 `None`）。
+    ///
+    /// 它是**计划**而不是副作用：建目录 / 镜像 / 跑 `mcp add` 全在组合根
+    /// （`app::team_executor`），因为本域不做 I/O（红线 3）也不认识 `AppHandle`。
+    pub config_dir: Option<ConfigDirPlan>,
+}
+
+/// 「重定向配置目录」档的**副作用计划**（唯一有 fs / 进程副作用的一步）。
+///
+/// 每个字段都对组合根是一道动作：`dir` → mkdir、`mirror_source` + `mirror` → 建符号链接、
+/// `add_args` + `add_env` → 跑一次该 CLI 的 `mcp add`、`add_env` → 同时给 PTY（同一个
+/// 目录必须是**同一个字符串**，否则 `mcp add` 写进去的配置 CLI 读不到）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConfigDirPlan {
+    /// 隔离目录（`{state_root}/team/{team}/{member}`；由调用方给的根推导）。
+    pub dir: PathBuf,
+    /// 目录内的配置文件名（清理与断言用；机制不解释其格式）。
+    pub mcp_file: &'static str,
+    /// 已渲染的 `mcp add` 参数（含端点与凭证）。
+    pub add_args: Vec<String>,
+    /// 跑 `mcp add` 时要带的 env（重定向变量 → 隔离目录）。
+    ///
+    /// 与 PTY 用的是**同一份**：`mcp add` 写进去的目录必须是 CLI 启动时读的那个。
+    pub add_env: Vec<(String, String)>,
+    /// 用户配置目录（镜像源；执行前 canonicalize，红线 8）。
+    pub mirror_source: PathBuf,
+    /// 要镜像的条目（数据来自准入表那一行）。
+    pub mirror: &'static [&'static str],
 }
 
 /// 算出一个成员的启动计划。
 ///
 /// # 失败即拒绝，不做降级
 ///
-/// 三种拒绝都不是"暂时不支持的耐心问题"，而是**不能假装能跑**：
+/// 四种拒绝都不是“暂时不支持的耐心问题”，而是**不能假装能跑**：
 ///
 /// | 情形 | 为什么必须拒绝 |
 /// | --- | --- |
 /// | 该 CLI 没有 MCP 面（`omp` / `reasonix`） | 起得来也收不到任务（`channel = None`），花名册里多一个永远不动的成员 |
-/// | 注入方式不是 `Argv`（`Subcommand` / `ConfigFile`） | 执行层传不了它认的参数：成员起来、tool 面静默不可见 |
+/// | 注入档未实现（`Subcommand` / `ConfigFile`） | 写用户全局配置需要备份 / 幂等 / 拆除，v1 一件都没有 |
+/// | 模板里有渲染不了的占位符 | 拼错的 URL / 字面量 `{{token}}` 都会得到“起得来、连不上”的成员 |
 /// | worktree 落在团队根之外 | 红线 8：执行层要拿它当 cwd 与 `git worktree` 的目标 |
 ///
 /// # 参数
 ///
 /// - `mcp_url`：团队 MCP 端点的完整 URL（含端口的 `/team/mcp`）。
 /// - `token`：该成员的凭证**明文**（由 `TeamManager::issue_token` 取一次；本函数不签、不存）。
+/// - `state_root`：Neeko 配置目录（`~/.neeko`）。隔离配置目录落在
+///   `{state_root}/team/{team}/{member}` —— 根**由调用方给**，因为「Neeko 的状态放在哪」
+///   是组合根的事实，不是团队域的事实（域里硬编码 `std::env::temp_dir()` 会让 macOS 上的
+///   成员配置被系统清理进程当垃圾删掉）。
 pub fn plan_member_spawn(
     team: &Team,
     member: &TeamMember,
     mcp_url: &str,
     token: &str,
+    state_root: &Path,
 ) -> Result<SpawnPlan, AppError> {
     if member.team_id != team.id {
         return Err(AppError::InvalidInput(format!(
@@ -95,38 +144,121 @@ pub fn plan_member_spawn(
         ))
     })?;
 
-    // 「起得来但用不了」的两个条件在 `team_spawn` 已经早拒过一次（不留下永远不动的成员
+    // 「起得来但用不了」的条件在 `team_spawn` 已经早拒过一次（不留下永远不动的成员
     // 行）；这里再问一次是**执行前确认**：成员行可以被重新启动 / 被别的路径写进库，
     // 而判据只该有一份（`AgentAdmission::launch_refusal`）。
     if let Some(why) = admission.launch_refusal() {
         return Err(AppError::Unsupported(why));
     }
 
+    let ctx = RenderContext::new(mcp_config_json(mcp_url, token), mcp_url, token);
+
+    // 凭证 env：**只**在模板引用了 `{{token_env}}` 时注入（判据在数据上，不在 CLI 名上）。
+    let credentials_env = if needs_credentials_env(admission.mcp_argv) {
+        vec![(identity::TEAM_TOKEN_ENV.to_owned(), token.to_owned())]
+    } else {
+        Vec::new()
+    };
+
+    let (args, config_dir) = match admission.mcp_injection {
+        McpInjection::Argv => (render_argv(admission.mcp_argv, &ctx)?, None),
+        // 启动参数为空：这条 CLI 的 MCP 配置不是从命令行进去的，而是它自己的 `mcp add`
+        // 写进**重定向后的**配置目录。
+        McpInjection::ConfigDir => {
+            let spec = admission.config_dir.ok_or_else(|| {
+                AppError::Unsupported(format!(
+                    "agent `{}` is marked as config-directory injection but the admission table \
+                     carries no facts for it",
+                    member.agent_id
+                ))
+            })?;
+            (
+                Vec::new(),
+                Some(config_dir_plan(team, member, spec, &ctx, state_root)?),
+            )
+        }
+        // `launch_refusal` 已经把这两档拒了；到这里说明数据在两处之间漂了，
+        // 拒绝而不是拿空参数起一个哑巴成员。
+        other => {
+            return Err(AppError::Unsupported(format!(
+                "agent `{}` injects MCP via {other:?}, which this planner cannot turn into a \
+                 launch",
+                member.agent_id
+            )))
+        }
+    };
+
     Ok(SpawnPlan {
         cwd: resolve_cwd(team, member)?,
         // 身份 env 与凭证刻意分开：env 会进 `/proc/<pid>/environ` 与子进程继承，
-        // 凭证明文只出现在启动参数的 MCP 配置里（design §3.1「明文只下发一次」）。
+        // 凭证明文只出现在启动参数的 MCP 配置里（`ConfigDir` 档则是那个隔离目录里的
+        // `mcp.json`）。唯一的例外是 `bearer_token_env_var` 那一族，见
+        // [`SpawnPlan::credentials_env`] 的文档。
         env: identity::member_env(&member.team_id, &member.id),
-        args: mcp_argv(admission.mcp_argv, mcp_url, token),
+        args,
+        credentials_env,
+        config_dir,
     })
 }
 
-/// 把 `mcp_argv` 模板里的占位符替换成 MCP 配置 JSON。
+/// `McpInjection::ConfigDir` 档的副作用计划。
 ///
-/// 只替换**完整等于占位符**的元素，不做字符串内替换：模板里的其他参数万一含有 `{{`，
-/// 也不该被当成占位符吃掉（有测试钉住）。
-fn mcp_argv(template: &[&str], mcp_url: &str, token: &str) -> Vec<String> {
-    let config = mcp_config_json(mcp_url, token);
-    template
-        .iter()
-        .map(|arg| {
-            if *arg == MCP_CONFIG_PLACEHOLDER {
-                config.clone()
+/// 两件事在这里定形（之后组合根只执行、不再判断）：
+/// - **目录**：`{state_root}/team/{team}/{member}`，两段都过 [`path_segment`]；
+/// - **重定向 env**：`(spec.env, dir)`，`mcp add` 与 PTY 用同一份（同一个字符串身份）。
+fn config_dir_plan(
+    team: &Team,
+    member: &TeamMember,
+    spec: ConfigDirSpec,
+    ctx: &RenderContext,
+    state_root: &Path,
+) -> Result<ConfigDirPlan, AppError> {
+    let home = dirs::home_dir().ok_or_else(|| {
+        AppError::Unsupported(
+            "the user's home directory cannot be resolved, so the CLI's own config directory \
+             cannot be mirrored into an isolated one"
+                .to_string(),
+        )
+    })?;
+    let dir = state_root
+        .join("team")
+        .join(path_segment(&team.id))
+        .join(path_segment(&member.id));
+    Ok(ConfigDirPlan {
+        mcp_file: spec.mcp_file,
+        add_args: render_argv(spec.add_argv, ctx)?,
+        // 同一个目录必须是**同一个字符串**：`mcp add` 写的地方与 PTY 读的地方。
+        add_env: vec![(spec.env.to_owned(), dir.to_string_lossy().to_string())],
+        dir,
+        mirror_source: home.join(spec.home_subdir),
+        mirror: spec.mirror,
+    })
+}
+
+/// 把 id 变成一个安全的**目录名**。
+///
+/// 成员名来自模型（`team_spawn` 的 `name`），只保证了不含 `@` 与控制字符 —— `/`、空格、
+/// `:` 都在允许范围内，而它们会把目录名变成路径或非法的 Windows 名。空 / `.` / `..`
+/// 会让 `create_dir_all` 落到意料之外的位置，所以统一换成一个显式占位。
+fn path_segment(value: &str) -> String {
+    const MAX_CHARS: usize = 96;
+    let mut out: String = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
             } else {
-                (*arg).to_owned()
+                '_'
             }
         })
-        .collect()
+        .collect();
+    if out.is_empty() || out == "." || out == ".." {
+        return "member".to_string();
+    }
+    if out.chars().count() > MAX_CHARS {
+        out.truncate(MAX_CHARS);
+    }
+    out
 }
 
 /// MCP 配置 JSON（streamable HTTP + header 凭证）。
@@ -320,7 +452,7 @@ fn spawn_failure(member_id: &str, err: AppError) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::team::admission::tier_of;
+    use crate::agent::team::admission::{tier_of, MCP_CONFIG_PLACEHOLDER};
     use crate::agent::team::fixtures::{fixture_member, fixture_team};
     use crate::agent::team::types::Workspace;
 
@@ -349,6 +481,24 @@ mod tests {
         tempfile::tempdir().expect("tempdir")
     }
 
+    /// 计划用的 Neeko 配置根（隔离配置目录落在它下面）。
+    ///
+    /// **不要求存在**：`mkdir -p` 是执行层的事（本域只算计划）。
+    fn state_root(tmp: &tempfile::TempDir) -> PathBuf {
+        tmp.path().join("neeko")
+    }
+
+    /// 多数用例只需要“团队根 = 临时目录”：把两个根接在一起，调用点只写成员。
+    fn plan_for(tmp: &tempfile::TempDir, member: &TeamMember) -> Result<SpawnPlan, AppError> {
+        plan_member_spawn(
+            &team_at(tmp.path()),
+            member,
+            MCP_URL,
+            TOKEN,
+            &state_root(tmp),
+        )
+    }
+
     /// happy path：三件套各自来自一个**已落库**的字段。
     ///
     /// cwd 断言对的是**规范化后**的临时目录：`resolve_cwd` 无条件规范化团队根（它是下面
@@ -357,8 +507,7 @@ mod tests {
     #[test]
     fn claude_plan_carries_env_argv_and_the_team_root() {
         let tmp = tempdir();
-        let plan = plan_member_spawn(&team_at(tmp.path()), &worker("claude-code"), MCP_URL, TOKEN)
-            .expect("plan");
+        let plan = plan_for(&tmp, &worker("claude-code")).expect("plan");
 
         assert_eq!(
             plan.cwd,
@@ -368,6 +517,13 @@ mod tests {
         assert_eq!(plan.env, identity::member_env(TEAM, W1));
         assert_eq!(plan.args.len(), 2, "{:?}", plan.args);
         assert_eq!(plan.args[0], "--mcp-config");
+        // 凭证在 JSON 里 ⇒ 不需要 `credentials_env`，也没有隔离目录。
+        assert!(
+            plan.credentials_env.is_empty(),
+            "{:?}",
+            plan.credentials_env
+        );
+        assert_eq!(plan.config_dir, None);
         let config: serde_json::Value =
             serde_json::from_str(&plan.args[1]).expect("MCP 配置必须是合法 JSON");
         assert_eq!(config["mcpServers"][TEAM_SERVER_NAME]["type"], "http");
@@ -382,8 +538,7 @@ mod tests {
     #[test]
     fn qoder_plan_appends_its_strict_flag() {
         let tmp = tempdir();
-        let plan = plan_member_spawn(&team_at(tmp.path()), &worker("qoder"), MCP_URL, TOKEN)
-            .expect("plan");
+        let plan = plan_for(&tmp, &worker("qoder")).expect("plan");
         assert_eq!(plan.args.len(), 3, "{:?}", plan.args);
         assert_eq!(plan.args[2], "--strict-mcp-config");
     }
@@ -392,8 +547,7 @@ mod tests {
     #[test]
     fn the_token_never_appears_in_the_env() {
         let tmp = tempdir();
-        let plan = plan_member_spawn(&team_at(tmp.path()), &worker("claude-code"), MCP_URL, TOKEN)
-            .expect("plan");
+        let plan = plan_for(&tmp, &worker("claude-code")).expect("plan");
         for (key, value) in &plan.env {
             assert!(
                 !value.contains(TOKEN),
@@ -402,6 +556,123 @@ mod tests {
         }
         // 反向：它确实在启动参数的那段 JSON 里（否则成员连不上）。
         assert!(plan.args.iter().any(|arg| arg.contains(TOKEN)));
+    }
+
+    /// codex：凭证走**唯一**的 env 例外，且 argv 里放的是 env **名字**。
+    ///
+    /// 三条判据缺一不可：
+    /// ① `credentials_env` 恰好一条（多一条 = 又多一份落进 `/proc/<pid>/environ` 的秘密）；
+    /// ② 它的 key 与 argv 里渲染出的那个名字是**同一个字符串**（不同就是 401）；
+    /// ③ 那个名字就是 [`identity::TEAM_TOKEN_ENV`] 常量（不是任何一处手写字面量）。
+    #[test]
+    fn codex_plan_puts_the_token_into_the_credentials_env_only() {
+        let tmp = tempdir();
+        let plan = plan_for(&tmp, &worker("codex")).expect("plan");
+
+        assert_eq!(plan.credentials_env.len(), 1, "{:?}", plan.credentials_env);
+        assert_eq!(plan.credentials_env[0].0, identity::TEAM_TOKEN_ENV);
+        assert_eq!(plan.credentials_env[0].1, TOKEN);
+        // argv 里只有名字，没有明文。
+        assert!(
+            plan.args.iter().all(|arg| !arg.contains(TOKEN)),
+            "codex 的 argv 不该带明文：{:?}",
+            plan.args
+        );
+        let env_name_in_argv = plan
+            .args
+            .iter()
+            .find_map(|arg| arg.split_once("bearer_token_env_var=\""))
+            .map(|(_, rest)| rest.trim_end_matches('"').to_owned())
+            .expect("argv 里必须有 bearer_token_env_var");
+        assert_eq!(
+            env_name_in_argv, plan.credentials_env[0].0,
+            "argv 里的 env 名与注入的 env key 必须同源"
+        );
+        // 身份 env 里仍然没有凭证（两份 env 刻意分开）。
+        assert!(plan.env.iter().all(|(_, value)| !value.contains(TOKEN)));
+        assert_eq!(plan.config_dir, None, "codex 不写任何配置文件");
+    }
+
+    /// pi：启动参数为空，副作用计划全在 `config_dir` 里（并落在**调用方给的**根下）。
+    ///
+    /// 保护的不变量：
+    /// ① 目录根来自调用方（`state_root`）—— 域里硬编码临时目录会让配置被系统清理掉；
+    /// ② 重定向 env 与目录是同一个字符串（`mcp add` 写的与 PTY 读的必须是同一处）；
+    /// ③ `add_args` 已是**渲染后**的真实参数（含端点与凭证），执行层不再拼字符串；
+    /// ④ 镜像源是用户自己的配置目录，且**不镜像**会话目录（数据行里没有它）。
+    #[test]
+    fn pi_plan_provisions_an_isolated_config_directory() {
+        let tmp = tempdir();
+        let plan = plan_for(&tmp, &worker("pi")).expect("plan");
+
+        assert!(plan.args.is_empty(), "pi 不靠启动参数：{:?}", plan.args);
+        assert!(plan.credentials_env.is_empty(), "凭证写在 mcp.json 里");
+
+        let cfg = plan.config_dir.expect("pi 必须有隔离目录计划");
+        let expected_dir = state_root(&tmp).join("team").join(TEAM).join("w1_tm_1");
+        assert_eq!(
+            cfg.dir, expected_dir,
+            "目录根必须来自调用方给的 `state_root`"
+        );
+        assert_eq!(cfg.mcp_file, "mcp.json");
+        assert_eq!(
+            cfg.add_env,
+            vec![(
+                "PI_CODING_AGENT_DIR".to_owned(),
+                cfg.dir.to_string_lossy().to_string()
+            )],
+            "重定向 env 与目录必须是同一个字符串身份"
+        );
+        assert_eq!(cfg.add_args.first().map(String::as_str), Some("mcp"));
+        assert!(
+            cfg.add_args.iter().any(|arg| arg.contains(TOKEN)),
+            "`mcp add` 的参数里必须有凭证（否则写出的配置连不上）：{:?}",
+            cfg.add_args
+        );
+        assert!(
+            cfg.mirror_source.ends_with(".pi/agent"),
+            "镜像源是用户自己的配置目录：{:?}",
+            cfg.mirror_source
+        );
+        assert!(cfg.mirror.contains(&"auth.json"), "登录态必须镜像");
+        assert!(
+            !cfg.mirror.iter().any(|entry| entry.contains("session")),
+            "会话目录不镜像（团队成员的历史与用户自己的分开）：{:?}",
+            cfg.mirror
+        );
+    }
+
+    /// codex 的覆盖项里那个 server 名必须与**下发 JSON 用的** server 名一致。
+    ///
+    /// 保护的不变量：两处各写一个字面量（`mcp_servers.<name>…` 与 `TEAM_SERVER_NAME`）是
+    /// **不可避免的**（模板是 `&'static str`，不能在编译期拼接），所以要有一条用例把它们
+    /// 钉在一起 —— 否则改名时只有一侧会改，成员命令行里会多出一个没人知道的 server。
+    #[test]
+    fn codex_overrides_name_the_same_server_as_the_handed_out_json() {
+        let tmp = tempdir();
+        let plan = plan_for(&tmp, &worker("codex")).expect("plan");
+        for arg in &plan.args {
+            if arg.contains("mcp_servers.") {
+                assert!(
+                    arg.contains(&format!("mcp_servers.{TEAM_SERVER_NAME}.")),
+                    "`{arg}` 里的 server 名必须等于 TEAM_SERVER_NAME={TEAM_SERVER_NAME}"
+                );
+            }
+        }
+    }
+
+    /// 成员名里的危险字符不得把隔离目录变成任意路径（`name` 只保证不含 `@` 与控制字符）。
+    ///
+    /// 保护的不变量：`/` 会让目录名变成嵌套路径（`create_dir_all` 在别处建目录）；
+    /// 空 / `.` / `..` 会让 `create_dir_all` 落到意料之外的位置。
+    #[test]
+    fn config_dir_segments_are_sanitised() {
+        assert_eq!(path_segment("w1_tm_1"), "w1_tm_1");
+        assert_eq!(path_segment("a/b"), "a_b");
+        assert_eq!(path_segment(".."), "member");
+        assert_eq!(path_segment(""), "member");
+        assert_eq!(path_segment("a b:c"), "a_b_c");
+        assert_eq!(path_segment(&"x".repeat(200)).chars().count(), 96);
     }
 
     /// worktree 成员：cwd 是该路径（已规范化），且必须落在团队根之内。
@@ -415,7 +686,7 @@ mod tests {
             ..fixture_member(W1, TEAM)
         };
 
-        let plan = plan_member_spawn(&team_at(tmp.path()), &member, MCP_URL, TOKEN).expect("plan");
+        let plan = plan_for(&tmp, &member).expect("plan");
         assert_eq!(
             plan.cwd,
             std::fs::canonicalize(&wt).expect("canonical"),
@@ -435,8 +706,7 @@ mod tests {
             ..fixture_member(W1, TEAM)
         };
 
-        let err = plan_member_spawn(&team_at(team_tmp.path()), &member, MCP_URL, TOKEN)
-            .expect_err("团队根之外的 worktree 必须被拒绝");
+        let err = plan_for(&team_tmp, &member).expect_err("团队根之外的 worktree 必须被拒绝");
         assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
         assert!(err.to_string().contains("outside the team root"), "{err}");
     }
@@ -451,8 +721,7 @@ mod tests {
             },
             ..fixture_member(W1, TEAM)
         };
-        let err = plan_member_spawn(&team_at(tmp.path()), &member, MCP_URL, TOKEN)
-            .expect_err("不存在的路径必须被拒绝");
+        let err = plan_for(&tmp, &member).expect_err("不存在的路径必须被拒绝");
         assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
         assert!(
             err.to_string()
@@ -461,17 +730,21 @@ mod tests {
         );
     }
 
-    /// 非 `Argv` 注入档一律拒绝，且错误里点名档位（下一轮实现时看日志就知道是哪种）。
+    /// 未实现的注入档一律拒绝，且错误里点名档位（看日志就知道是哪种）。
+    ///
+    /// 注意这里**不再包含 codex**：它已从 `Subcommand`（写全局 `config.toml`）改为
+    /// `Argv`（`-c` 覆盖，不写文件）—— 这正是本步要拆出来的两种能力。
     #[test]
     fn subcommand_and_config_file_agents_are_refused() {
         let tmp = tempdir();
+        // `reasonix` 不列在这里：它连传输都没有，先被「没有 MCP 面」那一句拦下
+        // （见 `agents_without_an_mcp_surface_are_refused`）。
         for (agent_id, mode) in [
             ("grok", "Subcommand"),
-            ("codex", "Subcommand"),
+            ("opencode", "Subcommand"),
             ("gemini", "ConfigFile"),
         ] {
-            let err = plan_member_spawn(&team_at(tmp.path()), &worker(agent_id), MCP_URL, TOKEN)
-                .expect_err("非 Argv 档必须被拒绝");
+            let err = plan_for(&tmp, &worker(agent_id)).expect_err("未实现的注入档必须被拒绝");
             assert!(
                 matches!(err, AppError::Unsupported(_)),
                 "{agent_id}: {err:?}"
@@ -483,13 +756,22 @@ mod tests {
         }
     }
 
+    /// 今天能起的两档都不拒绝（`Argv` 与 `ConfigDir`）：拒绝判据变宽会把能跑的 CLI 挡在外面。
+    #[test]
+    fn both_implemented_gears_can_be_planned() {
+        let tmp = tempdir();
+        for agent_id in ["claude-code", "codebuddy", "qoder", "codex", "pi"] {
+            plan_for(&tmp, &worker(agent_id))
+                .unwrap_or_else(|err| panic!("{agent_id} 今天应该能起：{err}"));
+        }
+    }
+
     /// 无 MCP 面的 CLI（`omp` / `reasonix`）拒绝：起得来也收不到任务。
     #[test]
     fn agents_without_an_mcp_surface_are_refused() {
         let tmp = tempdir();
         for agent_id in ["omp", "reasonix"] {
-            let err = plan_member_spawn(&team_at(tmp.path()), &worker(agent_id), MCP_URL, TOKEN)
-                .expect_err("无 MCP 面必须拒绝");
+            let err = plan_for(&tmp, &worker(agent_id)).expect_err("无 MCP 面必须拒绝");
             assert!(
                 matches!(err, AppError::Unsupported(_)),
                 "{agent_id}: {err:?}"
@@ -506,25 +788,22 @@ mod tests {
     fn a_member_of_another_team_is_rejected() {
         let tmp = tempdir();
         let member = fixture_member(W1, "tm_other");
-        let err = plan_member_spawn(&team_at(tmp.path()), &member, MCP_URL, TOKEN)
-            .expect_err("跨队成员必须被拒绝");
+        let err = plan_for(&tmp, &member).expect_err("跨队成员必须被拒绝");
         assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
     }
 
-    /// 模板替换只认**完整等于**占位符的元素（模板里其他参数不会被误替换）。
+    /// 占位符可以**嵌在更长的参数里**（pi 的 header 就是 `KEY={{token}}`）。
+    ///
+    /// 旧行为（只替换“整元素等于占位符”）会把 `{{token}}` 原样发给 CLI，于是成员带一个
+    /// 无效 header 启动 —— 错误在 401 那一层才出现，离家很远。
     #[test]
-    fn only_the_placeholder_element_is_substituted() {
-        let args = mcp_argv(
-            &["--x", MCP_CONFIG_PLACEHOLDER, "prefix-{{mcp_config}}"],
-            "u",
-            "t",
-        );
+    fn placeholders_are_substituted_inside_arguments_too() {
+        let ctx = RenderContext::new("{}".to_owned(), "u", "t");
+        let args =
+            render_argv(&["--x", MCP_CONFIG_PLACEHOLDER, "prefix-{{url}}"], &ctx).expect("render");
         assert_eq!(args[0], "--x");
-        assert!(args[1].contains("\"mcpServers\""));
-        assert_eq!(
-            args[2], "prefix-{{mcp_config}}",
-            "字符串内的占位符不替换 —— 模板是数据，不是格式化字符串"
-        );
+        assert_eq!(args[1], "{}");
+        assert_eq!(args[2], "prefix-u");
     }
 
     // ─────────────── `apply_reply`：副作用映射（AC14 的接线判据） ───────────────

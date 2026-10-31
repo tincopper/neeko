@@ -32,12 +32,15 @@ pub mod types;
 pub mod view;
 pub mod wait;
 
-pub use admission::{admission_for, refusal, tier_of, AgentAdmission, McpTransport, ADMISSIONS};
+pub use admission::{
+    admission_for, launchable_agents, needs_credentials_env, refusal, render_argv, tier_of,
+    AgentAdmission, ConfigDirSpec, LaunchableAgent, McpTransport, RenderContext, ADMISSIONS,
+};
 pub use authorize::authorize;
 pub use boot::{boot as boot_endpoint, endpoint_url, TeamServer, TeamSurface};
 pub use completion::advance;
 pub use events::{TeamNotifier, TeamPulse, TEAM_EVENT};
-pub use execution::{apply_reply, plan_member_spawn, MemberExecutor, SpawnPlan};
+pub use execution::{apply_reply, plan_member_spawn, ConfigDirPlan, MemberExecutor, SpawnPlan};
 pub use lease::{lease_expired, next_reclaim_count, should_auto_release};
 pub use manager::{TeamManager, TeamWake};
 pub use store::{TeamEventRecord, TeamStore};

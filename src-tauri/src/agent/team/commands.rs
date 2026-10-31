@@ -1,15 +1,16 @@
 //! 团队域的 `#[tauri::command]`（**极薄**，红线 6）。
 //!
-//! 三条命令：
+//! 四条命令：
 //!
 //! | 命令 | 方向 | 载荷 |
 //! | --- | --- | --- |
 //! | `start_team_session` | 写 | 建队 + 起队长 PTY（`create_team` 的唯一生产调用方）|
 //! | `team_snapshot` | 读 | 团队行 + 花名册 + 任务板列（**无 `body`**，红线 4）|
 //! | `team_task_detail` | 读 | 列视图 + 派活正文（点开才拉）|
+//! | `team_launchable_agents` | 读 | 每个可选 agent 一条 `{ agentId, refusal }`（面板置灰依据）|
 //!
-//! 三条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，建队/起进程
-//! 在 `bootstrap` + `execution`（红线 6）。
+//! 四条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，建队/起进程
+//! 在 `bootstrap` + `execution`，准入判定在 [`crate::agent::team::admission`]（红线 6）。
 //!
 //! # 两条读命令**不做 principal 校验**（不是漏了）
 //!
@@ -50,6 +51,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::agent::team::admission::{self, LaunchableAgent};
 use crate::agent::team::bootstrap::{new_team_id, plan_team};
 use crate::agent::team::execution;
 use crate::agent::team::manager::now_millis;
@@ -137,6 +139,39 @@ pub async fn start_team_session(
         terminal_id,
         endpoint_url: surface.endpoint_url,
     })
+}
+
+/// 面板的**能力面**：每个可选 agent 一条 `{ agentId, refusal }`。
+///
+/// 面板据此置灰并显示原因（prd R0.4：能力缺口必须在 UI 上可见，而不是让用户点到
+/// 必然失败的按钮）。
+///
+/// # 只做三件事（红线 6）
+///
+/// 取 id 列表 → 交给纯函数 → 返回。准入判定**不在命令里**：它是
+/// [`admission::launchable_agents`]（`builtin_configs` × `admission_for` × `launch_refusal`），
+/// 与 `team_spawn` / `start_team_session` 共用同一个判据。命令里再写一遍的后果是
+/// 「面板说能起、`team_spawn` 拒绝」——两侧各有一套真相，用户看到的是两个互相矛盾的回答。
+///
+/// # 为什么要包含“不在准入表里”的 agent
+///
+/// 用户自定义 CLI 就在那份清单里（`AgentManager` 含用户覆盖）。静默漏掉它们，面板上
+/// 就不会出现那些永远起不来的选项 —— 看起来像“不支持”，实际是“我们没说”。
+///
+/// 锁定读出一个 id 清单（`Mutex` 不是阻塞 I/O，不进阻塞池）。
+#[tauri::command]
+pub fn team_launchable_agents(
+    state: tauri::State<'_, AppStateWrapper>,
+) -> Result<Vec<LaunchableAgent>, AppError> {
+    let agent_ids: Vec<String> = state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)?
+        .get_agents()
+        .into_iter()
+        .map(|config| config.id)
+        .collect();
+    Ok(admission::launchable_agents(&agent_ids))
 }
 
 /// 团队快照（面板的数据源）。
