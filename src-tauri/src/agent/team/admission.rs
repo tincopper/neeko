@@ -25,7 +25,9 @@
 //! 把不确定的能力当成确定的。
 
 use crate::agent::team::identity::TEAM_TOKEN_ENV;
-use crate::agent::team::types::{AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel};
+use crate::agent::team::types::{
+    AdmissionTier, ApprovalPolicy, McpInjection, MemberRole, ResultChannel,
+};
 use crate::common::error::AppError;
 
 /// `mcp_argv` / `ConfigDirSpec::add_argv` 模板里的占位符：执行层把它替换成 MCP 配置 JSON
@@ -492,18 +494,41 @@ pub fn admitted_agent_ids() -> Vec<String> {
 /// 里”那一类的主体）。输出按 `agent_id` 排序并去重：面板按这个顺序渲染，不排序会让
 /// 每次打开面板的顺序都有可能不同。
 #[must_use]
-pub fn launchable_agents(agent_ids: &[String]) -> Vec<LaunchableAgent> {
+pub fn launchable_agents(agent_ids: &[String], role: MemberRole) -> Vec<LaunchableAgent> {
     let mut ids: Vec<&str> = agent_ids.iter().map(String::as_str).collect();
     ids.sort_unstable();
     ids.dedup();
-    ids.into_iter().map(launchable_agent).collect()
+    ids.into_iter()
+        .map(|agent_id| launchable_agent(agent_id, role))
+        .collect()
+}
+
+/// 角色 → 该问哪一条判据（**选路**，不是重写判据）。
+///
+/// 队长比成员多一条前置：它必须在启动时就收到角色 preamble（`prompt_argv` 非空），
+/// 因为队长的第一个动作没有人能替它触发。两条判据本身都在 [`AgentAdmission`] 上
+/// （[`AgentAdmission::lead_refusal`] 复用 [`AgentAdmission::launch_refusal`]），
+/// 所以这里只有 `match`，没有一句复制的逻辑。
+///
+/// 为什么放在准入域而不是执行层：**问「谁能当 X」是准入问题**，执行层只是另一个提问者。
+/// 把它留在执行层，面板就只能问成员那一半（`team_launchable_agents` 曾因此回答错问题）。
+#[must_use]
+pub fn refusal_for(role: MemberRole, agent_id: &str) -> Option<String> {
+    match (role, admission_for(agent_id)) {
+        (MemberRole::Lead, Some(admission)) => admission.lead_refusal(),
+        (MemberRole::Worker, Some(admission)) => admission.launch_refusal(),
+        // 不在准入表里（`dsh` / 用户自定义 CLI）对**两种角色**都不是「可启动」：
+        // `launch_refusal_for` 的拒绝文案已经说清缺的是哪个事实，直接复用 ——
+        // 这里若返回 `None`，面板会把一个永远起不来的 CLI 显示成可用。
+        _ => launch_refusal_for(agent_id),
+    }
 }
 
 /// 单个 agent 的能力面：**准入表是唯一判据**（不在表里 = 也说清楚）。
-fn launchable_agent(agent_id: &str) -> LaunchableAgent {
+fn launchable_agent(agent_id: &str, role: MemberRole) -> LaunchableAgent {
     LaunchableAgent {
         agent_id: agent_id.to_owned(),
-        refusal: launch_refusal_for(agent_id),
+        refusal: refusal_for(role, agent_id),
     }
 }
 
@@ -1473,7 +1498,7 @@ mod tests {
             // 重复项必须去重（面板不该出现两行同名）。
             "pi".to_owned(),
         ];
-        let rows = launchable_agents(&ids);
+        let rows = launchable_agents(&ids, MemberRole::Worker);
         let ids_out: Vec<&str> = rows.iter().map(|row| row.agent_id.as_str()).collect();
         assert_eq!(
             ids_out,
@@ -1507,7 +1532,7 @@ mod tests {
     /// 空输入 → 空输出（命令层不需要为“没有任何 agent”写特例）。
     #[test]
     fn launchable_agents_of_an_empty_list_is_empty() {
-        assert!(launchable_agents(&[]).is_empty());
+        assert!(launchable_agents(&[], MemberRole::Worker).is_empty());
     }
 
     /// `McpInjection::None` ⇒ B 档（hook 在、MCP 面不在）。

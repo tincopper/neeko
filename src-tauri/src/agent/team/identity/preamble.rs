@@ -239,7 +239,7 @@ mod tests {
 
     /// 生产路径的成员清单：**准入表**（域内纯函数，不读 `AgentManager`）。
     fn roster() -> Vec<LaunchableAgent> {
-        launchable_agents(&admitted_agent_ids())
+        launchable_agents(&admitted_agent_ids(), MemberRole::Worker)
     }
 
     fn lead_member() -> TeamMember {

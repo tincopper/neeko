@@ -58,7 +58,7 @@ use crate::agent::team::bootstrap::{self, new_team_id, plan_team};
 use crate::agent::team::execution;
 use crate::agent::team::manager::now_millis;
 use crate::agent::team::options::{self, TeamOptions};
-use crate::agent::team::types::TeamConfig;
+use crate::agent::team::types::{MemberRole, TeamConfig};
 use crate::agent::team::view::{self, TaskDetail, TeamSnapshot};
 use crate::common::error::AppError;
 use crate::common::runtime::run_blocking_result;
@@ -188,9 +188,13 @@ pub async fn start_team_session(
 /// 就不会出现那些永远起不来的选项 —— 看起来像“不支持”，实际是“我们没说”。
 ///
 /// 锁定读出一个 id 清单（`Mutex` 不是阻塞 I/O，不进阻塞池）。
+/// 角色决定问哪一条判据：`"lead"` 会额外问「它能不能收到角色 preamble」，
+/// 因为队长起来之后没有人能替它 trigger 第一个动作（成员可以靠 `team_send` 的第一条消息）。
+/// **不给隐藏默认**：面板的队长选择器传 `lead`，别处传 `worker`，写错了立刻报错而不是悄悄降级。
 #[tauri::command]
 pub fn team_launchable_agents(
     state: tauri::State<'_, AppStateWrapper>,
+    role: String,
 ) -> Result<Vec<LaunchableAgent>, AppError> {
     let agent_ids: Vec<String> = state
         .agent_manager
@@ -200,7 +204,16 @@ pub fn team_launchable_agents(
         .into_iter()
         .map(|config| config.id)
         .collect();
-    Ok(admission::launchable_agents(&agent_ids))
+    let role = match role.as_str() {
+        "lead" => MemberRole::Lead,
+        "worker" => MemberRole::Worker,
+        other => {
+            return Err(AppError::InvalidInput(format!(
+                "`role` must be `lead` or `worker`, got `{other}`"
+            )))
+        }
+    };
+    Ok(admission::launchable_agents(&agent_ids, role))
 }
 
 /// 面板的**团队配置面**：这个队允许谁当成员 / 还能加几个 / 缺省值是什么。

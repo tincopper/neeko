@@ -132,7 +132,10 @@ function lastStartPayload(): {
 
 /** 面板挂载后要先等两条读命令落地（按钮与配置区都按它们渲染）。 */
 async function waitForPanelReady(): Promise<void> {
-  await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('team_launchable_agents'));
+  // 队长入口问的是**队长**判据（多一条「能不能收到角色 preamble」），不是成员判据。
+  await waitFor(() =>
+    expect(mockInvoke).toHaveBeenCalledWith('team_launchable_agents', { role: 'lead' }),
+  );
   await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('team_options', { teamId: null }));
   await waitFor(() =>
     expect(screen.queryByText(/正在读取团队配置的默认值…/)).not.toBeInTheDocument(),

@@ -64,7 +64,7 @@ export function useLaunchableAgents(): LaunchableAgentsState {
   const reload = useCallback(() => {
     const mine = ++generation.current;
     setLoading(true);
-    void fetchLaunchableAgents()
+    void fetchLaunchableAgents('lead')
       .then((rows) => {
         if (mine !== generation.current) return;
         setAgents(rows);

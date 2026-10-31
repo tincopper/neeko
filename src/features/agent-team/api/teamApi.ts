@@ -70,8 +70,8 @@ export function startTeamSession(params: StartTeamSessionParams): Promise<TeamSe
  * 因此队长入口的候选**只能**来自这个返回值 —— 前端自己筛一遍（`enabled` + 有 `command`）
  * 就是第二套判据，后端判据一变，面板还在按老规则放行。
  */
-export function fetchLaunchableAgents(): Promise<LaunchableAgent[]> {
-  return invoke<LaunchableAgent[]>('team_launchable_agents');
+export function fetchLaunchableAgents(role: 'lead' | 'worker'): Promise<LaunchableAgent[]> {
+  return invoke<LaunchableAgent[]>('team_launchable_agents', { role });
 }
 
 /**

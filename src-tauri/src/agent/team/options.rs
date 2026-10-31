@@ -40,7 +40,7 @@
 //! 交给队长，它会以为一个都不能 spawn。
 
 use crate::agent::team::admission::{admitted_agent_ids, launchable_agents, LaunchableAgent};
-use crate::agent::team::types::{ApprovalPolicy, Team, TeamConfig, Workspace};
+use crate::agent::team::types::{ApprovalPolicy, MemberRole, Team, TeamConfig, Workspace};
 
 /// 一个团队的可选项面（`team_options` 的载荷，MCP 与本地命令同形）。
 ///
@@ -140,10 +140,11 @@ pub fn default_options(member_count: u32) -> TeamOptions {
 fn resolve(config: &TeamConfig, member_count: u32) -> TeamOptions {
     // 准入过滤：`launchable_agents` 是面板那条命令的**同一个**函数（红线 15 的单一判据），
     // 所以「这里说能起、那里说不能」在结构上不可能发生。
-    let members: Vec<LaunchableAgent> = launchable_agents(&candidate_ids(config))
-        .into_iter()
-        .filter(|row| row.refusal.is_none())
-        .collect();
+    let members: Vec<LaunchableAgent> =
+        launchable_agents(&candidate_ids(config), MemberRole::Worker)
+            .into_iter()
+            .filter(|row| row.refusal.is_none())
+            .collect();
     TeamOptions {
         defaults: TeamDefaults {
             allowed_agent_ids: members.iter().map(|row| row.agent_id.clone()).collect(),
@@ -290,7 +291,7 @@ mod tests {
             ),
             0,
         );
-        let machine = launchable_agents(&admitted_agent_ids());
+        let machine = launchable_agents(&admitted_agent_ids(), MemberRole::Worker);
 
         assert!(
             machine.len() > restricted.members.len(),
