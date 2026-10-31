@@ -1,6 +1,6 @@
 // Git operations — info sub-module (split from operations.rs God File).
 
-use crate::common::git::operations::worktree::parse_worktree_list;
+use crate::common::git::operations::worktree::list_worktrees;
 use crate::common::git::provider::detect_provider;
 use crate::common::git::transport::GitTransport;
 use crate::project::types::{GitBranchInfo, GitInfo, GitProvider};
@@ -71,25 +71,7 @@ pub async fn get_git_branch_info_shell(
         branches.push(name.to_string());
     }
 
-    let worktrees_output = transport
-        .run_git(&["worktree", "list", "--porcelain"], work_dir)
-        .await?;
-    // 归一化需要 transport 的 target 语义（Local canonicalize / 远端词法归一），
-    // 因此清单在解析处即归一 —— 前端会拿这些路径拼 WorkspaceKey，必须与 WorkspaceRef::key() 同形。
-    //
-    // 每条目的归一含 `exists` / `canonicalize`（阻塞 fs）⇒ 整份清单在**一次** `spawn_blocking`
-    // 内解析（红线 3）：逐条 hop 会把线程池往返乘以条目数，且让清单内部来自不同时刻的 fs 视图。
-    let parse_target = transport.exec_target();
-    let mut worktrees =
-        tokio::task::spawn_blocking(move || parse_worktree_list(&worktrees_output, &parse_target))
-            .await
-            .map_err(|e| anyhow::anyhow!("worktree list parsing task failed: {e}"))?;
-    // The first worktree is always the main worktree (the project directory itself):
-    // `git worktree list` 保证主工作树排在最前（2.54 实测 + git-worktree(1) 文档），
-    // git2 的 `repo.worktrees()` 同样只返回 linked worktree —— 两条路径语义一致。
-    if !worktrees.is_empty() {
-        worktrees.remove(0);
-    }
+    let worktrees = list_worktrees(transport, work_dir).await?;
 
     Ok(GitBranchInfo {
         current_branch: current_branch.to_string(),

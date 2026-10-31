@@ -19,6 +19,8 @@ pub mod refs;
 pub mod status_worker;
 pub mod transport;
 pub mod types;
+/// 执行地址的单元归属（哪个 Workspace 单元拥有某个目录）。
+pub mod unit_scope;
 /// 仓库工作树身份（git 状态的唯一寻址单位）。
 pub mod workspace_ref;
 /// WSL-specific git operations and IDE launch helpers.
@@ -36,6 +38,7 @@ pub use pr::*;
 pub use provider::*;
 pub use refs::*;
 pub use types::*;
+pub use unit_scope::{PathAlphabet, UnitScope};
 pub use workspace_ref::{Checkout, WorkspaceRef, WorkspaceSession};
 #[cfg(target_os = "windows")]
 pub use wsl::*;

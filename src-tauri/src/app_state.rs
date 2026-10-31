@@ -239,6 +239,21 @@ impl AppStateWrapper {
         Ok((target, repo))
     }
 
+    /// 执行地址 → **单元范围的归属判定器**（会话列表 / 搜索 / 后续域共用）。
+    ///
+    /// 放在组合根而不是某个域里：它只回答「这个地址对哪些路径负责」，与消费方语义无关。
+    /// 单元根的校验与身份铸造仍只在 [`Self::resolve_workspace_target`] 之后的
+    /// [`crate::common::git::UnitScope::resolve`] 里发生。
+    pub async fn resolve_unit_scope(
+        &self,
+        workspace: &crate::common::git::WorkspaceSession,
+    ) -> Result<crate::common::git::UnitScope, AppError> {
+        let (target, repo) = self.resolve_workspace_target(workspace).await?;
+        crate::common::git::UnitScope::resolve(&target, &repo)
+            .await
+            .map_err(AppError::from)
+    }
+
     /// 文件/通用命令的统一入口：**Workspace 目标 → (执行环境, 已解析 [`WorkspaceRef`])**。
     ///
     /// 与 [`Self::resolve_workspace`] 同源（委托），使「按 Workspace 寻址」的命令不必各自拼

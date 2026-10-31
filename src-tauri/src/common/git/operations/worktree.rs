@@ -111,6 +111,49 @@ fn normalized_worktree(
     }
 }
 
+/// Linked worktree 清单（`git worktree list --porcelain`，**已剔除主工作树**）。
+///
+/// **归一即产出**：条目 `path` 是身份渲染（见 [`parse_worktree_list`]）—— 前端据此拼
+/// `WorkspaceKey`，会话列表也据它判定「会话属于哪个单元」，必须与 `WorkspaceRef::key()` 同形。
+///
+/// 主工作树恒为 porcelain 输出的首项（git-worktree(1) 契约，2.54 实测），故此处直接剔除：
+/// 两个调用方（git info / 会话单元归属）要的都是 linked 部分。
+pub async fn list_worktrees(transport: &dyn GitTransport, work_dir: &str) -> Result<Vec<Worktree>> {
+    let output = transport
+        .run_git(&["worktree", "list", "--porcelain"], work_dir)
+        .await?;
+    let target = transport.exec_target();
+    // 每条目的归一含 `exists` / `canonicalize`（阻塞 fs）⇒ 整份清单在**一次** `spawn_blocking`
+    // 内解析（红线 3）：逐条 hop 会把线程池往返乘以条目数，且让清单内部来自不同时刻的 fs 视图。
+    let mut worktrees = tokio::task::spawn_blocking(move || parse_worktree_list(&output, &target))
+        .await
+        .map_err(|e| anyhow::anyhow!("worktree list parsing task failed: {e}"))?;
+    if !worktrees.is_empty() {
+        worktrees.remove(0);
+    }
+    Ok(worktrees)
+}
+
+/// 项目内 linked worktree 的根清单（身份渲染）。
+///
+/// **为什么需要它**：单元归属 = 「包含它且最深的那个单元根」（见
+/// [`crate::common::git::unit_scope`]）。主工作树与 linked worktree 的根**默认互不包含**
+/// （Neeko 默认把 worktree 建在项目根之外，`~/.neeko/worktrees/<name>`，见
+/// `common/git/path_guard.rs`），此时前缀判定恰好够用；但两种合法布局会让根重叠 ——
+/// 用户约定建在仓内（`<project>/.worktrees/<name>`）与 worktree 里再开 worktree。
+/// 重叠时没有这份兄弟清单，主仓单元会把 worktree 的会话一并命中，而续写通道却建立在
+/// 调用方当前单元（cwd 与 agent 原生会话 origin 不一致）。
+pub async fn list_linked_worktree_roots(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+) -> Result<Vec<String>> {
+    Ok(list_worktrees(transport, work_dir)
+        .await?
+        .into_iter()
+        .map(|wt| wt.path)
+        .collect())
+}
+
 /// Parse `git worktree list --porcelain` into the authoritative worktree list.
 ///
 /// **路径即身份**：这些路径会被前端拼成 `WorkspaceKey`，必须与 `WorkspaceRef::key()` 逐字同形 ——
@@ -158,3 +201,6 @@ pub(crate) fn parse_worktree_list(output: &str, target: &ExecTarget) -> Vec<Work
     }
     worktrees
 }
+
+#[cfg(test)]
+mod tests;
