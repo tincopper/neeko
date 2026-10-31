@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import { TerminalIcon, FolderGitIcon } from '@/shared/components/icons';
+import { ChevronRightIcon, TerminalIcon, FolderGitIcon } from '@/shared/components/icons';
 import SessionChips from '@/shared/components/SessionChips';
+import SessionStatusIcon from '@/shared/components/SessionStatusIcon';
+import type { SessionState } from '@/shared/types/liveSessions';
 
 type SessionKind = 'local' | 'worktree';
 
@@ -11,6 +13,20 @@ interface SessionRowProps {
   label: string;
   branch?: string;
   isActive?: boolean;
+  /**
+   * 本单元的**最高优先级会话状态**（`dominantState`）。
+   *
+   * `undefined` / `null` = 该单元没有会话 ⇒ **不画点**（不是灰点：灰点会让人以为
+   * 「有个空闲会话」）。状态只有注册表一个来源，视图不推断。
+   */
+  status?: SessionState | null;
+  /**
+   * 单元下的会话子列表（`SessionList`）。给出时行尾出现展开箭头。
+   *
+   * **默认折叠**，且折叠时子节点根本**不渲染** —— 挂载即订阅 + 每单元可能的几十行
+   * 会话在侧栏里全是白付的成本。
+   */
+  children?: React.ReactNode;
   /**
    * 待 push 提交数（相对 `@{upstream}`）。**只在激活行展示**（`isActive`）——
    * 该数字的值只有激活单元才会被写入 store（见 `useAheadBehindSync` / `useGitStatusEventsSync`），
@@ -37,11 +53,21 @@ interface SessionRowProps {
   trailing?: React.ReactNode;
 }
 
+/**
+ * 侧栏的一个「执行单元」行（主 checkout / linked worktree）。
+ *
+ * # 交互结构（a11y）
+ *
+ * 行 = **容器 + 一个真按钮**（打开该单元终端）+ 一组兄弟动作（展开箭头 / trailing）。
+ * 不用 `div role="button"` 包住按钮：ARIA 不允许交互元素嵌套，且内层按钮的 Enter/Space
+ * 会被外层吞掉。编辑态（重命名输入框）期间主体不再是按钮 —— 输入框不能住进按钮里。
+ */
 const SessionRow: React.FC<SessionRowProps> = ({
   kind,
   label,
   branch,
   isActive = false,
+  status = null,
   ahead,
   shortcut,
   title,
@@ -51,63 +77,108 @@ const SessionRow: React.FC<SessionRowProps> = ({
   labelTitle,
   deleting = false,
   trailing,
+  children,
 }) => {
   const Icon = kind === 'worktree' ? FolderGitIcon : TerminalIcon;
-  return (
-    <div
-      role="button"
-      tabIndex={0}
+  const [expanded, setExpanded] = useState(false);
+  const hasChildren = children !== undefined && children !== null;
+
+  const leading = (
+    <span
       className={cn(
-        'group flex items-center gap-2.5 pl-4 pr-3 py-2 mx-1.5 rounded-md cursor-pointer transition-colors',
-        deleting && 'wt-deleting',
-        isActive ? 'bg-bg-selected' : 'hover:bg-bg-hover',
+        'relative w-7 h-7 rounded-md flex items-center justify-center shrink-0',
+        isActive ? 'text-text-primary' : 'text-text-muted',
       )}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          if (onClick) onClick(e as unknown as React.MouseEvent<HTMLDivElement>);
-        }
+      style={{
+        backgroundColor: isActive ? 'var(--bg-selected)' : 'transparent',
       }}
-      title={title}
     >
+      <Icon size={16} />
+      {status && (
+        /* 角标贴在图标右下角（原型 `.face-dot`）：底圈取面板面的颜色，把点从图标上摘下来 */
+        <span
+          className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-bg-primary grid place-items-center"
+          data-testid="unit-status-badge"
+        >
+          <SessionStatusIcon status={status} size={7} />
+        </span>
+      )}
+    </span>
+  );
+
+  const labelBlock = (
+    <span className="flex-1 min-w-0">
       <span
-        className={cn(
-          'w-7 h-7 rounded-md flex items-center justify-center shrink-0',
-          isActive ? 'text-text-primary' : 'text-text-muted',
-        )}
-        style={{
-          backgroundColor: isActive ? 'var(--bg-selected)' : 'transparent',
-        }}
+        className="block text-[var(--font-size)] font-semibold text-text-primary truncate"
+        onDoubleClick={onLabelDoubleClick}
+        title={labelTitle}
       >
-        <Icon size={16} />
+        {label}
       </span>
-      <div className="flex-1 min-w-0">
-        {editing ?? (
-          <>
-            <div
-              className="text-[var(--font-size)] font-semibold text-text-primary truncate"
-              onDoubleClick={onLabelDoubleClick}
-              title={labelTitle}
+      {branch && (
+        <span className="block text-[0.85em] font-mono text-text-muted truncate">{branch}</span>
+      )}
+    </span>
+  );
+
+  return (
+    <>
+      <div
+        className={cn(
+          'group flex items-center gap-2.5 pl-4 pr-3 py-2 mx-1.5 rounded-md transition-colors',
+          deleting && 'wt-deleting',
+          isActive ? 'bg-bg-selected' : 'hover:bg-bg-hover',
+        )}
+        title={title}
+      >
+        {editing ? (
+          <div className="flex flex-1 min-w-0 items-center gap-2.5">
+            {leading}
+            <div className="flex-1 min-w-0">{editing}</div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="flex flex-1 min-w-0 items-center gap-2.5 bg-transparent border-none p-0 text-left cursor-pointer"
+            onClick={onClick}
+          >
+            {leading}
+            {labelBlock}
+          </button>
+        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {isActive && ahead !== undefined && <SessionChips.Ahead ahead={ahead} />}
+          {shortcut && (
+            <span className="hidden group-hover:inline-flex">
+              <SessionChips.Kbd>{shortcut}</SessionChips.Kbd>
+            </span>
+          )}
+          {hasChildren && (
+            <button
+              type="button"
+              data-no-drag
+              aria-expanded={expanded}
+              aria-label={expanded ? 'Collapse sessions' : 'Expand sessions'}
+              className="bg-transparent border-none text-text-muted cursor-pointer px-1 py-0.5 rounded flex items-center transition-colors hover:bg-bg-hover hover:text-text-primary"
+              onClick={(e) => {
+                // 行本身的点击语义是「打开该单元终端」—— 展开是另一件事，不能顺便切过去
+                e.stopPropagation();
+                setExpanded((v) => !v);
+              }}
             >
-              {label}
-            </div>
-            {branch && (
-              <div className="text-[0.85em] font-mono text-text-muted truncate">{branch}</div>
-            )}
-          </>
-        )}
+              <ChevronRightIcon
+                size={12}
+                className={cn('transition-transform duration-150', expanded && 'rotate-90')}
+              />
+            </button>
+          )}
+          {trailing}
+        </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {isActive && ahead !== undefined && <SessionChips.Ahead ahead={ahead} />}
-        {shortcut && (
-          <span className="hidden group-hover:inline-flex">
-            <SessionChips.Kbd>{shortcut}</SessionChips.Kbd>
-          </span>
-        )}
-        {trailing}
-      </div>
-    </div>
+      {/* 子列表：只靠缩进表达层级 —— 竖线在窄侧栏里是一条持续的视觉噪声，
+          而且和单元行自己的左缘打架。缩进值让会话图标对齐单元标签的起点。 */}
+      {hasChildren && expanded && <div className="ml-[3.25rem] mr-1 mb-1">{children}</div>}
+    </>
   );
 };
 

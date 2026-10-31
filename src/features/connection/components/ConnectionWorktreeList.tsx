@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { UnitSessionList } from '@/features/live-sessions';
 import WorktreeRowList from '@/shared/components/WorktreeRowList';
 import { useWorktreeRowState } from '@/shared/hooks/useWorktreeRowState';
 import type { Worktree } from '@/shared/types';
@@ -52,6 +53,7 @@ const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
       activeCheckoutPath={activeCheckoutPath}
       rowState={rowState}
       onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+      renderUnitSessions={(workspaceKey) => <UnitSessionList workspaceKey={workspaceKey} />}
     />
   );
 };

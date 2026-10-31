@@ -52,4 +52,17 @@
    * 与 slide-up 的区别：位移小且方向向下（展开感），时长更短 —— 大表单上 12px/0.25s 会显得飘。 */
   @keyframes agents-expand { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
   .animate-agents-expand { animation: agents-expand 0.18s ease-out; }
+
+  /* live-session 的 running 状态点呼吸环（`SessionStatusIcon`）。
+   *
+   * 形状是**第二个通道**（圆 / 菱形 / 方 / 空心），颜色只是第一个 —— 于是色觉障碍下
+   * 五个状态仍可区分。呼吸环额外表达「进程还活着」，不用颜色变化表达，否则
+   * 与 `failed` 的红色在同一维度上打架。
+   * 服务两个域（tab 前导点 + 侧栏会话行/单元角标），故属 `motion/` 而非某个 components 域。 */
+  @keyframes live-dot-pulse {
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-green) 55%, transparent); }
+    70%  { box-shadow: 0 0 0 5px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  .live-dot-running { animation: live-dot-pulse 1.9s ease-out infinite; }
 }

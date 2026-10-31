@@ -1,15 +1,21 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 import DeleteConfirmDialog from '@/shared/components/DeleteConfirmDialog';
 import { BranchIcon, TrashIcon } from '@/shared/components/icons';
 import SessionRow from '@/shared/components/SessionRow';
 import WorktreeRenameInput from '@/shared/components/WorktreeRenameInput';
 import type { ConfirmDeleteState, WorktreeRowState } from '@/shared/hooks/useWorktreeRowState';
+import {
+  NO_SESSIONS,
+  dominantState,
+  sessionsByUnit,
+} from '@/shared/selectors/liveSessionSelectors';
 import { useGitStore } from '@/shared/store/gitStore';
+import { useLiveSessionsStore } from '@/shared/store/liveSessionsStore';
 import { useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 import type { Worktree } from '@/shared/types';
 import { getFileName } from '@/shared/utils/fileTree';
-import type { ProjectId } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
 
 interface WorktreeRowListProps {
   projectId: ProjectId;
@@ -20,6 +26,16 @@ interface WorktreeRowListProps {
   rowState: WorktreeRowState;
   /** 点击行：打开该单元的终端。 */
   onOpenWorktreeTerminal: (path: string, branch: string) => void;
+  /**
+   * 该单元会话子列表的渲染入口（`UnitSessionList`）。
+   *
+   * 由调用方注入而不是在这里 import：本组件在 `shared/`，而会话行需要 agent 图标与
+   * tab 激活 —— 那是 feature 侧的能力（分层约束：`shared/` 不得依赖 `features/`）。
+   * 与 `rowState` 同模式：本组件只说「这一行长什么样」，能力由调用方给。
+   *
+   * 返回 `undefined` = 不提供子列表（行尾也不出现展开箭头）。
+   */
+  renderUnitSessions?: (workspaceKey: string) => React.ReactNode;
 }
 
 /**
@@ -44,6 +60,7 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
   activeCheckoutPath,
   rowState,
   onOpenWorktreeTerminal,
+  renderUnitSessions,
 }) => {
   // 「待 push 提交数」的唯一读取规则：键 = 本项目当前单元的 WorkspaceKey，只在激活行展示。
   // 该数字只有激活单元会被写入 store（见 `useAheadBehindSync` / `useGitStatusEventsSync`）——
@@ -53,6 +70,10 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
     activeUnitKey ? s.aheadBehind[activeUnitKey]?.ahead : undefined,
   );
 
+  // 每个 worktree 行的角标与子列表都取自同一份快照（按 `workspaceKey` 分组，红线 12）。
+  const sessions = useLiveSessionsStore((s) => s.sessions);
+  const byUnit = useMemo(() => sessionsByUnit(sessions), [sessions]);
+
   if (worktrees.length === 0) return null;
 
   return (
@@ -61,6 +82,9 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
         const isRenaming = rowState.renaming === wt.path;
         const isDeleting = rowState.deleting === wt.path;
         const isActive = activeCheckoutPath === wt.path;
+        // 该 worktree 的行本身就是单元身份 → 它的单元 key 是这张表的一行
+        const unitKey = WorkspaceSession.of(projectId, wt.path).key;
+        const unitSessions = byUnit.get(unitKey) ?? NO_SESSIONS;
 
         return (
           <SessionRow
@@ -90,6 +114,7 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
             onLabelDoubleClick={(e) => rowState.startRename(wt.path, e)}
             labelTitle="Double-click to rename"
             deleting={isDeleting}
+            status={dominantState(unitSessions)}
             trailing={
               isDeleting ? (
                 <span className="wt-spinner" title="Removing..." />
@@ -105,7 +130,9 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
                 </button>
               )
             }
-          />
+          >
+            {unitSessions.length > 0 ? renderUnitSessions?.(unitKey) : undefined}
+          </SessionRow>
         );
       })}
       <DeleteConfirmDialog

@@ -2,12 +2,15 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import React, { useCallback, useMemo, useState } from 'react';
 
+import { UnitSessionList } from '@/features/live-sessions';
 import { cn } from '@/lib/utils';
 import ContextMenu, { type ContextMenuItem } from '@/shared/components/ContextMenu';
 import DeleteConfirmDialog from '@/shared/components/DeleteConfirmDialog';
 import ProjectGroup from '@/shared/components/ProjectGroup';
 import ProjectSettingsDialog from '@/shared/components/ProjectSettingsDialog';
 import SessionRow from '@/shared/components/SessionRow';
+import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
+import { NO_SESSIONS, dominantState } from '@/shared/selectors/liveSessionSelectors';
 import { useGitStore } from '@/shared/store/gitStore';
 import {
   selectActiveCheckoutPath,
@@ -15,6 +18,7 @@ import {
   useWorkspaceStore,
 } from '@/shared/store/workspaceStore';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useConnectionWorktreeActions } from '../hooks/useConnectionWorktreeActions';
 
@@ -50,6 +54,9 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
 
     // 本卡片渲染的是 project.id 的行 → 单元归属按该 projectId 取（不是「当前激活项目」的镜像）
     const activeCheckoutPath = useWorkspaceStore((s) => selectActiveCheckoutPath(s, project.id));
+
+    // 侧栏两个投影（单元角标 / 会话子列表）的同一份分组结果。
+    const sessionsByUnit = useSessionsByUnit();
 
     // ahead/behind 仅在 active 项目时显示；键 = 该项目的**激活单元**（与写入侧同一把键）。
     // 旧键带 `{source}:{identifier}` 前缀，而那三个写入点的 identifier 约定各不相同 ⇒ 读不到。
@@ -152,6 +159,10 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     // 注：曾有 +A -D 聚合，数据源（`FileChange.additions/deletions`）在 G4 后恒为 0，已删除。
     const localActive = isActive && !activeCheckoutPath;
 
+    // 主仓单元的角标与子列表（与本地侧栏同一份快照、同一把 key）。
+    const mainUnitKey = WorkspaceSession.of(project.id, null).key;
+    const mainUnitSessions = sessionsByUnit.get(mainUnitKey) ?? NO_SESSIONS;
+
     const style = {
       transform: CSS.Transform.toString(transform),
       transition: transition ?? undefined,
@@ -192,11 +203,16 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
               isActive={localActive}
               ahead={localActive ? aheadBehind?.ahead : undefined}
               title="Open primary terminal"
+              status={dominantState(mainUnitSessions)}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelectProject(project.id);
               }}
-            />
+            >
+              {mainUnitSessions.length > 0 ? (
+                <UnitSessionList workspaceKey={mainUnitKey} />
+              ) : undefined}
+            </SessionRow>
             <ConnectionWorktreeList
               projectId={project.id}
               worktrees={worktrees}

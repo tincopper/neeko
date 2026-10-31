@@ -1,6 +1,9 @@
 import React from 'react';
 
+import { UnitSessionList } from '@/features/live-sessions';
 import SessionRow from '@/shared/components/SessionRow';
+import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
+import { NO_SESSIONS, dominantState } from '@/shared/selectors/liveSessionSelectors';
 import { useGitStore } from '@/shared/store/gitStore';
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Project } from '@/shared/types';
@@ -39,6 +42,10 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
   // 入侧，于是徽标恒空）；该数字只在主仓视图（`localActive`）显示，与 worktree 的数字互不相关。
   const aheadBehind = useGitStore((s) => s.aheadBehind[mainWorkspaceKey]);
 
+  // 单元角标与会话子列表都取自**同一份注册表快照**（视图不持有状态副本）。
+  // 分组用共享的 `useSessionsByUnit`：与 worktree 行 / 会话子列表同一份实现。
+  const unitSessions = useSessionsByUnit().get(mainWorkspaceKey) ?? NO_SESSIONS;
+
   const localActive = isActive && !activeCheckoutPath;
 
   return (
@@ -51,11 +58,14 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
         ahead={localActive ? aheadBehind?.ahead : undefined}
         shortcut={shortcut}
         title="Open primary terminal"
+        status={dominantState(unitSessions)}
         onClick={(e) => {
           e.stopPropagation();
           onSelectProject(project.id);
         }}
-      />
+      >
+        {unitSessions.length > 0 ? <UnitSessionList workspaceKey={mainWorkspaceKey} /> : undefined}
+      </SessionRow>
 
       <WorktreeList
         worktrees={worktrees}
