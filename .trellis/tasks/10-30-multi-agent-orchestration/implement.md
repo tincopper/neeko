@@ -597,9 +597,32 @@ MCP over HTTP 是客户端发起的，没有 server→client 推送，工具面�
 
 ### 3.1 团队事件常量 + TS 护栏
 
-- [ ] `agent/team/events.rs:TEAM_EVENT`（`"agent-team://event"`）；`src/shared/events.ts` 同步
-- [ ] **新增护栏** `tools/guards/checks/check_event_constants.py`：从 Rust 扫 `"agent-team://*"` 与 TS 表比对
-- [ ] 验证：护栏自身有测试夹具（不通过时红）
+- [x] `agent/team/events.rs:TEAM_EVENT`（`"agent-team://event"`）；`src/shared/events.ts` 同步
+      —— 载荷是**失效脉冲** `TeamPulse { rev }`（不是增量），发射点在 `WriteGuard::drop`
+      （任何写路径恰好一次，读路径零次；`bump()` 返回 `fetch_add` 之后的代数）
+- [x] **新增护栏** `tools/guards/checks/check_event_constants.py`：从 Rust 扫 `"agent-team://*"` 与 TS 表比对
+      （边界：无协议事件名与前缀式名不在射程 —— 已写进 `team-domain.md` §8.3）
+- [x] 验证：护栏自身有测试夹具（改坏 TS 常量 → 红：A1 缺镜像 + A2 无出处）
+
+### 3.1a 前端读路径（面板的数据面）
+
+- [x] 视图下沉 `agent/team/view.rs`：`TeamStatusView`（MCP）/ `TeamSnapshot` / `TaskCard` / `TaskDetail`
+      共用**唯一构造点**（`mcp/dispatch.rs` 不再自建视图）
+- [x] `team_snapshot(team_id)`：花名册 + 任务板列，**列路径不含 `body`**（类型上没有该字段）
+- [x] `team_task_detail(task_id)`：点开才拉正文
+- [x] `MAX_BOARD_TASKS = 200` + `tasks_truncated`（列载荷上界，不是分页）
+- [x] 取证：快照 JSON 不出现 `body` 键（断言序列化后的 `Value`）/ 超 200 置标记 / 未知 id → `NotFound`
+- [x] AC2 的数据面：`MemberStatusView.verification`（`idle + unverified` ⇔ 「空闲 ⚠ 未声明」）
+
+### 3.1b 终端接管（队长 PTY 可见的前置）
+
+- [x] `TerminalTabData.existingSessionId` → 策略直接返回既有会话 id（不发 `create_terminal_session`）
+- [x] `CacheEntry.attached`：接管来的会话**不拥有进程** —— 关 tab / 自愈重建只销毁缓存，
+      不下发 `close_terminal_session`（否则关一个 tab 就 kill 掉队长）
+- [x] `useTerminalTabs.openExistingTerminalTab`：同一 `sessionId` 只允许一个 tab（drain 是单队列）
+- [x] wsl/remote + 接管 → 显式报错（团队 PTY 只可能是本机会话）
+- [x] 取证：接管零次创建 / 同 id 第二次激活已有 tab / 三种变异各自变红
+
 
 ### 3.2 待批队列（不冒泡进队长对话）
 
@@ -613,10 +636,22 @@ MCP over HTTP 是客户端发起的，没有 server→client 推送，工具面�
 
 **参考原型：** `prototype-agent-team.html` 视图 ① 与视图 ③（全部 CLI 成员）。
 
-- [ ] 花名册（状态/颜色/workspace/channel/租约）、任务板（按状态列）、队长 PTY（复用既有终端组件，不重画）
-- [ ] 成员详情**按需拉取**：点开才读 `conversation` 会话文件（红线 4）
-- [ ] 红线 4 测试：构造超大成员会话，断言单次 IPC 载荷 ≤ 2MB
-- [ ] 验证：`pnpm vitest related src/features/agent-team`
+- [x] 花名册（六态徽标 + 租约剩余 + `verification`）、任务板（按状态分列）、队长入口
+      （`start_team_session` → `openExistingTerminalTab`）
+- [x] dock 面板注册（`team`，right/5，独立 lazy wrapper）
+- [x] 脉冲消费：`rev <= lastRev` 忽略 / 窗口内合并成一次重取 / 在飞补一拍 / 卸载退订
+- [x] AC2 的 UI 判据：`memberBadge()` 纯函数，`idle` 的文案 + tone + aria-label 由 `verification` 决定
+      （虚线边框 —— 灰度与色觉障碍下形状仍可区分）
+- [ ] 成员详情**按需拉取**：点开才读 `conversation` 会话文件（红线 4）—— 未做，下一批
+- [ ] 红线 4 测试：构造超大成员会话，断言单次 IPC 载荷 ≤ 2MB —— 跟着 transcript 一起做
+- [x] 验证：`pnpm vitest run src/features/agent-team`（5 files / 37 tests）
+
+**剩余已知契约缺口（本轮发现，未改后端）**
+
+- `TeamSession` 不回带 `team_name` ⇒ 队长 tab 标题要先拉一次快照（多一次往返，快照失败时退化成 `teamId`）
+- `MemberState` 实际 8 个变体，文档/原型写「六态」—— 措辞待统一（不影响「一个都不能合并」这条性质）
+- `MAX_BOARD_TASKS` 的 TS 镜像无护栏（事件名有）—— 扩护栏时一并纳入
+- 面板卡片暂无「未声明 chip」（数据已在快照里，纯前端补充）
 
 ### 3.4 Histor 打标
 

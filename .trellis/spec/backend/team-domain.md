@@ -28,6 +28,9 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `boot.rs` | 域级 boot 入口：独立 loopback listener + 活集合门 | 端点坐标 |
 | `authorize.rs` | 授权矩阵（9 工具 × 2 角色 = 18 格，表驱动测试） | 加减工具 |
 | `observe.rs` / `deliver.rs` | hook 事件的团队投影 / 投递入口（见 §6） | 新信号 |
+| `events.rs` | 前端事件：`TEAM_EVENT` 常量 + 失效脉冲载荷 + `TeamNotifier` 端口（见 §8） | 改事件名 / 载荷 |
+| `view.rs` | **视图构造的唯一落点**：`TeamStatusView`（MCP 读者）/ `TeamSnapshot` / `TaskCard` / `TaskDetail`（前端读者） | 加读字段 / 改列载荷（见 §8） |
+| `commands.rs` | 本地 Tauri 入口（三条：建队开场 / 快照 / 任务详情），保持极薄（红线 6） | 新入口命令 |
 | `fixtures.rs` | `#[cfg(test)]` 夹具单一源（`Team` / `TeamMember` 全字段）；`store.rs` 的 round-trip 夹具是**刻意例外**（每列都要偏离默认值，否则"某列没写进库"会变绿） | 加字段时只改一处 |
 
 ## 0. 租约 = **活性**信号，不是时长上限
@@ -252,6 +255,67 @@ loopback 而非 `localhost` —— 后者在某些平台先解析到 `::1`，而
 cargo test --lib agent::team        # 本域全集（含准入矩阵、状态机、租约、水位线、MCP 工具面）
 cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / server）
 ```
+
+## 8. 前端可观测：快照读路径 + 失效脉冲
+
+### 8.1 视图构造只有一个落点（`view.rs`）
+
+`TeamStatusView`（MCP 的 `team_status`）与 `TeamSnapshot` / `TaskCard` / `TaskDetail`（前端两条命令）
+**共用 `view.rs`**。入口层（`mcp/dispatch.rs` / `commands.rs`）不得自己构造视图 ——
+第二个构造点就是第二个「哪些字段进列」的答案，而 `lease_remaining_secs` 这类派生会因此出现两份。
+
+### 8.2 列路径的载荷契约（红线 4）
+
+- `TeamTask.body`（派活正文）**长度无上限**，因此 `TaskCard` **没有这个字段**（不是
+  `skip_serializing`，是类型上不存在）。正文只能走 `team_task_detail`（点开才拉），
+  与「成员 transcript 不默认上行、点开才拉 conversation」是同一条原则。
+- `MAX_BOARD_TASKS = 200` + `tasks_truncated` 是**列载荷上界**，不是分页实现：单个快照稳在
+  数十 KB 量级，但「每次派活都重拉一遍」会把红线 4 的约束从单次搬到时间维度上破。
+- 判据落在**序列化后的 `Value`**：断言结构体没有字段不算取证（wire 上可能有）。
+
+### 8.3 前端事件 = 失效脉冲，不是增量
+
+`TEAM_EVENT = "agent-team://event"`，载荷只有 `TeamPulse { rev }`（`rev` = 该次写之后的
+`TeamManager::epoch`）。**事件只说「有东西变了」，不说变了什么**。
+
+裁决理由：增量载荷＝在 TS 里重建一份状态机（两份必然漂移，且漂移是静默的）；而面板无论如何
+都必须能靠一次快照自愈（重连 / webview 重载 / 错过事件 / 慢消费者），既然快照是必需的，
+它就该是唯一真相。判据：**若一段 TS 代码在解释事件载荷的语义，它就已经越界。**
+
+代价写下：脉冲不保证送达、不保证顺序 —— 由「快照是唯一真相」兜住。
+
+发射点是 `WriteGuard::drop`（与 `notify_waiters` 同一个落点）：任何写路径恰好一次脉冲，
+含 `?` 早退；读路径零次。`bump()` 返回 `fetch_add` **之后**的代数 —— 分两步读会把两次写
+报成同一个 `rev`，前端去重于是吞掉一次真变化。
+
+前端消费契约（`src/features/agent-team/`）：`rev <= lastRev` 直接忽略；窗口内多脉冲合并成
+**一次**重取（一次动作后端发多条）；在飞期间到达的脉冲在落地后补一次（否则刷新期间的最后一
+次变化被永久吞掉）；卸载即退订。**不得**缓存或派生成员/任务的当前状态副本。
+
+双端护栏：`tools/guards/checks/check_event_constants.py`（Rust `xxx://` + 名字含 `EVENT` 的常量
+↔ `src/shared/events.ts`）。**边界必须记住**：无协议事件名（`file-changed` / `dap-event`）与前缀
+式名（`lsp-*-{path}`）**不在射程**，仍需人工 review。
+
+### 8.4 本地 Tauri 入口 vs MCP 工具：授权分界
+
+`authorize.rs` 的 18 格矩阵回答的是「**成员（模型进程）能不能对队友做某事**」—— 那是不可信主体。
+`team_snapshot` / `team_task_detail` / `start_team_session` 是**本机用户**的入口，不做 principal 校验
+（否则像是漏了授权）；它们也**不得**顺手放宽矩阵里的任何一格。
+
+### 8.5 终端接管的所有权（跨域契约，团队入口的前置）
+
+队长/成员 PTY 由**后端**创建（`start_team_session` 返回 `terminal_id`），前端只是**接管**：
+`TerminalTabData.existingSessionId` → 策略 `createSession` 直接返回该 id（不发
+`create_terminal_session`），且 `CacheEntry.attached = true`。
+
+- 接管**不需要新握手**：credit-pull 的缓冲按 session 存在后端（`SessionDrain` + `pump` 的背压
+  语义：缓冲满时暂停读而不是丢字节），前端拿到 id 就能 drain。
+- **`attached` 的 entry 不拥有进程**：销毁缓存 / 自愈重建只销毁缓存，不下发
+  `close_terminal_session`。否则「关一个 tab 就 kill 掉整个团队的队长」，而用户看不出因果。
+  PTY 的生命周期归团队域的关闭协议（先 close PTY，再归档成员）。
+- 同一 `sessionId` 只能有一个 tab：drain 是 per-session 单队列且 `take_all()` 取走全部积压，
+  两个 tab 同时拉 ⇒ 谁先 poll 谁吃掉整块字节，另一方永远缺。
+
 
 新增工具的清单：`ToolName` 变体 → `ALL_TOOL_NAMES` → `TOOLS`（含 `input_schema`）→
 `dispatch_tool` 的 `match` → `authorize.rs` 的 18 格表（编译器与表驱动测试会同时追着你补）。

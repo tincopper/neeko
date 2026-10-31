@@ -23,10 +23,22 @@
 7. **provider-linear** — tickets + transition  
 8. **provider-jira** — tickets + transition  
 9. **integrations-settings** — Settings → Integrations 页面：Provider 卡片、连接/断开、项目绑定映射
-10. **agent-actions** — Open in Agent / 上下文模板  
+10. **agent-actions** — Open in Agent / 上下文模板 + **派给 Agent 团队**（跨任务桥接，见下）  
 11. **launch-copy**（可选并行）— 产品文案 Task Runner → Launch  
 12. **launch-rename**（可选靠后）— 类型与 IPC 符号 rename + 兼容  
 
+
+## 跨任务桥接：WorkItem → TeamTask（与 `10-30-multi-agent-orchestration`）
+
+**方向是单向的：本任务发起，团队任务被动带引用。** 不合并数据模型，不把 `TeamTask` 注册成 WorkItem Provider。
+
+- 触发点：`agent-actions` 子任务。WorkItem 动作条加「派给 Agent 团队」→ 建队/派活，生成一条 `TeamTask`。
+- 引用形式：`TeamTask` 只存 `WorkItemRef`（`providerId` / `providerItemId` / `url`），**不存 WorkItem 快照**
+  —— WorkItem 的真相源在外部平台，团队侧存副本必然漂移。
+- 回链：团队板卡片显示 source badge，点开跳回 WorkItem 详情。
+- **不要给 `TeamTask` 预留空 `source` 字段**：现在没有写入方，加了就是死字段；
+  加一列 nullable 的迁移成本与将来一次性补齐相同（YAGNI）。
+- 两侧存储不同（团队任务在 SQLite + 租约，Local Tasks 在本地 JSON），**任何一侧都不得复用另一侧的存储**。
 
 ## 依赖顺序
 
@@ -62,4 +74,6 @@ pnpm test
 
 - 第一期不做离线全量同步
 - 第一期不做跨平台写操作事务
+- **不把 TeamTask 并入 Tasks 看板**：`WorkItem` = 人的工作项，`TeamTask` = 派给 agent 的一次执行；
+  团队板是**团队级**视图（受团队/队长会话作用域约束），Tasks 是**项目级** inbox —— 作用域轴不同，不是筛选关系
 - 第一期不强制 rename `features/task` 目录与全部 IPC
