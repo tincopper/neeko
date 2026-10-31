@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use crate::common::terminal::types::TerminalSession;
 use crate::core::project::ProjectEnvironment;
-use crate::terminal::manager::TerminalManager;
+use crate::terminal::manager::{TerminalLaunch, TerminalManager};
 use crate::terminal::remote::RemoteTerminalManager;
 use crate::AppError;
 
@@ -53,6 +53,37 @@ impl Default for TerminalRouter {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 创建一个终端会话的完整输入（值对象：一次构造、一次传递）。
+///
+/// # 为什么不是八个位置参数
+///
+/// 其中三个是 `Option` / 切片（`shell` / `launch` / `extra_env`），位置调用点读不出语义
+/// —— `&[]` 到底是「没有身份要注入」还是「忘了传」？字段名让每个调用点自解释；新增一项
+/// 输入时也只需给字段一个默认值，不必改遍所有调用方。
+///
+/// # 字段分组
+///
+/// `env` / `workspace_root` / `cwd` 是**路由维度**（传输 + 落点）；`launch` / `extra_env`
+/// 是**启动维度**（起什么、带什么身份）；`cols` / `rows` 是尺寸。三组互不依赖。
+pub struct SessionSpec {
+    /// 执行环境（传输维度：Local / WSL / SSH，红线 10）。
+    pub env: ProjectEnvironment,
+    /// 该 Workspace 的根（项目级产物的权威落点）。
+    pub workspace_root: String,
+    /// 进程运行目录（根，或 Workspace 内子目录覆盖）。
+    pub cwd: String,
+    /// 初始列数。
+    pub cols: u16,
+    /// 初始行数。
+    pub rows: u16,
+    /// 交互 shell 覆盖（`None` = 平台默认）。
+    pub shell: Option<String>,
+    /// 起什么：`None` = 交互 shell；`Some(Shell)` = 任务终端；`Some(Argv)` = 精确 argv。
+    pub launch: Option<TerminalLaunch>,
+    /// 要注入子进程的身份变量（不透明，本域不认识其语义）。
+    pub extra_env: Vec<(String, String)>,
 }
 
 impl TerminalRouter {
@@ -108,31 +139,39 @@ impl TerminalRouter {
 
     /// 按项目环境创建会话，并登记归属。
     ///
-    /// `workspace_root` 是**该 Workspace 的根**（`repo.root()`）—— 项目级产物（主题等）
-    /// 的权威落点；`cwd` 是**进程运行目录**（根，或 Workspace 内子目录覆盖）——
-    /// 三个传输分支统一承接同一个 `cwd`（环境是传输维度，红线 10）。
-    /// `command` 有值表示这是**任务终端**（由 task 域创建）—— 主题准备据此跳过。
-    #[allow(clippy::too_many_arguments)]
+    /// 输入全部装在 [`SessionSpec`] 里（理由见该结构）。两条**前置约束**在这里兑现：
+    ///
+    /// - `launch = Some(Argv)` 必须是非空列表（见 [`ensure_launch_valid`]）；
+    /// - `extra_env` 只能注入 Local 路径（见 [`ensure_env_injectable`]）。
+    ///
+    /// 两条都是「拒绝而不是降级」：静默回退到交互 shell / 静默丢掉身份变量，都会让调用方
+    /// 拿到一个看起来正常、实际不可用的会话。
     pub async fn create_session(
         &self,
-        env: &ProjectEnvironment,
-        workspace_root: &str,
-        cwd: &str,
-        cols: u16,
-        rows: u16,
-        shell: Option<String>,
-        command: Option<String>,
+        spec: SessionSpec,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession, AppError> {
+        let SessionSpec {
+            env,
+            workspace_root,
+            cwd,
+            cols,
+            rows,
+            shell,
+            launch,
+            extra_env,
+        } = spec;
+        ensure_launch_valid(&launch)?;
+        ensure_env_injectable(&env, &extra_env)?;
         // 主题产物属主题域，由该域按环境准备（见 `theme::service::prepare_project_theme`）。
         // 项目级配置落在 Workspace 根，**不**随语言 runner 的模块子目录覆盖漂移。
-        crate::theme::service::prepare_project_theme(env, workspace_root, command.is_some()).await;
+        crate::theme::service::prepare_project_theme(&env, &workspace_root, launch.is_some()).await;
 
         match env {
             ProjectEnvironment::Local => {
                 let session = self
                     .local
-                    .create_session(cwd, cols, rows, shell, command, app_handle)
+                    .create_session(&cwd, cols, rows, shell, launch, &extra_env, app_handle)
                     .map_err(AppError::from)?;
                 self.register(&session.id, SessionOwner::Pty);
                 Ok(session)
@@ -141,7 +180,7 @@ impl TerminalRouter {
             ProjectEnvironment::Wsl { distro } => {
                 let session = self
                     .local
-                    .create_wsl_session(distro, cwd, cols, rows, app_handle)
+                    .create_wsl_session(&distro, &cwd, cols, rows, app_handle)
                     .map_err(AppError::from)?;
                 self.register(&session.id, SessionOwner::Pty);
                 Ok(session)
@@ -155,12 +194,12 @@ impl TerminalRouter {
                 let session = self
                     .remote
                     .create_session(
-                        host,
-                        *port,
-                        username,
-                        auth,
-                        workspace_root,
-                        cwd,
+                        &host,
+                        port,
+                        &username,
+                        &auth,
+                        &workspace_root,
+                        &cwd,
                         cols,
                         rows,
                         app_handle,
@@ -238,9 +277,101 @@ fn unknown_session(session_id: &str) -> AppError {
     AppError::NotFound(format!("Terminal session not found: {session_id}"))
 }
 
+/// 身份 env 只能注入 **Local** 路径。
+///
+/// # 为什么拒绝而不是忽略
+///
+/// WSL 走 `CommandBuilder` 的 `wsl.exe -- bash -c`（env 进不了内层 bash），SSH 走远端 shell
+/// （env 在另一个进程树里）。把 `extra_env` 静默丢掉的结果是：成员在花名册里、进程也活着，
+/// 但它的上报**没有身份** —— 而归因失败在团队上下文里是**拒绝归属**（design §5.4），
+/// 表现为「成员永远不产出」。这种失败离家太远，宁可让调用方在 spawn 时就拿到
+/// `Unsupported`。
+fn ensure_env_injectable(
+    env: &ProjectEnvironment,
+    extra_env: &[(String, String)],
+) -> Result<(), AppError> {
+    if extra_env.is_empty() || matches!(env, ProjectEnvironment::Local) {
+        return Ok(());
+    }
+    Err(AppError::Unsupported(
+        "identity env can only be injected into a local PTY session; the WSL and SSH paths \
+         run the process in a different shell, so the variables would be dropped and the \
+         session would report without an identity"
+            .to_string(),
+    ))
+}
+
+/// `Argv` 形态必须至少含一个元素（程序名）。
+///
+/// 校验在**域边界**而不是在 `TerminalManager` 里：那里只能返回 `anyhow::Error`，
+/// 会被 `From<anyhow::Error>` 归成 `Unknown` —— 一个调用方的编程错误被报成未知错误，
+/// 排查方向会跑偏。（`TerminalManager` 仍保留同义守卫，它面对的是直接调它的代码。）
+fn ensure_launch_valid(launch: &Option<TerminalLaunch>) -> Result<(), AppError> {
+    match launch {
+        Some(TerminalLaunch::Argv(argv)) if argv.is_empty() => Err(AppError::InvalidInput(
+            "an argv launch needs a program as its first element; an empty argv would silently \
+             fall back to an interactive shell"
+                .to_string(),
+        )),
+        _ => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::connection::types::AuthMethod;
+
+    /// `Argv` 形态的**非空约束**在这里兑现：空列表是调用方的编程错误（`InvalidInput`），
+    /// 不是「回退到交互 shell」的理由。
+    ///
+    /// 反例：静默回退会让团队成员「起来了但没连上工具面」—— 花名册上看不出来。
+    #[test]
+    fn an_empty_argv_launch_is_invalid_input() {
+        let err = ensure_launch_valid(&Some(TerminalLaunch::Argv(Vec::new())))
+            .expect_err("空 argv 必须拒绝");
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(err.to_string().contains("program"), "{err}");
+
+        // 其余三形态都合法。
+        assert!(ensure_launch_valid(&None).is_ok());
+        assert!(ensure_launch_valid(&Some(TerminalLaunch::Shell("cargo test".into()))).is_ok());
+        assert!(ensure_launch_valid(&Some(TerminalLaunch::Argv(vec!["claude".into()]))).is_ok());
+    }
+
+    /// 身份 env 的注入只对 Local 成立；其余传输必须显式拒绝而不是静默丢弃。
+    #[test]
+    fn identity_env_is_only_injectable_on_the_local_path() {
+        let env = vec![("NEEKO_TEAM_ID".to_string(), "tm_1".to_string())];
+        assert!(ensure_env_injectable(&ProjectEnvironment::Local, &env).is_ok());
+        // 空 env 对任何传输都无害（普通终端会话走这条）。
+        assert!(ensure_env_injectable(&ProjectEnvironment::Local, &[]).is_ok());
+        assert!(
+            ensure_env_injectable(
+                &ProjectEnvironment::Remote {
+                    host: "h".into(),
+                    port: 22,
+                    username: "u".into(),
+                    auth: AuthMethod::Password(String::new()),
+                },
+                &[],
+            )
+            .is_ok(),
+            "没有要注入的东西时不得因为传输是 SSH 就拒绝"
+        );
+        let err = ensure_env_injectable(
+            &ProjectEnvironment::Remote {
+                host: "h".into(),
+                port: 22,
+                username: "u".into(),
+                auth: AuthMethod::Password(String::new()),
+            },
+            &env,
+        )
+        .expect_err("SSH 路径注入身份 env 必须是 Unsupported");
+        assert!(matches!(err, AppError::Unsupported(_)), "{err:?}");
+        assert!(err.to_string().contains("local PTY"), "{err}");
+    }
 
     /// 超时钳制：低于下限抬到 1s、高于上限压到 30s、区间内原样。
     #[test]

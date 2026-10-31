@@ -16,9 +16,9 @@ pub mod router;
 pub mod services;
 
 pub use crate::common::terminal::types::*;
-pub use manager::TerminalManager;
 #[allow(unused_imports)]
 pub(crate) use manager::{
     PipelineConfig, PtyHandle, TerminalClosedPayload, PTY_CONFIG, WSL_CONFIG,
 };
-pub use router::TerminalRouter;
+pub use manager::{TerminalLaunch, TerminalManager};
+pub use router::{SessionSpec, TerminalRouter};

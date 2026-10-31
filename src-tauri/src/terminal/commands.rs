@@ -37,13 +37,18 @@ pub async fn create_terminal_session(
     state
         .terminal_router
         .create_session(
-            &environment,
-            workspace_root,
-            &cwd,
-            cols,
-            rows,
-            shell,
-            command,
+            crate::terminal::SessionSpec {
+                env: environment,
+                workspace_root: workspace_root.to_string(),
+                cwd,
+                cols,
+                rows,
+                shell,
+                // 命令层只会创建**任务终端**：一段 shell 命令行（argv 形态属团队成员）。
+                launch: command.map(crate::terminal::TerminalLaunch::Shell),
+                // 普通终端会话没有身份要注入；团队成员走团队域的执行层（带 `member_env`）。
+                extra_env: Vec::new(),
+            },
             app_handle,
         )
         .await
