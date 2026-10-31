@@ -81,6 +81,16 @@ export const AGENT_CHAT_EVENT = 'agent-chat://event';
 /** 文档翻译流式事件通道（同 StreamEvent 协议，与聊天隔离）：`translation://event` */
 export const TRANSLATION_EVENT = 'translation://event';
 
+// ── Live Sessions 事件（与 src-tauri/src/live_sessions/events.rs 常量保持同步）──
+
+/**
+ * live-sessions 注册表版本变更事件：`live-sessions://changed`。
+ *
+ * 载荷只有 `{ version: number }` —— **不是**全量快照：状态变只发版本号，前端凭它
+ * 经 `list_live_sessions` 再拉一次（macOS WebKit 上推送 = 每次 eval 克隆）。
+ */
+export const SESSIONS_EVENT = 'live-sessions://changed';
+
 // ── 菜单/标签页事件（与 src-tauri/src/app_menu.rs 常量保持同步）──
 
 /** 关闭当前标签页事件（Cmd+W / Ctrl+W 菜单触发，前端关闭激活 tab）：`close-tab` */
