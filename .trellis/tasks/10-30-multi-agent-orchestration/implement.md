@@ -328,15 +328,168 @@ command, app_handle)` 没有 env 位，而成员身份全在 env 里。
 （需 `AppHandle`），由 `check_unit_tests_spawn_real_binaries` 的既定口径兜底：装配测纯函数，
 真实起进程靠集成 / 手测。
 
-#### 建议落地顺序（拍板后即可开工）
+#### 落地进度（2026-10-31，不含调用方）
 
-1. `terminal` env 透传（C6）→ `agent/team/execution.rs`：`SpawnPlan` 纯计划层（cwd / env / argv，
-   仅 `Argv` 档）→ `team_spawn` 对 `Subcommand`/`ConfigFile`/`None` 明确 `Unsupported`（C2/C5）
-2. 团队 MCP listener mount：独立 loopback + 自己的 `AuthGate::with_tokens` + 从成员行组装
-   `principals`（**过滤空 hash**）—— `server::route_group` 已就绪，缺的只是组合根那 20 行
-3. 队长 PTY 启动（C1 方案 A）：一个命令 / UI 入口，复用第 1 步的 `SpawnPlan`
-4. `Pty` 投递 + `team_send` 原子 send+wait（AC14 的「text 与 CR 分两次写入」）
-5. sentinel 接线（C4 的模型 + 迁移先落地）
+- [x] **C6 `terminal` env 透传** —— `create_session(..., extra_env, ...)`；env 名仍只在
+      `identity::member_env` 定义（terminal 域不认识 team 词汇）。附带一条镜像安全属性：
+      `TerminalRouter::create_session` 对**非 Local** 传输 + 非空 `extra_env` 直接
+      `Unsupported`（WSL/SSH 的 env 注入不到内层 shell，静默丢弃会让成员「有进程、无身份」，
+      而归因失败表现为串台，design §5.4）。判据：`identity_env_is_only_injectable_on_the_local_path`
+- [x] **`agent/team/execution.rs`：`SpawnPlan` 纯计划层** —— `plan_member_spawn(team, member,
+      mcp_url, token) → SpawnPlan{cwd, env, args}`。三种拒绝：无 MCP 面 / 注入档不是 `Argv` /
+      worktree 落在团队根之外（红线 8，两侧 canonicalize 后比较）。10 条测试
+- [x] **`admission.mcp_argv` 数据列** —— `Argv` 三行（claude-code / codebuddy / qoder）的启动
+      参数模板含 `{{mcp_config}}`；其余档为空。判据 `argv_templates_are_present_exactly_for_the_argv_mode`
+- [x] **`agent/team/delivery.rs`：`Pty` 投递** —— `pty_write_plan` 恒为两笔（正文 literal +
+      单独 `\r`，间隔 150ms），走既有 `terminal-input-{id}` 事件（不抢 terminal 的 writer 所有权、
+      事件名同源）。判据 `the_message_and_the_enter_are_two_separate_writes`（AC14 后半）
+
+#### C7 监听器 mount 的授权缺口 — ✅ 已按方案 A 落地（2026-10-31）
+
+`server::AuthGate::with_tokens` 装载的是**明文 token 集合**（`ct_eq` 逐项比），而团队域
+`issue_token` **只落 sha256**、明文只返回一次。方案 A：**门里做摘要后查表**。
+
+- [x] `server/gate.rs`：`CredentialExt::extract` 改返回 `Cow<'a, [u8]>`（不摘要的路径仍零拷贝）；
+      摘要**编码由集合变体携带**（`ExpectedTokens::{Plain, Sha256HexShared}`），不单列
+      `digest` 字段 —— 两字段能拼出「活集合 + 明文」这种无意义组合。
+      `ct_eq` **调用点仍为 1**（`constant_time_comparison_has_exactly_one_call_site` 仍绿）；
+      hooks 的 `new` / `with_tokens` 行为逐字不变（仍是明文比较、零锁）
+- [x] 编码同源：`sha256("abc")` 的已知十六进制被钉住（大写 / 裸字节 / 前缀都会让门对所有成员恒拒）
+- [x] `agent/team/mcp/principals.rs`：`principals_from(manager)` 从**库**组装身份表
+      （`token hash → TeamPrincipal`），**过滤空 hash**（空串是一把空钥匙）；
+      `token_hashes()` 给出门的期望集合（排序，遍历顺序不随 HashMap 抖动）
+- [x] 端到端判据（C7-A 的机器形式）：`issue_token` → `principals_from` → `with_shared_hashed_tokens`
+      → 明文能过、**hash 本身被拒**、轮换后旧明文立即失效
+      （`a_gate_built_from_the_principal_table_accepts_the_issued_token` /
+      `rotating_a_credential_invalidates_the_previous_plaintext`）
+
+#### C8 门的期望集合是绑定在 serve 时 — ✅ 已按方案 A 落地（2026-10-31）
+
+`AuthGate.expected` 原本是 `Vec<String>`，`serve()` 按值拿走 ⇒ 团队端点启动后无法增删 token。
+而团队是活的（promote → spawn → 轮换 → 关队）。
+
+- [x] `AuthGate.expected` → `enum ExpectedTokens { Plain(Vec), Sha256HexShared(SharedTokenSet) }`：
+      hooks 走 `Plain`（**仍然零锁**），团队走 `Sha256HexShared`。变体自带「锁行为 + 编码」，
+      非法组合在类型上不存在
+- [x] `SharedTokenSet`（`Arc<parking_lot::RwLock<Vec<String>>>`）：`replace()` 整体替换、
+      `snapshot()` 供诊断。整体替换而非增删单条 —— 调用方本来就持有完整的一份表
+- [x] `AuthGate::with_shared_hashed_tokens` 是团队形态的**唯一**构造器（不存在「定值 + hash」
+      版本：它只会被测试用，多一个 `pub` 就多一个被生产代码选错的机会 —— 选错的症状是
+      「所有成员恒拒」）。判据 `a_shared_token_set_takes_effect_after_the_gate_is_built`
+      （同一个门实例：轮换后旧明文立即失效、新集合立即生效）
+- [x] `parking_lot` 不中毒 ⇒ `authorize` 仍零 panic；`ct_eq` 调用点仍为 1
+
+#### 团队端点 boot — ✅ 已落地（2026-10-31，未接组合根生命周期）
+
+`agent/team/boot.rs`：`boot(runtime, manager, executor) -> TeamServer`
+
+- [x] bind `127.0.0.1:0`（端口由 OS 分配）；`endpoint_url()` 是**唯一**的 URL 拼装点
+      （loopback 而非 `localhost`：后者可能先解析到 `::1`，而 listener 只绑 IPv4）
+- [x] 身份表**从库**组装（`principals_from`，过滤空 hash）→ `SharedTokenSet::new(token_hashes)`
+      → 门装活集合
+- [x] `TeamServerState::refresh_credentials()`：**先**重建身份表并写入共享表，**再**替换门的
+      期望集合（反过来会留一个「门放行但查不到主体」的窗口）。**唯一写入点**是
+      `CredentialLedger::admit` —— `TeamServer` 刻意**不**暴露 `refresh()`
+- [x] **超时预算与 hooks 不同**：`REQUEST_TIMEOUT = WAIT_TIMEOUT_MAX_SECS + 60`。引擎的
+      `request_timeout` 一旦小于 `team_wait` 的等待上限，队长会收到 408，而
+      「超时是结果不是错误」是本设计的核心语义（判据：`team_wait_times_out_without_an_error`）
+- [x] body 上限 1 MiB（`task_create.body` 是派活 prompt，比 hooks 的 64 KiB 大得多；
+      仍远低于红线 4 的 2 MB —— `ToolReply` 全是小载荷）
+- [x] 读库失败**不降级成空表**（空表 = 谁都进不来，像"所有成员都没权限"，更难排查）
+- [x] 判据：`boot_binds_a_loopback_port_and_exposes_its_url` /
+      `admitting_a_credential_makes_it_reachable_through_the_gate`
+
+**仍未接**：`AppStateWrapper` 持有 `TeamServer` + 关闭协议里停机（下一项）。
+
+#### 组合根生命周期 — ✅ 已落地（2026-10-31）
+
+- [x] `AppStateWrapper.team_server: Arc<Mutex<Option<TeamServer>>>`（**不合并进 `http_server`**：
+      两个端点各有自己的门与失败策略，共用一个 handle 会让「谁在哪个端口」变回隐式知识）
+- [x] `app::boot` 在 hooks 之后 boot 团队端点；**起不来只记日志**（团队功能不可用，
+      但 hooks 那条常开路径与整个应用不该跟着受影响）
+- [x] `set_team_server` / `team_endpoint_url()`：URL 拼装点唯一。凭证同步**不**在组合根
+      （`CredentialLedger::admit` 一次做完签发 + 认门，见 C7/C8）
+- [x] 关闭协议新增 `team-http` 清理任务（`TeamServer::stop` 消费自身；不 graceful 会把退出
+      拖到在途 `team_wait` 的超时）
+- [x] 判据：`team_endpoint_url_is_none_until_the_endpoint_boots`（端点没起来时执行层拿到
+      `None`，而不是拼一个空 URL 写进成员配置）
+
+#### 执行层端口的**接线** — ✅ 已落地（2026-10-31，生产实现待做）
+
+- [x] `execution::{MemberExecutor, CredentialLedger}` 两个端口（`spawn(member_id, token)` /
+      `deliver(member_id, message)` / `admit(member_id)`）+ `TeamServerState.executor`（**必填**：
+      组合根没有「构造执行者失败」这种状态，留一个 `None` 分支只会撒谎 —— 测试用
+      `fixtures::NoopExecutor` 打底）
+- [x] 回复副作用收进 `execution::apply_reply`（**唯一映射**）：`MemberCreated` → `admit` **再**
+      `spawn`（反过来新成员第一次调用就 401）；`NeedsDelivery` → `deliver`。
+      `spawn` 失败的错误里**带 `member_id`**（成员已落库，丢 id = 毁掉「可查询、可清理」）
+- [x] 判据：`member_created_admits_first_then_spawns_with_that_token` /
+      `needs_delivery_reaches_the_executor` / `a_failed_spawn_keeps_the_member_id_in_the_error` /
+      `a_created_member_is_handed_to_the_executor` / `a_sent_message_is_handed_to_the_executor`
+
+#### C9 成员启动**不能**走 shell 命令行（红线 2 的落点）
+
+`terminal::create_session` 的 `command: Option<String>` 是**一段 shell 命令行**（`build_task_command`
+→ `cmd /c` / `sh -c`）。成员启动要带 `--mcp-config '{"mcpServers":…}'`，那是含引号与空格的 JSON：
+
+- 走 shell 就必须引号转义，而 `common::utils::command::quote_shell_arg` 是 **POSIX 专用**
+  （`'…'` + `'\''`），在 `cmd /c` 下语义不同 ⇒ 直接踩红线 2；
+- 就算引对了，JSON 里的 `"` 在不同 shell 下的转义规则也不一致。
+
+⇒ **成员必须用 argv 启动**（不经 shell）。落地形状：`create_session` 的启动参数从
+`Option<String>` 改成 `Option<TerminalLaunch>`，其中
+
+```rust
+pub enum TerminalLaunch {
+    /// 任务终端：一段 shell 命令行（平台 shell 差异由 `platform::shell_launch` 处理）。
+    Shell(String),
+    /// 需要精确 argv 的调用方（团队成员）：直接进 `CommandBuilder`，**无引号规则**。
+    Argv(Vec<String>),
+}
+```
+
+调用点只有 3 处（`terminal/commands.rs`、`router.rs`×2），全部传 `Shell`；团队成员走 `Argv`。
+
+#### 落地进度（执行层，2026-10-31）
+
+- [x] `TeamManager::set_member_terminal(member_id, terminal_id, now)`：回填 `terminal_id`
+      （内存镜像 + 库同锁内一起改，**允许覆盖** —— PTY 重试会拿到新 session id；审计记
+      `bind_terminal` 与前后 id）。判据：`binding_a_terminal_updates_mirror_and_store` /
+      `binding_rejects_an_empty_id_and_an_unknown_member`
+
+#### C9 `TerminalLaunch::Argv` — ✅ 已落地（2026-10-31）
+
+- [x] `terminal::manager::TerminalLaunch::{Shell, Argv}`；`create_session` 收枚举
+- [x] `Shell` 走 `platform::shell_launch::build_task_command`（平台 shell 差异不变）；
+      `Argv` 直接 `CommandBuilder::new(program).args(rest)` —— **没有引号规则，也没有平台分支**
+- [x] 空 argv → `InvalidInput`，校验点在**域边界** `TerminalRouter::create_session`
+      （`manager` 只能返回 `anyhow`，会被归成 `Unknown` —— 编程错误报成未知错误会让排查跑偏）
+- [x] 入参收成 `SessionSpec` 值对象（9 个位置参数里三个是 `Option`/切片，`&[]` 读不出语义）
+
+#### 执行者的生产实现 — ✅ 已落地（2026-10-31）
+
+`app/team_executor.rs`：`PtyMemberExecutor`（`MemberExecutor` 的唯一 impl，由 `app::boot` 注入）
+
+- [x] `plan_member_spawn` → `create_session(..., Argv)` → `set_member_terminal` 三步
+      （凭证由端点的 `admit` 签发后作为参数传入，执行层不再自己签）；碰库 / `canonicalize`
+      的全部进 `spawn_blocking`（红线 3）
+- [x] **环境来自项目**：`AppStateWrapper::project_environment_for_path` 反查（`Team` 只持久化
+      `project_path`，不持凭证）。匹配规则在 `core::project::environment_for_path`（两侧
+      canonicalize + 最长前缀）。反查失败一律拒绝 —— 降级成 `Local` 会在本机起一个指向远端
+      路径的 PTY
+- [x] 端点没起来时**拒绝**启动（给成员一个空 URL = 花名册上看起来正常但连不上工具面）
+- [x] 启动 argv = `AgentConfig.command` + 准入表的 MCP 参数 + `Bypass` 的 per-CLI 旁路开关
+- [x] 放在组合根而非团队域：它要同时认识 `AppStateWrapper` / `AppHandle` / 端点 URL，
+      放进团队域会让 `team → app_state → team` 成环
+
+**C10 — ✅ 已收敛**：程序名改为读 `AgentManager::get_agent`（含 `agentCommandOverrides`），
+不再查 `builtin_configs()`。查不到仍 `Unsupported` 拒绝（**不**拿 id 当程序名猜）。
+
+#### 剩余顺序
+
+1. 队长 PTY 启动（C1 方案 A：「以队长身份开会话」命令 + 复用 `PtyMemberExecutor`）
+2. sentinel 接线（C4 的模型 + 迁移先落地）
+3. `Mcp` 通道成员的入站投递（当前 `delivery::route` 明确拒绝：需要成员侧收件箱）
 
 ### 2.5 `team_spawn` 的准入校验（原始清单，已被 2.5a/b 取代）
 

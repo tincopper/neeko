@@ -19,7 +19,12 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `admission.rs` | **红线 15 落点**：per-CLI 准入事实表 + 纯函数推导 | P0 实测结果变了 |
 | `mcp/schema.rs` | 工具清单（`TOOLS`）与入参 Schema | 新增工具 |
 | `mcp/dispatch.rs` | 工具调用：翻译 → 授权 → 入参校验 → 委派 | 工具语义 |
+| `mcp/protocol.rs` | 线协议常量（`TOKEN_HEADER` / `ENDPOINT_PATH`）：端点读的与客户端写的同一份 | wire 契约 |
 | `mcp/server.rs` | MCP over HTTP（JSON-RPC + header token → 主体） | 协议层 |
+| `mcp/principals.rs` | 身份表：`token hash → TeamPrincipal`（从**库**组装） | 凭证模型 |
+| `execution.rs` | 执行层：启动计划（纯函数）+ 端口（`MemberExecutor` / `CredentialLedger`）+ 回复副作用映射 | 执行语义（见 §2.2） |
+| `delivery.rs` | 投递：通道路由 + 两笔写入协议（纯函数） | 投递协议 |
+| `boot.rs` | 域级 boot 入口：独立 loopback listener + 活集合门 | 端点坐标 |
 | `authorize.rs` | 授权矩阵（9 工具 × 2 角色 = 18 格，表驱动测试） | 加减工具 |
 | `observe.rs` / `deliver.rs` | hook 事件的团队投影 / 投递入口（见 §6） | 新信号 |
 | `fixtures.rs` | `#[cfg(test)]` 夹具单一源（`Team` / `TeamMember` 全字段）；`store.rs` 的 round-trip 夹具是**刻意例外**（每列都要偏离默认值，否则"某列没写进库"会变绿） | 加字段时只改一处 |
@@ -84,6 +89,81 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 控制字符判据只有**一个实现**（`dispatch::reject_control_chars`）—— 三个字段各写一份，
 未来加第四个注入点必然漏一处，而漏掉只在 spawn 时爆。
 
+## 2.2 执行层：纯计划 + 端口 + 回复副作用（`execution.rs`）
+
+决策层只落库；执行层要的三件套由 **`execution::plan_member_spawn`** 算出来。执行者本身是
+**端口**，组合根提供唯一 impl；两者之间只隔 `apply_reply` 一行。
+
+| 组成 | 是什么 | 为什么在这一层 |
+| --- | --- | --- |
+| `plan_member_spawn` | 纯函数：成员行 → `cwd` / `env` / `args` | 全部输入可从库重建，可直测 |
+| `MemberExecutor::{spawn, deliver}` | 端口：起进程 / 投递字节 | 端点不该认识 PTY / 项目库 |
+| `CredentialLedger::admit` | 端口：签发明文 + **同一动作内**让门接受它 | 拆开就留一个「库里有新凭证、门还不认识」的窗口 |
+| `apply_reply` | 回复 → 副作用的**唯一**映射 | 写在 handler 里会漂移，且只能靠发真 HTTP 才能测 |
+
+**`SpawnPlan { cwd, env, args }`** —— 输入全部来自已落库的成员行：
+
+| 字段 | 推导 | 拒绝条件 |
+| --- | --- | --- |
+| `cwd` | `Workspace::Shared`/`ReadOnly` → 团队根；`Worktree{path}` → 该路径 | 路径不存在；**不在团队根之下** |
+| `env` | `identity::member_env(team_id, member_id)` | —（不含凭证） |
+| `args` | `AgentAdmission.mcp_argv` 模板，`{{mcp_config}}` 换成配置 JSON | 准入档不是 `Argv`；该 CLI 无 MCP 面 |
+
+**团队根无条件 `canonicalize`**（不只是 worktree 分支）：它是 `starts_with` 判据的信任边界，
+未规范化的根会让「落在根内」整体失效，而 `Shared` 成员的 cwd 也会与判据存在两种写法。
+
+两条容易写错的地方：**凭证明文只出现在 `args` 里**（env 会被子进程继承、会进
+`/proc/<pid>/environ`），**模板替换只认完整等于占位符的元素**（模板是数据，不是格式化字符串）。
+`plan_member_spawn` 会 `canonicalize` ⇒ 调用方必须在阻塞池里调（红线 3）。
+
+**依赖方向**：`execution` 只依赖 `dispatch`（回复形态）、`admission`（per-CLI 数据）与
+`mcp::protocol`（wire 常量），**不认识** `mcp::server` / `AppHandle` / `TerminalRouter`。
+`server → execution` 是单向的（handler 把结论交出去）—— 线协议常量之所以搬进
+`mcp/protocol.rs`，就是为了不让这两者互相依赖。
+
+**`apply_reply` 的顺序是契约**：`admit` **先于** `spawn`。反过来成员的首次工具调用会 401
+（它就在那个窗口里刚启动）。`spawn` 失败的错误里**必须带 `member_id`** —— 成员已落库，
+丢掉 id 就等于毁掉两相位承诺的「可查询、可清理」。
+
+**`Pty` 投递恒为两笔**：`emit(terminal-input-{id}, text_bytes)` → `sleep(150ms)` →
+`emit(..., "\r")`。一次写 `"text\n"` 会被部分 AI TUI 丢弃或误解释（`research/04` 实测）。
+走既有事件而不是抢 terminal 的 writer 所有权：terminal 域对团队一无所知。
+
+**通道由 `delivery::route(WorkerChannel, msg)` 决定（纯函数）**：`Pty` → 两笔写入；
+`Mcp` / `None` → `Unsupported` + **可行动**的理由（`Mcp` 成员是我们自己的客户端，没有推送
+通道，只能走板上派活）。静默「成功」比报错坏得多：队长会继续往下走，而成员从未收到任务。
+
+**身份 env 只能注入 Local PTY**：`TerminalRouter::create_session` 对 WSL / SSH + 非空
+`extra_env` 返回 `Unsupported`。静默丢弃的后果是成员「有进程、无身份」，而上报归因失败在团队
+上下文里是**拒绝归属** —— 表现为「成员永远不产出」，离家太远。
+
+**环境来自项目，不来自团队**：`Team` 只持久化 `project_path`（它不持凭证，而
+`ProjectEnvironment::Remote` 内含 SSH 认证）。执行层用
+`AppStateWrapper::project_environment_for_path` 反查归属项目，匹配规则在
+`core::project::environment_for_path`（两侧 canonicalize + **最长前缀**，嵌套项目取最具体的
+那个）。反查失败一律拒绝 —— 降级成 `Local` 会在本机起一个指向远端路径的 PTY，而那种错在
+花名册上看不出来。
+
+## 2.3 端点启动（`team/boot.rs`）与门的活集合
+
+团队 MCP 是**独立 loopback listener**（design §3.1b）：与 hooks 共用端口会让成员 token 能
+`POST /hook/{source}` 伪造队友的上报。四条容易写错的约束：
+
+| 约束 | 否则会怎样 |
+| --- | --- |
+| `request_timeout` **必须大于** `WAIT_TIMEOUT_MAX_SECS` | `team_wait` 会在等待中被引擎 408 掐断，而「超时是结果不是错误」是核心语义 |
+| 门装 **活集合**（`AuthGate::with_shared_hashed_tokens` + `SharedTokenSet`） | 快照门让「先 promote、后 spawn」的成员永远进不来；重建 listener 换端口又会让已下发的 MCP URL 全部失效 |
+| `refresh_credentials` **先**写身份表**再**替换门的期望集合 | 反过来有窗口：门放行新 hash 而 handler 查不到主体（200 + 空主体） |
+| 读库失败 **不**降级成空表 | 空表 = 谁都进不来，看起来像「所有成员都没权限」，比启动失败更难排查 |
+
+门的**期望集合形态与摘要编码不可分开配置**：`ExpectedTokens::{Plain, Sha256HexShared}`
+两个变体各含锁行为与编码，`AuthGate` 只有一个 `expected` 字段。拆成两个字段能拼出
+「活集合 + 明文」这种无意义组合，而下一个接入方挑错构造器的症状是「所有成员恒拒」。
+`TeamServer` **不提供 `refresh()`**：凭证同步只有一个写入点（`CredentialLedger::admit`）。
+
+`endpoint_url(port)` 是唯一拼装点（`http://127.0.0.1:{port}/team/mcp`）：
+loopback 而非 `localhost` —— 后者在某些平台先解析到 `::1`，而 listener 只绑 IPv4。
+
 ## 3. 准入表（红线 15 落点）
 
 「这个 CLI 能不能当成员、走哪条通道」是 **per-CLI 数据**，只允许是 `ADMISSIONS` 里的一行：
@@ -116,7 +196,12 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
   审计只记「何时签的」，不记明文也不记 hash（`team_event` 会被导出做排查）。
 - 落库的 `sha256` 就是 `principals` map 的 key：`resolve_principal` 只做查表，**不做恒定时间
   比较**（攻击者无法控制 key 侧）；`server/gate.rs` 的「进程内比较落点 = 1」不变量因此仍成立。
-  组装 `principals` 时必须**过滤空 hash**，否则会把一个不可认证的成员塞进表里。
+  组装 `principals` 必须**从库**（`mcp::principals::principals_from`）且**过滤空 hash** ——
+  空串是一把空钥匙，任何空 header 都会命中它。
+- **门的期望值是 hash 而不是明文**（`AuthGate::with_shared_hashed_tokens` + `SharedTokenSet`）：
+  候选值在比较前先摘要，因此门**不需要持有明文**也能裁决。两种编码必须逐字一致
+  （小写十六进制），否则门会对**所有**成员恒拒 —— 表现为"token 错了"，实际是编码漂移。
+  hooks 的门仍是 `AuthGate::with_tokens`（明文、零锁）。
 
 ## 5. 并发与阻塞（红线 3）
 
