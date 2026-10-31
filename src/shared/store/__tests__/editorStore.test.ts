@@ -321,6 +321,63 @@ describe('editorStore.updateTab — file tab 只读字段透传（mergeTabData�
 });
 
 /**
+ * terminal tab 的 `existingSessionId`（接管既有后端会话）必须经 `updateTab` 存活。
+ *
+ * `mergeTabData` 是穷举重建（逐字段 `in p ? p.x : d.x`），漏一个字段就静默丢弃它 ——
+ * 而 terminal tab 的状态更新（`status` 从 Idle → Running，由 agent 启动/退出驱动）走的
+ * 正是这条路径。丢掉接管字段的后果不是「少一格数据」：哨兵自愈 / 手动刷新会重建终端，
+ * 重建走 `createSession`，于是改去 `create_terminal_session` 新建一个 PTY，而后端那个
+ * 团队队长会话从此没人消费（用户看到两个终端、其中一个永远空着）。
+ */
+describe('editorStore.updateTab — terminal 接管字段透传（mergeTabData）', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ tabs: {}, editorLayout: {} });
+  });
+
+  const dataOf = (id: string) =>
+    useEditorStore.getState().tabs[SPACE]!.tabs.find((t) => t.id === id)!.data;
+
+  it('status 更新不剥离 existingSessionId', () => {
+    useEditorStore.getState().addTab({
+      id: 'tt1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
+      title: 'Team Lead',
+      data: {
+        kind: 'terminal',
+        agentId: null,
+        status: 'Idle',
+        existingSessionId: 'lead-session',
+      },
+    });
+
+    useEditorStore.getState().updateTab(SPACE, 'tt1', { status: 'Running' });
+
+    const data = dataOf('tt1');
+    expect(data.kind === 'terminal' && data.status).toBe('Running');
+    expect(data.kind === 'terminal' && data.existingSessionId).toBe('lead-session');
+  });
+
+  it('纯标题更新（不经 data 重建）不剥离 existingSessionId', () => {
+    useEditorStore.getState().addTab({
+      id: 'tt2',
+      scope: { kind: 'workspace', session: mkSession('p1') },
+      title: 'Team Lead',
+      data: {
+        kind: 'terminal',
+        agentId: null,
+        status: 'Idle',
+        existingSessionId: 'lead-session',
+      },
+    });
+
+    useEditorStore.getState().updateTab(SPACE, 'tt2', { title: 'Renamed' });
+
+    const data = dataOf('tt2');
+    expect(data.kind === 'terminal' && data.existingSessionId).toBe('lead-session');
+  });
+});
+
+/**
  * `agent-chat` tab 的字段必须能**落盘并读回**。
  *
  * # 为什么这条不能用 mock 写

@@ -23,6 +23,25 @@ export interface TerminalTabData {
   taskCommand?: string;
   taskConfigId?: string;
   rebuildKey?: number;
+  /**
+   * 接管一个**已经由后端创建好**的 PTY 会话（团队队长/成员等）。
+   *
+   * - **谁写入**：团队入口（`useTerminalTabs.openExistingTerminalTab`，写入方唯一）。
+   * - **谁消费**：local 策略的 `createSession` —— 有值时**不发** `create_terminal_session`，
+   *   直接把该 id 当作本 tab 的会话 id（`CacheEntry.sessionId` 的来源）。
+   *
+   * # 为什么放在 tab data 里
+   *
+   * tab 是「这个终端用哪个后端会话」的唯一载体：旁挂表（`sessionId → tabId`）在关闭 tab /
+   * 切工作区后会留下孤儿条目，且同一事实出现两个真相源。写一次（建 tab 时）后由
+   * `updateTab` 的 `mergeTabData` 原样透传，**没有第二写入口**。
+   *
+   * # 不是寻址键
+   *
+   * 缓存键仍由 `terminalAddress(session, tabId, paneId)` 唯一铸造（红线 12 的 terminal 同族
+   * 判据）；`sessionId` 只回答「连哪个 PTY」，不参与「这是哪个终端」的判定。
+   */
+  existingSessionId?: string;
 }
 
 export interface FileTabData {

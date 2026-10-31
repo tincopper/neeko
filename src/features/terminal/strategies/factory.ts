@@ -26,6 +26,8 @@ export interface StrategyOptions {
   fontFamily: string;
   gpuAccel: boolean;
   onSessionReady?: () => void;
+  /** 接管的后端会话 id（见 `TerminalStrategy::attachedSession`）。 */
+  attachedSession?: string | null;
 }
 
 // =============================================================================
@@ -54,6 +56,7 @@ export function createTerminalStrategy(options: StrategyOptions): TerminalStrate
     fontFamily,
     gpuAccel,
     onSessionReady,
+    attachedSession,
     outputFilter,
     setupFileLinks,
   } = options;
@@ -72,6 +75,7 @@ export function createTerminalStrategy(options: StrategyOptions): TerminalStrate
     fontFamily,
     gpuAccel,
     onSessionReady,
+    attachedSession,
     outputFilter,
     setupFileLinks,
   };

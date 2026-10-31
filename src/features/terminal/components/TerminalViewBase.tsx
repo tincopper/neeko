@@ -245,6 +245,11 @@ export default React.memo(function TerminalViewBase({
           fitAddon,
           element,
           sessionId: null as string | null,
+          // 接管来的会话不归本 entry 所有：销毁/重建时不得下发
+          // `close_terminal_session`（否则关一个 tab 就 kill 掉团队的队长）。
+          // 走 `strategyRef` 而不是 `strategy`：本 effect 刻意不把 strategy 放进依赖
+          //（它每次渲染都是新对象），读 ref 与 effect 内的其它 strategy 读取同源。
+          attached: strategyRef.current.attachedSession != null,
           unlisten: null as (() => void) | null,
           inputController: null as ReturnType<typeof setupTerminalInput> | null,
         };

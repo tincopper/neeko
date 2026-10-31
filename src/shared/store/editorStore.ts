@@ -102,6 +102,11 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
           p.rebuildKey !== undefined
             ? (p.rebuildKey as number | undefined)
             : (data as TerminalTabData).rebuildKey,
+        // 接管字段是**建 tab 时写一次**的（团队入口），没有更新路径 —— 这里逐字透传。
+        // 漏掉它就是静默丢弃：`status` 更新（Idle → Running）走的本函数，而终端一旦重建
+        // （哨兵自愈 / 手动刷新）会改走 `create_terminal_session` 新建一个 PTY，后端那个
+        // 团队会话再也没人消费。`p` 里的同名字段**故意不读**（不开第二写入口）。
+        existingSessionId: (data as TerminalTabData).existingSessionId,
       };
     }
     case 'file': {
