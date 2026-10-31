@@ -61,6 +61,9 @@ pub const EVENT_SIGNAL: &str = "signal";
 /// 成员凭证签发（审计只记"何时签的"，**不记明文也不记 hash**）。
 pub const EVENT_ISSUE_TOKEN: &str = "issue_token";
 
+/// 成员 PTY 绑定（审计记 `terminal_id`，它是进程句柄不是凭证）。
+pub const EVENT_BIND_TERMINAL: &str = "bind_terminal";
+
 /// 属于「有 owner 在干活」的任务态集合 —— 租约与审批只对这些态有意义。
 const fn is_active(state: TeamTaskState) -> bool {
     matches!(
@@ -394,6 +397,52 @@ impl TeamManager {
         }
         self.store.upsert_member(&member)?;
         inner.members.insert(member.id.clone(), member);
+        Ok(())
+    }
+
+    /// 把成员的 `terminal_id` 绑定到刚起来的 PTY（执行层的回填点）。
+    ///
+    /// # 为什么是 manager 的方法而不是执行层直接写库
+    ///
+    /// `terminal_id` 是**成员行的一部分**，而成员行只有 manager 能写（内存镜像与库必须
+    /// 在同一把锁内一起改，否则下一帧读到的是旧镜像）。执行层（组合根）只能通过这里回填。
+    ///
+    /// # 重复绑定
+    ///
+    /// 允许覆盖：PTY 起失败后重试会得到新 session id，而旧 id 早已失效 —— 拒绝覆盖只会
+    /// 让成员卡在一个永远连不上的句柄上。审计记录两次 id，便于排查「绑过几个」。
+    pub fn set_member_terminal(
+        &self,
+        member_id: &str,
+        terminal_id: &str,
+        now: i64,
+    ) -> Result<(), AppError> {
+        if terminal_id.trim().is_empty() {
+            return Err(AppError::InvalidInput(
+                "terminal id must not be empty".to_string(),
+            ));
+        }
+        let mut inner = self.lock_writing();
+        let mut member = inner
+            .members
+            .get(member_id)
+            .cloned()
+            .ok_or_else(|| not_found(format!("member {member_id}")))?;
+        let previous = member
+            .terminal_id
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string());
+        member.terminal_id = Some(terminal_id.to_owned());
+        self.store.upsert_member(&member)?;
+        inner.members.insert(member.id.clone(), member.clone());
+        self.audit(
+            &mut inner,
+            &member.team_id,
+            member_id,
+            EVENT_BIND_TERMINAL,
+            Some(member_id.to_owned()),
+            Some(format!("{previous} -> {terminal_id} at={now}")),
+        )?;
         Ok(())
     }
 
@@ -1412,6 +1461,63 @@ mod tests {
             .unwrap();
         assert_eq!(manager.verification(W1), Some(DoneVerification::Verified));
         assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Done);
+    }
+
+    /// 回填 `terminal_id`：内存镜像与库一起改，且**允许覆盖**（重试会拿到新 session id）。
+    #[test]
+    fn binding_a_terminal_updates_mirror_and_store() {
+        let manager = seeded();
+        // 夹具成员已带 `term-w1` —— 回填是**覆盖**语义，不是"从无到有"。
+        assert_eq!(
+            manager.member(W1).expect("member").terminal_id.as_deref(),
+            Some("term-w1")
+        );
+
+        manager
+            .set_member_terminal(W1, "term-1", 1_000)
+            .expect("bind");
+        assert_eq!(
+            manager.member(W1).expect("member").terminal_id.as_deref(),
+            Some("term-1")
+        );
+        // 库与镜像同源：读库也必须看到同一个 id（否则第二次启动读到旧的）。
+        let stored = manager
+            .store()
+            .list_members(TEAM)
+            .expect("members")
+            .into_iter()
+            .find(|row| row.id == W1)
+            .expect("row");
+        assert_eq!(stored.terminal_id.as_deref(), Some("term-1"));
+
+        // 重复绑定（PTY 重试）必须覆盖，否则成员卡在一个失效句柄上。
+        manager
+            .set_member_terminal(W1, "term-2", 2_000)
+            .expect("rebind");
+        assert_eq!(
+            manager.member(W1).expect("member").terminal_id.as_deref(),
+            Some("term-2")
+        );
+    }
+
+    /// 空 terminal id → `InvalidInput`；未知成员 → `NotFound`（两种错都不写库）。
+    #[test]
+    fn binding_rejects_an_empty_id_and_an_unknown_member() {
+        let manager = seeded();
+        let err = manager
+            .set_member_terminal(W1, "   ", 1_000)
+            .expect_err("empty");
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert_eq!(
+            manager.member(W1).expect("member").terminal_id.as_deref(),
+            Some("term-w1"),
+            "拒绝时不得改动已有绑定"
+        );
+
+        let err = manager
+            .set_member_terminal("ghost@tm_1", "term-1", 1_000)
+            .expect_err("unknown");
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
     }
 
     /// 签发会**轮换**：旧凭证立即失效。

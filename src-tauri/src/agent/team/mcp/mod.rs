@@ -18,6 +18,8 @@
 //! —— 复制第二份授权矩阵会让「worker 能不能调 X」出现两个答案。
 
 pub mod dispatch;
+pub mod principals;
+pub mod protocol;
 pub mod schema;
 pub mod server;
 
@@ -25,6 +27,8 @@ pub use dispatch::{
     call_async, MemberStatusView, TeamStatusView, ToolReply, DEFAULT_LEASE_TTL_SECS,
     WAIT_TIMEOUT_MAX_SECS,
 };
+pub use principals::{principals_from, token_hashes};
+pub use protocol::{ENDPOINT_PATH, TOKEN_HEADER};
 pub use schema::{
     known_wires, lookup, spec_for, ToolName, ToolSpec, ALL_TOOL_NAMES, TOOLS, UPDATABLE_STATES,
 };

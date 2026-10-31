@@ -8,8 +8,11 @@
 
 pub mod admission;
 pub mod authorize;
+pub mod boot;
 pub mod completion;
 pub mod deliver;
+pub mod delivery;
+pub mod execution;
 #[cfg(test)]
 pub(crate) mod fixtures;
 pub mod identity;
@@ -24,7 +27,9 @@ pub mod wait;
 
 pub use admission::{admission_for, refusal, tier_of, AgentAdmission, McpTransport, ADMISSIONS};
 pub use authorize::authorize;
+pub use boot::{boot as boot_endpoint, endpoint_url, TeamServer};
 pub use completion::advance;
+pub use execution::{apply_reply, plan_member_spawn, MemberExecutor, SpawnPlan};
 pub use lease::{lease_expired, next_reclaim_count, should_auto_release};
 pub use manager::{TeamManager, TeamWake};
 pub use store::{TeamEventRecord, TeamStore};

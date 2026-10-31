@@ -40,18 +40,11 @@ use serde_json::{json, Value};
 use crate::agent::team::identity::resolve_principal;
 use crate::agent::team::manager::TeamManager;
 use crate::agent::team::mcp::dispatch;
+use crate::agent::team::mcp::protocol::{ENDPOINT_PATH, TOKEN_HEADER};
 use crate::agent::team::mcp::schema::{self, ToolSpec};
 use crate::agent::team::types::TeamPrincipal;
-
-/// 成员 token 的 header 名 —— **单一源**（下发的 MCP 配置、stdio bridge、测试断言全部引用它）。
-///
-/// 与 hooks 的 `x-neeko-agent-hook-token` 并列而不是共用：两套流量走不同 listener 与
-/// 不同门实例（design §3.1b），共用一个名字只会让「拿 hook token 打团队端点」
-/// 看起来像配置错误而不是越权。
-pub const TOKEN_HEADER: &str = "x-neeko-team-token";
-
-/// 端点路径（组合根发布坐标时需要，与 [`router`] 的路由声明同源）。
-pub const ENDPOINT_PATH: &str = "/team/mcp";
+use crate::common::error::AppError;
+use crate::server::SharedTokenSet;
 
 /// 本端点声明的 MCP 协议版本。
 ///
@@ -77,9 +70,17 @@ pub const UNAUTHORIZED: i64 = -32001;
 
 /// 团队 MCP 端点状态。principal 表与 manager 都由调用方注入（组合根在 [`crate::app::boot`]）。
 ///
+/// 执行者端口（`MemberExecutor`）与启动计划在 [`crate::agent::team::execution`] —— 与回复
+/// 副作用映射放在一起，而不是在传输层。本文件只负责「把结论交出去」那一行调用。
+///
 /// 两个字段都是 `Arc`：`TeamManager` 是团队域的权威状态（与面板 / commands 共享同一实例），
 /// principal 表由 `team_spawn` / `team_close` 增删（团队关闭即失效，design §3.1）。
 /// 表以 `hash_token(明文)` 为 key —— 明文永远不进进程状态（只下发一次给成员）。
+///
+/// # 为什么 `Clone`
+///
+/// 所有字段都是 `Arc` / `SharedTokenSet`（内部 `Arc`），克隆是计数而不是拷贝。凭证刷新与
+/// 身份表重建要读库，必须能把自己搬进阻塞池（红线 3）—— 那需要一个 `'static` 的句柄。
 #[derive(Clone)]
 pub struct TeamServerState {
     /// 团队域唯一管理器（工具调用的委派目标）。
@@ -89,6 +90,66 @@ pub struct TeamServerState {
     /// 业务异步执行器：**唯一**把同步写库挪出 tokio worker 的地方（红线 3，
     /// 见 `dispatch::call_async` 的文档）。注入而非自取，测试可用自建 runtime。
     pub runtime: Arc<crate::common::runtime::AppRuntime>,
+    /// 门装载的**活** token 集合（团队形态的 `ExpectedTokens::Shared`）。
+    ///
+    /// handler 刷新身份表时要同步它 —— 两处必须来自同一次 `principals_from`
+    /// （门放行谁 / 认出谁，不能有两份表）。
+    pub tokens: SharedTokenSet,
+    /// 成员执行者（**必填**：组合根总是注入它，见 [`crate::agent::team::execution::apply_reply`]
+    /// 关于「不留会撒谎的 None 分支」的说明）。
+    pub executor: Arc<dyn crate::agent::team::execution::MemberExecutor>,
+}
+
+impl TeamServerState {
+    /// 从库重建「谁能进 / 谁是誰」：身份表 + 门的期望集合。
+    ///
+    /// 顺序固定：**先**重建身份表并写入，**再**替换门的集合。反过来会留一个窗口 ——
+    /// 门已放行新 hash，而 handler 查表查不到（表现为 200 + 空主体）。
+    ///
+    /// 调用点只有一个：凭证面（[`CredentialLedger::admit`]）。一次实现，一处调用 ——
+    /// 否则「什么时候同步」会散成 N 个点，漏一处就是「新成员永远 401」。
+    pub fn refresh_credentials(&self) -> Result<(), AppError> {
+        let principals = crate::agent::team::mcp::principals::principals_from(&self.manager)?;
+        let hashes = crate::agent::team::mcp::principals::token_hashes(&principals);
+        // 先表后门（见方法文档）。
+        let mut table = self
+            .principals
+            .write()
+            .map_err(|err| AppError::Unknown(format!("team principals lock poisoned: {err}")))?;
+        *table = principals;
+        drop(table);
+        self.tokens.replace(hashes);
+        Ok(())
+    }
+}
+
+/// 端点实现凭证面：签发 + **同一动作内**认门。
+///
+/// 顺序（签发 → 刷新）不可拆：拆开就留一个「库里已有新凭证、门还不认识它」的窗口，
+/// 而成员进程恰好会在这个窗口里发第一次工具调用（401）。
+#[async_trait::async_trait]
+impl crate::agent::team::execution::CredentialLedger for TeamServerState {
+    async fn admit(&self, member_id: &str) -> Result<String, AppError> {
+        let manager = Arc::clone(&self.manager);
+        let member = member_id.to_owned();
+        let token = self
+            .runtime
+            .spawn_blocking(move || {
+                manager.issue_token(&member, crate::agent::team::manager::now_millis())
+            })
+            .await
+            .map_err(|err| AppError::Unknown(format!("issuing a member token failed: {err}")))??;
+
+        // 认门：读库 → 重建身份表 → 替换门的期望集合，整段在阻塞池里（红线 3）。
+        let state = self.clone();
+        self.runtime
+            .spawn_blocking(move || state.refresh_credentials())
+            .await
+            .map_err(|err| {
+                AppError::Unknown(format!("refreshing team credentials failed: {err}"))
+            })??;
+        Ok(token)
+    }
 }
 
 /// 组装路由（带 state）。
@@ -263,6 +324,12 @@ async fn tools_call(
         .await
         .map_err(|err| RpcError::new(SERVER_ERROR, err.to_string()))?;
 
+    // 决策层只落库；**执行在这里**（两相位）。副作用映射与先后顺序的唯一实现在
+    // `execution::apply_reply` —— 本层只负责把结论交出去，以及把错误翻成 JSON-RPC 码。
+    crate::agent::team::execution::apply_reply(state, state.executor.as_ref(), &reply)
+        .await
+        .map_err(|err| RpcError::new(SERVER_ERROR, err.to_string()))?;
+
     // 红线 4：`ToolReply` 里没有任何字段承载 transcript（只有 id / 名字 / 状态 /
     // 租约剩余秒 / 任务行），所以把它整段序列化成文本内容不会把对话正文拖进上下文。
     let text = serde_json::to_string(&reply).map_err(|err| {
@@ -395,6 +462,13 @@ mod tests {
     /// `principals` 的 key 是 `hash_token(明文)` —— 与 `identity::resolve_principal`
     /// 的查表口径同源，键构造在夹具里显式写出来，不允许实现侧换一套口径。
     fn state() -> TeamServerState {
+        state_with(Arc::new(crate::agent::team::fixtures::NoopExecutor))
+    }
+
+    /// 同上，但换一个执行者（只有需要断言「交给谁」的用例用它）。
+    fn state_with(
+        executor: Arc<dyn crate::agent::team::execution::MemberExecutor>,
+    ) -> TeamServerState {
         let manager = TeamManager::new(TeamStore::open_in_memory().expect("in-memory store"));
         manager.create_team(team(TEAM)).expect("team");
         manager.create_team(team(OTHER)).expect("other team");
@@ -423,6 +497,9 @@ mod tests {
             runtime: Arc::new(crate::common::runtime::AppRuntime::from_handle(
                 tokio::runtime::Handle::current(),
             )),
+            // 测试直接构造状态、不经门：集合内容不影响 handler 的分支，空集合即可。
+            tokens: SharedTokenSet::new(Vec::new()),
+            executor,
         }
     }
 
@@ -462,6 +539,111 @@ mod tests {
         body: Value,
     ) -> (StatusCode, Value) {
         post_raw(state, token, &body.to_string()).await
+    }
+    /// 执行层端口：`team_spawn` 成功后 handler **必须**把成员交给执行者。
+    ///
+    /// 只钉这一条：`MemberCreated` 止步于落库 = 成员永远不会起进程，而队长拿到的回复
+    /// 长得跟成功一样。凭证刷新（门是否认得新成员）由 `principals` 的端到端用例覆盖。
+    #[tokio::test]
+    async fn a_created_member_is_handed_to_the_executor() {
+        use crate::agent::team::execution::MemberExecutor;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        /// 只记「被要求起进程」这一个事实：凭证签发与刷新由 `execution` 的单测钉住。
+        struct Recording(AtomicUsize);
+        #[async_trait::async_trait]
+        impl MemberExecutor for Recording {
+            async fn spawn(&self, member_id: &str, token: &str) -> Result<(), AppError> {
+                assert_eq!(member_id, "w9@tm_1", "执行者拿到的必须是刚落库的成员 id");
+                assert!(!token.is_empty(), "执行者必须拿到刚签发的明文凭证");
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+
+            async fn deliver(&self, _member_id: &str, _message: &str) -> Result<(), AppError> {
+                panic!("team_spawn 不该触发投递")
+            }
+        }
+
+        let recording = Arc::new(Recording(AtomicUsize::new(0)));
+        let state = state_with(recording.clone());
+
+        let (_, response) = post(
+            &state,
+            Some(LEAD_TOKEN),
+            request(
+                "tools/call",
+                json!({
+                    "name": "team_spawn",
+                    "arguments": {
+                        "agent_id": "claude-code",
+                        "name": "w9",
+                        "workspace": {"kind": "shared"}
+                    }
+                }),
+            ),
+        )
+        .await;
+
+        assert_eq!(response["error"], Value::Null, "{response}");
+        assert_eq!(
+            recording.0.load(Ordering::SeqCst),
+            1,
+            "MemberCreated 必须被交给执行者"
+        );
+        // 端到端的不变量：签发之后门必须已经认得那个新凭证。
+        // （`admit` 的“签发 + 认门同一动作”在真状态上成立，而不只是在一个假体上。）
+        assert!(
+            !state.tokens.snapshot().is_empty(),
+            "admit 必须把新凭证装进门"
+        );
+    }
+
+    /// `team_send` 的 `NeedsDelivery` 必须真的走到执行层（而不是止步于「已校验」）。
+    ///
+    /// 反例（本用例挡的正是它）：回复返回成功，但一个字节也没投递 —— 队长会以为成员收到了。
+    #[tokio::test]
+    async fn a_sent_message_is_handed_to_the_executor() {
+        use crate::agent::team::execution::MemberExecutor;
+
+        struct Recorder(std::sync::Mutex<Vec<String>>);
+        #[async_trait::async_trait]
+        impl MemberExecutor for Recorder {
+            async fn spawn(&self, _member_id: &str, _token: &str) -> Result<(), AppError> {
+                panic!("team_send 不该触发起进程")
+            }
+
+            async fn deliver(&self, member_id: &str, message: &str) -> Result<(), AppError> {
+                self.0
+                    .lock()
+                    .expect("calls")
+                    .push(format!("{member_id}:{message}"));
+                Ok(())
+            }
+        }
+
+        let recorder = Arc::new(Recorder(std::sync::Mutex::new(Vec::new())));
+        let state = state_with(recorder.clone());
+
+        let (_, response) = post(
+            &state,
+            Some(LEAD_TOKEN),
+            request(
+                "tools/call",
+                json!({
+                    "name": "team_send",
+                    "arguments": {"to": "w1@tm_1", "message": "run the tests"}
+                }),
+            ),
+        )
+        .await;
+
+        assert_eq!(response["error"], Value::Null, "{response}");
+        assert_eq!(
+            *recorder.0.lock().expect("calls"),
+            vec!["w1@tm_1:run the tests".to_owned()],
+            "NeedsDelivery 必须被交给执行者"
+        );
     }
 
     fn request(method: &str, params: Value) -> Value {

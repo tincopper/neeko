@@ -27,6 +27,12 @@ use crate::agent::team::types::{
     AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel, WorkerChannel,
 };
 
+/// `mcp_argv` 模板里的占位符：执行层把它替换成 MCP 配置 JSON（含端点与成员 token）。
+///
+/// 放在数据侧（而不是 `execution.rs`）：模板是**这台 CLI 的事实**，替换是执行层的动作。
+/// 两侧引用同一个常量，改占位符时编译器会追着改。
+pub const MCP_CONFIG_PLACEHOLDER: &str = "{{mcp_config}}";
+
 /// 一个内置 agent 的准入事实。**全部来自 P0 实测**，逐字段注明证据来源。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AgentAdmission {
@@ -40,6 +46,12 @@ pub struct AgentAdmission {
     pub transport: Option<McpTransport>,
     /// `approval_policy = Bypass` 时追加的参数（per-CLI 数据，通用模块禁止按名分支）。
     pub bypass_args: &'static [&'static str],
+    /// `McpInjection::Argv` 档的**启动参数模板**，含 [`MCP_CONFIG_PLACEHOLDER`]。
+    ///
+    /// 非 `Argv` 档为 `&[]` —— 不是"暂时留空"，而是那一档**不用启动参数**：
+    /// `Subcommand` 靠它自己的 `mcp add`，`ConfigFile` 靠写配置。执行层据此拒绝，
+    /// 而不是拿一个空模板静默启动一个连不上工具面的成员。
+    pub mcp_argv: &'static [&'static str],
     /// 仍未实测确认的点。**必须诚实列出**，会原样进工具返回给队长。
     pub unverified: &'static [&'static str],
 }
@@ -154,6 +166,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         transport: Some(McpTransport::Http),
         bypass_args: &["--dangerously-skip-permissions"],
         unverified: &[],
+        mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
     },
     // ① `--mcp-config <fileOrString>`；② `Stop` / `PermissionRequest` / `StopFailure` 已装。
     //    传输「由 `--mcp-config` 的 JSON 决定」⇒ 未实测确认，见 unverified。
@@ -166,6 +179,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[
             "MCP transport is decided by the `--mcp-config` payload and was never probed on this machine",
         ],
+        mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
     },
     // ① `codex mcp add` → `config.toml [mcp_servers]` + `-c key=value` 覆盖；
     //    ② `Stop` + `notify agent-turn-complete` 已装；传输 streamable HTTP。
@@ -178,6 +192,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[
             "the complete approval-bypass switch set was not re-verified (only `--approve-for-me` was observed)",
         ],
+        mcp_argv: &[],
     },
     // 未安装、无任何实测 ⇒ 只能按「有配置文件注入面」推断。C 档。
     AgentAdmission {
@@ -189,6 +204,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[
             "not installed on this machine and never probed: hooks, transport and bypass args are all inferred",
         ],
+        mcp_argv: &[],
     },
     // ① `grok mcp add --transport http|stdio|sse` + `-H`；② Neeko 无 grok hook 目标。C 档。
     AgentAdmission {
@@ -200,6 +216,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[
             "Neeko has no grok hook target, so completion signals are invisible (tier C) even though the MCP surface works",
         ],
+        mcp_argv: &[],
     },
     // ① 无 `mcp` 子命令、`config.yml` 无 mcp 键 ⇒ 无 MCP 表面；② `agent_end` 已装。B 档。
     AgentAdmission {
@@ -211,6 +228,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[
             "no MCP surface at all: results can only be recovered from the sentinel channel (tier B)",
         ],
+        mcp_argv: &[],
     },
     // ① `opencode mcp add --url` + `--header`；② 插件 v2 模板存在但 `plugin: []` ⇒ **未安装**。
     AgentAdmission {
@@ -222,6 +240,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[
             "the Neeko plugin is not installed in this user's opencode config, so turn hooks will not fire yet",
         ],
+        mcp_argv: &[],
     },
     // ① `pi mcp add --url` → `~/.pi/agent/mcp.json`；② `agent_end` extension 已装。
     AgentAdmission {
@@ -233,6 +252,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[
             "`--approve` semantics were never verified: it trusts the project files, it may not waive every prompt",
         ],
+        mcp_argv: &[],
     },
     // ① `--mcp-config` + `--strict-mcp-config` + `--allowed-mcp-server-names`；
     //    ② `Stop` / `PermissionRequest` / `StopFailure` 已装。传输同 codebuddy，未实测。
@@ -245,6 +265,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[
             "MCP transport is decided by the `--mcp-config` payload and was never probed on this machine",
         ],
+        mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER, "--strict-mcp-config"],
     },
     // ① 无 mcp 子命令实测；② Neeko 无 reasonix hook 目标 ⇒ 三档里最小的一种。C 档。
     AgentAdmission {
@@ -256,6 +277,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[
             "Neeko has no reasonix hook target and no MCP transport was verified, so nothing can be injected or reported",
         ],
+        mcp_argv: &[],
     },
 ];
 
@@ -524,6 +546,47 @@ mod tests {
         );
     }
 
+    /// `mcp_argv` 必须与注入档**逐行一致**（执行层按这一列拼启动参数）。
+    ///
+    /// 两条不变量：
+    /// - `Argv` 行必须有模板，且模板里含占位符（否则执行层拿到一条不带 MCP 配置的启动命令，
+    ///   成员起来但 tool 面静默不可见 —— 最难查的失败形态）；
+    /// - 其余行必须为空（有模板却不用 = 第二个真相源，改档时必然漏一处）。
+    ///
+    /// 这里只钉"档与模板同生共死"和几个**实测确定的**模板形状，不复制整张表：
+    /// 逐行内容由 `admission_rows_match_the_p0_matrix_column_by_column` 负责。
+    #[test]
+    fn argv_templates_are_present_exactly_for_the_argv_mode() {
+        for row in ADMISSIONS {
+            let is_argv = row.mcp_injection == McpInjection::Argv;
+            assert_eq!(
+                is_argv,
+                !row.mcp_argv.is_empty(),
+                "`{}`: 注入档 {:?} 与 argv 模板不一致",
+                row.agent_id,
+                row.mcp_injection
+            );
+            if is_argv {
+                assert!(
+                    row.mcp_argv.contains(&MCP_CONFIG_PLACEHOLDER),
+                    "`{}`: Argv 档的模板必须含占位符 {MCP_CONFIG_PLACEHOLDER}，否则拼不出 MCP 配置",
+                    row.agent_id
+                );
+            }
+        }
+
+        // 三家 `--mcp-config` CLI 的具体形状（qoder 额外要 `--strict-mcp-config`）。
+        for (agent_id, len) in [("claude-code", 2), ("codebuddy", 2), ("qoder", 3)] {
+            let row = admission_for(agent_id).expect("admitted");
+            assert_eq!(row.mcp_argv.len(), len, "{agent_id} 的启动参数个数");
+            assert_eq!(row.mcp_argv[0], "--mcp-config", "{agent_id}");
+        }
+        assert_eq!(
+            admission_for("qoder").expect("admitted").mcp_argv[2],
+            "--strict-mcp-config"
+        );
+    }
+
     /// `McpInjection::None` ⇒ B 档（hook 在、MCP 面不在）。
     ///
     /// 保护的不变量：B 档的判据是**缺 MCP**，不是缺 hook。合并二者会把 `omp`
@@ -536,6 +599,7 @@ mod tests {
             mcp_injection: McpInjection::None,
             transport: None,
             bypass_args: &[],
+            mcp_argv: &[],
             unverified: &[],
         };
         assert_eq!(tier_of(&omp), AdmissionTier::B);
@@ -564,6 +628,7 @@ mod tests {
             mcp_injection: McpInjection::Argv,
             transport: Some(McpTransport::Http),
             bypass_args: &[],
+            mcp_argv: &[],
             unverified: &[],
         };
         assert_eq!(tier_of(&grok), AdmissionTier::C);

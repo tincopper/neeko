@@ -9,11 +9,10 @@
 //! 2. **授权** [`crate::agent::team::authorize::authorize`]（只看角色）。
 //! 3. **入参校验**（存在性 / 归属 / 状态闭集）后**委派**给 `TeamManager` 的既有方法。
 //!
-//! 不做：状态机裁决（`manager`/`completion`）、租约计算（`lease`）、字节投递
-//! （`team_send` 的 `Pty`/`Mcp` 通道在 P2.5b）。`team_send` 因此只返回
-//! [`ToolReply::NeedsDelivery`] —— 本函数**不写任何字节**。
-//! 同理 `team_spawn` 只**决定**（准入校验 + 成员落库 + 凭证签发交执行层），返回
-//! [`ToolReply::MemberCreated`]；起 PTY / 注入 env / 写 MCP 配置是 2.5b 的接线段。
+//! 不做：状态机裁决（`manager`/`completion`）、租约计算（`lease`）。投递与起进程都是
+//! **执行层**的事（`team_send` 只返回 [`ToolReply::NeedsDelivery`]、`team_spawn` 只返回
+//! [`ToolReply::MemberCreated`]），消费侧在 [`crate::agent::team::execution::apply_reply`]
+//! —— 那是决策 → 执行的**唯一**交接点：本函数不写任何字节、不起任何进程。
 //! 回复只携带「队长能行动的信息」—— 执行参数从成员行推导，不随回复走（见该变体的文档）。
 //!
 //! # 入口：生产只有 [`call_async`]
@@ -76,7 +75,7 @@ pub enum ToolReply {
     Tasks(Vec<TeamTask>),
     /// `task_create` / `task_claim` / `task_update`：单个任务的最新态。
     Task(TeamTask),
-    /// `team_spawn`：成员已落库，**待执行层起进程**（P2.5b 的接线段）。
+    /// `team_spawn`：成员已落库，**待执行层起进程**（消费侧：`execution::apply_reply`）。
     ///
     /// 两相位与 `team_send → NeedsDelivery` 同构：本层不做任何进程副作用，
     /// 所以 PTY 起不来时成员是「已落库、可查询、可清理」的，而不是半生不死。
@@ -103,15 +102,16 @@ pub enum ToolReply {
         /// 成员 id（`{name}@{team}`）。
         ///
         /// **不含 token**：工具的返回值会进模型上下文，明文凭证不得经过模型。
-        /// 执行层在拿到 `member_id` 后调 `TeamManager::issue_token` 取一次并用掉
-        /// （见该方法与 `team_spawn` 返回处的注释）。
+        /// 凭证由端点的 `CredentialLedger::admit` 签发（与「让门认识它」同一动作），
+        /// 随即交给执行层进启动参数 —— 全程不经过模型。
         member_id: String,
         /// 准入档位（由准入表推导，调用方不可声明）。
         tier: AdmissionTier,
         /// 未实测确认的点，原样回给队长（让他知道自己在用不确定的能力）。
         unverified: Vec<String>,
     },
-    /// `team_send`：已通过全部校验，**待投递**（P2.5b 的 `Pty`/`Mcp` 通道执行）。
+    /// `team_send`：已通过全部校验，**待投递**（消费侧：`execution::apply_reply` →
+    /// `delivery::route` 按成员的 `WorkerChannel` 选择投递方式）。
     #[serde(rename_all = "camelCase")]
     NeedsDelivery {
         /// 目标成员 id（队内）。

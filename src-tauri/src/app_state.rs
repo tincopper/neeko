@@ -91,6 +91,15 @@ pub struct AppStateWrapper {
     /// 清理闭包，只能靠 `Arc` 克隆跨线程 take（裸 `Mutex` 字段版编译不过）。
     /// 组合根只存句柄 —— 不含任何 HTTP 逻辑（引擎在 `crate::server`）。
     http_server: Arc<Mutex<Option<crate::server::ServerHandle>>>,
+    /// 团队 MCP 端点（`agent::team::boot` 起；**与 hooks 分开的独立 listener**，design §3.1b）。
+    ///
+    /// 不合并进 `http_server`：两个端点各有自己的门（hooks = 单进程 token，团队 = 成员
+    /// token 的活集合）与失败策略（fail-open vs fail-closed），共用一个 handle 会让「谁在
+    /// 什么端口上」重新变成隐式知识。
+    ///
+    /// `Option` 是因为它可能起不来（端口/读库失败）：那时团队功能不可用，但**整个应用
+    /// 不该跟着起不来**（hooks 那条常开路径更不该受影响）。
+    team_server: Arc<Mutex<Option<crate::agent::team::TeamServer>>>,
     /// 主窗口句柄（setup 阶段注入；菜单/事件统一从此取）。
     ///
     /// 避免运行时 `get_webview_window("main")` 查找——其内部 `is_webview_window`
@@ -121,6 +130,7 @@ impl AppStateWrapper {
         let lsp_manager = self.lsp_manager.clone();
         // HTTP 句柄用 Arc 克隆取走：清理闭包是 FnOnce + Send，不能借用 &self。
         let http_server = Arc::clone(&self.http_server);
+        let team_server = Arc::clone(&self.team_server);
 
         let tasks: Vec<crate::common::shutdown::CleanupTask> = vec![
             (
@@ -153,6 +163,20 @@ impl AppStateWrapper {
                     }
                 }),
             ),
+            // 团队端点：独立 listener，同样要 graceful shutdown —— 否则关闭时在途的
+            // `team_wait` 会把进程退出拖到超时。`TeamServer::stop` 消费自身，取出来再停。
+            (
+                "team-http",
+                Box::new(move || {
+                    let server = team_server
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .take();
+                    if let Some(server) = server {
+                        server.stop();
+                    }
+                }),
+            ),
         ];
         crate::common::shutdown::run_cleanup_and_exit(tasks);
     }
@@ -163,6 +187,65 @@ impl AppStateWrapper {
             .http_server
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(handle);
+    }
+
+    /// 存入团队 MCP 端点（setup 阶段由 `team::boot` 成功后调用一次）。
+    pub fn set_team_server(&self, server: crate::agent::team::TeamServer) {
+        *self
+            .team_server
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(server);
+    }
+
+    /// 团队端点的 URL（成员 MCP 配置里要写的那串）。端点没起来时 `None`。
+    ///
+    /// 执行层（`execution::plan_member_spawn` 的 `mcp_url`）只从这里取：拼装点唯一，
+    /// 「端口对了但路径错了」这类错误就没有地方发生。
+    pub fn team_endpoint_url(&self) -> Option<String> {
+        self.team_server
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .map(crate::agent::team::TeamServer::endpoint_url)
+    }
+
+    /// 项目根路径 → 执行环境（团队执行层的**环境来源**）。
+    ///
+    /// # 为什么按路径而不是按 id
+    ///
+    /// `Team` 只持久化 `project_path`：它不持有任何凭证，而 `ProjectEnvironment::Remote`
+    /// 内含 SSH 认证 —— 把环境复制进团队行就是给同一份秘密造第二个存放点。所以执行层
+    /// 必须回来问项目库「这条路属于谁」，项目才是环境的权威（`Project.environment`）。
+    ///
+    /// # 为什么在组合根
+    ///
+    /// 它是**唯一**同时认识团队域与项目域的地方。放进任何一侧都会让那一侧反向依赖对方的
+    /// 数据模型（团队域依赖 `ProjectManager`，或项目域依赖 `Team`）。
+    ///
+    /// # 阻塞（红线 3）
+    ///
+    /// `canonicalize` 是 I/O：项目快照在调用线程取（纯内存拷贝），归一化与匹配进阻塞池。
+    pub async fn project_environment_for_path(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<crate::core::project::ProjectEnvironment, AppError> {
+        let projects: Vec<(std::path::PathBuf, crate::core::project::ProjectEnvironment)> = self
+            .project_manager
+            .lock()
+            .map_err(AppError::from)?
+            .list_projects()
+            .into_iter()
+            .map(|project| (project.path, project.environment))
+            .collect();
+        let target = path.to_path_buf();
+        self.runtime
+            .spawn_blocking(move || crate::core::project::environment_for_path(&projects, &target))
+            .await
+            .map_err(|err| {
+                AppError::Unknown(format!(
+                    "resolving the project of a team root failed: {err}"
+                ))
+            })?
     }
 
     /// 注入主窗口句柄（setup 阶段调用一次；菜单事件等从此取，见 [`Self::main_window`]）。
@@ -450,6 +533,7 @@ impl AppStateWrapper {
             ),
             notification: Arc::clone(&notification),
             http_server: Arc::new(Mutex::new(None)),
+            team_server: Arc::new(Mutex::new(None)),
             main_window: RwLock::new(None),
         }
     }
@@ -588,6 +672,38 @@ mod tests {
             .team_manager
             .issue_token(W1, 1_000)
             .expect("重启后签发必须找得到成员（= 内存镜像已 hydrate）");
+    }
+
+    /// 端点没起来时 `team_endpoint_url()` 是 `None` —— 执行层据此拒绝 spawn，
+    /// 而不是拼一个空 URL 写进成员的 MCP 配置（那种成员起来后连不上任何东西）。
+    #[test]
+    fn team_endpoint_url_is_none_until_the_endpoint_boots() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+
+        assert_eq!(state.team_endpoint_url(), None);
+    }
+
+    // ─────── 团队根 → 执行环境（执行层的环境来源） ───────
+
+    /// 方法本身：已登记的项目根 → 它的环境（纯匹配规则在 `core::project` 的单测里）。
+    #[tokio::test]
+    async fn a_registered_project_root_resolves_to_its_environment() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+        let root = tmp.path().join("proj");
+        std::fs::create_dir_all(&root).expect("project dir");
+        state
+            .project_manager
+            .lock()
+            .expect("project manager")
+            .add_project(root.clone(), None, None, None)
+            .expect("add_project");
+
+        assert!(matches!(
+            state.project_environment_for_path(&root).await,
+            Ok(crate::core::project::ProjectEnvironment::Local)
+        ));
     }
 
     /// 不变量：`team_manager` 与 `library_store` 是**同一个池**（不是同一文件的两个池）。

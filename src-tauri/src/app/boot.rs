@@ -159,6 +159,21 @@ fn on_setup(app: &tauri::App) {
     if let Some(handle) = http_handle {
         state.set_http_server(handle);
     }
+
+    // 团队 MCP 端点：与 hooks 分开的**独立 loopback listener**（design §3.1b —— 共用一个
+    // 端口会让成员 token 能 `POST /hook/{source}` 伪造队友上报）。起不来只记日志：
+    // 团队功能不可用，但 hooks 那条常开路径与整个应用不该跟着受影响。
+    // 执行者：`team_spawn` 的决策层回 `MemberCreated` 之后，由它起 PTY（两相位的执行一半）。
+    let executor: Arc<dyn crate::agent::team::MemberExecutor> = Arc::new(
+        super::team_executor::PtyMemberExecutor::new(app.handle().clone()),
+    );
+    match crate::agent::team::boot_endpoint(&state.runtime, &state.team_manager, executor) {
+        Ok(server) => {
+            log::info!("[agent-team] mcp endpoint at {}", server.endpoint_url());
+            state.set_team_server(server);
+        }
+        Err(err) => log::warn!("[agent-team] boot mcp endpoint failed: {err}"),
+    }
 }
 
 /// 注入主窗口句柄：菜单/事件统一从 AppState 取，避免运行时查找依赖 Tauri 内部

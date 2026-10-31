@@ -1,0 +1,264 @@
+//! 团队 MCP 端点的**域级 boot 入口**（与 `session` / `agent` / `library` / `lsp` 四域对称）。
+//!
+//! ```text
+//! boot(runtime, manager)
+//!   ├─ bind 127.0.0.1:0                     ← 端口由 OS 分配，本域自己知道（红线 8 同族）
+//!   ├─ principals_from(manager)             ← **从库**组装身份表（过滤空 hash）
+//!   ├─ AuthGate::with_shared_hashed_tokens  ← 门装的是**活集合**（C8）
+//!   └─ serve(route_group(state))            ← FailClosed 路由组
+//! ```
+//!
+//! # 为什么是独立 listener（design §3.1b）
+//!
+//! hooks 那道门是**进程唯一 token**、恒定时间比较，而且 `authorize` 是全局层：同一 listener
+//! 上所有路由组共享它。若团队与 hooks 共用端口，成员的 token 就能 `POST /hook/{source}`
+//! 伪造队友的 `turn_completed` —— 与 §5.4 在防的串台是同一类事故。
+//!
+//! # 为什么门装「活集合」而不是快照
+//!
+//! 团队的成员是在 listener 起来**之后**才 spawn 的（promote → spawn → 轮换 → 关队）。
+//! 快照门会让先 promote 的团队永远只有 promote 那一刻的凭证；而重建 listener 会换端口，
+//! 已下发到成员 MCP 配置里的 URL 全部失效（`--mcp-config` 只在启动时读）。
+//! 所以门持有 [`SharedTokenSet`]，组合根在成员变动后调 [`TeamServer::refresh`]。
+//!
+//! # 超时预算与 hooks **不同**
+//!
+//! `team_wait` 会在一个工具调用里阻塞至多 [`WAIT_TIMEOUT_MAX_SECS`]（1800s）。引擎的
+//! `request_timeout` 一旦小于它，队长会收到 408 而不是 `WaitOutcome::Timeout` ——
+//! 而「超时是结果不是错误」是本设计的核心语义。所以这里的超时必须**高于**等待上限。
+
+use std::sync::{Arc, RwLock};
+
+use crate::agent::team::execution::MemberExecutor;
+use crate::agent::team::manager::TeamManager;
+use crate::agent::team::mcp::dispatch::WAIT_TIMEOUT_MAX_SECS;
+use crate::agent::team::mcp::principals::{principals_from, token_hashes};
+use crate::agent::team::mcp::protocol::{ENDPOINT_PATH, TOKEN_HEADER};
+use crate::agent::team::mcp::server::{self, TeamServerState};
+use crate::common::error::AppError;
+use crate::common::runtime::AppRuntime;
+use crate::server::{AuthGate, HeaderToken, ServerConfig, ServerHandle, SharedTokenSet};
+
+/// 在途上限：与 hooks 同量级。团队成员是个位数，16 已经远超实际并发。
+const MAX_INFLIGHT: usize = 16;
+
+/// 单请求 body 上限。
+///
+/// 比 hooks（64 KiB）大得多，因为 `task_create` 的 `body` 就是一段派活 prompt，
+/// 而 hooks 的载荷只有状态键。1 MiB 足够容纳长任务描述，仍远低于红线 4 的 2 MB ——
+/// 团队端点的响应本身也必须守那条线（`ToolReply` 全是小载荷）。
+const MAX_BODY_BYTES: usize = 1024 * 1024;
+
+/// 逐请求超时：**必须高于** `team_wait` 的等待上限（见模块文档）。
+///
+/// 多出的 60s 是给「等待结束后写库 + 序列化」的余量，不是给网络。
+const REQUEST_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(WAIT_TIMEOUT_MAX_SECS as u64 + 60);
+
+/// 已启动的团队端点。
+///
+/// 组合根持有它：`endpoint_url()` 交给执行层拼进成员的 MCP 配置，`stop()` 走关闭协议。
+///
+/// **没有 `refresh()`**：身份表与门的同步是「签发凭证」的一半（`CredentialLedger::admit`，
+/// 实现在 `TeamServerState`）。再开一个公开的同步入口，等于让「什么时候刷新」有两个答案，
+/// 而漏一处的表现是「新成员永远 401」。
+pub struct TeamServer {
+    handle: ServerHandle,
+    /// 端点状态（与 handler 共用同一份身份表 / 活集合）。
+    ///
+    /// 生产路径上**不需要再读它** —— 凭证签发与认门由 handler 经 `CredentialLedger::admit`
+    /// 完成（那才是唯一的写入点）。组合根持有它才能保证「端点 / 身份表 / 门」是同一份；
+    /// `boot` 的单测也从这里驱动 `admit`（不能只靠假体证明门的语义）。
+    #[cfg_attr(not(test), allow(dead_code))]
+    state: TeamServerState,
+}
+
+/// 启动团队 MCP 端点。
+///
+/// # 失败即整体失败
+///
+/// 读库失败（组不出身份表）时**不降级成空表**：空表 = 谁都进不来，看起来像「所有成员都没
+/// 权限」，比启动失败更难排查。
+pub fn boot(
+    runtime: &Arc<AppRuntime>,
+    manager: &Arc<TeamManager>,
+    executor: Arc<dyn MemberExecutor>,
+) -> Result<TeamServer, AppError> {
+    // 端口由 OS 分配：`serve` 拿到的 listener 就是它，事后从 handle 读（单一来源）。
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0))
+        .map_err(|err| AppError::Io(format!("team mcp endpoint cannot bind loopback: {err}")))?;
+
+    // 身份表从**库**组装（见 `principals_from` 的文档）；门的期望集合与它是同一份 key。
+    let principals = principals_from(manager)?;
+    let tokens = SharedTokenSet::new(token_hashes(&principals));
+    let principals = Arc::new(RwLock::new(principals));
+
+    let gate = Arc::new(AuthGate::with_shared_hashed_tokens(
+        tokens.clone(),
+        // header 名与端点读的那个常量同源（`TOKEN_HEADER`）。
+        vec![Arc::new(HeaderToken { name: TOKEN_HEADER })],
+    ));
+
+    let state = TeamServerState {
+        manager: Arc::clone(manager),
+        principals,
+        runtime: Arc::clone(runtime),
+        tokens: tokens.clone(),
+        executor,
+    };
+
+    let handle = crate::server::serve(
+        runtime,
+        ServerConfig {
+            listener,
+            max_inflight: MAX_INFLIGHT,
+            request_timeout: REQUEST_TIMEOUT,
+            max_body_bytes: MAX_BODY_BYTES,
+        },
+        gate,
+        vec![server::route_group(state.clone())],
+    )
+    .map_err(|err| AppError::Io(format!("team mcp endpoint failed to serve: {err}")))?;
+
+    log::info!(
+        "[agent-team] mcp endpoint listening on 127.0.0.1:{}{}",
+        handle.port(),
+        ENDPOINT_PATH
+    );
+
+    Ok(TeamServer { handle, state })
+}
+
+impl TeamServer {
+    /// 实得端口（OS 分配，`boot` 时从 listener 读一次）。
+    #[must_use]
+    pub const fn port(&self) -> u16 {
+        self.handle.port()
+    }
+
+    /// 成员 MCP 配置里要写的完整 URL。
+    ///
+    /// 唯一的拼装点：执行层（`execution::plan_member_spawn` 的 `mcp_url`）与诊断日志都从这里取，
+    /// 免得「端口对了但路径错了」这类拼接错误散落两处。
+    #[must_use]
+    pub fn endpoint_url(&self) -> String {
+        endpoint_url(self.port())
+    }
+
+    /// 优雅停机。只可在**非 runtime 线程**调用（`ServerHandle::stop` 的契约）。
+    pub fn stop(mut self) {
+        self.handle.stop();
+    }
+}
+
+/// `http://127.0.0.1:{port}/team/mcp`。
+///
+/// loopback 而不是 `localhost`：后者在某些平台会先解析到 `::1`，而 listener 只绑了 IPv4。
+#[must_use]
+pub fn endpoint_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}{ENDPOINT_PATH}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::team::fixtures::{fixture_member, fixture_team, NoopExecutor, TEAM, W1};
+    use crate::agent::team::identity;
+    use crate::agent::team::store::TeamStore;
+
+    const OTHER: &str = "w2@tm_1";
+
+    fn seeded_manager() -> Arc<TeamManager> {
+        let manager = TeamManager::new(TeamStore::open_in_memory().expect("in-memory store"));
+        manager
+            .create_team(fixture_team(TEAM))
+            .expect("create_team");
+        manager
+            .add_member(fixture_member(W1, TEAM))
+            .expect("add_member");
+        Arc::new(manager)
+    }
+
+    /// 坐标拼装只有一个实现：loopback + 端点路径。
+    #[test]
+    fn the_endpoint_url_is_one_loopback_url() {
+        assert_eq!(endpoint_url(1234), "http://127.0.0.1:1234/team/mcp");
+        assert!(endpoint_url(1).ends_with(ENDPOINT_PATH));
+    }
+
+    /// `boot` 真的绑上了 loopback 端口，且暴露的 URL 与该端口一致。
+    ///
+    /// 不在测试里发请求：真 TCP 往返由 `agent::team::mcp::server` 的 handler 级测试覆盖，
+    /// 这里只证明「组合根能拿到一个活着且地址正确的端点」。
+    #[tokio::test]
+    async fn boot_binds_a_loopback_port_and_exposes_its_url() {
+        let runtime = Arc::new(AppRuntime::from_handle(tokio::runtime::Handle::current()));
+        let manager = seeded_manager();
+        let server = boot(&runtime, &manager, Arc::new(NoopExecutor)).expect("boot");
+
+        assert_ne!(server.port(), 0, "OS 分配的端口不应为 0");
+        assert_eq!(server.endpoint_url(), endpoint_url(server.port()));
+
+        // 停机要在非 runtime 线程（`ServerHandle::stop` 的线程契约）。
+        let owned = server;
+        std::thread::spawn(move || owned.stop())
+            .join()
+            .expect("stop");
+    }
+
+    /// `admit` 把**新签发**的凭证带进门 —— 否则先 promote、后 spawn 的成员永远进不来。
+    ///
+    /// 这是生产路径：`CredentialLedger::admit` = 签发 + 认门（同一动作）。本用例同时钉住
+    /// 「读库重建」与「门立即生效」两半，以及门的期望集合保持排序。
+    #[tokio::test]
+    async fn admitting_a_credential_makes_it_reachable_through_the_gate() {
+        use crate::agent::team::execution::CredentialLedger;
+
+        let runtime = Arc::new(AppRuntime::from_handle(tokio::runtime::Handle::current()));
+        let manager = seeded_manager();
+        let server = boot(&runtime, &manager, Arc::new(NoopExecutor)).expect("boot");
+
+        // 起初：库里只有一个夹具凭证。
+        assert_eq!(
+            server.state.tokens.snapshot(),
+            token_hashes(&server.state.principals.read().expect("principals"))
+        );
+
+        // 新增一名成员并走生产路径签发 + 认门。
+        manager
+            .add_member(fixture_member(OTHER, TEAM))
+            .expect("add_member");
+        let issued = server.state.admit(OTHER).await.expect("admit");
+
+        let after = server.state.tokens.snapshot();
+        assert!(
+            after.contains(&identity::hash_token(&issued)),
+            "admit 必须把新 hash 装进门"
+        );
+        assert_eq!(
+            server
+                .state
+                .principals
+                .read()
+                .expect("principals")
+                .get(&identity::hash_token(&issued))
+                .map(|principal| principal.member_id.as_str()),
+            Some(OTHER),
+            "门放行谁 / 认出谁必须来自同一份表"
+        );
+        assert_eq!(
+            after,
+            {
+                let mut sorted = after.clone();
+                sorted.sort_unstable();
+                sorted
+            },
+            "期望集合保持排序"
+        );
+
+        let owned = server;
+        std::thread::spawn(move || owned.stop())
+            .join()
+            .expect("stop");
+    }
+}

@@ -87,3 +87,28 @@ pub(crate) fn fixture_member(id: &str, team_id: &str) -> TeamMember {
         joined_at: 1,
     }
 }
+
+/// 什么都不做的执行者：只关心「端口有没有被调用」以外的测试用它打底。
+///
+/// 需要断言调用顺序 / 载荷的用例自己写记录型假体（见 `execution` 的 `Recorder`）；
+/// 而 handler 级用例关心的是 RPC / 鉴权 / 授权矩阵，进程副作用不在断言范围内。
+pub struct NoopExecutor;
+
+#[async_trait::async_trait]
+impl crate::agent::team::execution::MemberExecutor for NoopExecutor {
+    async fn spawn(
+        &self,
+        _member_id: &str,
+        _token: &str,
+    ) -> Result<(), crate::common::error::AppError> {
+        Ok(())
+    }
+
+    async fn deliver(
+        &self,
+        _member_id: &str,
+        _message: &str,
+    ) -> Result<(), crate::common::error::AppError> {
+        Ok(())
+    }
+}

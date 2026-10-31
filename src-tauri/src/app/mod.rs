@@ -16,5 +16,6 @@
 mod boot;
 mod close;
 pub mod commands;
+mod team_executor;
 
 pub use boot::run;
