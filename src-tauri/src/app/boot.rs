@@ -174,6 +174,17 @@ fn on_setup(app: &tauri::App) {
         }
         Err(err) => log::warn!("[agent-team] boot mcp endpoint failed: {err}"),
     }
+
+    // 租约回收器：**时间推移本身就是输入**（AC3）。与端点分开启动 —— 端点可能起不来，
+    // 而租约与 MCP 面无关：成员进程死了，任务该回收就回收。
+    // 不依赖端点还有第二个理由：`team_wait` 的阻塞发生在 MCP 工具调用里，而它等的那个
+    // 「成员死了」信号正是由这里产生的（惰性 sweep 在没人调命令时永远不会触发）。
+    let reaper = crate::agent::team::TeamReaper::start(
+        state.runtime.clone(),
+        state.team_manager.clone(),
+        crate::agent::team::REAP_INTERVAL,
+    );
+    state.set_team_reaper(reaper);
 }
 
 /// 注入主窗口句柄：菜单/事件统一从 AppState 取，避免运行时查找依赖 Tauri 内部

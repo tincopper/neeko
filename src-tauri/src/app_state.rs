@@ -100,6 +100,12 @@ pub struct AppStateWrapper {
     /// `Option` 是因为它可能起不来（端口/读库失败）：那时团队功能不可用，但**整个应用
     /// 不该跟着起不来**（hooks 那条常开路径更不该受影响）。
     team_server: Arc<Mutex<Option<crate::agent::team::TeamServer>>>,
+    /// 租约回收器（`agent::team::reaper` 起；**时间驱动**的团队迁移）。
+    ///
+    /// `Option` 只为「关闭协议取一次」：启动后恒为 `Some`（它没有构造失败的可能 ——
+    /// 只是 spawn 一个循环）。与团队端点分开存：端点可能起不来（端口/读库失败），
+    /// 而回收器不该因为端点没起来就停摆（租约与 MCP 面无关）。
+    team_reaper: Arc<Mutex<Option<crate::agent::team::TeamReaper>>>,
     /// 主窗口句柄（setup 阶段注入；菜单/事件统一从此取）。
     ///
     /// 避免运行时 `get_webview_window("main")` 查找——其内部 `is_webview_window`
@@ -131,6 +137,7 @@ impl AppStateWrapper {
         // HTTP 句柄用 Arc 克隆取走：清理闭包是 FnOnce + Send，不能借用 &self。
         let http_server = Arc::clone(&self.http_server);
         let team_server = Arc::clone(&self.team_server);
+        let team_reaper = Arc::clone(&self.team_reaper);
 
         let tasks: Vec<crate::common::shutdown::CleanupTask> = vec![
             (
@@ -160,6 +167,19 @@ impl AppStateWrapper {
                         .take();
                     if let Some(mut handle) = handle {
                         handle.stop();
+                    }
+                }),
+            ),
+            // 租约回收器：只 abort 一个循环（见 `reaper` 模块文档）。
+            (
+                "team-reaper",
+                Box::new(move || {
+                    let reaper = team_reaper
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .take();
+                    if let Some(reaper) = reaper {
+                        reaper.stop();
                     }
                 }),
             ),
@@ -195,6 +215,14 @@ impl AppStateWrapper {
             .team_server
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(server);
+    }
+
+    /// 存入租约回收器（setup 阶段调用一次；与团队端点**各自独立**，见字段文档）。
+    pub fn set_team_reaper(&self, reaper: crate::agent::team::TeamReaper) {
+        *self
+            .team_reaper
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(reaper);
     }
 
     /// 团队端点的 URL（成员 MCP 配置里要写的那串）。端点没起来时 `None`。
@@ -546,6 +574,7 @@ impl AppStateWrapper {
             notification: Arc::clone(&notification),
             http_server: Arc::new(Mutex::new(None)),
             team_server: Arc::new(Mutex::new(None)),
+            team_reaper: Arc::new(Mutex::new(None)),
             main_window: RwLock::new(None),
         }
     }

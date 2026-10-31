@@ -65,6 +65,24 @@ pub const EVENT_ISSUE_TOKEN: &str = "issue_token";
 pub const EVENT_BIND_TERMINAL: &str = "bind_terminal";
 
 /// 属于「有 owner 在干活」的任务态集合 —— 租约与审批只对这些态有意义。
+/// **活性即续期**：把起租时间前移到 `now`。
+///
+/// # 为什么租约必须能续
+///
+/// `claimed_at + lease_ttl` 单独用是**时长上限**，而它想表达的是**活性**（"这个成员还在
+/// 干"）。没有续期，回收器一上线就会去抢健康成员手里的活：一个跑 40 分钟的任务在
+/// `lease_ttl = 1800s` 处被回收，成员还在写代码、而 `reclaim_count` 已经往上加 —— 四轮
+/// 之后任务进 `blocked`，可它从来没失败过。
+///
+/// 续期的判据只有一条：**owner 自己的活动**（`task_update` / hook 上报）。
+/// 队长改别人的任务不算那个人的活性。
+const fn renew_lease(task: &mut TeamTask, now: i64) {
+    // 终态不续期：`done` / `failed` 的任务已经离开 active 集，`reclaim_expired` 不会再看它。
+    if is_active(task.state) {
+        task.claimed_at = Some(now);
+    }
+}
+
 const fn is_active(state: TeamTaskState) -> bool {
     matches!(
         state,
@@ -704,7 +722,9 @@ impl TeamManager {
         if let Some(summary) = summary {
             task.summary = Some(summary.to_owned());
         }
-        let task = clamp_task_summary(&task);
+        let mut task = clamp_task_summary(&task);
+        // 显式更新本身就是活性证据（见 `renew_lease`）。
+        renew_lease(&mut task, now);
 
         if new_state == TeamTaskState::Done {
             inner
@@ -907,10 +927,19 @@ impl TeamManager {
                 verification = next_verification;
             }
 
-            if let (Some(mut task), true) = (target, next_task != task_state) {
+            if let Some(mut task) = target {
+                let before = task.claimed_at;
                 task.state = next_task;
-                self.store.upsert_task(&task)?;
-                inner.tasks.insert(task.id.clone(), task);
+                // 活性信号即使不改状态（`InProgress → InProgress`）也要续期，否则一个
+                // 持续干活但一直不声明状态的成员会被回收器当成死人；而 `Exited` / `Failed`
+                // **不能**续期 —— 那会让「已经死了」再拖满一个 `lease_ttl`（AC3 的反方向）。
+                if signal.is_liveness() {
+                    renew_lease(&mut task, now);
+                }
+                if task.state != task_state || task.claimed_at != before {
+                    self.store.upsert_task(&task)?;
+                    inner.tasks.insert(task.id.clone(), task);
+                }
             }
         }
 
@@ -1815,5 +1844,98 @@ mod tests {
         t.lease_ttl = 0;
         let err = manager.create_task(t).unwrap_err();
         assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+    }
+
+    /// **租约是活性信号，不是时长上限**：owner 一有动静就续期。
+    ///
+    /// 没有这条，回收器一上线就会去抢健康成员手里的活（一个跑 40 分钟的任务在
+    /// `lease_ttl=1800s` 处被回收，成员还在写代码，而 `reclaim_count` 却往上加）。
+    #[test]
+    fn an_owner_update_renews_the_lease() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager.claim_task("t1", W1, 1_000).unwrap();
+        assert_eq!(manager.task("t1").unwrap().claimed_at, Some(1_000));
+
+        // 1_700s 后报进度：起租时间前移。
+        manager
+            .update_task(
+                "t1",
+                W1,
+                TeamTaskState::InProgress,
+                Some("half"),
+                1_000 + 1_700_000,
+            )
+            .unwrap();
+        assert_eq!(
+            manager.task("t1").unwrap().claimed_at,
+            Some(1_000 + 1_700_000),
+            "owner 的活动必须续期"
+        );
+
+        // 于是按**最初**的起租时间判也不到期了。
+        assert!(
+            manager
+                .reclaim_expired(1_000 + 1_800_000 + 1)
+                .unwrap()
+                .is_empty(),
+            "续期后的任务不该被回收"
+        );
+    }
+
+    /// hook 上报同样是活性证据（`turn_completed` 说明这个成员刚刚干完一轮）。
+    #[test]
+    fn a_hook_signal_from_the_owner_renews_the_lease() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager.claim_task("t1", W1, 1_000).unwrap();
+
+        manager
+            .observe_signal(W1, MemberSignal::TurnCompleted, 1_000 + 1_700_000)
+            .unwrap();
+        assert_eq!(
+            manager.task("t1").unwrap().claimed_at,
+            Some(1_000 + 1_700_000)
+        );
+        assert!(manager
+            .reclaim_expired(1_000 + 1_800_000 + 1)
+            .unwrap()
+            .is_empty());
+    }
+
+    /// 死亡信号**不**续期：`Exited` 之后按原起租时间就该回收，不能因为「它说它退出了」
+    /// 又宽限一个 ttl（AC3 要的是尽快放手）。
+    #[test]
+    fn a_death_signal_does_not_renew_the_lease() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager.claim_task("t1", W1, 1_000).unwrap();
+
+        manager
+            .observe_signal(W1, MemberSignal::Exited, 1_000 + 1_700_000)
+            .unwrap();
+        assert_eq!(
+            manager.task("t1").unwrap().claimed_at,
+            Some(1_000),
+            "死亡信号不是活性证据"
+        );
+        assert_eq!(
+            manager.reclaim_expired(1_000 + 1_800_000 + 1).unwrap(),
+            vec!["t1".to_owned()]
+        );
+    }
+
+    /// 没有活动的任务**仍然会**过期 —— 续期不能把 AC3 一起续掉。
+    #[test]
+    fn a_silent_task_still_expires() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager.claim_task("t1", W1, 1_000).unwrap();
+
+        assert_eq!(
+            manager.reclaim_expired(1_000 + 1_800_000 + 1).unwrap(),
+            vec!["t1".to_owned()]
+        );
+        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Pending);
     }
 }

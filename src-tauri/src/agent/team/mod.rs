@@ -22,6 +22,7 @@ pub mod lease;
 pub mod manager;
 pub mod mcp;
 pub mod observe;
+pub mod reaper;
 pub mod sentinel;
 pub mod store;
 pub mod types;
@@ -38,3 +39,8 @@ pub use store::{TeamEventRecord, TeamStore};
 pub use wait::{
     satisfied, WaitMemberRow, WaitOutcome, WaitSnapshot, WaitTargets, WaitTaskRow, WaitUntil,
 };
+
+// 时间驱动的团队迁移（租约回收）：与上面的纯函数 / 数据 re-export 不同，它是一个**后台循环**，
+// 调用方只需要 start / stop 两个入口。单独成块而不是挤进上面那串，是让「谁在后台跑」在
+// 模块门口一眼可见 —— 读 `mod.rs` 的人应该在 10 秒内知道本域有一个常驻任务。
+pub use reaper::{TeamReaper, REAP_INTERVAL};

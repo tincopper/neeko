@@ -362,6 +362,21 @@ pub enum MemberSignal {
     Exited,
 }
 
+impl MemberSignal {
+    /// 这个信号是不是**活性证据**（成员还在干）—— 决定它续不续租约。
+    ///
+    /// 前三个都是「它刚刚做了什么」；`Failed` / `Exited` 恰好相反：拿它们续期会让
+    /// 「成员已经死了」这件事再拖满一个 `lease_ttl` 才被回收，而 AC3 要的正是反方向
+    /// （死了就尽快把任务放回板上）。
+    #[must_use]
+    pub const fn is_liveness(self) -> bool {
+        matches!(
+            self,
+            Self::TurnCompleted | Self::ApprovalRequested | Self::InputRequested
+        )
+    }
+}
+
 /// 「看到回合结束了，但没看到 `task_update(done)`」的标记（design §6 硬规则 2）。
 ///
 /// 只有 [`DoneVerification::Verified`] 代表 L2 显式声明到位；团队面板必须能区分二者
