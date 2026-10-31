@@ -4,6 +4,7 @@
 //! （[`authorize`] 授权矩阵 + [`mcp`] 工具清单与调度）；P2.4 落地后端阻塞等待
 //! （[`wait`]，`team_wait` 的实现）。传输（stdio bridge）与成员投递不在本目录。
 
+pub mod admission;
 pub mod authorize;
 pub mod completion;
 #[cfg(test)]
@@ -18,6 +19,7 @@ pub mod store;
 pub mod types;
 pub mod wait;
 
+pub use admission::{admission_for, refusal, tier_of, AgentAdmission, McpTransport, ADMISSIONS};
 pub use authorize::authorize;
 pub use completion::advance;
 pub use lease::{lease_expired, next_reclaim_count, should_auto_release};

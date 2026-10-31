@@ -5,7 +5,8 @@
 //! 授权判据只有两个输入维度：**谁**（`TeamPrincipal.role`）与**想做什么**
 //! （`ToolName`）。把它做成纯函数有三个直接收益：
 //!
-//! 1. 矩阵的 16 格可以在一条表驱动测试里逐格断言（不需要起库、锁、线程）；
+//! 1. 矩阵的 18 格（P2.5a 起从 16 格扩到 18 格：9 工具 × 2 角色）可以在一条表驱动
+//!    测试里逐格断言（不需要起库、锁、线程）；
 //! 2. 「谁能 close 团队」这类问题的答案只有一处，新增工具时 `match` 会强制补格；
 //! 3. 它**不认识** `TeamManager`：授权与状态迁移彻底解耦，所以授权失败永远不会
 //!    留下半截写操作。
@@ -34,17 +35,19 @@ use crate::common::error::AppError;
 /// | `team_status` / `team_send` / `task_list` | ✅ | ✅ |
 /// | `task_claim` / `task_update` | ✅ | ✅（自有任务；归属判定在 dispatch） |
 /// | `team_wait` | ✅ | ✅（design §3.2：通常只有队长用，但成员等同伴是合法的） |
-/// | `task_create` | ✅ | ❌ |
-/// | `team_close` | ✅ | ❌ |
+/// | `task_create` / `team_close` / `team_spawn` | ✅ | ❌ |
 pub fn authorize(principal: &TeamPrincipal, tool: ToolName) -> Result<(), AppError> {
     // 队长全通（含 `force_done` 那条越权路径 —— 它自带审计，由 manager 负责）。
     if principal.role == MemberRole::Lead {
         return Ok(());
     }
-    // Worker 列：只有「建任务」与「关团队」两格被拒。其余放行 —— 其中
+    // Worker 列：只有「建任务」「关团队」「建成员」三格被拒。其余放行 —— 其中
     // `task_claim` / `task_update` 的安全边界是**任务归属**（需要读任务表，判定在
     // `mcp::dispatch`）；`team_wait` 的边界是**团队归属**（只等得到本队成员/任务，
     // 判定在 `wait::build_snapshot` 的 `team_id` 过滤）。
+    //
+    // `team_spawn` 在拒的那一组：成员能建成员 = 无限扇出，绕过队长的工作量控制
+    // （design §3.2 「成员不能做的事」第三条）。
     match tool {
         ToolName::TeamStatus
         | ToolName::TeamSend
@@ -52,12 +55,14 @@ pub fn authorize(principal: &TeamPrincipal, tool: ToolName) -> Result<(), AppErr
         | ToolName::TaskUpdate
         | ToolName::TaskList
         | ToolName::TeamWait => Ok(()),
-        ToolName::TaskCreate | ToolName::TeamClose => Err(AppError::Conflict(format!(
-            "tool `{}` requires the lead role; member `{}` is a worker in team `{}`",
-            spec_for(tool).wire,
-            principal.member_id,
-            principal.team_id
-        ))),
+        ToolName::TaskCreate | ToolName::TeamClose | ToolName::TeamSpawn => {
+            Err(AppError::Conflict(format!(
+                "tool `{}` requires the lead role; member `{}` is a worker in team `{}`",
+                spec_for(tool).wire,
+                principal.member_id,
+                principal.team_id
+            )))
+        }
     }
 }
 
@@ -80,17 +85,18 @@ mod tests {
         }
     }
 
-    /// **逐格**：8 工具 × 2 角色 = 16 格，一格一行断言。
+    /// **逐格**：9 工具 × 2 角色 = 18 格，一格一行断言。
     ///
     /// 保护的不变量：design §3.2 的两列（Lead 全通、Worker 除 `task_create` /
-    /// `team_close` 外全通）逐格落地。写表而不是写「worker 被拒的两条」是因为
-    /// **多给权限**是最难在 code review 里看出来的缺陷 —— 表驱动会让新增工具的人
-    /// 必须先回答「worker 能不能调」。
+    /// `team_close` / `team_spawn` 外全通）逐格落地。写表而不是写「worker 被拒的三条」
+    /// 是因为**多给权限**是最难在 code review 里看出来的缺陷 —— 表驱动会让新增工具的
+    /// 人必须先回答「worker 能不能调」。
     #[test]
     fn matrix_is_enforced_cell_by_cell() {
-        let table: [(MemberRole, ToolName, bool); 16] = [
-            // ── Lead 列（8 格，全通过）──
+        let table: [(MemberRole, ToolName, bool); 18] = [
+            // ── Lead 列（9 格，全通过）──
             (MemberRole::Lead, ToolName::TeamStatus, true),
+            (MemberRole::Lead, ToolName::TeamSpawn, true),
             (MemberRole::Lead, ToolName::TeamSend, true),
             (MemberRole::Lead, ToolName::TaskCreate, true),
             (MemberRole::Lead, ToolName::TaskClaim, true),
@@ -98,8 +104,9 @@ mod tests {
             (MemberRole::Lead, ToolName::TaskList, true),
             (MemberRole::Lead, ToolName::TeamWait, true),
             (MemberRole::Lead, ToolName::TeamClose, true),
-            // ── Worker 列（8 格：只差 task_create / team_close）──
+            // ── Worker 列（9 格：只差 task_create / team_close / team_spawn）──
             (MemberRole::Worker, ToolName::TeamStatus, true),
+            (MemberRole::Worker, ToolName::TeamSpawn, false),
             (MemberRole::Worker, ToolName::TeamSend, true),
             (MemberRole::Worker, ToolName::TaskCreate, false),
             (MemberRole::Worker, ToolName::TaskClaim, true),
@@ -109,7 +116,7 @@ mod tests {
             (MemberRole::Worker, ToolName::TeamClose, false),
         ];
 
-        // 表格本身必须覆盖 16 格（8 工具 × 2 角色），否则「漏掉一格」会静默变成放行。
+        // 表格本身必须覆盖 18 格（9 工具 × 2 角色），否则「漏掉一格」会静默变成放行。
         assert_eq!(table.len(), ALL_TOOL_NAMES.len() * 2);
         for name in ALL_TOOL_NAMES {
             for role in [MemberRole::Lead, MemberRole::Worker] {

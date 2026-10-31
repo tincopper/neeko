@@ -22,6 +22,8 @@ use crate::agent::team::types::TeamTaskState;
 pub enum ToolName {
     /// 读团队状态（成员 + 板摘要）。
     TeamStatus,
+    /// 建成员（P2.5a：准入 + 落库，返回 `MemberCreated`；起进程在 2.5b）。
+    TeamSpawn,
     /// 队内消息。
     TeamSend,
     /// 派活。
@@ -42,8 +44,9 @@ pub enum ToolName {
 ///
 /// 与 [`TOOLS`] 故意分成两份而不是由 `TOOLS` 派生：只有「两份独立清单」才能让
 /// 「新增变体却忘了登记」变成测试失败，而不是被派生逻辑自动吞掉。
-pub const ALL_TOOL_NAMES: [ToolName; 8] = [
+pub const ALL_TOOL_NAMES: [ToolName; 9] = [
     ToolName::TeamStatus,
+    ToolName::TeamSpawn,
     ToolName::TeamSend,
     ToolName::TaskCreate,
     ToolName::TaskClaim,
@@ -65,19 +68,31 @@ pub struct ToolSpec {
     pub input_schema: &'static str,
 }
 
-/// 工具清单 —— **恰好 8 条**，与 [`ALL_TOOL_NAMES`] 一一对应（design §4.2）。
+/// 工具清单 —— **恰好 9 条**，与 [`ALL_TOOL_NAMES`] 一一对应（design §4.2）。
 ///
 /// `input_schema` 只声明本层**真的会读**的字段：Schema 里写一个 dispatch 不校验的参数，
 /// 就是向模型声明一个「传了也没用」的能力（红线 14 的同族违规）。
 ///
-/// `team_spawn`（P2.5，需要 PTY/env 注入与三档准入）**刻意不在表内**，由
-/// `deferred_tools_are_absent_from_the_catalogue` 钉住。
+/// `team_spawn` 随 P2.5a 进表：它的**决策部分**（三档准入、成员落库）已经在本层实现，
+/// `MemberCreated` 把「起 PTY / 注入 env / 写 MCP 配置」留给 2.5b 的接线段 ——
+/// 声明与实现同 diff，所以不再是「调了会失败的能力」。
+///
+/// 注意 `team_spawn` 的入参**没有** `prompt` / `channel`：
+///
+/// - 派活走任务板（`task_create`），不是在 spawn 时塞一段 prompt；
+/// - 档位与通道由准入表推导，**调用方不可声明**（design §4.4），所以连参数都不给。
 pub static TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: ToolName::TeamStatus,
         wire: "team_status",
         summary: "Read the team roster and a board summary (id/name/state/lease only, no transcripts).",
         input_schema: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
+    },
+    ToolSpec {
+        name: ToolName::TeamSpawn,
+        wire: "team_spawn",
+        summary: "Add one worker member (lead only). Returns the new member id, its derived admission tier and any capability that is still unverified.",
+        input_schema: r#"{"type":"object","properties":{"agent_id":{"type":"string","minLength":1},"name":{"type":"string","minLength":1},"workspace":{"type":"object","properties":{"kind":{"type":"string","enum":["shared","read_only","worktree"]},"path":{"type":"string","minLength":1}},"required":["kind"],"additionalProperties":false},"approval_policy":{"type":"string","enum":["interactive","queue","bypass"]},"model":{"type":"string","minLength":1}},"required":["agent_id","name","workspace"],"additionalProperties":false}"#,
     },
     ToolSpec {
         name: ToolName::TeamSend,
@@ -237,21 +252,20 @@ mod tests {
         }
     }
 
-    /// §4.2 一致性：`team_spawn` **此刻不得**出现在清单里。
+    /// §4.2 一致性：9 条工具**全部**在清单里（含 `team_spawn`）。
     ///
-    /// 它需要 PTY/env 注入与三档准入（P2.5）。提前登记 = 向模型
-    /// 声明一个「调了会失败」的能力（红线 14 的同族违规：声明必须与实现同 diff）。
-    /// 写显式断言而不是注释，是因为「顺手加一行」是最容易发生的越界。
+    /// 这条测试的前身断言 `team_spawn` **缺席**（P2.1/P2.4 期间：提前登记 = 向模型
+    /// 声明一个「调了会失败」的能力，红线 14 的同族违规）。P2.5a 把它的决策部分
+    /// 落地了（准入表 + 成员落库），所以护栏**翻转**：现在缺了它才是
+    /// 缺陷 —— 「工具存在但不可调用」与「能力已落地但清单里没有」同样致命。
     ///
-    /// 注：`team_wait` **已随 P2.4 落地**（[`crate::agent::team::wait`] + `dispatch::call_async`），
-    /// 所以这里只钉 `team_spawn`。
+    /// 真正起进程的那一步（PTY/env 注入）仍是 P2.5b，但那是**执行**，不是能力声明：
+    /// `team_spawn` 返回 `MemberCreated`（成员已落库）而非「进程已就绪」。
     #[test]
-    fn deferred_tools_are_absent_from_the_catalogue() {
-        assert!(lookup("team_spawn").is_none(), "team_spawn 属 P2.5");
-        // 反向断言：本步声明的 8 条一个都不能少（否则上面的 None 断言会因为
-        // 「lookup 是坏实现」而假绿）。
+    fn every_documented_tool_is_in_the_catalogue_including_team_spawn() {
         for wire in [
             "team_status",
+            "team_spawn",
             "team_send",
             "task_create",
             "task_claim",
@@ -262,6 +276,57 @@ mod tests {
         ] {
             assert!(lookup(wire).is_some(), "{wire} 必须可查");
         }
+        assert_eq!(TOOLS.len(), 9, "design §4.2 的工具清单是 9 条");
+        assert_eq!(lookup("team_spawn"), Some(ToolName::TeamSpawn));
+        // 反向：清单里不得有形如 `team_*` 的遗留别名（wire 名是协议）。
+        assert!(lookup("spawn").is_none(), "wire 名只能是 team_spawn");
+    }
+
+    /// `team_spawn` 的入参 Schema 必须与 dispatch 真的会读的字段逐字对齐（红线 14）。
+    ///
+    /// 保护的不变量：Schema 里多一个 `prompt` 而 dispatch 不读，就是向模型声明
+    /// 「传了也没用」；少一个 `workspace` 则会让成员静默落到共享 cwd（同 cwd 多成员
+    /// ⇒ 归因只能靠 env，design §5.4）。
+    #[test]
+    fn team_spawn_schema_matches_the_documented_shape() {
+        let spec = spec_for(ToolName::TeamSpawn);
+        assert_eq!(spec.wire, "team_spawn");
+        let schema: serde_json::Value = serde_json::from_str(spec.input_schema).unwrap();
+
+        assert_eq!(
+            schema["required"],
+            serde_json::json!(["agent_id", "name", "workspace"])
+        );
+        assert_eq!(schema["additionalProperties"], serde_json::json!(false));
+
+        let properties = schema["properties"]
+            .as_object()
+            .expect("team_spawn 必须有 properties");
+        let mut declared: Vec<&str> = properties.keys().map(String::as_str).collect();
+        declared.sort_unstable();
+        // 只有这 5 个参数：多一个都是「传了也没用」的声明。
+        assert_eq!(
+            declared,
+            ["agent_id", "approval_policy", "model", "name", "workspace"]
+        );
+
+        assert_eq!(
+            properties["approval_policy"]["enum"],
+            serde_json::json!(["interactive", "queue", "bypass"]),
+            "approval_policy 的 enum 必须与 `ApprovalPolicy` 的 snake_case 口径一致"
+        );
+        assert_eq!(
+            properties["workspace"]["required"],
+            serde_json::json!(["kind"])
+        );
+        assert_eq!(
+            properties["workspace"]["properties"]["kind"]["enum"],
+            serde_json::json!(["shared", "read_only", "worktree"])
+        );
+        assert_eq!(
+            properties["workspace"]["additionalProperties"],
+            serde_json::json!(false)
+        );
     }
 
     /// `team_wait` 的入参 Schema 必须与「实现真的会读的字段」逐字对齐（红线 14）。
@@ -318,6 +383,7 @@ mod tests {
         assert_eq!(lookup(""), None);
         // wire 字面量钉死：改名会让 CLI 侧 MCP 配置里的工具名对不上。
         assert_eq!(spec_for(ToolName::TeamStatus).wire, "team_status");
+        assert_eq!(spec_for(ToolName::TeamSpawn).wire, "team_spawn");
         assert_eq!(spec_for(ToolName::TeamSend).wire, "team_send");
         assert_eq!(spec_for(ToolName::TaskCreate).wire, "task_create");
         assert_eq!(spec_for(ToolName::TaskClaim).wire, "task_claim");

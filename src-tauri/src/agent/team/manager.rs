@@ -58,6 +58,9 @@ pub const EVENT_BLOCKED: &str = "blocked";
 /// 审计事件类别：成员信号引起的迁移。
 pub const EVENT_SIGNAL: &str = "signal";
 
+/// 成员凭证签发（审计只记"何时签的"，**不记明文也不记 hash**）。
+pub const EVENT_ISSUE_TOKEN: &str = "issue_token";
+
 /// 属于「有 owner 在干活」的任务态集合 —— 租约与审批只对这些态有意义。
 const fn is_active(state: TeamTaskState) -> bool {
     matches!(
@@ -680,6 +683,45 @@ impl TeamManager {
         Ok(task)
     }
 
+    /// 为成员签发一个新凭证：**明文只返回给调用方一次**，库里只留 `sha256`。
+    ///
+    /// # 为什么签发不在 `mcp::dispatch` 里
+    ///
+    /// 工具的返回值会进模型上下文（`tools/call` 的 `content[0].text`），进而进会话
+    /// transcript 与导出。明文 token 一旦出现在那里，就等于把成员凭证写进了对话历史 ——
+    /// 与 design §3.1「明文只在下发的 MCP 配置里出现一次」直接冲突。
+    ///
+    /// 所以 `team_spawn` 只建成员（`token_hash` 为空 ⇒ **不可认证**），凭证由执行层
+    /// （真正写 MCP 配置、真正起 PTY 的那一层）在这里取一次并用掉。
+    ///
+    /// # 重复调用
+    ///
+    /// 会**轮换**：旧凭证立即失效（旧 hash 被覆盖）。执行层重试时因此不会留下两把能用的钥匙。
+    pub fn issue_token(&self, member_id: &str, now: i64) -> Result<String, AppError> {
+        let mut inner = self.lock_writing();
+        let mut member = inner
+            .members
+            .get(member_id)
+            .cloned()
+            .ok_or_else(|| not_found(format!("member {member_id}")))?;
+
+        let token = crate::agent::team::identity::new_token();
+        member.token_hash = crate::agent::team::identity::hash_token(&token);
+        self.store.upsert_member(&member)?;
+        inner.members.insert(member.id.clone(), member.clone());
+
+        // 审计只记事实，不记明文也不记 hash：`team_event` 会被导出做排查。
+        self.audit(
+            &mut inner,
+            &member.team_id,
+            member_id,
+            EVENT_ISSUE_TOKEN,
+            Some(member_id.to_owned()),
+            Some(format!("rotated at={now}")),
+        )?;
+        Ok(token)
+    }
+
     /// 抬高成员的上报单调水位线（`seq` 去重，design §7.2 / AC12）。返回 `true` = 已接受。
     ///
     /// # 为什么比较在 manager 而不在观察者
@@ -946,9 +988,7 @@ const fn invalid(message: String) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::team::types::{
-        AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel, WorkerChannel,
-    };
+    use crate::agent::team::fixtures::{fixture_member, fixture_team};
     use std::path::PathBuf;
     use std::sync::{Arc, Barrier};
 
@@ -963,38 +1003,14 @@ mod tests {
     }
 
     fn team(id: &str) -> Team {
-        Team {
-            id: id.into(),
-            name: "T".into(),
-            lead_session_id: "sess".into(),
-            lead_agent_id: "claude".into(),
-            project_path: root(),
-            created_at: 1_700_000_000_000,
-            closed_at: None,
-            state: crate::agent::team::types::TeamState::Active,
-        }
+        fixture_team(id)
     }
 
     fn member(id: &str, name: &str, role: MemberRole, team_id: &str) -> TeamMember {
         TeamMember {
-            id: id.into(),
-            team_id: team_id.into(),
             name: name.into(),
             role,
-            agent_id: "claude".into(),
-            model: None,
-            session_id: None,
-            terminal_id: Some(format!("term-{name}")),
-            workspace: Workspace::Shared,
-            channel: WorkerChannel::Mcp,
-            result_channel: ResultChannel::Mcp,
-            tier: AdmissionTier::A,
-            approval_policy: ApprovalPolicy::Queue,
-            mcp_injection: McpInjection::Argv,
-            last_seq: 0,
-            state: MemberState::Spawned,
-            token_hash: "sha256:x".into(),
-            joined_at: 1,
+            ..fixture_member(id, team_id)
         }
     }
 
@@ -1396,6 +1412,30 @@ mod tests {
             .unwrap();
         assert_eq!(manager.verification(W1), Some(DoneVerification::Verified));
         assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Done);
+    }
+
+    /// 签发会**轮换**：旧凭证立即失效。
+    ///
+    /// 保护的不变量：执行层重试 `issue_token` 时不会留下两把能用的钥匙
+    /// （旧 hash 被覆盖，旧明文立刻解析不到主体）。
+    #[test]
+    fn issuing_twice_rotates_the_credential() {
+        let manager = seeded();
+        let first = manager.issue_token(W1, 1_000).expect("first");
+        let second = manager.issue_token(W1, 2_000).expect("second");
+        assert_ne!(first, second, "两次签发必须得到不同明文");
+
+        let stored = manager.member(W1).expect("member").token_hash;
+        assert_eq!(
+            stored,
+            crate::agent::team::identity::hash_token(&second),
+            "库里必须是最近一次的 hash"
+        );
+        assert_ne!(
+            stored,
+            crate::agent::team::identity::hash_token(&first),
+            "旧明文必须失效"
+        );
     }
 
     /// 硬规则：取证按任务重置 —— 上一件任务的 `Verified` 不得延续到新任务。

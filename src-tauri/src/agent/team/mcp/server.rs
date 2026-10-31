@@ -5,7 +5,7 @@
 //! 做三件事：**身份**（header token → `sha256` 查表 → [`TeamPrincipal`]）、
 //! **JSON-RPC 2.0 编解码**（单请求 / 单响应，无 SSE、无 batch）、**委派**给
 //! [`dispatch::call_async`]。不做：工具语义（`dispatch`）、授权（`authorize`）、状态迁移
-//! （`manager`）、启动 listener 与选端口（组合根，见 [`super::boot`]）。
+//! （`manager`）、启动 listener 与选端口（组合根，见 [`crate::app::boot`]）。
 //!
 //! # 为什么鉴权在 handler 里而不只靠门
 //!
@@ -75,7 +75,7 @@ pub const SERVER_ERROR: i64 = -32000;
 /// 未认证：header 缺失 / token 不对 / token 属于其它团队端点。
 pub const UNAUTHORIZED: i64 = -32001;
 
-/// 团队 MCP 端点状态。principal 表与 manager 都由调用方注入（组合根在 [`super::boot`]）。
+/// 团队 MCP 端点状态。principal 表与 manager 都由调用方注入（组合根在 [`crate::app::boot`]）。
 ///
 /// 两个字段都是 `Arc`：`TeamManager` 是团队域的权威状态（与面板 / commands 共享同一实例），
 /// principal 表由 `team_spawn` / `team_close` 增删（团队关闭即失效，design §3.1）。
@@ -339,18 +339,17 @@ fn reply(response: RpcResponse) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::team::fixtures::{fixture_member, fixture_team};
     use crate::agent::team::identity::hash_token;
     use crate::agent::team::mcp::schema::TOOLS;
     use crate::agent::team::store::TeamStore;
     use crate::agent::team::types::{
-        AdmissionTier, ApprovalPolicy, McpInjection, MemberRole, ResultChannel, Team, TeamMember,
-        TeamPrincipal, TeamState, WorkerChannel, Workspace,
+        AdmissionTier, MemberRole, Team, TeamMember, TeamPrincipal, WorkerChannel,
     };
     use crate::agent::team::TeamManager;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use serde_json::{json, Value};
-    use std::path::PathBuf;
     use std::sync::{Arc, RwLock};
     use tower::ServiceExt;
 
@@ -364,45 +363,20 @@ mod tests {
     const W1_TOKEN: &str = "w1-token-0002";
     const OUTSIDER_TOKEN: &str = "x9-token-0003";
 
-    /// 夹具路径一律由 `CARGO_MANIFEST_DIR` 推导（红线 13）。
-    fn root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    }
-
     fn team(id: &str) -> Team {
         Team {
-            id: id.into(),
             name: format!("team {id}"),
-            lead_session_id: "sess".into(),
-            lead_agent_id: "claude".into(),
-            project_path: root(),
-            created_at: 1_700_000_000_000,
-            closed_at: None,
-            state: TeamState::Active,
+            ..fixture_team(id)
         }
     }
 
     fn member(id: &str, name: &str, role: MemberRole, team_id: &str, token: &str) -> TeamMember {
         TeamMember {
-            id: id.into(),
-            team_id: team_id.into(),
             name: name.into(),
             role,
-            agent_id: "claude".into(),
-            model: None,
-            session_id: None,
-            terminal_id: Some(format!("term-{name}")),
-            workspace: Workspace::Shared,
-            channel: WorkerChannel::Mcp,
-            result_channel: ResultChannel::Mcp,
-            tier: AdmissionTier::A,
-            approval_policy: ApprovalPolicy::Queue,
-            mcp_injection: McpInjection::Argv,
-            last_seq: 0,
-            state: crate::agent::team::types::MemberState::Spawned,
             // 落库只存 hash（design §3.1）—— 夹具照同一口径，明文只出现在请求里。
             token_hash: hash_token(token),
-            joined_at: 1,
+            ..fixture_member(id, team_id)
         }
     }
 
@@ -647,6 +621,9 @@ mod tests {
     }
 
     /// 未知工具 → `-32000`，且 message 里列出**已知工具名**（模型据此自我纠正）。
+    ///
+    /// `team_spawn` 已随 P2.5a 进清单，所以这里用一个真的不存在的 wire
+    /// （`team_hire`）—— 下面对 `TOOLS` 的遍历会把它挡成一个「漏了团队工具」的错。
     #[test]
     fn unknown_tool_maps_to_server_error_with_known_names() {
         let runtime = tokio::runtime::Runtime::new().expect("runtime");
@@ -654,7 +631,7 @@ mod tests {
             let (_, response) = post(
                 &state(),
                 Some(LEAD_TOKEN),
-                request("tools/call", json!({"name": "team_spawn", "arguments": {}})),
+                request("tools/call", json!({"name": "team_hire", "arguments": {}})),
             )
             .await;
             assert_eq!(error_code(&response), -32000);

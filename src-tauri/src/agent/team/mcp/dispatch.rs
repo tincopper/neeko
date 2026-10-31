@@ -10,15 +10,21 @@
 //! 3. **入参校验**（存在性 / 归属 / 状态闭集）后**委派**给 `TeamManager` 的既有方法。
 //!
 //! 不做：状态机裁决（`manager`/`completion`）、租约计算（`lease`）、字节投递
-//! （`team_send` 的 `Pty`/`Mcp` 通道在 P2.5）。`team_send` 因此只返回
+//! （`team_send` 的 `Pty`/`Mcp` 通道在 P2.5b）。`team_send` 因此只返回
 //! [`ToolReply::NeedsDelivery`] —— 本函数**不写任何字节**。
+//! 同理 `team_spawn` 只**决定**（准入校验 + 成员落库 + 凭证签发交执行层），返回
+//! [`ToolReply::MemberCreated`]；起 PTY / 注入 env / 写 MCP 配置是 2.5b 的接线段。
+//! 回复只携带「队长能行动的信息」—— 执行参数从成员行推导，不随回复走（见该变体的文档）。
 //!
-//! # 两个入口（P2.4 起）
+//! # 入口：生产只有 [`call_async`]
 //!
-//! [`call`] 是同步入口，[`call_async`] 是多一条阻塞分支的异步入口。`team_wait`
-//! 必须在**工具调用内**阻塞（design §4.3：队长物理上无法边等边干活），而阻塞需要
-//! `.await`。两者共用同一份翻译 / 授权 / 同步分支：复制第二份授权矩阵会让
-//! 「worker 能不能调 X」出现两个会漂移的答案。
+//! `team_wait` 必须在**工具调用内**阻塞（design §4.3：队长物理上无法边等边干活），
+//! 而阻塞需要 `.await`；同时写库工具必须进阻塞池（红线 3）。两条都由 [`call_async`]
+//! 兑现，所以它是唯一的生产入口。同步的 [`call`] 是 `#[cfg(test)]` —— 留一个能在
+//! async 上下文直接调的同步入口，等于给「把 SQLite 写回 tokio worker」留后门。
+//!
+//! 两者共用同一份翻译 / 授权 / 同步分支：复制第二份授权矩阵会让「worker 能不能调 X」
+//! 出现两个会漂移的答案。
 //!
 //! # 载荷契约（红线 4）
 //!
@@ -35,12 +41,13 @@
 //! 错误是写给**队长模型**看的提示，不是给日志看的状态码。所以每条错误都必须说清
 //! 「哪个工具、哪个入参、允许什么」。这也是为什么本层不用 `AppError::Unknown`。
 
+use crate::agent::team::admission::{admission_for, refusal, tier_of};
 use crate::agent::team::authorize::authorize;
 use crate::agent::team::manager::{now_millis, TeamManager};
 use crate::agent::team::mcp::schema::{self, spec_for, ToolName, UPDATABLE_STATES};
 use crate::agent::team::types::{
-    MemberRole, MemberState, TeamMember, TeamPrincipal, TeamState, TeamTask, TeamTaskState,
-    Workspace,
+    AdmissionTier, ApprovalPolicy, MemberRole, MemberState, TeamMember, TeamPrincipal, TeamState,
+    TeamTask, TeamTaskState, Workspace,
 };
 use crate::agent::team::wait::{WaitOutcome, WaitTargets, WaitUntil};
 use crate::common::error::AppError;
@@ -57,9 +64,9 @@ pub const WAIT_TIMEOUT_MAX_SECS: i64 = 1800;
 
 /// 一次工具调用的结果。
 ///
-/// 变体即「调用方接下来该干什么」：`NeedsDelivery` 需要投递、`Closed` 需要收尾 PTY、
-/// 其余是纯数据。**没有 `Text(String)` 变体是刻意的** —— 自由文本会立刻退化成
-/// transcript 通道（红线 4）。
+/// 变体即「调用方接下来该干什么」：`MemberCreated` 需要起进程、`NeedsDelivery` 需要投递、
+/// `Closed` 需要收尾 PTY，其余是纯数据。**没有 `Text(String)` 变体是刻意的** ——
+/// 自由文本会立刻退化成 transcript 通道（红线 4）。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolReply {
@@ -69,13 +76,42 @@ pub enum ToolReply {
     Tasks(Vec<TeamTask>),
     /// `task_create` / `task_claim` / `task_update`：单个任务的最新态。
     Task(TeamTask),
-    /// 成员实体。
+    /// `team_spawn`：成员已落库，**待执行层起进程**（P2.5b 的接线段）。
     ///
-    /// 本步**没有**工具产出它：`team_spawn`（唯一会返回新成员的调用）属 P2.5。
-    /// 保留变体是因为「spawn 的返回值形状」已在 design §4.2 定死，先给出类型
-    /// 让 P2.5 只需补调度分支。
-    Member(TeamMember),
-    /// `team_send`：已通过全部校验，**待投递**（P2.5 的 `Pty`/`Mcp` 通道执行）。
+    /// 两相位与 `team_send → NeedsDelivery` 同构：本层不做任何进程副作用，
+    /// 所以 PTY 起不来时成员是「已落库、可查询、可清理」的，而不是半生不死。
+    ///
+    /// # 为什么只有三个字段（执行参数不随回复走）
+    ///
+    /// 这条回复会进模型上下文（`tools/call` 的 `content[0].text`），所以它只应携带
+    /// **收件人能行动的信息**：建出了谁（`member_id`）、它属于哪一档（`tier`）、
+    /// 哪些能力没验过（`unverified`）。
+    ///
+    /// 执行层需要的东西（env / 注入方式 / 传输 / 旁路参数）**全部可以从已落库的行重新
+    /// 推导**：`identity::member_env(team_id, member_id)` 由两个 id 算出，
+    /// `admission_for(member.agent_id)` 给出注入方式与旁路参数，`member.approval_policy`
+    /// 决定要不要追加。两个理由：
+    ///
+    /// 1. 把推导结果再传一遍 = 给同一件事实造第二个源（成员行改过之后，回复里的副本就错了）；
+    /// 2. 同一个文件里已经写过「Schema 里多一个 dispatch 不读的参数，就是向模型声明一条
+    ///    传了也没用的能力」—— **输出侧同理**：多一个接收方无法行动的字段，就是在邀请
+    ///    模型去重放它。
+    ///
+    /// 机器判据：`member_row_carries_everything_the_executor_needs`。
+    #[serde(rename_all = "camelCase")]
+    MemberCreated {
+        /// 成员 id（`{name}@{team}`）。
+        ///
+        /// **不含 token**：工具的返回值会进模型上下文，明文凭证不得经过模型。
+        /// 执行层在拿到 `member_id` 后调 `TeamManager::issue_token` 取一次并用掉
+        /// （见该方法与 `team_spawn` 返回处的注释）。
+        member_id: String,
+        /// 准入档位（由准入表推导，调用方不可声明）。
+        tier: AdmissionTier,
+        /// 未实测确认的点，原样回给队长（让他知道自己在用不确定的能力）。
+        unverified: Vec<String>,
+    },
+    /// `team_send`：已通过全部校验，**待投递**（P2.5b 的 `Pty`/`Mcp` 通道执行）。
     #[serde(rename_all = "camelCase")]
     NeedsDelivery {
         /// 目标成员 id（队内）。
@@ -222,6 +258,7 @@ fn dispatch_tool(
 ) -> Result<ToolReply, AppError> {
     match tool {
         ToolName::TeamStatus => status(manager, principal),
+        ToolName::TeamSpawn => spawn(manager, principal, args),
         ToolName::TeamSend => send(manager, principal, args),
         ToolName::TaskCreate => create(manager, principal, args),
         ToolName::TaskClaim => claim(manager, principal, args),
@@ -295,6 +332,81 @@ fn send(
     Ok(ToolReply::NeedsDelivery {
         to: target.id,
         message: message.to_owned(),
+    })
+}
+
+/// `team_spawn`：**准入 + 落库**（起进程在 2.5b 的接线段）。
+///
+/// # 顺序即契约
+///
+/// 授权已由 [`call_async`] 先做（仅 Lead）→ 准入查表 → 名字合法性 → 落库（重名
+/// 由 `add_member` 报）。先准入再落库很重要：拒绝路径上不能留下
+/// 任何成员行（否则队长的花名册里会多出一个永远不会跑的名字）。
+///
+/// # 为什么只允许 spawn worker
+///
+/// 队长是**已有会话**（`Team.lead_session_id`），不是 spawn 出来的。允许 spawn
+/// 一个 lead 会造出第二个队长 —— 而授权矩阵里「Lead 全通」于是被复制了一份。
+/// 换队长是另一件事（本期没有）。
+///
+/// # 返回值只描述「队长能行动的事」
+///
+/// 这里**不**把 env / 注入方式 / 传输 / 旁路参数算一遍塞进回复：那些是执行层的装配
+/// 参数，全部可以从刚落库的成员行重新推导（见 [`ToolReply::MemberCreated`] 的文档）。
+/// 判据：`member_row_carries_everything_the_executor_needs`。
+fn spawn(
+    manager: &TeamManager,
+    principal: &TeamPrincipal,
+    args: &serde_json::Value,
+) -> Result<ToolReply, AppError> {
+    let wire = spec_for(ToolName::TeamSpawn).wire;
+    let agent_id = required_str(wire, args, "agent_id")?.trim().to_owned();
+    // 准入：**数据查表**（红线 15）。`None` = 不可作成员；`refusal` 给出可读理由
+    // 与可用 id 清单，让队长能自己纠正。
+    let admission =
+        admission_for(&agent_id).ok_or_else(|| AppError::NotFound(refusal(&agent_id)))?;
+
+    let name = member_name(wire, required_str(wire, args, "name")?)?;
+    let workspace = spawn_workspace(wire, args)?;
+    let approval_policy = approval_policy_arg(wire, args)?;
+    let model = model_arg(wire, args)?;
+
+    let member_id = format!("{name}@{}", principal.team_id);
+    let member = TeamMember {
+        id: member_id.clone(),
+        team_id: principal.team_id.clone(),
+        name: name.clone(),
+        role: MemberRole::Worker,
+        agent_id,
+        model,
+        // `session_id` 是 Chat 成员的位置（design §7.4，本期恒 None）；
+        // `terminal_id` 由 2.5b 起 PTY 后回填 —— 本层不得声称进程已就绪。
+        session_id: None,
+        terminal_id: None,
+        workspace,
+        channel: admission.channel(),
+        result_channel: admission.result_channel(),
+        tier: tier_of(admission),
+        approval_policy,
+        mcp_injection: admission.mcp_injection,
+        last_seq: 0,
+        state: MemberState::Spawned,
+        // 空 hash ⇒ **不可认证**：凭证由执行层调 `issue_token` 取一次，
+        // 明文因此永远不经过模型上下文（见 `ToolReply::MemberCreated` 的文档）。
+        token_hash: String::new(),
+        joined_at: now_millis(),
+    };
+    // 重名 / 团队不存在都由 `add_member` 报（成员 id 唯一性只在一处裁决）。
+    manager.add_member(member)?;
+
+    Ok(ToolReply::MemberCreated {
+        member_id,
+        tier: tier_of(admission),
+        unverified: admission
+            .unverified
+            .iter()
+            .map(|note| (*note).to_owned())
+            .collect(),
     })
 }
 
@@ -541,7 +653,8 @@ fn wait_timeout(wire: &str, args: &serde_json::Value) -> Result<std::time::Durat
 }
 
 /// `team_close`：协商式关机的**校验部分**（队长）。
-/// 真正收尾（关 PTY → 归档成员）需要 terminal 域编排，属 P2.5。本层返回的是
+/// 真正收尾（关 PTY → 归档成员 → 处理 worktree）需要 terminal 域编排，属于
+/// **P4 §4.2「协商式清理」**（不是 2.5b 的接线段 —— 那里只起进程）。本层返回的是
 /// 「已校验的关闭目标」，**不**声称进程已死 —— 所以对已 `Dead` 的成员直接 `Conflict`，
 /// 而不是又返回一个 `Closed` 让调用方“再关一次”。
 fn close(
@@ -553,7 +666,7 @@ fn close(
     let Some(member_id) = optional_str(wire, args, "member_id")? else {
         return Err(AppError::Unsupported(format!(
             "{wire} closes one member at a time; pass `member_id`. \
-             Whole-team close needs `TeamState::Closing` (P2.5)"
+             Whole-team close is not implemented yet (it needs the `closing` state machine)"
         )));
     };
     if args.get("graceful").is_some_and(|v| !v.is_boolean()) {
@@ -672,15 +785,192 @@ fn parse_updatable_state(wire: &str, raw: &str) -> Result<TeamTaskState, AppErro
     )))
 }
 
-/// 可选的 `workspace`：本步只实现 `shared` / `read_only`（`worktree` 属 P4，需要建树）。
+/// 可选的 `workspace`（`task_create` 的**字符串**形态）：本步只接受 `shared` / `read_only`。
+///
+/// `worktree` 需要先建树（P4 §4.1），而**字符串形态无法携带路径** —— 所以这里不是
+/// "忘了支持"，而是"这个入参形状表达不了"。需要隔离时用 `team_spawn` 的对象形态
+/// （它带 `path`），不要给 `task_create` 加一个没有路径的 `worktree`。
 fn workspace_arg(wire: &str, args: &serde_json::Value) -> Result<Workspace, AppError> {
     match optional_str(wire, args, "workspace")? {
         None | Some("shared") => Ok(Workspace::Shared),
         Some("read_only") => Ok(Workspace::ReadOnly),
         Some(other) => Err(AppError::InvalidInput(format!(
-            "`workspace` for {wire} accepts `shared` or `read_only` (worktree lands with P4 \
-             isolation), got `{other}`"
+            "`workspace` for {wire} accepts `shared` or `read_only`; an isolated worktree needs a \
+             path, so pass it to `team_spawn` instead; got `{other}`"
         ))),
+    }
+}
+
+/// 拒绝控制字符（`\0` / `\n` / `\r` / `\t` …）。
+///
+/// # 为什么这是一条**跨字段**的判据
+///
+/// 这里校验的三个字符串最终都会离开 JSON 世界，进入不能再转义的地方：
+///
+/// | 落点 | 谁 | 不可转义的原因 |
+/// | --- | --- | --- |
+/// | env | `NEEKO_TEAM_MEMBER_ID`（`name`） | OS 层 env 不允许 NUL，`Command::env` 直接 panic |
+/// | argv | `--model <value>`、CLI 启动参数 | 同上，`Command::arg` 遇到 NUL 也 panic |
+/// | 文件系统 | `workspace.path` | 路径里的 NUL 无法表示为 `CString` |
+/// | 单行日志 / sentinel | 全部三者 | `\n` 会把一行劈成两行，扫描器与日志解析同时错位 |
+///
+/// 同一个判据、同一句错误文案 —— 三个字段各自复制一份的话，未来加第四个注入点时
+/// 必然漏一处，而漏掉的表现是 2.5b 在跨平台 spawn 时 panic。
+fn reject_control_chars(wire: &str, field: &str, value: &str) -> Result<(), AppError> {
+    if value.chars().any(char::is_control) {
+        return Err(AppError::InvalidInput(format!(
+            "`{field}` for {wire} must not contain control characters (a NUL cannot be \
+             passed to an env var, an argv element or a path; a newline breaks one-line \
+             logs and sentinel scanning); got `{}`",
+            value.escape_debug()
+        )));
+    }
+    Ok(())
+}
+
+/// 成员名最大字符数（**标识符**预算，不是标题预算）。
+///
+/// 名字同时是：`TeamMember.id` 的前半（`{name}@{team}`）、`NEEKO_TEAM_MEMBER_ID` 的 env 值、
+/// 日志行的一段、`team_status` 花名册里的一格。三条都是「单行小载荷」，所以给它一个
+/// 与通知标题（`MAX_TITLE_CHARS = 80`）同量级的上限；超出就**拒绝**而不是截断 ——
+/// 截断会把两个不同的名字悄悄压成同一个 id。
+const MEMBER_NAME_MAX_CHARS: usize = 64;
+
+/// 成员名：**入口即 sanitize**（design §5.4「`{name}@{team}` 落库前 sanitize」）。
+///
+/// 三条判据，每条都对应一个具体的坏结果：
+///
+/// | 判据 | 否则会发生什么 |
+/// | --- | --- |
+/// | 不含 `@` | `{name}@{team}` 的解析错位 —— 身份可伪造（`evil@w1@tm_1` 与 `evil` 前缀混淆） |
+/// | 不含控制字符 | `\0` 会让 2.5b 的 `Command::env` **panic**（OS 层面 env 不允许 NUL）；`\n`/`\r` 会把一行日志与 sentinel 行劈成两行 |
+/// | ≤ [`MEMBER_NAME_MAX_CHARS`] | 一个模型随手写的长串把花名册与每次 `tools/call` 的载荷撑大（同一件事实在 N 个成员上叠加） |
+///
+/// **非空不在这里判**：[`required_str`] 已经对每个字符串入参做了「trim 后非空」，
+/// 再判一次就是给同一条规则造第二个源（而且那条分支从公开路径到不了）。
+///
+/// 措辞是「拒绝」不是「清洗」：这里的字符串是**标识符**，静默改写会让队长拿到的 id
+/// 与它请求的名字不一致，而它下一步还要用这个 id 派活。
+fn member_name(wire: &str, raw: &str) -> Result<String, AppError> {
+    let name = raw.trim();
+    if name.contains('@') {
+        return Err(AppError::InvalidInput(format!(
+            "`name` for {wire} must not contain `@`: member ids are `{{name}}@{{team}}`, \
+             so the name `{name}` would make the id ambiguous"
+        )));
+    }
+    reject_control_chars(wire, "name", name)?;
+    let chars = name.chars().count();
+    if chars > MEMBER_NAME_MAX_CHARS {
+        return Err(AppError::InvalidInput(format!(
+            "`name` for {wire} is {chars} characters; the limit is {MEMBER_NAME_MAX_CHARS} \
+             (the name is the first half of the member id, an env value and a one-line label)"
+        )));
+    }
+    Ok(name.to_owned())
+}
+
+/// `workspace`（**对象**，与 `task_create` 的字符串形态不同）：`kind` 必填，
+/// `worktree` 还必须有**绝对**的 `path`。
+///
+/// 缺 `path` 时报错而不是降级成 `Shared`：那是「以为在做隔离的活，实际与别的成员
+/// 共用同一个 cwd」，而共享 cwd 下的 hook 归因只能靠 env（design §5.4）。
+/// `path` 还要过 [`reject_control_chars`]（NUL 无法表示为文件系统路径）。
+///
+/// # 为何本层就要求绝对路径（红线 8 的入口一半）
+///
+/// 本层不触盘（不 `canonicalize`、不校验是否落在团队根下）——那是执行层在**消费**
+/// 这个路径之前的事。但“消费”不会是别的：2.5b 用它 `git worktree` / 起 PTY，
+/// 而那里的相对路径会按进程 cwd 解析。所以相对路径在这里就是一条**已定的错误**，
+/// 只是失败点被推迟到很远的地方。放到入口拒，错误信息才能说清“我期望什么”。
+///
+/// 执行层的剩余义务（必须写在它的文档里）：`canonicalize()` + 校验落在团队
+/// `project_path` 之下。
+fn spawn_workspace(wire: &str, args: &serde_json::Value) -> Result<Workspace, AppError> {
+    let Some(value) = args.get("workspace") else {
+        return Err(AppError::InvalidInput(format!(
+            "missing required argument `workspace` for {wire}; pass \
+             {{\"kind\":\"shared\"}}, {{\"kind\":\"read_only\"}} or \
+             {{\"kind\":\"worktree\",\"path\":\"…\"}}"
+        )));
+    };
+    let Some(object) = value.as_object() else {
+        return Err(AppError::InvalidInput(format!(
+            "`workspace` for {wire} must be an object with a `kind`"
+        )));
+    };
+    let kind = match object.get("kind") {
+        Some(serde_json::Value::String(kind)) => kind.as_str(),
+        Some(_) => {
+            return Err(AppError::InvalidInput(format!(
+                "`workspace.kind` for {wire} must be a string"
+            )))
+        }
+        None => {
+            return Err(AppError::InvalidInput(format!(
+                "missing `workspace.kind` for {wire}"
+            )))
+        }
+    };
+    match kind {
+        "shared" => Ok(Workspace::Shared),
+        "read_only" => Ok(Workspace::ReadOnly),
+        "worktree" => match object.get("path") {
+            Some(serde_json::Value::String(path)) if !path.trim().is_empty() => {
+                reject_control_chars(wire, "workspace.path", path)?;
+                let path = std::path::PathBuf::from(path.trim());
+                if !path.is_absolute() {
+                    return Err(AppError::InvalidInput(format!(
+                        "`workspace.path` for {wire} must be absolute; `{}` would be resolved \
+                         against the process cwd when the worktree is created",
+                        path.display()
+                    )));
+                }
+                Ok(Workspace::Worktree { path })
+            }
+            _ => Err(AppError::InvalidInput(format!(
+                "`workspace.path` for {wire} is required when `kind` is `worktree`"
+            ))),
+        },
+        other => Err(AppError::InvalidInput(format!(
+            "`workspace.kind` for {wire} must be one of shared, read_only, worktree; got `{other}`"
+        ))),
+    }
+}
+
+/// 可选的 `approval_policy`（缺省 = `Queue`，design §6.1：不冒泡进队长对话）。
+///
+/// 走 serde 而不是手写 `match`：枚举的 wire 字面量只有一个源（
+/// `types::tests::enum_wire_names_are_the_documented_snake_case` 钉着），手写一份
+/// 字符串匹配就是给同一个闭集造第二个名字。
+fn approval_policy_arg(wire: &str, args: &serde_json::Value) -> Result<ApprovalPolicy, AppError> {
+    let Some(raw) = optional_str(wire, args, "approval_policy")? else {
+        return Ok(ApprovalPolicy::Queue);
+    };
+    serde_json::from_value::<ApprovalPolicy>(serde_json::Value::String(raw.to_owned())).map_err(
+        |_| {
+            AppError::InvalidInput(format!(
+                "unknown `approval_policy` `{raw}` for {wire}; known: interactive, queue, bypass"
+            ))
+        },
+    )
+}
+
+/// 可选的 `model`：缺 = 用该 agent 的默认；空白串拒绝（避免把拼错当成「没给」）。
+///
+/// 控制字符同样拒绝：这个值最终会作为 `--model <value>` 进 argv，而 NUL 会让
+/// `Command::arg` panic（见 [`reject_control_chars`]）。
+fn model_arg(wire: &str, args: &serde_json::Value) -> Result<Option<String>, AppError> {
+    match optional_str(wire, args, "model")? {
+        None => Ok(None),
+        Some(raw) if raw.trim().is_empty() => Err(AppError::InvalidInput(format!(
+            "`model` for {wire} must not be empty (omit it to use the agent default)"
+        ))),
+        Some(raw) => {
+            let model = raw.trim();
+            reject_control_chars(wire, "model", model)?;
+            Ok(Some(model.to_owned()))
+        }
     }
 }
 
@@ -769,13 +1059,14 @@ fn lease_remaining_secs(tasks: &[TeamTask], member_id: &str, now: i64) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::team::fixtures::{fixture_member, fixture_team};
+    use crate::agent::team::identity;
     use crate::agent::team::manager::TeamManager;
     use crate::agent::team::store::TeamStore;
     use crate::agent::team::types::{
         AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel, Team, WorkerChannel,
     };
     use serde_json::json;
-    use std::path::PathBuf;
 
     const TEAM: &str = "tm_1";
     const OTHER: &str = "tm_2";
@@ -784,44 +1075,19 @@ mod tests {
     const W2: &str = "w2@tm_1";
     const OUTSIDER: &str = "x9@tm_2";
 
-    /// 夹具路径一律由 `CARGO_MANIFEST_DIR` 推导（红线 13）。
-    fn root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    }
-
     fn team(id: &str) -> Team {
         Team {
-            id: id.into(),
             name: format!("team {id}"),
-            lead_session_id: "sess".into(),
-            lead_agent_id: "claude".into(),
-            project_path: root(),
-            created_at: 1_700_000_000_000,
-            closed_at: None,
-            state: TeamState::Active,
+            ..fixture_team(id)
         }
     }
 
     fn member(id: &str, name: &str, role: MemberRole, team_id: &str) -> TeamMember {
         TeamMember {
-            id: id.into(),
-            team_id: team_id.into(),
             name: name.into(),
             role,
-            agent_id: "claude".into(),
-            model: None,
-            session_id: None,
-            terminal_id: Some(format!("term-{name}")),
-            workspace: Workspace::Shared,
-            channel: WorkerChannel::Mcp,
-            result_channel: ResultChannel::Mcp,
-            tier: AdmissionTier::A,
-            approval_policy: ApprovalPolicy::Queue,
-            mcp_injection: McpInjection::Argv,
-            last_seq: 0,
-            state: MemberState::Spawned,
             token_hash: "deadbeef".into(),
-            joined_at: 1,
+            ..fixture_member(id, team_id)
         }
     }
 
@@ -887,18 +1153,21 @@ mod tests {
     ///
     /// 保护的不变量：模型调错名字时必须能自我纠正（列出已知工具），
     /// 否则它会一直重试同一个拼错的名字。
+    ///
+    /// `team_spawn` 已随 P2.5a 进清单，所以这里换一个**真的**不存在的 wire
+    /// （`team_hire`）—— 断言里的 9 条必须与 §4.2 的工具清单一字不差。
     #[test]
     fn unknown_wire_is_not_found_and_lists_known_tools() {
         let manager = seeded();
-        // `team_spawn` 是仍在下一个阶段（P2.5）的工具，所以它是本步最真实的「未知 wire」。
-        let err = call(&manager, &lead(), "team_spawn", &json!({})).unwrap_err();
+        let err = call(&manager, &lead(), "team_hire", &json!({})).unwrap_err();
         let AppError::NotFound(message) = err else {
             panic!("未知 wire 必须是 NotFound，实际 {err:?}");
         };
-        assert!(message.contains("team_spawn"), "{message}");
-        // §4.2 一致性：清单里的 8 条都必须出现在错误信息里，模型才能照抄。
+        assert!(message.contains("team_hire"), "{message}");
+        // §4.2 一致性：清单里的 9 条都必须出现在错误信息里，模型才能照抄。
         for wire in [
             "team_status",
+            "team_spawn",
             "team_send",
             "task_create",
             "task_claim",
@@ -1120,7 +1389,10 @@ mod tests {
         }
     }
 
-    /// 整队关闭需要 `closing` 状态机（P2.5）→ 本步必须 `Unsupported` 而不是静默成功。
+    /// 整队关闭需要 `closing` 状态机（P4 §4.2）→ 本步必须 `Unsupported` 而不是静默成功。
+    ///
+    /// 错误文案面向**队长模型**：它只该读到「现在还不能整队关，请逐个关」，不该读到
+    /// 本仓的阶段编号（那对模型是噪声，也无法行动）。
     #[test]
     fn team_close_without_member_id_is_unsupported() {
         let manager = seeded();
@@ -1715,5 +1987,497 @@ mod tests {
             .unwrap();
         let err = call(&manager, &lead(), "team_close", &json!({"member_id": W2})).unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // P2.5a：`team_spawn` 的决策部分（准入 + 落库；起进程在 2.5b）
+    // ───────────────────────────────────────────────────────────────
+
+    /// `MemberCreated` 的字段摊平成测试结构，让每条断言都能点名自己保护哪条不变量。
+    #[derive(Debug)]
+    struct Spawned {
+        member_id: String,
+        tier: AdmissionTier,
+        unverified: Vec<String>,
+    }
+
+    /// `team_spawn` 的最小合法入参。
+    fn spawn_args(agent_id: &str, name: &str) -> serde_json::Value {
+        json!({"agent_id": agent_id, "name": name, "workspace": {"kind": "shared"}})
+    }
+
+    /// 队长 spawn 成功，并把 `MemberCreated` 摊平。
+    fn spawn_ok(
+        manager: &TeamManager,
+        principal: &TeamPrincipal,
+        args: &serde_json::Value,
+    ) -> Spawned {
+        match call(manager, principal, "team_spawn", args) {
+            Ok(ToolReply::MemberCreated {
+                member_id,
+                tier,
+                unverified,
+            }) => Spawned {
+                member_id,
+                tier,
+                unverified,
+            },
+            other => panic!("team_spawn 必须返回 MemberCreated，实际 {other:?}"),
+        }
+    }
+
+    /// Lead spawn 一个 A 档成员：成员落库、状态 `Spawned`、库里只有 hash。
+    ///
+    /// 保护的不变量（design §5.1 的两相位）：`team_spawn` 只**决定**（准入 + 落库），
+    /// **不**起进程 —— 所以返回的是 `MemberCreated`（成员已落库、待执行层起进程），
+    /// 成员此刻是 `Spawned` 而不是 `Running`。若这里直接写 `Running`，2.5b 的 PTY 失败
+    /// 就会留下一个“看起来在跑”但没有进程的成员。
+    #[test]
+    fn lead_spawns_a_worker_and_the_member_lands_like_a_decision() {
+        let manager = seeded();
+        let mut args = spawn_args("claude-code", " w9 ");
+        args["model"] = json!("opus");
+        let spawned = spawn_ok(&manager, &lead(), &args);
+
+        // id 形如 `{name}@{team}` —— 名字首尾空白被 trim。
+        assert_eq!(spawned.member_id, "w9@tm_1");
+
+        let member = manager
+            .member("w9@tm_1")
+            .expect("成员必须落库（内存 + store）");
+        assert_eq!(member.team_id, TEAM);
+        assert_eq!(member.name, "w9");
+        // 本步只允许 spawn worker：队长是已有会话，不是 spawn 出来的。
+        assert_eq!(member.role, MemberRole::Worker);
+        assert_eq!(member.agent_id, "claude-code");
+        assert_eq!(member.model.as_deref(), Some("opus"));
+        assert_eq!(member.state, MemberState::Spawned);
+        assert_eq!(member.tier, AdmissionTier::A);
+        assert_eq!(member.channel, WorkerChannel::Mcp);
+        assert_eq!(member.result_channel, ResultChannel::Mcp);
+        assert_eq!(member.mcp_injection, McpInjection::Argv);
+        // 默认审批策略是 Queue（design §6.1：不冒泡进队长对话）。
+        assert_eq!(member.approval_policy, ApprovalPolicy::Queue);
+        assert_eq!(member.last_seq, 0);
+        // 进程尚未起：没有 terminal 关联。
+        assert_eq!(member.terminal_id, None);
+        assert_eq!(member.workspace, Workspace::Shared);
+        // 凭证尚未签发：空 hash ⇒ 不可认证。明文由执行层取一次，不经过模型上下文。
+        assert!(
+            member.token_hash.is_empty(),
+            "spawn 不得顺带签发凭证（否则明文会进 tools/call 的返回，进而进会话历史）"
+        );
+
+        // 回复只带「队长能行动的信息」：没有 env、没有凭证、没有执行参数。
+        assert_eq!(spawned.tier, AdmissionTier::A);
+        assert!(spawned.unverified.is_empty(), "{spawned:?}");
+    }
+
+    /// **执行层的输入全部可从成员行重新推导**（所以它们不必随工具返回走）。
+    ///
+    /// 保护的不变量：`ToolReply::MemberCreated` 只带 `member_id` / `tier` / `unverified`，
+    /// 而 2.5b 装配 PTY 需要的一切（env、MCP 注入方式、传输、旁路参数）都必须能从
+    /// **已落库的那一行** 算回来。本用例把四个推导入口各走一遍：
+    ///
+    /// | 执行层需要 | 推导式 |
+    /// | --- | --- |
+    /// | env | `identity::member_env(team_id, member_id)` |
+    /// | 注入方式 / 传输 | `admission_for(member.agent_id)` |
+    /// | 旁路参数 | 上一行 + `member.approval_policy` |
+    ///
+    /// 反证形式：只要哪天有人把某个字段从 `TeamMember` 上删了（或成需求时忘了落库），
+    /// 这里就红 —— 而不是等到 2.5b 在运行时发现“推不出来”。
+    #[test]
+    fn member_row_carries_everything_the_executor_needs() {
+        let manager = seeded();
+        let mut args = spawn_args("claude-code", "w9");
+        args["approval_policy"] = json!("bypass");
+        let spawned = spawn_ok(&manager, &lead(), &args);
+        let member = manager.member(&spawned.member_id).expect("member");
+
+        // ① env：只由两个 id 决定（不依赖任何请求态）。
+        let env = identity::member_env(&member.team_id, &member.id);
+        let keys: Vec<&str> = env.iter().map(|(key, _)| key.as_str()).collect();
+        assert!(keys.contains(&identity::TEAM_ID_ENV), "{env:?}");
+        assert!(keys.contains(&identity::TEAM_MEMBER_ID_ENV), "{env:?}");
+
+        // ② + ③ 注入方式 / 传输 / 旁路参数：全部从准入表 + 成员行算出。
+        let admission = admission_for(&member.agent_id).expect("member.agent_id 必须在准入表里");
+        assert_eq!(member.mcp_injection, admission.mcp_injection);
+        assert_eq!(admission.channel(), member.channel);
+        assert_eq!(admission.result_channel(), member.result_channel);
+        assert_eq!(spawned.tier, tier_of(admission));
+        assert_eq!(
+            admission.bypass_args(member.approval_policy),
+            vec!["--dangerously-skip-permissions".to_owned()],
+            "Bypass 策略 + claude-code 那一行 = 它自己的旁路开关"
+        );
+    }
+
+    /// 执行层签发的**明文 token** 与库里那份 hash 必须对得上（否则成员是个哑巴）。
+    ///
+    /// 保护的不变量：design §3.1「落库只存 sha256，明文只下发一次」；且**下发点在执行层**
+    /// 而不是工具返回（工具返回会进模型上下文）。如果签发时把明文当成 hash 存了、或者
+    /// 两者用的是不同摘要，这里会失败；而不是等到成员首次调用工具才得到 401。
+    #[test]
+    fn the_issued_token_resolves_through_the_stored_hash() {
+        let manager = seeded();
+        let spawned = spawn_ok(&manager, &lead(), &spawn_args("claude-code", "w9"));
+
+        // 执行层取凭证：明文**只在这一行出现**，随即被用掉。
+        let token = manager
+            .issue_token(&spawned.member_id, 1_500)
+            .expect("issue");
+
+        let member = manager
+            .store()
+            .list_members(TEAM)
+            .expect("读库")
+            .into_iter()
+            .find(|row| row.id == spawned.member_id)
+            .expect("落库的成员行");
+        // 主体表由**库里的 hash** 作 key（与 2.5b 的 `principals` 同形状）。
+        // env 的值也从两个 id 推导（`member_env` 是唯一实现处，不靠回复传），
+        let env: std::collections::HashMap<String, String> =
+            identity::member_env(&member.team_id, &member.id)
+                .into_iter()
+                .collect();
+        let expected = TeamPrincipal {
+            team_id: env
+                .get(identity::TEAM_ID_ENV)
+                .expect("env 里必须有 team id")
+                .clone(),
+            member_id: env
+                .get(identity::TEAM_MEMBER_ID_ENV)
+                .expect("env 里必须有 member id")
+                .clone(),
+            role: MemberRole::Worker,
+            channel: member.channel,
+            tier: member.tier,
+        };
+        let principals =
+            std::collections::HashMap::from([(member.token_hash.clone(), expected.clone())]);
+
+        assert_eq!(
+            identity::resolve_principal(&principals, &token),
+            Some(&expected),
+            "签发的明文 token 必须能命中库里的 hash"
+        );
+        assert!(identity::resolve_principal(&principals, "wrong").is_none());
+    }
+
+    /// 授权格：worker 调 `team_spawn` → `Conflict`（design §3.2）。
+    ///
+    /// 保护的不变量：**成员不能建成员** —— 否则任意成员都能无限扇出，绕过队长的
+    /// 工作量控制；这条判定在 `authorize`（纯函数），所以拒绝时一个成员都不会落库。
+    #[test]
+    fn worker_cannot_spawn_members() {
+        let manager = seeded();
+        let err = call(
+            &manager,
+            &worker(W1),
+            "team_spawn",
+            &spawn_args("claude-code", "w9"),
+        )
+        .unwrap_err();
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+        // 拒绝必须发生在落库之前（授权先行）。
+        assert!(manager.member("w9@tm_1").is_none());
+    }
+
+    /// 未知 agent / `dsh` → `NotFound`，且 message 含准入表的已知 id 清单。
+    ///
+    /// 保护的不变量：错误是写给队长模型的提示。`dsh` 特别重要（它 hook 能上报，
+    /// 很容易被当成可用成员），所以它的拒绝理由必须点名「没有 `AgentConfig`」。
+    #[test]
+    fn unknown_agent_is_not_found_and_the_refusal_lists_spawnable_ids() {
+        let manager = seeded();
+        for (agent_id, expected) in [
+            ("no-such-agent", "spawnable agent ids"),
+            ("dsh", "no `AgentConfig`"),
+        ] {
+            let err =
+                call(&manager, &lead(), "team_spawn", &spawn_args(agent_id, "w9")).unwrap_err();
+            let AppError::NotFound(message) = err else {
+                panic!("{agent_id} 必须是 NotFound，实际 {err:?}");
+            };
+            assert!(message.contains(expected), "{agent_id}: {message}");
+            for admission in crate::agent::team::admission::ADMISSIONS {
+                assert!(
+                    message.contains(admission.agent_id),
+                    "{agent_id} 的拒绝信息漏了 {}：{message}",
+                    admission.agent_id
+                );
+            }
+            assert!(manager.member("w9@tm_1").is_none(), "拒绝时不得落库");
+        }
+    }
+
+    /// 成员名在**入口**就 sanitize：`@` / 控制字符 / 超长全部 `InvalidInput`。
+    ///
+    /// 三条判据各挡一个具体坏结果（见 [`member_name`] 的表）：
+    ///
+    /// - `@`：`{name}@{team}` 解析错位 = 身份可伪造（`evil@w1@tm_1` 与 `evil` 前缀混淆）；
+    /// - `\0`：2.5b 的 `Command::env` 会 **panic**（OS 层 env 不允许 NUL）；
+    /// - `\n`：日志行与 sentinel 行被劈成两行；
+    /// - 超长：花名册与每次 `tools/call` 的载荷被一个随手写的长串撑大。
+    ///
+    /// 全部拒绝而非清洗：id 是标识符，静默改写会让队长拿到的 id 与它请求的名字不一致，
+    /// 而它下一步还要用这个 id 派活。
+    #[test]
+    fn member_name_is_sanitised_at_the_boundary() {
+        let manager = seeded();
+        let roster_before = manager
+            .store()
+            .list_members(TEAM)
+            .expect("seeded roster")
+            .len();
+        let too_long = "w".repeat(65);
+        for (name, expected) in [
+            ("evil@w1", "@"),
+            ("w\u{0}1", "control characters"),
+            ("w\n1", "control characters"),
+            (too_long.as_str(), "the limit is 64"),
+        ] {
+            let err = call(
+                &manager,
+                &lead(),
+                "team_spawn",
+                &spawn_args("claude-code", name),
+            )
+            .unwrap_err();
+            let AppError::InvalidInput(message) = err else {
+                panic!("{name:?} 必须是 InvalidInput，实际 {err:?}");
+            };
+            assert!(message.contains(expected), "{name:?}: {message}");
+        }
+        // 一条都没落库（拒绝发生在 `add_member` 之前）。
+        assert_eq!(
+            manager.store().list_members(TEAM).expect("roster").len(),
+            roster_before
+        );
+
+        // 正例对照：恰好到上限的名字可以建（否则上面的拒绝可能是「永远拒」）。
+        let at_limit = "w".repeat(64);
+        let spawned = spawn_ok(&manager, &lead(), &spawn_args("claude-code", &at_limit));
+        assert_eq!(spawned.member_id, format!("{at_limit}@{TEAM}"));
+    }
+
+    /// `model` / `workspace.path` 与 `name` 共用**同一条**控制字符判据。
+    ///
+    /// 保护的不变量：三个字段最终都会离开 JSON 世界（env / argv / 文件系统），
+    /// 而 `\0` 在那三处都不可表示 —— 2.5b 会在 `Command::env` / `Command::arg` 上 panic。
+    /// 一处漏判 = 一个只在 spawn 时爆的远距离故障，所以判据只有一个实现（`reject_control_chars`）。
+    #[test]
+    fn control_characters_are_rejected_on_every_injected_field() {
+        let manager = seeded();
+        let mut args = spawn_args("claude-code", "w9");
+        args["model"] = json!("opus\n--dangerously-skip-permissions");
+        let err = call(&manager, &lead(), "team_spawn", &args).unwrap_err();
+        assert!(
+            matches!(&err, AppError::InvalidInput(m) if m.contains("control characters")),
+            "{err:?}"
+        );
+
+        // 第二形态：路径里的 NUL（绝对路径由 manifest 目录拼出 —— 红线 13；NUL 由 `format!`
+        // 追加，所以这里**没有**手写平台绝对路径字面量）。
+        let nul_path = format!("{}/w9\u{0}", env!("CARGO_MANIFEST_DIR"));
+        let err = call(
+            &manager,
+            &lead(),
+            "team_spawn",
+            &json!({
+                "agent_id": "claude-code",
+                "name": "w9",
+                "workspace": {"kind": "worktree", "path": nul_path}
+            }),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&err, AppError::InvalidInput(m) if m.contains("control characters")),
+            "{err:?}"
+        );
+        assert!(manager.member("w9@tm_1").is_none(), "拒绝时不得落库");
+    }
+
+    /// 重名 → `Conflict`（`manager.add_member` 的既有判定，本层只负责让它报）。
+    ///
+    /// 保护的不变量：成员 id 唯一性由**一个**地方裁决；dispatch 另写一份预检会让
+    /// 「内存已插入但落库失败」这类半截状态重新变成可能。
+    #[test]
+    fn a_duplicate_member_name_is_a_conflict() {
+        let manager = seeded();
+        let err = call(
+            &manager,
+            &lead(),
+            "team_spawn",
+            &spawn_args("claude-code", "w1"),
+        )
+        .unwrap_err();
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+        // 原成员未被覆盖（token_hash 仍是夹具里的值）。
+        assert_eq!(manager.member(W1).unwrap().token_hash, "deadbeef");
+    }
+
+    /// `workspace.kind = "worktree"` 的 path 规则：**必填且必须绝对**。
+    ///
+    /// 保护的不变量：
+    /// - 缺 path 时**不能**静默降级成 `Shared` —— 那是「以为在做隔离的活，实际和别的
+    ///   成员共用同一个 cwd」，而共享 cwd 下的 hook 归因只能靠 env（design §5.4）；
+    /// - 相对路径也不能收：本层不触盘，而 2.5b 的 `git worktree` / PTY 会按**进程 cwd**
+    ///   解析它 —— 那是一条已定的错误，只是失败点被推到很远的地方。
+    #[test]
+    fn worktree_workspace_requires_an_absolute_path() {
+        let manager = seeded();
+        for (workspace, expected) in [
+            (json!({"kind": "worktree"}), "workspace.path"),
+            (
+                json!({"kind": "worktree", "path": "wt/w9"}),
+                "must be absolute",
+            ),
+            (json!({"kind": "pathless"}), "workspace.kind"),
+        ] {
+            let err = call(
+                &manager,
+                &lead(),
+                "team_spawn",
+                &json!({"agent_id": "claude-code", "name": "w9", "workspace": workspace}),
+            )
+            .unwrap_err();
+            let AppError::InvalidInput(message) = err else {
+                panic!("{workspace} 必须是 InvalidInput，实际 {err:?}");
+            };
+            assert!(message.contains(expected), "{workspace}: {message}");
+        }
+        // 拒绝时不得落库（防止半截成员）。
+        assert!(manager.member("w9@tm_1").is_none());
+
+        // 正例对照：给了**绝对** path 就能建（否则上面的拒绝可能是「永远拒」）。
+        // 起点由 manifest 目录推导（红线 13：不手写 POSIX 绝对路径）。
+        let worktree = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wt/w9");
+        let spawn = spawn_ok(
+            &manager,
+            &lead(),
+            &json!({
+                "agent_id": "claude-code",
+                "name": "w9",
+                "workspace": {"kind": "worktree", "path": worktree}
+            }),
+        );
+        assert_eq!(
+            manager.member(&spawn.member_id).unwrap().workspace,
+            Workspace::Worktree { path: worktree }
+        );
+    }
+
+    /// B 档 agent（`omp`，无 MCP 表面）：`channel = None`、`result_channel = Sentinel`。
+    ///
+    /// 保护的不变量（红线 14 声明即实现）：向一个没有 MCP 面的 CLI 声明 `channel=Mcp`
+    /// 会让 `team_send` 永远发不出去；而 `result_channel` 必须说真话 —— 它的结果只能
+    /// 从 sentinel 行里捞。
+    #[test]
+    fn tier_b_agent_has_no_mcp_channel() {
+        let manager = seeded();
+        let spawned = spawn_ok(&manager, &lead(), &spawn_args("omp", "w9"));
+        let member = manager.member(&spawned.member_id).unwrap();
+        assert_eq!(member.tier, AdmissionTier::B);
+        assert_eq!(spawned.tier, AdmissionTier::B, "回复里的档位与成员行一致");
+        assert_eq!(member.channel, WorkerChannel::None);
+        assert_eq!(member.result_channel, ResultChannel::Sentinel);
+        assert_eq!(member.mcp_injection, McpInjection::None);
+        // 无传输（= 没有已实现的 MCP 通道）—— 执行层从准入表读得到这个事实。
+        assert_eq!(admission_for("omp").unwrap().transport, None);
+        // B 档的「未核实」必须随返回回到队长手里（不能只活在注释里）。
+        assert!(!spawned.unverified.is_empty(), "{spawned:?}");
+    }
+
+    /// C 档 agent（`grok`，无 hook **但**有 MCP）：`channel = Mcp`、`result = Sentinel`。
+    ///
+    /// **这条专门防「按档位一刀切」**：把 C 档一律映射成 `channel=None` 会白白丢掉
+    /// grok 可用的 MCP 面（research/admission-matrix.md §3.4 的反例：能收不能报）。
+    /// 两个通道是**两个维度**，不是档位的两个别名。
+    #[test]
+    fn tier_c_agent_with_mcp_can_still_receive_messages() {
+        let manager = seeded();
+        let spawned = spawn_ok(&manager, &lead(), &spawn_args("grok", "w9"));
+        let member = manager.member(&spawned.member_id).unwrap();
+        assert_eq!(member.tier, AdmissionTier::C);
+        assert_eq!(
+            member.channel,
+            WorkerChannel::Mcp,
+            "grok 有 MCP 面，能收消息"
+        );
+        assert_eq!(
+            member.result_channel,
+            ResultChannel::Sentinel,
+            "但它报不上来"
+        );
+        assert_eq!(member.mcp_injection, McpInjection::Argv);
+        // 传输仍然在准入表里（= 执行层能拿到“怎么发”的全部信息）。
+        assert_eq!(
+            admission_for("grok").unwrap().transport,
+            Some(crate::agent::team::admission::McpTransport::Http)
+        );
+    }
+
+    /// `approval_policy = "bypass"` → 启动参数等于**该 agent 表里**那一行。
+    ///
+    /// 保护的不变量（红线 15）：旁路开关是 per-CLI 数据。断言的是「取值来自准入表」
+    /// 而不是某个字面量分支 —— 换成 `codebuddy` 必须拿到它自己的两段参数。
+    ///
+    /// 同时钉住「执行层不需要额外通道」：两个输入（准入表行 + 成员行的
+    /// `approval_policy`）都已在库/表里，所以返回里没有任何 veto 参数无关字段。
+    #[test]
+    fn bypass_policy_forwards_the_pinned_cli_args() {
+        let manager = seeded();
+        for (agent_id, expected) in [
+            ("claude-code", vec!["--dangerously-skip-permissions"]),
+            ("codebuddy", vec!["-y", "--dangerously-skip-permissions"]),
+        ] {
+            // 每行一个不同的成员名（成员 id 是 `{name}@{team}`，重名会 `Conflict`）。
+            let mut args = spawn_args(agent_id, &format!("w-{agent_id}"));
+            args["approval_policy"] = json!("bypass");
+            let spawned = spawn_ok(&manager, &lead(), &args);
+
+            let member = manager.member(&spawned.member_id).unwrap();
+            assert_eq!(member.approval_policy, ApprovalPolicy::Bypass);
+            let expected: Vec<String> = expected.iter().map(|arg| (*arg).to_owned()).collect();
+            let admission = admission_for(&member.agent_id).expect("admitted");
+            assert_eq!(
+                admission.bypass_args(member.approval_policy),
+                expected,
+                "{agent_id} 的旁路参数"
+            );
+        }
+        // 默认（不给 approval_policy）= Queue ⇒ 一个参数都不追加。
+        let spawned = spawn_ok(&manager, &lead(), &spawn_args("claude-code", "w8"));
+        let member = manager.member(&spawned.member_id).unwrap();
+        assert_eq!(member.approval_policy, ApprovalPolicy::Queue);
+        assert!(
+            admission_for("claude-code")
+                .unwrap()
+                .bypass_args(member.approval_policy)
+                .is_empty(),
+            "非 Bypass 策略不得追加任何参数"
+        );
+    }
+
+    /// `approval_policy` 闭集：未知值 / 非字符串 → `InvalidInput`（不静默降级）。
+    ///
+    /// 保护的不变量：把 `"bypass "` 静默当成默认 Queue 的后果是「队长以为已经旁路，
+    /// 成员却卡在审批上」—— 失败点离家很远。
+    #[test]
+    fn unknown_approval_policy_is_rejected() {
+        let manager = seeded();
+        for policy in [json!("yolo"), json!(3)] {
+            let mut args = spawn_args("claude-code", "w9");
+            args["approval_policy"] = policy.clone();
+            let err = call(&manager, &lead(), "team_spawn", &args).unwrap_err();
+            assert!(
+                matches!(err, AppError::InvalidInput(_)),
+                "{policy}: {err:?}"
+            );
+        }
+        assert!(manager.member("w9@tm_1").is_none());
     }
 }
