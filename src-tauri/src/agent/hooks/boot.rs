@@ -47,8 +47,10 @@ pub fn boot(
     want_cli_hooks: bool,
     config: &serde_json::Value,
     runtime: Arc<AppRuntime>,
+    // 下游消费者（端口）。组合根注入 —— 见 `handlers::ExtraConsumer`。
+    extra_consumer: handlers::ExtraConsumer,
 ) -> Option<ServerHandle> {
-    let handle = match start_ingest(&app, &neeko_dir, &runtime) {
+    let handle = match start_ingest(&app, &neeko_dir, &runtime, extra_consumer) {
         Ok(handle) => Some(handle),
         Err(err) => {
             log::warn!("[boot] start agent-hooks ingest failed: {err}");
@@ -64,6 +66,7 @@ fn start_ingest(
     app: &AppHandle,
     neeko_dir: &std::path::Path,
     runtime: &Arc<AppRuntime>,
+    extra_consumer: handlers::ExtraConsumer,
 ) -> std::io::Result<ServerHandle> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
     let port = listener.local_addr()?.port();
@@ -92,7 +95,11 @@ fn start_ingest(
         publication.token.clone(),
         vec![Arc::new(HeaderToken { name: TOKEN_HEADER })],
     ));
-    let groups = vec![handlers::route_group(app.clone(), Arc::clone(runtime))];
+    let groups = vec![handlers::route_group(
+        app.clone(),
+        Arc::clone(runtime),
+        extra_consumer,
+    )];
     let handle = crate::server::serve(
         runtime,
         ServerConfig {

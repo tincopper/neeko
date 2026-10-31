@@ -134,12 +134,27 @@ fn on_setup(app: &tauri::App) {
     // 逐 CLI 覆盖表（`agentHookSources`）取自**上面那份快照**（agent 域自有键，不经核心域，
     // 见 agent/hooks/install/config/settings.rs）。读盘失败时传 `Null` = 「无覆盖项」→ 各 CLI 跟随主开关，
     // 与「成功但无该键」的退化行为一致；失败本身已由 `best_effort` 记 warn。
+    // 组合根是本文件唯一的职责之一：**只有它同时认识 hooks 与 team 两个域**。
+    // 团队观察者因此作为"下游消费者"注入 hooks，而不是让 hooks 反向依赖团队
+    // （那条边会成环，见 `handlers::ExtraConsumer` 的文档）。
+    //
+    // 不是 `Option`：hooks 域只声明"再挂一个消费者"，是否挂、挂谁是组合根的决定 ——
+    // 而这里**总会**挂一个（团队域的观察者）。可选性会造出一个永不执行的分支。
+    let team_consumer: crate::agent::hooks::ingest::handlers::ExtraConsumer = {
+        let handle = app.handle().clone();
+        std::sync::Arc::new(
+            move |source: &str, event: crate::agent::hooks::ingest::event::HookEvent| {
+                crate::agent::team::deliver::observe(&handle, source, &event);
+            },
+        )
+    };
     let http_handle = crate::agent::hooks::boot::boot(
         app.handle().clone(),
         state.storage_manager.get_config_dir().to_path_buf(),
         state.notification.settings_snapshot().cli_hooks,
         config.as_ref().unwrap_or(&serde_json::Value::Null),
         state.runtime.clone(),
+        team_consumer,
     );
     if let Some(handle) = http_handle {
         state.set_http_server(handle);
