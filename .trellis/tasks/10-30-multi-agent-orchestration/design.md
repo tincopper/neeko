@@ -320,10 +320,14 @@ pub async fn wait(
 
 **通道三分（两个维度，别合并）**：
 
-- `channel`（怎么**发**）：`Mcp` 结构化可靠 / `Pty` 只能写 stdin（best effort）/ `None` 只能一次性派活
+- `channel`（怎么**发**）：**CLI 成员一律 `Pty`**（`WorkerChannel::CLI_MEMBER`）—— 它的进程就在
+  PTY 里，唯一能把字送进它回合的是 stdin（写入协议见 research/04）。`Mcp` 留给将来真正有下行
+  通道的 Chat 成员：**MCP over HTTP 没有 server→client 推送，工具面里也没有收件箱**，
+  按「有 MCP 面 ⇒ `Mcp`」推导会造出一条不存在的通道（红线 14，2026-10-31 裁决 A）
 - `result_channel`（怎么**报**）：`Mcp` 工具调用 / `Sentinel` 打印到 stdout / `None`
 
-典型组合：A 档 `channel=Mcp, result_channel=Mcp`；B 档 `channel=Mcp, result_channel=Sentinel`；C 档 `channel=None, result_channel=Sentinel`。
+典型组合：A 档 `Pty + Mcp`；B/C 档 `Pty + Sentinel`（而 v1 的 `team_spawn` 会**早拒**这两档：
+没有工具面就认领不了任务，见 implement.md C5）。
 
 **声明即实现（红线 14）**：`team_spawn` 时若声明与实际能力不符必须拒绝 —— 不允许"声明了但发不进去 / 报不上来"。
 

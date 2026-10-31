@@ -485,11 +485,100 @@ pub enum TerminalLaunch {
 **C10 — ✅ 已收敛**：程序名改为读 `AgentManager::get_agent`（含 `agentCommandOverrides`），
 不再查 `builtin_configs()`。查不到仍 `Unsupported` 拒绝（**不**拿 id 当程序名猜）。
 
+#### C5 `team_spawn` 早拒「起得来但用不了」的 CLI — ✅ 已落地（2026-10-31）
+
+- [x] `AgentAdmission::launch_refusal() -> Option<String>` 是**判据的单一源**：
+      `mcp::dispatch::spawn`（建成员**之前**）与 `execution::plan_member_spawn`
+      （执行前再确认）都问它。两处各写一遍的后果不是重复，而是**漂移** —— 早拒放行、
+      执行层才拒绝，表现就是「成员落库但永不启动」，而队长以为它已开工
+- [x] 拒绝理由可读且**点名注入档**（AC7b）：`omp` → `no MCP surface`；
+      `grok` → `injects MCP via Subcommand …`
+- [x] 判据翻转了两条测试：`tier_b_agent_is_refused_before_a_member_row_exists`（断言拒绝
+      路径上**没有**成员行）/ `tier_c_agent_with_mcp_is_still_refused_until_its_injection_lands`
+      （表的事实保留：grok 是 C 档但**有工具面** —— 档位与注入方式是两列，不能互相推）
+- [x] 变异验证：删掉早拒 → 两条测试立刻红
+
+#### C1 队长入口：「以队长身份开会话」 — ✅ 已落地（2026-10-31，方案 A）
+
+`agent/team/bootstrap.rs`（纯计划）+ `agent/team/commands.rs`（极薄命令）
+
+- [x] `plan_team(agent_id, project_path, name, team_id, now) -> TeamBootstrap{team, lead}`：
+      拒绝三种情形（不在准入表 / `launch_refusal` 命中 / 项目路径非绝对），**全部发生在
+      写库之前**
+- [x] 队长与成员**同形**：`channel` / `result_channel` / `tier` / `mcp_injection` 全来自
+      准入表（判据 `a_leads_channels_follow_the_admission_row` 遍历三个 Argv 行 —— 写死
+      一条 claude-code 的断言证明不了「没有硬编码」）
+- [x] `TeamManager::create_team_with_lead(team, lead)`：**一次写入**
+      （`create_team` + `add_member` 两步之间失败会留下「没有队长」的团队，而那种团队
+      看起来和正常团队一样）。拒绝条件与两个单步方法共用私有 helper
+      `insert_team` / `insert_member`，规则只有一份
+- [x] `set_member_terminal` 在绑定**队长**时同时写 `Team.lead_session_id`
+      （两处各写一遍会漂移；它正是「这个团队由哪个会话开创」的唯一线索）
+- [x] `start_team_session(agent_id, project_path, name?) -> TeamSession`：
+      端点/凭证面缺失 → 先拒 → canonicalize（阻塞池）→ `plan_team` →
+      `create_team_with_lead`（阻塞池）→ **`execution::apply_reply`**
+      （与成员完全同一条执行路径：`admit` → `spawn` → 回填句柄）
+- [x] `TeamServer::credentials() -> Arc<dyn CredentialLedger>`：只交出**端口**，
+      `admit` 仍是唯一的「签发 + 认门」写入点（不开第二个刷新入口）
+- [x] `AppStateWrapper::team_credentials()`：与 `team_endpoint_url()` 同一个前提
+      （没有端点就没有工具面 ⇒ 不该发凭证）
+- [x] 变异验证：去掉队长角色校验 / 去掉 `lead_session_id` 同步 → 各自变红
+
+#### C11（新，小）队长 bootstrap 的残余失败面
+
+`create_team_with_lead` 成功而 `apply_reply` 失败时，库里留下「有队长行、无进程」的团队。
+那是两相位设计**刻意接受**的可查询状态（同 `team_spawn` 的失败语义），缺的是一条
+「重试起进程」的入口（`respawn_member(member_id)` = `apply_reply` 一次）。
+**不做自动回滚**：回滚会删掉用户刚建的队，而失败原因可能只是 CLI 二进制没装。
+
+#### C12 CLI 成员的入站通道 = `Pty` — ✅ 已落地（2026-10-31，用户裁决 A）
+
+**问题**：`admission.channel()` 按「有 MCP 面 ⇒ `Mcp`」推导，而 `delivery::route` 对 `Mcp`
+明确拒绝 —— 合起来等于**队长无法给任何成员派活**。不是实现缺失，是通道语义错了：
+MCP over HTTP 是客户端发起的，没有 server→client 推送，工具面里也没有收件箱。
+
+- [x] `WorkerChannel::CLI_MEMBER = Pty`（**常量**，不是 per-CLI 推导）：CLI 成员的进程就在
+      PTY 里，唯一能把字送进它回合的是 stdin
+- [x] 删掉 `AgentAdmission::channel()` —— 它不是 per-CLI 事实。`result_channel`（由 hooks 决定）
+      与 `has_mcp`（工具面）才是表的两列，仍然不合并（grok 是「有工具面但报不上来」的反例）
+- [x] `dispatch::spawn` / `bootstrap::plan_team` 都用常量；夹具同步（夹具偏离生产会让
+      「通道对不对」这类断言永远测不到真实值）
+- [x] 判据：`a_spawned_member_is_deliverable_over_its_pty`（建出来的成员能排出一次真实写入；
+      变异：把常量改成 `Mcp` 立刻红）
+- [x] `delivery::route` 的 `Mcp` / `None` 两支保留并注明**谁还会走到**：将来的 Chat 成员、
+      本轮之前落库的历史行、无工具面的历史行
+- [ ] 仍然缺：`Mcp` 变成真通道时（Chat 成员，`SessionRequest`）要同步解除那一支的拒绝
+
+#### 租约回收的驱动器 + 续期 — ✅ 已落地（2026-10-31，AC3）
+
+**取证**：`reclaim_expired` 在此之前**零生产调用方** ⇒ 成员被 `kill -9` 后任务永远停在
+`in_progress`，租约的「防死锁」从未真正发生。
+
+- [x] `agent/team/reaper.rs`：`TeamReaper::start(runtime, manager, interval)`（默认 30s）
+      + `stop()`（`abort`：每拍是一次原子 `reclaim_expired`，中止不产生半个状态）
+- [x] **为什么不是惰性 sweep**（读写命令前扫一遍）：AC3 的关键场景正是「没人调命令」——
+      队长阻塞在 `team_wait` 里等一个已经死掉的成员，惰性 sweep 永远等不到触发者
+- [x] 组合根：`app::boot` 在团队端点之后起（**与端点独立** —— 端点可能起不来，而租约
+      回收与 MCP 面无关）；`AppStateWrapper.team_reaper`；关闭协议 `team-reaper`
+- [x] **上线即暴露的缺陷：租约没有续期** ⇒ 健康的长任务（>30min）会被回收抢走、有在飞任务
+      却把 `reclaim_count` 往上加，四轮后进 `blocked`。补 `manager::renew_lease`：
+      owner 的 `task_update` + **活性信号**续期；`MemberSignal::is_liveness()` 是判据单一源
+      （`exited` / `failed` **不**续期 —— 否则「成员已死」还要再等满一个 ttl）
+- [x] 判据：`expired_leases_are_reclaimed_without_any_caller` /
+      `stopping_the_reaper_stops_the_loop` / `an_owner_update_renews_the_lease` /
+      `a_hook_signal_from_the_owner_renews_the_lease` /
+      `a_death_signal_does_not_renew_the_lease` / `a_silent_task_still_expires`
+      （四条变异各自变红）
+- [ ] 仍缺：`Stalled` 的「静默超阈值」判据（L3）—— 同一个循环就是它的家，但需要先定阈值
+      与「静默」的口径（最后一次任意信号？最后一次活性信号？）
+
 #### 剩余顺序
 
-1. 队长 PTY 启动（C1 方案 A：「以队长身份开会话」命令 + 复用 `PtyMemberExecutor`）
-2. sentinel 接线（C4 的模型 + 迁移先落地）
-3. `Mcp` 通道成员的入站投递（当前 `delivery::route` 明确拒绝：需要成员侧收件箱）
+1. 前端入口：`start_team_session` 的按钮（`features/agent-team/`）+ 团队面板（R5）
+2. 端到端跑一次：队长 PTY 起来 → `team_spawn` → 成员认领 → 回传（这一步同时补 P0 缺的
+   「真实 hook payload」证据）
+3. sentinel 接线（C4 的模型 + 迁移先落地）
+4. C11 的 `respawn_member`（PTY 死掉 / 首次启动失败后的重试入口）
 
 ### 2.5 `team_spawn` 的准入校验（原始清单，已被 2.5a/b 取代）
 

@@ -14,6 +14,7 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `store.rs` | SQLite 持久化（v14 建表、迁移、分页） | 表结构 / 查询 |
 | `manager.rs` | **唯一写入口**（内存镜像 + 库在同一把锁内一起改） | 新状态迁移 |
 | `completion.rs` / `lease.rs` | 完成判定 / 租约（纯函数） | 状态机规则 |
+| `reaper.rs` | **时间驱动**的租约回收（周期性循环 + `stop`）；将来 L3 的 `Stalled` 也长在这里 | 到期判据 / 节拍 |
 | `wait.rs` | `team_wait` 的阻塞等待（只读内存快照） | 等待语义 |
 | `identity/` | `env`（注入）/ `token`（签发与解析）/ `verdict`（归因） | 三者无共同变化理由，故分文件 |
 | `admission.rs` | **红线 15 落点**：per-CLI 准入事实表 + 纯函数推导 | P0 实测结果变了 |
@@ -28,6 +29,23 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `authorize.rs` | 授权矩阵（9 工具 × 2 角色 = 18 格，表驱动测试） | 加减工具 |
 | `observe.rs` / `deliver.rs` | hook 事件的团队投影 / 投递入口（见 §6） | 新信号 |
 | `fixtures.rs` | `#[cfg(test)]` 夹具单一源（`Team` / `TeamMember` 全字段）；`store.rs` 的 round-trip 夹具是**刻意例外**（每列都要偏离默认值，否则"某列没写进库"会变绿） | 加字段时只改一处 |
+
+## 0. 租约 = **活性**信号，不是时长上限
+
+`claimed_at + lease_ttl` 单用会被读成「任务最多跑 30 分钟」，而它想表达的是「这个成员还在干」。
+两条判据缺一不可，否则回收器一上线就去抢健康成员手里的活：
+
+1. **回收有人在跑**：`reaper::TeamReaper`（组合根 `app::boot` 起，30s 一拍，关闭协议 `team-reaper` 停）。
+   纯函数 `lease_expired` + `reclaim_expired` 早在 P1 就有了，但**没有生产调用方** —— 那等于
+   「死锁防护只在纸上」。惰性 sweep（读写前扫一遍）不够：AC3 的场景正是**队长阻塞在 `team_wait`
+   里、没有任何人在调命令**。
+2. **活性即续期**（`manager::renew_lease`）：owner 的 `task_update` 与**活性信号**续期；
+   `MemberSignal::is_liveness()` 说了算（`turn_completed` / `approval_requested` / `input_requested`
+   是，`failed` / `exited` 不是 —— 拿死亡信号续期会让「已经死了」再拖满一个 ttl）。
+
+判据：`expired_leases_are_reclaimed_without_any_caller`（AC3 的机器形式）、
+`an_owner_update_renews_the_lease`、`a_death_signal_does_not_renew_the_lease`、
+`stopping_the_reaper_stops_the_loop`。四个都已变异验证（删循环体 / 删续期 / 改 stop 为 detach 各变红）。
 
 ## 1. 真相源：库是真相、内存镜像是缓存 ⇒ 启动必须 `load`
 
@@ -173,11 +191,16 @@ loopback 而非 `localhost` —— 后者在某些平台先解析到 `::1`，而
   且每个已准入 id 在生产段**恰好出现一次** = 它自己那行）。
 - **档位由数据推导**（`tier_of`：无 hook ⇒ C；有 hook 有 MCP 面 ⇒ A；有 hook 无 MCP 面 ⇒ B），
   调用方不可声明。
-- `channel`（怎么**发**）只由 MCP 面决定，`result_channel`（怎么**报**）只由 hooks 决定 ——
-  **两列不合并**：`grok` 是「能收不能报」的真实反例（C 档但 `channel = Mcp`）。
+- `result_channel`（怎么**报**）只由 hooks 决定；**工具面**（`has_mcp`）是另一列。
+  两列不合并：`grok` 是「有工具面但报不上来」的真实反例。
+- `channel`（怎么**发**）**不是** per-CLI 事实，CLI 成员一律 `WorkerChannel::CLI_MEMBER = Pty`。
+  按「有 MCP 面 ⇒ `Mcp`」推导会造出一条**不存在的通道**：MCP over HTTP 没有 server→client
+  推送，工具面里也没有收件箱。症状是 `team_send` 对每个成员都 `Unsupported` ——
+  队长以为派了活，成员从未收到（`a_spawned_member_is_deliverable_over_its_pty` 钉住这一条）。
+  `Mcp` 留给将来的 Chat 成员（`SessionRequest` 是真正的下行通道）。
 - `unverified` 字段是**诚实面**：B 级证据（配置已装、未跑一轮）必须原样回给队长。
 - `McpTransport` 的变体集合 = **本仓已实现的传输集合**。加变体必须与它的 bridge 同一个 diff，
-  否则 `has_mcp()` 会把一条发不进去的配置宣传成 `channel = Mcp`。
+  否则 `has_mcp()` 会把一条发不进去的配置宣传成「有工具面」。
 - `McpInjection` 三档的区别是**生效时机**，不是便利性：`Argv` = 启动参数（本次启动生效，
   claude-code / codebuddy / qoder）、`Subcommand` = 该 CLI 自己的 `mcp add`（写配置、下次启动生效，
   grok / codex / opencode / pi）、`ConfigFile` = 直接改配置文件（降级兜底，gemini / reasonix）。

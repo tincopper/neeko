@@ -144,6 +144,11 @@ Neeko 的服务端是 axum HTTP（`server/`），但 MCP 客户端的现实是**
 - R1.2 任务状态：`pending | claimed | in_progress | awaiting_approval | done | failed | blocked | proposed`
 - R1.3 **认领式**：队长 `create`，成员 `claim`；claim 必须原子（同任务不能被两人claim）
 - R1.4 **租约**：`claimed_at + lease_ttl`，超时自动退回 `pending` 并记一次 `reclaimed` 事件（防死锁）
+  - **租约是活性信号，不是时长上限**（2026-10-31 补）：owner 的 `task_update` 与活性信号
+    （`turn_completed` / `approval_requested` / `input_requested`）续期；`session_failed` /
+    进程退出**不**续期。否则健康的长任务会被当成死任务抢走
+  - 回收由 `agent/team/reaper.rs` 的周期性循环驱动（30s），**不**依赖有人在调命令 ——
+    队长的 `team_wait` 正阻塞着的时候，恰恰没有别的入口
 - R1.5 任务携带 `workspace`（`shared` / `worktree{path}` / `read_only`），**claim 前确定**，事后不可改
 - R1.6 任务携带产物：`summary`（短文本上板）+ `artifacts`（路径/PR/commit 引用）；**全文永不进板**（红线 4）
 - R1.7 **权限收敛**：只有队长能 `create`；成员只能 `claim` / `update` / `propose`（`proposed` 需队长 accept）
@@ -264,6 +269,7 @@ Neeko 的服务端是 axum HTTP（`server/`），但 MCP 客户端的现实是**
 | 4 | **MCP 传输** | **B 方案**：HTTP 为主 + `neeko-team-mcp.mjs` stdio bridge（照 `include_str!` 既有模式，node 已是 hook 依赖） |
 | 5 | **sentinel 是否一期** | **是**。纯函数扫描器，成本低；且它是 C 档成员的唯一入口 |
 | 6 | **成员 token 怎么过鉴权门** | **D+E**：团队流量走**独立 listener** + 独立 `AuthGate`（多 token），**hooks 那道门一字不改**；身份在 handler 内按 **sha256 查表**解析，不新增恒定时间比较。理由：同端口共用会让成员 token 能伪造队友的 `turn_completed`（正是 §5.4 在防的同类事故） |
+| 7 | **CLI 成员的入站通道**（2026-10-31，裁决 A） | **一律 `Pty`**。MCP over HTTP 没有 server→client 推送、工具面里也没有收件箱 ⇒「有 MCP 面 ⇒ channel = Mcp」是一条**不存在的通道**（`team_send` 对每个成员都失败）。`Mcp` 留给将来接 Chat 成员（`SessionRequest` 是真的下行通道）；「能用工具」由 `has_mcp` 表达，与 `channel` 分开 |
 
 ## Research
 
