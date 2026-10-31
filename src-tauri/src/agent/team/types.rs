@@ -233,12 +233,28 @@ pub enum Workspace {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkerChannel {
-    /// MCP 工具调用，结构化可靠。
+    /// MCP 工具调用。**只有真能在对方那边落地时才能声明** —— 见 [`Self::CLI_MEMBER`]。
     Mcp,
-    /// 只能写 PTY stdin，best effort（写入协议见 research/04：两次写 + ~150ms）。
+    /// 写 PTY stdin，best effort（写入协议见 research/04：两次写 + ~150ms）。
     Pty,
     /// 只能一次性派活。
     None,
+}
+
+impl WorkerChannel {
+    /// CLI 成员的唯一通道：**`Pty`**。
+    ///
+    /// # 为什么不是 `Mcp`（哪怕它能用 MCP 工具）
+    ///
+    /// 「有 MCP 面」与「能往它嘴里推消息」是**两件事**。MCP over HTTP 是客户端发起的：
+    /// 成员调我们，我们**没有**反向推送通道，工具面里也没有收件箱。
+    ///
+    /// 所以按「有 MCP 面 ⇒ channel = Mcp」推导，会得到一条**不存在的通道**（红线 14）——
+    /// 症状是 `team_send` 永远失败，队长以为派了活而成员从未收到。
+    ///
+    /// CLI 成员的进程本身就在 PTY 里，唯一能把字送进它回合的是 stdin。`Mcp` 因此留给
+    /// 将来的 Chat 成员（`SessionRequest` 是真正的结构化下行通道），不是「有工具」的同义词。
+    pub const CLI_MEMBER: Self = Self::Pty;
 }
 
 /// 成员怎么**报**结果。与 [`WorkerChannel`] 分开，因为二者可以不同。

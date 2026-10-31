@@ -364,12 +364,35 @@ impl TeamManager {
     /// 建队。id 冲突一律拒绝（覆盖写会静默丢掉整队状态）。
     pub fn create_team(&self, team: Team) -> Result<(), AppError> {
         let mut inner = self.lock_writing();
-        if inner.teams.contains_key(&team.id) {
-            return Err(conflict(format!("team {} already exists", team.id)));
+        self.insert_team(&mut inner, team)
+    }
+
+    /// 建队 + 队长成员，**一次写入**（「以队长身份开会话」的落库点）。
+    ///
+    /// # 为什么不是 `create_team` + `add_member`
+    ///
+    /// 两步之间失败会留下一个**没有队长**的团队：授权矩阵里所有 Lead 操作从此无人可做，
+    /// 而它看起来和正常团队一样（`team_status` 里只有成员列表短一截）。一次锁内写完，
+    /// 这个中间态就不存在。
+    ///
+    /// 拒绝条件与两个单步方法相同（id 冲突 / 队长唯一），且都由**同一组**私有 helper
+    /// 裁决 —— 两处各写一遍的话，「第二个队长」这条规则的例外会出现在写入路径不同的那一侧。
+    pub fn create_team_with_lead(&self, team: Team, lead: TeamMember) -> Result<(), AppError> {
+        if lead.team_id != team.id {
+            return Err(AppError::InvalidInput(format!(
+                "lead {} belongs to team {}, not {}",
+                lead.id, lead.team_id, team.id
+            )));
         }
-        self.store.upsert_team(&team)?;
-        inner.teams.insert(team.id.clone(), team);
-        Ok(())
+        if lead.role != MemberRole::Lead {
+            return Err(AppError::InvalidInput(format!(
+                "member {} must have the lead role to be created together with its team",
+                lead.id
+            )));
+        }
+        let mut inner = self.lock_writing();
+        self.insert_team(&mut inner, team)?;
+        self.insert_member(&mut inner, lead)
     }
 
     /// 加入一名成员。
@@ -378,6 +401,21 @@ impl TeamManager {
     /// 第二个 `Lead` 被拒，否则授权矩阵会出现两个都能 `close` 的主体。
     pub fn add_member(&self, member: TeamMember) -> Result<(), AppError> {
         let mut inner = self.lock_writing();
+        self.insert_member(&mut inner, member)
+    }
+
+    /// 写入一条团队行（**调用方已持锁**）。
+    fn insert_team(&self, inner: &mut Inner, team: Team) -> Result<(), AppError> {
+        if inner.teams.contains_key(&team.id) {
+            return Err(conflict(format!("team {} already exists", team.id)));
+        }
+        self.store.upsert_team(&team)?;
+        inner.teams.insert(team.id.clone(), team);
+        Ok(())
+    }
+
+    /// 写入一条成员行（**调用方已持锁**）：团队必须存在、id 唯一、一队只有一个队长。
+    fn insert_member(&self, inner: &mut Inner, member: TeamMember) -> Result<(), AppError> {
         if !inner.teams.contains_key(&member.team_id) {
             return Err(not_found(format!("team {}", member.team_id)));
         }
@@ -435,6 +473,15 @@ impl TeamManager {
         member.terminal_id = Some(terminal_id.to_owned());
         self.store.upsert_member(&member)?;
         inner.members.insert(member.id.clone(), member.clone());
+        // 队长的会话就是团队的 `lead_session_id`：两处各写一遍会漂移，而它正是
+        // 「这个团队由哪个会话开创」的唯一线索。
+        if member.role == MemberRole::Lead {
+            if let Some(mut team) = inner.teams.get(&member.team_id).cloned() {
+                team.lead_session_id = terminal_id.to_owned();
+                self.store.upsert_team(&team)?;
+                inner.teams.insert(team.id.clone(), team);
+            }
+        }
         self.audit(
             &mut inner,
             &member.team_id,
@@ -1497,6 +1544,109 @@ mod tests {
         assert_eq!(
             manager.member(W1).expect("member").terminal_id.as_deref(),
             Some("term-2")
+        );
+    }
+
+    /// 建队 + 队长**一次写入**：两步之间没有「没有队长」的中间态。
+    #[test]
+    fn a_team_and_its_lead_are_created_in_one_step() {
+        let manager = TeamManager::new(TeamStore::open_in_memory().unwrap());
+        let new_team = team("tm_2");
+        let lead = TeamMember {
+            team_id: "tm_2".into(),
+            role: MemberRole::Lead,
+            ..fixture_member("lead@tm_2", "tm_2")
+        };
+        manager
+            .create_team_with_lead(new_team, lead)
+            .expect("一次写入");
+
+        assert!(manager.team("tm_2").is_some());
+        assert_eq!(
+            manager.member("lead@tm_2").map(|m| m.role),
+            Some(MemberRole::Lead)
+        );
+        // 库与镜像同源（第二次启动靠库重建）。
+        assert_eq!(manager.store().list_teams().expect("teams").len(), 1);
+        assert_eq!(
+            manager.store().list_members("tm_2").expect("members").len(),
+            1
+        );
+    }
+
+    /// 拒绝条件与两个单步方法同源：跨队的队长、非队长角色、已存在的团队 id。
+    #[test]
+    fn creating_a_team_with_a_mismatched_lead_is_refused() {
+        let manager = TeamManager::new(TeamStore::open_in_memory().unwrap());
+
+        // ① 队长的 team_id 与团队不符 —— 否则会写出一个孤儿成员。
+        let err = manager
+            .create_team_with_lead(
+                team("tm_2"),
+                TeamMember {
+                    team_id: "tm_other".into(),
+                    role: MemberRole::Lead,
+                    ..fixture_member("lead@tm_other", "tm_other")
+                },
+            )
+            .expect_err("跨队");
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+
+        // ② 角色不是 Lead：这个方法存在的理由就是「同时建队长」。
+        let err = manager
+            .create_team_with_lead(
+                team("tm_2"),
+                TeamMember {
+                    role: MemberRole::Worker,
+                    ..fixture_member("w@tm_2", "tm_2")
+                },
+            )
+            .expect_err("非队长");
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+
+        // ③ 团队 id 已存在（覆盖写会静默丢掉整队状态）。
+        manager.create_team(team("tm_2")).unwrap();
+        let err = manager
+            .create_team_with_lead(
+                team("tm_2"),
+                TeamMember {
+                    role: MemberRole::Lead,
+                    ..fixture_member("lead@tm_2", "tm_2")
+                },
+            )
+            .expect_err("重名");
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+        // 拒绝时**没有**留下成员行。
+        assert!(manager.member("lead@tm_2").is_none());
+    }
+
+    /// 绑定队长的终端会同时写 `Team.lead_session_id`：两处各写一遍会漂移。
+    #[test]
+    fn binding_the_leads_terminal_records_the_team_session() {
+        let manager = seeded();
+        assert_eq!(manager.team(TEAM).expect("team").lead_session_id, "sess");
+
+        manager
+            .set_member_terminal(LEAD, "term-lead", 1_000)
+            .expect("bind");
+        assert_eq!(
+            manager.team(TEAM).expect("team").lead_session_id,
+            "term-lead"
+        );
+        let stored = manager
+            .store()
+            .list_teams()
+            .expect("teams")
+            .into_iter()
+            .find(|row| row.id == TEAM)
+            .expect("row");
+        assert_eq!(stored.lead_session_id, "term-lead", "库与镜像同源");
+
+        // 工人的绑定**不**碰团队行。
+        manager.set_member_terminal(W1, "term-w1b", 2_000).unwrap();
+        assert_eq!(
+            manager.team(TEAM).expect("team").lead_session_id,
+            "term-lead"
         );
     }
 

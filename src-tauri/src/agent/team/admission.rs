@@ -99,6 +99,42 @@ impl AgentAdmission {
         }
     }
 
+    /// 执行层**今天能不能真的把它起起来**：`None` = 能，`Some(理由)` = 不能。
+    ///
+    /// # 为什么要有这一条
+    ///
+    /// 两个拒绝条件（无 MCP 面 / 注入档未实现）都属于「起得来但用不了」。放在**建成员
+    /// 之前**判，队长拿到的是一条可读理由；放到执行层再判，成员已经落库 —— 花名册里
+    /// 多出一个永远不动的名字，而队长以为它已开工（`implement.md` C5）。
+    ///
+    /// # 判据的单一来源
+    ///
+    /// `mcp::dispatch::spawn`（早拒）与 `execution::plan_member_spawn`（执行前再确认）
+    /// 都问这里。两处各写一遍的后果不是重复，而是**漂移**：早拒放行了、执行层才拒绝，
+    /// 表现就是上面那种「落库但永不启动」。
+    #[must_use]
+    pub fn launch_refusal(&self) -> Option<String> {
+        if !self.has_mcp() {
+            return Some(format!(
+                "agent `{}` has no MCP surface, so a spawned member could never receive a task \
+                 (channel = none); refusing to create a member that can only sit in the roster",
+                self.agent_id
+            ));
+        }
+        // 只有 `Argv` 档有模板；另外两档的注入发生在该 CLI 自己的配置里（见
+        // `McpInjection` 的三档对照）。这里拒绝而不是回退 —— 回退等于声明了一个
+        // 「配置写出去了但客户端不知道」的能力（红线 14）。
+        if self.mcp_injection != McpInjection::Argv || self.mcp_argv.is_empty() {
+            return Some(format!(
+                "agent `{}` injects MCP via {:?}, which the executor does not implement yet \
+                 (only launch-argument injection is wired); starting it anyway would produce a \
+                 member whose tool surface is silently missing",
+                self.agent_id, self.mcp_injection
+            ));
+        }
+        None
+    }
+
     /// `approval_policy = Bypass` 时要追加的启动参数（其余策略一律空）。
     ///
     /// # 为何归 admission 而不是 dispatch / 执行层

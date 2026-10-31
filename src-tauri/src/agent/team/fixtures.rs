@@ -76,7 +76,10 @@ pub(crate) fn fixture_member(id: &str, team_id: &str) -> TeamMember {
         session_id: None,
         terminal_id: Some(format!("term-{name}")),
         workspace: Workspace::Shared,
-        channel: WorkerChannel::Mcp,
+        // 与 `team_spawn` 的生产取值一致：CLI 成员的入站通道是 PTY
+        // （`WorkerChannel::CLI_MEMBER`）。夹具偏离生产会让「通道对不对」这类
+        // 断言永远测不到真实值。
+        channel: WorkerChannel::CLI_MEMBER,
         result_channel: ResultChannel::Mcp,
         tier: AdmissionTier::A,
         approval_policy: ApprovalPolicy::Queue,

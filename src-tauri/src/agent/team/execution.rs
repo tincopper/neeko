@@ -283,16 +283,38 @@ pub async fn apply_reply(
 ) -> Result<(), AppError> {
     match reply {
         ToolReply::MemberCreated { member_id, .. } => {
-            let token = credentials.admit(member_id).await?;
-            executor
-                .spawn(member_id, &token)
-                .await
-                .map_err(|err| spawn_failure(member_id, err))
+            start_member(credentials, executor, member_id).await
         }
         ToolReply::NeedsDelivery { to, message } => executor.deliver(to, message).await,
         // 其余变体是纯数据（板视图 / 任务行 / 等待结局）：没有进程副作用。
         _ => Ok(()),
     }
+}
+
+/// 起一个**已落库**的成员：签发凭证（并认门）→ 起进程。
+///
+/// # 为什么独立于 [`apply_reply`]
+///
+/// 两个入口都做同一件事：`team_spawn` 的回复副作用（队长经 MCP 工具）与「以队长身份开会话」
+/// 的本地命令（人经 Tauri 命令）。若本地入口复用的是 `apply_reply`，它就必须**认识
+/// `ToolReply`** —— 那是 MCP 的词汇，于是团队域的本地入口被绑在一条它并不使用的协议上
+/// （改 `ToolReply` 会让本地入口跟着改）。
+///
+/// 抽成这个动作后，`ToolReply` 只出现在「工具回复 → 副作用」的那一层，本地入口只依赖两个端口。
+///
+/// # 顺序不可交换
+///
+/// `admit` **先于** `spawn`：成员进程一启动就会发第一次工具调用，门若还不认识它的凭证就是 401。
+pub async fn start_member(
+    credentials: &dyn CredentialLedger,
+    executor: &dyn MemberExecutor,
+    member_id: &str,
+) -> Result<(), AppError> {
+    let token = credentials.admit(member_id).await?;
+    executor
+        .spawn(member_id, &token)
+        .await
+        .map_err(|err| spawn_failure(member_id, err))
 }
 
 /// 起进程失败必须**带着 `member_id`** 回去。

@@ -46,7 +46,7 @@ use crate::agent::team::manager::{now_millis, TeamManager};
 use crate::agent::team::mcp::schema::{self, spec_for, ToolName, UPDATABLE_STATES};
 use crate::agent::team::types::{
     AdmissionTier, ApprovalPolicy, MemberRole, MemberState, TeamMember, TeamPrincipal, TeamState,
-    TeamTask, TeamTaskState, Workspace,
+    TeamTask, TeamTaskState, WorkerChannel, Workspace,
 };
 use crate::agent::team::wait::{WaitOutcome, WaitTargets, WaitUntil};
 use crate::common::error::AppError;
@@ -384,7 +384,9 @@ fn spawn(
         session_id: None,
         terminal_id: None,
         workspace,
-        channel: admission.channel(),
+        // CLI 成员的唯一通道是 PTY（`WorkerChannel::CLI_MEMBER` 的文档记了为什么
+        // 「有 MCP 面」不等于「能往它嘴里推消息」）。
+        channel: WorkerChannel::CLI_MEMBER,
         result_channel: admission.result_channel(),
         tier: tier_of(admission),
         approval_policy,
@@ -1067,6 +1069,33 @@ mod tests {
         AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel, Team, WorkerChannel,
     };
     use serde_json::json;
+
+    /// 建出来的成员**必须可投递**（这就是把 CLI 通道定为 `Pty` 的全部理由）。
+    ///
+    /// 反例是曾经的推导「有 MCP 面 ⇒ `channel = Mcp`」：它让每个成员的 `team_send`
+    /// 都命中 `Unsupported` —— 队长以为派了活，成员从未收到。这条测试只看一件事：
+    /// 成员行的通道能排出一次真实写入。
+    #[test]
+    fn a_spawned_member_is_deliverable_over_its_pty() {
+        use crate::agent::team::delivery::{self, DeliveryRoute};
+
+        let manager = seeded();
+        let spawned = spawn_ok(&manager, &lead(), &spawn_args("claude-code", "w9"));
+        let member = manager.member(&spawned.member_id).expect("member");
+        match delivery::route(member.channel, "claim t1") {
+            DeliveryRoute::Pty(plan) => {
+                assert_eq!(plan.text, b"claim t1", "正文与回车是两笔（AC14）");
+                assert_eq!(plan.enter, b"\r");
+            }
+            DeliveryRoute::Unsupported(why) => panic!("成员不可投递: {why}"),
+        }
+        // 与之并列：队长的行也一样（同一条执行路径）。
+        let lead_member = manager.member(LEAD).expect("lead");
+        assert!(matches!(
+            delivery::route(lead_member.channel, "hi"),
+            DeliveryRoute::Pty(_)
+        ));
+    }
 
     const TEAM: &str = "tm_1";
     const OTHER: &str = "tm_2";
@@ -2053,7 +2082,7 @@ mod tests {
         assert_eq!(member.model.as_deref(), Some("opus"));
         assert_eq!(member.state, MemberState::Spawned);
         assert_eq!(member.tier, AdmissionTier::A);
-        assert_eq!(member.channel, WorkerChannel::Mcp);
+        assert_eq!(member.channel, WorkerChannel::CLI_MEMBER);
         assert_eq!(member.result_channel, ResultChannel::Mcp);
         assert_eq!(member.mcp_injection, McpInjection::Argv);
         // 默认审批策略是 Queue（design §6.1：不冒泡进队长对话）。
@@ -2104,7 +2133,8 @@ mod tests {
         // ② + ③ 注入方式 / 传输 / 旁路参数：全部从准入表 + 成员行算出。
         let admission = admission_for(&member.agent_id).expect("member.agent_id 必须在准入表里");
         assert_eq!(member.mcp_injection, admission.mcp_injection);
-        assert_eq!(admission.channel(), member.channel);
+        // 入站通道不是表的事实（一律 PTY）；表只提供注入方式 / 传输 / 旁路参数。
+        assert_eq!(member.channel, WorkerChannel::CLI_MEMBER);
         assert_eq!(admission.result_channel(), member.result_channel);
         assert_eq!(spawned.tier, tier_of(admission));
         assert_eq!(

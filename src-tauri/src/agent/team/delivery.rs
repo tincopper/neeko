@@ -85,6 +85,13 @@ pub enum DeliveryRoute {
 /// `Mcp` 意味着「成员是我们的客户端」—— 它调我们，我们**没有**往它嘴里推的通道。
 /// 假装送达比报错坏得多：队长会继续往下走，而成员从未收到那个任务。让它得到一个
 /// 明确错误、并指向板上派活（`task_create` / `task_update`）才是可行动的。
+///
+/// # 谁还会走到 `Mcp` / `None` 这两支
+///
+/// CLI 成员现在一律 `Pty`（[`WorkerChannel::CLI_MEMBER`]）。剩下三种：
+/// ① 将来接 Chat 成员时，`Mcp` 会先变成真通道（`SessionRequest`）再解除拒绝；
+/// ② 本轮改动**之前**落库的成员行（通道已持久化）—— 拒绝理由同样可行动；
+/// ③ 准入表里没有工具面的行（`None`），`team_spawn` 现在早拒，只剩历史数据。
 #[must_use]
 pub fn route(channel: WorkerChannel, message: &str) -> DeliveryRoute {
     match channel {

@@ -209,6 +209,18 @@ impl AppStateWrapper {
             .map(crate::agent::team::TeamServer::endpoint_url)
     }
 
+    /// 团队端点的门面（URL + 凭证面 + 执行者）。端点没起来时 `None`。
+    ///
+    /// 一次锁内取出三样：它们是「端点起来了」的同一件事，拆成多个访问器只会让调用方
+    /// 有能力拿到半个（有 URL 却没人签凭证）。见 `TeamSurface` 的文档。
+    pub fn team_surface(&self) -> Option<crate::agent::team::TeamSurface> {
+        self.team_server
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .map(crate::agent::team::TeamServer::surface)
+    }
+
     /// 项目根路径 → 执行环境（团队执行层的**环境来源**）。
     ///
     /// # 为什么按路径而不是按 id
@@ -682,6 +694,16 @@ mod tests {
         let state = isolated_state(&tmp);
 
         assert_eq!(state.team_endpoint_url(), None);
+    }
+
+    /// 门面同样是「端点起来了才有」—— 而且它是**一个** `Option`：
+    /// 不存在「有 URL 却没人签凭证」这种半可用状态（见 `TeamSurface` 的文档）。
+    #[test]
+    fn the_team_surface_is_none_until_the_endpoint_boots() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+
+        assert!(state.team_surface().is_none());
     }
 
     // ─────── 团队根 → 执行环境（执行层的环境来源） ───────

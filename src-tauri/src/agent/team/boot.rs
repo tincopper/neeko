@@ -29,7 +29,7 @@
 
 use std::sync::{Arc, RwLock};
 
-use crate::agent::team::execution::MemberExecutor;
+use crate::agent::team::execution::{CredentialLedger, MemberExecutor};
 use crate::agent::team::manager::TeamManager;
 use crate::agent::team::mcp::dispatch::WAIT_TIMEOUT_MAX_SECS;
 use crate::agent::team::mcp::principals::{principals_from, token_hashes};
@@ -68,9 +68,23 @@ pub struct TeamServer {
     ///
     /// 生产路径上**不需要再读它** —— 凭证签发与认门由 handler 经 `CredentialLedger::admit`
     /// 完成（那才是唯一的写入点）。组合根持有它才能保证「端点 / 身份表 / 门」是同一份；
-    /// `boot` 的单测也从这里驱动 `admit`（不能只靠假体证明门的语义）。
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// `boot` 的单测也从这里驱动 `admit`（不能只靠假体证明门的语义）；
+    /// 生产路径经 [`TeamServer::credentials`] 取它 —— 「以队长身份开会话」也要签发凭证。
     state: TeamServerState,
+}
+
+/// 端点对外提供的门面：[`TeamServer::surface`] 的返回值。
+///
+/// 三个字段同源（都在同一个 `TeamServer` 上），因此**不存在**「有 URL 但没人签凭证」这种
+/// 半可用组合 —— 组合根拿到它就能起队长；域内代码拿不到它（它们只该认识端口）。
+#[derive(Clone)]
+pub struct TeamSurface {
+    /// 成员 / 队长的 MCP 配置里要写的完整 URL。
+    pub endpoint_url: String,
+    /// 凭证面（签发 + 认门，一次动作）。
+    pub credentials: std::sync::Arc<dyn CredentialLedger>,
+    /// 成员执行者（与端点 handler 用的是**同一个**实例）。
+    pub executor: std::sync::Arc<dyn MemberExecutor>,
 }
 
 /// 启动团队 MCP 端点。
@@ -143,6 +157,25 @@ impl TeamServer {
     #[must_use]
     pub fn endpoint_url(&self) -> String {
         endpoint_url(self.port())
+    }
+
+    /// 端点交给**域外入口**的那一份东西：URL + 两个端口。
+    ///
+    /// # 为什么成对交出
+    ///
+    /// 三个字段都是「端点起来了」的同一件事。拆成三个 `Option` 访问器会让调用方有能力
+    /// 只取一半 —— 「签发了凭证但没有执行者」或「有 URL 但门不认它」都是**不可用**状态，
+    /// 而端点的启动是原子的。一次返回，就不可能只拿半个。
+    ///
+    /// 交出的是**端口**（`CredentialLedger` / `MemberExecutor`）而不是 `TeamServerState`：
+    /// `admit` 仍是唯一的「签发 + 认门」写入点，所以「什么时候刷新身份表」只有一个答案。
+    #[must_use]
+    pub fn surface(&self) -> TeamSurface {
+        TeamSurface {
+            endpoint_url: self.endpoint_url(),
+            credentials: std::sync::Arc::new(self.state.clone()),
+            executor: std::sync::Arc::clone(&self.state.executor),
+        }
     }
 
     /// 优雅停机。只可在**非 runtime 线程**调用（`ServerHandle::stop` 的契约）。
