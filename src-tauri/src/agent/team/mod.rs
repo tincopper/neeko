@@ -6,6 +6,8 @@
 
 pub mod authorize;
 pub mod completion;
+#[cfg(test)]
+pub(crate) mod fixtures;
 pub mod identity;
 pub mod lease;
 pub mod manager;

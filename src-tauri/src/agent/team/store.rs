@@ -592,6 +592,11 @@ mod tests {
         }
     }
 
+    /// 一行**每列都偏离默认值**的成员（round-trip 用）。
+    ///
+    /// 故意**不**用 [`crate::agent::team::fixtures::fixture_member`]：仓库层的契约是
+    /// "每一列都能原样往返"，用默认值打底的夹具会让“某列根本没写进库”这类 bug 变绿。
+    /// 其余测试文件一律用共享夹具（那里关心的是行为，不是列）。
     fn sample_member() -> TeamMember {
         TeamMember {
             id: "w1@tm_1".into(),

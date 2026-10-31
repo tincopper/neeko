@@ -148,11 +148,9 @@ pub fn observe(
 mod tests {
     use super::*;
     use crate::agent::hooks::ingest::attribution::EnvHints;
+    use crate::agent::team::fixtures::{fixture_member, fixture_team};
     use crate::agent::team::store::TeamStore;
-    use crate::agent::team::types::{
-        AdmissionTier, ApprovalPolicy, McpInjection, MemberRole, MemberState, ResultChannel, Team,
-        TeamMember, TeamState, WorkerChannel, Workspace,
-    };
+    use crate::agent::team::types::{MemberRole, MemberState, TeamMember};
     use std::path::PathBuf;
 
     const TEAM: &str = "tm_1";
@@ -166,42 +164,16 @@ mod tests {
 
     fn member(id: &str, name: &str, role: MemberRole) -> TeamMember {
         TeamMember {
-            id: id.into(),
-            team_id: TEAM.into(),
             name: name.into(),
             role,
-            agent_id: "claude".into(),
-            model: None,
-            session_id: None,
-            terminal_id: Some(format!("term-{name}")),
-            workspace: Workspace::Shared,
-            channel: WorkerChannel::Mcp,
-            result_channel: ResultChannel::Mcp,
-            tier: AdmissionTier::A,
-            approval_policy: ApprovalPolicy::Queue,
-            mcp_injection: McpInjection::Argv,
-            last_seq: 0,
-            state: MemberState::Spawned,
-            token_hash: "sha256:x".into(),
-            joined_at: 1,
+            ..fixture_member(id, TEAM)
         }
     }
 
     /// 内存库（无文件路径 ⇒ 无需 tempdir）；一个团队 + 一名成员。
     fn seeded() -> TeamManager {
         let manager = TeamManager::new(TeamStore::open_in_memory().expect("in-memory store"));
-        manager
-            .create_team(Team {
-                id: TEAM.into(),
-                name: "T".into(),
-                lead_session_id: "sess".into(),
-                lead_agent_id: "claude".into(),
-                project_path: root(),
-                created_at: 1_700_000_000_000,
-                closed_at: None,
-                state: TeamState::Active,
-            })
-            .expect("team");
+        manager.create_team(fixture_team(TEAM)).expect("team");
         manager
             .add_member(member(W1, "w1", MemberRole::Worker))
             .expect("member");

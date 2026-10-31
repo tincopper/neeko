@@ -359,13 +359,10 @@ fn lease_remaining_secs(task: &crate::agent::team::types::TeamTask, now: i64) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::team::fixtures::{fixture_member, fixture_team};
     use crate::agent::team::manager::TeamManager;
     use crate::agent::team::store::TeamStore;
-    use crate::agent::team::types::{
-        AdmissionTier, ApprovalPolicy, McpInjection, MemberSignal, ResultChannel, Team, TeamMember,
-        TeamState, TeamTask, WorkerChannel, Workspace,
-    };
-    use std::path::PathBuf;
+    use crate::agent::team::types::{MemberSignal, Team, TeamMember, TeamTask, Workspace};
 
     const TEAM: &str = "tm_1";
     const LEAD: &str = "lead@tm_1";
@@ -374,44 +371,16 @@ mod tests {
     /// 任务回收后的接手者（钉住测试里的 B）。
     const B: &str = "w2@tm_1";
 
-    /// 夹具路径一律由 `CARGO_MANIFEST_DIR` 推导（红线 13）。
-    fn root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    }
-
+    /// 夹具只剩"本测试关心的字段"；全量默认值在 [`fixture_team`] / [`fixture_member`]。
     fn team() -> Team {
-        Team {
-            id: TEAM.into(),
-            name: "T".into(),
-            lead_session_id: "sess".into(),
-            lead_agent_id: "claude".into(),
-            project_path: root(),
-            created_at: 1_700_000_000_000,
-            closed_at: None,
-            state: TeamState::Active,
-        }
+        fixture_team(TEAM)
     }
 
     fn member(id: &str, name: &str, role: MemberRole) -> TeamMember {
         TeamMember {
-            id: id.into(),
-            team_id: TEAM.into(),
             name: name.into(),
             role,
-            agent_id: "claude".into(),
-            model: None,
-            session_id: None,
-            terminal_id: Some(format!("term-{name}")),
-            workspace: Workspace::Shared,
-            channel: WorkerChannel::Mcp,
-            result_channel: ResultChannel::Mcp,
-            tier: AdmissionTier::A,
-            approval_policy: ApprovalPolicy::Queue,
-            mcp_injection: McpInjection::Argv,
-            last_seq: 0,
-            state: MemberState::Spawned,
-            token_hash: "sha256:x".into(),
-            joined_at: 1,
+            ..fixture_member(id, TEAM)
         }
     }
 
