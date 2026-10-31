@@ -72,7 +72,10 @@ use super::manager::{PipelineConfig, PtyHandle, TerminalClosedPayload};
 
 /// Spawn the full PTY pipeline: reader, writer, watcher threads and emit
 /// the initial session state.
-#[allow(clippy::too_many_arguments)] // pipeline spawn: 8 deps are a stable unit, grouping adds ceremony
+///
+/// `live` 是本会话的 live-sessions 接线；登记在 `spawn_watcher_thread` **之前**
+/// （顺序不变量见 `live_sessions::wiring::pty` 模块注释）。
+#[allow(clippy::too_many_arguments)] // pipeline spawn: 9 deps are a stable unit, grouping adds ceremony
 pub(super) fn spawn_pty_pipeline(
     id: &str,
     pair: PtyPair,
@@ -81,6 +84,7 @@ pub(super) fn spawn_pty_pipeline(
     sessions: &Arc<Mutex<HashMap<String, crate::common::terminal::types::TerminalSession>>>,
     pty_handles: &Arc<Mutex<HashMap<String, PtyHandle>>>,
     drains: &SessionDrainMap,
+    live: Option<crate::live_sessions::wiring::pty::LiveTerminal<'_>>,
     app_handle: &tauri::AppHandle,
 ) -> Result<crate::common::terminal::types::TerminalSession> {
     let pid = child.process_id();
@@ -178,11 +182,30 @@ pub(super) fn spawn_pty_pipeline(
             },
         );
 
-    spawn_watcher_thread(id, config, pty_handles, sessions, drains, app_handle)?;
+    // live-sessions 登记：会话已在两张表里就绪、进程已存活，而退出信号的唯一生产者
+    // （watcher 线程）尚未启动 —— 这是唯一不会「先 exit 后 register」的时机。
+    if let Some(live) = live {
+        live.register(app_handle, id);
+    }
+
+    // 活动探针：reader 线程 stamp，watcher 线程 poll（输出流动 = 在跑 / 静默 = 就绪）。
+    let activity = crate::live_sessions::wiring::pty::OutputActivity::new();
+
+    spawn_watcher_thread(
+        id,
+        config,
+        pty_handles,
+        sessions,
+        drains,
+        // 登记已在上方完成（早于本线程启动），线程只需要注册表句柄发退出信号。
+        live.map(|live| live.shared_registry()),
+        activity.clone(),
+        app_handle,
+    )?;
     #[cfg(unix)]
-    spawn_reader_thread(id, reader, config, drains, master_fd)?;
+    spawn_reader_thread(id, reader, config, drains, activity, master_fd)?;
     #[cfg(not(unix))]
-    spawn_reader_thread(id, reader, config, drains)?;
+    spawn_reader_thread(id, reader, config, drains, activity)?;
 
     log_info(&format!("{} Session {} ready", config.prefix, &id[..8]));
     Ok(session)
@@ -224,12 +247,17 @@ fn spawn_writer_listener(
 /// Spawn a watcher thread that polls the child process exit status every 100ms.
 /// When the child exits, clean up the PTY handle, remove the session, and emit
 /// a `terminal-closed-{id}` event.
+// watcher 的入参是「会话的三张表 + live 接线 + 事件句柄」：都是 pipeline 已经持有的
+// 借用/克隆，收进结构体只会把同一批字段再抄一遍（与 `spawn_pty_pipeline` 同口径）。
+#[allow(clippy::too_many_arguments)]
 fn spawn_watcher_thread(
     id: &str,
     config: &PipelineConfig,
     pty_handles: &Arc<Mutex<HashMap<String, PtyHandle>>>,
     sessions: &Arc<Mutex<HashMap<String, crate::common::terminal::types::TerminalSession>>>,
     drains: &SessionDrainMap,
+    live_sessions: Option<Arc<crate::live_sessions::Registry>>,
+    activity: crate::live_sessions::wiring::pty::OutputActivity,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
     let watch_id = id.to_string();
@@ -317,7 +345,23 @@ fn spawn_watcher_thread(
                             prefix_w, e
                         ));
                     }
+                    // live-sessions：退出码 → 终止态（0/无 → Stopped，非 0 → Failed），
+                    // 随后注销条目。信号是唯一写入口，这里不直接改状态。
+                    if let Some(registry) = live_sessions.as_deref() {
+                        crate::live_sessions::wiring::pty::exit_and_notify(
+                            registry,
+                            &watch_handle,
+                            &watch_id,
+                            Some(code),
+                        );
+                    }
                     return;
+                }
+
+                // live-sessions：输出活动 → 运行 / 就绪。信号是唯一写入口，这里不直接改状态；
+                // 状态没变时 `poll` 不 bump（100ms tick 不会变成 IPC 风暴）。
+                if let Some(registry) = live_sessions.as_deref() {
+                    activity.poll(registry, Some(&watch_handle), &watch_id);
                 }
 
                 thread::sleep(Duration::from_millis(100));
@@ -344,6 +388,7 @@ fn spawn_reader_thread(
     reader: Box<dyn Read + Send>,
     config: &PipelineConfig,
     drains: &crate::common::terminal::drain::SessionDrainMap,
+    activity: crate::live_sessions::wiring::pty::OutputActivity,
     #[cfg(unix)] master_fd: Option<std::os::fd::RawFd>,
 ) -> Result<()> {
     let read_id = id.to_string();
@@ -368,7 +413,11 @@ fn spawn_reader_thread(
             // 同一 flush 语义复用于两个 pump 变体：有界推入 SessionDrain。
             // long-poll 路径经 Notify 唤醒挂起的 terminal_drain_wait；
             // 轮询降级路径 tick 即唤醒（take_drain 保持空闭包）。
-            let flush = |data: &[u8]| session_drain.push(data, || session_drain.notify_one());
+            let flush = |data: &[u8]| {
+                // 活动打点：只有「有字节出来」这一件事实，供 watcher 判定运行 / 就绪。
+                activity.stamp();
+                session_drain.push(data, || session_drain.notify_one())
+            };
             #[cfg(unix)]
             let outcome = match master_fd {
                 Some(fd) => {

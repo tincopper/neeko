@@ -10,6 +10,10 @@ use tauri::State;
 ///
 /// 运行根（cwd）由后端从 Workspace 身份派生：缺省 = `repo.root()`（工作树根 /
 /// 项目根），`working_dir` 为可选的 Workspace 内子目录覆盖。
+///
+/// `agent_id` 是这条终端跑哪个 agent —— **显式字段**：前端创建时就知道答案，
+/// 从 `command` 字符串反推是同一类缺陷（`ChatLaunch::inprocess` 的教训：推断会
+/// 覆盖它本不覆盖的情况）。live-sessions 的图标与占位标题都取自它。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn create_terminal_session(
@@ -19,6 +23,7 @@ pub async fn create_terminal_session(
     shell: Option<String>,
     working_dir: Option<String>,
     command: Option<String>,
+    agent_id: Option<String>,
     state: State<'_, AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<TerminalSession, AppError> {
@@ -34,12 +39,19 @@ pub async fn create_terminal_session(
         working_dir.as_deref(),
     )
     .await?;
+    // 原生事实在这里一次成型（只有命令层拿得到 `state`）：地址 + 运行根 + agent。
+    // 占位标题不在这里编 —— 终端在 CLI 自报 OSC 标题前没有名字（见 `wiring::pty`）。
+    let registration = crate::live_sessions::wiring::pty::TerminalRegistration {
+        workspace,
+        cwd,
+        agent_id,
+    };
     state
         .terminal_router
         .create_session(
             &environment,
+            &registration,
             workspace_root,
-            &cwd,
             cols,
             rows,
             shell,
@@ -50,9 +62,17 @@ pub async fn create_terminal_session(
 }
 
 /// Closes a terminal session by ID.
+///
+/// `app_handle` 用于发出 live-sessions 变更（侧栏据此移除该会话行）。
 #[tauri::command]
-pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>) {
-    state.terminal_router.close_session(&session_id);
+pub fn close_terminal_session(
+    session_id: String,
+    state: State<AppStateWrapper>,
+    app_handle: tauri::AppHandle,
+) {
+    state
+        .terminal_router
+        .close_session(&session_id, Some(&app_handle));
 }
 
 /// Resizes a terminal session to the specified column/row dimensions.

@@ -63,7 +63,7 @@ impl RemoteTerminalManager {
     /// `cwd` 是远端会话的实际运行目录（根，或 Workspace 内子目录覆盖）。二者分离，与 Local/WSL
     /// 的 `prepare_project_theme(env, workspace_root, …)` 对称，避免模块子目录覆盖漂移主题产物。
     #[allow(clippy::too_many_arguments)]
-    pub async fn create_session(
+    pub(crate) async fn create_session(
         &self,
         host: &str,
         port: u16,
@@ -73,6 +73,7 @@ impl RemoteTerminalManager {
         cwd: &str,
         cols: u16,
         rows: u16,
+        live: Option<crate::live_sessions::wiring::pty::LiveTerminal<'_>>,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
         let id = Uuid::new_v4().to_string();
@@ -127,6 +128,12 @@ impl RemoteTerminalManager {
 
         crate::common::terminal::drain::insert_drain(&self.drains, &id);
 
+        // live-sessions 登记：会话已在两张表里就绪，而退出信号的唯一生产者（IO 线程）
+        // 尚未启动 —— 顺序不变量见 `live_sessions::wiring::pty` 模块注释。
+        if let Some(live) = live {
+            live.register(&app_handle, &id);
+        }
+
         // mpsc channel：input listener → IO 任务
         let (input_tx, mut input_rx) = mpsc::unbounded_channel::<Vec<u8>>();
         // mpsc channel：resize 请求 (cols, rows) → IO 任务
@@ -170,6 +177,17 @@ impl RemoteTerminalManager {
 
         // IO 任务：在独立 tokio 线程里同时处理读写和 resize，消除锁竞争
         let io_id = id.clone();
+        // live-sessions：SSH 通道结束（远端 shell 退出 / 用户关闭）时注销条目。
+        // 远端不提供可靠的退出码，按「正常结束」处理（`None`）。
+        let io_live = live.map(|live| live.shared_registry());
+        let io_handle = app_handle.clone();
+        let io_exit_id = io_id.clone();
+        // 活动探针：io 线程 stamp 输出、tick 分支 poll（与本地 PTY 同一条判据）。
+        let io_activity = crate::live_sessions::wiring::pty::OutputActivity::new();
+        let tick_live = io_live.clone();
+        let tick_handle = io_handle.clone();
+        let tick_id = io_id.clone();
+        let tick_activity = io_activity.clone();
         if let Err(e) = thread::Builder::new()
             .name(format!("ssh-io-{}", &id[..8]))
             .spawn(move || {
@@ -181,8 +199,12 @@ impl RemoteTerminalManager {
                     }
                 };
                 let io_drain = session_drain.clone();
+                let io_activity = io_activity;
                 rt.block_on(async move {
                     log_info(&format!("[SSH-IO] Thread started for {}", &io_id[..8]));
+                    // 250ms 分辨率足够表达「在跑 / 静默」，又不会让 select 空转。
+                    let mut activity_ticker =
+                        tokio::time::interval(std::time::Duration::from_millis(250));
                     loop {
                         tokio::select! {
                             // 从前端收到输入 → 写入 SSH channel（写端独立，无借用冲突）
@@ -212,6 +234,8 @@ impl RemoteTerminalManager {
                             msg = channel.wait() => {
                                 match msg {
                                     Some(ChannelMsg::Data { data }) => {
+                                        // 活动打点：远端有输出 ⇒ 会话在跑（判据见 wiring::pty）。
+                                        io_activity.stamp();
                                         // 内存治理：写入有界 drain 队列，前端经
                                         // terminal_drain(_wait) 拉二进制块（默认
                                         // long-poll 挂起式 drain，VITE_TERMINAL_DRAIN_POLL=1
@@ -245,10 +269,24 @@ impl RemoteTerminalManager {
                                     _ => {}
                                 }
                             }
+                            // 活动 tick：静默超阈值 ⇒ 就绪（状态没变时 poll 不 bump）。
+                            _ = activity_ticker.tick() => {
+                                if let Some(registry) = tick_live.as_deref() {
+                                    tick_activity.poll(registry, Some(&tick_handle), &tick_id);
+                                }
+                            }
                         }
                     }
                     log_info(&format!("[SSH-IO] Thread exiting for {}", &io_id[..8]));
                 });
+                if let Some(registry) = io_live.as_deref() {
+                    crate::live_sessions::wiring::pty::exit_and_notify(
+                        registry,
+                        &io_handle,
+                        &io_exit_id,
+                        None,
+                    );
+                }
             })
         {
             // IO 线程起不来：回滚刚插入的三处表项（`close_session`

@@ -67,9 +67,15 @@ pub fn delete_task_config(
 
 /// Stop a running task by closing its PTY session.
 #[tauri::command]
-pub fn stop_task(session_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
+pub fn stop_task(
+    session_id: String,
+    state: State<AppStateWrapper>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), AppError> {
     // 拆除单一入口：走 router 按会话归属（PTY / SSH）路由，而不是直连某
     // 一个后端 —— 后者会静默漏掉 SSH 会话并泄漏 owners 登记。
-    state.terminal_router.close_session(&session_id);
+    state
+        .terminal_router
+        .close_session(&session_id, Some(&app_handle));
     Ok(())
 }

@@ -47,6 +47,8 @@ pub mod git;
 /// Skill management (install, configure, tag, sync).
 /// Library management (skills, MCP, prompts, actions).
 pub mod library;
+/// Live session registry — the single source of truth for session state and titles.
+pub mod live_sessions;
 /// Language Server Protocol client management.
 pub mod lsp;
 /// Application-level notification domain (business-agnostic policy + dispatch).
@@ -124,6 +126,10 @@ macro_rules! neeko_invoke_handler {
             $crate::terminal::commands::resize_terminal,
             $crate::terminal::commands::terminal_drain,
             $crate::terminal::commands::terminal_drain_wait,
+            // ── live sessions ────────────────────────────────────────────────
+            $crate::live_sessions::commands::list_live_sessions,
+            $crate::live_sessions::commands::wait_live_sessions,
+            $crate::live_sessions::commands::set_live_session_title,
             // ── agent ────────────────────────────────────────────────────────
             $crate::agent::commands::list_agents,
             $crate::agent::commands::get_agent,

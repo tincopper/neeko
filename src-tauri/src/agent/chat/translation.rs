@@ -122,6 +122,7 @@ pub async fn translation_stream(
         session,
         TRANSLATION_EVENT,
         None, // ephemeral: no resume cursor persisted
+        &cwd,
     );
 
     Ok(session_id)

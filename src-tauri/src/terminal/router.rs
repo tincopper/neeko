@@ -16,6 +16,10 @@ use std::time::Duration;
 
 use crate::common::terminal::types::TerminalSession;
 use crate::core::project::ProjectEnvironment;
+use crate::live_sessions::wiring::pty::{
+    unregister_and_notify, LiveTerminal, TerminalRegistration,
+};
+use crate::live_sessions::Registry;
 use crate::terminal::manager::TerminalManager;
 use crate::terminal::remote::RemoteTerminalManager;
 use crate::AppError;
@@ -47,6 +51,8 @@ pub struct TerminalRouter {
     remote: RemoteTerminalManager,
     /// 会话 → 归属后端。
     owners: Mutex<HashMap<String, SessionOwner>>,
+    /// live-sessions 注册表（未注入时终端照常工作，只是侧栏看不到会话）。
+    live_sessions: Option<std::sync::Arc<Registry>>,
 }
 
 impl Default for TerminalRouter {
@@ -56,13 +62,28 @@ impl Default for TerminalRouter {
 }
 
 impl TerminalRouter {
-    /// 新建空路由器（两个后端各自新建）。
+    /// 新建空路由器（两个后端各自新建），不接 live-sessions 注册表。
     #[must_use]
     pub fn new() -> Self {
         Self {
             local: TerminalManager::new(),
             remote: RemoteTerminalManager::new(),
             owners: Mutex::new(HashMap::new()),
+            live_sessions: None,
+        }
+    }
+
+    /// 接上 live-sessions 注册表：会话创建 / 关闭与两个后端的进程退出都会同步登记。
+    ///
+    /// 注册表**只由 router 持有**（两个后端不存副本）：接线是每次调用带下去的
+    /// [`LiveTerminal`]，于是「哪个后端持有注册表」不会成为第二个需要同步的事实。
+    #[must_use]
+    pub fn with_live_sessions(live_sessions: std::sync::Arc<Registry>) -> Self {
+        Self {
+            local: TerminalManager::new(),
+            remote: RemoteTerminalManager::new(),
+            owners: Mutex::new(HashMap::new()),
+            live_sessions: Some(live_sessions),
         }
     }
 
@@ -113,11 +134,11 @@ impl TerminalRouter {
     /// 三个传输分支统一承接同一个 `cwd`（环境是传输维度，红线 10）。
     /// `command` 有值表示这是**任务终端**（由 task 域创建）—— 主题准备据此跳过。
     #[allow(clippy::too_many_arguments)]
-    pub async fn create_session(
+    pub(crate) async fn create_session(
         &self,
         env: &ProjectEnvironment,
+        registration: &TerminalRegistration,
         workspace_root: &str,
-        cwd: &str,
         cols: u16,
         rows: u16,
         shell: Option<String>,
@@ -128,23 +149,30 @@ impl TerminalRouter {
         // 项目级配置落在 Workspace 根，**不**随语言 runner 的模块子目录覆盖漂移。
         crate::theme::service::prepare_project_theme(env, workspace_root, command.is_some()).await;
 
-        match env {
+        // 原生事实（地址 + 运行根 + agent + 展示名）由命令层一次成型传进来；router 只转发。
+        // 登记本身发生在进程创建处（PTY pipeline / SSH 建连内），**不**在这里 —— 否则退出
+        // 信号的生产者会早于登记上线（顺序不变量见 `live_sessions::wiring::pty`）。
+        // `LiveTerminal` 是 Copy：三个分支各取一份，不克隆注册表。
+        let cwd = registration.cwd.as_str();
+        let live = LiveTerminal::new(self.live_sessions.as_ref(), Some(registration));
+
+        let session = match env {
             ProjectEnvironment::Local => {
                 let session = self
                     .local
-                    .create_session(cwd, cols, rows, shell, command, app_handle)
+                    .create_session(cwd, cols, rows, shell, command, live, app_handle)
                     .map_err(AppError::from)?;
                 self.register(&session.id, SessionOwner::Pty);
-                Ok(session)
+                session
             }
             #[cfg(target_os = "windows")]
             ProjectEnvironment::Wsl { distro } => {
                 let session = self
                     .local
-                    .create_wsl_session(distro, cwd, cols, rows, app_handle)
+                    .create_wsl_session(distro, cwd, cols, rows, live, app_handle)
                     .map_err(AppError::from)?;
                 self.register(&session.id, SessionOwner::Pty);
-                Ok(session)
+                session
             }
             ProjectEnvironment::Remote {
                 host,
@@ -163,14 +191,17 @@ impl TerminalRouter {
                         cwd,
                         cols,
                         rows,
+                        live,
                         app_handle,
                     )
                     .await
                     .map_err(AppError::from)?;
                 self.register(&session.id, SessionOwner::Ssh);
-                Ok(session)
+                session
             }
-        }
+        };
+
+        Ok(session)
     }
 
     /// Resize a terminal session, dispatching to the correct backend.
@@ -224,7 +255,14 @@ impl TerminalRouter {
     }
 
     /// Close a terminal session, dispatching to the correct backend.
-    pub fn close_session(&self, session_id: &str) {
+    ///
+    /// 同时从 live-sessions 注册表注销（会话已不在，侧栏不得留幽灵行）。
+    /// `app_handle` 为 `None` 的调用方（退出清理 / 测试）只做注销不发事件 ——
+    /// 那时没有前端在听。
+    pub fn close_session(&self, session_id: &str, app_handle: Option<&tauri::AppHandle>) {
+        if let Some(registry) = self.live_sessions.as_deref() {
+            unregister_and_notify(registry, app_handle, session_id);
+        }
         match self.take_owner(session_id) {
             Some(SessionOwner::Pty) => self.local.close_session_in_background(session_id),
             Some(SessionOwner::Ssh) => self.remote.close_session(session_id),
@@ -276,7 +314,7 @@ mod tests {
         }
 
         // 未知会话关闭：不得 panic（原实现同样只告警）。
-        router.close_session(id);
+        router.close_session(id, None);
     }
 
     /// 后端访问器暴露的必须是**同一实例**（Arc 内部共享）：关闭后再次查询仍路由一致。
@@ -300,7 +338,7 @@ mod tests {
         router.register(id, SessionOwner::Ssh);
         assert_eq!(router.owner_of(id), Some(SessionOwner::Ssh));
 
-        router.close_session(id);
+        router.close_session(id, None);
 
         // 登记已摘除 ⇒ 重复关闭走 None 分支（幂等告警，不重复下发后端）。
         assert_eq!(
@@ -308,7 +346,7 @@ mod tests {
             None,
             "close must take (not peek) the owner"
         );
-        router.close_session(id);
+        router.close_session(id, None);
         assert_eq!(router.owner_of(id), None);
     }
 }

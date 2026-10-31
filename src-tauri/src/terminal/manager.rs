@@ -2,7 +2,11 @@
 
 use crate::common::terminal::events::terminal_closed_event;
 use anyhow::Result;
-use portable_pty::{Child, CommandBuilder, PtySize};
+use portable_pty::{Child, PtySize};
+// WSL 会话只在 Windows 宿主创建（`create_wsl_session`），导入随该 item 门控 ——
+// 未门控会在非目标平台触发 unused_imports（红线 10）。
+#[cfg(target_os = "windows")]
+use portable_pty::CommandBuilder;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -36,6 +40,9 @@ pub(crate) const PTY_CONFIG: PipelineConfig = PipelineConfig {
     thread_prefix: "pty",
 };
 
+/// WSL 会话的 pipeline 配置（仅 Windows 宿主产生 WSL 会话；与 router 的
+/// `#[cfg(target_os = "windows")]` Wsl 分支同域）。
+#[cfg(target_os = "windows")]
 pub(crate) const WSL_CONFIG: PipelineConfig = PipelineConfig {
     prefix: "[WSL]",
     thread_prefix: "wsl",
@@ -88,13 +95,14 @@ impl TerminalManager {
     /// 运行根由调用方（router，再上溯终端命令层）从 Workspace 身份派生；本层不再有
     /// 「可选 working_dir + 项目路径缺省」的 fail-open 形态（缺省静默回落主仓已退役）。
     #[allow(clippy::too_many_arguments)]
-    pub fn create_session(
+    pub(crate) fn create_session(
         &self,
         cwd: &str,
         cols: u16,
         rows: u16,
         shell_override: Option<String>,
         command: Option<String>,
+        registration: Option<crate::live_sessions::wiring::pty::LiveTerminal<'_>>,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
         let id = Uuid::new_v4().to_string();
@@ -135,17 +143,21 @@ impl TerminalManager {
             &self.sessions,
             &self.pty_handles,
             &self.drains,
+            registration,
             &app_handle,
         )
     }
 
     /// Creates a new WSL terminal session at the resolved run root `cwd`.
-    pub fn create_wsl_session(
+    #[cfg(target_os = "windows")]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn create_wsl_session(
         &self,
         distro: &str,
         cwd: &str,
         cols: u16,
         rows: u16,
+        registration: Option<crate::live_sessions::wiring::pty::LiveTerminal<'_>>,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
         let id = Uuid::new_v4().to_string();
@@ -178,6 +190,7 @@ impl TerminalManager {
             &self.sessions,
             &self.pty_handles,
             &self.drains,
+            registration,
             &app_handle,
         )
     }

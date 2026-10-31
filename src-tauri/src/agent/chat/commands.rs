@@ -18,6 +18,11 @@ use crate::agent::chat::notify;
 use crate::agent::chat::session_store::{ResumeCursor, SessionStatus};
 use crate::common::agent::types::AgentConfig;
 use crate::core::project::ProjectEnvironment;
+use crate::live_sessions::emit_changed;
+use crate::live_sessions::wiring::chat::{
+    register_and_notify as register_live_session, ChatRegistration,
+};
+use crate::live_sessions::wiring::pty::unregister_and_notify as unregister_live_session;
 use crate::AppError;
 use crate::AppStateWrapper;
 
@@ -248,6 +253,7 @@ pub async fn agent_stream(
         session,
         AGENT_CHAT_EVENT,
         Some(cursor),
+        &context.cwd,
     );
 
     Ok(session_id)
@@ -303,6 +309,7 @@ pub async fn agent_chat_resume(
         session,
         AGENT_CHAT_EVENT,
         Some(cursor),
+        &context.cwd,
     );
 
     Ok(session_id)
@@ -349,6 +356,7 @@ pub async fn agent_chat_open(
         session,
         AGENT_CHAT_EVENT,
         Some(cursor),
+        &context.cwd,
     );
 
     Ok(session_id)
@@ -358,6 +366,12 @@ pub async fn agent_chat_open(
 /// persist the resume cursor (if any), register the live session, and start
 /// the bridge pump. `event_name` selects the frontend event channel
 /// (`AGENT_CHAT_EVENT` for chat, `TRANSLATION_EVENT` for ephemeral translation).
+///
+/// `cwd` 是该会话**已解析的执行根**：登记 live 条目时要它（`ResumeCursor.cwd`
+/// 与「属于哪个单元」的判据同源），不在此处重新解析 —— 一次会话一个 cwd。
+// 8 个参数是「一次会话启动」的完整状态（会话、通道、事件名、游标、cwd…）：
+// 收进结构体只会把同一批字段再抄一遍（与既有 pipeline 函数同口径）。
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_session_pipeline(
     state: &State<'_, AppStateWrapper>,
     app_handle: &tauri::AppHandle,
@@ -366,6 +380,7 @@ pub(crate) fn spawn_session_pipeline(
     session: Box<dyn AgentSession>,
     event_name: &'static str,
     cursor: Option<ResumeCursor>,
+    cwd: &str,
 ) {
     if let Some(request_tx) = session.request_channel() {
         state.agent_chat_manager.register(
@@ -376,6 +391,26 @@ pub(crate) fn spawn_session_pipeline(
                 request_tx,
             },
             cursor,
+        );
+    }
+
+    // live-sessions 注册（chat 是第一个生产者）：状态与标题的唯一事实源。
+    // 只登记 chat 通道 —— 翻译会话是临时流，不该出现在侧栏。
+    // 登记**先于**事件泵启动（顺序不变量：先 register 后产生信号）。
+    let is_chat_channel = event_name == AGENT_CHAT_EVENT;
+    let live = state.live_sessions.clone();
+    if is_chat_channel {
+        register_live_session(
+            &live,
+            app_handle,
+            ChatRegistration {
+                session_id: &session_id,
+                agent_id: &req.agent_id,
+                workspace: &req.workspace,
+                cwd,
+                topic: req.topic.as_deref(),
+                prompt: &req.prompt,
+            },
         );
     }
 
@@ -400,11 +435,23 @@ pub(crate) fn spawn_session_pipeline(
     let handle = app_handle.clone();
     let manager = state.agent_chat_manager.clone();
     let sid = session_id.clone();
+    let live_registry = live.clone();
+    let live_sid = sid.clone();
     tauri::async_runtime::spawn(async move {
         let notify_handle = handle.clone();
         let visible_manager = manager.clone();
+        let live_emit_handle = handle.clone();
+        let live_exit_handle = handle.clone();
         let emit = move |seq_evs: Vec<SequencedEvent>| {
             let _ = handle.emit(event_name, &seq_evs);
+            // live-sessions 逐事件投影（与通知投影并列、同一合帧批次）：
+            // 状态真的变了才 bump 并通知前端 —— 审批往返等抖动不刷 IPC（R2.3）。
+            // 只对 chat 通道观察：翻译会话从不登记，投进去只会得到一串「未知会话」日志。
+            if is_chat_channel
+                && crate::live_sessions::wiring::chat::observe(&live_registry, &live_sid, &seq_evs)
+            {
+                emit_changed(&live_emit_handle, live_registry.version());
+            }
             let Some(ctx) = &notify_ctx else { return };
             let visible = visible_manager.visible_session();
             for seq in &seq_evs {
@@ -420,6 +467,12 @@ pub(crate) fn spawn_session_pipeline(
         };
         let _ = AgentChatBridge::run(sid.clone(), session, emit).await;
         manager.unregister(&sid);
+        // 会话结束：从注册表注销（侧栏随之移除）。`manager.unregister` 已经把持久化游标
+        // 置 Closed；这里的 close 是同一条 UPDATE 的幂等重复（两个消费者共用一个 store，
+        // 各自负责自己那条路径的收尾 —— 不为了少一次写把两边耦合起来）。
+        if is_chat_channel {
+            unregister_live_session(&live, Some(&live_exit_handle), &sid);
+        }
     });
 }
 
