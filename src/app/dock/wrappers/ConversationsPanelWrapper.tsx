@@ -108,7 +108,6 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
         data: {
           kind: 'terminal',
           agentId: meta.agentId,
-          status: 'Idle',
           taskCommand,
         },
       };

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
+import { tabSession } from '@/shared/selectors/liveSessionSelectors';
+import { useLiveSessionsStore } from '@/shared/store/liveSessionsStore';
 import type { AgentConfig, Tab } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
@@ -58,10 +60,11 @@ export function usePaneAgents({
     [enabledAgents, installedMap],
   );
 
-  /** Tab leading 渲染回调（依赖 installed agents 状态，与 hook 同域内聚）。 */
+  /** Tab leading 渲染回调（依赖 installed agents 与 live-session 状态，同域内聚）。 */
+  const sessions = useLiveSessionsStore((s) => s.sessions);
   const renderTabLeading = useCallback(
-    (tab: Tab) => renderEditorTabLeading(tab, installedEnabledAgents),
-    [installedEnabledAgents],
+    (tab: Tab) => renderEditorTabLeading(tab, installedEnabledAgents, tabSession(tab, sessions)),
+    [installedEnabledAgents, sessions],
   );
 
   return {

@@ -123,7 +123,7 @@ describe('useTerminalTabs', () => {
       expect(activeId(SPACE)).not.toBe(firstTab);
     });
 
-    it('新 tab 携带正确的 agentId', () => {
+    it('新 tab 携带正确的 agentId（标题不复制 agent 名）', () => {
       const { result } = renderHook(() => useTerminalTabs());
 
       const agent = { id: 'cursor-agent', name: 'Cursor Agent', command: 'cursor', args: [] };
@@ -135,7 +135,8 @@ describe('useTerminalTabs', () => {
 
       expect(created).not.toBeNull();
       expect(created?.agentId).toBe('cursor-agent');
-      expect(created?.title).toBe('Cursor Agent');
+      // 标题只说「第几个终端」：agent 由 tab 前导图标表达
+      expect(created?.title).toBe('Terminal 2');
     });
 
     it('达到 10 个 tab 上限时返回 null', () => {

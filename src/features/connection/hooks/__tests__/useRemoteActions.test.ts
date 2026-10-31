@@ -119,7 +119,7 @@ function seedTerminalTab(activeTabId: string | null = 'rp1-term'): void {
             id: 'rp1-term',
             scope: { kind: 'workspace', session },
             title: 'Terminal 1',
-            data: { kind: 'terminal', agentId: null, status: 'Idle' },
+            data: { kind: 'terminal', agentId: null },
           } as never,
         ],
       },

@@ -28,7 +28,6 @@ vi.mock('@/features/terminal/hooks/useTerminalTabs', () => ({
     getTabs: () => [],
     addTab: mockAddTab,
     activateTab: vi.fn(),
-    updateTabStatus: vi.fn(),
     handleAgentClick: mockHandleAgentClick,
   }),
 }));
@@ -40,7 +39,7 @@ function makeTerminalTab(id: string, projectId: string, title = id): Tab {
     id,
     projectId,
     title,
-    data: { kind: 'terminal', agentId: null, status: 'Idle' },
+    data: { kind: 'terminal', agentId: null },
   };
 }
 

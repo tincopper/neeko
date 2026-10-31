@@ -4,10 +4,20 @@ import React, { useCallback } from 'react';
 
 import { cn } from '@/lib/utils';
 import { Pin } from '@/shared/components/icons';
+import type { SessionView } from '@/shared/types/liveSessions';
 import type { TabLike } from '@/shared/types/tab';
+
+import { resolveTabTitle } from '../utils/tabTitle';
 
 export interface TabItemProps<T extends TabLike> {
   tab: T;
+  /**
+   * 该 tab 的 live session（注册表快照里的那一条）；`null` = 尚未注册。
+   *
+   * 标题由 `resolveTabTitle` 派生（注册表 > tab 兜底）—— 本组件不读 store，
+   * 也不把派生结果写回，于是「谁是最新标题」只有一个答案。
+   */
+  session?: SessionView | null;
   isActive: boolean;
   isPinned?: boolean;
   reorderable?: boolean;
@@ -20,6 +30,7 @@ export interface TabItemProps<T extends TabLike> {
 
 function TabItem<T extends TabLike>({
   tab,
+  session = null,
   isActive,
   isPinned = false,
   reorderable = false,
@@ -32,6 +43,8 @@ function TabItem<T extends TabLike>({
     id: tab.id,
     disabled: !reorderable,
   });
+
+  const title = resolveTabTitle(tab, session);
 
   const handleClick = useCallback(() => {
     onActivate(tab.id);
@@ -95,14 +108,14 @@ function TabItem<T extends TabLike>({
       }}
       onContextMenu={handleContextMenu}
       {...(reorderable ? listeners : {})}
-      title={tab.title}
+      title={title}
     >
       {renderLeading?.(tab)}
 
       {isPinned && <Pin size={10} className="shrink-0 opacity-50" />}
 
       <span className="truncate cursor-pointer" style={{ fontSize: 'var(--terminal-font-size)' }}>
-        {tab.title}
+        {title}
       </span>
 
       {!isPinned && (

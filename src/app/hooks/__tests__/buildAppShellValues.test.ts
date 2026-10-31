@@ -85,7 +85,6 @@ function makeData(): AppShellData {
     handleActivateTab: fn,
     handleCloseTab: fn,
     handleAddTab: fn,
-    handleTabStatusChange: fn,
     handleAgentClick: fn,
     handleToggleHiddenAgent: fn,
     confirmExitOpen: true,

@@ -178,18 +178,11 @@ export function useAppShellData(): UseAppShellDataResult {
     remoteActions: remoteActionsWrap,
     selectProject,
   });
-  const {
-    tabKey,
-    tabs,
-    handleAddTab,
-    handleCloseTab,
-    handleActivateTab,
-    handleTabStatusChange,
-    handleTabAgentClick,
-  } = useTabManagement({
-    activeProject,
-    saveTabById: fileView.saveTabById,
-  });
+  const { tabKey, tabs, handleAddTab, handleCloseTab, handleActivateTab, handleTabAgentClick } =
+    useTabManagement({
+      activeProject,
+      saveTabById: fileView.saveTabById,
+    });
   const handleFileSelect = useCallback(
     (filePath: string) => {
       return fileView.openFile(filePath);
@@ -372,7 +365,6 @@ export function useAppShellData(): UseAppShellDataResult {
     handleActivateTab,
     handleCloseTab,
     handleAddTab,
-    handleTabStatusChange,
     handleAgentClick,
     handleToggleHiddenAgent,
     confirmExitOpen,

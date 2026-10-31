@@ -84,7 +84,7 @@ describe('browserTabCleanup — 关闭 browser tab 销毁 webview + 清除状态
       id: 'tab_t1',
       scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'Terminal',
-      data: { kind: 'terminal', agentId: null, status: 'Idle' },
+      data: { kind: 'terminal', agentId: null },
     });
 
     useEditorStore.getState().closeTab(mkSession('p1').key, 'tab_t1');

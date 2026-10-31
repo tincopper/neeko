@@ -21,7 +21,7 @@ const makeTerminalTab = (id: string, title: string): Tab => ({
   id,
   projectId: 'p1',
   title,
-  data: { kind: 'terminal', agentId: null, status: 'Idle' },
+  data: { kind: 'terminal', agentId: null },
 });
 
 const renderTabBar = (onNewFileTab?: () => void) =>

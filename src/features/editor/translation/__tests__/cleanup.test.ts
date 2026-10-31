@@ -78,7 +78,7 @@ describe('translationTabCleanupHandler — 文件 tab 关闭回收', () => {
       id: 'term:1',
       scope: { kind: 'workspace', session: mkSession('p1') },
       title: 'Terminal 1',
-      data: { kind: 'terminal' as const, agentId: null, status: 'Idle' as const },
+      data: { kind: 'terminal' as const, agentId: null },
     };
 
     translationTabCleanupHandler('proj-tab-space', terminalTab);

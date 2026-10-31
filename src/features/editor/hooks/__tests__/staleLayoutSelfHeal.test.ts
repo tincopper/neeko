@@ -44,7 +44,7 @@ function makeTab(id: string, kind: Tab['data']['kind'] = 'file'): Tab {
     id,
     scope: { kind: 'workspace', session: mkSession('p1') },
     title: id,
-    data: { kind: 'terminal', agentId: null, status: 'Idle' },
+    data: { kind: 'terminal', agentId: null },
   };
 }
 

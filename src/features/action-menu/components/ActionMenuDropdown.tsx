@@ -14,7 +14,8 @@ interface ActionMenuDropdownProps {
   anchorRect: DOMRect | null;
   onClose: () => void;
   onExecute: (item: ActionRegistryItem) => void;
-  onAddAgentTerminal?: (agentId: string, agentName: string) => void;
+  /** 新建 agent 终端 tab：只传 agentId —— 标题由 tab 自己的占位规则决定，不复制 agent 名。 */
+  onAddAgentTerminal?: (agentId: string) => void;
 }
 
 const GROUP_LABELS: Record<ActionGroup, string> = {
@@ -147,7 +148,7 @@ const ActionMenuDropdown: React.FC<ActionMenuDropdownProps> = ({
                       role="menuitem"
                       className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-left border-0 bg-transparent cursor-pointer text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-150 text-[var(--font-size)]"
                       onClick={() => {
-                        onAddAgentTerminal?.(agent.id, agent.name);
+                        onAddAgentTerminal?.(agent.id);
                         onClose();
                       }}
                     >

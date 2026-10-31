@@ -14,7 +14,6 @@ export interface EditorContextValue {
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onAddTab: (targetGroup?: EditorGroupId | 'pinned') => void;
-  onTabStatusChange?: (tabId: string, status: 'Idle' | 'Running' | 'Failed') => void;
   agents: AgentConfig[];
   compactMode: boolean;
   showAgentBar: boolean;

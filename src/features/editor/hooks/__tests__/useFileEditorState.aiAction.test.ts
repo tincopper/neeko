@@ -130,7 +130,6 @@ describe('useFileEditorState · AI 动作登记（aiActionRegistry）', () => {
     await waitFor(() => expect(createTaskTerminal).toHaveBeenCalledTimes(1));
     expect(createTaskTerminal).toHaveBeenCalledWith('p1', {
       agentId: 'opencode',
-      agentName: 'OpenCode',
       taskCommand:
         "opencode --prompt 'fix the following problem in this go code at main.go:1-1: m'",
     });

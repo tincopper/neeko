@@ -82,14 +82,11 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         wrapperRefs: terminalWrapperRefs,
         createSession: async (cols, rows, payload) => {
           // 运行根由后端从 session 派生；交互终端不传 second run root。
-          const created = await createTerminalSession(
-            session,
-            cols,
-            rows,
-            config.shell || null,
-            null,
-            payload?.command ?? null,
-          );
+          const created = await createTerminalSession(session, cols, rows, {
+            shell: config.shell || null,
+            command: payload?.command ?? null,
+            agentId: payload?.agentId ?? null,
+          });
           return created.id;
         },
         resize: resizeTerminal,
@@ -126,8 +123,11 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         cache: wslTerminalCache as Map<string, import('./types').CacheEntry>,
         rebuildCallbacks: wslRebuildCallbacks,
         wrapperRefs: wslWrapperRefs,
-        createSession: async (cols, rows) => {
-          const created = await createTerminalSession(session, cols, rows);
+        createSession: async (cols, rows, payload) => {
+          // WSL/SSH 不转发 command（行为不变），但 agent 身份必须下发（图标/标题靠它）
+          const created = await createTerminalSession(session, cols, rows, {
+            agentId: payload?.agentId ?? null,
+          });
           return created.id;
         },
         resize: resizeTerminal,
@@ -160,8 +160,11 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
       cache: remoteTerminalCache as Map<string, import('./types').CacheEntry>,
       rebuildCallbacks: remoteRebuildCallbacks,
       wrapperRefs: remoteWrapperRefs,
-      createSession: async (cols, rows) => {
-        const created = await createTerminalSession(session, cols, rows);
+      createSession: async (cols, rows, payload) => {
+        // 同 WSL：command 不转发（行为不变），agent 身份显式下发
+        const created = await createTerminalSession(session, cols, rows, {
+          agentId: payload?.agentId ?? null,
+        });
         return created.id;
       },
       resize: resizeTerminal,

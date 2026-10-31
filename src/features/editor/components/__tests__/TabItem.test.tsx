@@ -37,9 +37,7 @@ describe('TabItem agent icon', () => {
     title: 'claude session',
     data: {
       kind: 'terminal',
-      sessionId: 'session-1',
       agentId: 'custom-agent',
-      status: 'Idle',
     },
   };
 
@@ -113,9 +111,7 @@ describe('TabItem close button pointer isolation', () => {
     title: 'claude session',
     data: {
       kind: 'terminal',
-      sessionId: 'session-1',
       agentId: 'custom-agent',
-      status: 'Idle',
     },
   };
 

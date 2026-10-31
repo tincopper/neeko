@@ -36,7 +36,7 @@ function terminalTab(): Tab {
     id: 'tab-term',
     scope: { kind: 'app' },
     title: 'term',
-    data: { kind: 'terminal', agentId: 'pi', status: 'Idle' },
+    data: { kind: 'terminal', agentId: 'pi' },
   };
 }
 

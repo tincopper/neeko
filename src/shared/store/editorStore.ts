@@ -75,7 +75,7 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
       const p = partial as Record<string, unknown>;
       const isTerminalPartial =
         'agentId' in p ||
-        'status' in p ||
+        'ptySessionId' in p ||
         'taskCommand' in p ||
         'taskConfigId' in p ||
         'rebuildKey' in p;
@@ -86,10 +86,10 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
           p.agentId !== undefined
             ? (p.agentId as string | null)
             : (data as TerminalTabData).agentId,
-        status:
-          p.status !== undefined
-            ? (p.status as 'Idle' | 'Running' | 'Failed')
-            : (data as TerminalTabData).status,
+        ptySessionId:
+          p.ptySessionId !== undefined
+            ? (p.ptySessionId as string | undefined)
+            : (data as TerminalTabData).ptySessionId,
         taskCommand:
           p.taskCommand !== undefined
             ? (p.taskCommand as string | undefined)

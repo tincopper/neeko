@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
+import { NO_SESSIONS, tabSession } from '@/shared/selectors/liveSessionSelectors';
+import type { SessionView } from '@/shared/types/liveSessions';
 import type { Tab } from '@/shared/types/tab';
+
+import { resolveTabTitle } from '../utils/tabTitle';
 
 /** 菜单与锚点按钮的间距 */
 const ANCHOR_GAP = 4;
@@ -13,6 +17,8 @@ const VIEWPORT_PADDING = 8;
 interface TabOverflowMenuProps {
   /** 隐藏（溢出）的 tab 列表 */
   tabs: Tab[];
+  /** 注册表快照（标题与状态点的唯一来源，与 TabBar 同源传入） */
+  sessions?: readonly SessionView[];
   /** 「⋯」按钮元素：定位贴住按钮，窗口缩放时跟随重算 */
   anchorEl: HTMLElement;
   onActivateTab: (tabId: string) => void;
@@ -29,6 +35,7 @@ interface TabOverflowMenuProps {
  */
 const TabOverflowMenu: React.FC<TabOverflowMenuProps> = ({
   tabs,
+  sessions = NO_SESSIONS,
   anchorEl,
   onActivateTab,
   onCloseTab,
@@ -119,35 +126,38 @@ const TabOverflowMenu: React.FC<TabOverflowMenuProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto px-1 pb-1">
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            role="menuitem"
-            tabIndex={-1}
-            className="group flex items-center gap-2 mx-1 px-2 py-1.5 rounded-md text-[var(--font-size)] text-text-secondary cursor-pointer select-none transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary"
-            onClick={() => handleActivate(tab.id)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleActivate(tab.id);
-              }
-            }}
-            title={tab.title}
-          >
-            {renderLeading?.(tab)}
-            <span className="flex-1 min-w-0 truncate">{tab.title}</span>
-            <button
-              className="tb-icon-btn w-4 h-4 rounded text-text-muted hover:text-accent-red hover:bg-bg-primary transition-colors flex items-center justify-center shrink-0 leading-none opacity-0 group-hover:opacity-100"
-              style={{ fontSize: 'var(--terminal-font-size)' }}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => handleCloseTab(e, tab.id)}
-              title="Close tab"
-              aria-label={`Close ${tab.title}`}
+        {tabs.map((tab) => {
+          const title = resolveTabTitle(tab, tabSession(tab, sessions));
+          return (
+            <div
+              key={tab.id}
+              role="menuitem"
+              tabIndex={-1}
+              className="group flex items-center gap-2 mx-1 px-2 py-1.5 rounded-md text-[var(--font-size)] text-text-secondary cursor-pointer select-none transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary"
+              onClick={() => handleActivate(tab.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleActivate(tab.id);
+                }
+              }}
+              title={title}
             >
-              ×
-            </button>
-          </div>
-        ))}
+              {renderLeading?.(tab)}
+              <span className="flex-1 min-w-0 truncate">{title}</span>
+              <button
+                className="tb-icon-btn w-4 h-4 rounded text-text-muted hover:text-accent-red hover:bg-bg-primary transition-colors flex items-center justify-center shrink-0 leading-none opacity-0 group-hover:opacity-100"
+                style={{ fontSize: 'var(--terminal-font-size)' }}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => handleCloseTab(e, tab.id)}
+                title="Close tab"
+                aria-label={`Close ${title}`}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       <div

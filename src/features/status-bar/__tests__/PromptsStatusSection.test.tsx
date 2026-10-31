@@ -111,7 +111,7 @@ function terminalTabFixture(id: string): Tab {
     id,
     scope: { kind: 'workspace', session: mkSession('proj-1') },
     title: 'Terminal',
-    data: { kind: 'terminal', agentId: null, status: 'Idle' },
+    data: { kind: 'terminal', agentId: null },
   };
 }
 

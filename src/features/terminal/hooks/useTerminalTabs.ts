@@ -5,6 +5,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from '@/shared/types';
 import { requireTabWorkspaceSession } from '@/shared/utils/tabIdentity';
+import { nextTerminalTitle } from '@/shared/utils/terminalTabTitle';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { MAX_TERMINAL_TABS, generateTerminalTabId } from '../api/taskTerminal';
@@ -26,7 +27,6 @@ function tabToTerminalTab(tab: Tab & { data: TerminalTabData }): TerminalTab {
     projectId: requireTabWorkspaceSession(tab).projectId,
     agentId: tab.data.agentId,
     title: tab.title,
-    status: tab.data.status,
   };
 }
 
@@ -44,7 +44,9 @@ export function useTerminalTabs() {
   );
 
   const addTab = useCallback(
-    (projectId: ProjectId, agentId?: string | null, agentName?: string): TerminalTab | null => {
+    // `agentName` 已不再参与标题：tab 的 agent 身份由前导图标表达，标题只说「第几个终端」
+    // 或会话真实标题（注册表里的 prompt / OSC）。`pi` 这类 id 当标题对用户没有意义。
+    (projectId: ProjectId, agentId?: string | null): TerminalTab | null => {
       const state = useEditorStore.getState();
       // 配额与既有 tab 检查按 store 键（= tab.scope 推导键）寻址，与 addTab 落键同形
       const existing = state.tabs[activeWorkspaceSession(projectId).key];
@@ -52,14 +54,14 @@ export function useTerminalTabs() {
       if (terminalCount >= MAX_TERMINAL_TABS) return null;
 
       const tabId = generateTabId();
+      const title = nextTerminalTitle(existing);
       const newTab: Tab = {
         id: tabId,
         scope: { kind: 'workspace', session: activeWorkspaceSession(projectId) },
-        title: agentName ?? agentId ?? `Terminal ${terminalCount + 1}`,
+        title,
         data: {
           kind: 'terminal',
           agentId: agentId ?? null,
-          status: 'Idle',
         },
       };
 
@@ -70,8 +72,7 @@ export function useTerminalTabs() {
         id: tabId,
         projectId,
         agentId: agentId ?? null,
-        title: agentName ?? agentId ?? `Terminal ${terminalCount + 1}`,
-        status: 'Idle',
+        title,
       };
     },
     [],
@@ -86,12 +87,10 @@ export function useTerminalTabs() {
     useEditorStore.getState().activateTab(projectId, tabId);
   }, []);
 
+  // 换 agent 只改身份，**不改标题**：标题属于会话（注册表），不是 agent 的副本。
   const setTabAgent = useCallback(
-    (projectId: string, tabId: string, agentId: string | null, agentName?: string): void => {
-      useEditorStore.getState().updateTab(projectId, tabId, {
-        agentId,
-        title: agentName ?? (agentId ? agentId : 'Terminal'),
-      });
+    (projectId: string, tabId: string, agentId: string | null): void => {
+      useEditorStore.getState().updateTab(projectId, tabId, { agentId });
     },
     [],
   );
@@ -100,17 +99,10 @@ export function useTerminalTabs() {
     useEditorStore.getState().updateTab(projectId, tabId, { title });
   }, []);
 
-  const updateTabStatus = useCallback(
-    (projectId: string, tabId: string, status: TerminalTab['status']): void => {
-      useEditorStore.getState().updateTab(projectId, tabId, { status });
-    },
-    [],
-  );
-
   const handleAgentClick = useCallback(
     (projectId: ProjectId, agent: AgentConfig): TerminalTab | null => {
       // Always create a new tab when clicking an agent
-      return addTab(projectId, agent.id, agent.name);
+      return addTab(projectId, agent.id);
     },
     [addTab],
   );
@@ -127,7 +119,6 @@ export function useTerminalTabs() {
     activateTab,
     setTabAgent,
     updateTabTitle,
-    updateTabStatus,
     handleAgentClick,
     clearProjectTabs,
   };

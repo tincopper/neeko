@@ -1,6 +1,7 @@
 import { useEditorStore } from '@/shared/store/editorStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
+import { nextTerminalTitle } from '@/shared/utils/terminalTabTitle';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 /**
@@ -20,7 +21,6 @@ export function generateTerminalTabId(): string {
 
 export interface TaskTerminalOptions {
   agentId: string;
-  agentName?: string;
   taskCommand: string;
 }
 
@@ -40,11 +40,12 @@ export function createTaskTerminal(projectId: ProjectId, opts: TaskTerminalOptio
   const tab: Tab = {
     id: tabId,
     scope: { kind: 'workspace', session: activeWorkspaceSession(projectId) },
-    title: opts.agentName ?? opts.agentId,
+    // 占位标题与其它建 tab 入口同源（`Terminal N`）：agent 由 tab 前导图标表达，
+    // 真实标题由 live-sessions 注册表在 prompt / OSC 到达后升级。
+    title: nextTerminalTitle(existing),
     data: {
       kind: 'terminal',
       agentId: opts.agentId,
-      status: 'Idle',
       taskCommand: opts.taskCommand,
     },
   };

@@ -21,7 +21,6 @@ describe('createTaskTerminal', () => {
   it('创建 terminal tab 并携带 taskCommand，随即激活', () => {
     const ok = createTaskTerminal(PROJECT_ID, {
       agentId: 'opencode',
-      agentName: 'OpenCode',
       taskCommand: "opencode --prompt 'fix it'",
     });
 
@@ -34,14 +33,16 @@ describe('createTaskTerminal', () => {
       expect(tab.data.agentId).toBe('opencode');
       expect(tab.data.taskCommand).toBe("opencode --prompt 'fix it'");
     }
-    expect(tab.title).toBe('OpenCode');
+    // 标题是中性占位（agent 由 tab 前导图标表达），真实标题由注册表在 prompt 到达后升级
+    expect(tab.title).toBe('Terminal 1');
     expect(activeTabIdOf(SPACE)).toBe(tab.id);
   });
 
-  it('无 agentName 时标题回落 agentId', () => {
+  it('标题不回落 agentId：agent 名/id 都不是标题', () => {
     createTaskTerminal(PROJECT_ID, { agentId: 'claude', taskCommand: 'claude hi' });
     const tab = useEditorStore.getState().tabs[SPACE].tabs[0];
-    expect(tab.title).toBe('claude');
+    expect(tab.title).toBe('Terminal 1');
+    expect(tab.title).not.toBe('claude');
   });
 
   it('配额满（MAX_TERMINAL_TABS）时返回 false 且不再建 tab', () => {

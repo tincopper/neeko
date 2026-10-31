@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { AgentConfig, EditorGroupId, Tab } from '@/shared/types';
+import { nextTerminalTitle } from '@/shared/utils/terminalTabTitle';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 const MAX_TERMINAL_TABS = 10;
@@ -22,25 +23,16 @@ export function useTerminalTabs(
   handleAddTerminalTab: (targetGroup?: EditorGroupId | 'pinned') => void;
   handleAddAgentTab: (agent: AgentConfig, targetGroup?: EditorGroupId | 'pinned') => void;
 } {
-  const handleAddTerminalTab = useCallback(
-    (targetGroup?: EditorGroupId | 'pinned') => {
+  /** 两个入口只差 `agentId`（与是否受配额约束）：构造逻辑合并成一份。 */
+  const addTerminalTab = useCallback(
+    (agentId: string | null, targetGroup: EditorGroupId | 'pinned' | undefined): void => {
       if (!tabKey || !projectId) return;
-      const existingTabs = useEditorStore.getState().tabs[tabKey];
-      const terminalCount = (existingTabs?.tabs ?? []).filter(
-        (t) => t.data.kind === 'terminal',
-      ).length;
-      if (terminalCount >= MAX_TERMINAL_TABS) return;
-
       const tabId = `tab_${crypto.randomUUID()}`;
       const tab: Tab = {
         id: tabId,
         scope: { kind: 'workspace', session: activeWorkspaceSession(projectId) },
-        title: `Terminal ${terminalCount + 1}`,
-        data: {
-          kind: 'terminal',
-          agentId: null,
-          status: 'Idle',
-        },
+        title: nextTerminalTitle(useEditorStore.getState().tabs[tabKey]),
+        data: { kind: 'terminal', agentId },
       };
       useEditorStore.getState().addTab(tab, targetGroup);
       useEditorStore.getState().activateTab(tabKey, tabId);
@@ -48,24 +40,23 @@ export function useTerminalTabs(
     [tabKey, projectId],
   );
 
+  const handleAddTerminalTab = useCallback(
+    (targetGroup?: EditorGroupId | 'pinned') => {
+      if (!tabKey) return;
+      const existing = useEditorStore.getState().tabs[tabKey];
+      const terminalCount = (existing?.tabs ?? []).filter((t) => t.data.kind === 'terminal').length;
+      // 配额只约束「空白终端」入口；点 agent 是显式意图，不静默拒绝（行为保持原样）。
+      if (terminalCount >= MAX_TERMINAL_TABS) return;
+      addTerminalTab(null, targetGroup);
+    },
+    [tabKey, addTerminalTab],
+  );
+
   const handleAddAgentTab = useCallback(
     (agent: AgentConfig, targetGroup?: EditorGroupId | 'pinned') => {
-      if (!tabKey || !projectId) return;
-      const tabId = `tab_${crypto.randomUUID()}`;
-      const tab: Tab = {
-        id: tabId,
-        scope: { kind: 'workspace', session: activeWorkspaceSession(projectId) },
-        title: agent.name,
-        data: {
-          kind: 'terminal',
-          agentId: agent.id,
-          status: 'Idle',
-        },
-      };
-      useEditorStore.getState().addTab(tab, targetGroup);
-      useEditorStore.getState().activateTab(tabKey, tabId);
+      addTerminalTab(agent.id, targetGroup);
     },
-    [tabKey, projectId],
+    [addTerminalTab],
   );
 
   return { handleAddTerminalTab, handleAddAgentTab };

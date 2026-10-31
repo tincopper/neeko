@@ -94,7 +94,6 @@ export interface AppShellData {
   handleActivateTab: EditorContextValue['onActivateTab'];
   handleCloseTab: EditorContextValue['onCloseTab'];
   handleAddTab: EditorContextValue['onAddTab'];
-  handleTabStatusChange: EditorContextValue['onTabStatusChange'];
   handleAgentClick: EditorContextValue['onAgentClick'];
   handleToggleHiddenAgent: EditorContextValue['onToggleHiddenAgent'];
   // modals
@@ -172,7 +171,6 @@ export function buildAppShellValues(data: AppShellData) {
     handleActivateTab,
     handleCloseTab,
     handleAddTab,
-    handleTabStatusChange,
     handleAgentClick,
     handleToggleHiddenAgent,
     confirmExitOpen,
@@ -245,7 +243,6 @@ export function buildAppShellValues(data: AppShellData) {
     onActivateTab: handleActivateTab,
     onCloseTab: handleCloseTab,
     onAddTab: handleAddTab,
-    onTabStatusChange: handleTabStatusChange,
     agents,
     compactMode: config.agentSelectorCompactMode ?? false,
     showAgentBar: config.agentSelectorShowPresetBar !== false,

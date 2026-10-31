@@ -19,7 +19,16 @@ export type TabKind =
 export interface TerminalTabData {
   kind: 'terminal';
   agentId: string | null;
-  status: 'Idle' | 'Running' | 'Failed';
+  /**
+   * PTY 会话 id（后端铸造）。
+   *
+   * 侧栏 ↔ tab 的**唯一映射键**：侧栏会话行来自 live-sessions 注册表（不依赖打开的 tab），
+   * 点一行要能命中它的 tab。
+   *
+   * 注：曾经还有个 `status: 'Idle' | 'Running' | 'Failed'` —— 它只在自动启动 agent 命令时
+   * 写一次、全仓无读者，是「视图持有状态副本」的活标本。状态现在只来自注册表。
+   */
+  ptySessionId?: string;
   taskCommand?: string;
   taskConfigId?: string;
   rebuildKey?: number;

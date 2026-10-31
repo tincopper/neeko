@@ -27,6 +27,7 @@ import {
 import { drainTerminal, drainTerminalWait } from '../api/terminalApi';
 import type { TerminalStrategy, CacheEntry } from '../strategies/types';
 import { createFitScheduler, type FitScheduler } from '../utils/fitScheduler';
+import { createTerminalTitleSync, type TerminalTitleSync } from '../utils/terminalTitle';
 
 import { refreshTerminalEntry } from './terminalCache';
 
@@ -51,7 +52,21 @@ interface TerminalViewBaseProps {
   taskCommand?: string | null;
   taskConfigId?: string | null;
   taskRebuildKey?: number;
-  onStatusChange?: (status: 'Idle' | 'Running' | 'Failed') => void;
+  /**
+   * PTY 创建成功后回调一次，参数是后端铸造的 session id。
+   *
+   * 它写进 `TerminalTabData.ptySessionId` —— 侧栏会话行与 tab 之间的**唯一映射键**
+   * （侧栏来自注册表，不依赖打开的 tab）。终点由上层决定（本组件不碰 editor store）。
+   */
+  onSessionCreated?: (sessionId: string) => void;
+  /**
+   * 终端自己声明的标题（xterm OSC 0/2 → `term.onTitleChange`）回调。
+   *
+   * 只在本组件内做「同一会话值不变不发」的去重（CLI 的 spinner 帧会反复发同一个
+   * 标题），发送与升级规则归上层 / 后端。PTY 创建完成前会话 id 还不存在，那段时间
+   * 的标题不发送也不记基线 —— 第一个真实标题会在创建完成后补发。
+   */
+  onSessionTitleChange?: (sessionId: string, title: string) => void;
 }
 
 export default React.memo(function TerminalViewBase({
@@ -60,7 +75,8 @@ export default React.memo(function TerminalViewBase({
   taskCommand,
   taskConfigId,
   taskRebuildKey = 0,
-  onStatusChange,
+  onSessionCreated,
+  onSessionTitleChange,
 }: TerminalViewBaseProps) {
   const { cacheKey, fontSize, fontFamily: fontFamilyProp } = strategy;
 
@@ -182,6 +198,18 @@ export default React.memo(function TerminalViewBase({
     }
 
     let scrollDisposable: { dispose: () => void } | undefined;
+    // 标题回传（OSC 0/2）：订阅按 **effect** 生命周期归属 —— `Terminal` 实例跨 mount
+    // 存活（终端缓存），监听器不存活；不重挂就会在 tab 切走后留下仍在发 IPC 的闭包。
+    let titleSync: TerminalTitleSync | null = null;
+    const attachTitleSync = (term: Terminal, getSessionId: () => string | null) => {
+      if (!onSessionTitleChange) return;
+      titleSync?.dispose();
+      titleSync = createTerminalTitleSync({
+        term,
+        getSessionId,
+        publish: onSessionTitleChange,
+      });
+    };
     // 字体门闩等待期间的卸载标记：cleanup 置 true，async 创建续体据此放弃
     // （await 是宏任务间隙，React 卸载/rebuild 可在此期间发生 → 防幽灵终端
     // 在已 detach 的 wrapper 上 open + 覆盖 cache entry）。
@@ -198,6 +226,9 @@ export default React.memo(function TerminalViewBase({
         );
         scrollIdleRef.current?.reveal(wrapperRef.current);
       });
+      // 复用的终端：session id 在 entry 上（未创建完成就 read 到 null，再由 emit 时的
+      // 实时读取拿到 —— 阅读点每次读 `entry.sessionId` 当前值，不存快照）。
+      attachTitleSync(existingCache.term, () => existingCache.sessionId);
     } else {
       const element = document.createElement('div');
       element.style.width = '100%';
@@ -254,12 +285,19 @@ export default React.memo(function TerminalViewBase({
           const sessionId = await createSessionVal(term.cols, term.rows, {
             command: taskCommand ?? undefined,
             configId: taskConfigId ?? undefined,
+            // agent 身份在创建时就已知（tab 上带着）—— 显式下发，不从命令行字符串反推
+            agentId: tabAgentId,
           });
 
           if (currentKeyRef.current !== cacheKey) return;
           entry.sessionId = sessionId;
           setReady(true);
           onSessionReadyVal?.();
+          onSessionCreated?.(sessionId);
+
+          // 标题订阅在 session id 就绪后挂上：此前收到的 OSC 标题无处归属（不记基线，
+          // 于是第一个真实标题一定会补发一次）。
+          attachTitleSync(term, () => entry.sessionId);
 
           // 当 taskCommand 已设置时（如 resume），跳过 auto-launch
           if (tabAgentId && !taskCommand) {
@@ -278,7 +316,7 @@ export default React.memo(function TerminalViewBase({
               const bytes = Array.from(new TextEncoder().encode(cmdStr));
               // 静默豁免：终端输入，尽力而为，失败无需上报
               emit(terminalInputEvent(entry.sessionId), bytes).catch(() => {});
-              onStatusChange?.('Running');
+              // 状态不在这里写：PTY 一旦创建就是 running，注册表（后端）已经是唯一写者
             }, agentDelayMsVal);
           }
 
@@ -421,6 +459,8 @@ export default React.memo(function TerminalViewBase({
 
     return () => {
       cancelled = true;
+      titleSync?.dispose();
+      titleSync = null;
       schedulerRef.current?.dispose();
       schedulerRef.current = null;
       containerObserver.disconnect();
@@ -458,7 +498,8 @@ export default React.memo(function TerminalViewBase({
     tabAgentId,
     taskCommand,
     taskConfigId,
-    onStatusChange,
+    onSessionCreated,
+    onSessionTitleChange,
     scheduleFit,
     // 字体属性：syncFont 在 effect 体内同步执行，须作为依赖（原本是独立 effect 的依赖）
     fontSize,

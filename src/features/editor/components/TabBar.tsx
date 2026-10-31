@@ -4,6 +4,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { AgentIcon } from '@/features/agent';
 import { cn } from '@/lib/utils';
 import { ChevronDown, Plus } from '@/shared/components/icons';
+import { tabSession } from '@/shared/selectors/liveSessionSelectors';
+import { useLiveSessionsStore } from '@/shared/store/liveSessionsStore';
 import type { AgentConfig } from '@/shared/types';
 import type { Tab } from '@/shared/types/tab';
 
@@ -94,6 +96,10 @@ const TabBar: React.FC<TabBarProps> = React.memo(
   }) => {
     const [overflowMenuAnchorEl, setOverflowMenuAnchorEl] = useState<HTMLElement | null>(null);
 
+    // tab 标题与状态点的唯一来源（注册表快照）。本组件只做一次订阅，再分发给每个 tab：
+    // TabItem / TabOverflowMenu 保持纯展示（它们不读 store，便于单独测标题兜底）。
+    const sessions = useLiveSessionsStore((s) => s.sessions);
+
     const hasPlusButton = Boolean(onAddTerminalTab || onActionMenuOpen);
 
     // 溢出测量与计算（pinned 永不溢出，激活 tab 强制可见，收敛机制见 hook 注释）
@@ -141,6 +147,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
         <div key={tab.id} ref={getTabSizeRef(tab.id)} className="flex shrink-0">
           <TabItem
             tab={tab}
+            session={tabSession(tab, sessions)}
             isActive={tab.id === activeTabId}
             isPinned={pinnedTabIds.includes(tab.id)}
             reorderable={reorderable}
@@ -234,6 +241,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
         {overflowMenuAnchorEl && hiddenTabs.length > 0 && (
           <TabOverflowMenu
             tabs={hiddenTabs}
+            sessions={sessions}
             anchorEl={overflowMenuAnchorEl}
             onActivateTab={onActivateTab}
             onCloseTab={onCloseTab}

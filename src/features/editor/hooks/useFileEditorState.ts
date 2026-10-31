@@ -149,7 +149,6 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
       const taskCommand = buildAgentPromptCommand(agent, message);
       return createTaskTerminal(currentProjectIdForToolbar, {
         agentId,
-        agentName: agent.name ?? undefined,
         taskCommand,
       });
     },

@@ -19,7 +19,7 @@ interface UseTabManagementOptions {
 export function useTabManagement(options: UseTabManagementOptions) {
   const { activeProject, saveTabById } = options;
 
-  const { getTabs, addTab, activateTab, updateTabStatus, handleAgentClick } = useTerminalTabs();
+  const { getTabs, addTab, activateTab, handleAgentClick } = useTerminalTabs();
 
   const currentProjectId = activeProject?.id ?? null;
 
@@ -60,21 +60,12 @@ export function useTabManagement(options: UseTabManagementOptions) {
     [tabKey, activateTab],
   );
 
-  const handleTabStatusChange = useCallback(
-    (tabId: string, status: 'Idle' | 'Running' | 'Failed') => {
-      if (!tabKey) return;
-      updateTabStatus(tabKey, tabId, status);
-    },
-    [tabKey, updateTabStatus],
-  );
-
   return {
     tabKey,
     tabs,
     handleAddTab,
     handleCloseTab,
     handleActivateTab,
-    handleTabStatusChange,
     handleTabAgentClick,
   };
 }

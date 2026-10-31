@@ -83,7 +83,6 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
         data: {
           kind: 'terminal',
           agentId: null,
-          status: 'Running',
           taskCommand: command,
         },
       };

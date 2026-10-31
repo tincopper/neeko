@@ -50,10 +50,7 @@ function tab(
   agentId: string | null = null,
 ): Tab {
   const scope: TabScope = { kind: 'workspace', session };
-  const data =
-    kind === 'terminal'
-      ? { kind: 'terminal', agentId, status: 'Idle' }
-      : { kind: 'file', filePath: id };
+  const data = kind === 'terminal' ? { kind: 'terminal', agentId } : { kind: 'file', filePath: id };
   return {
     id,
     scope,
@@ -109,7 +106,7 @@ describe('仲裁读布局派生视图（AC1 分屏后前台 / AC4 重排后顺�
         id,
         scope: { kind: 'workspace', session },
         title: `terminal-${id}`,
-        data: { kind: 'terminal', agentId: null, status: 'Idle' },
+        data: { kind: 'terminal', agentId: null },
       });
     }
   }

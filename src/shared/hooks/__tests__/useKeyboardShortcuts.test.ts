@@ -109,7 +109,7 @@ function seedTerminalEditor(activeTabId: string | null = 'tab1') {
       id,
       scope: { kind: 'workspace', session },
       title: id,
-      data: { kind: 'terminal', agentId: null, status: 'Idle' },
+      data: { kind: 'terminal', agentId: null },
     }) as never;
   const layout = createDefaultEditorLayout();
   layout.groups.left.tabIds = ['tab1', 'tab2'];

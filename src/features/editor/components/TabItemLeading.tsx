@@ -11,7 +11,9 @@ import {
   GitPullRequest,
   Bot,
 } from '@/shared/components/icons';
+import SessionStatusIcon from '@/shared/components/SessionStatusIcon';
 import type { AgentConfig } from '@/shared/types';
+import type { SessionView } from '@/shared/types/liveSessions';
 import type { Tab } from '@/shared/types/tab';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
@@ -39,11 +41,18 @@ function getTabIcon(kind: Tab['data']['kind']) {
 }
 
 /**
- * Render the leading icon + status dots for an editor Tab (the area before the
+ * Render the leading icon + status dot for an editor Tab (the area before the
  * title). Extracted from TabItem so the generic TabItem stays free of editor
  * specifics; dock panels inject their own simpler renderLeading.
+ *
+ * `session` 是注册表快照里该 tab 对应的那一条：状态点只能来自它 —— 视图不再持有
+ * 状态副本（`TerminalTabData.status` 已删除：写一次、无人读，图标因此「固定」）。
  */
-export function renderEditorTabLeading(tab: Tab, agents: AgentConfig[]): ReactNode {
+export function renderEditorTabLeading(
+  tab: Tab,
+  agents: AgentConfig[],
+  session?: SessionView | null,
+): ReactNode {
   const Icon = getTabIcon(tab.data.kind);
   const data = tab.data;
 
@@ -54,9 +63,6 @@ export function renderEditorTabLeading(tab: Tab, agents: AgentConfig[]): ReactNo
   const fileIcon = data.kind === 'file' ? fileIconSrc(data.fileName) : null;
   const browserFavicon = data.kind === 'browser' ? data.favicon : null;
 
-  const terminalStatus = data.kind === 'terminal' ? data.status : null;
-  const showStatusDot = terminalStatus === 'Running' || terminalStatus === 'Failed';
-  const statusDotColor = terminalStatus === 'Running' ? 'bg-accent-green' : 'bg-status-failed';
   const showDirtyDot = data.kind === 'file' && data.isDirty;
 
   return (
@@ -91,7 +97,8 @@ export function renderEditorTabLeading(tab: Tab, agents: AgentConfig[]): ReactNo
         />
       )}
 
-      {showStatusDot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDotColor}`} />}
+      {/* 状态点：与侧栏会话行 / 单元角标同源（`SessionStatusIcon` 是状态→视觉的唯一表） */}
+      <SessionStatusIcon status={session?.state ?? null} size={6} />
       {showDirtyDot && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
     </>
   );

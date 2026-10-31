@@ -20,7 +20,7 @@ const SPACE = P1_MAIN.key;
 function dataOf(kind: TabData['kind']): TabData {
   switch (kind) {
     case 'terminal':
-      return { kind: 'terminal', agentId: null, status: 'Idle' };
+      return { kind: 'terminal', agentId: null };
     case 'file':
       return {
         kind: 'file',

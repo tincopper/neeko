@@ -68,7 +68,7 @@ function seedAgentTab() {
             id: 'agent-tab',
             scope: { kind: 'workspace', session: mkSession('p1') },
             title: 'opencode',
-            data: { kind: 'terminal', agentId: 'opencode', status: 'Idle' },
+            data: { kind: 'terminal', agentId: 'opencode' },
           },
         ],
       },

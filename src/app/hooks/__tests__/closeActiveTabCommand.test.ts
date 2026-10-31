@@ -33,7 +33,7 @@ function makeTab(id: string, projectId: string, title = id): Tab {
     id,
     scope: { kind: 'workspace', session: WorkspaceSession.of(projectId, null) },
     title,
-    data: { kind: 'terminal', agentId: null, status: 'Idle' },
+    data: { kind: 'terminal', agentId: null },
   };
 }
 
