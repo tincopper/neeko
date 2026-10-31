@@ -12,6 +12,8 @@ import type {
   TaskCard,
   TaskDetail,
   Team,
+  TeamDefaults,
+  TeamOptions,
   TeamSession,
   TeamSnapshot,
   DiscoveredSkillDto,
@@ -181,7 +183,9 @@ export function createTaskDetail(
 
 /** 团队行夹具。 */
 export function createTeam(overrides?: Partial<Team>): Team {
-  return {
+  // 显式标注 `Team`：`{...base, ...Partial<Team>}` 的推断会把可选字段漏成 `undefined`，
+  // 配置列一多就会在返回值上炸类型。
+  const base: Team = {
     id: 'tm_1',
     name: 'refactor',
     leadSessionId: 'sess-lead',
@@ -190,8 +194,14 @@ export function createTeam(overrides?: Partial<Team>): Team {
     createdAt: 1_700_000_000_000,
     closedAt: null,
     state: 'active',
-    ...overrides,
+    // 配置列（建队时的 `TeamConfig` 写入，之后由 `team_options` 读回）。
+    allowedAgentIds: [],
+    defaultModel: null,
+    defaultWorkspace: 'shared',
+    defaultApprovalPolicy: 'queue',
+    maxMembers: 4,
   };
+  return { ...base, ...overrides };
 }
 
 /** 面板快照夹具（`team_snapshot` 的完整载荷）。 */
@@ -227,4 +237,42 @@ export function createLaunchableAgent(
   overrides: Partial<LaunchableAgent> & Pick<LaunchableAgent, 'agentId'>,
 ): LaunchableAgent {
   return { refusal: null, ...overrides };
+}
+
+/**
+ * `team_options.defaults` 夹具（`TeamDefaults` 的解析后形态）。
+ *
+ * 每个字段都取后端的**真实缺省**（`TeamConfig::default`：`4` / `shared` / `queue` /
+ * 无模型），不是为了少写字：面板的默认值本来就该来自这里，写别的值反而会掩盖
+ * 「面板其实在用自己的常量」这类缺陷。用例要测「默认值真的来自后端」时，把它改成一个
+ * **不可能出现在前端**的值（如 `7`）。
+ */
+export function createTeamDefaults(overrides?: Partial<TeamDefaults>): TeamDefaults {
+  const base: TeamDefaults = {
+    allowedAgentIds: [],
+    defaultModel: null,
+    defaultWorkspace: 'shared',
+    defaultApprovalPolicy: 'queue',
+    maxMembers: 4,
+    memberCount: 0,
+  };
+  return { ...base, ...overrides };
+}
+
+/**
+ * `team_options` 的载荷夹具。
+ *
+ * `members` 与 `defaults.allowedAgentIds` 在 Rust 侧**恒等**（后者是前者的 id 投影，见
+ * `options.rs::resolve`），所以默认值从 `members` 派生 —— 用例只改一处就不会造出
+ * 一个后端永远不会返回的载荷。
+ */
+export function createTeamOptions(overrides?: Partial<TeamOptions>): TeamOptions {
+  const members = overrides?.members ?? [
+    createLaunchableAgent({ agentId: 'claude-code' }),
+    createLaunchableAgent({ agentId: 'codex' }),
+  ];
+  const defaults =
+    overrides?.defaults ??
+    createTeamDefaults({ allowedAgentIds: members.map((row) => row.agentId) });
+  return { members, defaults };
 }

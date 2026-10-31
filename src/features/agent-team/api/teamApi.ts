@@ -5,6 +5,8 @@ import { AGENT_TEAM_EVENT } from '@/shared/events';
 import type {
   LaunchableAgent,
   TaskDetail,
+  TeamConfig,
+  TeamOptions,
   TeamPulse,
   TeamSession,
   TeamSnapshot,
@@ -13,17 +15,22 @@ import type {
 /**
  * Agent Team 域的 Tauri 命令 wrapper。
  *
- * 四条命令的**真相源**是 `src-tauri/src/agent/team/commands.rs`（入参名、返回形状）；
+ * 五条命令的**真相源**是 `src-tauri/src/agent/team/commands.rs`（入参名、返回形状）；
  * 两条读命令的区别是红线 4 的结构性落点：
  *
  * | wrapper | 命令 | 载荷 |
  * | --- | --- | --- |
  * | [`fetchLaunchableAgents`] | `team_launchable_agents` | 每个 CLI 一条 `{ agentId, refusal }`（面板置灰依据）|
+ * | [`fetchTeamOptions`] | `team_options` | 这个队允许谁当成员 / 上限 / 三个缺省值 |
  * | [`fetchTeamSnapshot`] | `team_snapshot` | 团队 + 花名册 + 任务板列（**无 task body**）|
  * | [`fetchTaskDetail`] | `team_task_detail` | 列视图 + 派活正文（**点开才拉**）|
  *
- * 这两条**不许合并成一条**：「顺手把 body 一起拉回来」会让每次脉冲刷新都搬一遍全部派活正文，
+ * 两条快照不在同一条命令里：「顺手把 body 一起拉回来」会让每次脉冲刷新都搬一遍全部派活正文，
  * 而脉冲是高频的（一个动作可能连发多条）。
+ *
+ * `team_launchable_agents` 与 `team_options` 也**不许合并**：前者是「这台机器上谁能当成员」
+ * （`admission.rs` 的准入事实），后者是「这个队允许谁 + 上限 + 缺省」（`team` 行经准入解析后
+ * 的结果）。它们的失败方式不同（一个是改配置、一个是换 CLI），合并会把两件事压成一个字段。
  */
 
 /** `start_team_session` 的入参。 */
@@ -34,6 +41,13 @@ export interface StartTeamSessionParams {
   projectPath: string;
   /** 团队显示名；`null` / 省略 = 后端取项目目录名。 */
   name?: string | null;
+  /**
+   * 团队组成配置；`null` / 省略 = 全默认。
+   *
+   * 只放**真的改过**的字段（见 `hooks/useTeamConfigDraft` 的投影）：把一个完整的
+   * `TeamDefaults` 填进来，等于把后端的默认值抄成前端常量。
+   */
+  config?: TeamConfig | null;
 }
 
 /** 以队长身份开一个会话（建队 + 起队长 PTY）。失败时拒绝原因是 `AppError` 的可读字符串。 */
@@ -42,6 +56,9 @@ export function startTeamSession(params: StartTeamSessionParams): Promise<TeamSe
     agentId: params.agentId,
     projectPath: params.projectPath,
     name: params.name ?? null,
+    // 显式 `null`（不是省略键）：`Option<TeamConfig>` 的「没给」由后端一步判定，
+    // 少一个键与 `null` 在 Tauri 的入参反序列化上不是同一件事。
+    config: params.config ?? null,
   });
 }
 
@@ -55,6 +72,24 @@ export function startTeamSession(params: StartTeamSessionParams): Promise<TeamSe
  */
 export function fetchLaunchableAgents(): Promise<LaunchableAgent[]> {
   return invoke<LaunchableAgent[]>('team_launchable_agents');
+}
+
+/**
+ * 团队配置面：这个队允许谁当成员 / 还能加几个 / 三个缺省值是什么。
+ *
+ * 两个出口同一个函数（后端也是同一个 `resolve`）：
+ *
+ * - `teamId` 省略 / `null` → **建队前**的目录（池子 = 全部可启动、缺省值 = 全局默认）；
+ * - `teamId` 是某个团队 → 该队的实际配置。
+ *
+ * 面板的默认值**只能**来自这里。在前端写死「4 / shared / queue」是第二份默认值，而后端
+ * 改默认值时前端不会红 —— 面板会安静地继续提交一套过时的缺省。
+ *
+ * 失败时不要用一份前端默认值兜底：不知道缺省值就不该建队（`TeamLaunchPanel` 会在这种情况下
+ * 禁用主按钮）。
+ */
+export function fetchTeamOptions(teamId?: string | null): Promise<TeamOptions> {
+  return invoke<TeamOptions>('team_options', { teamId: teamId ?? null });
 }
 
 /** 拉一次团队快照（面板的唯一数据源；无 task body）。 */

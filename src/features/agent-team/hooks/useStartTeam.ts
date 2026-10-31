@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 
-import type { TeamSession } from '@/shared/types/team';
+import type { TeamConfig, TeamSession } from '@/shared/types/team';
 
 import { startTeamSession } from '../api/teamApi';
 import { useTeamStore } from '../store/teamStore';
@@ -32,7 +32,13 @@ export interface StartTeamState {
   busy: boolean;
   /** 后端拒绝原因原文（`AppError` 的可读字符串）；`null` = 没有错误。 */
   error: string | null;
-  start: (agentId: string, projectPath: string) => Promise<boolean>;
+  /**
+   * 建队并接管队长终端。
+   *
+   * `config` 只该带**真的改过**的字段（`null` / 省略 = 全默认）：载荷里的每一项都是
+   * 对后端缺省值的覆盖，原样回传一份完整配置会把它抄成前端常量。
+   */
+  start: (agentId: string, projectPath: string, config?: TeamConfig | null) => Promise<boolean>;
 }
 
 /** 队长 PTY 的 tab 标题（唯一构造点：快照里的队名）。 */
@@ -46,11 +52,11 @@ export function useStartTeam(options: StartTeamOptions = {}): StartTeamState {
   const [error, setError] = useState<string | null>(null);
 
   const start = useCallback(
-    async (agentId: string, projectPath: string): Promise<boolean> => {
+    async (agentId: string, projectPath: string, config?: TeamConfig | null): Promise<boolean> => {
       setBusy(true);
       setError(null);
       try {
-        const session = await startTeamSession({ agentId, projectPath });
+        const session = await startTeamSession({ agentId, projectPath, config });
         await useTeamStore.getState().openTeam(session.teamId);
         const teamName = useTeamStore.getState().snapshot?.team.name ?? session.teamId;
 

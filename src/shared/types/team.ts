@@ -77,7 +77,21 @@ export interface Artifact {
  */
 export type Workspace = 'shared' | 'read_only' | { worktree: { path: string } };
 
-/** 团队行（`TeamSnapshot.team`）。 */
+/**
+ * 成员的审批策略（`types.rs::ApprovalPolicy`）。
+ *
+ * - `queue`：审批请求进待批队列（**默认**，不冒泡进队长对话 —— design §6.1）；
+ * - `bypass`：旁路审批（显式放弃确认，红线 15 的开关）。
+ */
+export type ApprovalPolicy = 'interactive' | 'queue' | 'bypass';
+
+/**
+ * 团队行（`TeamSnapshot.team`）。
+ *
+ * 后五个字段是**团队组成配置**（`types.rs::Team` 的五个配置列，判据见
+ * `team_serialises_its_configuration_as_camel_case_keys`）。建队时由 `TeamConfig` 写入，
+ * 之后由 `team_options` 读回来 —— 面板展示的永远是解析后的形态（[`TeamDefaults`]）。
+ */
 export interface Team {
   id: string;
   name: string;
@@ -90,6 +104,78 @@ export interface Team {
   createdAt: number;
   closedAt: number | null;
   state: TeamState;
+  /**
+   * 允许被 `team_spawn` 选中的 CLI（`agentId`）。**空 = 不限制**，不是「一个都不许」
+   * （读侧必须解析成实际池子，见 [`TeamDefaults.allowedAgentIds`]）。
+   */
+  allowedAgentIds: string[];
+  /** 成员未传 `model` 时的缺省；`null` = 用该 CLI 自己的默认。 */
+  defaultModel: string | null;
+  /** 成员未传 `workspace` 时的缺省。 */
+  defaultWorkspace: Workspace;
+  /** 成员未传 `approvalPolicy` 时的缺省。 */
+  defaultApprovalPolicy: ApprovalPolicy;
+  /** 成员上限（**不含队长**），合法区间 `1..=8`。 */
+  maxMembers: number;
+}
+
+/**
+ * 团队配置的**解析结果**（`team_options` 载荷的一半，真相源 `options.rs::TeamDefaults`）。
+ *
+ * 与 [`TeamConfig`] 的差别只有一个但很关键：这里的 `allowedAgentIds` **永远是解析后的实际
+ * 池子**（空池已展开成本机全部可启动 CLI），而 `TeamConfig` 里的空数组是「不限制」这个
+ * **配置意图**。把两者混用，读侧就会把「没限制」读成「一个都不许」。
+ */
+export interface TeamDefaults {
+  /** 解析后的实际池子（按 `agentId` 排序、去重；空池已展开）。 */
+  allowedAgentIds: string[];
+  /** 缺省模型；`null` = 该 CLI 自己的默认。 */
+  defaultModel: string | null;
+  /** 缺省工作区。 */
+  defaultWorkspace: Workspace;
+  /** 缺省审批策略。 */
+  defaultApprovalPolicy: ApprovalPolicy;
+  /** 成员上限（不含队长）。 */
+  maxMembers: number;
+  /** 当前成员数（**不含队长**）。 */
+  memberCount: number;
+}
+
+/**
+ * 团队配置面（`team_options` 的载荷，真相源 `options.rs::TeamOptions`）。
+ *
+ * 两个出口同形：`teamId = null` → 建队前的「本机目录」，`teamId = Some(id)` → 该队的
+ * 实际配置。面板的默认值**只能**来自这里 —— 在前端写死 4 / `shared` / `queue` 就是第二份
+ * 默认值，后端一改就漂移（且漂移是静默的）。
+ */
+export interface TeamOptions {
+  /**
+   * 实际可用的成员 CLI（已按池子过滤）。行类型与 `team_launchable_agents` 同一个 wire
+   * 形状；`refusal` 恒为 `null`（能启动是这个列表的定义），保留那一列是为了让面板对两处
+   * 候选**只写一份**渲染逻辑。
+   */
+  members: LaunchableAgent[];
+  /** 该队配置**解析后**的形态（空池已展开、默认值已就位）。 */
+  defaults: TeamDefaults;
+}
+
+/**
+ * 建队时的团队配置**入参**（`start_team_session` 的 `config`，真相源 `types.rs::TeamConfig`）。
+ *
+ * 字段全部可选且与 [`Team`] 的五个配置列同名同义：**缺省即后端默认**。所以面板只该传
+ * 它真的改过的那几项 —— 把 `TeamDefaults` 原样回传就等于把后端默认值抄成前端常量。
+ */
+export interface TeamConfig {
+  /** 允许被 `team_spawn` 选中的 CLI（**空/省略 = 不限制**）。 */
+  allowedAgentIds?: string[];
+  /** 缺省模型（省略 = 用各 CLI 自己的默认）。 */
+  defaultModel?: string | null;
+  /** 缺省工作区。 */
+  defaultWorkspace?: Workspace;
+  /** 缺省审批策略。 */
+  defaultApprovalPolicy?: ApprovalPolicy;
+  /** 成员上限（不含队长），`1..=8`。 */
+  maxMembers?: number;
 }
 
 /** 花名册一行。**只有 id / 名字 / 角色 / 状态 / 取证 / 租约剩余秒** —— 不含任何正文。 */

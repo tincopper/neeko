@@ -14,6 +14,7 @@ import {
   createTaskCard,
   createTaskDetail,
   createTeam,
+  createTeamOptions,
   createTeamSession,
   createTeamSnapshot,
 } from '@/testing/factories';
@@ -89,6 +90,14 @@ describe('TeamPanel — 空态队长入口', () => {
           createLaunchableAgent({ agentId: 'claude-code' }),
           createLaunchableAgent({ agentId: 'codex' }),
         ];
+      // 团队配置的默认值同理只能来自后端（缺了它面板不允许建队）。
+      if (cmd === 'team_options')
+        return createTeamOptions({
+          members: [
+            createLaunchableAgent({ agentId: 'claude-code' }),
+            createLaunchableAgent({ agentId: 'codex' }),
+          ],
+        });
       if (cmd === 'start_team_session') return session;
       if (cmd === 'team_snapshot') return snapshot;
       return undefined;
@@ -114,6 +123,8 @@ describe('TeamPanel — 空态队长入口', () => {
         agentId: 'codex',
         projectPath: WORKTREE_PATH,
         name: null,
+        // 默认值一个字都没改 ⇒ 没有任何覆盖项。
+        config: {},
       }),
     );
     // 派生自 workspaceRootOf（不是裸 projectPath）
@@ -134,6 +145,8 @@ describe('TeamPanel — 空态队长入口', () => {
     setActiveProject();
     mockInvoke.mockImplementation(async (cmd) => {
       if (cmd === 'team_launchable_agents') return [createLaunchableAgent({ agentId: 'gemini' })];
+      if (cmd === 'team_options')
+        return createTeamOptions({ members: [createLaunchableAgent({ agentId: 'gemini' })] });
       // 准入在 `start_team_session` 里才判（清单说能起，也可能连不上工具面）。
       if (cmd === 'start_team_session')
         throw 'Unsupported: agent `gemini` cannot reach the team tool surface';

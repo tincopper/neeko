@@ -8,6 +8,10 @@ import type { LaunchableAgent, TeamSession } from '@/shared/types/team';
 
 import { useLaunchableAgents } from '../hooks/useLaunchableAgents';
 import { useStartTeam } from '../hooks/useStartTeam';
+import { useTeamConfigDraft } from '../hooks/useTeamConfigDraft';
+import { useTeamOptions } from '../hooks/useTeamOptions';
+
+import TeamConfigSection from './TeamConfigSection';
 
 /**
  * 队长入口（面板空态）：选 CLI → 以队长身份开会话。
@@ -36,6 +40,13 @@ import { useStartTeam } from '../hooks/useStartTeam';
  *    而成员 cwd 与用户在看的树不是同一棵。
  * 3. **起进程之后的动作**：终端接管由 app 层注入（`onOpenLeaderTerminal`），团队域
  *    不认识终端域。
+ *
+ * # 团队配置：默认值的唯一来源是 `team_options(null)`
+ *
+ * 成员池 / 上限 / 三个缺省值全部由 [`TeamConfigSection`] 呈现，初值来自后端的
+ * `TeamDefaults`（见 [`useTeamConfigDraft`]）—— 本组件里没有第二份默认值。
+ * 缺省值拿不到（`options === null`）时主按钮**必须**不可用：不知道缺省值就替用户决定，
+ * 等于把后端的默认值抄成了前端常量。
  */
 
 interface TeamLaunchPanelProps {
@@ -60,6 +71,16 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
 
     const { agents: launchable, loading, error: launchError, reload } = useLaunchableAgents();
 
+    // 团队配置面（`team_options(null)` = 建队前的本机目录）：成员池 / 上限 / 三个缺省值。
+    const {
+      options: teamOptions,
+      loading: optionsLoading,
+      error: optionsError,
+      reload: reloadOptions,
+    } = useTeamOptions(null);
+    // 配置草稿：局部 state（不进 zustand），初值全部来自上面的 `teamOptions.defaults`。
+    const draft = useTeamConfigDraft(teamOptions);
+
     const rows = useMemo(() => launchable ?? [], [launchable]);
 
     /** 可启动的 agent id（顺序即后端给的行序 —— 后端已按 id 排序，这里不再排）。 */
@@ -76,20 +97,30 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
 
     const { busy, error, start } = useStartTeam({ onShowToast, onOpenLeaderTerminal });
 
+    // 只有载荷本身是依赖：整个草稿对象每次渲染都是新引用。
+    const teamConfig = draft.config;
+
     const handleStart = useCallback(() => {
       if (!agentId || !workspaceRoot || busy) return;
       // **第二道拦截**：`canStart` 已经把这种状态挡在主按钮之外，这里是给键盘 /
       // 程序化触发（可绕过 `disabled`）留的防守层 —— 把必然被后端拒绝的请求发出去只会
       // 多一条错误信息，不解决任何问题。
       if (!startableIds.includes(agentId)) return;
-      void start(agentId, workspaceRoot);
-    }, [agentId, startableIds, workspaceRoot, busy, start]);
+      void start(agentId, workspaceRoot, teamConfig);
+    }, [agentId, startableIds, workspaceRoot, busy, start, teamConfig]);
 
     // 可启动 = 有选中项 **且它现在仍可启动**（`startableIds` 而不是「非 null」）。
     // 只判 `agentId !== null` 会在「清单刷新后这个 CLI 变成被拒」的那一帧留下一个
     // 可点但必然被拒绝的按钮。
+    //
+    // 加上 `draft.valid`：成员池空、上限越界、缺省值未到 —— 三种状态后端都会拒绝，
+    // 面板不该把必败请求发出去（判据在 `useTeamConfigDraft`，这里只是「能提交吗」）。
     const canStart =
-      agentId !== null && startableIds.includes(agentId) && workspaceRoot !== null && !busy;
+      agentId !== null &&
+      startableIds.includes(agentId) &&
+      workspaceRoot !== null &&
+      draft.valid &&
+      !busy;
 
     /**
      * 主按钮不可用时**必须说清楚为什么**（否则用户只看到一个灰按钮）。
@@ -206,6 +237,15 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
           ) : null}
         </div>
 
+        <TeamConfigSection
+          options={teamOptions}
+          loading={optionsLoading}
+          error={optionsError}
+          onRetry={reloadOptions}
+          draft={draft}
+          nameOf={nameOf}
+        />
+
         <div className="flex flex-col gap-1">
           <h3 className="text-meta font-semibold text-text-secondary">团队根</h3>
           <p className="break-all font-mono text-micro text-text-muted">
@@ -217,6 +257,13 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
           // 后端拒绝原因原文：准入失败的理由只有后端知道，改写会把唯一有用的信息丢掉。
           <p role="alert" className="whitespace-pre-wrap text-meta text-accent-red">
             {error}
+          </p>
+        ) : null}
+
+        {draft.values?.approvalPolicy === 'bypass' ? (
+          // 旁路审批的后果**不隐蔽**：它就在主按钮上方，且出现在按下去之前。
+          <p role="note" className="text-micro text-accent-orange">
+            ⚠ 已选「旁路审批」：成员写盘前不会有人确认。只在完全信任这个队的成员时使用。
           </p>
         ) : null}
 
