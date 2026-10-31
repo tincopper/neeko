@@ -9,6 +9,7 @@
 | --- | --- | --- | --- |
 | **可手搓** | 前端 `worktreePath?: string \\| null` 可选散参 / 后端手写 `WorkspaceSession { .. }` 字面量 | 漏传或按错单元 → 静默按主仓执行 | **B**（前端散签）/ **F**（后端字面量） |
 | **可拆分** | 后端 `(project_id, worktree_path)` 两个 wire 字段（请求体与事件回显各一份） | 两字段可独立缺失/错配 | **签名**（收单 `workspace` 对象，AC2 + 类型检查；半用对象由 **A2** 兜底）|
+| **可选地址** | `workspace: Option<WorkspaceSession>` | 「没传就退回按 project 取根」成为合法路径（A2/D 的判据是必填形态，看不见它）| **G** |
 | **可绕过** | 命令层直调 `resolve_workspace(&str, Option<&str>)` | 解析逻辑两个外观 | **A** |
 | **半迁移** | 签名收了 `workspace`，却仍从 `get_project(...).path` 取根 | worktree 视图扫主仓（签名看着对） | **D** |
 | **该有却没有** | 命令体按 project 取 cwd/根，签名里压根没有地址 | 项目级通道被当成免死金牌，静默跑主仓 | **E**（台账）|
@@ -127,6 +128,13 @@ RESOLVE_PROJECT_CTX_RE = re.compile(r"\bresolve_project_ctx\s*\(")
 # 形如 `pm.get_project(id).path` 与 `pm.get_project(id).map(|p| p.path.clone())` 都要命中。
 GET_PROJECT_CALL_RE = re.compile(r"\bget_project\s*\(")
 
+# G：地址**不得可选**。`Option<WorkspaceSession>` 让「没传地址就退回按 project 取根」成为合法
+# 路径，而 A2/D 的判据前缀是**必填**形态（`WS_PARAM_RE`），对它完全不触发 —— 2026-10-30 实证：
+# 同一函数体把形参从必填改成 `Option` 后，A2 由「违规」变「放行」。两种语义（项目级 / 单元级）
+# 用判别联合表达（见 `ConversationListScope`），不用可空参数。
+OPTIONAL_WS_RE = re.compile(r"\bworkspace\s*:\s*Option\s*<\s*&?\s*(?:[\w:]+::)?WorkspaceSession\s*>")
+OPTIONAL_WS_LEDGER = "tools/guards/ledger/optional_workspace_commands.json"
+
 # 测试域豁免（与 check_command_execution 同口径）
 TEST_PATH_RE = re.compile(r"(^|/)(__tests__|tests)(/|$)|\.test\.(ts|tsx)$|_test\.rs$|/tests\.rs$")
 
@@ -184,9 +192,9 @@ def _owning_function(text: str, pos: int) -> str | None:
     return owner
 
 
-def _load_exec_context_registry(ctx: Context) -> dict:
+def _load_registry(ctx: Context, ledger: str) -> dict:
     """读台账（`{ "rel::fn": "reason" }`）。缺失/不可解析 ⇒ 空表，由判据报违规。"""
-    path = ctx.path(EXEC_CTX_LEDGER)
+    path = ctx.path(ledger)
     if not path.is_file():
         return {}
     try:
@@ -217,7 +225,8 @@ def check(ctx: Context) -> GuardResult:
         )
 
     findings: list[Finding] = []
-    exec_ctx_registry = _load_exec_context_registry(ctx)
+    exec_ctx_registry = _load_registry(ctx, EXEC_CTX_LEDGER)
+    optional_ws_registry = _load_registry(ctx, OPTIONAL_WS_LEDGER)
 
     # ── A1：后端唯一解析入口（无条件：命令层不得直调旧入口，AC3 字面零命中）
     # ── A2：收 workspace 的命令不得只按 project 解析（丢 worktree 维度，§10 戳错单元）
@@ -304,6 +313,48 @@ def check(ctx: Context) -> GuardResult:
                 findings.append(
                     Finding(
                         f"台账 {key} 的 reason 为空：登记必须说明「为什么这不是执行上下文」",
+                        rel,
+                        line,
+                    )
+                )
+
+    # ── G：地址不得可选（`Option<WorkspaceSession>` 让「丢地址」变成静默降级）
+    # 扫描面与 F 同为**全部 Rust 文件**：逃逸口不只在命令层 —— 请求结构体可以住在
+    # `conversation/types.rs` 这类非 commands 文件里，命令层只是把它传下去。
+    for path in sorted(ctx.glob(RS_ALL_SCOPE)):
+        rel = ctx.rel(path)
+        if rel == RS_ADDRESS_MODULE or _is_test(rel) or _is_exempt_dir(rel):
+            continue
+        # 注释里写反例是合法的（docstring 也会提到这个类型），先剔除整行注释再判。
+        text = LINE_COMMENT_RE.sub("", mask_cfg_test(ctx.read(rel)))
+        if not OPTIONAL_WS_RE.search(text):
+            continue
+        # 台账按「所属函数」登记；形参之外（结构体字段）无归属函数时用文件级键。
+        spans = list(_iter_functions(text))
+        for m in OPTIONAL_WS_RE.finditer(text):
+            owner = None
+            for start, end in spans:
+                if start <= m.start() < end:
+                    owner = _rs_fn_name(text[start:end])
+                    break
+            key = f"{rel}::{owner}" if owner else rel
+            reason = optional_ws_registry.get(key)
+            line = text.count("\n", 0, m.start()) + 1
+            if reason is None:
+                findings.append(
+                    Finding(
+                        "执行地址不得可选（`workspace: Option<WorkspaceSession>`）："
+                        "缺地址时会静默退回按 project 取根，正是 worktree 单元跑错目录的形态。"
+                        "项目级与单元级请用判别联合区分（参考 `ConversationListScope`）；"
+                        "确属必需的请登记 ledger/optional_workspace_commands.json 并写明理由",
+                        rel,
+                        line,
+                    )
+                )
+            elif not str(reason).strip():
+                findings.append(
+                    Finding(
+                        f"台账 {key} 的 reason 为空：登记必须说明「为什么这里的地址可以缺」",
                         rel,
                         line,
                     )

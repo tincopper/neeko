@@ -1,0 +1,4 @@
+{
+  "note": "可选地址台账：命令签名出现 `workspace: Option<WorkspaceSession>` 时必须在此登记**为什么地址可以缺**（空 reason 视为未登记）。可选地址 = 「没传就退回按 project 取根」的合法入口，而那必然让 worktree 单元跑在主仓。两种语义请用判别联合（如 `ConversationListScope`）区分，而不是可选参数。**当前为空是结论而非待办**：全仓没有任何命令把执行地址做成可选。",
+  "commands": {}
+}

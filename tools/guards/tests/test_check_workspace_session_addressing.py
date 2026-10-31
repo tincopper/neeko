@@ -1,4 +1,4 @@
-"""git 寻址护栏用例：A–F 六判据的违规形态、正例零命中、豁免（值对象自身 / 测试域）。"""
+"""git 寻址护栏用例：A–G 七判据的违规形态、正例零命中、豁免（值对象自身 / 测试域）。"""
 from __future__ import annotations
 
 import unittest
@@ -519,6 +519,114 @@ class WorkspaceSessionAddressingTest(unittest.TestCase):
                     "    pub fn of(project_id: String) -> Self {\n"
                     "        Self { project_id, worktree_path: None }\n"
                     "    }\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    # ── G：地址不得可选（`Option<WorkspaceSession>`）
+    OPTIONAL_LEDGER = "tools/guards/ledger/optional_workspace_commands.json"
+
+    def optional_ledger(self, commands: dict):
+        import json
+
+        return {self.OPTIONAL_LEDGER: json.dumps({"note": "fixture", "commands": commands})}
+
+    def test_optional_workspace_param_is_a_violation(self):
+        """A2 只认必填形态 —— 同一函数体换成 `Option` 必须由 G 拦住（评审实证的放行形态）。"""
+        result = self.run_guard(
+            {
+                RS_FIXTURE: (
+                    "pub fn list_things(\n"
+                    "    project_id: String,\n"
+                    "    workspace: Option<WorkspaceSession>,\n"
+                    ") -> Result<(), AppError> {\n"
+                    "    let _ = project_id;\n"
+                    "    Ok(())\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertEqual(result.findings[0].line, 3)
+        self.assertIn("optional_workspace_commands.json", result.findings[0].message)
+
+    def test_optional_workspace_with_reason_is_clean(self):
+        result = self.run_guard(
+            {
+                **self.optional_ledger(
+                    {f"{RS_FIXTURE}::list_things": "只做展示，不解析执行根"}
+                ),
+                RS_FIXTURE: (
+                    "pub fn list_things(\n"
+                    "    project_id: String,\n"
+                    "    workspace: Option<WorkspaceSession>,\n"
+                    ") -> Result<(), AppError> {\n"
+                    "    let _ = project_id;\n"
+                    "    Ok(())\n"
+                    "}\n"
+                ),
+            }
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    def test_optional_workspace_with_blank_reason_is_violation(self):
+        result = self.run_guard(
+            {
+                **self.optional_ledger({f"{RS_FIXTURE}::list_things": "  "}),
+                RS_FIXTURE: (
+                    "pub fn list_things(\n"
+                    "    workspace: Option<WorkspaceSession>,\n"
+                    ") -> Result<(), AppError> {\n"
+                    "    Ok(())\n"
+                    "}\n"
+                ),
+            }
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertIn("reason 为空", result.findings[0].message)
+
+    def test_optional_workspace_in_non_command_file_is_a_violation(self):
+        """逃逸口不只在命令层：请求结构体可以住在非 commands 文件里（与 F 同一扫描面）。"""
+        result = self.run_guard(
+            {
+                RS_NON_COMMAND: (
+                    "pub struct Request {\n"
+                    "    pub workspace: Option<WorkspaceSession>,\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertEqual(result.findings[0].line, 2)
+
+    def test_optional_workspace_inside_cfg_test_is_exempt(self):
+        result = self.run_guard(
+            {
+                RS_NON_COMMAND: (
+                    "pub fn live() {}\n"
+                    "#[cfg(test)]\n"
+                    "mod tests {\n"
+                    "    fn case(workspace: Option<WorkspaceSession>) {\n"
+                    "        let _ = workspace;\n"
+                    "    }\n"
+                    "}\n"
+                )
+            }
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    def test_discriminated_scope_instead_of_optional_address_is_clean(self):
+        """正解形态：范围是单值判别联合，地址在 variant 里必填。"""
+        result = self.run_guard(
+            {
+                RS_FIXTURE: (
+                    "pub async fn list_conversations(\n"
+                    "    scope: ConversationListScope,\n"
+                    ") -> Result<(), AppError> {\n"
+                    "    let _ = scope;\n"
+                    "    Ok(())\n"
                     "}\n"
                 )
             }
