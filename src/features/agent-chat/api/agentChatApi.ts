@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type { AgentCommandEntry, ContextManifest } from '@/shared/types/agentChat';
-import type { ProjectId } from '@/shared/utils/workspaceRef';
+import type { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /**
  * agent-chat 后端命令的 feature API 门面（AGENTS.md：前端不直接 import invoke）。
@@ -12,7 +12,14 @@ import type { ProjectId } from '@/shared/utils/workspaceRef';
 /** `agent_stream` 请求体（驼峰命名，serde 映射后端 snake_case）。 */
 export interface StreamChatRequest {
   agentId: string;
-  projectId: ProjectId;
+  /**
+   * **执行地址**（必填）：agent 进程的 cwd 由后端按它解析。
+   *
+   * 为什么必填而不是「缺省按项目」：worktree 单元与主仓是两个执行上下文，缺地址只会让 agent
+   * 静默跑在主仓（读错文件、写错文件），而 pi/opencode 的原生 resume 还要求 cwd == 会话 origin。
+   * 前端只有一个铸造点（`activeWorkspaceSession`），漏传即编译失败。
+   */
+  workspace: WorkspaceSession;
   prompt: string;
   files?: string[];
   skills?: string[];

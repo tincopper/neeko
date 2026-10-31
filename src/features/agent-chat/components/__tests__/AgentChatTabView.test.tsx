@@ -1030,18 +1030,19 @@ describe('AgentChatTabView', () => {
     expect(details).not.toHaveAttribute('open');
   });
 
-  it('context_init 后横幅展示工作目录（project_id 即 cwd 绝对路径，hover 可见全路径）', async () => {
+  it('context_init 后横幅展示工作目录（cwd 即执行根，hover 可见全路径）', async () => {
     await renderView();
 
     emitEvent({
       type: 'context_init',
       session_id: 's1',
-      project_id: '/Users/demo/RustroverProjects/neeko',
+      cwd: '/Users/demo/RustroverProjects/neeko',
       project_name: 'neeko',
       env: 'local',
       skills: [],
       files: [],
       mode: 'confirm',
+      workspace_key: 'p1\u0000',
     });
 
     // 横幅可见工作目录路径

@@ -2,7 +2,12 @@ import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } fr
 
 import type { StreamEvent } from '@/shared/types/agentChat';
 
-import type { ChatMessage, ContextWindow, PendingUserInput } from '../components/messageModel';
+import type {
+  ChatMessage,
+  ContextWindow,
+  CtxInfo,
+  PendingUserInput,
+} from '../components/messageModel';
 import { contextWindowOf, nextBlockId, nextMsgId } from '../components/messageModel';
 
 /**
@@ -71,7 +76,7 @@ export interface SessionLevelEvents {
 
 export function useSessionLevelEvents(params: {
   /** 工作目录等会话元信息（`context_init` 事件）。 */
-  onContextInit: (info: { projectName: string; env: string; projectPath?: string }) => void;
+  onContextInit: (info: CtxInfo) => void;
   /** 出错时把已排队的流式增量先冲出去（否则最后一段文本会丢）。 */
   flushDeltas: () => void;
   setStreaming: (value: boolean) => void;
@@ -100,7 +105,8 @@ export function useSessionLevelEvents(params: {
           onContextInit({
             projectName: ev.project_name,
             env: ev.env,
-            projectPath: ev.project_id,
+            cwd: ev.cwd,
+            workspaceKey: ev.workspace_key,
           });
           return true;
         case 'user_input':

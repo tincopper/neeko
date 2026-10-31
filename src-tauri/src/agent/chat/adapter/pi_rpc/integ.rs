@@ -53,7 +53,8 @@ fn probe_ctx(project: &str) -> AgentContext {
     AgentContext {
         agent_id: "pi".into(),
         session_id: "real-pi-probe".into(),
-        project_id: project.into(),
+        cwd: project.into(),
+        workspace: crate::common::git::WorkspaceSession::main("real-pi-probe"),
         project_name: "real-pi-probe".into(),
         env: "local".into(),
         skills: vec![],

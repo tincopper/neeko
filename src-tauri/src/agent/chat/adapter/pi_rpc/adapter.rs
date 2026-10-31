@@ -60,7 +60,7 @@ impl PiRpcAdapter {
         ctx: &AgentContext,
         tail: &[&str],
     ) -> Result<PiRpcProcess, AppError> {
-        self.spawn_in(&ctx.project_id, tail).await
+        self.spawn_in(&ctx.cwd, tail).await
     }
 }
 
@@ -199,8 +199,9 @@ mod tests {
         AgentContext {
             agent_id: "pi".into(),
             session_id: "s1".into(),
-            // 平台无关（红线 13）：`project_id` 会作为 spawn 的 cwd 交给执行层。
-            project_id: std::env::temp_dir().display().to_string(),
+            // 平台无关（红线 13）：`cwd` 会作为 spawn 的 cwd 交给执行层。
+            cwd: std::env::temp_dir().display().to_string(),
+            workspace: crate::common::git::WorkspaceSession::main("proj"),
             project_name: "proj".into(),
             env: "local".into(),
             skills: vec![],

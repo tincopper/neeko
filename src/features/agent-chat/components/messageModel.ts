@@ -148,8 +148,15 @@ export function clipToolOutput(existing: string | undefined, delta: string): str
 export interface CtxInfo {
   projectName: string;
   env: string;
-  /** 工作目录：后端 `AgentContext.project_id` 即项目绝对路径（cwd）。 */
-  projectPath?: string;
+  /** 执行根：后端解析出的**执行地址根**（worktree 单元 = 工作树根）。 */
+  cwd: string;
+  /**
+   * 后端回显的执行地址 key（`WorkspaceSession#key` 形态）。
+   *
+   * 显示与执行同源：视图用它派生「哪个单元」的展示名，而不是拿 tab 自己的地址去补
+   * （那会让显示与执行变成两个来源，正好掩盖错配）。
+   */
+  workspaceKey: string;
 }
 
 /**

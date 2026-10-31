@@ -5,7 +5,11 @@ import { useScrollbarCompensation } from '@/shared/hooks/useScrollbarCompensatio
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileNode } from '@/shared/types';
 import type { AgentChatTabData } from '@/shared/types/tab';
-import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
+import {
+  workspaceRootOf,
+  type ProjectId,
+  type WorkspaceSession,
+} from '@/shared/utils/workspaceRef';
 
 import { useAgentChat } from '../hooks/useAgentChat';
 import { useAgentInputRegistration } from '../hooks/useAgentInputRegistration';
@@ -13,6 +17,7 @@ import { useChatAutoFollow } from '../hooks/useChatAutoFollow';
 import { useComposerSources } from '../hooks/useComposerSources';
 import { useOpenAgentFile } from '../hooks/useOpenAgentFile';
 import { useWorkingStatus } from '../hooks/useWorkingStatus';
+import { envLabelOf, unitDisplayName } from '../utils/sessionContextLabel';
 
 import ApprovalPanel from './ApprovalPanel';
 import AttachFilePicker from './AttachFilePicker';
@@ -76,12 +81,15 @@ export default function AgentChatTabView({
     resumableLoading,
     loadResumableList,
     restoreConversation,
-  } = useAgentChat({ tabKey, tabId, projectId, data, mockMode });
+  } = useAgentChat({ tabKey, tabId, projectId, workspace: session, data, mockMode });
 
-  // agent 消息里的文件路径拼根基准（相对路径拼**当前视图单元的工作树根**——见 openAgentFile）
-  const projectPath = useProjectStore(
+  // agent 消息/提及的拼根基准 = **当前视图单元的工作树根**（worktree 单元 = 工作树根）。
+  // 直接取 tab 的地址本体，不再用 `project.path`（那是主仓根，worktree 视图会拼错文件）。
+  const projectRoot = useProjectStore(
     (s) => s.projects.find((p) => p.id === projectId)?.path ?? '',
   );
+  const projectPath = workspaceRootOf(session.key, projectRoot);
+  const ctxEnvLabel = envLabelOf(ctxInfo?.env);
   const [attachPickerOpen, setAttachPickerOpen] = useState(false);
 
   // 补全弹层数据源（slash 命令 / @ 文件提及）与文件树加载的整体装配，
@@ -160,15 +168,20 @@ export default function AgentChatTabView({
       {/* 右内边补偿由 useScrollbarCompensation 按实测占位调整（见该 hook 注释） */}
       <div className="wa-chat" ref={chatScrollRef}>
         <div className="wa-inner">
-          <div className="wa-sys" title={ctxInfo?.projectPath ?? ''}>
+          <div className="wa-sys" title={ctxInfo?.cwd ?? ''}>
             <span className="sys-dot" />
             <span className="wa-sys-text">
-              会话已开始 · 已注入上下文：{ctxInfo?.projectName ?? projectId}（
-              {ctxInfo?.env ?? '本地'}）
-              {ctxInfo?.projectPath ? (
+              会话已开始 · 已注入上下文：
+              {unitDisplayName({
+                projectName: ctxInfo?.projectName,
+                projectId,
+                workspaceKey: ctxInfo?.workspaceKey,
+              })}
+              {ctxEnvLabel ? `（${ctxEnvLabel}）` : ''}
+              {ctxInfo?.cwd ? (
                 <>
                   {' · '}
-                  <span className="wa-sys-cwd">{ctxInfo.projectPath}</span>
+                  <span className="wa-sys-cwd">{ctxInfo.cwd}</span>
                 </>
               ) : null}
               {skillCount > 0 ? ` + ${skillCount} skills` : ''}

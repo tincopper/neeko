@@ -10,7 +10,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { ConversationMeta } from '@/shared/types/session';
 import type { AgentChatTabData } from '@/shared/types/tab';
-import type { ProjectId } from '@/shared/utils/workspaceRef';
+import type { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { resumeAgentChat } from '../api/agentChatApi';
 import type { ChatMessage } from '../components/messageModel';
@@ -48,6 +48,8 @@ export interface ChatRestore {
 
 export function useChatRestore(params: {
   projectId: ProjectId;
+  /** 执行地址（tab 所属工作区单元）：续写通道的 cwd 由它决定。 */
+  workspace: WorkspaceSession;
   tabKey: string;
   tabId: string;
   /** 当前选中 agent（会话没有记录 agentId 时兜底）。 */
@@ -68,6 +70,7 @@ export function useChatRestore(params: {
 }): ChatRestore {
   const {
     projectId,
+    workspace,
     tabKey,
     tabId,
     fallbackAgentId,
@@ -147,7 +150,7 @@ export function useChatRestore(params: {
         const sid = await resumeAgentChat(
           {
             agentId: targetAgentId,
-            projectId,
+            workspace,
             prompt: '',
             files: [],
             skills: [],
@@ -173,6 +176,7 @@ export function useChatRestore(params: {
     [
       fallbackAgentId,
       projectId,
+      workspace,
       tabKey,
       tabId,
       setSelectedModel,

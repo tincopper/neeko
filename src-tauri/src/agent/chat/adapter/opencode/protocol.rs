@@ -277,7 +277,7 @@ pub(super) fn session_create_body(
         }
         ServeProtocol::V2 => {
             // 目录必须在 body：2.0 忽略 `?directory=`。
-            body["location"] = serde_json::json!({ "directory": ctx.project_id });
+            body["location"] = serde_json::json!({ "directory": ctx.cwd });
             if ctx.mode == "confirm" {
                 body["permissions"] = serde_json::json!([
                     { "action": "*", "resource": "*", "effect": "ask" }
@@ -298,7 +298,7 @@ pub(super) fn session_create_url(
     base_url: &str,
     ctx: &AgentContext,
 ) -> String {
-    protocol.session_create_url(base_url, &ctx.project_id)
+    protocol.session_create_url(base_url, &ctx.cwd)
 }
 
 /// 发 prompt 的请求体，按协议分叉。

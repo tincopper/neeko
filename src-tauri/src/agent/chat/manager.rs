@@ -22,8 +22,12 @@ use crate::common::error::AppError;
 pub struct SessionHandle {
     /// Agent identifier backing the session.
     pub agent_id: String,
-    /// Project the session is bound to.
-    pub project_id: String,
+    /// 会话的**执行地址**（worktree 维度）。同一项目的两个单元是两条会话：
+    /// 它们的 cwd 不同，复用会把 turn 投进 cwd 错配的进程。
+    ///
+    /// 项目身份是它的一部分（`workspace.project_id`）—— 不再另存一份 `project_id`，
+    /// 否则两处可分歧，而 `owns()` 只看得见其中一处。
+    pub workspace: crate::common::git::WorkspaceSession,
     /// Page → agent request channel.
     pub request_tx: mpsc::Sender<SessionRequest>,
 }
@@ -150,9 +154,14 @@ impl AgentChatManager {
     /// otherwise continuing it would route the new agent's prompt (and its
     /// model) into the old agent's session.
     #[must_use]
-    pub fn owns(&self, session_id: &str, agent_id: &str, project_id: &str) -> bool {
+    pub fn owns(
+        &self,
+        session_id: &str,
+        agent_id: &str,
+        workspace: &crate::common::git::WorkspaceSession,
+    ) -> bool {
         self.get(session_id)
-            .map(|h| h.agent_id == agent_id && h.project_id == project_id)
+            .map(|h| h.agent_id == agent_id && &h.workspace == workspace)
             .unwrap_or(false)
     }
 
@@ -197,16 +206,20 @@ mod tests {
         let (tx, _rx) = mpsc::channel(8);
         SessionHandle {
             agent_id: agent_id.into(),
-            project_id: project_id.into(),
+            workspace: ws(project_id, None),
             request_tx: tx,
         }
+    }
+
+    fn ws(project_id: &str, worktree_path: Option<&str>) -> crate::common::git::WorkspaceSession {
+        crate::common::git::WorkspaceSession::of(project_id, worktree_path.map(str::to_string))
     }
 
     #[test]
     fn owns_true_when_agent_and_project_match() {
         let m = manager();
         m.register("s1".into(), handle("opencode", "p1"), None);
-        assert!(m.owns("s1", "opencode", "p1"));
+        assert!(m.owns("s1", "opencode", &ws("p1", None)));
     }
 
     #[test]
@@ -215,14 +228,38 @@ mod tests {
         m.register("s1".into(), handle("opencode", "p1"), None);
         // 切到 mockAgent 后不得复用 opencode 的会话 —— 用户报的「切换不生效，
         // 还是旧模型」根因就是旧会话被继续。
-        assert!(!m.owns("s1", "mockAgent", "p1"));
+        assert!(!m.owns("s1", "mockAgent", &ws("p1", None)));
     }
 
     #[test]
     fn owns_false_when_project_mismatch() {
         let m = manager();
         m.register("s1".into(), handle("opencode", "p1"), None);
-        assert!(!m.owns("s1", "opencode", "p2"));
+        assert!(!m.owns("s1", "opencode", &ws("p2", None)));
+    }
+
+    /// 同一项目的**两个工作区单元是两条会话**：cwd 不同，复用会把 turn 投进错配进程。
+    #[test]
+    fn owns_false_when_worktree_unit_differs() {
+        let m = manager();
+        m.register("s1".into(), handle("opencode", "p1"), None);
+        assert!(m.owns("s1", "opencode", &ws("p1", None)));
+        assert!(
+            !m.owns("s1", "opencode", &ws("p1", Some("/tmp/p1-wt"))),
+            "主仓会话不得被 worktree 单元复用"
+        );
+
+        m.register(
+            "s2".into(),
+            SessionHandle {
+                agent_id: "opencode".into(),
+                workspace: ws("p1", Some("/tmp/p1-wt")),
+                request_tx: mpsc::channel(8).0,
+            },
+            None,
+        );
+        assert!(m.owns("s2", "opencode", &ws("p1", Some("/tmp/p1-wt"))));
+        assert!(!m.owns("s2", "opencode", &ws("p1", None)));
     }
 
     #[test]
@@ -230,8 +267,8 @@ mod tests {
         let m = manager();
         m.register("s1".into(), handle("opencode", "p1"), None);
         m.unregister("s1");
-        assert!(!m.owns("s1", "opencode", "p1"));
-        assert!(!m.owns("missing", "opencode", "p1"));
+        assert!(!m.owns("s1", "opencode", &ws("p1", None)));
+        assert!(!m.owns("missing", "opencode", &ws("p1", None)));
     }
 
     /// 可见会话槽（通知焦点抑制 R2.1 事实源）：set/get 往返、None 清空。

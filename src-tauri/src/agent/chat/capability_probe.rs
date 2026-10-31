@@ -128,7 +128,8 @@ mod tests {
             agent_id: agent_id.into(),
             session_id: "probe".into(),
             // 平台无关（红线 13）：Windows 上没有 `/tmp`。
-            project_id: std::env::temp_dir().display().to_string(),
+            cwd: std::env::temp_dir().display().to_string(),
+            workspace: crate::common::git::WorkspaceSession::main("probe"),
             project_name: "probe".into(),
             env: "local".into(),
             skills: vec![],

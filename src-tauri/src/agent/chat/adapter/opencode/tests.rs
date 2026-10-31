@@ -39,7 +39,8 @@ fn serve_ctx(project_id: &str) -> AgentContext {
     AgentContext {
         agent_id: "opencode".into(),
         session_id: "ac_test".into(),
-        project_id: project_id.into(),
+        cwd: project_id.into(),
+        workspace: crate::common::git::WorkspaceSession::main(project_id),
         project_name: "demo".into(),
         env: "local".into(),
         skills: vec![],

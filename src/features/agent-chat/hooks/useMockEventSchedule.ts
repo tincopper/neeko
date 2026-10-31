@@ -1,7 +1,7 @@
 import { useEffect, type MutableRefObject } from 'react';
 
 import type { SequencedEvent } from '@/shared/types/agentChat';
-import type { ProjectId } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
 
 export interface MockEventScheduleParams {
   mockMode: boolean;
@@ -74,12 +74,14 @@ export function useMockEventSchedule({
       seq: seq++,
       type: 'context_init',
       session_id: sid,
-      project_id: projectId,
+      cwd: projectId,
       project_name: projectId,
       env: 'local',
       skills: ['codebase-design', 'rust-patterns'],
       files: ['src/main.rs', 'Cargo.toml'],
       mode: 'confirm',
+      // 地址 key 只经值对象铸造（不手拼分隔符）：mock 演示按主 checkout 回显。
+      workspace_key: WorkspaceSession.of(projectId, null).key,
     });
 
     // 3. Turn start

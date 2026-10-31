@@ -658,7 +658,7 @@ impl AcpAdapter {
             "jsonrpc": "2.0",
             "id": 2,
             "method": "session/new",
-            "params": { "cwd": ctx.project_id, "mcpServers": [] }
+            "params": { "cwd": ctx.cwd, "mcpServers": [] }
         });
         log::info!("[AcpAdapter::create_with_io] Sending session/new");
         writer
@@ -747,13 +747,14 @@ impl AcpAdapter {
         let sid = session_id.clone();
         let pending_pump = Arc::clone(&pending);
         // ctx 是借用引用，闭包需持有 owned 快照（避免 E0521 借用逃逸）。
-        let ctx_project_id = ctx.project_id.clone();
+        let ctx_cwd = ctx.cwd.clone();
         let ctx_project_name = ctx.project_name.clone();
         let ctx_env = ctx.env.clone();
         let ctx_skills = ctx.skills.clone();
         let ctx_files = ctx.files.clone();
         let ctx_mode = ctx.mode.clone();
         let ctx_agent_id = ctx.agent_id.clone();
+        let ctx_workspace_key = ctx.workspace_key();
         tokio::spawn(async move {
             // SessionStart + ContextInit emitted immediately by the adapter
             // (lifecycle contract, independent of the agent's own output).
@@ -771,12 +772,13 @@ impl AcpAdapter {
                 .send(StreamEvent::ContextInit {
                     session_id: sid.clone(),
                     manifest: ContextManifest {
-                        project_id: ctx_project_id,
+                        cwd: ctx_cwd,
                         project_name: ctx_project_name,
                         env: ctx_env,
                         skills: ctx_skills,
                         files: ctx_files,
                         mode: ctx_mode,
+                        workspace_key: ctx_workspace_key,
                     },
                 })
                 .await;
@@ -1029,7 +1031,8 @@ mod tests {
         AgentContext {
             agent_id: "mockAgent".into(),
             session_id: "ac_e2e".into(),
-            project_id: "/tmp/demo".into(),
+            cwd: "/tmp/demo".into(),
+            workspace: crate::common::git::WorkspaceSession::main("demo"),
             project_name: "demo".into(),
             env: "local".into(),
             skills: vec![],

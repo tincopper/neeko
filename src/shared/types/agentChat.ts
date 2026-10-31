@@ -134,8 +134,8 @@ export function modelConfigIdFrom(options: SessionConfigOption[] | undefined): s
 
 /** 上下文清单（context_init / context_set）。 */
 export interface ContextManifest {
-  /** 项目 ID。 */
-  project_id: string;
+  /** **执行根**（agent 进程的 cwd）。不是项目 ID —— 它已由执行地址解析、并做过归属校验。 */
+  cwd: string;
   /** 项目显示名。 */
   project_name: string;
   /** 执行环境：`local` | `wsl` | `ssh`。 */
@@ -146,6 +146,16 @@ export interface ContextManifest {
   files: string[];
   /** 审批模式：`auto` | `confirm`。 */
   mode: string;
+  /**
+   * 本次会话的执行地址 key（`{projectId}\0{worktreePath}`，主 checkout 尾段为空）。
+   *
+   * 为什么是 key 而不是 `{projectId, worktreePath}` 两个字段：分量化的 wire 形态可独立
+   * 缺失/错配，而仓内其余事件（`git.ts` / `file.ts`）一律只带 `workspace_key`。分量经
+   * `WorkspaceSession.fromKeyOrId` 这一个 codec 取，双端只有一种表示。
+   *
+   * 恒存在：项目级调用（`agent_chat_context`）回显主 checkout 的 key。
+   */
+  workspace_key: string;
 }
 
 /** 话轮结束原因。 */

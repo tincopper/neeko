@@ -33,16 +33,18 @@ describe('useSessionLevelEvents', () => {
       claimed = result.current.handle({
         type: 'context_init',
         session_id: 's1',
-        project_id: '/proj',
+        cwd: '/proj',
         project_name: 'neeko',
         env: 'local',
+        workspace_key: 'p1\u0000',
       } as StreamEvent);
     });
     expect(claimed).toBe(true);
     expect(onContextInit).toHaveBeenCalledWith({
       projectName: 'neeko',
       env: 'local',
-      projectPath: '/proj',
+      cwd: '/proj',
+      workspaceKey: 'p1\u0000',
     });
   });
 

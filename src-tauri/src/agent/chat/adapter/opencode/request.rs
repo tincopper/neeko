@@ -116,7 +116,8 @@ pub(super) async fn attach_streaming(
     let pump_serve_sid = serve_sid.clone();
     let inner_sid = ctx.session_id.clone();
     let ctx_agent_id = ctx.agent_id.clone();
-    let ctx_project_id = ctx.project_id.clone();
+    let ctx_cwd = ctx.cwd.clone();
+    let ctx_workspace_key = ctx.workspace_key();
     let ctx_project_name = ctx.project_name.clone();
     let ctx_env = ctx.env.clone();
     let ctx_skills = ctx.skills.clone();
@@ -148,12 +149,13 @@ pub(super) async fn attach_streaming(
             .send(StreamEvent::ContextInit {
                 session_id: inner_sid.clone(),
                 manifest: ContextManifest {
-                    project_id: ctx_project_id.clone(),
+                    cwd: ctx_cwd.clone(),
                     project_name: ctx_project_name,
                     env: ctx_env,
                     skills: ctx_skills,
                     files: ctx_files,
                     mode: ctx_mode,
+                    workspace_key: ctx_workspace_key,
                 },
             })
             .await;
@@ -164,7 +166,7 @@ pub(super) async fn attach_streaming(
                 base_url: &pump_base,
                 serve_sid: &pump_serve_sid,
                 session_id: &inner_sid,
-                directory: &ctx_project_id,
+                directory: &ctx_cwd,
             },
             &conn.pending_forms,
             &pump_config_state,
@@ -182,7 +184,7 @@ pub(super) async fn attach_streaming(
     let req_event_tx = event_tx.clone();
     let req_config_state = Arc::clone(&config_state);
     // question 回执按目录分片路由（`directory` 是必填 query 参数，实测缺失即 404）。
-    let req_directory = ctx.project_id.clone();
+    let req_directory = ctx.cwd.clone();
     tokio::spawn(async move {
         // scope 在任务内构造：owned 的 base_url / directory 随闭包移入 'static 未来，
         // 借用才合法（与 run_event_pump 的调用点同形）。

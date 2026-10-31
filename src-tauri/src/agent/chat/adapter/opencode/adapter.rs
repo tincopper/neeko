@@ -272,10 +272,10 @@ async fn verify_v2_session(conn: &ServeConnection, serve_sid: &str, ctx: &AgentC
         .and_then(|l| l.get("directory"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    if !dir.is_empty() && dir != ctx.project_id {
+    if !dir.is_empty() && dir != ctx.cwd {
         log::warn!(
             "[ServeAdapter] v2 session directory mismatch: got {dir:?}, expected {:?}",
-            ctx.project_id
+            ctx.cwd
         );
     }
 

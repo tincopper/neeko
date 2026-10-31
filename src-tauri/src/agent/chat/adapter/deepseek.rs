@@ -114,12 +114,13 @@ impl AgentAdapter for DeepSeekHarnessAdapter {
             .send(StreamEvent::ContextInit {
                 session_id: session_id.clone(),
                 manifest: ContextManifest {
-                    project_id: ctx.project_id.clone(),
+                    cwd: ctx.cwd.clone(),
                     project_name: ctx.project_name.clone(),
                     env: ctx.env.clone(),
                     skills: ctx.skills.clone(),
                     files: ctx.files.clone(),
                     mode: ctx.mode.clone(),
+                    workspace_key: ctx.workspace_key(),
                 },
             })
             .await;
@@ -129,7 +130,7 @@ impl AgentAdapter for DeepSeekHarnessAdapter {
             "type": "init",
             "session_id": session_id,
             "context": {
-                "project": {"id": ctx.project_id, "name": ctx.project_name},
+                "project": {"id": ctx.cwd, "name": ctx.project_name},
                 "env": ctx.env,
                 "skills": ctx.skills,
                 "files": ctx.files,

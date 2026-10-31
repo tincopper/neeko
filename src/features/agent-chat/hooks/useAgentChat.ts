@@ -6,7 +6,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import type { SequencedEvent } from '@/shared/types/agentChat';
 import type { AgentChatTabData } from '@/shared/types/tab';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
-import type { ProjectId } from '@/shared/utils/workspaceRef';
+import type { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import {
   approveAgentCall,
@@ -32,7 +32,7 @@ import { useChatAttachments } from './useChatAttachments';
 import { useChatRestore } from './useChatRestore';
 import { useDeltaBatcher, type PendingDelta } from './useDeltaBatcher';
 import { useMessagesCacheSync } from './useMessagesCacheSync';
-import { useMockEventSchedule } from './useMockEventSchedule';
+import { useMockChatFeed } from './useMockChatFeed';
 import { useModelSelection } from './useModelSelection';
 import { usePendingEventDrain } from './usePendingEventDrain';
 import { useSelectedModel } from './useSelectedModel';
@@ -45,6 +45,8 @@ export interface UseAgentChatParams {
   tabKey: string;
   tabId: string;
   projectId: ProjectId;
+  /** 执行地址（理由见 `StreamChatRequest.workspace`）。 */
+  workspace: WorkspaceSession;
   data: AgentChatTabData;
   /** 是否启用 mock 模式（开发/演示用）。 */
   mockMode: boolean;
@@ -54,7 +56,14 @@ export interface UseAgentChatParams {
  * Agent Chat 数据流域 hook —— 会话状态、事件流处理与后端交互的唯一入口。
  * 组件层（AgentChatTabView）只保留 DOM refs、滚动跟随与 JSX 布局。
  */
-export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAgentChatParams) {
+export function useAgentChat({
+  tabKey,
+  tabId,
+  projectId,
+  workspace,
+  data,
+  mockMode,
+}: UseAgentChatParams) {
   const { agentId, sessionId: initialSessionId, modelId: initialModelId } = data;
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadCachedMessages(tabId) ?? []);
 
@@ -92,7 +101,7 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
     setOption: setConfigOption,
     reset: resetConfigOptions,
   } = useSessionConfigOptions(() => sessionIdRef.current);
-  /** 工作目录：后端 `AgentContext.project_id` 即项目绝对路径（cwd）。 */
+  /** 会话上下文：后端解析出的执行根 + 回显的执行地址。 */
   const [ctxInfo, setCtxInfo] = useState<CtxInfo | null>(null);
 
   // 系统消息追加内聚在 useSessionLevelEvents（唯一消费者）；这里传 state setter。
@@ -140,6 +149,7 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
   const { sessionIdRef, primeAgentBaseline } = useAgentSessionLifecycle({
     agentId: settled,
     projectId,
+    workspace,
     tabKey,
     tabId,
     initialSessionId,
@@ -235,16 +245,8 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
     };
   }, [applyEvent]);
 
-  // Mock 模式：模拟 agent loop 的事件序列（开发/演示用）
-  // 真实 agent 中文本和工具调用是穿插进行的：
-  //   思考 → 输出文本 → 调用工具A → 处理结果 → 继续输出 → 调用工具B → ...
-  // Mock 模式启动时标记 streaming
-  useEffect(() => {
-    if (mockMode) setStreaming(true);
-  }, [mockMode]);
-
-  // Mock 模式：开发/演示用事件序列（与真实流共用 applyEvent reducer）
-  useMockEventSchedule({
+  // Mock 演示模式的接线（置 streaming + 回放假事件序列）—— 与真实流共用 applyEvent reducer。
+  useMockChatFeed({
     mockMode,
     sessionId: data.sessionId,
     projectId,
@@ -253,6 +255,7 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
     turnStartRef: turnStream.refs.turnStart,
     turnCountsRef: turnStream.refs.turnCounts,
     turnToolsRef: turnStream.refs.turnTools,
+    setStreaming,
   });
 
   useEffect(() => {
@@ -291,7 +294,7 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
         const skills = toRequestSkills();
         const sid = await startAgentChat({
           agentId: selectedAgent.id,
-          projectId,
+          workspace,
           prompt: text,
           files: submission.files,
           skills,
@@ -324,6 +327,7 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
       streaming,
       selectedAgent.id,
       projectId,
+      workspace,
       // skills 的唯一读点（files 来自 handleSend 入参，不是 state）。
       toRequestSkills,
       tabKey,
@@ -422,6 +426,7 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
   const { resumableList, resumableLoading, loadResumableList, restoreConversation } =
     useChatRestore({
       projectId,
+      workspace,
       tabKey,
       tabId,
       fallbackAgentId: selectedAgent.id,

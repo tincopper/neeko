@@ -19,7 +19,8 @@ async fn serve_round_trip_streams_text_delta() {
     let ctx = AgentContext {
         agent_id: "opencode".into(),
         session_id: "serve-integration".into(),
-        project_id: std::env::temp_dir().display().to_string(),
+        cwd: std::env::temp_dir().display().to_string(),
+        workspace: crate::common::git::WorkspaceSession::main("serve-integration"),
         project_name: "serve-integration".into(),
         env: "local".into(),
         skills: vec![],

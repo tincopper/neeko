@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { ProjectId } from '@/shared/utils/workspaceRef';
+import type { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { cancelAgentStream, openAgentChat } from '../api/agentChatApi';
 
@@ -42,6 +42,8 @@ export interface AgentSessionLifecycle {
 export function useAgentSessionLifecycle(params: {
   agentId: string | undefined;
   projectId: ProjectId;
+  /** 执行地址（tab 所属工作区单元）：静默会话的 cwd 由它决定。 */
+  workspace: WorkspaceSession;
   tabKey: string;
   tabId: string;
   initialSessionId: string | undefined;
@@ -67,6 +69,7 @@ export function useAgentSessionLifecycle(params: {
   const {
     agentId,
     projectId,
+    workspace,
     tabKey,
     tabId,
     initialSessionId,
@@ -87,7 +90,7 @@ export function useAgentSessionLifecycle(params: {
     try {
       const sid = await openAgentChat({
         agentId,
-        projectId,
+        workspace,
         prompt: '',
         mode: 'auto',
         // 模型必须带上：ACP 在 `create()` 里会按 `ctx.model_id` 预切（`acp.rs`
@@ -103,7 +106,7 @@ export function useAgentSessionLifecycle(params: {
     } catch (err) {
       console.warn('[session-lifecycle] silent session open failed', err);
     }
-  }, [agentId, projectId, tabKey, tabId, modelId, flushPendingEvents]);
+  }, [agentId, projectId, workspace, tabKey, tabId, modelId, flushPendingEvents]);
 
   /**
    * 丢弃当前会话：先通知后端收掉，再清本地身份。

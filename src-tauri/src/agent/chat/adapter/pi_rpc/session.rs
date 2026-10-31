@@ -190,12 +190,13 @@ impl PiSession {
         pending.push_back(StreamEvent::ContextInit {
             session_id: ctx.session_id.clone(),
             manifest: ContextManifest {
-                project_id: ctx.project_id.clone(),
+                cwd: ctx.cwd.clone(),
                 project_name: ctx.project_name.clone(),
                 env: ctx.env.clone(),
                 skills: ctx.skills.clone(),
                 files: ctx.files.clone(),
                 mode: ctx.mode.clone(),
+                workspace_key: ctx.workspace_key(),
             },
         });
 
@@ -984,7 +985,8 @@ mod tests {
         AgentContext {
             agent_id: "pi".into(),
             session_id: "s1".into(),
-            project_id: cwd(),
+            cwd: cwd(),
+            workspace: crate::common::git::WorkspaceSession::main("proj"),
             project_name: "proj".into(),
             env: "local".into(),
             skills: vec![],

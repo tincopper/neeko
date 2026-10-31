@@ -35,7 +35,10 @@ pub const KEY_SEP: char = '\0';
 /// 与 [`WorkspaceRef`] 的关系：[`WorkspaceSession`] 是「地址」（wire / 前端产物），
 /// [`WorkspaceRef`] 是后端解析后的「身份 + 根」。二者经
 /// [`crate::AppStateWrapper::resolve_workspace_target`] 衔接。
-#[derive(Debug, Clone, serde::Deserialize)]
+/// `PartialEq`/`Eq` 是**按地址分量逐字比较**（不做路径归一）—— 地址必须已是 canonical
+/// 身份串（`WorkspaceSession` 的 `worktreePath` 由后端身份渲染产出）。用在 `owns()` 上时
+/// 不一致只会让「不匹配」保守成立（不复用会话），不会把两条不同单元误判为同一条。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSession {
     /// 所属项目 ID
@@ -57,6 +60,34 @@ impl WorkspaceSession {
             worktree_path,
         }
     }
+
+    /// 主 checkout 地址（项目根本身）。
+    ///
+    /// **唯一用途**：项目级通道（如翻译）在协议里没有 worktree 维度时，仍需一个地址才能走
+    /// 同一个解析入口。它是**命名的**构造点而非 `Self { .., None }` 字面量 —— 让「这里按主仓
+    /// 执行」成为一个可 grep、可评审的决定（护栏 `check_workspace_session_addressing` 判据 F
+    /// 禁止生产代码手写字面量）。
+    #[must_use]
+    pub fn main(project_id: impl Into<String>) -> Self {
+        Self::of(project_id, None)
+    }
+
+    /// 双端共用的寻址 key（≡ [`WorkspaceRef::key`]，二者共享 [`mint_key`] 一处实现）。
+    ///
+    /// 事件载荷只携带这个字符串：分量化的 wire 形态（`projectId` + `worktreePath` 两个字段）
+    /// 会让两段可独立缺失/错配 —— 那正是本模块要消灭的失真。
+    #[must_use]
+    pub fn key(&self) -> String {
+        mint_key(&self.project_id, self.worktree_path.as_deref())
+    }
+}
+
+/// key 的**唯一拼装处**（[`WorkspaceSession::key`] 与 [`WorkspaceRef::key`] 共用）。
+///
+/// 两份实现会让「地址」与「解析后的身份」给出不同 key —— 前端按 key 建的表与后端按 ref
+/// 寻址的槽会各记一份。形态与前端 `mintWorkspaceKey` 逐字对齐（双端各一条 golden 测试）。
+fn mint_key(project_id: &str, worktree_path: Option<&str>) -> String {
+    format!("{}{KEY_SEP}{}", project_id, worktree_path.unwrap_or(""))
 }
 
 /// 一个仓库工作树的引用。
@@ -207,14 +238,10 @@ impl WorkspaceRef {
         }
     }
 
-    /// 双端共用的寻址 key（见模块级注释）。
+    /// 双端共用的寻址 key（见模块级注释）。与 [`WorkspaceSession::key`] 共享 [`mint_key`]。
     #[must_use]
     pub fn key(&self) -> String {
-        format!(
-            "{}{KEY_SEP}{}",
-            self.project_id,
-            self.worktree_path().unwrap_or("")
-        )
+        mint_key(&self.project_id, self.worktree_path())
     }
 
     /// 从 key 反解出 `(project_id, Option<worktree_path>)`。
@@ -566,6 +593,40 @@ mod tests {
                 .unwrap();
         assert_eq!(main.key(), "proj-1\0");
         assert_eq!(linked.key(), "proj-1\0/srv/app/.worktrees/dev");
+    }
+
+    /// **地址与解析后的身份必须给出同一个 key**：
+    /// `WorkspaceSession::key()`（wire 侧、事件载荷）与 `WorkspaceRef::key()`（后端寻址槽）
+    /// 若各写一份拼装，前端按 key 建的表与后端按 ref 寻址的槽会各记一份。
+    #[test]
+    fn address_key_equals_resolved_ref_key() {
+        let t = remote_target();
+        let ref_main = WorkspaceRef::main("proj-1", "/srv/app");
+        let ref_linked =
+            WorkspaceRef::resolve("proj-1", "/srv/app", Some("/srv/app/.worktrees/dev"), &t)
+                .unwrap();
+
+        assert_eq!(
+            WorkspaceSession::main("proj-1").key(),
+            ref_main.key(),
+            "主 checkout 地址与 ref 的 key 必须逐字相等"
+        );
+        assert_eq!(
+            WorkspaceSession::of("proj-1", Some("/srv/app/.worktrees/dev".into())).key(),
+            ref_linked.key(),
+            "linked worktree 地址与 ref 的 key 必须逐字相等"
+        );
+    }
+
+    /// `main()` 是「按主仓执行」的**命名**决定，与 `of(id, None)` 同值；
+    /// 区分二者是意图，不是形态。
+    #[test]
+    fn main_address_is_of_with_no_worktree() {
+        assert_eq!(
+            WorkspaceSession::main("p1"),
+            WorkspaceSession::of("p1", None)
+        );
+        assert_eq!(WorkspaceSession::main("p1").key(), "p1\0");
     }
 
     /// **#3 的回归钉**：`Eq`/`Hash` 必须与 `key()` 同一定义。

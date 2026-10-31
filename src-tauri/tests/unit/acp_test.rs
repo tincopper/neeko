@@ -33,7 +33,8 @@ async fn acp_full_flow_with_in_process_mock() {
     let ctx = AgentContext {
         agent_id: "mockAgent".into(),
         session_id: "acp-test-1".into(),
-        project_id: "p1".into(),
+        cwd: "p1".into(),
+        workspace: neeko_lib::common::git::WorkspaceSession::main("p1"),
         project_name: "mock-project".into(),
         env: "local".into(),
         skills: vec![],
@@ -145,7 +146,8 @@ async fn acp_opencode_real_roundtrip() {
     let ctx = AgentContext {
         agent_id: "opencode".into(),
         session_id: "acp-opencode-test".into(),
-        project_id: "/tmp".into(),
+        cwd: "/tmp".into(),
+        workspace: neeko_lib::common::git::WorkspaceSession::main("p1"),
         project_name: "opencode-test".into(),
         env: "local".into(),
         skills: vec![],

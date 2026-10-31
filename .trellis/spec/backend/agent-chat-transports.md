@@ -6,6 +6,28 @@
 > ACP 的模型选择细节见 [`agent-acp-model-selection.md`](./agent-acp-model-selection.md)，
 > 本文不重复。
 
+## 0.1 执行地址（workspace）是 chat 会话的一等身份（2026-10-30）
+
+一次 agent 会话的真值依赖是 `(agent 传输, 执行地址, prompt, …)`。执行地址 = `WorkspaceSession`
+（`{projectId, worktreePath}`，`null` = 主 checkout），它决定 **agent 进程的 cwd**，而 worktree 单元
+与主仓是**两个**执行上下文（git 语义下 1+N）。
+
+| 边界 | 契约 |
+| --- | --- |
+| `StreamRequest` | `workspace: WorkspaceSession` **必填**（无 `Option`、无回退主仓）；**没有独立 `projectId`** —— 项目身份是地址的分量（`workspace.projectId`），两个并列字段可独立错配 |
+| 解析 | 唯一入口 `AppStateWrapper::resolve_workspace_target_with_env` → `repo.root()`；`project_name()` 只给显示名，**不提供 cwd / env**（env 与 cwd 同一次解析产出） |
+| 会话身份 | `SessionHandle.workspace` + `owns(sid, agent, workspace)`：同项目两个单元是两条会话（cwd 不同，复用会把 turn 投进错配进程）。不另存 `project_id` |
+| 上下文 | `AgentContext.cwd`（执行根，**不是**项目 id）+ `AgentContext.workspace`（必填地址） |
+| 事件回显 | `ContextManifest.workspace_key: String` + `cwd`。地址**只以 key 字符串**出现在 wire 上（与 `git.ts` / `file.ts` 同形），分量经 `WorkspaceSession.fromKeyOrId` 唯一 codec 取。项目级调用（`agent_chat_context`）用 `WorkspaceSession::main(id)` 回显主 checkout 的 key —— 地址是**总存在的**，不存在「没有地址」这种状态 |
+| 持久化 | `ResumeCursor.cwd` = 解析后的执行根（不是项目 id）—— 原生 resume 要求 cwd == 会话 origin |
+| 防复发 | 护栏 `check_workspace_session_addressing`：判据 **E**（命令体按 project 取 cwd/根必须入台账说明理由）、判据 **F**（生产代码禁写 `WorkspaceSession { .. }` 字面量，项目级通道用 `WorkspaceSession::main`） |
+
+**为什么不给 `Option` 兼容**：回退主仓会把「必然 cwd 错配的会话」变成正常路径；pi / opencode 的
+原生 resume 还要求 cwd == 会话 origin（跨目录直接被拒），错误会被推迟到用户点恢复时才炸。
+**为什么不加裸 `project_path: Option<String>`**：那会绕开 worktree 归属校验，并给下一处同类缺陷留门。
+**为什么地址在 wire 上只有一个 key 字符串**：分量化的 `{projectId, worktreePath}` 与散参同形，
+两段可独立缺失/错配（护栏列为「可拆分」失真）；key 只有一个表示，且与 git / file 事件一致。
+
 ## 1. Scope / Trigger
 
 - **Trigger**：改 `src-tauri/src/agent/chat/adapter/{acp,deepseek}.rs` 或

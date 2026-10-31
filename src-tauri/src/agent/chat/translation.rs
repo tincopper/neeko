@@ -13,7 +13,7 @@ use tauri::State;
 
 use crate::agent::chat::adapter::{adapter_for, AgentContext};
 use crate::agent::chat::commands::{
-    resolve_agent_config, resolve_project_ctx, spawn_session_pipeline,
+    resolve_agent_config, resolve_workspace_ctx, spawn_session_pipeline,
 };
 use crate::agent::chat::events::TRANSLATION_EVENT;
 use crate::common::agent::types::AgentConfig;
@@ -51,7 +51,8 @@ fn new_translation_session_id(project_id: &str) -> String {
 /// files / skills — the prompt carries the whole payload).
 fn build_translation_context(
     req: &TranslationRequest,
-    project_path: &str,
+    workspace: crate::common::git::WorkspaceSession,
+    cwd: &str,
     project_name: &str,
     env: &str,
     session_id: &str,
@@ -59,7 +60,8 @@ fn build_translation_context(
     AgentContext {
         agent_id: req.agent_id.clone(),
         session_id: session_id.to_string(),
-        project_id: project_path.to_string(),
+        cwd: cwd.to_string(),
+        workspace,
         project_name: project_name.to_string(),
         env: env.to_string(),
         skills: vec![],
@@ -86,14 +88,18 @@ pub async fn translation_stream(
     );
 
     let agent: AgentConfig = resolve_agent_config(&state, &req.agent_id)?;
-    let (project_name, env, project_path) = resolve_project_ctx(&state, &req.project_id)?;
+    // 翻译通道按**项目级**发起（`TranslationRequest` 没有 worktree 维度）：用命名构造点
+    // `WorkspaceSession::main` 显式声明「按主 checkout 执行」，仍走同一个解析入口 ——
+    // 不手写 `WorkspaceSession { .., None }` 字面量（护栏判据 F 禁）。
+    let workspace = crate::common::git::WorkspaceSession::main(req.project_id.clone());
+    let (project_name, env, cwd) = resolve_workspace_ctx(&state, &workspace).await?;
     let session_id = new_translation_session_id(&req.project_id);
 
     // StreamRequest is the pipeline's shared shape — mirror the translation
     // request into it so the shared spawn path stays single-sourced.
     let stream_req = crate::agent::chat::commands::StreamRequest {
         agent_id: req.agent_id.clone(),
-        project_id: req.project_id.clone(),
+        workspace: workspace.clone(),
         prompt: req.prompt.clone(),
         files: vec![],
         skills: vec![],
@@ -103,7 +109,8 @@ pub async fn translation_stream(
         topic: None, // 翻译会话不产生系统通知（translate 通道不投影，见 spawn_session_pipeline）
     };
 
-    let context = build_translation_context(&req, &project_path, &project_name, &env, &session_id);
+    let context =
+        build_translation_context(&req, workspace, &cwd, &project_name, &env, &session_id);
     let adapter = adapter_for(&agent)?;
     let session = adapter.create(&context).await?;
 
@@ -141,7 +148,14 @@ mod tests {
             prompt: "translate this".into(),
             model_id: Some("m1".into()),
         };
-        let ctx = build_translation_context(&req, "/tmp/demo", "demo", "local", "tr_x_1");
+        let ctx = build_translation_context(
+            &req,
+            crate::common::git::WorkspaceSession::main("p1"),
+            "/tmp/demo",
+            "demo",
+            "local",
+            "tr_x_1",
+        );
         assert_eq!(ctx.mode, "auto");
         assert!(ctx.files.is_empty());
         assert!(ctx.skills.is_empty());
@@ -149,6 +163,11 @@ mod tests {
         assert_eq!(ctx.model_id, Some("m1".into()));
         assert_eq!(ctx.project_name, "demo");
         assert_eq!(ctx.env, "local");
-        assert_eq!(ctx.project_id, "/tmp/demo");
+        assert_eq!(ctx.cwd, "/tmp/demo");
+        // 项目级通道仍携带地址（主 checkout）—— 「没有地址」不是一种状态。
+        assert_eq!(
+            ctx.workspace_key(),
+            crate::common::git::WorkspaceSession::main("p1").key()
+        );
     }
 }

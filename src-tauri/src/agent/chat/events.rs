@@ -74,8 +74,8 @@ impl Capabilities {
 /// This makes G4 (打通项目/文件/skills) a contract feature, not a per-adapter convention.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContextManifest {
-    /// Project identifier.
-    pub project_id: String,
+    /// **执行根**（agent 进程的 cwd）。不是项目 ID —— 见 `AgentContext::cwd`。
+    pub cwd: String,
     /// Human-readable project name.
     pub project_name: String,
     /// Execution environment: `local` | `wsl` | `ssh`.
@@ -86,6 +86,15 @@ pub struct ContextManifest {
     pub files: Vec<String>,
     /// Approval mode: `auto` | `confirm`.
     pub mode: String,
+    /// 本次会话的执行地址 key（`WorkspaceSession::key()` 的产物；主 checkout 尾段为空）。
+    ///
+    /// **为什么是 key 而不是 `{projectId, worktreePath}` 两个字段**：分量化的 wire 形态
+    /// 可独立缺失/错配（护栏 `check_workspace_session_addressing` 列为「可拆分」失真），
+    /// 而仓内其余事件（`git.ts` / `file.ts`）一律只带 `workspace_key` —— 前端经
+    /// `WorkspaceSession.fromKeyOrId` 这一个 codec 取分量，双端只有一种表示。
+    ///
+    /// 恒存在：项目级通道用 `WorkspaceSession::main` 显式声明「按主仓执行」。
+    pub workspace_key: String,
 }
 
 /// Why a turn ended.
@@ -640,6 +649,51 @@ mod tests {
         assert!(json.contains(r#""type":"meta""#));
         let back: StreamEvent = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, ev);
+    }
+    /// `context_init` 的 wire 形态：地址**只**以 `workspace_key` 字符串出现（snake_case，
+    /// 与 `git.ts` / `file.ts` 的 `workspace_key` 同形），`cwd` 是执行根。
+    /// 前端按这个形状读，改了就是跨栈静默失配。
+    #[test]
+    fn manifest_carries_workspace_key_not_split_components() {
+        let manifest = ContextManifest {
+            cwd: "/repo/wt".into(),
+            project_name: "neeko".into(),
+            env: "local".into(),
+            skills: vec![],
+            files: vec![],
+            mode: "auto".into(),
+            workspace_key: crate::common::git::WorkspaceSession::of("p1", Some("/repo/wt".into()))
+                .key(),
+        };
+        let json = serde_json::to_value(&manifest).expect("serialize");
+        assert_eq!(
+            json["workspace_key"],
+            crate::common::git::WorkspaceSession::of("p1", Some("/repo/wt".into())).key()
+        );
+        assert_eq!(json["cwd"], "/repo/wt");
+        // 分量化的第二个表示不得再出现在 wire 上。
+        assert!(json.get("workspace").is_none());
+        assert!(json.get("project_id").is_none());
+    }
+
+    /// 项目级调用（`agent_chat_context`）同样回显主 checkout 地址：
+    /// 地址是**总存在的**，「没有地址」不是一种状态（否则回显缺省就得靠猜）。
+    #[test]
+    fn manifest_of_main_checkout_echoes_key_with_empty_tail() {
+        let manifest = ContextManifest {
+            cwd: "/repo".into(),
+            project_name: "neeko".into(),
+            env: "local".into(),
+            skills: vec![],
+            files: vec![],
+            mode: "auto".into(),
+            workspace_key: crate::common::git::WorkspaceSession::main("p1").key(),
+        };
+        let json = serde_json::to_value(&manifest).expect("serialize");
+        assert_eq!(
+            json["workspace_key"],
+            crate::common::git::WorkspaceSession::main("p1").key()
+        );
     }
 }
 
