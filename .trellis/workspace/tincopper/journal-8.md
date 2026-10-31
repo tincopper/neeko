@@ -1108,3 +1108,29 @@ PiRpcAdapter 实现 resume/supports_chat_resume，前端入口按 chat 侧能力
 
 - worktree 里人工过 AC1：context_init.workspace_key 尾段与 cwd 指向工作树根
 - 任务 10-30 可 archive；LSP / conversation / task hub 的同源收口另开任务
+
+
+## Session 389: Workspace addressing: unit ownership rule, discriminated list scope, guard G
+<!-- trellis-session: v=2 fp=7a3150d588e603e0 -->
+
+**Date**: 2026-10-31
+**Task**: Workspace addressing: unit ownership rule, discriminated list scope, guard G
+**Branch**: `main`
+
+### Summary
+
+Turned the execution address into the single identity for agent-chat and session listing. Backend: UnitScope moved to common/git as an identity rule (deepest root wins, alphabet follows the execution target, component-wise containment so drive roots work); list_worktrees extracted and covered; list_conversations now takes a discriminated ConversationListScope (project|unit) instead of two precedence-ordered filters. Frontend: restore list sends only the tab address, dead projectId pass-through removed, mock feed echoes the real address. Guards: new judge G rejects Option<WorkspaceSession> (proven blind spot — same body flipped from violation to allowed once the param became optional) with an optional-address ledger. Docs corrected: the default worktree lives outside the project root; only the in-repo .worktrees convention and nested worktrees overlap. Full gate green (pnpm check 38/38).
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `88aba6d5` | feat(git): own the workspace unit scope as an identity rule |
+| `7ac7f134` | feat(guards): reject address-optional command signatures |
+| `cceafa5d` | feat(conversation): scope session listing by workspace unit |
+| `92ae3f1c` | feat(agent-chat): address the restore list by the tab workspace |
+| `975ffa7d` | chore(trellis): record the workspace addressing review round |
+
+### Status
+
+[OK] **Completed**
