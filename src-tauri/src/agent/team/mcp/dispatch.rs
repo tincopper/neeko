@@ -45,9 +45,10 @@ use crate::agent::team::authorize::authorize;
 use crate::agent::team::manager::{now_millis, TeamManager};
 use crate::agent::team::mcp::schema::{self, spec_for, ToolName, UPDATABLE_STATES};
 use crate::agent::team::types::{
-    AdmissionTier, ApprovalPolicy, MemberRole, MemberState, TeamMember, TeamPrincipal, TeamState,
-    TeamTask, TeamTaskState, WorkerChannel, Workspace,
+    AdmissionTier, ApprovalPolicy, MemberRole, MemberState, TeamMember, TeamPrincipal, TeamTask,
+    TeamTaskState, WorkerChannel, Workspace,
 };
+use crate::agent::team::view::{team_status_view, TeamStatusView};
 use crate::agent::team::wait::{WaitOutcome, WaitTargets, WaitUntil};
 use crate::common::error::AppError;
 
@@ -129,40 +130,6 @@ pub enum ToolReply {
     ///
     /// 超时落在这里的 `Timeout` 而不是 `Err` —— 调用方拿到的是**现状**，不是失败。
     Wait(WaitOutcome),
-}
-
-/// 团队状态视图（`team_status` 的载荷）。
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TeamStatusView {
-    /// 团队 id。
-    pub team_id: String,
-    /// 团队状态。
-    pub team_state: TeamState,
-    /// 成员花名册（六态徽标契约）。
-    pub members: Vec<MemberStatusView>,
-    /// 板上任务总数。
-    pub task_total: usize,
-    /// 未终结的任务数（`pending`/`claimed`/`in_progress`/`awaiting_approval`/`proposed`）。
-    pub task_open: usize,
-    /// 已完成的任务数。
-    pub task_done: usize,
-}
-
-/// 花名册一行。**只有 id / 名字 / 角色 / 状态 / 租约剩余秒** —— 不含任何正文。
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MemberStatusView {
-    /// 成员 id。
-    pub member_id: String,
-    /// 用户可读名字。
-    pub name: String,
-    /// 角色。
-    pub role: MemberRole,
-    /// 六态之一。
-    pub state: MemberState,
-    /// 手上在飞任务的租约剩余秒（无在飞任务 = `None`，已超时 = `Some(0)`）。
-    pub lease_remaining_secs: Option<i64>,
 }
 
 /// 执行一次工具调用。
@@ -278,39 +245,15 @@ fn dispatch_tool(
 // ═══════════════════════════════════════════════════════════════════
 
 /// `team_status`：花名册 + 板摘要。
+///
+/// **载荷构造不在本层**：[`crate::agent::team::view::team_status_view`] 是唯一构造点，
+/// 本地 Tauri 命令（`commands::team_snapshot`）用的是同一个函数。让 MCP 侧拥有一份构造，
+/// 面板就会长出第二份 —— 而「租约剩余秒怎么算」这类推导漂移是静默的。
 fn status(manager: &TeamManager, principal: &TeamPrincipal) -> Result<ToolReply, AppError> {
-    let team = manager
-        .team(&principal.team_id)
-        .ok_or_else(|| AppError::NotFound(format!("team `{}` is not loaded", principal.team_id)))?;
-    // 花名册走库读而不是内存：`TeamManager` 只暴露 `member(member_id)`，
-    // 而 `store()` 是它的公开访问口（只读，不改任何状态）。
-    let mut members = manager.store().list_members(&principal.team_id)?;
-    members.sort_by(|a, b| a.id.cmp(&b.id));
-
-    let tasks = manager.tasks(&principal.team_id);
-    let now = now_millis();
-    let members = members
-        .into_iter()
-        .map(|member| MemberStatusView {
-            lease_remaining_secs: lease_remaining_secs(&tasks, &member.id, now),
-            member_id: member.id,
-            name: member.name,
-            role: member.role,
-            state: member.state,
-        })
-        .collect();
-
-    Ok(ToolReply::Status(TeamStatusView {
-        team_id: team.id,
-        team_state: team.state,
-        members,
-        task_total: tasks.len(),
-        task_open: tasks.iter().filter(|t| is_open(t.state)).count(),
-        task_done: tasks
-            .iter()
-            .filter(|t| t.state == TeamTaskState::Done)
-            .count(),
-    }))
+    Ok(ToolReply::Status(team_status_view(
+        manager,
+        &principal.team_id,
+    )?))
 }
 
 /// `team_send`：**只校验，不投递**。
@@ -1034,35 +977,6 @@ fn next_task_id(manager: &TeamManager, team_id: &str) -> String {
     format!("t{}", max.saturating_add(1))
 }
 
-/// 「在干活」的任务态（与 `manager` 的同名判据一致；那份是私有 `const fn`）。
-const fn is_active(state: TeamTaskState) -> bool {
-    matches!(
-        state,
-        TeamTaskState::Claimed | TeamTaskState::InProgress | TeamTaskState::AwaitingApproval
-    )
-}
-
-/// 未终结的任务态（`task_open` 的判据）。
-const fn is_open(state: TeamTaskState) -> bool {
-    !matches!(
-        state,
-        TeamTaskState::Done | TeamTaskState::Failed | TeamTaskState::Blocked
-    )
-}
-
-/// 成员手上在飞任务的租约剩余秒。
-///
-/// `None` = 没有在飞任务（不是 0）；`Some(0)` = 已超时但尚未被回收 —— 两者在 UI 上
-/// 必须可区分（一个是在干活，一个是该回收了）。
-fn lease_remaining_secs(tasks: &[TeamTask], member_id: &str, now: i64) -> Option<i64> {
-    let task = tasks
-        .iter()
-        .find(|task| task.owner.as_deref() == Some(member_id) && is_active(task.state))?;
-    let claimed_at = task.claimed_at?;
-    let deadline = claimed_at.saturating_add(task.lease_ttl.saturating_mul(1000));
-    Some(deadline.saturating_sub(now).max(0) / 1000)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1071,7 +985,7 @@ mod tests {
     use crate::agent::team::manager::TeamManager;
     use crate::agent::team::store::TeamStore;
     use crate::agent::team::types::{
-        AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel, Team, WorkerChannel,
+        AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel, Team, TeamState, WorkerChannel,
     };
     use serde_json::json;
 
@@ -1438,7 +1352,7 @@ mod tests {
 
     /// `team_status` → `ToolReply::Status`：花名册 + 板摘要 + 租约剩余秒。
     ///
-    /// 载荷断言（红线 4）：视图只含 id / 名字 / 角色 / 状态 / 租约秒 + 三个计数。
+    /// 载荷断言（红线 4）：视图只含 id / 名字 / 角色 / 状态 / 取证 / 租约秒 + 三个计数。
     #[test]
     fn team_status_reports_roster_and_board_summary() {
         let manager = seeded();
@@ -1490,9 +1404,18 @@ mod tests {
             .map(String::as_str)
             .collect();
         member_keys.sort_unstable();
+        // `verification` 是 AC2 的判据（见 `view::MemberStatusView` 的文档）：花名册必须能
+        // 区分「空闲」与「空闲但未声明」，而这两者的 `state` 完全相同。
         assert_eq!(
             member_keys,
-            vec!["leaseRemainingSecs", "memberId", "name", "role", "state"]
+            vec![
+                "leaseRemainingSecs",
+                "memberId",
+                "name",
+                "role",
+                "state",
+                "verification"
+            ]
         );
     }
 

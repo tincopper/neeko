@@ -23,10 +23,10 @@ pub mod protocol;
 pub mod schema;
 pub mod server;
 
-pub use dispatch::{
-    call_async, MemberStatusView, TeamStatusView, ToolReply, DEFAULT_LEASE_TTL_SECS,
-    WAIT_TIMEOUT_MAX_SECS,
-};
+pub use dispatch::{call_async, ToolReply, DEFAULT_LEASE_TTL_SECS, WAIT_TIMEOUT_MAX_SECS};
+// 视图属于团队域（[`crate::agent::team::view`]），MCP 只是**读者**之一。这里 re-export 是
+// 为了让既有调用点不必知道它搬过家 —— 构造点仍然只有 `view` 那一处（本地命令共用同一个）。
+pub use crate::agent::team::view::{MemberStatusView, TeamStatusView};
 pub use principals::{principals_from, token_hashes};
 pub use protocol::{ENDPOINT_PATH, TOKEN_HEADER};
 pub use schema::{

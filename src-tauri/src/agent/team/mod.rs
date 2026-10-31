@@ -4,7 +4,9 @@
 //! （[`authorize`] 授权矩阵 + [`mcp`] 工具清单与调度）；P2.4 落地后端阻塞等待
 //! （[`wait`]，`team_wait` 的实现）；P2.5a 落地准入表（[`admission`]，红线 15 的落点）
 //! 与 `team_spawn` 的**决策部分**；P2.5b-α 落地成员投递入口（[`deliver`]，hooks 的第三路
-//! 消费者）。传输（团队 MCP 独立 listener / stdio bridge）不在本目录。
+//! 消费者）。P3.1（可观测）落地前端失效脉冲（[`events`]）与**只读视图的唯一构造点**
+//! （[`view`]，MCP `team_status` 与本地命令共用一个）。传输（团队 MCP 独立 listener /
+//! stdio bridge）不在本目录。
 
 pub mod admission;
 pub mod authorize;
@@ -14,6 +16,7 @@ pub mod commands;
 pub mod completion;
 pub mod deliver;
 pub mod delivery;
+pub mod events;
 pub mod execution;
 #[cfg(test)]
 pub(crate) mod fixtures;
@@ -26,16 +29,21 @@ pub mod reaper;
 pub mod sentinel;
 pub mod store;
 pub mod types;
+pub mod view;
 pub mod wait;
 
 pub use admission::{admission_for, refusal, tier_of, AgentAdmission, McpTransport, ADMISSIONS};
 pub use authorize::authorize;
 pub use boot::{boot as boot_endpoint, endpoint_url, TeamServer, TeamSurface};
 pub use completion::advance;
+pub use events::{TeamNotifier, TeamPulse, TEAM_EVENT};
 pub use execution::{apply_reply, plan_member_spawn, MemberExecutor, SpawnPlan};
 pub use lease::{lease_expired, next_reclaim_count, should_auto_release};
 pub use manager::{TeamManager, TeamWake};
 pub use store::{TeamEventRecord, TeamStore};
+pub use view::{
+    MemberStatusView, TaskCard, TaskDetail, TeamSnapshot, TeamStatusView, MAX_BOARD_TASKS,
+};
 pub use wait::{
     satisfied, WaitMemberRow, WaitOutcome, WaitSnapshot, WaitTargets, WaitTaskRow, WaitUntil,
 };

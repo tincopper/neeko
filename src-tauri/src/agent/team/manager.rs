@@ -28,8 +28,17 @@
 //!
 //! 守卫的意义在于「遗漏是静默的」：漏写一行 `bump()` 不会让任何现有测试变红，只会让
 //! 队长白等满 timeout（而那恰好是 design 最不愿看到的退化：改提示词级等待）。
+//!
+//! # 失效脉冲（前端面板的依赖，P3）
+//!
+//! 同一个守卫还负责给前端发 [`crate::agent::team::events::TeamPulse`]：**任何写路径都恰好
+//! 一次脉冲**（含 `?` 早退路径），读路径零次。脉冲与 `notify_waiters` 共用发射点不是巧合 ——
+//! 它们观察的是同一件事实（「状态变过了」），分两处写就一定会有一处先被遗忘。
+//! 正因挂在守卫里，上述「漏写是静默的」在这里不再成立：
+//! `a_write_emits_exactly_one_pulse_with_a_strictly_increasing_revision` 与
+//! `read_paths_emit_no_pulses_and_leave_the_revision_alone` 直接钉住这个结构事实。
 
-use parking_lot::{Mutex, MutexGuard};
+use parking_lot::{Mutex, MutexGuard, RwLock};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -37,6 +46,7 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 
 use crate::agent::team::completion::advance;
+use crate::agent::team::events::TeamNotifier;
 use crate::agent::team::lease::{lease_expired, next_reclaim_count, should_auto_release};
 use crate::agent::team::store::{clamp_task_summary, TeamEventRecord, TeamStore};
 use crate::agent::team::types::{
@@ -110,6 +120,9 @@ pub struct TeamManager {
     inner: Mutex<Inner>,
     /// 变更唤醒句柄（`team_wait` 的等待者挂在它上面，design §4.3）。
     wake: TeamWake,
+    /// 前端事件端口（**晚绑定**：启动期 hydrate 时还没有窗口，见
+    /// [`TeamManager::set_notifier`]）。`None` = 还没有前端在听，静默不发。
+    notifier: RwLock<Option<Arc<dyn TeamNotifier>>>,
 }
 
 /// 变更唤醒句柄 —— `team_wait` 的等待者**只**依赖它（design §4.3）。
@@ -166,9 +179,14 @@ impl TeamWake {
     }
 
     /// 置位 + 唤醒。**必须先 `fetch_add` 再 `notify_waiters`**（见类型文档）。
-    fn bump(&self) {
-        self.epoch.fetch_add(1, Ordering::Release);
+    ///
+    /// 返回**置位之后**的代数：失效脉冲的 `rev` 取的就是它，而调高与读回必须来自同一个
+    /// 原子动作 —— 分成 `fetch_add` 再 `epoch()` 两步读，中间插进一次写就会把两次写报成
+    /// 同一个 `rev`（前端去重于是吞掉一次真变化）。
+    fn bump(&self) -> u64 {
+        let rev = self.epoch.fetch_add(1, Ordering::Release) + 1;
         self.notify.notify_waiters();
+        rev
     }
 }
 
@@ -181,11 +199,21 @@ impl TeamWake {
 /// 方法，离开作用域时一定唤醒 —— 包括 `?` 提前返回的路径（错误路径上的多余唤醒是
 /// 无害的：等待者重查一次快照而已，而漏唤醒是不可恢复的）。
 ///
+/// # 前端失效脉冲挂在这里，与唤醒同一个落点
+///
+/// 事件载荷是 `TeamPulse { rev }`（见 [`crate::agent::team::events`]）。它和 `notify_waiters`
+/// 是同一件事实的**两个消费者**（等待者 / 面板），所以必须共用一个发射点：分成两处写，
+/// 「某个写路径忘了发事件」就会变成一个只能靠肉眼发现的静默缺陷 —— 而这里漏发一次，前端
+/// 面板就永久停在一个错的状态上（没有任何机制会让它自愈）。
+///
+/// 顺序：先放锁 → 抬代数 → 发脉冲。发脉冲时**不持任何锁**（`emit` 会走 Tauri 的 IPC 路径）。
+///
 /// 顺序不可颠倒：持锁 `notify_waiters()` 会让被唤醒者立刻去抢同一把锁（惊群 + 无谓
 /// 竞争），而 [`TeamWake::bump`] 的契约本来就要求锁已释放。
 struct WriteGuard<'a> {
     inner: Option<MutexGuard<'a, Inner>>,
     wake: &'a TeamWake,
+    notifier: &'a RwLock<Option<Arc<dyn TeamNotifier>>>,
 }
 
 impl Deref for WriteGuard<'_> {
@@ -211,9 +239,15 @@ impl DerefMut for WriteGuard<'_> {
 
 impl Drop for WriteGuard<'_> {
     fn drop(&mut self) {
-        // 顺序即契约：先放锁，再置位 + 唤醒。
+        // 顺序即契约：先放锁，再置位 + 唤醒，最后发失效脉冲。
         drop(self.inner.take());
-        self.wake.bump();
+        let rev = self.wake.bump();
+        // 端口先克隆出 `Arc` 再发：发脉冲时不持 `notifier` 的读锁（emit 是外部调用，
+        // 持锁期间拿锁的实现方会直接死锁）。
+        let listener = self.notifier.read().clone();
+        if let Some(notifier) = listener {
+            notifier.pulse(rev);
+        }
     }
 }
 
@@ -238,7 +272,25 @@ impl TeamManager {
             store,
             inner: Mutex::new(Inner::default()),
             wake: TeamWake::default(),
+            notifier: RwLock::new(None),
         }
+    }
+
+    /// 绑定前端事件端口（**晚绑定**，组合根在端点启动前调一次）。
+    ///
+    /// # 为什么不是构造参数
+    ///
+    /// `TeamManager` 在 `AppStateWrapper` 构造期就要存在（其他域的状态都依赖它），
+    /// 而 `AppHandle` 要等 `setup` 才可用 —— 构造期绑定会逼出一层 `Option<AppHandle>`
+    /// 在域里的泄漏（与 `app_state.set_team_reaper` 同构：先建对象，再注入句柄）。
+    ///
+    /// # 为什么 `None` 是合法的静默态
+    ///
+    /// 启动期 hydrate（[`Self::load`]）不该发事件：那一刻没有前端窗口在听，发出去的
+    /// 脉冲只会被丢弃，而「丢弃」和「没发」在日志里长得一样。所以未绑定 = 静默不发，
+    /// 不是错误。
+    pub fn set_notifier(&self, notifier: Arc<dyn TeamNotifier>) {
+        *self.notifier.write() = Some(notifier);
     }
 
     /// 取一个唤醒句柄（廉价克隆：只复制两个 `Arc`）。
@@ -263,6 +315,7 @@ impl TeamManager {
         WriteGuard {
             inner: Some(self.inner.lock()),
             wake: &self.wake,
+            notifier: &self.notifier,
         }
     }
 
@@ -1257,6 +1310,82 @@ mod tests {
         let after_create = manager.epoch();
         manager.claim_task("t1", W1, 1_000).unwrap();
         assert!(manager.epoch() > after_create, "认领也是写路径");
+    }
+
+    /// 失效脉冲：**一次写 → 恰好一次脉冲**，且 `rev` 严格递增。
+    ///
+    /// 「恰好一次」与「递增」是两个独立的失败模式：
+    /// - 少了 → 前端面板停在旧快照上（用户看到的是没有变化的旧数据，比崩溃更难发现）；
+    /// - 多了 → 每次写都白拉一次全量快照（脉冲退化成轮询）；
+    /// - 不递增 → 去重逻辑把新变化当旧事件丢掉。
+    ///
+    /// 这条测试保护的是**守卫挂钩的结构事实**（`WriteGuard::drop`）：任何写路径都发脉冲，
+    /// 包括 `?` 早退的失败路径。
+    #[test]
+    fn a_write_emits_exactly_one_pulse_with_a_strictly_increasing_revision() {
+        use crate::agent::team::fixtures::RecordingNotifier;
+
+        let manager = seeded();
+        let recorder = Arc::new(RecordingNotifier::new());
+        manager.set_notifier(recorder.clone());
+        assert!(recorder.pulses().is_empty(), "设置端口本身不是写路径");
+
+        manager.create_task(task("t1")).unwrap();
+        assert_eq!(recorder.pulses().len(), 1, "一次写恰好一次脉冲");
+        let after_create = manager.epoch();
+        assert_eq!(recorder.pulses()[0], after_create, "rev = 写之后的代数");
+
+        manager.claim_task("t1", W1, 1_000).unwrap();
+        assert_eq!(recorder.pulses().len(), 2, "认领也是一次写");
+        assert!(
+            recorder.pulses()[1] > recorder.pulses()[0],
+            "rev 必须严格递增（否则前端去重会把新变化当旧事件丢掉）: {:?}",
+            recorder.pulses()
+        );
+        assert_eq!(recorder.pulses()[1], manager.epoch());
+    }
+
+    /// 读路径**零脉冲**：`team_snapshot` / `team_status` 会被前端反复调用，任何一次多余的
+    /// 脉冲都会立刻引发下一轮全量拉取 —— 自我维持的拉取风暴。
+    #[test]
+    fn read_paths_emit_no_pulses_and_leave_the_revision_alone() {
+        use crate::agent::team::fixtures::RecordingNotifier;
+
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        let recorder = Arc::new(RecordingNotifier::new());
+        manager.set_notifier(recorder.clone());
+        let before = manager.epoch();
+
+        assert_eq!(manager.team(TEAM).unwrap().id, TEAM);
+        let _ = manager.tasks(TEAM);
+        let _ = manager.task("t1");
+        let _ = manager.member(W1);
+        let _ = manager.member_with_verification(W1);
+        let _ = manager.verification(W1);
+
+        assert!(recorder.pulses().is_empty(), "读路径不得发脉冲");
+        assert_eq!(manager.epoch(), before, "读路径不得改动代数");
+    }
+
+    /// 未设置端口时写路径照常工作（静默不发）：启动期 hydrate 与无前端的测试态都走这条路。
+    ///
+    /// 反向断言同样重要：**设置端口之后**同一条写路径必须开始发脉冲 —— 否则「晚绑定」
+    /// 会退化成「永不绑定」（`RwLock<Option<..>>` 写进去了却没人读）。
+    #[test]
+    fn writes_without_a_notifier_are_silent_and_never_panic() {
+        use crate::agent::team::fixtures::RecordingNotifier;
+
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager.claim_task("t1", W1, 1_000).unwrap();
+
+        let recorder = Arc::new(RecordingNotifier::new());
+        manager.set_notifier(recorder.clone());
+        manager
+            .update_task("t1", W1, TeamTaskState::InProgress, None, 2_000)
+            .unwrap();
+        assert_eq!(recorder.pulses().len(), 1, "晚绑定必须立刻生效");
     }
 
     /// 不变量 1：顺序第二次认领必须被拒（任务已有 owner）。

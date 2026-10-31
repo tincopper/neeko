@@ -29,7 +29,9 @@
 //! （无盘符的 `/tmp/x` 在 Windows 上 `is_absolute()` 恒 false）。
 
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
+use crate::agent::team::events::TeamNotifier;
 use crate::agent::team::types::{
     AdmissionTier, ApprovalPolicy, McpInjection, MemberRole, MemberState, ResultChannel, Team,
     TeamMember, TeamState, WorkerChannel, Workspace,
@@ -88,6 +90,42 @@ pub(crate) fn fixture_member(id: &str, team_id: &str) -> TeamMember {
         state: MemberState::Spawned,
         token_hash: "sha256:x".into(),
         joined_at: 1,
+    }
+}
+
+/// 记录型事件端口：把每次失效脉冲的 `rev` 按到达顺序收下来。
+///
+/// 用它而不是「有没有被调过」的布尔值：脉冲契约有两半 —— **次数**（一次写恰好一次）与
+/// **单调性**（`rev` 严格递增）。只记布尔就只能验前一半。
+pub(crate) struct RecordingNotifier {
+    pulses: Arc<Mutex<Vec<u64>>>,
+}
+
+impl RecordingNotifier {
+    /// 空记录器。测试用 [`Self::pulses`] 读回。
+    pub(crate) fn new() -> Self {
+        Self {
+            pulses: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// 已收到的 `rev` 序列（按到达顺序）。
+    ///
+    /// 毒锁不 panic：记录器只在测试里用，断言失败信息比 `PoisonError` 有用得多。
+    pub(crate) fn pulses(&self) -> Vec<u64> {
+        self.pulses
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+}
+
+impl TeamNotifier for RecordingNotifier {
+    fn pulse(&self, rev: u64) {
+        self.pulses
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(rev);
     }
 }
 

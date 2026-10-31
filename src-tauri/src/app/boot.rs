@@ -160,6 +160,18 @@ fn on_setup(app: &tauri::App) {
         state.set_http_server(handle);
     }
 
+    // 团队域的前端事件端口（失效脉冲）：**在端点 boot 之前**绑定。
+    //
+    // 顺序不是风格问题：端点一起，成员进程就可能开始写团队状态，而写路径靠 `WriteGuard::drop`
+    // 里的端口发脉冲 —— 晚绑定一次，那段时间内的变化就永远不会被面板看到（面板没有别的
+    // 自愈机制，只有「下一次写」）。晚绑定本身存在的理由是 hydrate：启动期从库重建内存镜像时
+    // 还没有窗口在听，那一刻的写不该发事件（见 `TeamManager::set_notifier` 的文档）。
+    state
+        .team_manager
+        .set_notifier(Arc::new(super::team_notifier::TauriTeamNotifier::new(
+            app.handle().clone(),
+        )));
+
     // 团队 MCP 端点：与 hooks 分开的**独立 loopback listener**（design §3.1b —— 共用一个
     // 端口会让成员 token 能 `POST /hook/{source}` 伪造队友上报）。起不来只记日志：
     // 团队功能不可用，但 hooks 那条常开路径与整个应用不该跟着受影响。

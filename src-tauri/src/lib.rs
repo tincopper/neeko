@@ -214,8 +214,10 @@ macro_rules! neeko_invoke_handler {
             $crate::notification::commands::notification_settings_set,
             $crate::notification::commands::notification_test_send,
             $crate::notification::commands::notification_claim_reflow_ready,
-            // ── agent team（协调基质；入口只有「以队长身份开会话」）──────────
+            // ── agent team（协调基质：以队长身份开会话 + 面板的两条读路径）────
             $crate::agent::team::commands::start_team_session,
+            $crate::agent::team::commands::team_snapshot,
+            $crate::agent::team::commands::team_task_detail,
             // ── agent CLI hooks（源 B：摄入与安装态）──────────────────────────
             $crate::agent::hooks::commands::agent_hooks_apply,
             $crate::agent::hooks::commands::agent_hooks_status,

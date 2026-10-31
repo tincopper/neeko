@@ -81,6 +81,12 @@ export const AGENT_CHAT_EVENT = 'agent-chat://event';
 /** 文档翻译流式事件通道（同 StreamEvent 协议，与聊天隔离）：`translation://event` */
 export const TRANSLATION_EVENT = 'translation://event';
 
+// ── Agent Team 事件（与 src-tauri/src/agent/team/events.rs 常量保持同步）──
+
+/** 团队变更事件通道（载荷是**失效脉冲** `{ rev }`，不是增量：收到后重取一次快照，
+ * 快照才是唯一真相）：`agent-team://event` */
+export const AGENT_TEAM_EVENT = 'agent-team://event';
+
 // ── 菜单/标签页事件（与 src-tauri/src/app_menu.rs 常量保持同步）──
 
 /** 关闭当前标签页事件（Cmd+W / Ctrl+W 菜单触发，前端关闭激活 tab）：`close-tab` */

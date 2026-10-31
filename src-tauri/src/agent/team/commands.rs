@@ -1,7 +1,28 @@
 //! 团队域的 `#[tauri::command]`（**极薄**，红线 6）。
 //!
-//! 只有一条命令：**「以队长身份开会话」**。它是 `create_team` 的**唯一生产调用方** ——
-//! 在此之前团队域只能靠测试驱动（`implement.md` C1 的取证）。
+//! 三条命令：
+//!
+//! | 命令 | 方向 | 载荷 |
+//! | --- | --- | --- |
+//! | `start_team_session` | 写 | 建队 + 起队长 PTY（`create_team` 的唯一生产调用方）|
+//! | `team_snapshot` | 读 | 团队行 + 花名册 + 任务板列（**无 `body`**，红线 4）|
+//! | `team_task_detail` | 读 | 列视图 + 派活正文（点开才拉）|
+//!
+//! 三条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，建队/起进程
+//! 在 `bootstrap` + `execution`（红线 6）。
+//!
+//! # 两条读命令**不做 principal 校验**（不是漏了）
+//!
+//! 它们是**本地 Tauri 入口**，不是 MCP 工具：调用方是本机用户点开自己机器上的面板。授权矩阵
+//! [`crate::agent::team::authorize`] 回答的是「**成员**（模型进程）能不能对**队友**做某件事」——
+//! 那是把不可信主体放进同一个写面之后的约束。本机用户不在这条判定里：他能直接写 `~/.neeko`，
+//! 用面板比绕过面板去改库还费劲。MCP 侧（`mcp::dispatch`）仍然逐工具授权，那条路一行没动。
+//!
+//! # 读＝阻塞 I/O ⇒ 阻塞池（红线 3）
+//!
+//! 花名册走 `TeamStore::list_members`（rusqlite 同步 API）。两条读命令都通过
+//! [`crate::common::runtime::run_blocking_result`] 进阻塞池：本域**不自己** spawn（同
+//! `TeamManager` 的取舍），命令层是唯一知道自己在哪个 runtime 上的地方。
 //!
 //! # 为什么不叫「提升为队长」
 //!
@@ -9,7 +30,7 @@
 //! 所以入口是**新开一个会话**（`bootstrap` 的模块文档详细记了这条裁决）。用户看到的差别
 //! 只是「队长会话」是新开的那一个。
 //!
-//! # 顺序即契约
+//! # 顺序即契约（`start_team_session`）
 //!
 //! ```text
 //! 端点门面        → 没有它，队长起来了也连不上工具面 ⇒ 先拒（此时库里什么也没有）
@@ -32,7 +53,9 @@ use std::sync::Arc;
 use crate::agent::team::bootstrap::{new_team_id, plan_team};
 use crate::agent::team::execution;
 use crate::agent::team::manager::now_millis;
+use crate::agent::team::view::{self, TaskDetail, TeamSnapshot};
 use crate::common::error::AppError;
+use crate::common::runtime::run_blocking_result;
 use crate::AppStateWrapper;
 
 /// `start_team_session` 的返回：**队长能行动的三样**（队 / 成员 / 落脚的终端）。
@@ -116,6 +139,52 @@ pub async fn start_team_session(
     })
 }
 
+/// 团队快照（面板的数据源）。
+///
+/// 载荷：`{ team, members, tasks, tasksTruncated }`（camelCase，同仓里 `team_status` 的口径）。
+/// `tasks` 里**没有** `body`（红线 4：派活正文长度无上限，见 [`view`] 的模块文档）；要正文
+/// 走 [`team_task_detail`]。任务数超过 [`view::MAX_BOARD_TASKS`] 时截断并置
+/// `tasks_truncated`（列载荷上界，不是分页）。
+///
+/// 未知 `team_id` → `NotFound`（信息里带 id）。
+#[tauri::command]
+pub async fn team_snapshot(
+    state: tauri::State<'_, AppStateWrapper>,
+    team_id: String,
+) -> Result<TeamSnapshot, AppError> {
+    let team_id = require_id(team_id, "team_id")?;
+    let manager = Arc::clone(&state.team_manager);
+    run_blocking_result(move || view::team_snapshot(&manager, &team_id)).await
+}
+
+/// 单个任务的详情（**点开才拉**）：列视图 + 派活正文。
+///
+/// 与「成员 transcript 按需拉取」同一条原则（design §7.3）：默认载荷只带恒定小的列，
+/// 正文/全文只在用户真的要看的时候走一次 IPC。
+///
+/// 未知 `task_id` → `NotFound`（信息里带 id）。
+#[tauri::command]
+pub async fn team_task_detail(
+    state: tauri::State<'_, AppStateWrapper>,
+    task_id: String,
+) -> Result<TaskDetail, AppError> {
+    let task_id = require_id(task_id, "task_id")?;
+    let manager = Arc::clone(&state.team_manager);
+    run_blocking_result(move || view::task_detail(&manager, &task_id)).await
+}
+
+/// id 入参的**唯一**校验：不能为空。
+///
+/// 空白 id 给一句 `InvalidInput` 而不是让它落成 `NotFound`：两者对调用方含义完全不同
+/// （「你传错了」vs「它不在了」），而 `team_id: ""` 几乎只能是面板的 bug。
+fn require_id(value: String, field: &str) -> Result<String, AppError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::InvalidInput(format!("{field} must not be empty")));
+    }
+    Ok(trimmed.to_owned())
+}
+
 /// 一条统一的拒绝：「团队端点没起来」。
 ///
 /// 两类调用（凭证 / URL）拿到**同一句**话：它们缺的是同一个东西，给两种措辞只会让
@@ -193,6 +262,16 @@ mod tests {
         let file = Path::new(ROOT).join("Cargo.toml");
         let err = canonical_project_root(&file.to_string_lossy()).expect_err("文件不是目录");
         assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+    }
+
+    /// 空白 id 是**入参错误**，不是 `NotFound`：两者对面板的含义完全不同
+    /// （「你传错了」vs「它不在了」），而空串几乎只能是面板的 bug。
+    #[test]
+    fn an_id_is_validated_before_reaching_the_manager() {
+        let err = require_id("   ".to_string(), "team_id").expect_err("空白 id");
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(err.to_string().contains("team_id"), "{err}");
+        assert_eq!(require_id(" tm_1 ".to_string(), "team_id").unwrap(), "tm_1");
     }
 
     /// 端点缺失的两种调用拿到同一句理由（它们是同一个前提）。

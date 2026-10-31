@@ -1095,9 +1095,18 @@ mod tests {
                     .keys()
                     .map(String::as_str)
                     .collect();
+                // `verification` 与 `state` 必须一起到（AC2：`idle` + `unverified` 才是
+                // 「空闲 ⚠ 未声明」；只给 state 时这两种行在线上不可区分）。
                 assert_eq!(
                     keys,
-                    vec!["memberId", "name", "role", "state", "leaseRemainingSecs"]
+                    vec![
+                        "memberId",
+                        "name",
+                        "role",
+                        "state",
+                        "verification",
+                        "leaseRemainingSecs"
+                    ]
                 );
             }
         });
