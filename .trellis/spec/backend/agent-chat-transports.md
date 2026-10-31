@@ -28,11 +28,157 @@
 **为什么地址在 wire 上只有一个 key 字符串**：分量化的 `{projectId, worktreePath}` 与散参同形，
 两段可独立缺失/错配（护栏列为「可拆分」失真）；key 只有一个表示，且与 git / file 事件一致。
 
+## 0.2 会话状态与标题的唯一来源（2026-10-31）
+
+`src-tauri/src/live_sessions/` 是**会话状态与标题的唯一写者**；tab 标题、侧栏单元角标、侧栏
+会话子列表三处都只是同一份快照的纯投影。
+
+**为什么必须上移到后端**（三条都是代码事实，不是整洁性偏好）：
+
+| 症状 | 根因 |
+| --- | --- |
+| 侧栏图标永远一样 | `TerminalTabData.status` 全仓**没有读者**，唯一写入点是已挂载的 `TerminalViewBase` 自动启动 agent 时写一次 `Running` —— 状态本身没人写、没人读 |
+| tab 标题说不出会话在干什么 | Agent Chat tab 标题是常量 `'Agent Chat'`，CLI tab 是 `agent.name`，都不是会话标题 |
+| 视图一关状态就断 | `AGENT_CHAT_EVENT` 只有**每-tab**监听者，tab 卸载后事件无人消费 ⇒ 没有全局状态源 |
+
+### 状态只能经信号改变
+
+`Registry::apply(session_id, Signal) -> bool` 是唯一写入面（外加 `register` / `unregister`
+两个生命周期动作）；转移规则集中在纯函数 `state::reduce` 的穷举表里
+（`reduce_covers_every_state_signal_pair`）。两条硬规则由事故形态定义：
+
+1. **终止态（`Failed` / `Stopped`）吸收一切迟到信号** —— pi 实测 `Error` 之后还会来 `TurnEnd`，
+   把它们当普通状态处理就会复活「点停止后仍显示运行中」（`terminal_states_absorb_every_late_signal`
+   / `terminal_state_absorbs_late_signals`）。
+2. **`Ready + ApprovalResolved` 是噪声**，返回 `None` 而不是把空闲会话推进到 `Running`
+   （`ready_approval_resolved_is_noise`；审批往返本身回 `Running`：`approval_round_trip_returns_to_running`）。
+
+`apply` 返回「状态是否真的变了」，**只有 `true` 才 bump 版本号**：审批往返这类抖动否则会
+高频刷 IPC（`apply_bumps_only_on_real_transitions` / `apply_without_state_change_does_not_bump`）。
+未知会话的迟到信号丢弃并 `log::debug!`，**绝不为它凭空建条目** —— 凭空建条目等于侧栏多出
+一条没人创建的会话（`apply_on_unknown_session_is_dropped_and_creates_nothing`）。
+
+### 两个生产者，一条投影
+
+| 生产者 | 接线点 | 原生事实 |
+| --- | --- | --- |
+| chat | `agent::chat::commands::spawn_session_pipeline`（会话注册 + **16ms 合帧 emit 闭包内**逐事件投影 + bridge 结束后注销） | `StreamEvent` → `Signal`（`wiring::chat::signal_of`） |
+| PTY / WSL | `services::spawn_pty_pipeline`（进程句柄入表之后、watcher 线程启动之前）+ 退出 watcher → `wiring::pty::exit_and_notify` | 输出流动 = `TurnStarted`，静默 ≥ `IDLE_AFTER` = `TurnFinished`；退出码 `0`/无 = `Exited`，非 0 = `Failed` |
+| SSH | `RemoteTerminalManager::create_session`（表项就绪之后、io 线程启动之前）+ io 循环的 250ms tick → `OutputActivity::poll` + io 线程收尾 → `exit_and_notify` | 同上（远端无可靠退出码，一律 `Exited`） |
+
+**不新增事件通道**：注册表是既有 chat 事件流与 PTY 生命周期的第二个消费者。
+`agent_id` 与 `workspace` 都是**显式入参**（`create_terminal_session` 的 `agent_id`、
+`SessionHandle.workspace`），不从命令行字符串反推（同 `ChatLaunch::inprocess` 的教训）。
+
+#### 终端状态：活动判据（本仓唯一的「推断」，2026-10-31 修订）
+
+PTY 只有一种可观测事实：**有没有字节出来**。进程存活不区分「在算」与「在等你」，CLI 的
+spinner 帧只改标题、不表达完成 —— 早先版本因此让终端永远停在 `Running`，用户看到的是
+「跑完了图标也不动」。现在的规则（`wiring::pty::OutputActivity`）：
+
+- reader / SSH io 线程每写一块输出就 `stamp()`；
+- watcher（100ms）与 io 循环（250ms）调 `poll()`：有输出 ⇒ `TurnStarted`（`Running`），
+  静默 ≥ [`IDLE_AFTER`]（1.5s）⇒ `TurnFinished`（`Ready`）；
+- `poll` 幂等：状态没变时 `apply` 返回 `false`，不 bump、不发事件（tick 不会变成 IPC 风暴）。
+
+**必须诚实标注的代价**：模型长时间无输出的思考会被读成「就绪」，`sleep 30` 这类无输出命令同理。
+阈值取「大于命令之间的间隔、小于人愿意等的反馈延迟」，这是「完全没有信号」与「宁可粗略也要有
+反馈」之间的取舍，不是精确状态机。`AwaitingApproval` 在终端路径上不可达（审批请求只在 chat 的
+`RequestApproval` 事件里），侧栏因此不会为终端画菱形。
+
+#### chat 侧的同一条坑：`TurnStart` 不是每个传输都发
+
+`pi` 传输**从不产出** `StreamEvent::TurnStart`（`pi_rpc/session.rs` 的翻译表里没有那个臂）。
+只认 `TurnStart` 的话，pi 会话整轮对话都停在 `Ready` —— 与终端同一个症状：状态点永远不动。
+因此 `wiring::chat::signal_of` 把**回合内容**（`TextDelta` / `ReasoningDelta` / `ToolStart` /
+`ToolOutput` / `ToolEnd` / `CommandRun` / `TodoUpdated` / `FileDiff`）也映射到 `TurnStarted`：
+首个内容事件 ⇒ `Running`，`TurnEnd` ⇒ `Ready`。`Running + TurnStarted` 幂等，ACP 同时发
+`TurnStart` 不会多翻一次（`content_events_drive_running_without_turn_start`）。
+
+#### 顺序不变量：登记早于信号
+
+登记必须在**退出信号的生产者启动之前**完成。反过来（先 exit 后 register）的形态是：
+
+1. 进程秒退（`sh -c "exit 1"`、agent 命令不存在）→ watcher / io 线程发出退出信号；
+2. `Registry::apply` 对**未知会话**丢弃该信号（它绝不为未知会话建条目，见
+   `on_exit_for_unknown_session_is_a_no_op`）；
+3. 随后才登记出来的条目永远停在 `Running` —— 没有第二个信号能清理它，用户看到一条点不动的
+   幽灵行。
+
+因此登记点落在**进程创建处**（`spawn_pty_pipeline` 在 `spawn_watcher_thread` 之前、
+`RemoteTerminalManager::create_session` 在起 io 线程之前），而不是 `create_session` 返回之后。
+chat 侧同一条规则：先 `register` 再起事件泵。
+
+#### 通知只此一份
+
+「改状态 + 只有真变了才 `emit_changed`」的判据收在 `live_sessions::wiring` 的四个入口：
+`pty::LiveTerminal::register` / `pty::exit_and_notify` / `pty::unregister_and_notify` /
+`chat::register_and_notify`。分散到各调用点的话，第 N 个生产者忘写通知的表现是
+「侧栏不刷新、无报错、无日志」—— 属于最难定位的一类。
+
+#### 终端的 `Failed` 目前在 UI 不可见（已知取舍）
+
+`wiring::pty::on_exit` 先 `apply(exit_signal)` 再立刻 `unregister`：条目在同一次调用里消失，
+于是非零退出的终端**不会**在侧栏留下红色失败点（chat 侧可见：`Error` 后条目保留到 bridge 结束）。
+保留失败条目（例如保留到 tab 关闭）是产品决策，不是缺陷修复；在做出该决策前，`Failed` 对
+terminal 路径只服务于未来的持久化 / 统计，不要在文档或 PRD 里写成「用户能看到崩溃的终端」。
+
+### 标题：单调升级，按字符截断，不进 UI 徽标
+
+来源质量 `Placeholder < Prompt < Native < User`（就是 `TitleSource` 的 `Ord`，
+`title_source_order_encodes_quality` 钉住）：同级可覆盖（同一来源后到的那份可能更完整），
+**弱级永不覆盖强级**，`User` 一旦设置任何自动来源都改不动它
+（`set_title_upgrades_but_never_downgrades` / `user_title_survives_automatic_sources`）。
+截断按**字符**（`truncate_never_splits_a_character`：中文不切半个字，总长恒 ≤ 80）。
+
+两个素材来源，都不新增捕获路径：
+
+- chat 注册时 `pick([(Native, topic), (Prompt, prompt)])`（都没有则留空）——
+  `topic` 是恢复会话时前端传入的 agent 原生标题
+  （`register_prefers_native_title_then_prompt_then_leaves_it_empty`）；
+- terminal 的 OSC 0/2：xterm 的 `onTitleChange` → 薄命令 `set_live_session_title` →
+  `set_title(Native, …)`。**为什么是命令而不是事件**：前端→后端既有通道只有
+  `terminal-input-{id}`（载荷是 stdin 字节）与 agent chat（反向），复用要么污染语义、要么
+  新增事件名（红线 5）。前端只做「同一会话值不变不发」去重（xterm 的 `setTitle()` 无条件 fire，
+  spinner 帧会反复发同一串）；**不做时间窗节流** —— 把关键跃迁压掉比多发一次更糟
+  （`osc_title_is_native_so_it_can_replace_another_native_title` 钉住来源是 `Native`：
+  `Prompt` 会被同级覆盖判据拒掉，只断言最终文本区分不了这条）；
+- 拿不到就停在 `Placeholder`，不猜（`blank_title_candidates_are_ignored`）。
+
+**没有真标题时占位是空串**（不是 agent 名、也不是项目名）。理由（2026-10-31 两轮实测反馈）：
+
+1. **agent 名不是标题**：占位曾取 `agent_id`，侧栏与 tab 显示 `pi` —— 与上下文无关的字符串，
+   且与行首的 agent 品牌图标重复一遍；
+2. **项目名也是冗余的**：会话行本身就挂在单元行下面，再写一遍项目名只是噪声。
+
+空标题由**视图**解释，不是后端兜底一个假名字：侧栏只画图标（`SessionList` 的 `hasTitle` 分支），
+tab 回退到自己的占位标题（`nextTerminalTitle` 的 `Terminal N`）。chat 的 `topic` / 首条 `prompt`
+一到就自动升级成真标题（`placeholder_title_is_empty_until_the_cli_names_itself` /
+`plain_shell_terminal_also_has_no_placeholder_name`）。
+
+`TitleSource` **不进 UI**：界面只表达结果（有真标题 / 占位），排名徽标是内部判据。
+标题也**不写回 tab store** —— 渲染期由 `resolveTabTitle(tab, session)` 派生，否则会出现
+第二份真相（用户改名后 tab 显示旧值）。
+
+### 快照是 credit-pull，不是推送
+
+`SESSIONS_EVENT`（`live-sessions://changed`，两端各一条常量）**只载荷版本号**；前端凭它 /
+`wait_live_sessions` 的返回值再拉一次 `list_live_sessions`。原因与终端 drain 同源：macOS WebKit
+上每次事件送达 = 一次 `evaluateJavaScript` 且无条件克隆完成值，推送全量快照会让 RSS 只增不减。
+长轮询复用同一信用拉取形态：版本未变就挂起（`wait_times_out_without_spinning`），变则立即返回
+（`wait_wakes_up_on_state_change` / `wait_returns_immediately_when_the_version_already_moved`）。
+**快照是全量的，单元分组只在前端**：`list_live_sessions()` 不带地址参数，按
+`workspaceKey` 等值的分组由前端 `sessionsByUnit`（纯函数）+ `useSessionsByUnit`（一次 O(n) 分组
+供所有行共用）完成。曾经的 `workspace: Option<WorkspaceSession>` 参数没有任何调用方，却让后端多出
+一套与前端并行的「单元归属」判据（`UnitScope::owns` 按 cwd 最深根 vs 前端按 key 等值）——
+两套判据迟早对不上（`snapshot_returns_every_unit_and_keeps_the_address_key` 钉住「全量」）。
+
 ## 1. Scope / Trigger
 
 - **Trigger**：改 `src-tauri/src/agent/chat/adapter/{acp,deepseek}.rs` 或
   `adapter/pi_rpc/`、`adapter/opencode/`；改 `common/agent/chat_launch.rs`；
-  给某个 agent 接上 chat 能力。
+  给某个 agent 接上 chat 能力；改 `live_sessions/`（§0.2 —— 会话状态与标题的唯一来源）
+  或 `terminal/router.rs`（PTY 生产者的登记点）。
 - **前提认知**：`ChatLaunch` 是**能力数据**，不是 id 判定的替代品。`adapter_for`
   按 `ChatLaunch::transport()` 分派，任何适配器内部都不得出现 `agent_id ==`
   分支（护栏 `tests/unit/agent_model_dispatch_test.rs`）。

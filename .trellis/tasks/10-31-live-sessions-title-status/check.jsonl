@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "复核新命令是否薄、IPC 是否按需拉取、事件名是否单源"}
+{"file": ".trellis/spec/backend/persistence-and-cache.md", "reason": "复核写穿是否 best-effort、是否误开第二套生命周期"}
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "复核标题升级是否复用 conversation 权威、是否自造第二份标题口径"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "复核纯层测试是否覆盖全部 (state, signal) 与终止不复活"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "复核 selector / 图标映射是否穷举、是否只测实现细节"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "复核全局监听是否只挂一次、是否成对清理"}

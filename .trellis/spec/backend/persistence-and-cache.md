@@ -348,6 +348,61 @@ conn.trace(Some(|sql| { if sql.starts_with("BEGIN") { count += 1 } }));
 
 ---
 
+## 4b. live-sessions 注册表的写穿策略（`agent_sessions.db`，2026-10-31）
+
+`live_sessions::Registry` 是会话状态与标题的唯一内存事实，但它**不新开表、不新开库** ——
+落盘复用 `agent/chat/session_store.rs` 的 `SessionStore`（与 `AgentChatManager` 同一个实例，
+`AppStateWrapper` 注入时 `Arc::clone`）。新增一份「运行时状态表」等于让「哪些会话该恢复」
+有两个答案，而两者会独立漂移。
+
+### 4b.1 单向投影：`ResumeCursor::from_entry`
+
+`live_sessions/cursor.rs` 是**唯一**投影点，方向固定为「运行时条目 → 持久化游标」：
+
+| 运行时（5 态） | 持久化 `SessionStatus`（4 态） | 理由 |
+| --- | --- | --- |
+| `Ready` / `Running` / `AwaitingApproval` | 同名 | 重启后要恢复的就是「还活着的会话」 |
+| `Failed` / `Stopped` | `Closed` | 数据库只需要回答「还在跑吗」，不需要区分怎么结束的 |
+
+反向投影**不存在**：启动时从不把 cursor 还原成 live 条目 —— 进程已经没了，凭空造一条
+`Ready` 会话就是侧栏幽灵行。投影穷举由 `every_runtime_state_projects_to_a_persisted_status` 钉住。
+
+**terminal 条目投影为 `None`**（`terminal_entry_is_not_persistable_even_with_an_agent` /
+`terminal_entries_are_never_persisted`）：`agent_sessions.db` 存的是 agent chat 会话（原生
+resume 要 `agent_kind` / `model` / `runtime_mode`），写进终端条目只会造出「重启后能恢复一个
+终端」的假承诺。纯 shell 终端同理（拿不到 `agent_id`）。
+
+### 4b.2 只覆盖注册表知道的字段
+
+写穿前先 `load_cursor` 读回既有行，**只**改写 `status` / `turn_count` / `last_activity`，
+保留 `model` / `runtime_mode`。原因：`runtime_mode` 是用户在创建会话时选的（如 `confirm`），
+用投影整体覆盖会把它静默改写回 `auto` —— 表现是「设置了一次，下次启动又变回去」，而且
+没有任何报错（`persist_keeps_fields_the_registry_does_not_know`）。
+
+### 4b.3 锁外落盘 + 失败只 warn
+
+注册表锁内只做 map 操作与克隆（`concurrency-guidelines.md` 红线 3 口径）：`register` / `apply`
+在 `guard()` 作用域里算出待写的 cursor，**出锁之后**才 `load_cursor` + `save_cursor`。写失败只
+`log::warn!`：内存事实已是权威，让一次磁盘抖动阻断状态转移只会把 UI 卡在旧状态。
+
+### 4b.3b 写穿节流：只写「DB 读者真的会读到」的变化
+
+`apply` 只在 **`turn_count` 变化（回合结束）** 或 **新状态是终态** 时落盘；`Running` /
+`AwaitingApproval` 这类中间态**不写**。
+
+判据来自读者而不是感觉：`SessionStore::list_active` 只按 `status != Closed` 过滤，
+`session::boot` 也只拿它决定「哪些会话可恢复」—— 没有任何代码把中间态读回 live 条目。
+而 `apply` 的调用点在 `agent_chat` 的 16ms 合帧 emit 闭包里（`tauri::async_runtime::spawn`
+的任务内），每次转移同步写两次 SQLite 就是把这些阻塞调用压在异步执行器线程上（红线 3 取向）。
+节流后每个回合只写一次，且语义对全部读者等价（`persist_is_throttled_to_reader_relevant_transitions`）。
+
+### 4b.4 标题不落盘
+
+`ResumeCursor` 没有标题列，`set_title` 因此**只影响内存与版本号**。这不是缺项：标题是
+渲染期投影（会话恢复时由 `StreamRequest.topic` 重新成为 `Native` 素材，新会话由首条 prompt
+成为 `Prompt`），持久化它等于给标题造第二张表。`unregister` 才是落盘动作的终点 ——
+先摘表（视图立即看不到），再 best-effort `close_session`（`unregister_removes_the_entry_and_closes_the_cursor`）。
+
 ## 5. 前端通用层（`src/shared/cache/`）
 
 ### 5.1 能力归属：什么该在 shared，什么该在 feature

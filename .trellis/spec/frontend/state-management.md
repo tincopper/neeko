@@ -2035,3 +2035,74 @@ import 会成环（`import/no-cycle`）。解法是**注入**：`agentApi` 在�
 `useAgentStore.getState().setLoader(listAgents)`，依赖方向单向（features → shared）。
 
 `shared/` 也不能直接 `invoke`（`no-restricted-imports` 禁止绕过 API 层）。
+
+---
+
+## 场景：live-sessions 注册表快照 vs 视图派生 2026-10-31
+
+会话的**状态与标题**由后端 `live_sessions::Registry` 唯一持有。前端只有一份**只读快照**，
+其余全部是渲染期派生 —— 三层职责不能混：
+
+| 层 | 位置 | 允许做什么 | 禁止 |
+| --- | --- | --- | --- |
+| 快照 | `shared/store/liveSessionsStore.ts` | `apply(snapshot)` / 版本与 hydrate 时刻 | 派生、排序、按单元过滤、改标题 |
+| 派生 | `shared/selectors/liveSessionSelectors.ts` + `features/editor/utils/tabTitle.ts` | `sessionsByUnit` / `dominantState` / `isSameSession` / `tabSession` / `sessionTab` / `resolveTabTitle` | 写 store、发 IPC、缓存结果到模块级变量 |
+| 订阅 | `shared/hooks/useSessionsByUnit.ts` / `useNowTick.ts` | 把快照折成「一次 O(n) 分组」「一个时钟」 | 按行重扫全表、每行各起一个定时器 |
+| 渲染 | `SessionStatusIcon` / `SessionList` / `TabItem` | 按入参渲染 | 自己推断状态 |
+
+**为什么快照层不做单元分组**：一次快照要同时服务三种视图（侧栏按单元、tab 标题、连接页），
+各视图的分组口径不同（侧栏要「每单元全部会话」，tab 要「这条 tab 的会话」）。把分组塞进
+store 会让「另一种分组」要么复制一份、要么原地改 store —— 两条路都造第二份真相。
+`apply` 只做一件事：**版本更旧的回包丢弃**（乱序 / 延迟回包不得打断正在展示的新快照，
+`liveSessionsStore.test.ts`）。
+
+**为什么标题不写回 tab store**：`tab.title` 是创建期 / 用户改名的兜底值，注册表是后到且
+更强的事实。写回会让「用户改名后 tab 显示旧值」「同一事实两份表示」同时回来。因此
+`resolveTabTitle(tab, session)` 在**渲染期**取会话标题、兜底 `tab.title`，纯函数、不修改入参
+（`tabTitle.test.ts::纯函数：同一输入两次结果相同，且不修改入参`）。
+
+**`TerminalTabData.status` 已删除**：视图不再持有状态副本。它唯一的历史作用是「图标数据源」，
+但全仓没有读者、唯一写入点在已挂载的终端组件里 —— 留着就是「看起来在同步、实际冻结」的诱饵。
+图标只许读 `dominantState(byUnit.get(workspaceKey) ?? NO_SESSIONS)`（`awaitingApproval > running >
+failed > ready > stopped`），**无会话返回 `null` 且不渲染状态点**（不是灰点：灰点会被读成
+「已知且空闲」）。
+
+**分组只有一个实现**：`sessionsByUnit`（纯函数，O(n) 一次分组）+ `useSessionsByUnit`（订阅 store
+并 memo 住那份 Map）。侧栏每个项目行 / worktree 行 / 会话子列表都用它 —— 曾经的
+`sessionsOfUnit(list, key)` 让每个项目行各扫一遍全表（N 单元 × M 会话），且与后端
+`UnitScope` 形成两套「这个会话属于哪个单元」的判据（后端那套已删除，见
+`agent-chat-transports.md` §0.2）。
+
+**同一会话的判据只有 `isSameSession`**：`kind` + `sessionId` 必须同时相等。`tabSession` /
+`sessionTab` / 会话行高亮全部走它；只比裸 `sessionId` 是第二套判据（chat 与 terminal 的 id
+空间互不相干，串线的表现只是「点错 tab / 高亮错行」，极难定位）。
+
+**相对时间必须有节拍**：`formatRelativeTime(iso, now)` 是 `now` 的函数，而快照不变时组件不会
+重渲染 —— 没有 `useNowTick` 的话，一个空闲会话会永远停在「刚刚」。一个列表挂**一个**定时器
+（10s，小于最小标签粒度），把 `now` 传给每一行。
+
+**映射只有一张表**：`SessionStatusIcon` 的 `STATUS_VISUAL` 常量表是状态→视觉的唯一实现；
+`running` 额外带呼吸动画（第二个通道），其余状态不带（`SessionStatusIcon.test.tsx` 穷举五态 +
+空态）。
+
+**标题来源（`TitleSource`）不进 UI**：它只决定「谁能覆盖谁」（后端 `title::should_upgrade`），
+界面只表达结果。展示它等于把内部优先级暴露成用户概念，且会诱导前端复刻升级规则。
+
+**没有真标题时只画图标**：侧栏会话行 = **agent 图标（+ 有标题时才有文字）+ 相对时间 + 状态点**。
+后端在 CLI 自报 OSC / 首条 prompt 之前把标题留空，前端**不得**用 `agent.name` / 项目名兜底 ——
+前者不可读且与图标重复，后者与单元行重复（2026-10-31 两轮反馈）。tab 侧同理：占位标题是
+`nextTerminalTitle` 的 `Terminal N`（`shared/utils/terminalTabTitle.ts`，两个建 tab 入口共用），
+不是 agent 名。
+
+会话子列表**不画左侧竖线**，层级只靠缩进（`ml-[3.25rem]` 让会话图标对齐单元标签）——
+窄侧栏里那条线是持续噪声。
+
+**终端原生标题只上行、不回读**：`term.onTitleChange`（OSC 0/2）→ `createTerminalTitleSync` →
+薄命令 `set_live_session_title`。前端只做「同一会话值不变不发」（`terminalTitle.test.ts`：同值
+一次、值变各一次、dispose 后不再发、没有 `ptySessionId` 时不发也不记基线）。升级判定在后端，
+前端不预判 —— 否则「OSC 不得覆盖用户改名」会出现两份规则。
+
+**跨栈常量**：`SESSIONS_EVENT` 前端值必须与 `src-tauri/src/live_sessions/events.rs` 的声明
+**逐字相等**（`shared/__tests__/sessionsEventConstant.test.ts` 读后端源码取声明值比较，
+不是断言子串出现过），且不得与 `AGENT_CHAT_EVENT` / `TRANSLATION_EVENT` 撞名 ——
+值相等挡不住「两端一起抄错」。
