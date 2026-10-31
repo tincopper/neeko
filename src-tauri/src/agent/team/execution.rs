@@ -36,7 +36,7 @@ use crate::agent::team::admission::{admission_for, MCP_CONFIG_PLACEHOLDER};
 use crate::agent::team::identity;
 use crate::agent::team::mcp::dispatch::ToolReply;
 use crate::agent::team::mcp::protocol::TOKEN_HEADER;
-use crate::agent::team::types::{McpInjection, Team, TeamMember, Workspace};
+use crate::agent::team::types::{Team, TeamMember, Workspace};
 use crate::common::error::AppError;
 
 /// MCP 配置里的 server 名（写进 `mcpServers` 的 key）。
@@ -95,23 +95,11 @@ pub fn plan_member_spawn(
         ))
     })?;
 
-    if !admission.has_mcp() {
-        return Err(AppError::Unsupported(format!(
-            "agent `{}` has no MCP surface, so a spawned member could never receive a task \
-             (channel = none); refusing to start a member that can only sit in the roster",
-            member.agent_id
-        )));
-    }
-
-    // 只有 `Argv` 档有模板；另外两档的注入发生在该 CLI 自己的配置里（见 `McpInjection` 的
-    // 三档对照）。这里拒绝而不是回退，理由见函数文档。
-    if admission.mcp_injection != McpInjection::Argv || admission.mcp_argv.is_empty() {
-        return Err(AppError::Unsupported(format!(
-            "agent `{}` injects MCP via {:?}, which the executor does not implement yet \
-             (only launch-argument injection is wired); starting it anyway would produce a \
-             member whose tool surface is silently missing",
-            member.agent_id, admission.mcp_injection
-        )));
+    // 「起得来但用不了」的两个条件在 `team_spawn` 已经早拒过一次（不留下永远不动的成员
+    // 行）；这里再问一次是**执行前确认**：成员行可以被重新启动 / 被别的路径写进库，
+    // 而判据只该有一份（`AgentAdmission::launch_refusal`）。
+    if let Some(why) = admission.launch_refusal() {
+        return Err(AppError::Unsupported(why));
     }
 
     Ok(SpawnPlan {

@@ -365,6 +365,11 @@ fn spawn(
     // 与可用 id 清单，让队长能自己纠正。
     let admission =
         admission_for(&agent_id).ok_or_else(|| AppError::NotFound(refusal(&agent_id)))?;
+    // C5：**建成员之前**就拒绝「起得来但用不了」的 CLI（无 MCP 面 / 注入档未实现）。
+    // 放到执行层再拒会让成员先落库 —— 花名册里多一个永远不动的名字，而队长以为它已开工。
+    if let Some(why) = admission.launch_refusal() {
+        return Err(AppError::Unsupported(why));
+    }
 
     let name = member_name(wire, required_str(wire, args, "name")?)?;
     let workspace = spawn_workspace(wire, args)?;
@@ -2400,57 +2405,66 @@ mod tests {
         );
     }
 
-    /// B 档 agent（`omp`，无 MCP 表面）：`channel = None`、`result_channel = Sentinel`。
+    /// B 档 agent（`omp`，无 MCP 表面）：没有工具面 ⇒ **建不出成员**；`result = Sentinel`。
     ///
-    /// 保护的不变量（红线 14 声明即实现）：向一个没有 MCP 面的 CLI 声明 `channel=Mcp`
-    /// 会让 `team_send` 永远发不出去；而 `result_channel` 必须说真话 —— 它的结果只能
-    /// 从 sentinel 行里捞。
+    /// 保护的不变量（红线 14 声明即实现）：向一个没有 MCP 面的 CLI 声明「它有工具面」
+    /// 会让它连 `task_claim` 都调不了（花名册里一个永远不动的名字）；而 `result_channel`
+    /// 必须说真话 —— 它的结果只能从 sentinel 行里捞。
+    ///
+    /// 注意 `channel` 不在这条判据里：CLI 成员的入站通道一律 `Pty`（`WorkerChannel::CLI_MEMBER`），
+    /// 「能不能用工具」由 `has_mcp()` 表达。
     #[test]
-    fn tier_b_agent_has_no_mcp_channel() {
+    fn tier_b_agent_is_refused_before_a_member_row_exists() {
         let manager = seeded();
-        let spawned = spawn_ok(&manager, &lead(), &spawn_args("omp", "w9"));
-        let member = manager.member(&spawned.member_id).unwrap();
-        assert_eq!(member.tier, AdmissionTier::B);
-        assert_eq!(spawned.tier, AdmissionTier::B, "回复里的档位与成员行一致");
-        assert_eq!(member.channel, WorkerChannel::None);
-        assert_eq!(member.result_channel, ResultChannel::Sentinel);
-        assert_eq!(member.mcp_injection, McpInjection::None);
-        // 无传输（= 没有已实现的 MCP 通道）—— 执行层从准入表读得到这个事实。
-        assert_eq!(admission_for("omp").unwrap().transport, None);
-        // B 档的「未核实」必须随返回回到队长手里（不能只活在注释里）。
-        assert!(!spawned.unverified.is_empty(), "{spawned:?}");
+        // 档位与通道仍是**表的事实**（B 档：能报不能收）—— 测试直接从准入表读，
+        // 因为 `team_spawn` 已经不再允许建出这样一个成员（C5）。
+        let admission = admission_for("omp").expect("omp 在准入表里");
+        assert!(!admission.has_mcp(), "无工具面 ⇒ 收不到任务");
+        assert_eq!(admission.result_channel(), ResultChannel::Sentinel);
+        assert_eq!(admission.mcp_injection, McpInjection::None);
+        assert_eq!(admission.transport, None, "没有已实现的 MCP 通道");
+        assert!(!admission.unverified.is_empty(), "能力缺口必须诚实列出");
+
+        // 早拒，且理由可读（AC7b）：`team_spawn` 说清楚为什么现在不能建它。
+        let err = spawn(&manager, &lead(), &spawn_args("omp", "w9"))
+            .expect_err("无 MCP 面的 CLI 必须被早期拒绝");
+        assert!(matches!(err, AppError::Unsupported(_)), "{err:?}");
+        assert!(err.to_string().contains("no MCP surface"), "{err}");
+        // 关键：拒绝路径上**没有**留下成员行（否则花名册里会多一个永远不动的名字）。
+        assert!(manager.member("w9@tm_1").is_none());
     }
 
-    /// C 档 agent（`grok`，无 hook **但**有 MCP）：`channel = Mcp`、`result = Sentinel`。
+    /// C 档 agent（`grok`，无 hook **但**有 MCP 工具面）：`result = Sentinel`。
     ///
     /// **这条专门防「按档位一刀切」**：把 C 档一律映射成 `channel=None` 会白白丢掉
     /// grok 可用的 MCP 面（research/admission-matrix.md §3.4 的反例：能收不能报）。
     /// 两个通道是**两个维度**，不是档位的两个别名。
     #[test]
-    fn tier_c_agent_with_mcp_can_still_receive_messages() {
+    fn tier_c_agent_with_mcp_is_still_refused_until_its_injection_lands() {
         let manager = seeded();
-        let spawned = spawn_ok(&manager, &lead(), &spawn_args("grok", "w9"));
-        let member = manager.member(&spawned.member_id).unwrap();
-        assert_eq!(member.tier, AdmissionTier::C);
+        // **档位与注入方式是两列，不能互相推**：grok 是 C 档（无 hook）但**有** MCP 面 ——
+        // 把 C 档一律映射成 `channel=None` 会白白丢掉它能收消息的那一面。
+        let admission = admission_for("grok").expect("grok 在准入表里");
+        assert_eq!(tier_of(admission), AdmissionTier::C);
+        assert!(admission.has_mcp(), "有 MCP 面（能用工具）");
         assert_eq!(
-            member.channel,
-            WorkerChannel::Mcp,
-            "grok 有 MCP 面，能收消息"
-        );
-        assert_eq!(
-            member.result_channel,
+            admission.result_channel(),
             ResultChannel::Sentinel,
-            "但它报不上来"
+            "但它报不上来（无 hook）"
         );
-        // grok 的注入方式是 `grok mcp add` 子命令（不是启动参数）—— 档位与注入方式是**两列**，
-        // 不能互相推。写错这一列的后果是执行层给它传一个它不认的启动参数：
-        // 成员起得来、tool 面静默不可见。
-        assert_eq!(member.mcp_injection, McpInjection::Subcommand);
-        // 传输仍然在准入表里（= 执行层能拿到“怎么发”的全部信息）。
+        assert_eq!(admission.mcp_injection, McpInjection::Subcommand);
         assert_eq!(
-            admission_for("grok").unwrap().transport,
+            admission.transport,
             Some(crate::agent::team::admission::McpTransport::Http)
         );
+
+        // 但 v1 **建不出来**：注入方式是子命令（`grok mcp add`），执行层只会启动参数注入。
+        // 建出来再失败更糟 —— 成员起得来、tool 面静默不可见（红线 14）。
+        let err = spawn(&manager, &lead(), &spawn_args("grok", "w9"))
+            .expect_err("注入档未实现的 CLI 必须被早期拒绝");
+        assert!(matches!(err, AppError::Unsupported(_)), "{err:?}");
+        assert!(err.to_string().contains("Subcommand"), "{err}");
+        assert!(manager.member("w9@tm_1").is_none());
     }
 
     /// `approval_policy = "bypass"` → 启动参数等于**该 agent 表里**那一行。

@@ -23,9 +23,7 @@
 //! 与 A 级证据（实测）在矩阵里长得一样，只有把「我没验过这条」说出来，队长才不会
 //! 把不确定的能力当成确定的。
 
-use crate::agent::team::types::{
-    AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel, WorkerChannel,
-};
+use crate::agent::team::types::{AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel};
 
 /// `mcp_argv` 模板里的占位符：执行层把它替换成 MCP 配置 JSON（含端点与成员 token）。
 ///
@@ -72,19 +70,10 @@ impl AgentAdmission {
             && matches!(self.transport, Some(transport) if transport.is_implemented())
     }
 
-    /// 怎么给它**发**消息（design §4.4 的 `channel`）。
-    ///
-    /// 只由 **MCP 面**决定，与档位无关：C 档的 `grok` 照样能收
-    /// （`channel = Mcp`）—— 只是它的结果得靠 sentinel 打印。按档位一刀切会把
-    /// 这条真实能力白白丢掉。
-    #[must_use]
-    pub fn channel(&self) -> WorkerChannel {
-        if self.has_mcp() {
-            WorkerChannel::Mcp
-        } else {
-            WorkerChannel::None
-        }
-    }
+    // 「怎么给它**发**消息」**不在这里**：它不是 per-CLI 事实。CLI 成员的进程就在 PTY 里，
+    // 通道一律 `WorkerChannel::CLI_MEMBER`（见该常量的文档）；按「有 MCP 面 ⇒ Mcp」推导
+    // 会得到一条不存在的通道（MCP over HTTP 没有 server→client 推送）。
+    // 这里保留的 `result_channel` 才是 per-CLI 的：它由「有没有 hook」决定。
 
     /// 它怎么**报**结果（design §4.4 的 `result_channel`）。
     ///
@@ -165,7 +154,7 @@ impl AgentAdmission {
 ///
 /// 这里的每一行都意味着「Neeko 有办法把 MCP 流量送进去」。所以 stdio 不在列：
 /// `neeko-team-mcp.mjs` 的 bridge 尚未落地，加一个 `Stdio` 变体只会让
-/// `AgentAdmission::has_mcp()` 把一条其实发不进去的配置宣传成 `channel = Mcp`。
+/// `AgentAdmission::has_mcp()` 把一条其实用不起来的配置宣传成「有工具面」。
 /// 补 bridge 时同 diff 补变体，并在这里删掉这段说明。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum McpTransport {
@@ -670,27 +659,27 @@ mod tests {
         assert_eq!(tier_of(&grok), AdmissionTier::C);
     }
 
-    /// `channel` 由 **MCP 面**决定，`result_channel` 由 **hooks** 决定 —— 两列不合并。
+    /// `result_channel` 由 **hooks** 决定；**工具面**（`has_mcp`）是另一列，两者不合并。
     ///
-    /// 保护的不变量（design §4.4 的通道三分）：`grok` 是「能收不能报」的反例 ——
-    /// 若按档位一刀切（C ⇒ 全 `None`/`Sentinel`），它会白白丢掉可用的 MCP 面；
-    /// 若把 `channel` 与 `result_channel` 合成一个字段，`TeamPrincipal` 就无法同时
-    /// 表达「能发 MCP、结果靠 sentinel」。
+    /// 保护的不变量：`grok` 是「有工具面但报不上来」的反例 —— 按档位一刀切
+    /// （C ⇒ 两列全 `None`/`Sentinel`）会白白丢掉它可用的 MCP 面。而「能收」这件事
+    /// 由 `has_mcp` 表达，**不是** `channel`：CLI 成员的入站通道一律 PTY
+    /// （`WorkerChannel::CLI_MEMBER` —— MCP over HTTP 没有 server→client 推送）。
     #[test]
-    fn channel_and_result_channel_are_derived_from_different_columns() {
-        let cases: [(&str, WorkerChannel, ResultChannel); 4] = [
-            // A 档：两条通道都在。
-            ("claude-code", WorkerChannel::Mcp, ResultChannel::Mcp),
-            // B 档：能发不能用 —— 结果靠 sentinel 打印。
-            ("omp", WorkerChannel::None, ResultChannel::Sentinel),
-            // C 档但有 MCP：能收（channel=Mcp）、报不了（sentinel）。
-            ("grok", WorkerChannel::Mcp, ResultChannel::Sentinel),
-            // C 档且只写配置文件、无传输：连发都发不进去。
-            ("reasonix", WorkerChannel::None, ResultChannel::Sentinel),
+    fn result_channel_comes_from_hooks_while_the_tool_surface_is_its_own_column() {
+        let cases: [(&str, bool, ResultChannel); 4] = [
+            // A 档：hook + 工具面都在 ⇒ 结果走工具调用。
+            ("claude-code", true, ResultChannel::Mcp),
+            // B 档：无工具面（收不到任务，`team_spawn` 早拒），结果也只能靠 sentinel。
+            ("omp", false, ResultChannel::Sentinel),
+            // C 档但有工具面：能用工具，但报不上来 ⇒ sentinel。
+            ("grok", true, ResultChannel::Sentinel),
+            // C 档且只写配置文件、无传输：工具面不成立。
+            ("reasonix", false, ResultChannel::Sentinel),
         ];
-        for (agent_id, channel, result_channel) in cases {
+        for (agent_id, has_mcp, result_channel) in cases {
             let admission = admission_for(agent_id).expect("admitted");
-            assert_eq!(admission.channel(), channel, "{agent_id} 的 channel");
+            assert_eq!(admission.has_mcp(), has_mcp, "{agent_id} 的 MCP 工具面");
             assert_eq!(
                 admission.result_channel(),
                 result_channel,
