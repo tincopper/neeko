@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
+import type { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { cancelAgentStream, openAgentChat } from '../api/agentChatApi';
 
@@ -41,7 +41,6 @@ export interface AgentSessionLifecycle {
 
 export function useAgentSessionLifecycle(params: {
   agentId: string | undefined;
-  projectId: ProjectId;
   /** 执行地址（tab 所属工作区单元）：静默会话的 cwd 由它决定。 */
   workspace: WorkspaceSession;
   tabKey: string;
@@ -68,7 +67,6 @@ export function useAgentSessionLifecycle(params: {
 }): AgentSessionLifecycle {
   const {
     agentId,
-    projectId,
     workspace,
     tabKey,
     tabId,
@@ -106,7 +104,7 @@ export function useAgentSessionLifecycle(params: {
     } catch (err) {
       console.warn('[session-lifecycle] silent session open failed', err);
     }
-  }, [agentId, projectId, workspace, tabKey, tabId, modelId, flushPendingEvents]);
+  }, [agentId, workspace, tabKey, tabId, modelId, flushPendingEvents]);
 
   /**
    * 丢弃当前会话：先通知后端收掉，再清本地身份。

@@ -1,12 +1,13 @@
 import { useEffect, type MutableRefObject } from 'react';
 
 import type { SequencedEvent } from '@/shared/types/agentChat';
-import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
+import type { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 export interface MockEventScheduleParams {
   mockMode: boolean;
   sessionId: string | undefined;
-  projectId: ProjectId;
+  /** tab 的执行地址：mock 载荷与真实路径同源（`workspace_key` 来自地址本体）。 */
+  workspace: WorkspaceSession;
   applyEvent: (ev: SequencedEvent) => void;
   sessionIdRef: MutableRefObject<string | undefined>;
   turnStartRef: MutableRefObject<number | null>;
@@ -20,7 +21,7 @@ export interface MockEventScheduleParams {
 export function useMockEventSchedule({
   mockMode,
   sessionId,
-  projectId,
+  workspace,
   applyEvent,
   sessionIdRef,
   turnStartRef,
@@ -74,14 +75,15 @@ export function useMockEventSchedule({
       seq: seq++,
       type: 'context_init',
       session_id: sid,
-      cwd: projectId,
-      project_name: projectId,
+      // cwd 是**执行根**（worktree 单元 = 工作树根），不是项目 id。
+      cwd: workspace.worktreePath ?? workspace.projectId,
+      project_name: workspace.projectId,
       env: 'local',
       skills: ['codebase-design', 'rust-patterns'],
       files: ['src/main.rs', 'Cargo.toml'],
       mode: 'confirm',
-      // 地址 key 只经值对象铸造（不手拼分隔符）：mock 演示按主 checkout 回显。
-      workspace_key: WorkspaceSession.of(projectId, null).key,
+      // 地址 key 只经值对象铸造（不手拼分隔符）：mock 演示与真实路径同源，回显 tab 的地址。
+      workspace_key: workspace.key,
     });
 
     // 3. Turn start
@@ -181,7 +183,7 @@ export function useMockEventSchedule({
       type: 'command_run',
       session_id: sid,
       call_id: 'cmd_1',
-      cwd: `/Users/user/${projectId}`,
+      cwd: `/Users/user/${workspace.projectId}`,
       cmd: 'cargo check --message-format=json',
     });
     schedule(3700, {
@@ -336,5 +338,5 @@ export function useMockEventSchedule({
       for (const t of timers) clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mockMode, projectId]);
+  }, [mockMode, workspace]);
 }

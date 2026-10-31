@@ -118,10 +118,11 @@ export function useConversationList(
 
         try {
           // Rib 1 — hydrate first page only (project-scoped).
-          const cached = await listConversations(projectPath, agentFilter, {
-            offset: 0,
-            limit: LIST_PAGE_SIZE,
-          });
+          const cached = await listConversations(
+            { kind: 'project', path: projectPath },
+            agentFilter,
+            { offset: 0, limit: LIST_PAGE_SIZE },
+          );
           if (gen !== requestGenRef.current) return;
 
           setConversations(cached.items);
@@ -147,10 +148,11 @@ export function useConversationList(
             if (gen !== requestGenRef.current) return;
 
             lastScanAtRef.current.set(key, Date.now());
-            const fresh = await listConversations(projectPath, agentFilter, {
-              offset: 0,
-              limit: LIST_PAGE_SIZE,
-            });
+            const fresh = await listConversations(
+              { kind: 'project', path: projectPath },
+              agentFilter,
+              { offset: 0, limit: LIST_PAGE_SIZE },
+            );
             if (gen !== requestGenRef.current) return;
             setConversations(fresh.items);
             conversationsRef.current = fresh.items;
@@ -219,7 +221,7 @@ export function useConversationList(
     const offset = conversationsRef.current.length;
 
     try {
-      const page = await listConversations(projectPath, agentFilter, {
+      const page = await listConversations({ kind: 'project', path: projectPath }, agentFilter, {
         offset,
         limit: LIST_PAGE_SIZE,
       });

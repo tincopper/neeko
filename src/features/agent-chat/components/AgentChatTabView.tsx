@@ -81,7 +81,7 @@ export default function AgentChatTabView({
     resumableLoading,
     loadResumableList,
     restoreConversation,
-  } = useAgentChat({ tabKey, tabId, projectId, workspace: session, data, mockMode });
+  } = useAgentChat({ tabKey, tabId, workspace: session, data, mockMode });
 
   // agent 消息/提及的拼根基准 = **当前视图单元的工作树根**（worktree 单元 = 工作树根）。
   // 直接取 tab 的地址本体，不再用 `project.path`（那是主仓根，worktree 视图会拼错文件）。

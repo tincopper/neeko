@@ -21,7 +21,6 @@ import { cancelAgentStream, openAgentChat } from '../../api/agentChatApi';
 import { useAgentSessionLifecycle } from '../useAgentSessionLifecycle';
 
 const baseParams = {
-  projectId: 'proj-1',
   tabKey: 'tab-key',
   tabId: 'tab-1',
   initialSessionId: undefined as string | undefined,

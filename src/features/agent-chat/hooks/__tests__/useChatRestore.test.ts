@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { ConversationMeta } from '@/shared/types/session';
-import type { ProjectId } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
 import { createProject } from '@/testing/factories';
 
 import { useChatRestore } from '../useChatRestore';
@@ -50,10 +50,10 @@ function conv(agentId: string, nativeSessionId: string): ConversationMeta {
   };
 }
 
-function renderRestore() {
+function renderRestore(workspace = WorkspaceSession.of('p1', null)) {
   return renderHook(() =>
     useChatRestore({
-      projectId: 'p1' as ProjectId,
+      workspace,
       tabKey: 'p1',
       tabId: 'tab-1',
       fallbackAgentId: 'pi',
@@ -151,5 +151,34 @@ describe('useChatRestore.loadResumableList', () => {
 
     expect(result.current.resumableList).toEqual([]);
     expect(result.current.resumableLoading).toBe(false);
+  });
+
+  /**
+   * 检索基准是 tab 的 Workspace **地址**，而且请求里**只有**地址（`kind: 'unit'`）：
+   * 项目级与单元级是互斥语义，同时传两者会让后端静默丢一个维度。
+   */
+  it('queries by the tab workspace address, and only that', async () => {
+    listConversationsMock.mockResolvedValue({
+      items: [conv('pi', 'n1')],
+      total: 1,
+      offset: 0,
+      limit: 20,
+      hasMore: false,
+    });
+    supportsMock.mockResolvedValue(true);
+
+    const { result } = renderRestore(WorkspaceSession.of('p1', '/p1/.worktrees/dev'));
+    await act(async () => {
+      await result.current.loadResumableList();
+    });
+
+    expect(listConversationsMock).toHaveBeenCalledWith(
+      {
+        kind: 'unit',
+        workspace: WorkspaceSession.of('p1', '/p1/.worktrees/dev'),
+      },
+      undefined,
+      { limit: 20 },
+    );
   });
 });

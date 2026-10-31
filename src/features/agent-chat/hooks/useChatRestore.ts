@@ -7,10 +7,9 @@ import {
   listConversations,
 } from '@/features/conversation/api/conversationApi';
 import { useEditorStore } from '@/shared/store/editorStore';
-import { useProjectStore } from '@/shared/store/projectStore';
 import type { ConversationMeta } from '@/shared/types/session';
 import type { AgentChatTabData } from '@/shared/types/tab';
-import type { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { resumeAgentChat } from '../api/agentChatApi';
 import type { ChatMessage } from '../components/messageModel';
@@ -47,7 +46,6 @@ export interface ChatRestore {
 }
 
 export function useChatRestore(params: {
-  projectId: ProjectId;
   /** 执行地址（tab 所属工作区单元）：续写通道的 cwd 由它决定。 */
   workspace: WorkspaceSession;
   tabKey: string;
@@ -69,7 +67,6 @@ export function useChatRestore(params: {
   primeAgentBaseline: (agentId: string) => void;
 }): ChatRestore {
   const {
-    projectId,
     workspace,
     tabKey,
     tabId,
@@ -83,22 +80,37 @@ export function useChatRestore(params: {
     primeAgentBaseline,
   } = params;
 
-  const projectPath = useProjectStore((s) => s.projects.find((p) => p.id === projectId)?.path);
+  // 地址分量（而不是 `workspace` 对象本体）作为依赖：tab 每次渲染都会重新构造
+  // `WorkspaceSession`（`requireTabWorkspaceSession`），对象进依赖会让空会话 effect 每渲染重跑。
+  const wsProjectId = workspace.projectId;
+  const wsWorktreePath = workspace.worktreePath;
   const [resumableList, setResumableList] = useState<ConversationMeta[]>([]);
   const [resumableLoading, setResumableLoading] = useState(false);
 
   /**
-   * 拉取当前项目的最近可恢复会话列表（跨 agent，由条目自带 agentId）。
+   * 拉取当前 **Workspace 单元** 的最近可恢复会话（跨 agent，由条目自带 agentId）。
+   *
+   * 检索基准是**地址**，请求里也只有地址（`kind: 'unit'`）：项目级与单元级是互斥语义，
+   * 同时传两者会让后端静默丢一个维度。会话归属由后端按「最深根胜出」判定 ——
+   * worktree 与主仓是两个执行上下文（默认 worktree 在项目根之外，仓内 `.worktrees/` 约定
+   * 与嵌套 worktree 则与主仓根重叠），前端不自拼路径（红线 12）。
    *
    * 过滤条件是「有原生会话 id **且** 该 agent 支持 chat 恢复」：只按
    * `nativeSessionId` 过滤会列出 claude-code / codex 这类 CLI 能 `--resume`
    * 但 chat 侧没实现恢复的会话 —— 点击只会得到一句失败提示（死入口）。
    */
   const loadResumableList = useCallback(async () => {
-    if (!projectPath) return;
     setResumableLoading(true);
     try {
-      const page = await listConversations(projectPath, undefined, { limit: 20 });
+      const page = await listConversations(
+        {
+          kind: 'unit',
+          // `of` 是地址唯一铸造点：分量逐字来自 tab 的 Workspace 本体。
+          workspace: WorkspaceSession.of(wsProjectId, wsWorktreePath),
+        },
+        undefined,
+        { limit: 20 },
+      );
       const candidates = page.items.filter((c) => c.nativeSessionId);
       const supported = await Promise.all(candidates.map((c) => supportsChatResume(c.agentId)));
       setResumableList(candidates.filter((_, i) => supported[i]));
@@ -107,7 +119,7 @@ export function useChatRestore(params: {
     } finally {
       setResumableLoading(false);
     }
-  }, [projectPath]);
+  }, [wsProjectId, wsWorktreePath]);
 
   /**
    * 从历史会话恢复：切 agent/模型与该会话对齐 → 拉取消息渲染为只读流 →
@@ -175,7 +187,6 @@ export function useChatRestore(params: {
     },
     [
       fallbackAgentId,
-      projectId,
       workspace,
       tabKey,
       tabId,

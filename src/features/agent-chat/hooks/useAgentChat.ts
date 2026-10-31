@@ -6,7 +6,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import type { SequencedEvent } from '@/shared/types/agentChat';
 import type { AgentChatTabData } from '@/shared/types/tab';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
-import type { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
+import type { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import {
   approveAgentCall,
@@ -44,7 +44,6 @@ import { useVisibleChatSession } from './useVisibleChatSession';
 export interface UseAgentChatParams {
   tabKey: string;
   tabId: string;
-  projectId: ProjectId;
   /** 执行地址（理由见 `StreamChatRequest.workspace`）。 */
   workspace: WorkspaceSession;
   data: AgentChatTabData;
@@ -56,14 +55,7 @@ export interface UseAgentChatParams {
  * Agent Chat 数据流域 hook —— 会话状态、事件流处理与后端交互的唯一入口。
  * 组件层（AgentChatTabView）只保留 DOM refs、滚动跟随与 JSX 布局。
  */
-export function useAgentChat({
-  tabKey,
-  tabId,
-  projectId,
-  workspace,
-  data,
-  mockMode,
-}: UseAgentChatParams) {
+export function useAgentChat({ tabKey, tabId, workspace, data, mockMode }: UseAgentChatParams) {
   const { agentId, sessionId: initialSessionId, modelId: initialModelId } = data;
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadCachedMessages(tabId) ?? []);
 
@@ -148,7 +140,6 @@ export function useAgentChat({
   }, [resetConfigOptions, clearSelectedModel]);
   const { sessionIdRef, primeAgentBaseline } = useAgentSessionLifecycle({
     agentId: settled,
-    projectId,
     workspace,
     tabKey,
     tabId,
@@ -249,7 +240,7 @@ export function useAgentChat({
   useMockChatFeed({
     mockMode,
     sessionId: data.sessionId,
-    projectId,
+    workspace,
     applyEvent,
     sessionIdRef,
     turnStartRef: turnStream.refs.turnStart,
@@ -326,7 +317,6 @@ export function useAgentChat({
     [
       streaming,
       selectedAgent.id,
-      projectId,
       workspace,
       // skills 的唯一读点（files 来自 handleSend 入参，不是 state）。
       toRequestSkills,
@@ -425,7 +415,6 @@ export function useAgentChat({
   // 整组抽成子 hook：它与消息流只有「写 messages / 设 sessionId」两个接触点。
   const { resumableList, resumableLoading, loadResumableList, restoreConversation } =
     useChatRestore({
-      projectId,
       workspace,
       tabKey,
       tabId,

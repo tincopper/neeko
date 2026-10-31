@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
+import type { WorkspaceSession } from '@/shared/utils/workspaceRef';
+
 import type {
   ConversationListPage,
   ConversationMeta,
@@ -15,16 +17,29 @@ export function scanConversations(agentId?: string, projectPath?: string): Promi
 }
 
 /**
- * List conversations for a project (strict project ownership).
+ * 会话列表的**范围**（与后端 `ConversationListScope` 逐字同形）。
+ *
+ * 项目级与单元级对同一条会话的 cwd 给出**不同**答案，所以是判别联合而不是「两个可选过滤参数」：
+ * 后者允许调用方同时传两个维度、后端静默丢掉一个 —— 那正是「要单元却按项目过滤」的入口。
+ */
+export type ConversationListScope =
+  | { kind: 'project'; path: string }
+  | { kind: 'unit'; workspace: WorkspaceSession };
+
+/**
+ * List conversations for **one explicit scope**.
  * Pass `limit` for paged infinite scroll; omit/`0` for full list.
+ *
+ * 单元级（`kind: 'unit'`）的归属判定在后端按「最深根胜出」完成（`UnitScope`），
+ * 前端只给地址、不拼路径（红线 12）。
  */
 export function listConversations(
-  projectPath?: string,
+  scope: ConversationListScope,
   agentId?: string,
   options?: { offset?: number; limit?: number },
 ): Promise<ConversationListPage> {
   return invoke<ConversationListPage>('list_conversations', {
-    projectPath,
+    scope,
     agentId,
     offset: options?.offset ?? 0,
     limit: options?.limit ?? 0,

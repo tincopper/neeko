@@ -162,7 +162,8 @@ describe('useConversationList', () => {
       expect(mockInvoke).toHaveBeenCalledWith(
         'list_conversations',
         expect.objectContaining({
-          projectPath: '/tmp/project',
+          // 范围是单值判别联合：项目级显式声明，没有「两个可选过滤参数」并存。
+          scope: { kind: 'project', path: '/tmp/project' },
           agentId: 'claude-code',
           offset: 0,
           limit: 40,
