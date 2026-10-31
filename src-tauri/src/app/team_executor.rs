@@ -825,7 +825,8 @@ mod tests {
         );
         plan.add_args = render_argv(
             spec.add_argv,
-            &RenderContext::new(mcp_config_json(url, token), url, token),
+            // 这个忽略用例只验 `mcp add` 的落盘位置，不涉及角色 preamble。
+            &RenderContext::new(mcp_config_json(url, token), url, token, None),
         )
         .expect("render");
 

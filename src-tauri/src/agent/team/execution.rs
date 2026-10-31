@@ -33,12 +33,13 @@
 use std::path::{Path, PathBuf};
 
 use crate::agent::team::admission::{
-    admission_for, needs_credentials_env, render_argv, ConfigDirSpec, RenderContext,
+    admission_for, admitted_agent_ids, launchable_agents, needs_credentials_env, render_argv,
+    AgentAdmission, ConfigDirSpec, RenderContext,
 };
 use crate::agent::team::identity;
 use crate::agent::team::mcp::dispatch::ToolReply;
 use crate::agent::team::mcp::protocol::TOKEN_HEADER;
-use crate::agent::team::types::{McpInjection, Team, TeamMember, Workspace};
+use crate::agent::team::types::{McpInjection, MemberRole, Team, TeamMember, Workspace};
 use crate::common::error::AppError;
 
 /// MCP 配置里的 server 名（写进 `mcpServers` 的 key）。
@@ -51,6 +52,17 @@ pub const TEAM_SERVER_NAME: &str = "neeko-team";
 ///
 /// 字段少是刻意的：`terminal::create_session` 收 `cwd` + `env`（不透明的键值对），
 /// 启动参数由调用方拼进 shell 命令行 —— 计划里出现第三个东西就说明有职责跑错了层。
+///
+/// # 队长与成员的不对称（在 `args` 里）
+///
+/// 两种角色都会在 `args` 末尾拿到**角色 preamble**（`prompt_argv`）：起来之后它才知道
+/// 自己是队长 / 成员、team_id 是什么、有哪些工具。差别只在**拒绝了谁**：
+///
+/// - 该 CLI 的 `prompt_argv` 为空且角色是队长 ⇒ **拒绝**（`lead_refusal`）：队长的第一个
+///   动作（`team_status` / `task_create`）没有人能替它触发，空提示的队长就是一个不动的会话；
+/// - 同样的 CLI 当**成员** ⇒ 照常起：它的第一条上下文可以由 `team_send` 带来。
+///
+/// 这就是同一个空模板在两个角色上得到两种回答的理由，也是不能把判据合并的原因。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpawnPlan {
     /// 进程工作目录（`Workspace` 的落地形态；worktree 已在计划期 canonicalize）。
@@ -146,12 +158,27 @@ pub fn plan_member_spawn(
 
     // 「起得来但用不了」的条件在 `team_spawn` 已经早拒过一次（不留下永远不动的成员
     // 行）；这里再问一次是**执行前确认**：成员行可以被重新启动 / 被别的路径写进库，
-    // 而判据只该有一份（`AgentAdmission::launch_refusal`）。
-    if let Some(why) = admission.launch_refusal() {
+    // 而判据只该有一份（`AgentAdmission::launch_refusal` / `lead_refusal`）。
+    // 「队长比成员多一条」的那一条也在这里 —— 两个角色因此走**同一条**执行路径。
+    if let Some(why) = refusal_for(member.role, admission) {
         return Err(AppError::Unsupported(why));
     }
 
-    let ctx = RenderContext::new(mcp_config_json(mcp_url, token), mcp_url, token);
+    // 角色 preamble：让被拉起的 CLI 知道自己是团队里的谁（否则它就是一个裸 CLI ——
+    // 「不知道自己是队长」正是团队跑不起来的那个故障）。成员清单只给队长版用，
+    // 由准入表推导（`admitted_agent_ids` 是纯函数，执行层**不认识** `AgentManager`）。
+    let preamble = identity::preamble(
+        member.role,
+        team,
+        member,
+        &launchable_agents(&admitted_agent_ids()),
+    );
+    let ctx = RenderContext::new(
+        mcp_config_json(mcp_url, token),
+        mcp_url,
+        token,
+        Some(&preamble),
+    );
 
     // 凭证 env：**只**在模板引用了 `{{token_env}}` 时注入（判据在数据上，不在 CLI 名上）。
     let credentials_env = if needs_credentials_env(admission.mcp_argv) {
@@ -160,7 +187,7 @@ pub fn plan_member_spawn(
         Vec::new()
     };
 
-    let (args, config_dir) = match admission.mcp_injection {
+    let (mut args, config_dir) = match admission.mcp_injection {
         McpInjection::Argv => (render_argv(admission.mcp_argv, &ctx)?, None),
         // 启动参数为空：这条 CLI 的 MCP 配置不是从命令行进去的，而是它自己的 `mcp add`
         // 写进**重定向后的**配置目录。
@@ -188,6 +215,11 @@ pub fn plan_member_spawn(
         }
     };
 
+    // 角色 preamble 追加在**末尾**：前面是「怎么连上工具面」，这里是「你在这个队里是谁」。
+    // 两个位置都合法，选末尾是为了让注入档的参数保持一个连续前缀（排查时肉眼可比对）。
+    // 空模板 ⇒ 空 vec ⇒ 该 CLI 拿不到这段文本（成员侧可接受，队长侧上面已拒）。
+    args.extend(render_argv(admission.prompt_argv, &ctx)?);
+
     Ok(SpawnPlan {
         cwd: resolve_cwd(team, member)?,
         // 身份 env 与凭证刻意分开：env 会进 `/proc/<pid>/environ` 与子进程继承，
@@ -199,6 +231,19 @@ pub fn plan_member_spawn(
         credentials_env,
         config_dir,
     })
+}
+
+/// 角色 → 该问哪一条准入判据（**选路**，不是重写判据）。
+///
+/// 队长比成员多一条前置：它必须在启动时就收到角色 preamble（`prompt_argv` 非空），
+/// 因为队长的第一个动作没有人能替它触发。两条判据本身都在准入表里
+/// （[`AgentAdmission::launch_refusal`] / [`AgentAdmission::lead_refusal`]，后者复用前者），
+/// 所以这里只有 `match`，没有任何一句复制的逻辑。
+fn refusal_for(role: MemberRole, admission: &AgentAdmission) -> Option<String> {
+    match role {
+        MemberRole::Lead => admission.lead_refusal(),
+        MemberRole::Worker => admission.launch_refusal(),
+    }
 }
 
 /// `McpInjection::ConfigDir` 档的副作用计划。
@@ -452,12 +497,15 @@ fn spawn_failure(member_id: &str, err: AppError) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::team::admission::{tier_of, MCP_CONFIG_PLACEHOLDER};
+    use crate::agent::team::admission::{
+        tier_of, McpTransport, MCP_CONFIG_PLACEHOLDER, MCP_URL_PLACEHOLDER,
+    };
     use crate::agent::team::fixtures::{fixture_member, fixture_team};
     use crate::agent::team::types::Workspace;
 
     const TEAM: &str = "tm_1";
     const W1: &str = "w1@tm_1";
+    const LEAD: &str = "lead@tm_1";
     const MCP_URL: &str = "http://127.0.0.1:43210/team/mcp";
     const TOKEN: &str = "0123456789abcdef0123456789abcdef";
 
@@ -466,6 +514,15 @@ mod tests {
         TeamMember {
             agent_id: agent_id.into(),
             ..fixture_member(W1, TEAM)
+        }
+    }
+
+    /// 一个队长行（与 `bootstrap::plan_team` 造出来的同一形状）。
+    fn lead(agent_id: &str) -> TeamMember {
+        TeamMember {
+            role: MemberRole::Lead,
+            agent_id: agent_id.into(),
+            ..fixture_member(LEAD, TEAM)
         }
     }
 
@@ -499,7 +556,7 @@ mod tests {
         )
     }
 
-    /// happy path：三件套各自来自一个**已落库**的字段。
+    /// happy path：三件套各自来自一个**已落库**的字段（+ 末尾的角色 preamble）。
     ///
     /// cwd 断言对的是**规范化后**的临时目录：`resolve_cwd` 无条件规范化团队根（它是下面
     /// `starts_with` 的信任边界），所以在 macOS 上 `/var/...` → `/private/var/...` 是**预期**
@@ -515,7 +572,8 @@ mod tests {
             "cwd 必须是规范化后的团队根（与 `starts_with` 判据同一个字符串身份）"
         );
         assert_eq!(plan.env, identity::member_env(TEAM, W1));
-        assert_eq!(plan.args.len(), 2, "{:?}", plan.args);
+        // MCP 参数（两条）+ 角色 preamble 的参数（两条）。
+        assert_eq!(plan.args.len(), 4, "{:?}", plan.args);
         assert_eq!(plan.args[0], "--mcp-config");
         // 凭证在 JSON 里 ⇒ 不需要 `credentials_env`，也没有隔离目录。
         assert!(
@@ -539,8 +597,117 @@ mod tests {
     fn qoder_plan_appends_its_strict_flag() {
         let tmp = tempdir();
         let plan = plan_for(&tmp, &worker("qoder")).expect("plan");
-        assert_eq!(plan.args.len(), 3, "{:?}", plan.args);
+        // 三条 MCP 参数 + 两条 preamble 参数（preamble 一律在**末尾**）。
+        assert_eq!(plan.args.len(), 5, "{:?}", plan.args);
         assert_eq!(plan.args[2], "--strict-mcp-config");
+    }
+
+    /// 队长/成员都拿到**角色** preamble，而且它追加在 argv **末尾**。
+    ///
+    /// 保护的不变量（本轮要修的那个故障）：没有这段文本，起来的是一个不知道自己是队长
+    /// 的裸 CLI —— 它不会派活、不会 `task_wait`，用户看到的只是一个普通会话。末尾是
+    /// 与 MCP 参数的分界：先「怎么连上工具面」，后「你是队里的谁」，且 MCP 参数保持一个
+    /// 连续前缀（排查时肉眼可比对）。
+    #[test]
+    fn a_lead_spawn_appends_the_preamble_argv() {
+        let tmp = tempdir();
+        let plan = plan_for(&tmp, &lead("claude-code")).expect("plan");
+        let len = plan.args.len();
+        assert_eq!(
+            plan.args[len - 2],
+            "--append-system-prompt",
+            "{:?}",
+            plan.args
+        );
+        let text = &plan.args[len - 1];
+        assert!(text.contains("You are the lead of Neeko team"), "{text}");
+        assert!(text.contains("team_wait"), "队长版必须点名阻塞等待：{text}");
+        assert!(text.contains(LEAD), "preamble 必须带上 member id：{text}");
+        // 前面仍是那两条 MCP 参数（preamble 没有把它们挤掉）。
+        assert_eq!(plan.args[0], "--mcp-config");
+        assert!(plan.args[1].contains("mcpServers"));
+    }
+
+    /// 成员侧：同一份 preamble 机制，文本**不是**队长的（它不该去派活）。
+    #[test]
+    fn a_worker_spawn_gets_the_worker_preamble() {
+        let tmp = tempdir();
+        let plan = plan_for(&tmp, &worker("claude-code")).expect("plan");
+        let text = plan.args.last().expect("最后一条是 preamble");
+        assert!(text.contains("You are a worker of Neeko team"), "{text}");
+        assert!(!text.contains("You are the lead"), "{text}");
+        // 成员版不得收到「你可以 spawn 谁来干活」那份清单。
+        assert!(!text.contains("Worker CLIs you can spawn"), "{text}");
+    }
+
+    /// 能当成员但**不能**收系统提示的 CLI ⇒ 当队长必须被拒。
+    ///
+    /// 用**合成行**而不是表里的一行：今天表里能起成员的 5 家都验过 `prompt_argv`（数据
+    /// 是对的），而这条判据必须在「明天的第 6 家」上也成立。
+    #[test]
+    fn a_cli_without_a_preamble_cannot_be_a_lead() {
+        let row = synthetic_without_prompt();
+        assert_eq!(row.launch_refusal(), None, "作为成员它起得来（有 MCP 面）");
+        let why = refusal_for(MemberRole::Lead, &row).expect("当队长必须被拒绝");
+        assert!(why.contains("prompt_argv"), "{why}");
+        assert!(
+            why.contains("never learns it is a lead"),
+            "理由必须说清「会起来一个不动的会话」：{why}"
+        );
+    }
+
+    /// 同一个空模板，成员侧**不拒绝**：成员的第一条上下文可以由 `team_send` 带来。
+    ///
+    /// 这就是队长/成员的不对称。两个方向都需要一条断言 —— 只测「队长被拒」会让判据
+    /// 演化成「空模板一律拒绝」，而那会把能跑的成员挡在外面。
+    #[test]
+    fn a_worker_without_a_preamble_is_still_spawned() {
+        let row = synthetic_without_prompt();
+        assert_eq!(
+            refusal_for(MemberRole::Worker, &row),
+            None,
+            "成员侧空模板必须放行"
+        );
+    }
+
+    /// 合成一行：能起成员（`Argv` + MCP 面）、但 `prompt_argv` 为空。
+    fn synthetic_without_prompt() -> AgentAdmission {
+        AgentAdmission {
+            agent_id: "synthetic-no-prompt",
+            hooks: true,
+            mcp_injection: McpInjection::Argv,
+            transport: Some(McpTransport::Http),
+            bypass_args: &[],
+            mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
+            config_dir: None,
+            prompt_argv: &[],
+            unverified: &[],
+        }
+    }
+
+    /// 端点的渲染值里可以有 `{{url}}` / `{{mcp_config}}`，但 `args` 里**不得**出现任何
+    /// 未渲染的占位符字面量（`{{preamble}}` 拼错时最典型）。
+    #[test]
+    fn no_unrendered_placeholder_survives_in_the_argv() {
+        for member in [
+            lead("claude-code"),
+            worker("claude-code"),
+            worker("codex"),
+            worker("pi"),
+        ] {
+            let tmp = tempdir();
+            let plan = plan_for(&tmp, &member).expect("plan");
+            for arg in &plan.args {
+                assert!(
+                    !arg.contains(MCP_URL_PLACEHOLDER) && !arg.contains(MCP_CONFIG_PLACEHOLDER),
+                    "argv 里留下了未渲染的占位符：{arg}"
+                );
+                assert!(
+                    !arg.contains("{{preamble}}"),
+                    "argv 里留下了未渲染的 `{{{{preamble}}}}`：{arg}"
+                );
+            }
+        }
     }
 
     /// 凭证**只在启动参数里**，不进 env：env 会被子进程继承、会进 `/proc/<pid>/environ`。
@@ -593,19 +760,32 @@ mod tests {
         assert_eq!(plan.config_dir, None, "codex 不写任何配置文件");
     }
 
-    /// pi：启动参数为空，副作用计划全在 `config_dir` 里（并落在**调用方给的**根下）。
+    /// pi：MCP 参数为空，副作用计划全在 `config_dir` 里（并落在**调用方给的**根下）。
     ///
     /// 保护的不变量：
     /// ① 目录根来自调用方（`state_root`）—— 域里硬编码临时目录会让配置被系统清理掉；
     /// ② 重定向 env 与目录是同一个字符串（`mcp add` 写的与 PTY 读的必须是同一处）；
     /// ③ `add_args` 已是**渲染后**的真实参数（含端点与凭证），执行层不再拼字符串；
-    /// ④ 镜像源是用户自己的配置目录，且**不镜像**会话目录（数据行里没有它）。
+    /// ④ 镜像源是用户自己的配置目录，且**不镜像**会话目录（数据行里没有它）；
+    /// ⑤ `args` 里只有角色 preamble 那两条 —— **不得**混进 MCP 参数（pi 的 MCP 配置走
+    ///    隔离目录，`--mcp-config` 不是它的语法）。
     #[test]
     fn pi_plan_provisions_an_isolated_config_directory() {
         let tmp = tempdir();
         let plan = plan_for(&tmp, &worker("pi")).expect("plan");
 
-        assert!(plan.args.is_empty(), "pi 不靠启动参数：{:?}", plan.args);
+        assert_eq!(plan.args[0], "--append-system-prompt", "{:?}", plan.args);
+        assert_eq!(plan.args.len(), 2, "{:?}", plan.args);
+        assert!(
+            plan.args[1].contains("You are a worker of Neeko team"),
+            "第二条必须是角色 preamble：{:?}",
+            plan.args
+        );
+        assert!(
+            plan.args.iter().all(|arg| !arg.contains("mcpServers")),
+            "pi 的 MCP 配置不得从启动参数进去（那是隔离目录的事）：{:?}",
+            plan.args
+        );
         assert!(plan.credentials_env.is_empty(), "凭证写在 mcp.json 里");
 
         let cfg = plan.config_dir.expect("pi 必须有隔离目录计划");
@@ -798,7 +978,7 @@ mod tests {
     /// 无效 header 启动 —— 错误在 401 那一层才出现，离家很远。
     #[test]
     fn placeholders_are_substituted_inside_arguments_too() {
-        let ctx = RenderContext::new("{}".to_owned(), "u", "t");
+        let ctx = RenderContext::new("{}".to_owned(), "u", "t", Some("role"));
         let args =
             render_argv(&["--x", MCP_CONFIG_PLACEHOLDER, "prefix-{{url}}"], &ctx).expect("render");
         assert_eq!(args[0], "--x");

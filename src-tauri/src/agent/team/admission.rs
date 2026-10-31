@@ -47,6 +47,21 @@ pub const TOKEN_PLACEHOLDER: &str = "{{token}}";
 /// 与端点读到的 header 值三处重合，所以不允许任何一处手写字面量。
 pub const TOKEN_ENV_PLACEHOLDER: &str = "{{token_env}}";
 
+/// 占位符：角色 preamble 的整段文本（[`crate::agent::team::identity::preamble`] 的产物）。
+///
+/// 只出现在 [`AgentAdmission::prompt_argv`] 里。它与 MCP 那四个占位符分开是有理由的：
+/// 那四个描述**怎么连上工具面**，这一个描述**它在这个团队里是谁** —— 前者错了连不上，
+/// 后者错了会连上一个不知道自己要干什么的 agent。
+pub const PREAMBLE_PLACEHOLDER: &str = "{{preamble}}";
+
+/// `prompt_argv` 的诚实面：**只验了参数解析**，没跑过完整会话。
+///
+/// 为什么必须说出来：参数被接受 ≠ 该 CLI 真的把这段文本当系统提示用。这条与矩阵里
+/// 其它 B 级证据同一性质，会原样进 `team_spawn` 的工具返回（队长据此判断能信多少），
+/// 所以它是**数据行里的一条字符串**，不是注释。
+pub const PREAMBLE_UNVERIFIED: &str =
+    "preamble argv was verified by argument parsing only, not by a full session";
+
 /// 一个内置 agent 的准入事实。**全部来自 P0 实测**，逐字段注明证据来源。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AgentAdmission {
@@ -72,6 +87,19 @@ pub struct AgentAdmission {
     /// 两处必须同时成立才算自洽：档位是 `ConfigDir` ⇒ 这里有值；档位不是 ⇒ 这里是 `None`。
     /// 判据在 `config_dir_facts_live_exactly_on_the_config_dir_rows`。
     pub config_dir: Option<ConfigDirSpec>,
+    /// 启动时把**角色 preamble** 交给该 CLI 的 argv 模板（含 [`PREAMBLE_PLACEHOLDER`]）。
+    ///
+    /// 空 = 这条 CLI 无法接收初始系统提示 ⇒ **不能当队长**（见
+    /// [`AgentAdmission::lead_refusal`]）：起来一个不知道自己该干什么的队长，比在起进程之前
+    /// 拒绝更糟 —— 用户会以为团队已经在干活。
+    ///
+    /// 成员侧空清单**不拒绝**：成员的第一条上下文可以由 `team_send` 带来，而队长不行
+    /// （队长的第一个动作没有人能替它触发）。这个不对称是刻意的。
+    ///
+    /// 每一行都是**实测过的形态**（`--append-system-prompt` 那族 / codex 的位置参数 /
+    /// opencode 的 `--prompt`），验法见该行的 `unverified` 与
+    /// `the_preamble_argv_only_uses_normalised_placeholders`。
+    pub prompt_argv: &'static [&'static str],
     /// 仍未实测确认的点。**必须诚实列出**，会原样进工具返回给队长。
     pub unverified: &'static [&'static str],
 }
@@ -239,6 +267,37 @@ impl AgentAdmission {
             .map(|arg| (*arg).to_owned())
             .collect()
     }
+
+    /// 它能不能**当队长**：`None` = 能，`Some(理由)` = 不能。
+    ///
+    /// # 为什么不是第二个独立判据
+    ///
+    /// 队长的前置条件比成员多**一条**：它必须在启动时就知道自己是队长（`prompt_argv` 非空）。
+    /// 所以这里 **先问 [`Self::launch_refusal`]**（同一个函数，不是同一段逻辑的副本），
+    /// 再补那一条。两份判据各写一遍的后果不是重复，而是漂移：面板 / `team_spawn` 说能起，
+    /// `start_team_session` 却拒，两条路径的回答从此不一致。
+    ///
+    /// # 为什么空 `prompt_argv` 必须是拒绝
+    ///
+    /// 队长的第一个动作（`team_status` / `task_create`）**没有人能替它触发**：它起来后
+    /// 不会收到任何刺激，于是永远停在一个空白会话里。而成员可以靠 `team_send` 的第一条
+    /// 消息开始工作 —— 这就是两个角色不对称的全部理由。
+    #[must_use]
+    pub fn lead_refusal(&self) -> Option<String> {
+        if let Some(why) = self.launch_refusal() {
+            return Some(why);
+        }
+        if self.prompt_argv.is_empty() {
+            return Some(format!(
+                "agent `{}` carries no `prompt_argv` template in the admission table, so it cannot \
+                 receive the role preamble; leading a team that way would start a session that \
+                 never learns it is a lead (it would sit there doing nothing, which looks exactly \
+                 like a working team)",
+                self.agent_id
+            ));
+        }
+        None
+    }
 }
 
 /// 「没有 MCP 面」的**唯一**文案（`has_mcp()` 与 `launch_refusal()` 两条路径共用）。
@@ -254,9 +313,9 @@ fn no_surface_message(agent_id: &str) -> String {
 
 // ─────────────────────── 模板渲染（纯函数，无 I/O） ──────────────
 
-/// 一次渲染需要的四个值 —— 全部由调用方（`execution::plan_member_spawn`）组装。
+/// 一次渲染需要的值 —— 全部由调用方（`execution::plan_member_spawn`）组装。
 ///
-/// 四个值必须是**已算好的字符串**而不是源数据：把 `serde_json` 拼装搬到这里会让
+/// 这些值必须是**已算好的字符串**而不是源数据：把 `serde_json` 拼装搬到这里会让
 /// 「模板渲染」认识 MCP 配置的形状，而那是执行层的事（同一依赖方向也避免 admission → execution）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RenderContext {
@@ -268,19 +327,28 @@ pub struct RenderContext {
     pub token: String,
     /// 凭证 env 的名字 —— **恒为 [`TEAM_TOKEN_ENV`]**（构造时填，不给调用方改的机会）。
     pub token_env: String,
+    /// 角色 preamble 全文（`{{preamble}}` 的替换值）。
+    ///
+    /// `None` = 这次渲染没有角色上下文。它**不是**空字符串的别名：模板引用了
+    /// `{{preamble}}` 而这里是 `None` 时，渲染必须报错 —— 否则 CLI 会带着一条空的系统
+    /// 提示启动（那个故障与「根本没有 preamble」无法区分）。
+    pub preamble: Option<String>,
 }
 
 impl RenderContext {
-    /// 用三份输入 + 常量 [`TEAM_TOKEN_ENV`] 构造。
+    /// 用四份输入 + 常量 [`TEAM_TOKEN_ENV`] 构造。
     ///
     /// `token_env` 没有参数位：它不是一个自由值，而是“本仓凭证 env 的名字”这件事本身。
+    /// `preamble` 是 `Option<&str>` 而不是默认空串：调用方必须**显式**回答“这次有没有角色
+    /// 上下文”，而“忘了传”在渲染时会变成一条错误，而不是一个空参数。
     #[must_use]
-    pub fn new(mcp_config: String, url: &str, token: &str) -> Self {
+    pub fn new(mcp_config: String, url: &str, token: &str, preamble: Option<&str>) -> Self {
         Self {
             mcp_config,
             url: url.to_owned(),
             token: token.to_owned(),
             token_env: TEAM_TOKEN_ENV.to_owned(),
+            preamble: preamble.map(str::to_owned),
         }
     }
 
@@ -291,6 +359,7 @@ impl RenderContext {
             "url" => Some(&self.url),
             "token" => Some(&self.token),
             "token_env" => Some(&self.token_env),
+            "preamble" => self.preamble.as_deref(),
             _ => None,
         }
     }
@@ -322,7 +391,9 @@ fn render_arg(arg: &str, ctx: &RenderContext) -> Result<String, AppError> {
         // 没有配对的 `}}` ⇒ 名字就是后面剩下的全部（错误信息里能看见拼错的那段）。
         let end = after.find("}}").unwrap_or(after.len());
         let name = &after[..end];
-        let value = ctx.value(name).ok_or_else(|| unknown_placeholder(name))?;
+        let value = ctx
+            .value(name)
+            .ok_or_else(|| missing_placeholder(name, ctx))?;
         out.push_str(value);
         rest = if end < after.len() {
             &after[end + 2..]
@@ -334,13 +405,33 @@ fn render_arg(arg: &str, ctx: &RenderContext) -> Result<String, AppError> {
     Ok(out)
 }
 
-/// 未知占位符的**唯一**错误文报。
+/// 占位符拿不到值时的**唯一**错误出口。
+///
+/// 两条拆开是因为它们的修法不同：
+/// - `{{preamble}}` 是**已知**占位符，缺的是这次调用没给角色上下文（执行层忘了传）；
+/// - 其余名字是模板写错了（拼错），只能在数据行里改。
+///
+/// 两者都**不**允许静默降级：前者会把 `--append-system-prompt ""` 发给 CLI（一个不知道自己
+/// 是队长的队长），后者会把 `{{token}}` 当参数发出去。
+fn missing_placeholder(name: &str, ctx: &RenderContext) -> AppError {
+    if name == "preamble" && ctx.preamble.is_none() {
+        return AppError::Unsupported(
+            "an argv template asks for `{{preamble}}` but this render carries no role preamble; \
+             refusing instead of handing the CLI an empty system prompt (a member that never \
+             learns what it is looks exactly like a team that is not doing anything)"
+                .to_string(),
+        );
+    }
+    unknown_placeholder(name)
+}
+
+/// 未知占位符的错误文报。
 fn unknown_placeholder(name: &str) -> AppError {
     AppError::Unsupported(format!(
         "an MCP argv template references the placeholder `{name}`, which no renderer knows; \
          refusing instead of passing the literal text to the CLI (a literal placeholder on a \
          command line is a silent misconfiguration), known placeholders are: \
-         mcp_config, url, token, token_env"
+         mcp_config, url, token, token_env, preamble"
     ))
 }
 
@@ -374,6 +465,25 @@ pub struct LaunchableAgent {
     pub agent_id: String,
     /// `None` = 现在能拉起成员；`Some(理由)` = 置灰理由（可读，面向人）。
     pub refusal: Option<String>,
+}
+
+/// 准入表里全部 agent id（**域内可用的纯函数入口**，不读 `AgentManager`）。
+///
+/// # 为何需要它
+///
+/// [`launchable_agents`] 输入是一份 id 清单，而域里有两类调用方拿不到那份清单：
+/// - 执行层（`execution::plan_member_spawn`）要在**域内部**渲染队长 preamble；
+/// - 它不认识 `AgentManager`（那是组合根的东西），也不应该认识。
+///
+/// 所以“本域知道的 CLI”就取自本文件的数据表本身 —— 仍是**一个**真相源（红线 15）。
+/// 用户自定义 CLI 不在表里（它们没有准入事实，`launchable_agents` 会逐个说清理由），
+/// 因此这份清单不会漏掉任何**能起**的 CLI。
+#[must_use]
+pub fn admitted_agent_ids() -> Vec<String> {
+    ADMISSIONS
+        .iter()
+        .map(|row| row.agent_id.to_owned())
+        .collect()
 }
 
 /// 把一份 agent id 清单映射成能力面。**纯函数**，不读库、不读表以外的任何东西。
@@ -447,16 +557,20 @@ impl McpTransport {
 /// **不要美化或删减**：它是队长判断「这条能力我能信多少」的唯一来源。
 pub static ADMISSIONS: &[AgentAdmission] = &[
     // ① `claude --help`：`--mcp-config <file|string>` + `-H header`（实际有 stdio，只列 HTTP）；
-    //    ② `~/.claude/settings.json` 有 `Stop` hook（B 级：已装未跑）。
+    //    ② `~/.claude/settings.json` 有 `Stop` hook（B 级：已装未跑）；
+    //    ③ preamble：`--append-system-prompt <prompt>`（实测见该行 unverified 那条的来源）。
     AgentAdmission {
         agent_id: "claude-code",
         hooks: true,
         mcp_injection: McpInjection::Argv,
         transport: Some(McpTransport::Http),
         bypass_args: &["--dangerously-skip-permissions"],
-        unverified: &[],
+        // 本行原来是唯一一条 `unverified: &[]`（能力全实测）—— 现在多一条：preamble 这条路
+        // 只验到参数解析（见 `PREAMBLE_UNVERIFIED`）。
+        unverified: &[PREAMBLE_UNVERIFIED],
         mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
         config_dir: None,
+        prompt_argv: &["--append-system-prompt", PREAMBLE_PLACEHOLDER],
     },
     // ① `--mcp-config <fileOrString>`；② `Stop` / `PermissionRequest` / `StopFailure` 已装。
     //    传输「由 `--mcp-config` 的 JSON 决定」⇒ 未实测确认，见 unverified。
@@ -468,9 +582,11 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         bypass_args: &["-y", "--dangerously-skip-permissions"],
         unverified: &[
             "MCP transport is decided by the `--mcp-config` payload and was never probed on this machine",
+            PREAMBLE_UNVERIFIED,
         ],
         mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
         config_dir: None,
+        prompt_argv: &["--append-system-prompt", PREAMBLE_PLACEHOLDER],
     },
     // ① `codex mcp add` → `config.toml [mcp_servers]`，但 `-c key=value` 可在**本次启动**
     //    覆盖而不碰文件（实测：`codex -c mcp_servers.neeko.url=… -c … mcp list` 看得到，
@@ -487,6 +603,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
             "codex's header form (`http_headers`) parses but was never proven to be sent, so only the \
              verified `bearer_token_env_var` route is wired",
             "the complete approval-bypass switch set was not re-verified (only `--approve-for-me` was observed)",
+            PREAMBLE_UNVERIFIED,
         ],
         mcp_argv: &[
             "-c",
@@ -495,6 +612,10 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
             "mcp_servers.neeko-team.bearer_token_env_var=\"{{token_env}}\"",
         ],
         config_dir: None,
+        // codex 的系统提示只能从**位置参数** `[PROMPT]` 进去（它没有 `--append-system-prompt`）：
+        // 实测 `codex --model definitely-not-a-model <probe>` 会走过 argv 解析而停在 TUI 启动，
+        // 而两个位置参数会直接报 `unexpected argument`。
+        prompt_argv: &[PREAMBLE_PLACEHOLDER],
     },
     // 未安装、无任何实测 ⇒ 只能按「有配置文件注入面」推断。C 档。
     AgentAdmission {
@@ -508,6 +629,8 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &[],
         config_dir: None,
+        // 未安装 ⇒ 无法实测任何 argv 形态 ⇒ 空模板（**不能当队长**，也不会被误当成能当）。
+        prompt_argv: &[],
     },
     // ① `grok mcp add --transport http|stdio|sse` + `-H`；② Neeko 无 grok hook 目标。C 档。
     AgentAdmission {
@@ -521,6 +644,9 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &[],
         config_dir: None,
+        // 未实测：这一档连成员都做不了（`Subcommand` 写用户全局配置，v1 拒绝），preamble 无从验。
+        // 空模板 = 不能当队长 —— 与本行「连成员也做不了」同一个方向。
+        prompt_argv: &[],
     },
     // ① 无 `mcp` 子命令、`config.yml` 无 mcp 键 ⇒ 无 MCP 表面；② `agent_end` 已装。B 档。
     AgentAdmission {
@@ -534,6 +660,8 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &[],
         config_dir: None,
+        // 未实测：本行连工具面都没有（成员都做不了），没有理由去验一个用不上的启动参数。
+        prompt_argv: &[],
     },
     // ① `opencode mcp add --url` + `--header`；② 插件 v2 模板存在但 `plugin: []` ⇒ **未安装**。
     AgentAdmission {
@@ -545,9 +673,14 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[
             "the Neeko plugin is not installed in this user's opencode config, so turn hooks will not fire yet",
             "`opencode mcp add` writes the user's own config (`--global` or the project's), which v1 refuses",
+            PREAMBLE_UNVERIFIED,
         ],
         mcp_argv: &[],
         config_dir: None,
+        // `--prompt <string>`（实测 `opencode --prompt <probe>` 把那段文字摆在 TUI 的输入框里），
+        // 但本行今天不能当成员（`Subcommand` 档 v1 拒绝）—— 数据留着，等到它解除拒绝时
+        // 不必重新实测。
+        prompt_argv: &["--prompt", PREAMBLE_PLACEHOLDER],
     },
     // ① `pi mcp add --url <u> --header KEY=VALUE` → 写 `mcp.json`，且 `PI_CODING_AGENT_DIR`
     //    能把整个配置目录重定向到隔离目录（实测：隔离目录里出现 `mcp.json`、用户全局
@@ -574,6 +707,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         bypass_args: &["--approve"],
         unverified: &[
             "`--approve` semantics were never verified: it trusts the project files, it may not waive every prompt",
+            PREAMBLE_UNVERIFIED,
         ],
         mcp_argv: &[],
         config_dir: Some(ConfigDirSpec {
@@ -603,6 +737,9 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
                 "models-store.json",
             ],
         }),
+        // 实测：`pi --append-system-prompt <probe> --model definitely-not-a-model -p …` 停在
+        // `Model "…" not found`（即 argv 已被完整解析），而未知开关会得到 `Unknown option`。
+        prompt_argv: &["--append-system-prompt", PREAMBLE_PLACEHOLDER],
     },
     // ① `--mcp-config` + `--strict-mcp-config` + `--allowed-mcp-server-names`；
     //    ② `Stop` / `PermissionRequest` / `StopFailure` 已装。传输同 codebuddy，未实测。
@@ -614,9 +751,11 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         bypass_args: &["--dangerously-skip-permissions"],
         unverified: &[
             "MCP transport is decided by the `--mcp-config` payload and was never probed on this machine",
+            PREAMBLE_UNVERIFIED,
         ],
         mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER, "--strict-mcp-config"],
         config_dir: None,
+        prompt_argv: &["--append-system-prompt", PREAMBLE_PLACEHOLDER],
     },
     // ① 无 mcp 子命令实测；② Neeko 无 reasonix hook 目标 ⇒ 三档里最小的一种。C 档。
     AgentAdmission {
@@ -630,6 +769,8 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &[],
         config_dir: None,
+        // 未实测（本行连成员都做不了）：空模板 = 不能当队长，失败方向与其余各列一致。
+        prompt_argv: &[],
     },
 ];
 
@@ -973,14 +1114,19 @@ mod tests {
         );
     }
 
-    /// 渲染：**四种**占位符都能替，且可以嵌在更长的参数里。
+    /// 渲染：**五种**占位符都能替，且可以嵌在更长的参数里。
     ///
     /// 保护的不变量：pi 的 header 写法是 `x-neeko-team-token={{token}}`（实测）—— 只做
     /// “整元素等于占位符”的替换会把 `{{token}}` 原样发给 CLI，于是成员带一个无效 header
     /// 启动，而错误在 401 那一层才出现（离家很远）。
     #[test]
-    fn render_substitutes_all_four_placeholders_even_inside_an_argument() {
-        let ctx = RenderContext::new("{}".to_owned(), "http://h/team/mcp", "tok");
+    fn render_substitutes_all_five_placeholders_even_inside_an_argument() {
+        let ctx = RenderContext::new(
+            "{}".to_owned(),
+            "http://h/team/mcp",
+            "tok",
+            Some("You are a worker."),
+        );
         let rendered = render_argv(
             &[
                 "--json",
@@ -989,6 +1135,7 @@ mod tests {
                 TOKEN_PLACEHOLDER,
                 TOKEN_ENV_PLACEHOLDER,
                 "x-neeko-team-token={{token}}",
+                PREAMBLE_PLACEHOLDER,
                 "plain",
             ],
             &ctx,
@@ -1003,29 +1150,45 @@ mod tests {
                 "tok".to_owned(),
                 TEAM_TOKEN_ENV.to_owned(),
                 "x-neeko-team-token=tok".to_owned(),
+                "You are a worker.".to_owned(),
                 "plain".to_owned(),
             ]
         );
     }
 
-    /// 四个占位符**常量**与渲染器认识的名字是同一份（改名即断链）。
+    /// 五个占位符**常量**与渲染器认识的名字是同一份（改名即断链）。
     ///
     /// 保护的不变量：`render_arg` 里那张 `value()` 表用的是裸名（`"url"`），而常量带
     /// 花括号（`"{{url}}"`）—— 两处各自手写就会在改名时只改一处，于是模板里的占位符变成
     /// “未知”，每个成员都在启动期被拒。这条用例把它们钉在一起。
     #[test]
     fn every_placeholder_constant_is_known_to_the_renderer() {
-        let ctx = RenderContext::new("{cfg}".to_owned(), "u", "t");
+        let ctx = RenderContext::new("{cfg}".to_owned(), "u", "t", Some("role"));
         for (placeholder, expected) in [
             (MCP_CONFIG_PLACEHOLDER, "{cfg}"),
             (MCP_URL_PLACEHOLDER, "u"),
             (TOKEN_PLACEHOLDER, "t"),
             (TOKEN_ENV_PLACEHOLDER, TEAM_TOKEN_ENV),
+            (PREAMBLE_PLACEHOLDER, "role"),
         ] {
             let rendered = render_argv(&[placeholder], &ctx)
                 .unwrap_or_else(|err| panic!("{placeholder}: {err}"));
             assert_eq!(rendered[0], expected, "{placeholder} 渲染出的值不对");
         }
+    }
+
+    /// `{{preamble}}` 是**已知**占位符：缺的是调用方没给角色上下文，不是模板写错。
+    ///
+    /// 保护的不变量（本轮故障的同一个形态）：把空串当值发出去，CLI 会带着一条空的系统
+    /// 提示启动 —— 一个不知道自己是谁的队长与一个正常团队看起来毫无区别。
+    #[test]
+    fn a_missing_preamble_is_an_error_not_an_empty_argument() {
+        let ctx = RenderContext::new("{}".to_owned(), "u", "t", None);
+        let err = render_argv(&["--append-system-prompt", PREAMBLE_PLACEHOLDER], &ctx)
+            .expect_err("没有角色上下文时必须报错");
+        assert!(matches!(err, AppError::Unsupported(_)), "{err:?}");
+        assert!(err.to_string().contains("preamble"), "{err}");
+        assert!(!err.to_string().contains("no renderer knows"), "{err}");
     }
 
     /// 未知 / 未闭合的占位符 = **错误**，不是原样保留。
@@ -1034,7 +1197,7 @@ mod tests {
     /// 既能跑、又永远 401，且磁盘上没有任何一处能看出原因。
     #[test]
     fn render_refuses_unknown_and_unclosed_placeholders() {
-        let ctx = RenderContext::new("{}".to_owned(), "u", "t");
+        let ctx = RenderContext::new("{}".to_owned(), "u", "t", Some("role"));
         for template in [vec!["{{uurl}}"], vec!["--url", "x={{url}"], vec!["{{}}"]] {
             let err = render_argv(&template, &ctx).expect_err("未知/未闭合的占位符必须报错");
             assert!(
@@ -1058,7 +1221,12 @@ mod tests {
     #[test]
     fn codex_argv_is_the_verified_config_override() {
         let row = admission_for("codex").expect("admitted");
-        let ctx = RenderContext::new("{}".to_owned(), "http://127.0.0.1:1/team/mcp", "tok");
+        let ctx = RenderContext::new(
+            "{}".to_owned(),
+            "http://127.0.0.1:1/team/mcp",
+            "tok",
+            Some("role"),
+        );
         let rendered = render_argv(row.mcp_argv, &ctx).expect("render");
         assert_eq!(
             rendered,
@@ -1092,7 +1260,12 @@ mod tests {
     fn pi_add_argv_is_the_verified_key_value_form() {
         let row = admission_for("pi").expect("admitted");
         let spec = row.config_dir.expect("pi 用 ConfigDir 档");
-        let ctx = RenderContext::new("{}".to_owned(), "http://127.0.0.1:1/team/mcp", "tok");
+        let ctx = RenderContext::new(
+            "{}".to_owned(),
+            "http://127.0.0.1:1/team/mcp",
+            "tok",
+            Some("role"),
+        );
         let rendered = render_argv(spec.add_argv, &ctx).expect("render");
 
         assert_eq!(rendered[0], "mcp");
@@ -1152,6 +1325,124 @@ mod tests {
             .launch_refusal()
             .expect("omp 必须被拒绝");
         assert!(why.contains("no MCP surface"), "{why}");
+    }
+
+    /// 队长判据 = `launch_refusal` + **一条**：能不能收到角色 preamble。
+    ///
+    /// 三层断言，合起来才完整：
+    /// ① 今天能当成员的 5 家**都能当队长**（它们都验过 `prompt_argv`）；
+    /// ② 拒绝的 5 家，`lead_refusal` 与 `launch_refusal` 是**同一句**（复用而不是重写）；
+    /// ③ 合成一行（能当成员、无 `prompt_argv`）⇒ 成员放行、队长拒绝。
+    ///
+    /// 第 ③ 条是本轮真正新增的判据：只测 ①② 的话，把 `lead_refusal` 写成
+    /// `launch_refusal` 的别名也能全绿（今天恰好没有这样的行）—— 那种漂移会在表里出现
+    /// 第一个「能起不能当队长」的 CLI 时静默放行一个不动的队长。
+    #[test]
+    fn lead_refusal_is_launch_refusal_plus_the_preamble_condition() {
+        for row in ADMISSIONS {
+            match row.launch_refusal() {
+                Some(why) => assert_eq!(
+                    row.lead_refusal(),
+                    Some(why),
+                    "`{}`: 成员都当不了的 CLI，理由不得被改写成另一句",
+                    row.agent_id
+                ),
+                None => assert_eq!(
+                    row.lead_refusal(),
+                    None,
+                    "`{}` 今天能当成员且验过 prompt_argv，就该能当队长",
+                    row.agent_id
+                ),
+            }
+        }
+
+        // ③ 合成行：能当成员，但无法接收系统提示。
+        let row = AgentAdmission {
+            agent_id: "synthetic-no-prompt",
+            hooks: true,
+            mcp_injection: McpInjection::Argv,
+            transport: Some(McpTransport::Http),
+            bypass_args: &[],
+            mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
+            config_dir: None,
+            prompt_argv: &[],
+            unverified: &[],
+        };
+        assert_eq!(row.launch_refusal(), None, "作为成员它应该能起");
+        let why = row.lead_refusal().expect("作为队长必须被拒绝");
+        assert!(why.contains("prompt_argv"), "{why}");
+        assert!(
+            why.contains("never learns it is a lead"),
+            "理由必须说清「会起来一个不动的会话」：{why}"
+        );
+    }
+
+    /// `prompt_argv` 这一列的内部一致性（红线 14 的数据侧）。
+    ///
+    /// 三条判据：
+    /// - 非空 ⇒ **必须**含 `{{preamble}}`：没有占位符的模板就是把角色文本丢掉，而
+    ///   「起来了但不知道自己是队长」正是本轮要修的故障；
+    /// - 非空 ⇒ 本行 `unverified` 必须带上「只验了参数解析」那句（诚实面随能力一起进表）；
+    /// - 空 ⇒ 只能是「本行连成员都当不了」（否则一个能跑的 CLI 被默默剥夺了队长资格）。
+    #[test]
+    fn the_prompt_argv_column_is_consistent_with_the_row() {
+        for row in ADMISSIONS {
+            if row.prompt_argv.is_empty() {
+                assert!(
+                    row.launch_refusal().is_some(),
+                    "`{}`: 能起成员的 CLI 不得没有 prompt_argv（那样它永远当不了队长）",
+                    row.agent_id
+                );
+                continue;
+            }
+            assert!(
+                row.prompt_argv
+                    .iter()
+                    .any(|arg| arg.contains(PREAMBLE_PLACEHOLDER)),
+                "`{}`: prompt_argv 里没有 {PREAMBLE_PLACEHOLDER}，角色文本会被静默丢掉",
+                row.agent_id
+            );
+            assert!(
+                row.unverified.contains(&PREAMBLE_UNVERIFIED),
+                "`{}`: 声明了 prompt_argv 就必须把「只验了参数解析」写进 unverified",
+                row.agent_id
+            );
+        }
+        // 反向：今天确实至少有五家能当队长（否则上面两个循环可以全空集通過）。
+        let leads = ADMISSIONS
+            .iter()
+            .filter(|row| row.lead_refusal().is_none())
+            .count();
+        assert!(leads >= 5, "能当队长的 CLI 只剩 {leads} 家，与矩阵不符");
+    }
+
+    /// `prompt_argv` 里的 profile —— 只有三种已实测的形态，没有第四种。
+    ///
+    /// 保护的不变量（红线 14）：这里每多一种「看起来能行」的写法，就多一个
+    /// 「参数被忽略、会话静默没有系统提示」的可能。本仓实测过的只有：
+    ///
+    /// | 形态 | 谁 | 验法 |
+    /// | --- | --- | --- |
+    /// | `--append-system-prompt {{preamble}}` | claude-code / codebuddy / pi / qoder | 未知开关会报 `unknown option`，而这四家在 `--model <不存在>` 上报的是**模型**错误 |
+    /// | `{{preamble}}`（位置参数） | codex | 两个位置参数 → `unexpected argument` |
+    /// | `--prompt {{preamble}}` | opencode | 未知开关 → 打印 usage；`--prompt <probe>` → probe 出现在输入框 |
+    #[test]
+    fn the_prompt_argv_only_uses_the_three_verified_shapes() {
+        for row in ADMISSIONS {
+            match row.prompt_argv {
+                // 未实测的 CLI：空模板（不是“许一个猜测的开关”）。
+                [] => {}
+                [flag, placeholder] if *flag == "--append-system-prompt" || *flag == "--prompt" => {
+                    assert_eq!(*placeholder, PREAMBLE_PLACEHOLDER, "`{}`", row.agent_id);
+                }
+                // codex：系统提示只能从位置参数 `[PROMPT]` 进去（它没有 `--append-system-prompt`）。
+                [placeholder] => assert_eq!(*placeholder, PREAMBLE_PLACEHOLDER, "`{}`", row.agent_id),
+                other => panic!(
+                    "`{}` 的 prompt_argv 是未实测的形状：{other:?}（只允许 ① --append-system-prompt ② --prompt ③ 位置参数）",
+                    row.agent_id
+                ),
+            }
+        }
     }
 
     /// 面板数据面：**每个 id 都过同一个判据**，不在表里的也说清缺什么。
@@ -1221,6 +1512,7 @@ mod tests {
             bypass_args: &[],
             mcp_argv: &[],
             config_dir: None,
+            prompt_argv: &[],
             unverified: &[],
         };
         assert_eq!(tier_of(&omp), AdmissionTier::B);
@@ -1251,6 +1543,7 @@ mod tests {
             bypass_args: &[],
             mcp_argv: &[],
             config_dir: None,
+            prompt_argv: &[],
             unverified: &[],
         };
         assert_eq!(tier_of(&grok), AdmissionTier::C);

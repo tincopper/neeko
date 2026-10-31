@@ -310,6 +310,10 @@ fn spawn(
         admission_for(&agent_id).ok_or_else(|| AppError::NotFound(refusal(&agent_id)))?;
     // C5：**建成员之前**就拒绝「起得来但用不了」的 CLI（无 MCP 面 / 注入档未实现）。
     // 放到执行层再拒会让成员先落库 —— 花名册里多一个永远不动的名字，而队长以为它已开工。
+    //
+    // 这里问的是**成员**判据（`launch_refusal`）：成员侧不需要 `prompt_argv`（它的第一条
+    // 上下文可以由 `team_send` 带来），所以「不能当队长」不得在这里拒 —— 那就是另一条判据
+    // （`lead_refusal`，只给 `plan_team` / `plan_member_spawn` 的 Lead 分支用）。
     if let Some(why) = admission.launch_refusal() {
         return Err(AppError::Unsupported(why));
     }
@@ -2026,8 +2030,20 @@ mod tests {
         );
 
         // 回复只带「队长能行动的信息」：没有 env、没有凭证、没有执行参数。
+        // `unverified` 是准入表那一列的**原样搬运**（不是空列表）：本行的诚实面现在
+        // 包含「preamble argv 只验到参数解析」，它会原封不动地交给队长。
         assert_eq!(spawned.tier, AdmissionTier::A);
-        assert!(spawned.unverified.is_empty(), "{spawned:?}");
+        let expected: Vec<String> = admission_for("claude-code")
+            .expect("admitted")
+            .unverified
+            .iter()
+            .map(|note| (*note).to_owned())
+            .collect();
+        assert_eq!(spawned.unverified, expected, "{spawned:?}");
+        assert!(
+            !spawned.unverified.is_empty(),
+            "本行有一条未验证事实（preamble 只验了参数解析），必须回给队长"
+        );
     }
 
     /// **执行层的输入全部可从成员行重新推导**（所以它们不必随工具返回走）。

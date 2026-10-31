@@ -62,6 +62,7 @@ pub fn new_team_id(now: i64) -> String {
 /// | --- | --- |
 /// | 该 CLI 不在准入表（`dsh` / 未实测） | 没有任何 hook / MCP 事实可依据，`refusal` 给出可用清单 |
 /// | 起得来但用不了（无 MCP 面 / 注入档未实现） | 与 `team_spawn` 同一判据（`launch_refusal`）：不允许「有会话、连不上工具面」的队长 |
+/// | 能当成员但不能当队长（无 `prompt_argv`） | `lead_refusal` 多问的那一条：队长的第一个动作没有人能替它触发，拿不到角色 preamble 的队长就是一个不动的会话 |
 /// | 项目路径不是绝对路径 | 它是团队的**信任根**，`plan_member_spawn` 会拿它做 `starts_with` 判据（红线 8） |
 ///
 /// # 参数
@@ -84,7 +85,9 @@ pub fn plan_team(
     }
 
     let admission = admission_for(agent_id).ok_or_else(|| AppError::NotFound(refusal(agent_id)))?;
-    if let Some(why) = admission.launch_refusal() {
+    // 队长判据（**不是**成员判据）：`lead_refusal` 在 `launch_refusal` 之上多一条「能不能
+    // 收到角色 preamble」。用错的那一侧会很安静地放行一个不动的队长。
+    if let Some(why) = admission.lead_refusal() {
         return Err(AppError::Unsupported(why));
     }
 

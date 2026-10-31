@@ -33,8 +33,9 @@ pub mod view;
 pub mod wait;
 
 pub use admission::{
-    admission_for, launchable_agents, needs_credentials_env, refusal, render_argv, tier_of,
-    AgentAdmission, ConfigDirSpec, LaunchableAgent, McpTransport, RenderContext, ADMISSIONS,
+    admission_for, admitted_agent_ids, launchable_agents, needs_credentials_env, refusal,
+    render_argv, tier_of, AgentAdmission, ConfigDirSpec, LaunchableAgent, McpTransport,
+    RenderContext, ADMISSIONS,
 };
 pub use authorize::authorize;
 pub use boot::{boot as boot_endpoint, endpoint_url, TeamServer, TeamSurface};
