@@ -501,7 +501,23 @@ pub fn launchable_agents(agent_ids: &[String]) -> Vec<LaunchableAgent> {
 
 /// 单个 agent 的能力面：**准入表是唯一判据**（不在表里 = 也说清楚）。
 fn launchable_agent(agent_id: &str) -> LaunchableAgent {
-    let refusal = admission_for(agent_id)
+    LaunchableAgent {
+        agent_id: agent_id.to_owned(),
+        refusal: launch_refusal_for(agent_id),
+    }
+}
+
+/// 单个 id 的「能不能当成员」理由：`None` = 能，`Some(理由)` = 不能（可读，面向人）。
+///
+/// # 为何要把这个三行函数抽出来
+///
+/// 「不在准入表」与「在表里但起不来」是**两条不同的事实**，但调用方要的是同一个答案
+/// （「能还是不能，为什么」）。三处需要它：面板（`team_launchable_agents`）、团队配置的
+/// 构造期校验（`bootstrap::validate_config` 的池子校验）、以及 `TeamOptions.members`。
+/// 各写一份的话，面板与配置校验会用两句不同的话描述同一个 CLI —— 用户以为遇到两个故障。
+#[must_use]
+pub fn launch_refusal_for(agent_id: &str) -> Option<String> {
+    admission_for(agent_id)
         .map(|admission| admission.launch_refusal())
         // 不在准入表里（`dsh` / 用户自定义 CLI）：不说“不支持”而说清楚缺的是哪个事实，
         // 否则用户会以为再试一次就会好。
@@ -515,11 +531,7 @@ fn launchable_agent(agent_id: &str) -> LaunchableAgent {
                     .collect::<Vec<_>>()
                     .join(", ")
             ))
-        });
-    LaunchableAgent {
-        agent_id: agent_id.to_owned(),
-        refusal,
-    }
+        })
 }
 
 /// MCP 传输形态（矩阵第 ③ 列）。

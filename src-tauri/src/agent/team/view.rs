@@ -333,6 +333,29 @@ mod tests {
         keys.sort_unstable();
         assert_eq!(keys, vec!["members", "tasks", "tasksTruncated", "team"]);
 
+        // `team` 子对象把**团队配置**也带给前端（池 / 上限 / 三个缺省值）：前端的 TS 镜像
+        // 下一轮才补，所以这里先把线上键集钉住 —— 键名错的症状是「面板上那五项恒为空」，
+        // 而它不会报错。
+        let mut team_keys: Vec<&str> = json["team"]
+            .as_object()
+            .expect("team object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        team_keys.sort_unstable();
+        for needed in [
+            "allowedAgentIds",
+            "defaultApprovalPolicy",
+            "defaultModel",
+            "defaultWorkspace",
+            "maxMembers",
+        ] {
+            assert!(
+                team_keys.contains(&needed),
+                "快照的 team 里缺 `{needed}`：{team_keys:?}"
+            );
+        }
+
         let task_json = json["tasks"][0].as_object().expect("task object");
         let mut task_keys: Vec<&str> = task_json.keys().map(String::as_str).collect();
         task_keys.sort_unstable();

@@ -16,6 +16,11 @@
 //! 文件系统：`now` 与 `team_id` 由调用方给。真正有副作用的只有三步，都在组合根：
 //! 规范化项目路径（`spawn_blocking`）→ `create_team_with_lead`（一次写入）→ `apply_reply`。
 //!
+//! **一个刻意的例外**：[`validate_config`] 会 `canonicalize` 团队 `default_workspace`
+//! 给的 worktree 路径（红线 8 的唯一判据在 `execution::workspace_cwd`，不复制一份）。
+//! 它因此必须在阻塞池里调，且**在写库之前**调 —— 「配置不合法的团队落在库里」会让
+//! 面板与队长对同一个团队读到两种答案。
+//!
 //! # 与 `mcp::dispatch::spawn` 的关系
 //!
 //! 那边**只**建 worker 且拒绝 `role = Lead`（否则授权矩阵里会多一个能 `close` 的主体）。
@@ -24,9 +29,10 @@
 
 use std::path::Path;
 
-use crate::agent::team::admission::{admission_for, refusal, tier_of};
+use crate::agent::team::admission::{admission_for, launch_refusal_for, refusal, tier_of};
 use crate::agent::team::types::{
-    MemberRole, MemberState, Team, TeamMember, TeamState, WorkerChannel, Workspace,
+    ApprovalPolicy, MemberRole, MemberState, Team, TeamConfig, TeamMember, TeamState,
+    WorkerChannel, Workspace, MAX_MEMBERS_LIMIT,
 };
 use crate::common::error::AppError;
 
@@ -69,12 +75,15 @@ pub fn new_team_id(now: i64) -> String {
 ///
 /// - `name`：团队显示名；`None` / 空白 → 取项目目录名（再退到 `team_id`）。
 /// - `team_id`：由 [`new_team_id`] 提供（纯函数，便于测试固定 id）。
+/// - `config`：团队组成配置（池 / 上限 / 默认值）。**调用方必须已过 [`validate_config`]** ——
+///   本函数不重复校验（一次构造、一次裁决；两处各判一遍会让「哪个先拒」变成运气）。
 pub fn plan_team(
     agent_id: &str,
     project_path: &Path,
     name: Option<&str>,
     team_id: &str,
     now: i64,
+    config: &TeamConfig,
 ) -> Result<TeamBootstrap, AppError> {
     if !project_path.is_absolute() {
         return Err(AppError::InvalidInput(format!(
@@ -103,6 +112,15 @@ pub fn plan_team(
         created_at: now,
         closed_at: None,
         state: TeamState::Active,
+        // 团队组成（design 之外的 C 方案裁定）：池 / 上限 / 默认值三处消费同一份数据。
+        // 空池原样落库（= 不限制）—— 解析成「全部可启动」是读侧的事
+        // （`options::options_for`），写侧把它展开就等于把「没限制」变成一个时间点快照，
+        // 明天新准入一个 CLI 时这个团队就神秘地不包含它。
+        allowed_agent_ids: config.allowed_agent_ids.clone(),
+        default_model: config.default_model.clone(),
+        default_workspace: config.default_workspace.clone(),
+        default_approval_policy: config.default_approval_policy,
+        max_members: config.max_members,
     };
 
     let lead = TeamMember {
@@ -122,7 +140,9 @@ pub fn plan_team(
         result_channel: admission.result_channel(),
         tier: tier_of(admission),
         // R0b.3：默认进待批队列。`Bypass` 是**显式**选择，不从队长继承给工人。
-        approval_policy: crate::agent::team::types::ApprovalPolicy::Queue,
+        // 注意：队长的审批策略**不**取团队的 `default_approval_policy` —— 那是**成员**的缺省。
+        // 队长没有派活前的“他自己的审批”这回事：它的每个动作都是工具调用（走授权矩阵）。
+        approval_policy: ApprovalPolicy::default(),
         mcp_injection: admission.mcp_injection,
         last_seq: 0,
         state: MemberState::Spawned,
@@ -132,6 +152,77 @@ pub fn plan_team(
     };
 
     Ok(TeamBootstrap { team, lead })
+}
+
+/// 团队配置的**构造期**校验（`start_team_session` 在**写库之前**调它）。
+///
+/// # 拒绝，不静默过滤
+///
+/// 用户在面板上勾的每一项都必须**原样生效**或**被告知为什么不行**。静默丢一项是最难
+/// 发现的失败：面板显示「claude-code 可选」，队长 spawn 它却被拒 —— 两个界面都在说实话，
+/// 只是说的不是同一件事。
+///
+/// # 拒绝的五类
+///
+/// | 输入 | 类别 | 为什么 |
+/// | --- | --- | --- |
+/// | `allowed_agent_ids` 里有一个不能当成员的 id | `InvalidInput`（带 id + 理由） | 池子是「允许被选中」的承诺；装一个必然被拒的 id 就是空承诺 |
+/// | `allowed_agent_ids` 里有一个空白 id | `InvalidInput` | 空串匹配不到任何 CLI，却会出现在池子的清单里 |
+/// | `max_members` 不在 `1..=MAX_MEMBERS_LIMIT` | `InvalidInput` | `0` 让团队一个成员都加不了；上限之外每个成员是一个真进程 + 一份隔离配置目录 |
+/// | `default_model` 空白 / 含控制字符 | `InvalidInput` | 它会进 argv（`--model <value>`），NUL 会让 `Command::arg` panic |
+/// | `default_workspace = Worktree{path}` 越界 | `InvalidInput` | 红线 8：成员 cwd 只能落在团队根内（复用执行层那条判据，不复制） |
+///
+/// # 调用契约（红线 3）
+///
+/// worktree 那一支会 `canonicalize`（`std::fs`）⇒ **必须在阻塞池里调**。本函数不自己
+/// `spawn`（同 `plan_member_spawn` 的取舍：谁在 async 上下文里，谁负责把同步 I/O 挪出去）。
+pub fn validate_config(config: &TeamConfig, team_root: &Path) -> Result<(), AppError> {
+    if config.max_members == 0 || config.max_members > MAX_MEMBERS_LIMIT {
+        return Err(AppError::InvalidInput(format!(
+            "max_members must be between 1 and {MAX_MEMBERS_LIMIT}; got {} (a team with no members \
+             cannot be staffed, and every member above the limit is one more process and one more \
+             isolated config directory)",
+            config.max_members
+        )));
+    }
+
+    for agent_id in &config.allowed_agent_ids {
+        let trimmed = agent_id.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::InvalidInput(
+                "allowed_agent_ids must not contain an empty id: an empty string matches no CLI, \
+                 but it would still be listed as an allowed member"
+                    .to_string(),
+            ));
+        }
+        if let Some(why) = launch_refusal_for(trimmed) {
+            return Err(AppError::InvalidInput(format!(
+                "`{trimmed}` cannot be a team member, so it must not be in allowed_agent_ids: {why}"
+            )));
+        }
+    }
+
+    if let Some(model) = &config.default_model {
+        let model = model.trim();
+        if model.is_empty() {
+            return Err(AppError::InvalidInput(
+                "default_model must not be empty; omit it to let each CLI use its own default"
+                    .to_string(),
+            ));
+        }
+        // 与 `team_spawn` 的 `model` 入参**同一个**判据（控制字符只有一个实现）。
+        crate::agent::team::mcp::dispatch::reject_control_chars(
+            "start_team_session",
+            "default_model",
+            model,
+        )?;
+    }
+
+    // 工作区：`Shared` / `ReadOnly` 没有路径；`Worktree` 必须绝对且落在团队根内。
+    // 判据复用执行层那一条（`execution::workspace_cwd`）—— 两份 `starts_with` 迟早会对
+    // 「符号链接下的同一棵树」给出两个答案，而其中一个会放行越界的成员。
+    crate::agent::team::execution::workspace_cwd(team_root, &config.default_workspace)?;
+    Ok(())
 }
 
 /// 团队显示名：显式名 > 项目目录名 > 团队 id。
@@ -163,7 +254,15 @@ mod tests {
     const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
     fn plan(agent_id: &str) -> TeamBootstrap {
-        plan_team(agent_id, Path::new(ROOT), None, TEAM, NOW).expect("claude-code 可以当队长")
+        plan_team(
+            agent_id,
+            Path::new(ROOT),
+            None,
+            TEAM,
+            NOW,
+            &TeamConfig::default(),
+        )
+        .expect("claude-code 可以当队长")
     }
 
     /// 队长行的每一项都来自准入表，不是这里另算的。
@@ -227,8 +326,15 @@ mod tests {
 
     #[test]
     fn an_agent_outside_the_admission_table_is_refused_with_the_available_ids() {
-        let err =
-            plan_team("dsh", Path::new(ROOT), None, TEAM, NOW).expect_err("dsh 无 AgentConfig");
+        let err = plan_team(
+            "dsh",
+            Path::new(ROOT),
+            None,
+            TEAM,
+            NOW,
+            &TeamConfig::default(),
+        )
+        .expect_err("dsh 无 AgentConfig");
         assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
         assert!(err.to_string().contains("dsh"), "{err}");
     }
@@ -236,31 +342,67 @@ mod tests {
     /// C5 的同一判据：起得来但用不了的 CLI 不能在**建队**这一步被放过。
     #[test]
     fn an_agent_that_could_not_reach_the_tool_surface_is_refused() {
-        let err = plan_team("omp", Path::new(ROOT), None, TEAM, NOW).expect_err("omp 无 MCP 面");
+        let err = plan_team(
+            "omp",
+            Path::new(ROOT),
+            None,
+            TEAM,
+            NOW,
+            &TeamConfig::default(),
+        )
+        .expect_err("omp 无 MCP 面");
         assert!(matches!(err, AppError::Unsupported(_)), "{err:?}");
         assert!(err.to_string().contains("no MCP surface"), "{err}");
 
-        let err =
-            plan_team("grok", Path::new(ROOT), None, TEAM, NOW).expect_err("grok 是子命令注入");
+        let err = plan_team(
+            "grok",
+            Path::new(ROOT),
+            None,
+            TEAM,
+            NOW,
+            &TeamConfig::default(),
+        )
+        .expect_err("grok 是子命令注入");
         assert!(err.to_string().contains("Subcommand"), "{err}");
     }
 
     #[test]
     fn a_relative_project_path_is_refused() {
-        let err = plan_team("claude-code", Path::new("relative/dir"), None, TEAM, NOW)
-            .expect_err("相对路径必须拒绝");
+        let err = plan_team(
+            "claude-code",
+            Path::new("relative/dir"),
+            None,
+            TEAM,
+            NOW,
+            &TeamConfig::default(),
+        )
+        .expect_err("相对路径必须拒绝");
         assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
     }
 
     /// 名字三段回退：显式名 → 目录名 → id；空串与空白都不许落到 UI 上。
     #[test]
     fn the_display_name_falls_back_from_explicit_to_directory_to_id() {
-        let explicit =
-            plan_team("claude-code", Path::new(ROOT), Some("  小队  "), TEAM, NOW).expect("显式名");
+        let explicit = plan_team(
+            "claude-code",
+            Path::new(ROOT),
+            Some("  小队  "),
+            TEAM,
+            NOW,
+            &TeamConfig::default(),
+        )
+        .expect("显式名");
         assert_eq!(explicit.team.name, "小队", "两端空白被裁掉");
 
-        let derived =
-            plan_team("claude-code", Path::new(ROOT), Some("   "), TEAM, NOW).expect("空白 = 没给");
+        let derived = plan_team(
+            "claude-code",
+            Path::new(ROOT),
+            Some("   "),
+            TEAM,
+            NOW,
+            &TeamConfig::default(),
+        )
+        .expect("空白 = 没给");
         let dir = Path::new(ROOT).file_name().unwrap().to_string_lossy();
         assert_eq!(derived.team.name, dir, "退到项目目录名");
 
@@ -270,7 +412,8 @@ mod tests {
         let root = Path::new(ROOT).ancestors().last().expect("路径必有根");
         assert!(root.is_absolute(), "根必须绝对：{root:?}");
         assert_eq!(root.file_name(), None, "根没有文件名：{root:?}");
-        let fallback = plan_team("claude-code", root, None, TEAM, NOW).expect("根目录");
+        let fallback = plan_team("claude-code", root, None, TEAM, NOW, &TeamConfig::default())
+            .expect("根目录");
         assert_eq!(fallback.team.name, TEAM);
     }
 
@@ -279,5 +422,202 @@ mod tests {
         assert_eq!(new_team_id(0), "tm_0");
         assert_ne!(new_team_id(NOW), new_team_id(NOW + 1));
         assert!(new_team_id(NOW).starts_with("tm_"));
+    }
+
+    /// 配置五列原样进入团队行（包括**空池不被展开**）。
+    ///
+    /// 空池原样落库是关键：写侧把它展开成「今天全部可启动」就把「不限制」变成了一个
+    /// 时间点快照 —— 明天新准入一个 CLI，这个团队会神秘地不包含它（而用户在面板上
+    /// 从未勾过任何限制）。
+    #[test]
+    fn the_team_row_carries_the_configuration_verbatim() {
+        let default = plan("claude-code").team;
+        assert!(
+            default.allowed_agent_ids.is_empty(),
+            "缺省 = 空池（不限制），不得展开成一份清单"
+        );
+        assert_eq!(default.default_model, None);
+        assert_eq!(default.default_workspace, Workspace::Shared);
+        assert_eq!(default.default_approval_policy, ApprovalPolicy::Queue);
+        assert_eq!(
+            default.max_members,
+            crate::agent::team::types::DEFAULT_MAX_MEMBERS
+        );
+
+        let config = TeamConfig {
+            allowed_agent_ids: vec!["pi".into(), "claude-code".into()],
+            default_model: Some("haiku".into()),
+            default_workspace: Workspace::ReadOnly,
+            default_approval_policy: ApprovalPolicy::Bypass,
+            max_members: 2,
+        };
+        let TeamBootstrap { team, lead } =
+            plan_team("claude-code", Path::new(ROOT), None, TEAM, NOW, &config).expect("配置合法");
+        assert_eq!(team.allowed_agent_ids, config.allowed_agent_ids);
+        assert_eq!(team.default_model, config.default_model);
+        assert_eq!(team.default_workspace, Workspace::ReadOnly);
+        assert_eq!(team.default_approval_policy, ApprovalPolicy::Bypass);
+        assert_eq!(team.max_members, 2);
+        // 队长自己的审批策略**不**跟团队默认值走（那是成员的缺省）。
+        assert_eq!(lead.approval_policy, ApprovalPolicy::Queue);
+    }
+
+    /// 构造期校验：池子里的每一项都必须**真能当成员**，否则拒绝并点名 id + 理由。
+    ///
+    /// 保护的不变量：**不许静默过滤**。用户勾了 `grok`（子命令注入、v1 不实现），面板
+    /// 必须当场说“它不行，因为…”，而不是落库一个把它剔掉的池子 —— 那样队长 spawn 它
+    /// 会收到另一句理由，而两个界面都在说实话。
+    #[test]
+    fn a_pool_entry_that_cannot_be_a_member_is_refused_by_name() {
+        for (agent_id, needle) in [
+            ("grok", "Subcommand"),
+            ("dsh", "not in the team admission table"),
+        ] {
+            let config = TeamConfig {
+                allowed_agent_ids: vec![agent_id.into()],
+                ..TeamConfig::default()
+            };
+            let err = validate_config(&config, Path::new(ROOT)).expect_err("不可启动的池成员");
+            assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+            let message = err.to_string();
+            assert!(message.contains(agent_id), "必须点名 id：{message}");
+            assert!(
+                message.contains(needle),
+                "必须带上理由（{needle}）：{message}"
+            );
+            assert!(
+                message.contains("allowed_agent_ids"),
+                "必须说清改哪里：{message}"
+            );
+        }
+        // 能当成员的 id 一律放行（否则上面那两条可能只是“碰巧全拒”）。
+        let ok = TeamConfig {
+            allowed_agent_ids: vec!["pi".into(), "claude-code".into()],
+            ..TeamConfig::default()
+        };
+        assert!(validate_config(&ok, Path::new(ROOT)).is_ok());
+    }
+
+    /// 空白 id 拒绝：空串匹配不到任何 CLI，却会出现在池子的清单里。
+    #[test]
+    fn an_empty_pool_entry_is_refused() {
+        let config = TeamConfig {
+            allowed_agent_ids: vec!["  ".into()],
+            ..TeamConfig::default()
+        };
+        let err = validate_config(&config, Path::new(ROOT)).expect_err("空白 id");
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(err.to_string().contains("empty id"), "{err}");
+    }
+
+    /// 上限的合法区间是 `1..=MAX_MEMBERS_LIMIT`（两端外面都拒，且带上实际值）。
+    #[test]
+    fn the_member_limit_is_checked_against_its_range() {
+        for max in [0_u32, MAX_MEMBERS_LIMIT + 1] {
+            let config = TeamConfig {
+                max_members: max,
+                ..TeamConfig::default()
+            };
+            let err = validate_config(&config, Path::new(ROOT)).expect_err("越界上限");
+            let AppError::InvalidInput(message) = err else {
+                panic!("越界必须是 InvalidInput，实际 {err:?}");
+            };
+            assert!(message.contains("max_members"), "{message}");
+            assert!(message.contains(&max.to_string()), "{message}");
+        }
+        for max in [1_u32, MAX_MEMBERS_LIMIT] {
+            let config = TeamConfig {
+                max_members: max,
+                ..TeamConfig::default()
+            };
+            assert!(
+                validate_config(&config, Path::new(ROOT)).is_ok(),
+                "{max} 合法"
+            );
+        }
+    }
+
+    /// 缺省工作区越界（团队根之外）必须在**写库之前**拒绝（红线 8）。
+    ///
+    /// 夹具全部由 `tempdir()` 推导（红线 13）。
+    #[test]
+    fn a_default_worktree_outside_the_team_root_is_refused() {
+        let root = tempfile::tempdir().expect("team root");
+        let outside = tempfile::tempdir().expect("outside");
+        let team_root = std::fs::canonicalize(root.path()).expect("canonical root");
+
+        // 根内（真的建出来：canonicalize 要求存在）—— 放行。
+        let inside = team_root.join("wt");
+        std::fs::create_dir(&inside).expect("mkdir wt");
+        assert!(validate_config(
+            &TeamConfig {
+                default_workspace: Workspace::Worktree { path: inside },
+                ..TeamConfig::default()
+            },
+            &team_root,
+        )
+        .is_ok());
+
+        let err = validate_config(
+            &TeamConfig {
+                default_workspace: Workspace::Worktree {
+                    path: outside.path().to_path_buf(),
+                },
+                ..TeamConfig::default()
+            },
+            &team_root,
+        )
+        .expect_err("团队根之外的 worktree");
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(err.to_string().contains("outside the team root"), "{err}");
+
+        // 相对路径同样是拒绝（绝对路径是红线 8 的入口一半）。
+        let err = validate_config(
+            &TeamConfig {
+                default_workspace: Workspace::Worktree {
+                    path: Path::new("relative/wt").to_path_buf(),
+                },
+                ..TeamConfig::default()
+            },
+            &team_root,
+        )
+        .expect_err("相对路径");
+        assert!(err.to_string().contains("must be absolute"), "{err}");
+
+        // `Shared` / `ReadOnly` 不碰盘，也不受团队根是否存在的约束。
+        for workspace in [Workspace::Shared, Workspace::ReadOnly] {
+            assert!(validate_config(
+                &TeamConfig {
+                    default_workspace: workspace,
+                    ..TeamConfig::default()
+                },
+                &team_root,
+            )
+            .is_ok());
+        }
+    }
+
+    /// 默认 model 会进 argv：空白与控制字符在**构造期**就拒（不是等第一次 spawn 才炸）。
+    #[test]
+    fn a_default_model_that_cannot_be_an_argv_value_is_refused() {
+        let blank = TeamConfig {
+            default_model: Some("   ".into()),
+            ..TeamConfig::default()
+        };
+        let err = validate_config(&blank, Path::new(ROOT)).expect_err("空白 model");
+        assert!(err.to_string().contains("default_model"), "{err}");
+
+        let control = TeamConfig {
+            default_model: Some("so\nnet".into()),
+            ..TeamConfig::default()
+        };
+        let err = validate_config(&control, Path::new(ROOT)).expect_err("控制字符");
+        assert!(err.to_string().contains("control characters"), "{err}");
+
+        let ok = TeamConfig {
+            default_model: Some("sonnet".into()),
+            ..TeamConfig::default()
+        };
+        assert!(validate_config(&ok, Path::new(ROOT)).is_ok());
     }
 }

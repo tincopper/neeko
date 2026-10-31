@@ -25,6 +25,7 @@ pub mod lease;
 pub mod manager;
 pub mod mcp;
 pub mod observe;
+pub mod options;
 pub mod reaper;
 pub mod sentinel;
 pub mod store;
@@ -44,6 +45,7 @@ pub use events::{TeamNotifier, TeamPulse, TEAM_EVENT};
 pub use execution::{apply_reply, plan_member_spawn, ConfigDirPlan, MemberExecutor, SpawnPlan};
 pub use lease::{lease_expired, next_reclaim_count, should_auto_release};
 pub use manager::{TeamManager, TeamWake};
+pub use options::{default_options, options_for, TeamDefaults, TeamOptions};
 pub use store::{TeamEventRecord, TeamStore};
 pub use view::{
     MemberStatusView, TaskCard, TaskDetail, TeamSnapshot, TeamStatusView, MAX_BOARD_TASKS,

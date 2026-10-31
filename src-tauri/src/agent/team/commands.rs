@@ -1,16 +1,18 @@
 //! 团队域的 `#[tauri::command]`（**极薄**，红线 6）。
 //!
-//! 四条命令：
+//! 五条命令：
 //!
 //! | 命令 | 方向 | 载荷 |
 //! | --- | --- | --- |
-//! | `start_team_session` | 写 | 建队 + 起队长 PTY（`create_team` 的唯一生产调用方）|
+//! | `start_team_session` | 写 | 建队 + 起队长 PTY（`create_team` 的唯一生产调用方；带团队配置）|
 //! | `team_snapshot` | 读 | 团队行 + 花名册 + 任务板列（**无 `body`**，红线 4）|
 //! | `team_task_detail` | 读 | 列视图 + 派活正文（点开才拉）|
-//! | `team_launchable_agents` | 读 | 每个可选 agent 一条 `{ agentId, refusal }`（面板置灰依据）|
+//! | `team_launchable_agents` | 读 | **这台机器上**每个可选 agent 一条 `{ agentId, refusal }`（面板置灰依据）|
+//! | `team_options` | 读 | **这个队**允许谁 / 还能加几个 / 缺省值（建队前 `team_id = None` → 全部可启动）|
 //!
-//! 四条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，建队/起进程
-//! 在 `bootstrap` + `execution`，准入判定在 [`crate::agent::team::admission`]（红线 6）。
+//! 五条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，可选项面在
+//! [`crate::agent::team::options`]，建队/起进程在 `bootstrap` + `execution`，准入判定在
+//! [`crate::agent::team::admission`]（红线 6）。
 //!
 //! # 两条读命令**不做 principal 校验**（不是漏了）
 //!
@@ -52,9 +54,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::agent::team::admission::{self, LaunchableAgent};
-use crate::agent::team::bootstrap::{new_team_id, plan_team};
+use crate::agent::team::bootstrap::{self, new_team_id, plan_team};
 use crate::agent::team::execution;
 use crate::agent::team::manager::now_millis;
+use crate::agent::team::options::{self, TeamOptions};
+use crate::agent::team::types::TeamConfig;
 use crate::agent::team::view::{self, TaskDetail, TeamSnapshot};
 use crate::common::error::AppError;
 use crate::common::runtime::run_blocking_result;
@@ -88,32 +92,51 @@ pub struct TeamSession {
 ///   preamble** —— `prompt_argv` 为空的行会在这里被拒绝，理由原样返回）。
 /// - `project_path`：团队根（**绝对**路径；会被规范化成信任根）。
 /// - `name`：团队显示名（缺省取项目目录名）。
+/// - `config`：团队组成配置（候选池 / 成员上限 / 三个缺省值）；`None` = 全默认。
+///   校验在**写库之前**（同 `plan_team` 的拒绝顺序）：池内每一项必须真能当成员、上限在
+///   `1..=MAX_MEMBERS_LIMIT`、默认 worktree 必须落在团队根内。判据见
+///   `bootstrap::validate_config`。
 #[tauri::command]
 pub async fn start_team_session(
     state: tauri::State<'_, AppStateWrapper>,
     agent_id: String,
     project_path: String,
     name: Option<String>,
+    config: Option<TeamConfig>,
 ) -> Result<TeamSession, AppError> {
     // 端点门面 = 成员 MCP 配置里的 URL + 签发凭证的端口 + 起进程的执行者。
     // 三样同源（一次取出，不可能只拿半个）；没有端点就没有工具面，也就没有队长 ——
     // 在**任何写入之前**拒绝，不留死团队。
     let surface = state.team_surface().ok_or_else(no_endpoint)?;
 
-    // 信任根（红线 8）：I/O ⇒ 阻塞池（红线 3）。
+    // 信任根（红线 8）+ 配置校验：两者都是 I/O 或依赖规范化后的根 ⇒ 同一个阻塞池任务
+    // （红线 3）。顺序即契约：先有根，再判「默认 worktree 是否落在根内」。
     let runtime = Arc::clone(&state.runtime);
+    let config = config.unwrap_or_default();
+    let config_for_check = config.clone();
     let root = runtime
-        .spawn_blocking(move || canonical_project_root(&project_path))
+        .spawn_blocking(move || -> Result<PathBuf, AppError> {
+            let root = canonical_project_root(&project_path)?;
+            bootstrap::validate_config(&config_for_check, &root)?;
+            Ok(root)
+        })
         .await
         .map_err(|err| AppError::Unknown(format!("resolving the project path failed: {err}")))??;
 
     // 纯计划：准入拒绝（包括「起得来但连不上工具面」）全部发生在写库之前。
     let now = now_millis();
-    let bootstrap = plan_team(&agent_id, &root, name.as_deref(), &new_team_id(now), now)?;
+    let plan = plan_team(
+        &agent_id,
+        &root,
+        name.as_deref(),
+        &new_team_id(now),
+        now,
+        &config,
+    )?;
 
     // 团队 + 队长一次写入。
     let manager = Arc::clone(&state.team_manager);
-    let (team, lead) = (bootstrap.team.clone(), bootstrap.lead.clone());
+    let (team, lead) = (plan.team.clone(), plan.lead.clone());
     runtime
         .spawn_blocking(move || manager.create_team_with_lead(team, lead))
         .await
@@ -124,24 +147,24 @@ pub async fn start_team_session(
     execution::start_member(
         surface.credentials.as_ref(),
         surface.executor.as_ref(),
-        &bootstrap.lead.id,
+        &plan.lead.id,
     )
     .await?;
 
     let terminal_id = state
         .team_manager
-        .member(&bootstrap.lead.id)
+        .member(&plan.lead.id)
         .and_then(|member| member.terminal_id);
 
     log::info!(
         "[agent-team] team {} started with lead {} ({})",
-        bootstrap.team.id,
-        bootstrap.lead.id,
+        plan.team.id,
+        plan.lead.id,
         agent_id
     );
     Ok(TeamSession {
-        team_id: bootstrap.team.id,
-        member_id: bootstrap.lead.id,
+        team_id: plan.team.id,
+        member_id: plan.lead.id,
         terminal_id,
         endpoint_url: surface.endpoint_url,
     })
@@ -178,6 +201,43 @@ pub fn team_launchable_agents(
         .map(|config| config.id)
         .collect();
     Ok(admission::launchable_agents(&agent_ids))
+}
+
+/// 面板的**团队配置面**：这个队允许谁当成员 / 还能加几个 / 缺省值是什么。
+///
+/// # 两个出口，一个函数
+///
+/// - `team_id = None` → **建队前**的目录（池子 = 全部可启动、默认值 = 全局默认），
+///   供面板在用户勾选之前展示可选项；
+/// - `team_id = Some(id)` → 该团队的实际配置。
+///
+/// 两条都走 [`options::options_for`] / [`options::default_options`]（同一个 `resolve`），
+/// 与 MCP 工具 `team_options` 同源 —— 面板与队长读到的是同一份推导，不是两份长得像的
+/// 清单。**不要**在前端把 `team_launchable_agents` 与这里拼起来：前者是「这台机器上谁能
+/// 当成员」，后者是「这个队允许谁」（含上限与默认）。
+///
+/// # 为什么这条命令**不**进阻塞池
+///
+/// 它读的两样东西都在 `TeamManager` 的内存镜像里（团队行 + 花名册计数），锁内无 I/O ——
+/// 与 `team_snapshot`（走 `TeamStore::list_members`，真读库）不同。MCP 那一侧也只有
+/// 同样的两样东西（端点不持有 `AgentManager`），所以两个出口在这一点上完全对称。
+///
+/// 未知 `team_id` → `NotFound`（与 `team_snapshot` 同一句话）。
+#[tauri::command]
+pub fn team_options(
+    state: tauri::State<'_, AppStateWrapper>,
+    team_id: Option<String>,
+) -> Result<TeamOptions, AppError> {
+    let Some(team_id) = team_id else {
+        return Ok(options::default_options(0));
+    };
+    let team_id = require_id(team_id, "team_id")?;
+    let team = state
+        .team_manager
+        .team(&team_id)
+        .ok_or_else(|| AppError::NotFound(format!("team `{team_id}` is not loaded")))?;
+    let member_count = state.team_manager.member_count(&team_id);
+    Ok(options::options_for(&team, member_count))
 }
 
 /// 团队快照（面板的数据源）。
@@ -320,11 +380,19 @@ mod tests {
             refusal: Some("nope".into()),
         };
 
+        // 团队配置面的两个载荷也走 IPC（面板建队前/后都读它）。
+        let options = crate::agent::team::options::default_options(0);
+
         let payloads = [
             ("TeamSession", serde_json::to_value(&session).unwrap()),
             (
                 "LaunchableAgent",
                 serde_json::to_value(&launchable).unwrap(),
+            ),
+            ("TeamOptions", serde_json::to_value(&options).unwrap()),
+            (
+                "TeamOptions.defaults",
+                serde_json::to_value(&options.defaults).unwrap(),
             ),
         ];
 
@@ -373,6 +441,27 @@ mod tests {
         assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
         assert!(err.to_string().contains("team_id"), "{err}");
         assert_eq!(require_id(" tm_1 ".to_string(), "team_id").unwrap(), "tm_1");
+    }
+
+    /// 建队前（`team_id = None`）的目录就是**全局默认**：池子 = 全部可启动、默认值 = 默认值、
+    /// 成员数 = 0。
+    ///
+    /// 保护的不变量：面板在用户还没建队时也必须能渲染可选项；而它渲染的必须是**同一条**
+    /// 推导（`options::default_options`）—— 面板自己拼一份的话，用户勾完选项进入「已建队」
+    /// 视图的那一刻会看到两份不同的清单。
+    #[test]
+    fn the_pre_team_catalogue_is_the_global_default() {
+        let catalogue = crate::agent::team::options::default_options(0);
+        assert_eq!(catalogue.defaults.member_count, 0);
+        assert_eq!(
+            catalogue.defaults.max_members,
+            crate::agent::team::types::DEFAULT_MAX_MEMBERS
+        );
+        assert!(
+            !catalogue.members.is_empty(),
+            "本机至少有一个可启动的成员 CLI（准入表里的 A 档）"
+        );
+        assert!(catalogue.defaults.allowed_agent_ids.len() == catalogue.members.len());
     }
 
     /// 端点缺失的两种调用拿到同一句理由（它们是同一个前提）。

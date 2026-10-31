@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 use crate::agent::team::events::TeamNotifier;
 use crate::agent::team::types::{
     AdmissionTier, ApprovalPolicy, McpInjection, MemberRole, MemberState, ResultChannel, Team,
-    TeamMember, TeamState, WorkerChannel, Workspace,
+    TeamConfig, TeamMember, TeamState, WorkerChannel, Workspace,
 };
 
 /// 夹具团队的 id（多数测试共用一个团队）。
@@ -43,6 +43,9 @@ pub(crate) const TEAM: &str = "tm_1";
 pub(crate) const W1: &str = "w1@tm_1";
 
 /// 一个 `Active` 团队；`project_path` 由 manifest 目录推导（红线 13）。
+///
+/// 配置五列一律取**缺省值**（空池 / `None` / `shared` / `queue` / 4）：需要非缺省配置的
+/// 用例用 [`fixture_team_configured`]，那里的覆盖值在 diff 里一眼可见。
 pub(crate) fn fixture_team(id: &str) -> Team {
     Team {
         id: id.into(),
@@ -54,6 +57,26 @@ pub(crate) fn fixture_team(id: &str) -> Team {
         created_at: 1_700_000_000_000,
         closed_at: None,
         state: TeamState::Active,
+        allowed_agent_ids: Vec::new(),
+        default_model: None,
+        default_workspace: Workspace::default(),
+        default_approval_policy: ApprovalPolicy::default(),
+        max_members: crate::agent::team::types::DEFAULT_MAX_MEMBERS,
+    }
+}
+
+/// 同一个团队，但用**给定配置**（池 / 上限 / 默认值）。
+///
+/// 五列的接线只写在这里：池子、上限、默认值这三处的判据各测试文件都要用，各写一份
+/// 全量字面量会让「某个字段没接到 `Team` 上」这类缺陷在每个测试里看起来都像另一个问题。
+pub(crate) fn fixture_team_configured(id: &str, config: &TeamConfig) -> Team {
+    Team {
+        allowed_agent_ids: config.allowed_agent_ids.clone(),
+        default_model: config.default_model.clone(),
+        default_workspace: config.default_workspace.clone(),
+        default_approval_policy: config.default_approval_policy,
+        max_members: config.max_members,
+        ..fixture_team(id)
     }
 }
 

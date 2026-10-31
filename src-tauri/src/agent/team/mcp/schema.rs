@@ -22,6 +22,8 @@ use crate::agent::team::types::TeamTaskState;
 pub enum ToolName {
     /// 读团队状态（成员 + 板摘要）。
     TeamStatus,
+    /// 读**这个队**的可选项：允许谁当成员、还能加几个、缺省值是什么（只读）。
+    TeamOptions,
     /// 建成员（P2.5a：准入 + 落库，返回 `MemberCreated`；起进程在 2.5b）。
     TeamSpawn,
     /// 队内消息。
@@ -44,8 +46,9 @@ pub enum ToolName {
 ///
 /// 与 [`TOOLS`] 故意分成两份而不是由 `TOOLS` 派生：只有「两份独立清单」才能让
 /// 「新增变体却忘了登记」变成测试失败，而不是被派生逻辑自动吞掉。
-pub const ALL_TOOL_NAMES: [ToolName; 9] = [
+pub const ALL_TOOL_NAMES: [ToolName; 10] = [
     ToolName::TeamStatus,
+    ToolName::TeamOptions,
     ToolName::TeamSpawn,
     ToolName::TeamSend,
     ToolName::TaskCreate,
@@ -68,7 +71,7 @@ pub struct ToolSpec {
     pub input_schema: &'static str,
 }
 
-/// 工具清单 —— **恰好 9 条**，与 [`ALL_TOOL_NAMES`] 一一对应（design §4.2）。
+/// 工具清单 —— **恰好 10 条**，与 [`ALL_TOOL_NAMES`] 一一对应（design §4.2 + `team_options`）。
 ///
 /// `input_schema` 只声明本层**真的会读**的字段：Schema 里写一个 dispatch 不校验的参数，
 /// 就是向模型声明一个「传了也没用」的能力（红线 14 的同族违规）。
@@ -89,10 +92,16 @@ pub static TOOLS: &[ToolSpec] = &[
         input_schema: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
     ToolSpec {
+        name: ToolName::TeamOptions,
+        wire: "team_options",
+        summary: "Read this team's spawn options: which CLIs may become members, how many more fit, and the defaults a spawn would inherit.",
+        input_schema: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
+    },
+    ToolSpec {
         name: ToolName::TeamSpawn,
         wire: "team_spawn",
         summary: "Add one worker member (lead only). Returns the new member id, its derived admission tier and any capability that is still unverified.",
-        input_schema: r#"{"type":"object","properties":{"agent_id":{"type":"string","minLength":1},"name":{"type":"string","minLength":1},"workspace":{"type":"object","properties":{"kind":{"type":"string","enum":["shared","read_only","worktree"]},"path":{"type":"string","minLength":1}},"required":["kind"],"additionalProperties":false},"approval_policy":{"type":"string","enum":["interactive","queue","bypass"]},"model":{"type":"string","minLength":1}},"required":["agent_id","name","workspace"],"additionalProperties":false}"#,
+        input_schema: r#"{"type":"object","properties":{"agent_id":{"type":"string","minLength":1},"name":{"type":"string","minLength":1},"workspace":{"type":"object","properties":{"kind":{"type":"string","enum":["shared","read_only","worktree"]},"path":{"type":"string","minLength":1}},"required":["kind"],"additionalProperties":false},"approval_policy":{"type":"string","enum":["interactive","queue","bypass"]},"model":{"type":"string","minLength":1}},"required":["agent_id","name"],"additionalProperties":false}"#,
     },
     ToolSpec {
         name: ToolName::TeamSend,
@@ -276,7 +285,11 @@ mod tests {
         ] {
             assert!(lookup(wire).is_some(), "{wire} 必须可查");
         }
-        assert_eq!(TOOLS.len(), 9, "design §4.2 的工具清单是 9 条");
+        assert_eq!(
+            TOOLS.len(),
+            10,
+            "design §4.2 的 9 条 + `team_options`（团队组成配置的只读面）"
+        );
         assert_eq!(lookup("team_spawn"), Some(ToolName::TeamSpawn));
         // 反向：清单里不得有形如 `team_*` 的遗留别名（wire 名是协议）。
         assert!(lookup("spawn").is_none(), "wire 名只能是 team_spawn");
@@ -287,16 +300,21 @@ mod tests {
     /// 保护的不变量：Schema 里多一个 `prompt` 而 dispatch 不读，就是向模型声明
     /// 「传了也没用」；少一个 `workspace` 则会让成员静默落到共享 cwd（同 cwd 多成员
     /// ⇒ 归因只能靠 env，design §5.4）。
+    ///
+    /// `workspace` 从 `required` 移到可选是**方案 C 的一部分**：缺省值来自团队配置
+    /// （`Team.default_workspace`），而不是「不传 = shared」这种常量。它的 shape
+    /// （对象 + `kind` + `path`）一个字段都没变。
     #[test]
     fn team_spawn_schema_matches_the_documented_shape() {
         let spec = spec_for(ToolName::TeamSpawn);
         assert_eq!(spec.wire, "team_spawn");
         let schema: serde_json::Value = serde_json::from_str(spec.input_schema).unwrap();
 
-        assert_eq!(
-            schema["required"],
-            serde_json::json!(["agent_id", "name", "workspace"])
-        );
+        // `workspace` **不在** required 里（团队配置按方案 C）：它在缺省时取团队的
+        // `default_workspace`，所以「必须传」既不必要也会让队长多写一次它不知道的值。
+        // `agent_id` / `name` 仍是必填：一个是「选谁」（池子校验的输入），一个是成员 id 的
+        // 前半段（`{name}@{team}`，落库前 sanitize）。
+        assert_eq!(schema["required"], serde_json::json!(["agent_id", "name"]));
         assert_eq!(schema["additionalProperties"], serde_json::json!(false));
 
         let properties = schema["properties"]

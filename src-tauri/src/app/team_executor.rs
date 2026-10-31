@@ -105,6 +105,10 @@ impl MemberExecutor for PtyMemberExecutor {
 
         // 计划：`canonicalize` 是 I/O ⇒ 阻塞池（红线 3）。纯函数本身在 `execution`。
         // 成员行按值搬进闭包；隔离配置目录的根由**组合根**给（Neeko 自己的状态目录）。
+        //
+        // 花名册计数（不含队长）**现在**从内存镜像取一次：队长的 preamble 只广告
+        // 「这个队允许谁」（`options_for`），而执行层不许在闭包里读库。
+        let member_count = state.team_manager.member_count(&team.id);
         let member_for_plan = member.clone();
         let endpoint_for_plan = endpoint.clone();
         let token_for_plan = token.to_owned();
@@ -118,6 +122,7 @@ impl MemberExecutor for PtyMemberExecutor {
                     &endpoint_for_plan,
                     &token_for_plan,
                     &state_root,
+                    member_count,
                 )
             })
             .await

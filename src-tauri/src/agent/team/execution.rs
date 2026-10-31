@@ -33,12 +33,12 @@
 use std::path::{Path, PathBuf};
 
 use crate::agent::team::admission::{
-    admission_for, admitted_agent_ids, launchable_agents, needs_credentials_env, render_argv,
-    AgentAdmission, ConfigDirSpec, RenderContext,
+    admission_for, needs_credentials_env, render_argv, AgentAdmission, ConfigDirSpec, RenderContext,
 };
 use crate::agent::team::identity;
 use crate::agent::team::mcp::dispatch::ToolReply;
 use crate::agent::team::mcp::protocol::TOKEN_HEADER;
+use crate::agent::team::options::options_for;
 use crate::agent::team::types::{McpInjection, MemberRole, Team, TeamMember, Workspace};
 use crate::common::error::AppError;
 
@@ -135,12 +135,16 @@ pub struct ConfigDirPlan {
 ///   `{state_root}/team/{team}/{member}` —— 根**由调用方给**，因为「Neeko 的状态放在哪」
 ///   是组合根的事实，不是团队域的事实（域里硬编码 `std::env::temp_dir()` 会让 macOS 上的
 ///   成员配置被系统清理进程当垃圾删掉）。
+/// - `member_count`：该团队**当前已有成员数（不含队长）**，用来算「这个队还允许谁」
+///   （[`options_for`]）。由调用方从 `TeamManager` 的花名册取 —— 执行层不读库（本模块
+///   只做纯推导 + `canonicalize`）。
 pub fn plan_member_spawn(
     team: &Team,
     member: &TeamMember,
     mcp_url: &str,
     token: &str,
     state_root: &Path,
+    member_count: u32,
 ) -> Result<SpawnPlan, AppError> {
     if member.team_id != team.id {
         return Err(AppError::InvalidInput(format!(
@@ -165,14 +169,11 @@ pub fn plan_member_spawn(
     }
 
     // 角色 preamble：让被拉起的 CLI 知道自己是团队里的谁（否则它就是一个裸 CLI ——
-    // 「不知道自己是队长」正是团队跑不起来的那个故障）。成员清单只给队长版用，
-    // 由准入表推导（`admitted_agent_ids` 是纯函数，执行层**不认识** `AgentManager`）。
-    let preamble = identity::preamble(
-        member.role,
-        team,
-        member,
-        &launchable_agents(&admitted_agent_ids()),
-    );
+    // 「不知道自己是队长」正是团队跑不起来的那个故障）。成员清单只给队长版用，且必须与
+    // `team_spawn` / `team_options` **同一份判据**：池内的可启动者（`options_for`），
+    // 而不是全部可启动者 —— 向队长广告一个池外的 CLI，等于让它挑一个永远被拒的选项。
+    let options = options_for(team, member_count);
+    let preamble = identity::preamble(member.role, team, member, &options.members);
     let ctx = RenderContext::new(
         mcp_config_json(mcp_url, token),
         mcp_url,
@@ -325,20 +326,42 @@ pub fn mcp_config_json(mcp_url: &str, token: &str) -> String {
     .to_string()
 }
 
-/// 成员进程的 cwd。
+/// **工作区 → 落地目录**的唯一判据（红线 8）。
 ///
 /// - `Shared` / `ReadOnly` → 团队根。只读是**策略**不是路径，执行层不据此换目录。
-/// - `Worktree { path }` → 该路径，且必须落在团队根之下（红线 8）。
+/// - `Worktree { path }` → 该路径，且必须是**绝对**路径并落在团队根之下。
 ///
-/// **团队根无条件规范化**（不是只在 worktree 分支）：它是下面的信任边界 —— `starts_with`
-/// 在符号链接与 `/var` ↔ `/private/var` 这类平台差异上会给出与肉眼相反的答案，而一个未
-/// 规范化的根会让「落在根内」的判据整体失效。`Shared` 分支同样要吃这条：成员进程的 cwd
-/// 与「根内」判据必须是同一个字符串身份，否则同一棵树上会存在两种写法。
-fn resolve_cwd(team: &Team, member: &TeamMember) -> Result<PathBuf, AppError> {
-    let root = canonicalize(&team.project_path, "team root")?;
-    match member.workspace {
+/// # 两个调用方，一份判据
+///
+/// ① 执行层起进程时给成员算 `cwd`（[`plan_member_spawn`]）；
+/// ② 建队时为 `Team.default_workspace` 做构造期校验（`bootstrap::validate_config`）。
+///
+/// 两处各写一份 `starts_with` 的话，它们迟早会对「符号链接下的同一棵树」给出两个答案，
+/// 而其中一个会放行一个跑在团队根之外的成员 —— 那种错误在花名册上看不出来。
+///
+/// **团队根无条件规范化**（不是只在 worktree 分支）：它是 `starts_with` 的信任边界 ——
+/// 在符号链接与 `/var` ↔ `/private/var` 这类平台差异上，未规范化的根会让「落在根内」的
+/// 判据整体失效。`Shared` 分支同样要吃这条：成员进程的 cwd 与「根内」判据必须是同一个
+/// 字符串身份，否则同一棵树上会存在两种写法。
+///
+/// # 阻塞（红线 3）
+///
+/// 会 `std::fs::canonicalize` ⇒ **必须在阻塞池里调**。
+pub fn workspace_cwd(team_root: &Path, workspace: &Workspace) -> Result<PathBuf, AppError> {
+    let root = canonicalize(team_root, "team root")?;
+    match workspace {
         Workspace::Shared | Workspace::ReadOnly => Ok(root),
-        Workspace::Worktree { ref path } => {
+        Workspace::Worktree { path } => {
+            // 绝对性是入口判据的另一半：相对路径会按**进程 cwd** 解析，而那不是团队根。
+            // 放到 `canonicalize` 之后判会得到一个“看起来合法”的绝对路径 —— 那时错误
+            // 信息已经无法说清用户到底传了什么。
+            if !path.is_absolute() {
+                return Err(AppError::InvalidInput(format!(
+                    "workspace path {} must be absolute; a relative path would be resolved against \
+                     the process cwd instead of the team root",
+                    path.display()
+                )));
+            }
             let target = canonicalize(path, "member worktree")?;
             if !target.starts_with(&root) {
                 return Err(AppError::InvalidInput(format!(
@@ -351,6 +374,11 @@ fn resolve_cwd(team: &Team, member: &TeamMember) -> Result<PathBuf, AppError> {
             Ok(target)
         }
     }
+}
+
+/// 成员进程的 cwd（[`workspace_cwd`] 的成员视图）。
+fn resolve_cwd(team: &Team, member: &TeamMember) -> Result<PathBuf, AppError> {
+    workspace_cwd(&team.project_path, &member.workspace)
 }
 
 /// `canonicalize` + 把「路径不存在 / 不可读」翻成可读的 `InvalidInput`。
@@ -546,14 +574,21 @@ mod tests {
     }
 
     /// 多数用例只需要“团队根 = 临时目录”：把两个根接在一起，调用点只写成员。
+    ///
+    /// `member_count = 0`：花名册为空时「池内可启动者」是最大值，所以这里测的是
+    /// **不受上限影响**的推导。
     fn plan_for(tmp: &tempfile::TempDir, member: &TeamMember) -> Result<SpawnPlan, AppError> {
-        plan_member_spawn(
-            &team_at(tmp.path()),
-            member,
-            MCP_URL,
-            TOKEN,
-            &state_root(tmp),
-        )
+        plan_for_team(&team_at(tmp.path()), tmp, member, 0)
+    }
+
+    /// 同上，但团队行由调用方给（池 / 默认值 / 上限影响推导的用例用它）。
+    fn plan_for_team(
+        team: &Team,
+        tmp: &tempfile::TempDir,
+        member: &TeamMember,
+        member_count: u32,
+    ) -> Result<SpawnPlan, AppError> {
+        plan_member_spawn(team, member, MCP_URL, TOKEN, &state_root(tmp), member_count)
     }
 
     /// happy path：三件套各自来自一个**已落库**的字段（+ 末尾的角色 preamble）。
@@ -626,6 +661,64 @@ mod tests {
         // 前面仍是那两条 MCP 参数（preamble 没有把它们挤掉）。
         assert_eq!(plan.args[0], "--mcp-config");
         assert!(plan.args[1].contains("mcpServers"));
+    }
+
+    /// preamble 只广告**池内**的 CLI：向队长列一个池外的选项，等于让它挑一个永远被拒的
+    /// 选项（`team_spawn` 的池子校验会拒绝它）。
+    ///
+    /// 两条判据：池子只有 `["pi"]` 时 `claude-code` **不出现**；空池（= 不限制）时
+    /// 全部可启动项都在。夹具团队根由 `tempdir()` 推导（红线 13）。
+    #[test]
+    fn the_lead_preamble_only_advertises_the_teams_pool() {
+        use crate::agent::team::fixtures::fixture_team_configured;
+        use crate::agent::team::types::TeamConfig;
+
+        let tmp = tempdir();
+        let restricted = Team {
+            project_path: tmp.path().to_path_buf(),
+            ..fixture_team_configured(
+                TEAM,
+                &TeamConfig {
+                    allowed_agent_ids: vec!["pi".into()],
+                    ..TeamConfig::default()
+                },
+            )
+        };
+        let plan = plan_for_team(&restricted, &tmp, &lead("claude-code"), 0).expect("plan");
+        let text = plan.args.last().expect("preamble 在末尾");
+        assert!(text.contains("pi (tier"), "池内的 pi 必须被广告：{text}");
+        // 注意不能用裸名字断言：preamble 的身份行里本来就有队长自己的 `agent_id`
+        // （`The CLI agent \`claude-code\``）—— 要断言的是**可 spawn 清单**里没有它。
+        assert!(
+            !text.contains("claude-code (tier"),
+            "池外的 claude-code 不得出现在队长版的可 spawn 清单里：{text}"
+        );
+
+        // 空池 = 不限制 ⇒ 全部可启动项都出现（两个已知 A 档成员各断言一次）。
+        let open = team_at(tmp.path());
+        let plan = plan_for_team(&open, &tmp, &lead("claude-code"), 0).expect("plan");
+        let text = plan.args.last().expect("preamble 在末尾");
+        for agent_id in ["claude-code", "pi"] {
+            assert!(
+                text.contains(&format!("{agent_id} (tier")),
+                "空池必须广告 {agent_id}：{text}"
+            );
+        }
+    }
+
+    /// `member_count` 走到 `options_for`（而不是被丢掉）：它决定 `TeamOptions.member_count`。
+    ///
+    /// 这条只看“参数有没有真的被用上”——它不改变 preamble 的成员清单（清单只由池子过滤），
+    /// 而「成员数与上限的比较」在下游（`team_spawn` 与面板）才发生。断言点是一个可见差异：
+    /// 同一个团队、同一个成员，不同 `member_count` 得到相同的清单（证明清单不受它影响），
+    /// 而 `options_for` 那一侧有它自己的断言（见 `options` 模块）。
+    #[test]
+    fn the_preamble_does_not_depend_on_the_member_count() {
+        let tmp = tempdir();
+        let team = team_at(tmp.path());
+        let empty = plan_for_team(&team, &tmp, &lead("claude-code"), 0).expect("plan");
+        let full = plan_for_team(&team, &tmp, &lead("claude-code"), 3).expect("plan");
+        assert_eq!(empty.args, full.args);
     }
 
     /// 成员侧：同一份 preamble 机制，文本**不是**队长的（它不该去派活）。

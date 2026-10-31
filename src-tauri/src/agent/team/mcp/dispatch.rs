@@ -44,9 +44,10 @@ use crate::agent::team::admission::{admission_for, refusal, tier_of};
 use crate::agent::team::authorize::authorize;
 use crate::agent::team::manager::{now_millis, TeamManager};
 use crate::agent::team::mcp::schema::{self, spec_for, ToolName, UPDATABLE_STATES};
+use crate::agent::team::options::{options_for, TeamOptions};
 use crate::agent::team::types::{
-    AdmissionTier, ApprovalPolicy, MemberRole, MemberState, TeamMember, TeamPrincipal, TeamTask,
-    TeamTaskState, WorkerChannel, Workspace,
+    AdmissionTier, ApprovalPolicy, MemberRole, MemberState, Team, TeamMember, TeamPrincipal,
+    TeamTask, TeamTaskState, WorkerChannel, Workspace,
 };
 use crate::agent::team::view::{team_status_view, TeamStatusView};
 use crate::agent::team::wait::{WaitOutcome, WaitTargets, WaitUntil};
@@ -74,6 +75,11 @@ pub enum ToolReply {
     Status(TeamStatusView),
     /// `task_list`：板视图。
     Tasks(Vec<TeamTask>),
+    /// `team_options`：这个队允许谁当成员 / 还能加几个 / 缺省值是什么（只读，无副作用）。
+    ///
+    /// 载荷与本地命令 `team_options` **同形同源**（`options::options_for`）：队长与面板
+    /// 读到的是同一份推导，不是两份长得像的清单。
+    Options(TeamOptions),
     /// `task_create` / `task_claim` / `task_update`：单个任务的最新态。
     Task(TeamTask),
     /// `team_spawn`：成员已落库，**待执行层起进程**（消费侧：`execution::apply_reply`）。
@@ -225,6 +231,7 @@ fn dispatch_tool(
 ) -> Result<ToolReply, AppError> {
     match tool {
         ToolName::TeamStatus => status(manager, principal),
+        ToolName::TeamOptions => options(manager, principal),
         ToolName::TeamSpawn => spawn(manager, principal, args),
         ToolName::TeamSend => send(manager, principal, args),
         ToolName::TaskCreate => create(manager, principal, args),
@@ -256,6 +263,22 @@ fn status(manager: &TeamManager, principal: &TeamPrincipal) -> Result<ToolReply,
     )?))
 }
 
+/// `team_options`：**读**这个队的可选项（池 / 上限 / 默认值）。
+///
+/// 只做三件事：读团队行 → 取花名册计数 → 调纯函数 [`options_for`]（红线 6 的同一条原则：
+/// 入口层不自己推导）。视图构造因此只有一处，与面板那条命令共用。
+///
+/// 为什么队长需要它：过去它只能从**报错信息**里学到哪些 CLI 可用。让它在派活前就能读到
+/// 「这个队允许谁 / 还能加几个 / 缺省是什么」，就不会把回合花在一次必然被拒的 `team_spawn` 上。
+///
+/// 未知团队 → `NotFound`：`TeamPrincipal` 是签发时真实存在过的凭证产物，走到这里说明
+/// 团队行被删了（或 manager 的镜像与库不一致），那是真异常而不是「没权限」。
+fn options(manager: &TeamManager, principal: &TeamPrincipal) -> Result<ToolReply, AppError> {
+    let team = team_of(manager, &principal.team_id)?;
+    let member_count = manager.member_count(&principal.team_id);
+    Ok(ToolReply::Options(options_for(&team, member_count)))
+}
+
 /// `team_send`：**只校验，不投递**。
 ///
 /// 目标 `Awaiting`（在等人）一律 `target_blocked`，且返回前一行字节都不写
@@ -278,13 +301,36 @@ fn send(
     })
 }
 
-/// `team_spawn`：**准入 + 落库**（起进程在 2.5b 的接线段）。
+/// `team_spawn`：**准入 + 团队配置 + 落库**（起进程在 2.5b 的接线段）。
 ///
 /// # 顺序即契约
 ///
-/// 授权已由 [`call_async`] 先做（仅 Lead）→ 准入查表 → 名字合法性 → 落库（重名
-/// 由 `add_member` 报）。先准入再落库很重要：拒绝路径上不能留下
-/// 任何成员行（否则队长的花名册里会多出一个永远不会跑的名字）。
+/// 授权已由 [`call_async`] 先做（仅 Lead）→ 准入查表 → **团队池子** → **成员上限** →
+/// 名字合法性 → 缺省值补全 → 落库（重名由 `add_member` 报）。先校验再落库很重要：
+/// 拒绝路径上不能留下任何成员行（否则队长的花名册里会多出一个永远不会跑的名字，
+/// 而「成员行 = 可查询状态」是本域对两相位设计的承诺）。判据：
+/// `a_spawn_outside_the_team_pool_is_refused_with_the_pool` 与
+/// `the_member_limit_is_enforced_and_the_lead_does_not_count`（两者都断言「被拒后库里没有
+/// 新成员行」）。
+///
+/// # 团队配置从哪来（方案 C：三处同一份事实）
+///
+/// 池子 / 上限 / 默认值都存在 `team` 行上，`team_options` 与角色 preamble 读同一份
+/// （[`options_for`]），这里读它做**校验与补全**：
+///
+/// | 配置项 | 这里怎么用 | 拒绝时说什么 |
+/// | --- | --- | --- |
+/// | `allowed_agent_ids` | `agent_id` 必须在**解析后**的池内 | 列出池子 + 指向 `team_options`（改配置的地方） |
+/// | `max_members` | 已有成员数（不含队长）必须 `< max_members` | 带上限与当前数量 |
+/// | `default_model` / `default_workspace` / `default_approval_policy` | 入参缺省时的来源 | —（填进成员行） |
+///
+/// 校验放在**写库之前**：成员行一旦落库就是「可查询状态」，被拒的请求不该污染它。
+///
+/// # 缺省值 ≠ 常量
+///
+/// `workspace` 的缺省**不是** `shared`、`approval_policy` 的缺省**不是** `queue`：
+/// 它们都读团队列（`Team.default_*`）。硬编码一份在这里，就等于团队配置在 `team_spawn`
+/// 这一侧被悄悄忽略 —— 而用户是在面板上配的，他没有任何办法发现它没生效。
 ///
 /// # 为什么只允许 spawn worker
 ///
@@ -318,10 +364,46 @@ fn spawn(
         return Err(AppError::Unsupported(why));
     }
 
+    // 团队配置：池 / 上限 / 默认值。团队行缺失是真异常（队长凭证是签发时真实存在过的
+    // 产物），因此 `NotFound` 而不是「当作没限制」—— 后者会让一个被删掉的团队仍然可写。
+    let team = team_of(manager, &principal.team_id)?;
+    let member_count = manager.member_count(&principal.team_id);
+    let options = options_for(&team, member_count);
+
+    // 池子：**池外一律拒绝并列出池子**。静默接受一个池外的 CLI，等于让面板上的勾选
+    // 失去意义；而只说「不行」不说「允许谁」，队长只能靠试 → 它会把回合花在枚举上。
+    if !options
+        .defaults
+        .allowed_agent_ids
+        .iter()
+        .any(|allowed| allowed == &agent_id)
+    {
+        return Err(AppError::Conflict(format!(
+            "agent `{agent_id}` is not an allowed member of team `{}`; allowed members: {}; \
+             the pool is part of this team's configuration (read it with `{}`)",
+            principal.team_id,
+            options.defaults.allowed_agent_ids.join(", "),
+            spec_for(ToolName::TeamOptions).wire,
+        )));
+    }
+
+    // 上限：**不含队长**（队长不是 spawn 出来的，见下面的「为什么只允许 spawn worker」）。
+    if options.defaults.remaining() == 0 {
+        return Err(AppError::Conflict(format!(
+            "team `{}` already has {} members and its limit is {}; close one with `{}` before \
+             spawning another",
+            principal.team_id,
+            options.defaults.member_count,
+            options.defaults.max_members,
+            spec_for(ToolName::TeamClose).wire,
+        )));
+    }
+
     let name = member_name(wire, required_str(wire, args, "name")?)?;
-    let workspace = spawn_workspace(wire, args)?;
-    let approval_policy = approval_policy_arg(wire, args)?;
-    let model = model_arg(wire, args)?;
+    // 三个缺省值的来源都是**团队列**（不是常量，见函数的「缺省值 ≠ 常量」）。
+    let workspace = spawn_workspace(wire, args)?.unwrap_or_else(|| team.default_workspace.clone());
+    let approval_policy = spawn_approval_policy(wire, args, &team)?;
+    let model = spawn_model(wire, args, &team)?;
 
     let member_id = format!("{name}@{}", principal.team_id);
     let member = TeamMember {
@@ -681,6 +763,13 @@ fn optional_str<'a>(
     }
 }
 
+/// 团队必须存在（读配置类工具的入口：`team_options` 与 `team_spawn` 都要它的池 / 默认值）。
+fn team_of(manager: &TeamManager, team_id: &str) -> Result<Team, AppError> {
+    manager
+        .team(team_id)
+        .ok_or_else(|| AppError::NotFound(format!("team `{team_id}` is not loaded")))
+}
+
 /// 成员必须**存在于本队**；外队成员与不存在一律 `NotFound`（不泄漏别队花名册）。
 fn member_of_team(
     manager: &TeamManager,
@@ -770,7 +859,10 @@ fn workspace_arg(wire: &str, args: &serde_json::Value) -> Result<Workspace, AppE
 ///
 /// 同一个判据、同一句错误文案 —— 三个字段各自复制一份的话，未来加第四个注入点时
 /// 必然漏一处，而漏掉的表现是 2.5b 在跨平台 spawn 时 panic。
-fn reject_control_chars(wire: &str, field: &str, value: &str) -> Result<(), AppError> {
+/// `pub(crate)`：建队时的配置校验（`bootstrap::validate_config` 的 `default_model`）与
+/// `team_spawn` 的 `model` 入参必须用**同一份**判据 —— 两份判据会漂移，而漂移的表现是
+/// 「面板接受了这个默认值，起进程时 panic」。
+pub(crate) fn reject_control_chars(wire: &str, field: &str, value: &str) -> Result<(), AppError> {
     if value.chars().any(char::is_control) {
         return Err(AppError::InvalidInput(format!(
             "`{field}` for {wire} must not contain control characters (a NUL cannot be \
@@ -827,6 +919,13 @@ fn member_name(wire: &str, raw: &str) -> Result<String, AppError> {
 /// `workspace`（**对象**，与 `task_create` 的字符串形态不同）：`kind` 必填，
 /// `worktree` 还必须有**绝对**的 `path`。
 ///
+/// # 为什么返回 `Option`
+///
+/// 缺省（`None`）≠「落到 shared」：缺省值的来源是**团队配置**
+/// （`Team.default_workspace`），由调用方补。在这里返回 `Workspace::Shared` 会把
+/// 「团队说默认用 worktree」这一条静默吃掉。
+///
+/// 缺 `kind` 仍然报错（那是**给了但形状不对**，与「没给」是两件事）。
 /// 缺 `path` 时报错而不是降级成 `Shared`：那是「以为在做隔离的活，实际与别的成员
 /// 共用同一个 cwd」，而共享 cwd 下的 hook 归因只能靠 env（design §5.4）。
 /// `path` 还要过 [`reject_control_chars`]（NUL 无法表示为文件系统路径）。
@@ -840,13 +939,10 @@ fn member_name(wire: &str, raw: &str) -> Result<String, AppError> {
 ///
 /// 执行层的剩余义务（必须写在它的文档里）：`canonicalize()` + 校验落在团队
 /// `project_path` 之下。
-fn spawn_workspace(wire: &str, args: &serde_json::Value) -> Result<Workspace, AppError> {
+fn spawn_workspace(wire: &str, args: &serde_json::Value) -> Result<Option<Workspace>, AppError> {
     let Some(value) = args.get("workspace") else {
-        return Err(AppError::InvalidInput(format!(
-            "missing required argument `workspace` for {wire}; pass \
-             {{\"kind\":\"shared\"}}, {{\"kind\":\"read_only\"}} or \
-             {{\"kind\":\"worktree\",\"path\":\"…\"}}"
-        )));
+        // 缺省：由团队配置填（`Team.default_workspace`），不是常量。
+        return Ok(None);
     };
     let Some(object) = value.as_object() else {
         return Err(AppError::InvalidInput(format!(
@@ -867,8 +963,8 @@ fn spawn_workspace(wire: &str, args: &serde_json::Value) -> Result<Workspace, Ap
         }
     };
     match kind {
-        "shared" => Ok(Workspace::Shared),
-        "read_only" => Ok(Workspace::ReadOnly),
+        "shared" => Ok(Some(Workspace::Shared)),
+        "read_only" => Ok(Some(Workspace::ReadOnly)),
         "worktree" => match object.get("path") {
             Some(serde_json::Value::String(path)) if !path.trim().is_empty() => {
                 reject_control_chars(wire, "workspace.path", path)?;
@@ -880,7 +976,7 @@ fn spawn_workspace(wire: &str, args: &serde_json::Value) -> Result<Workspace, Ap
                         path.display()
                     )));
                 }
-                Ok(Workspace::Worktree { path })
+                Ok(Some(Workspace::Worktree { path }))
             }
             _ => Err(AppError::InvalidInput(format!(
                 "`workspace.path` for {wire} is required when `kind` is `worktree`"
@@ -892,14 +988,21 @@ fn spawn_workspace(wire: &str, args: &serde_json::Value) -> Result<Workspace, Ap
     }
 }
 
-/// 可选的 `approval_policy`（缺省 = `Queue`，design §6.1：不冒泡进队长对话）。
+/// 生效的 `approval_policy`：入参优先，**缺省取团队的 `default_approval_policy`**。
+///
+/// 缺省不是常量 `Queue`：那是团队列的缺省值，不是这里写死的值 —— 用户在面板上把默认改成
+/// `Bypass` 之后，不传这个参数的 spawn 必须拿到 `Bypass`，否则那条配置从未生效过。
 ///
 /// 走 serde 而不是手写 `match`：枚举的 wire 字面量只有一个源（
 /// `types::tests::enum_wire_names_are_the_documented_snake_case` 钉着），手写一份
 /// 字符串匹配就是给同一个闭集造第二个名字。
-fn approval_policy_arg(wire: &str, args: &serde_json::Value) -> Result<ApprovalPolicy, AppError> {
+fn spawn_approval_policy(
+    wire: &str,
+    args: &serde_json::Value,
+    team: &Team,
+) -> Result<ApprovalPolicy, AppError> {
     let Some(raw) = optional_str(wire, args, "approval_policy")? else {
-        return Ok(ApprovalPolicy::Queue);
+        return Ok(team.default_approval_policy);
     };
     serde_json::from_value::<ApprovalPolicy>(serde_json::Value::String(raw.to_owned())).map_err(
         |_| {
@@ -910,22 +1013,31 @@ fn approval_policy_arg(wire: &str, args: &serde_json::Value) -> Result<ApprovalP
     )
 }
 
-/// 可选的 `model`：缺 = 用该 agent 的默认；空白串拒绝（避免把拼错当成「没给」）。
+/// 生效的 `model`：入参优先，**缺省取团队的 `default_model`**（`None` = 该 CLI 自己的默认）。
 ///
-/// 控制字符同样拒绝：这个值最终会作为 `--model <value>` 进 argv，而 NUL 会让
-/// `Command::arg` panic（见 [`reject_control_chars`]）。
-fn model_arg(wire: &str, args: &serde_json::Value) -> Result<Option<String>, AppError> {
-    match optional_str(wire, args, "model")? {
-        None => Ok(None),
-        Some(raw) if raw.trim().is_empty() => Err(AppError::InvalidInput(format!(
-            "`model` for {wire} must not be empty (omit it to use the agent default)"
-        ))),
-        Some(raw) => {
-            let model = raw.trim();
-            reject_control_chars(wire, "model", model)?;
-            Ok(Some(model.to_owned()))
+/// 两个来源走**同一个**判据：空白串拒绝（避免把拼错当成「没给」），控制字符拒绝
+/// （这个值最终作为 `--model <value>` 进 argv，NUL 会让 `Command::arg` panic）。
+/// 团队默认值也过一遍 —— 它同样会进 argv，而它是从面板（外部输入）来的。
+fn spawn_model(
+    wire: &str,
+    args: &serde_json::Value,
+    team: &Team,
+) -> Result<Option<String>, AppError> {
+    let chosen = match optional_str(wire, args, "model")? {
+        None => team.default_model.as_deref(),
+        Some(raw) if raw.trim().is_empty() => {
+            return Err(AppError::InvalidInput(format!(
+                "`model` for {wire} must not be empty (omit it to use the team default)"
+            )))
         }
-    }
+        Some(raw) => Some(raw.trim()),
+    };
+    let Some(model) = chosen else {
+        return Ok(None);
+    };
+    let model = model.trim();
+    reject_control_chars(wire, "model", model)?;
+    Ok(Some(model.to_owned()))
 }
 
 /// 可选的 `depends_on`：每一项必须是本队已有任务（否则板上会多一条永不满足的边）。
@@ -984,12 +1096,13 @@ fn next_task_id(manager: &TeamManager, team_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::team::fixtures::{fixture_member, fixture_team};
+    use crate::agent::team::fixtures::{fixture_member, fixture_team, fixture_team_configured};
     use crate::agent::team::identity;
     use crate::agent::team::manager::TeamManager;
     use crate::agent::team::store::TeamStore;
     use crate::agent::team::types::{
-        AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel, Team, TeamState, WorkerChannel,
+        AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel, Team, TeamConfig, TeamState,
+        WorkerChannel, Workspace,
     };
     use serde_json::json;
 
@@ -1027,9 +1140,13 @@ mod tests {
     const W2: &str = "w2@tm_1";
     const OUTSIDER: &str = "x9@tm_2";
 
+    /// 测试团队：上限放到硬上界，让「池 / 上限」之外的用例不会被缺省的 4 个名额挡住
+    /// （上限自己的判据在 `the_member_limit_is_enforced_and_the_lead_does_not_count`，
+    /// 那里用显式配置的团队）。
     fn team(id: &str) -> Team {
         Team {
             name: format!("team {id}"),
+            max_members: crate::agent::team::types::MAX_MEMBERS_LIMIT,
             ..fixture_team(id)
         }
     }
@@ -1075,6 +1192,21 @@ mod tests {
         ] {
             manager.add_member(member(id, name, role, team_id)).unwrap();
         }
+        std::sync::Arc::new(manager)
+    }
+
+    /// 一个按**给定团队配置**建好的团队 + 队长（无成员）。
+    ///
+    /// 池子 / 上限 / 默认值三处的判据都用它：配置在这条路径上是**真的落库**的
+    /// （`create_team` → `store.upsert_team`），所以断言到的是读回来的值。
+    fn configured_team(config: &TeamConfig) -> std::sync::Arc<TeamManager> {
+        let manager = TeamManager::new(TeamStore::open_in_memory().unwrap());
+        manager
+            .create_team(fixture_team_configured(TEAM, config))
+            .unwrap();
+        manager
+            .add_member(member(LEAD, "lead", MemberRole::Lead, TEAM))
+            .unwrap();
         std::sync::Arc::new(manager)
     }
 
@@ -1678,6 +1810,227 @@ mod tests {
             };
             assert!(message.contains(key), "{message}");
         }
+    }
+
+    // ── 团队配置（方案 C）：池子 / 上限 / 默认值 ─────────────────────────
+
+    /// 池外的 `agent_id` 被拒，且错误里**列出池子**并指向改配置的工具。
+    ///
+    /// 保护的不变量（拒绝，不静默过滤）：面板上勾的池子必须真的生效；而只说「不行」不说
+    /// 「允许谁」，队长只能靠枚举 —— 它会把回合花在一串必然失败的调用上。
+    #[test]
+    fn a_spawn_outside_the_team_pool_is_refused_with_the_pool() {
+        let manager = configured_team(&TeamConfig {
+            allowed_agent_ids: vec!["pi".into()],
+            ..TeamConfig::default()
+        });
+        let err = call(
+            &manager,
+            &lead(),
+            "team_spawn",
+            &spawn_args("claude-code", "w9"),
+        )
+        .unwrap_err();
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+        let message = err.to_string();
+        assert!(
+            message.contains("claude-code"),
+            "必须点名被拒的 id：{message}"
+        );
+        assert!(message.contains("pi"), "必须列出池子：{message}");
+        assert!(
+            message.contains("team_options"),
+            "必须指向「从哪读/改配置」：{message}"
+        );
+        // 拒绝路径上不得留下成员行（成员行 = 可查询状态的承诺）。
+        assert!(manager.member("w9@tm_1").is_none(), "被拒的请求不得落库");
+        assert!(manager.store().list_members(TEAM).unwrap().len() == 1);
+    }
+
+    /// 池内的 `agent_id` 照常通过（否则上面那条可能只是「碰巧全拒」）。
+    #[test]
+    fn a_spawn_inside_the_team_pool_succeeds() {
+        let manager = configured_team(&TeamConfig {
+            allowed_agent_ids: vec!["claude-code".into()],
+            ..TeamConfig::default()
+        });
+        let spawned = spawn_ok(&manager, &lead(), &spawn_args("claude-code", "w9"));
+        assert_eq!(spawned.member_id, "w9@tm_1");
+    }
+
+    /// 空池 = **不限制**：默认团队什么都能 spawn（入场不该强迫用户先勾选）。
+    #[test]
+    fn an_empty_pool_allows_every_launchable_cli() {
+        let manager = configured_team(&TeamConfig::default());
+        for (agent_id, name) in [("claude-code", "w1"), ("pi", "w2")] {
+            let spawned = spawn_ok(&manager, &lead(), &spawn_args(agent_id, name));
+            assert_eq!(
+                manager.member(&spawned.member_id).unwrap().agent_id,
+                agent_id
+            );
+        }
+    }
+
+    /// 第 `max_members + 1` 个成员被拒，错误里带上限与当前数量；**队长不计入**。
+    ///
+    /// 队长在花名册里（`lead@tm_1`）但不在名额里：它是这个队的第一个主体，不是被 spawn
+    /// 出来的。把队长算进去的后果是「上限 = 1 的队连一个成员都加不了」。
+    #[test]
+    fn the_member_limit_is_enforced_and_the_lead_does_not_count() {
+        let manager = configured_team(&TeamConfig {
+            max_members: 1,
+            ..TeamConfig::default()
+        });
+        spawn_ok(&manager, &lead(), &spawn_args("claude-code", "w1"));
+
+        let err = call(&manager, &lead(), "team_spawn", &spawn_args("pi", "w2")).unwrap_err();
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+        let message = err.to_string();
+        assert!(message.contains("limit is 1"), "必须带上限：{message}");
+        assert!(
+            message.contains("already has 1 members"),
+            "必须带当前数量（不含队长）：{message}"
+        );
+
+        // 被拒之后：花名册里只有 w1 + 队长，库里同样两行。
+        assert!(manager.member("w2@tm_1").is_none());
+        assert_eq!(manager.store().list_members(TEAM).unwrap().len(), 2);
+        assert_eq!(manager.member_count(TEAM), 1, "队长不计入成员数");
+    }
+
+    /// 缺省值**来自团队列**（不是硬编码常量），且落库值是团队默认值。
+    ///
+    /// 三列全部取非默认值：`model = Some(…)` / `workspace = ReadOnly` /
+    /// `approval_policy = Bypass`。把任何一处改回常量（`None` / `Shared` / `Queue`）
+    /// 这条都会红 —— 而那种偏差的后果是「用户在面板上配了默认值，它从未生效过」。
+    ///
+    /// 断言的是**落库行**（`store.get_member`），不是 `spawn` 的返回值：返回值只带三个
+    /// 字段（红线 14 的输出侧），看它无法证明缺省值进了成员行。
+    #[test]
+    fn spawn_defaults_come_from_the_team_row() {
+        let manager = configured_team(&TeamConfig {
+            default_model: Some("team-default-model".into()),
+            default_workspace: Workspace::ReadOnly,
+            default_approval_policy: ApprovalPolicy::Bypass,
+            ..TeamConfig::default()
+        });
+        // 只给必填的两项：`workspace` / `model` / `approval_policy` 全部省掉。
+        let args = json!({"agent_id": "claude-code", "name": "w9"});
+        let spawned = spawn_ok(&manager, &lead(), &args);
+
+        let stored = manager
+            .store()
+            .get_member(&spawned.member_id)
+            .unwrap()
+            .expect("成员必须已落库");
+        assert_eq!(stored.model.as_deref(), Some("team-default-model"));
+        assert_eq!(stored.workspace, Workspace::ReadOnly);
+        assert_eq!(stored.approval_policy, ApprovalPolicy::Bypass);
+    }
+
+    /// 入参**优先于**团队默认值（否则配置会覆盖队长的显式选择）。
+    #[test]
+    fn explicit_spawn_arguments_win_over_the_team_defaults() {
+        let manager = configured_team(&TeamConfig {
+            default_model: Some("team-default-model".into()),
+            default_workspace: Workspace::ReadOnly,
+            default_approval_policy: ApprovalPolicy::Bypass,
+            ..TeamConfig::default()
+        });
+        let spawned = spawn_ok(
+            &manager,
+            &lead(),
+            &json!({
+                "agent_id": "claude-code",
+                "name": "w9",
+                "workspace": {"kind": "shared"},
+                "model": "explicit-model",
+                "approval_policy": "interactive",
+            }),
+        );
+        let stored = manager
+            .store()
+            .get_member(&spawned.member_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.model.as_deref(), Some("explicit-model"));
+        assert_eq!(stored.workspace, Workspace::Shared);
+        assert_eq!(stored.approval_policy, ApprovalPolicy::Interactive);
+    }
+
+    /// 团队默认 model 也会进 argv：控制字符必须在这里被拒（不是等执行层 panic）。
+    #[test]
+    fn a_team_default_model_with_control_characters_is_refused() {
+        let manager = configured_team(&TeamConfig {
+            default_model: Some("so\nnet".into()),
+            ..TeamConfig::default()
+        });
+        let err = call(
+            &manager,
+            &lead(),
+            "team_spawn",
+            &json!({"agent_id": "claude-code", "name": "w9"}),
+        )
+        .unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(err.to_string().contains("control characters"), "{err}");
+        assert!(manager.member("w9@tm_1").is_none());
+    }
+
+    /// `team_options`（MCP 出口）与别的出口**同一个函数**：载荷逐字等于
+    /// `options_for(team, member_count)`。
+    ///
+    /// 判据的形态是「比对可见行为」而不是「读源码找函数名」：把这里改成自己拼一份清单
+    /// （哪怕只少一个成员），这条就会红。
+    #[test]
+    fn team_options_is_the_same_derivation_as_the_panel() {
+        let manager = configured_team(&TeamConfig {
+            allowed_agent_ids: vec!["pi".into(), "claude-code".into()],
+            default_model: Some("team-default-model".into()),
+            max_members: 2,
+            ..TeamConfig::default()
+        });
+        spawn_ok(&manager, &lead(), &spawn_args("claude-code", "w1"));
+
+        let reply = call(&manager, &lead(), "team_options", &json!({})).unwrap();
+        let ToolReply::Options(options) = reply else {
+            panic!("team_options 必须返回 Options，实际 {reply:?}");
+        };
+
+        let team = manager.team(TEAM).expect("团队行");
+        assert_eq!(options, options_for(&team, manager.member_count(TEAM)));
+        assert_eq!(options.defaults.max_members, 2);
+        assert_eq!(options.defaults.member_count, 1);
+        assert_eq!(options.defaults.remaining(), 1);
+        assert_eq!(
+            options.defaults.default_model.as_deref(),
+            Some("team-default-model")
+        );
+        let ids: Vec<&str> = options
+            .members
+            .iter()
+            .map(|row| row.agent_id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["claude-code", "pi"]);
+
+        // 成员（worker）也能读（只读面，授权矩阵里与 `team_status` 同列）。
+        let as_worker = call(&manager, &worker(W1), "team_options", &json!({})).unwrap();
+        assert_eq!(as_worker, ToolReply::Options(options));
+    }
+
+    /// 未知团队 → `NotFound`（队长凭证是签发时真实存在过的产物，走到这里说明团队行没了）。
+    #[test]
+    fn team_options_for_a_missing_team_is_not_found() {
+        let manager = configured_team(&TeamConfig::default());
+        let err = call(
+            &manager,
+            // 团队行不存在的队长凭证（内存镜像里没有 `tm_gone`）。
+            &principal("ghost@tm_gone", MemberRole::Lead, "tm_gone"),
+            "team_options",
+            &json!({}),
+        )
+        .unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
     }
 
     // ── P2.4：`team_wait`（异步入口）──────────────────────────────

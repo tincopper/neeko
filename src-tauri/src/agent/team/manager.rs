@@ -373,6 +373,26 @@ impl TeamManager {
         self.inner.lock().tasks.get(task_id).cloned()
     }
 
+    /// 团队的**成员数（不含队长）**。
+    ///
+    /// 用途只有两处，且必须同源：`team_spawn` 的上限判据与 `team_options` 的
+    /// `memberCount`（队长据此算「还能加几个」）。写两份计数必然有一份把队长也算进去 ——
+    /// 而那种偏差只在“刚好卡在上限”时显形。
+    ///
+    /// 只读内存镜像（锁内无 I/O）：花名册是 `load` 时期建的，与库同一把锁内一起改。
+    /// 已 `Dead` 的成员仍计入 —— 它在花名册上占着名字与 `max_members` 的名额，
+    /// 直到被 `team_close` 归档（否则一个反复起不来的 CLI 可以无限重试）。
+    #[must_use]
+    pub fn member_count(&self, team_id: &str) -> u32 {
+        let inner = self.inner.lock();
+        let count = inner
+            .members
+            .values()
+            .filter(|member| member.team_id == team_id && member.role == MemberRole::Worker)
+            .count();
+        u32::try_from(count).unwrap_or(u32::MAX)
+    }
+
     /// 读团队全部任务（板视图），按 id 排序。
     #[must_use]
     pub fn tasks(&self, team_id: &str) -> Vec<TeamTask> {

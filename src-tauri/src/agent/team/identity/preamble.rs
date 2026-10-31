@@ -44,9 +44,12 @@ pub const MAX_PREAMBLE_CHARS: usize = 2000;
 ///   放在参数位而不是从 `member` 读，是为了让「这条文本属于哪个角色」在调用点可见，
 ///   也让两种角色都能被同一个纯函数直接测。
 /// - `team` / `member`：已落库的团队行与成员行（team_id、member_id、项目根都从这两行取）。
-/// - `members`：可选成员清单，由 [`crate::agent::team::admission::launchable_agents`] 给出。
-///   只有队长版会用到它：**`refusal` 非空的 CLI 不列** —— 向队长宣传一个起不来的 CLI，
-///   等于让它反复撞同一个拒绝。
+/// - `members`：可选成员清单，**由 [`crate::agent::team::options::options_for`] 给出**
+///   （= 这个队的池内可启动者）。只有队长版会用到它。两个过滤已经在那一步做完：
+///   ① 池子外的 CLI 不列（否则队长会挑一个永远被 `team_spawn` 拒绝的选项）；
+///   ② `refusal` 非空的 CLI 不列（向队长宣传一个起不来的 CLI，等于让它反复撞同一个拒绝）。
+///   本文件**不再**从准入表全量推导一次 —— 那会让 preamble 与 `team_options` /
+///   `team_spawn` 对同一件事给出三个答案。
 #[must_use]
 pub fn preamble(
     role: MemberRole,
@@ -70,11 +73,13 @@ fn lead_preamble(team: &Team, member: &TeamMember, members: &[LaunchableAgent]) 
     out.push_str(&format!(
         "\nOrder of work:\n\
          1. `{}` - read the roster and the board before acting.\n\
-         2. `{}` - write each unit of work as a task; the body is the brief a member reads.\n\
-         3. `{}` - add a worker when you need hands (agent_id, name, workspace).\n\
-         4. `{}` - block until the members or tasks you named settle. A timeout is a result, \
+         2. `{}` - read the allowed CLIs, the free slots and the spawn defaults.\n\
+         3. `{}` - write each unit of work as a task; the body is the brief a member reads.\n\
+         4. `{}` - add a worker when you need hands (agent_id and name; the rest defaults).\n\
+         5. `{}` - block until the members or tasks you named settle. A timeout is a result, \
          not an error.\n\n",
         wire(ToolName::TeamStatus),
+        wire(ToolName::TeamOptions),
         wire(ToolName::TaskCreate),
         wire(ToolName::TeamSpawn),
         wire(ToolName::TeamWait),
@@ -191,7 +196,7 @@ fn tool_block() -> String {
     )
 }
 
-/// 队长版独有：这台机器上今天真的能 spawn 的 CLI（`refusal` 非空的一律不列）。
+/// 队长版独有：**这个队**允许 spawn 的 CLI（`refusal` 非空的一律不列）。
 fn spawnable_block(members: &[LaunchableAgent]) -> String {
     let roster = members
         .iter()
@@ -202,14 +207,15 @@ fn spawnable_block(members: &[LaunchableAgent]) -> String {
         })
         .collect::<Vec<_>>();
     if roster.is_empty() {
-        // 空清单不是「没有 CLI」而是「本机的准入表推不出任何可 spawn 的 CLI」——
-        // 说出来，别让队长以为 `team_spawn` 的参数格式有问题。
-        return "Worker CLIs you can spawn on this machine: none is launchable right now, so \
-                `team_spawn` will refuse every agent id.\n"
+        // 空清单不是「没有 CLI」而是「这个队的池子里没有可启动的 CLI」（池子被限制到 0 个
+        // 可启动项，或本机的准入表推不出任何可启动项）—— 说出来，别让队长以为
+        // `team_spawn` 的参数格式有问题。
+        return "Worker CLIs you can spawn in this team: none is launchable for it right now, so \
+                `team_spawn` will refuse every agent id; call `team_options` to read the pool.\n"
             .to_string();
     }
     format!(
-        "Worker CLIs you can spawn on this machine: {}\n",
+        "Worker CLIs you can spawn in this team: {}\n",
         roster.join(", ")
     )
 }
@@ -439,7 +445,10 @@ mod tests {
         assert!(!worker_text().contains("Worker CLIs you can spawn"));
         // 空清单也要说话（而不是渲染成一句半截话）。
         let none = preamble(MemberRole::Lead, &fixture_team(TEAM), &lead_member(), &[]);
-        assert!(none.contains("none is launchable right now"), "{none}");
+        assert!(
+            none.contains("none is launchable for it right now"),
+            "{none}"
+        );
     }
 
     /// 档位来自**准入表**：清单里的 tier 与 `tier_of` 的推导逐条一致。

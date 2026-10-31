@@ -39,6 +39,87 @@ pub struct Team {
     pub closed_at: Option<i64>,
     /// 团队状态。
     pub state: TeamState,
+    /// 允许被 `team_spawn` 选中的 CLI（`agent_id`）。**空 = 不限制**。
+    ///
+    /// 空池的语义刻意是「不限制」而不是「一个都不许」：建队是一次性入场动作，
+    /// 不该强迫用户在开第一个会话之前先勾选成员；而**限制**是显式动作。
+    /// 读那一侧必须把空池**解析**成「当前全部可启动 CLI」再展示
+    /// （[`crate::agent::team::options::options_for`]），否则队长会看到空池并以为不能 spawn。
+    #[serde(default)]
+    pub allowed_agent_ids: Vec<String>,
+    /// 成员 `team_spawn` 未传 `model` 时的缺省；`None` = 让该 CLI 用自己配置里的默认。
+    #[serde(default)]
+    pub default_model: Option<String>,
+    /// 成员未传 `workspace` 时的缺省（缺省 = 团队根共享）。
+    #[serde(default)]
+    pub default_workspace: Workspace,
+    /// 成员未传 `approval_policy` 时的缺省（缺省 = 进待批队列，R0b.3）。
+    #[serde(default)]
+    pub default_approval_policy: ApprovalPolicy,
+    /// 成员上限（**不含队长**）。缺省 [`DEFAULT_MAX_MEMBERS`]，合法区间 [`1`, [`MAX_MEMBERS_LIMIT`]]。
+    #[serde(default = "default_max_members")]
+    pub max_members: u32,
+}
+
+/// 成员的缺省上限（不含队长）。
+///
+/// 取 4 而不是「越大越好」：一个队长同时协调的可观测上限很低（`team_status` 的每行、
+/// 每次 `team_wait` 的目标集都要人读），而它同时也是并发 PTY 的数量。
+/// 真要走更大的队，用户显式改这一列。
+pub const DEFAULT_MAX_MEMBERS: u32 = 4;
+
+/// 成员上限的**硬上界**（`max_members` 的合法区间是 `1..=MAX_MEMBERS_LIMIT`）。
+///
+/// 上界存在的理由与 [`DEFAULT_MAX_MEMBERS`] 同源：每个成员是一个真进程 + 一份隔离配置
+/// 目录 + 一条 PTY 缓冲。给一个「想要 200 个成员」的输入一个安静的截断，比拒绝更糟 ——
+/// 用户以为配上了。
+pub const MAX_MEMBERS_LIMIT: u32 = 8;
+
+/// serde 缺省：`max_members` 缺失时取 [`DEFAULT_MAX_MEMBERS`]。
+///
+/// 单独成函数是因为 `#[serde(default)]` 对 `u32` 会给出 `0` —— 而 `0` 是一个被
+/// [`MAX_MEMBERS_LIMIT`] 区间**拒绝**的值。用默认值表达「没给」，用区间表达「给错了」。
+const fn default_max_members() -> u32 {
+    DEFAULT_MAX_MEMBERS
+}
+
+/// 建队时的团队配置入参（`start_team_session` 的 `config`，也用于 `team_options` 的解析）。
+///
+/// 与 [`Team`] 的五个配置列**同名同义**：一份数据，两个用途（写入口 / 读出来的解析）。
+/// 分成两个类型而不是复用 `Team`，是因为建队时其余字段（id / 会话 / 路径 / 状态）由
+/// 后端决定，调用方不该有机会传它们。
+///
+/// 每个字段都带 serde 缺省，所以面板可以只传它真的改过的那几项（`None` 整个不传 = 全默认）。
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamConfig {
+    /// 允许被 `team_spawn` 选中的 CLI（空 = 不限制）。
+    #[serde(default)]
+    pub allowed_agent_ids: Vec<String>,
+    /// 成员未传 `model` 时的缺省。
+    #[serde(default)]
+    pub default_model: Option<String>,
+    /// 成员未传 `workspace` 时的缺省。
+    #[serde(default)]
+    pub default_workspace: Workspace,
+    /// 成员未传 `approval_policy` 时的缺省。
+    #[serde(default)]
+    pub default_approval_policy: ApprovalPolicy,
+    /// 成员上限（不含队长）。
+    #[serde(default = "default_max_members")]
+    pub max_members: u32,
+}
+
+impl Default for TeamConfig {
+    fn default() -> Self {
+        Self {
+            allowed_agent_ids: Vec::new(),
+            default_model: None,
+            default_workspace: Workspace::default(),
+            default_approval_policy: ApprovalPolicy::default(),
+            max_members: DEFAULT_MAX_MEMBERS,
+        }
+    }
 }
 
 /// 团队状态机：`Active → Closing → Closed`（单向，不可回退）。
@@ -229,6 +310,17 @@ pub enum Workspace {
     ReadOnly,
 }
 
+/// 缺省 = 团队根共享。
+///
+/// 它是**配置列**（`Team.default_workspace`）的缺省，也是 `Workspace` 作为数据在
+/// 序列化缺省时的取值：隔离（`Worktree`）是显式动作，因为它的路径必须落在团队根内
+/// 且由调用方给出。
+impl Default for Workspace {
+    fn default() -> Self {
+        Self::Shared
+    }
+}
+
 /// 怎么给成员**发**消息（能力声明，红线 14：声明即实现）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -291,6 +383,16 @@ pub enum ApprovalPolicy {
     Queue,
     /// 旁路（开关写法落插件数据，红线 15）。
     Bypass,
+}
+
+/// 缺省 = 进待批队列（R0b.3：审批不冒泡进队长对话）。
+///
+/// `Interactive` 会把审批提示写进成员自己的 PTY（队长看不见），`Bypass` 是显式放弃
+/// 审批 —— 两者都不该是「没给」的落点。
+impl Default for ApprovalPolicy {
+    fn default() -> Self {
+        Self::Queue
+    }
 }
 
 /// MCP 配置怎么塞给这个 CLI —— P0 实测得出，属插件数据（红线 15）。
@@ -550,5 +652,85 @@ mod tests {
         }"#;
         let task: TeamTask = serde_json::from_str(json).unwrap();
         assert!(!task.summary_truncated);
+    }
+
+    /// `Team` 的线上键集**逐字**钉住（camelCase）。
+    ///
+    /// 与 `TaskCard` / `TeamSession` 同一条规则：字段名对了不代表 wire 上名字对了，
+    /// 而前端对 `Team` 有一个 TS 镜像（`src/shared/types/team.ts`）—— 那边读的是
+    /// `allowedAgentIds` / `maxMembers` / `defaultApprovalPolicy` 这些键。
+    /// 新增一个配置列而漏了这句断言，代价是前端拿到 `undefined` 而不报错。
+    #[test]
+    fn team_serialises_its_configuration_as_camel_case_keys() {
+        let team = Team {
+            id: "tm_1".into(),
+            name: "T".into(),
+            lead_session_id: "s".into(),
+            lead_agent_id: "pi".into(),
+            project_path: PathBuf::from("root"),
+            created_at: 1,
+            closed_at: None,
+            state: TeamState::Active,
+            allowed_agent_ids: vec!["pi".into()],
+            default_model: Some("m".into()),
+            default_workspace: Workspace::Shared,
+            default_approval_policy: ApprovalPolicy::Queue,
+            max_members: 2,
+        };
+        let json = serde_json::to_value(&team).unwrap();
+        let mut keys: Vec<&str> = json
+            .as_object()
+            .expect("object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec![
+                "allowedAgentIds",
+                "closedAt",
+                "createdAt",
+                "defaultApprovalPolicy",
+                "defaultModel",
+                "defaultWorkspace",
+                "id",
+                "leadAgentId",
+                "leadSessionId",
+                "maxMembers",
+                "name",
+                "projectPath",
+                "state",
+            ]
+        );
+        roundtrip(team);
+    }
+
+    /// 配置缺省：`max_members` 缺失 ≠ `0`（`0` 是一个被区间拒绝的值）。
+    ///
+    /// 这条区分就是「没给」与「给错了」的机器形式：`0` 必须是一个**可被判错的输入**，
+    /// 不能被 serde 缺省悄悄吸收成 4。
+    #[test]
+    fn team_config_defaults_are_the_documented_ones() {
+        let default = TeamConfig::default();
+        assert!(default.allowed_agent_ids.is_empty(), "空池 = 不限制");
+        assert_eq!(default.default_model, None, "None = 让 CLI 用自己的默认");
+        assert_eq!(default.default_workspace, Workspace::Shared);
+        assert_eq!(default.default_approval_policy, ApprovalPolicy::Queue);
+        assert_eq!(default.max_members, DEFAULT_MAX_MEMBERS);
+
+        // 整个字段缺失 = 缺省值。
+        let empty: TeamConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(empty, default);
+
+        // 显式给 0 必须原样到达校验层（而不是被吸收成 4）。
+        let zero: TeamConfig = serde_json::from_str(r#"{"maxMembers":0}"#).unwrap();
+        assert_eq!(zero.max_members, 0);
+
+        // 线上口径 = camelCase（面板传的就是这套键）。
+        let json = serde_json::to_value(&default).unwrap();
+        assert!(json.get("maxMembers").is_some(), "{json}");
+        assert!(json.get("allowedAgentIds").is_some(), "{json}");
+        assert!(json.get("max_members").is_none(), "{json}");
     }
 }

@@ -219,6 +219,7 @@ macro_rules! neeko_invoke_handler {
             $crate::agent::team::commands::team_snapshot,
             $crate::agent::team::commands::team_task_detail,
             $crate::agent::team::commands::team_launchable_agents,
+            $crate::agent::team::commands::team_options,
             // ── agent CLI hooks（源 B：摄入与安装态）──────────────────────────
             $crate::agent::hooks::commands::agent_hooks_apply,
             $crate::agent::hooks::commands::agent_hooks_status,

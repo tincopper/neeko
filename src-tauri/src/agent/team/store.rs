@@ -26,9 +26,9 @@ use std::path::{Path, PathBuf};
 
 use crate::agent::team::types::{
     Artifact, MemberRole, MemberState, Team, TeamMember, TeamTask, TeamTaskState, Workspace,
+    DEFAULT_MAX_MEMBERS,
 };
 use crate::common::db::DbPool;
-
 /// `TeamTask.summary` 的硬上限（字节）。红线 4：进度摘要会进团队事件通道，
 /// 而通道载荷没有第二个闸门。
 pub const SUMMARY_MAX_BYTES: usize = 4096;
@@ -117,8 +117,60 @@ pub fn v13_to_v14(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// 把 `summary` 压到 [`SUMMARY_MAX_BYTES`]，返回 `(值, 是否截断)`。
+/// v14 -> v15：团队配置进 `team` 行（候选池 / 默认 model / 默认工作区 / 默认审批 / 成员上限）。
 ///
+/// # 五列全带默认值：旧行必须能读出来
+///
+/// 升级路径上唯一存在的数据就是**已建的团队行**。任何一列若 NOT NULL 却没有 DEFAULT，
+/// `ALTER TABLE` 会在第一个旧行上失败 —— 那是「升级后打不开面板」级别的故障。所以
+/// 除 `default_model`（语义就是可空）以外一律 `NOT NULL DEFAULT …`。
+/// 判据：`a_v14_team_row_upgrades_to_the_documented_defaults`。
+///
+/// # 为什么先查 `pragma_table_info`
+///
+/// `ALTER TABLE ADD COLUMN` **不是**幂等的（列已存在 = 报错），而 v13→v14 的
+/// `CREATE TABLE IF NOT EXISTS` 是可以手工重放的。保持同一性质：「半迁移后手工重放」
+/// 不得炸（判据：`migration_step_is_idempotent`）。
+///
+/// 列默认值的字面量必须与 `text_of` 的裸 snake_case 口径一致：`Workspace::Shared` 存成
+/// `shared`、`ApprovalPolicy::Queue` 存成 `queue`（不是带引号的 JSON）。
+pub fn v14_to_v15(conn: &Connection) -> Result<()> {
+    add_column_if_missing(conn, "allowed_agent_ids", "TEXT NOT NULL DEFAULT '[]'")?;
+    add_column_if_missing(conn, "default_model", "TEXT")?;
+    add_column_if_missing(conn, "default_workspace", "TEXT NOT NULL DEFAULT 'shared'")?;
+    add_column_if_missing(
+        conn,
+        "default_approval_policy",
+        "TEXT NOT NULL DEFAULT 'queue'",
+    )?;
+    add_column_if_missing(
+        conn,
+        "max_members",
+        &format!("INTEGER NOT NULL DEFAULT {DEFAULT_MAX_MEMBERS}"),
+    )?;
+    Ok(())
+}
+
+/// `team` 表加一列（已存在则跳过）。
+///
+/// 表名是调用方写的字面量（不是外部输入），列名走绑定参数 —— DDL 里不能绑位置参数，
+/// 所以声明串只能拼；能拼进来的东西全部来自本文件的常量。
+fn add_column_if_missing(conn: &Connection, column: &str, declaration: &str) -> Result<()> {
+    let existing: i64 = conn.query_row(
+        "SELECT count(*) FROM pragma_table_info('team') WHERE name = ?1",
+        params![column],
+        |row| row.get(0),
+    )?;
+    if existing > 0 {
+        return Ok(());
+    }
+    conn.execute_batch(&format!(
+        "ALTER TABLE team ADD COLUMN {column} {declaration};"
+    ))?;
+    Ok(())
+}
+
+/// 把 `summary` 压到 [`SUMMARY_MAX_BYTES`]，返回 `(值, 是否截断)`。///
 /// 截断点必须落在 UTF-8 字符边界上，否则写入的是非法 UTF-8，读回来会是乱码或
 /// 直接解码失败（中文摘要按 3 字节/字，`4096 / 3 = 1365` 个字的边界几乎必然落在字符中间）。
 #[must_use]
@@ -203,8 +255,9 @@ impl TeamStore {
         let conn = self.conn()?;
         conn.execute(
             "INSERT INTO team (id, name, lead_session_id, lead_agent_id, project_path,
-             created_at, closed_at, state)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             created_at, closed_at, state, allowed_agent_ids, default_model, default_workspace,
+             default_approval_policy, max_members)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 lead_session_id = excluded.lead_session_id,
@@ -212,7 +265,12 @@ impl TeamStore {
                 project_path = excluded.project_path,
                 created_at = excluded.created_at,
                 closed_at = excluded.closed_at,
-                state = excluded.state",
+                state = excluded.state,
+                allowed_agent_ids = excluded.allowed_agent_ids,
+                default_model = excluded.default_model,
+                default_workspace = excluded.default_workspace,
+                default_approval_policy = excluded.default_approval_policy,
+                max_members = excluded.max_members",
             params![
                 team.id,
                 team.name,
@@ -222,6 +280,14 @@ impl TeamStore {
                 team.created_at,
                 team.closed_at,
                 text_of(&team.state, "team.state")?,
+                text_of(&team.allowed_agent_ids, "team.allowed_agent_ids")?,
+                team.default_model,
+                text_of(&team.default_workspace, "team.default_workspace")?,
+                text_of(
+                    &team.default_approval_policy,
+                    "team.default_approval_policy"
+                )?,
+                i64::from(team.max_members),
             ],
         )?;
         Ok(())
@@ -230,10 +296,7 @@ impl TeamStore {
     /// 按 id 读一个团队。
     pub fn get_team(&self, id: &str) -> Result<Option<Team>> {
         let conn = self.conn()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, name, lead_session_id, lead_agent_id, project_path, created_at,
-             closed_at, state FROM team WHERE id = ?1",
-        )?;
+        let mut stmt = conn.prepare(&format!("{SELECT_TEAM} WHERE id = ?1"))?;
         let mut rows = stmt.query_map(params![id], map_team_row)?;
         rows.next().transpose().map_err(Into::into)
     }
@@ -241,10 +304,7 @@ impl TeamStore {
     /// 读全部团队（启动恢复用）。
     pub fn list_teams(&self) -> Result<Vec<Team>> {
         let conn = self.conn()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, name, lead_session_id, lead_agent_id, project_path, created_at,
-             closed_at, state FROM team ORDER BY created_at",
-        )?;
+        let mut stmt = conn.prepare(&format!("{SELECT_TEAM} ORDER BY created_at"))?;
         let rows = stmt.query_map([], map_team_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
@@ -451,6 +511,10 @@ pub struct TeamEventRecord {
     pub detail: Option<String>,
 }
 
+const SELECT_TEAM: &str = "SELECT id, name, lead_session_id, lead_agent_id, project_path,
+    created_at, closed_at, state, allowed_agent_ids, default_model, default_workspace,
+    default_approval_policy, max_members FROM team";
+
 const SELECT_MEMBER: &str = "SELECT id, team_id, name, role, agent_id, model, session_id,
     terminal_id, workspace, channel, result_channel, tier, approval_policy, mcp_injection,
     last_seq, state, token_hash, joined_at FROM team_member";
@@ -460,6 +524,7 @@ const SELECT_TASK: &str = "SELECT id, team_id, title, body, state, owner, worksp
     FROM team_task";
 
 fn map_team_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Team> {
+    let max_members: i64 = row.get(12)?;
     Ok(Team {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -469,6 +534,15 @@ fn map_team_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Team> {
         created_at: row.get(5)?,
         closed_at: row.get(6)?,
         state: column_json(row.get::<_, String>(7)?, "team.state")?,
+        allowed_agent_ids: column_json(row.get::<_, String>(8)?, "team.allowed_agent_ids")?,
+        default_model: row.get(9)?,
+        default_workspace: column_json(row.get::<_, String>(10)?, "team.default_workspace")?,
+        default_approval_policy: column_json(
+            row.get::<_, String>(11)?,
+            "team.default_approval_policy",
+        )?,
+        max_members: u32::try_from(max_members)
+            .map_err(|_| conversion_failure("team.max_members", "out of range"))?,
     })
 }
 
@@ -589,6 +663,13 @@ mod tests {
             created_at: 1_700_000_000_000,
             closed_at: None,
             state: TeamState::Active,
+            // 配置五列同样**每列都偏离默认值**：空池 / `None` / `shared` / `queue` / 4
+            // 是默认值，用它们打底会让「配置列根本没写进库」这类缺陷变绿。
+            allowed_agent_ids: vec!["claude".into(), "pi".into()],
+            default_model: Some("sonnet".into()),
+            default_workspace: Workspace::ReadOnly,
+            default_approval_policy: ApprovalPolicy::Bypass,
+            max_members: 3,
         }
     }
 
@@ -655,7 +736,7 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
         assert_eq!(version, crate::common::db::LATEST_VERSION);
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
 
         let mut stmt = conn
             .prepare("SELECT name FROM sqlite_master WHERE type IN ('table','index')")
@@ -688,6 +769,72 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         v13_to_v14(&conn).unwrap();
         v13_to_v14(&conn).unwrap();
+        // v15 是 `ALTER TABLE ADD COLUMN`（不幂等），靠 `pragma_table_info` 先判。
+        v14_to_v15(&conn).unwrap();
+        v14_to_v15(&conn).unwrap();
+    }
+
+    /// **升级路径**：一条 v14 形状的团队行（没有五个配置列）升级后必须能 load，且拿到
+    /// 文档化的默认值。
+    ///
+    /// # 为何必须用「真升一条旧行」而不是新库
+    ///
+    /// 新库走的是 `CREATE` + 全部 `ALTER`，它证明不了「已经存在的行」会得到默认值 ——
+    /// 而升级的真实对象就是那种行。判据是：`get_team` 不失败（不得让 hydrate 挂）、
+    /// 空池 = 不限制、`max_members = 4`、`shared` / `queue`。
+    ///
+    /// 库文件由 `tempdir()` 推导（红线 13）。
+    #[test]
+    fn a_v14_team_row_upgrades_to_the_documented_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("neeko.db");
+
+        // 1) 手工把库做到 v14（旧形状），再插一条**只有旧八列**的团队行。
+        {
+            let mut conn = Connection::open(&db).unwrap();
+            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
+                .unwrap();
+            for version in 0..12u32 {
+                let tx = conn
+                    .transaction_with_behavior(rusqlite::TransactionBehavior::Exclusive)
+                    .unwrap();
+                crate::library::migrations::step(&tx, version).unwrap();
+                tx.pragma_update(None, "user_version", version + 1).unwrap();
+                tx.commit().unwrap();
+            }
+            v13_to_v14(&conn).unwrap();
+            conn.pragma_update(None, "user_version", 14).unwrap();
+            conn.execute(
+                "INSERT INTO team (id, name, lead_session_id, lead_agent_id, project_path,
+                 created_at, closed_at, state)
+                 VALUES ('tm_v14', 'Old', 'sess', 'claude-code', ?1, 1, NULL, 'active')",
+                params![env!("CARGO_MANIFEST_DIR")],
+            )
+            .unwrap();
+        }
+
+        // 2) 跑完整迁移链（唯一入口：`TeamStore::open` 内部就会跑）。
+        let store = TeamStore::open(&db).unwrap();
+        let team = store
+            .get_team("tm_v14")
+            .unwrap()
+            .expect("旧行升级后必须仍然 load 得出来");
+
+        assert_eq!(team.name, "Old", "旧列原样保留");
+        assert_eq!(team.state, TeamState::Active);
+        assert!(
+            team.allowed_agent_ids.is_empty(),
+            "空池 = 不限制（不是「一个都不许」）：{:?}",
+            team.allowed_agent_ids
+        );
+        assert_eq!(team.default_model, None, "None = 让 CLI 用自己的默认");
+        assert_eq!(team.default_workspace, Workspace::Shared);
+        assert_eq!(team.default_approval_policy, ApprovalPolicy::Queue);
+        assert_eq!(
+            team.max_members,
+            crate::agent::team::types::DEFAULT_MAX_MEMBERS
+        );
+        assert_eq!(store.list_teams().unwrap().len(), 1);
     }
 
     /// 团队读写往返（含 `PathBuf` 列）。
@@ -811,6 +958,24 @@ mod tests {
             .unwrap();
         assert_eq!(state, "in_progress");
         assert_eq!(member_state, "running");
+        // 团队配置列同理：`shared` / `queue` 是裸 snake_case，不是带引号的 JSON
+        // （带引号的列会让「sqlite3 直接查」这条收益归零）。
+        let workspace: String = conn
+            .query_row(
+                "SELECT default_workspace FROM team WHERE id = 'tm_1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let policy: String = conn
+            .query_row(
+                "SELECT default_approval_policy FROM team WHERE id = 'tm_1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(workspace, "read_only");
+        assert_eq!(policy, "bypass");
         // 带数据的变体是 JSON（同一份 serde 表示，不需要第二张映射表）。
         let workspace: String = conn
             .query_row(
