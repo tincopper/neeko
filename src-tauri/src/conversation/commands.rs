@@ -1,7 +1,7 @@
-use crate::conversation::manager::ScanProgressEvent;
+use crate::conversation::manager::{ListScope, ScanProgressEvent};
 use crate::conversation::types::{
-    ConversationListPage, ConversationMessagePage, ConversationMeta, ConversationSearchHit,
-    ConversationStats, ScanReport,
+    ConversationListPage, ConversationListScope, ConversationMessagePage, ConversationMeta,
+    ConversationSearchHit, ConversationStats, ScanReport,
 };
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -90,32 +90,49 @@ pub async fn scan_conversations(
     result
 }
 
-/// List cached conversations, optionally filtered by project or agent.
+/// List cached conversations for **one explicit scope** (project or workspace unit).
 ///
 /// When `limit` is omitted or `0`, returns all matches (legacy full list).
 /// With a positive `limit`, returns a page for infinite scroll.
+///
+/// `scope` 是单值判别联合（[`ConversationListScope`]），不是「两个可选过滤参数」：
+/// 项目级与单元级对同一条会话的 `cwd` 给出**不同**答案，并存就必须定优先级 ——
+/// 那条隐式优先级会让「调用方要单元、却被按项目过滤」的请求静默通过。
+/// 单元级的根由 [`AppStateWrapper::resolve_unit_scope`] 解析（worktree 归属校验的唯一入口）。
 #[tauri::command]
-pub fn list_conversations(
-    project_path: Option<String>,
+pub async fn list_conversations(
+    scope: ConversationListScope,
     agent_id: Option<String>,
     offset: Option<u32>,
     limit: Option<u32>,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<ConversationListPage, AppError> {
     // Cold-start hydrate: load disk index into memory once if cache is empty.
-    let _ = state
-        .conversation_manager
-        .hydrate_from_disk_index_if_empty();
+    // 阻塞 fs ⇒ 与 `scan_conversations` 同一模式（`block_in_place`，红线 3）。
+    tokio::task::block_in_place(|| {
+        let _ = state
+            .conversation_manager
+            .hydrate_from_disk_index_if_empty();
+    });
 
-    state
-        .conversation_manager
-        .list_page(
-            project_path.as_deref(),
+    // 范围 → 过滤：两个变体各一条路，没有默认分支（缺哪种语义是编译期事实，不是运行时兜底）。
+    let page = |filter: ListScope<'_>| {
+        state.conversation_manager.list_page(
+            filter,
             agent_id.as_deref(),
             offset.unwrap_or(0),
             limit.unwrap_or(0),
         )
-        .map_err(AppError::from)
+    };
+    let page = match &scope {
+        ConversationListScope::Project { path } => page(ListScope::Project(path)),
+        ConversationListScope::Unit { workspace } => {
+            // 地址 → 单元归属（唯一入口：`resolve_workspace_target` → `UnitScope::resolve`）。
+            let unit = state.resolve_unit_scope(workspace).await?;
+            page(ListScope::Unit(&unit))
+        }
+    };
+    page.map_err(AppError::from)
 }
 
 /// Get one page of a conversation's messages by its ID.

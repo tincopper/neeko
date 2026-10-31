@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use super::adapter::SessionDeleteSupport;
+use crate::common::git::WorkspaceSession;
 
 /// 会话元数据（扫描时提取，存在内存中）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +180,27 @@ pub struct ScanReport {
     pub errors: Vec<String>,
 }
 
+/// 会话列表的**范围**（IPC 入参）。
+///
+/// 两种语义互斥：项目级要的是「整个项目的历史」，单元级要的是「这个执行上下文里的历史」。
+/// 它们对同一条 `project_path` 给出**不同**答案（worktree 嵌在主仓里时尤其明显），
+/// 所以是判别联合 —— 不是「两个可选过滤参数 + 谁优先」。后者能让调用方同时传两个维度
+/// 并静默丢掉一个，正是本类型要消灭的形态。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ConversationListScope {
+    /// 项目级（History 面板）：会话 cwd 等于该项目根或其后代。
+    Project {
+        /// 项目根。缺省无意义 —— 项目级请求必须给出项目，否则就不是项目级请求。
+        path: String,
+    },
+    /// 单元级（agent-chat 恢复列表）：会话归属该 Workspace 单元（最深根胜出）。
+    Unit {
+        /// 执行地址（必填 —— 「默认单元」不存在，见 `UnitScope`）。
+        workspace: WorkspaceSession,
+    },
+}
+
 /// Paginated conversation list result (list rib / infinite scroll).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -193,4 +215,59 @@ pub struct ConversationListPage {
     pub limit: u32,
     /// Whether more rows exist after this page.
     pub has_more: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 跨栈契约：`list_conversations` 的 `scope` 是全栈唯一的范围表达。
+    ///
+    /// 判别联合的 wire 形态必须与前端 `ConversationListScope` 逐字同形 ——
+    /// 它取代了旧的两个可选过滤参数（`projectPath` + `workspace`），
+    /// 那两个参数可以同时出现并静默丢掉一个维度。
+    #[test]
+    fn list_scope_serialises_as_a_tagged_union() {
+        let unit: ConversationListScope = serde_json::from_value(serde_json::json!({
+            "kind": "unit",
+            "workspace": { "projectId": "p1", "worktreePath": "/p1/.worktrees/dev" }
+        }))
+        .expect("unit scope must parse");
+        match unit {
+            ConversationListScope::Unit { workspace } => {
+                assert_eq!(workspace.project_id, "p1");
+                assert_eq!(
+                    workspace.worktree_path.as_deref(),
+                    Some("/p1/.worktrees/dev")
+                );
+            }
+            ConversationListScope::Project { .. } => panic!("wrong variant"),
+        }
+
+        let project: ConversationListScope = serde_json::from_value(serde_json::json!({
+            "kind": "project",
+            "path": "/p1"
+        }))
+        .expect("project scope must parse");
+        match project {
+            ConversationListScope::Project { path } => assert_eq!(path, "/p1"),
+            ConversationListScope::Unit { .. } => panic!("wrong variant"),
+        }
+    }
+
+    /// 单元级请求没有免费地址：缺 `workspace` 必须解析失败（不提供「默认单元」）。
+    #[test]
+    fn unit_scope_without_an_address_is_rejected() {
+        let parsed: Result<ConversationListScope, _> =
+            serde_json::from_value(serde_json::json!({ "kind": "unit" }));
+        assert!(parsed.is_err(), "单元级请求不得缺地址");
+    }
+
+    /// 项目级请求也不接受「没有项目」—— `path` 缺失即解析失败。
+    #[test]
+    fn project_scope_without_a_path_is_rejected() {
+        let parsed: Result<ConversationListScope, _> =
+            serde_json::from_value(serde_json::json!({ "kind": "project" }));
+        assert!(parsed.is_err(), "项目级请求不得缺项目路径");
+    }
 }

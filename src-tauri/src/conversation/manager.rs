@@ -8,6 +8,7 @@ use chrono::DateTime;
 use regex::Regex;
 use walkdir::WalkDir;
 
+use crate::common::git::UnitScope;
 use crate::conversation::adapter::{is_owned_path, AgentSessionAdapter, ParsedMessage};
 use crate::conversation::adapters::saturating_count;
 use crate::conversation::normalize::{build_preview_messages, normalize_session_text, NormTarget};
@@ -16,6 +17,21 @@ use crate::conversation::types::{
     ConversationSearchHit, ConversationStats, ScanReport, ToolCallRef,
 };
 use crate::AppError;
+
+/// 会话列表的**范围**（已解析形态）。
+///
+/// 一个概念三个值，而不是两个可空参数：`project_path` 与 `unit` 并存时必然要定「谁优先」，
+/// 那条隐式优先级就是「传了地址却按项目根过滤」的入口。命令层负责把 wire 形态
+/// （[`crate::conversation::types::ConversationListScope`]）解析成本枚举。
+#[derive(Debug, Clone, Copy)]
+pub enum ListScope<'a> {
+    /// 不过滤（全量）。仅内部诊断 / 测试使用 —— 命令层要求调用方显式给出范围。
+    All,
+    /// 项目级（History 面板）：会话 cwd 等于该项目根或其后代。
+    Project(&'a str),
+    /// 单元级（agent-chat 恢复列表）：会话归属该 Workspace 单元（最深根胜出）。
+    Unit(&'a UnitScope),
+}
 
 /// 会话标题三优先级解析（供 `scan` 循环与单测复用）。
 ///
@@ -509,19 +525,22 @@ impl ConversationManager {
         project_path: Option<&str>,
         agent_id: Option<&str>,
     ) -> Result<Vec<ConversationMeta>> {
-        let page = self.list_page(project_path, agent_id, 0, 0)?;
+        let scope = match project_path {
+            Some(path) => ListScope::Project(path),
+            None => ListScope::All,
+        };
+        let page = self.list_page(scope, agent_id, 0, 0)?;
         Ok(page.items)
     }
 
     /// Paginated list for fishbone / infinite scroll.
     ///
     /// - `limit == 0` means "return all remaining from offset".
-    /// - Project filter is **strict**: only sessions whose `project_path` belongs
-    ///   to the selected project. Sessions with missing project path are excluded
-    ///   when a project filter is set (History is project-scoped).
+    /// - `scope`: **范围是单值**（见 [`ListScope`]）。三个分支互斥，没有「谁优先」——
+    ///   两维并存正是「调用方传了地址却按项目过滤」那类缺陷的入口。
     pub fn list_page(
         &self,
-        project_path: Option<&str>,
+        scope: ListScope<'_>,
         agent_id: Option<&str>,
         offset: u32,
         limit: u32,
@@ -534,9 +553,12 @@ impl ConversationManager {
         let mut results: Vec<ConversationMeta> = cache
             .values()
             .filter(|m| {
-                let matches_project = match project_path {
-                    Some(pp) => matches_project_path(m.project_path.as_deref(), pp),
-                    None => true,
+                let matches_project = match &scope {
+                    ListScope::Unit(unit) => unit.owns(m.project_path.as_deref()),
+                    ListScope::Project(project) => {
+                        matches_project_path(m.project_path.as_deref(), project)
+                    }
+                    ListScope::All => true,
                 };
                 let matches_agent = match agent_id {
                     Some(aid) => m.agent_id == aid,
@@ -1203,6 +1225,10 @@ fn build_conversation_meta(
 /// A session belongs to `project` when its recorded path equals the project or
 /// is nested under it (`/proj` matches `/proj` and `/proj/sub`, not `/proj-other`).
 /// Missing session project path never matches a concrete project filter.
+///
+/// **这不是单元归属判据**：单元级问的是「哪个执行上下文拥有它」，需要身份字母表与
+/// 「最深根胜出」（`crate::common::git::unit_scope`）。两者判据不同是有意的 ——
+/// 项目级要的是「整个项目的历史」，单元级要的是「这个 cwd 的会话」。
 pub(crate) fn matches_project_path(session_project: Option<&str>, project: &str) -> bool {
     let Some(raw) = session_project.map(str::trim).filter(|s| !s.is_empty()) else {
         return false;
@@ -1419,6 +1445,7 @@ fn format_timestamp(ts: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::git::PathAlphabet;
     use crate::conversation::adapter::{ParsedMessage, ParsedMeta, SessionDeleteSupport};
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
@@ -2495,7 +2522,7 @@ mod tests {
         );
 
         let page = manager
-            .list_page(Some("/Users/tomgs/proj"), None, 0, 10)
+            .list_page(ListScope::Project("/Users/tomgs/proj"), None, 0, 10)
             .unwrap();
         // project_path from dir name is sanitized form, list filter uses session project_path
         // Our parse sets project_path to dir name; matches_project_path won't match.
@@ -2618,22 +2645,111 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let page0 = manager.list_page(Some("/projects/p"), None, 0, 2).unwrap();
+        let page0 = manager
+            .list_page(ListScope::Project("/projects/p"), None, 0, 2)
+            .unwrap();
         assert_eq!(page0.items.len(), 2);
         assert_eq!(page0.total, 3);
         assert_eq!(page0.offset, 0);
         assert_eq!(page0.limit, 2);
         assert!(page0.has_more);
 
-        let page1 = manager.list_page(Some("/projects/p"), None, 2, 2).unwrap();
+        let page1 = manager
+            .list_page(ListScope::Project("/projects/p"), None, 2, 2)
+            .unwrap();
         assert_eq!(page1.items.len(), 1);
         assert_eq!(page1.total, 3);
         assert!(!page1.has_more);
 
         // limit=0 returns all remaining from offset.
-        let all = manager.list_page(Some("/projects/p"), None, 0, 0).unwrap();
+        let all = manager
+            .list_page(ListScope::Project("/projects/p"), None, 0, 0)
+            .unwrap();
         assert_eq!(all.items.len(), 3);
         assert!(!all.has_more);
+    }
+
+    /// 单元过滤：仓内 worktree（用户约定 `.worktrees/<name>`）与主仓根**重叠**，
+    /// 项目级前缀包含会把两个单元串起来；单元级入口按「最深根胜出」归属。
+    /// 对级夹具与生产同源：`list_linked_worktree_roots` 只产出 linked 单元根（主工作树已被剔除）。
+    #[test]
+    fn unit_scope_splits_main_and_in_repo_worktree_sessions() {
+        let dir = TempDir::new().unwrap();
+        create_fixture(&dir, "main.jsonl", Some("/projects/p"));
+        create_fixture(&dir, "wt.jsonl", Some("/projects/p/.worktrees/dev"));
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+
+        // 项目级（History 面板）仍看到两个单元。
+        let project = manager
+            .list_page(ListScope::Project("/projects/p"), None, 0, 0)
+            .unwrap();
+        assert_eq!(project.items.len(), 2);
+
+        let main = UnitScope::new(
+            "/projects/p",
+            vec!["/projects/p/.worktrees/dev".to_string()],
+            PathAlphabet::Host,
+        );
+        let main_page = manager
+            .list_page(ListScope::Unit(&main), None, 0, 0)
+            .unwrap();
+        assert_eq!(main_page.items.len(), 1, "主仓单元不得命中 worktree 会话");
+        assert_eq!(
+            main_page.items[0].project_path.as_deref(),
+            Some("/projects/p")
+        );
+
+        // worktree 单元：linked 清单里只有与它同级的其它 worktree（主工作树不在其中）。
+        let worktree = UnitScope::new(
+            "/projects/p/.worktrees/dev",
+            vec!["/projects/p/.worktrees/feat".to_string()],
+            PathAlphabet::Host,
+        );
+        let wt_page = manager
+            .list_page(ListScope::Unit(&worktree), None, 0, 0)
+            .unwrap();
+        assert_eq!(wt_page.items.len(), 1, "worktree 单元不得命中主仓会话");
+        assert_eq!(
+            wt_page.items[0].project_path.as_deref(),
+            Some("/projects/p/.worktrees/dev")
+        );
+    }
+
+    /// 默认布局（worktree 在项目根之外）：主仓单元**不得**列出 worktree 会话，
+    /// 也不能因为项目级前缀没命中就把它们算进来 —— 归属由单元根决定，与项目根无关。
+    #[test]
+    fn unit_scope_keeps_out_of_repo_worktree_sessions_apart() {
+        let dir = TempDir::new().unwrap();
+        create_fixture(&dir, "main.jsonl", Some("/projects/p"));
+        create_fixture(&dir, "wt.jsonl", Some("/home/.neeko/worktrees/dev"));
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+
+        let main = UnitScope::new(
+            "/projects/p",
+            vec!["/home/.neeko/worktrees/dev".to_string()],
+            PathAlphabet::Host,
+        );
+        let page = manager
+            .list_page(ListScope::Unit(&main), None, 0, 0)
+            .unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].project_path.as_deref(), Some("/projects/p"));
+
+        let worktree = UnitScope::new("/home/.neeko/worktrees/dev", vec![], PathAlphabet::Host);
+        let page = manager
+            .list_page(ListScope::Unit(&worktree), None, 0, 0)
+            .unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(
+            page.items[0].project_path.as_deref(),
+            Some("/home/.neeko/worktrees/dev")
+        );
     }
 
     /// 生成 tests fixture：每行一条消息（TestAdapter 直读 content/timestamp）。

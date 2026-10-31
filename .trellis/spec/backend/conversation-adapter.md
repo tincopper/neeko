@@ -114,7 +114,7 @@ fn scan_conversations(
 // 列出会话（从缓存读取；limit=0 表示返回剩余全部）
 #[tauri::command]
 fn list_conversations(
-    project_path: Option<String>,          // 过滤项目路径
+    scope: ConversationListScope,          // 范围：{kind:"project",path} | {kind:"unit",workspace}
     agent_id: Option<String>,              // 过滤 agent
     offset: Option<u32>,
     limit: Option<u32>,
@@ -340,11 +340,45 @@ v2 只能在 Rust 侧过滤，因此窗口必须放大（`PREVIEW_LIMIT * 3` + �
 - `query` 非空 → 在缓存的 `title` 和 `preview` 中进行模糊子串匹配
 - 区分大小写
 
-### 4.5 项目路径过滤
+### 4.5 会话过滤（两种范围，互斥且不可混用）
 
-- `project_path` 为 `None` → 不过滤，返回所有
-- `project_path` 非 `None` → 在 `ConversationMeta.project_path` 中做子串匹配
-- 支持 worktree 路径匹配（子路径包含关系）
+会话的 `project_path` 是 agent 的 **cwd**，所以「按路径过滤」有两种语义，取决于调用方要的是
+项目还是 Workspace 单元。**范围是单值判别联合**（`ConversationListScope`），不是两个可选参数：
+
+- **项目级** `{kind:"project", path}`（History 面板）：前缀包含 —— 保留
+  `ConversationMeta.project_path` 等于该项目根**或其后代**的会话；缺 `project_path` 的会话排除。
+  （面板当前传的是 `worktreePath ?? project.path`，即「当前单元路径」；既有行为，与「整个项目」
+  只在主 checkout 视图重合。）
+- **单元级** `{kind:"unit", workspace}`（agent-chat 恢复列表）：**最深根胜出**
+  （`common/git/unit_scope.rs`）。根清单 = 本单元根 + 同项目其它 linked worktree 根
+  （`git worktree list`）；会话归属最深命中的那个根。
+
+**为什么是判别联合而不是「两个可选过滤参数 + 谁优先」**：后者允许调用方同时传两个维度、后端
+静默丢掉一个 —— 那正是「本来要单元、结果按项目过滤」的入口（同类形态已在本仓发生过两次）。
+两个变体各自必填（`path` / `workspace`），「没有地址的单元级请求」在反序列化阶段就失败。
+护栏：判据 **G**（命令签名出现 `Option<WorkspaceSession>` 必须进
+`ledger/optional_workspace_commands.json` 说明理由；当前台账为空 = 全仓没有可选地址）。
+
+**哪些布局会让两个根重叠**（决定「最深根胜出」是否真的必要）：
+
+| 布局 | 位置 | 前缀包含够不够 |
+| --- | --- | --- |
+| **默认** | `~/.neeko/worktrees/<name>`（项目根**之外**，见 `common/git/path_guard.rs`） | 够 —— 两根互不包含；此时真实缺陷是「单元自己的会话匹配不到项目根 ⇒ 列表漏」 |
+| 用户约定 | `<project>/.worktrees/<name>`（`git/commands/worktree.rs` 点名支持） | **不够** —— worktree 会话同时命中主仓根 ⇒ 两个单元互相串门 |
+| 嵌套 | worktree 里再开 worktree | **不够** —— 同上，且更深者必须胜出 |
+
+**为什么两套语义都必须保留**：History 面板要的是「整个项目的历史」，把项目级改成单元级会让它在
+worktree 视图里丢掉主仓历史；恢复列表要的是「这个执行上下文的历史」，用项目级会把另一个 cwd 的
+会话端上来 —— 而续写通道建立在当前单元，agent 的原生 resume 会因为 cwd 不一致直接拒绝
+（pi / opencode 实测）。
+
+**前端侧**：`useChatRestore` 只发 `{kind:"unit", workspace: WorkspaceSession.of(...)}`
+（地址铸造点，不自拼路径 —— 红线 12），不再附带 `project.path`。
+
+**已知前提（不是 bug）**：恢复列表只 `list` 不 `scan`，单元内会话能出现的前提是**该单元的编码
+目录已被扫过** —— History 面板按当前单元路径扫描（pi / claude / omp / reasonix 的
+`discovery_roots` 按 `project_path` 收窄），或某次全量扫描覆盖了它。所以「worktree 单元列表为空」
+先查扫描覆盖，再查过滤。
 
 ## 4.6 内容块契约与视图口径（强制）
 

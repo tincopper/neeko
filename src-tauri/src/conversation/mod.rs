@@ -22,4 +22,6 @@ pub mod types;
 
 pub use adapter::AgentSessionAdapter;
 pub use manager::ConversationManager;
-pub use types::{ConversationListPage, ConversationMessage, ConversationMeta, ScanReport};
+pub use types::{
+    ConversationListPage, ConversationListScope, ConversationMessage, ConversationMeta, ScanReport,
+};
