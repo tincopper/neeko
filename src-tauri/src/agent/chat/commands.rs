@@ -20,7 +20,8 @@ use crate::common::agent::types::AgentConfig;
 use crate::core::project::ProjectEnvironment;
 use crate::live_sessions::emit_changed;
 use crate::live_sessions::wiring::chat::{
-    register_and_notify as register_live_session, ChatRegistration,
+    engage_existing as engage_live_session, register_and_notify as register_live_session,
+    ChatRegistration, ChatRegistrationKind,
 };
 use crate::live_sessions::wiring::pty::unregister_and_notify as unregister_live_session;
 use crate::AppError;
@@ -213,16 +214,20 @@ pub async fn agent_stream(
             .owns(sid, &req.agent_id, &req.workspace)
         {
             log::info!("[agent_stream] Continuing existing session: {}", sid);
+            let prompt = req.prompt.clone();
             state
                 .agent_chat_manager
                 .send(
                     sid,
                     SessionRequest::Turn {
-                        prompt: req.prompt,
+                        prompt,
                         model_id: req.model_id,
                     },
                 )
                 .await?;
+            // 发送成功才翻转可见性：失败时侧栏不应出现一条「发送失败但已可见」的会话。
+            // `agent_chat_open` 的 Silent 会话正是在这里第一次获得标题与 has_user_input。
+            engage_live_session(&state.live_sessions, &app_handle, sid, &req.prompt);
             return Ok(sid.clone());
         }
         log::warn!(
@@ -254,6 +259,8 @@ pub async fn agent_stream(
         AGENT_CHAT_EVENT,
         Some(cursor),
         &context.cwd,
+        // 用户发出了第一条消息：标题与可见性此刻就有（发送即出现在侧栏）。
+        ChatRegistrationKind::Turn,
     );
 
     Ok(session_id)
@@ -310,6 +317,8 @@ pub async fn agent_chat_resume(
         AGENT_CHAT_EVENT,
         Some(cursor),
         &context.cwd,
+        // 恢复的是用户已有的对话（带历史）：它本来就存在，直接可见。
+        ChatRegistrationKind::Resume,
     );
 
     Ok(session_id)
@@ -357,6 +366,8 @@ pub async fn agent_chat_open(
         AGENT_CHAT_EVENT,
         Some(cursor),
         &context.cwd,
+        // 静默建连：既没有用户输入也没有历史，侧栏先不列。
+        ChatRegistrationKind::Silent,
     );
 
     Ok(session_id)
@@ -381,6 +392,10 @@ pub(crate) fn spawn_session_pipeline(
     event_name: &'static str,
     cursor: Option<ResumeCursor>,
     cwd: &str,
+    // 三种启动形态（见 `ChatRegistrationKind`）：`agent_stream` 发出第一条消息 ⇒ 登记即出现在
+    // 侧栏；`agent_chat_resume` 恢复已有历史对话 ⇒ 直接可见；`agent_chat_open` 静默建连 ⇒ 不可见
+    // （用户发第一条消息时由 `register_or_engage` 的 `report_first` 分支补上可见性与标题）。
+    kind: ChatRegistrationKind,
 ) {
     if let Some(request_tx) = session.request_channel() {
         state.agent_chat_manager.register(
@@ -410,6 +425,7 @@ pub(crate) fn spawn_session_pipeline(
                 cwd,
                 topic: req.topic.as_deref(),
                 prompt: &req.prompt,
+                kind,
             },
         );
     }

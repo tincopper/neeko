@@ -6,6 +6,10 @@
 //! 2. **活动**（[`OutputActivity`]）：输出流动 = 在跑，静默 = 回到就绪（唯一的「推断」，见下）；
 //! 3. **退出 / 关闭**（[`exit_and_notify`] / [`unregister_and_notify`]）。
 //!
+//! 会话的**标题与 has_user_input** 不在这里产生：用户输入只有前端分得清「人敲的」与「我们自动
+//! 启动 agent 的那一行」，故由前端经 `set_live_session_title`（`source = prompt`）上报
+//! （见 commands 里的命令文档）；CLI 自己的命名经 hook 上报（[`super::hooks`]）。
+//!
 //! # 顺序不变量（登记早于信号）
 //!
 //! 登记必须发生在**信号生产者启动之前**：先 exit 后 register 会让 [`Registry::apply`] 丢弃

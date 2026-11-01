@@ -18,6 +18,7 @@ use tauri::AppHandle;
 use crate::common::runtime::AppRuntime;
 use crate::server::{AuthGate, HeaderToken, ServerConfig, ServerHandle};
 
+use super::ingest::dispatch;
 use super::ingest::endpoint as lifecycle;
 use super::ingest::endpoint::EndpointPublication;
 use super::ingest::handlers;
@@ -38,6 +39,9 @@ const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 /// `config.json` 快照（供逐 CLI 覆盖）、Scheme C 执行器），boot 本身不依赖 `AppStateWrapper`
 /// （但 `ingest::deliver` 的外圈投递点需要它来 emit）。
 ///
+/// `sinks` 是**消费者表**：组合根把「通知」与「live-sessions」两个消费者的入口并列传进来，
+/// 本域只负责按序投递 —— 新增消费者不改本文件（见 `ingest::dispatch` 模块头）。
+///
 /// 返回 HTTP 句柄供组合根存入 `AppStateWrapper`（关闭协议据此优雅停机）；启动失败返回 `None`
 /// —— 失败只记 warn，不阻断启动（旁路能力）。
 #[must_use]
@@ -47,8 +51,9 @@ pub fn boot(
     want_cli_hooks: bool,
     config: &serde_json::Value,
     runtime: Arc<AppRuntime>,
+    sinks: Vec<dispatch::HookSink>,
 ) -> Option<ServerHandle> {
-    let handle = match start_ingest(&app, &neeko_dir, &runtime) {
+    let handle = match start_ingest(&app, &neeko_dir, &runtime, sinks) {
         Ok(handle) => Some(handle),
         Err(err) => {
             log::warn!("[boot] start agent-hooks ingest failed: {err}");
@@ -64,6 +69,7 @@ fn start_ingest(
     app: &AppHandle,
     neeko_dir: &std::path::Path,
     runtime: &Arc<AppRuntime>,
+    sinks: Vec<dispatch::HookSink>,
 ) -> std::io::Result<ServerHandle> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
     let port = listener.local_addr()?.port();
@@ -92,7 +98,11 @@ fn start_ingest(
         publication.token.clone(),
         vec![Arc::new(HeaderToken { name: TOKEN_HEADER })],
     ));
-    let groups = vec![handlers::route_group(app.clone(), Arc::clone(runtime))];
+    let groups = vec![handlers::route_group(
+        app.clone(),
+        Arc::clone(runtime),
+        sinks,
+    )];
     let handle = crate::server::serve(
         runtime,
         ServerConfig {

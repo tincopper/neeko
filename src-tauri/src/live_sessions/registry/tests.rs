@@ -206,6 +206,86 @@ fn approval_round_trip_walks_through_awaiting() {
     assert_eq!(registry.snapshot()[0].state, SessionState::Running);
 }
 
+/// `report(None, true)`：幂等，只在第一次真的改变时 bump；未知会话不建条目。
+#[test]
+fn engaging_without_a_title_is_idempotent_and_drops_unknown_sessions() {
+    let (registry, _store) = registry();
+    registry.register(entry("s1", "/proj"));
+    let before = registry.version();
+    assert!(
+        !registry.snapshot()[0].has_user_input,
+        "刚登记 = 还没人用过"
+    );
+
+    assert!(registry.report("s1", None, true));
+    assert!(registry.snapshot()[0].has_user_input);
+    assert_eq!(registry.version(), before + 1);
+
+    assert!(!registry.report("s1", None, true), "第二次不改变");
+    assert_eq!(registry.version(), before + 1);
+
+    assert!(!registry.report("ghost", None, true));
+    assert_eq!(registry.snapshot().len(), 1, "不为未知会话建条目");
+}
+
+/// `report_first` 只在**第一次**生效：`Silent` 会话被用起来时补标题 + 置位，
+/// 而续聊（已用过）既不改名也不 bump。
+#[test]
+fn report_first_titles_and_engages_once_only() {
+    let (registry, _store) = registry();
+    registry.register(entry("s1", "/proj"));
+    let before = registry.version();
+
+    assert!(registry.report_first("s1", Some((TitleSource::Prompt, "第一条消息"))));
+    assert_eq!(registry.version(), before + 1);
+    assert!(registry.snapshot()[0].has_user_input);
+    assert_eq!(registry.snapshot()[0].title, "第一条消息");
+
+    assert!(
+        !registry.report_first("s1", Some((TitleSource::Prompt, "第二条消息"))),
+        "续聊不改名"
+    );
+    assert_eq!(registry.version(), before + 1, "续聊不 bump");
+    assert_eq!(registry.snapshot()[0].title, "第一条消息");
+
+    assert!(!registry.report_first("ghost", None), "未知会话不建条目");
+    assert_eq!(registry.snapshot().len(), 1);
+}
+
+/// hook 的纯语义事件可能先置位但没有标题；首条 prompt 仍必须补名字，
+/// 否则会话会以「已输入 + 空标题」的状态永久从侧栏消失。
+#[test]
+fn report_first_fills_a_missing_title_after_hook_engagement() {
+    let (registry, _store) = registry();
+    let mut silent = entry("s1", "/proj");
+    silent.title = String::new();
+    silent.title_source = TitleSource::Placeholder;
+    registry.register(silent);
+
+    assert!(registry.report("s1", None, true));
+    assert_eq!(registry.snapshot()[0].title, "");
+
+    assert!(
+        registry.report_first("s1", Some((TitleSource::Prompt, "first prompt"))),
+        "已置位但无标题时仍应补标题"
+    );
+    assert_eq!(registry.snapshot()[0].title, "first prompt");
+}
+
+/// `register_if_absent`：已存在 ⇒ 不覆盖、不 bump（「登记 = 首次出现」只在锁内成立一次）。
+#[test]
+fn register_if_absent_never_overrides() {
+    let (registry, _store) = registry();
+    assert!(registry.register_if_absent(entry("s1", "/proj")));
+    registry.set_title("s1", TitleSource::User, "我的名字");
+    let before = registry.version();
+
+    assert!(!registry.register_if_absent(entry("s1", "/proj")));
+    assert_eq!(registry.version(), before, "重复登记不 bump");
+    assert_eq!(registry.snapshot().len(), 1);
+    assert_eq!(registry.snapshot()[0].title, "我的名字", "已存在的不被重置");
+}
+
 #[test]
 fn set_title_upgrades_but_never_downgrades() {
     let (registry, _store) = registry();

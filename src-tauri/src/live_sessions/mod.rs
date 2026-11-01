@@ -21,6 +21,7 @@
 pub(crate) mod commands;
 mod cursor;
 mod entry;
+mod env;
 mod events;
 mod registry;
 mod state;
@@ -29,6 +30,7 @@ mod view;
 pub(crate) mod wiring;
 
 pub use entry::{SessionEntry, SessionKind, SessionState, TitleSource};
+pub use env::SESSION_ID_ENV;
 pub use events::{emit_changed, SESSIONS_EVENT};
 pub use registry::Registry;
 pub use state::{reduce, Signal};

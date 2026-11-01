@@ -12,6 +12,24 @@
 
 use crate::agent::hooks::targets::{InstallShape, HOOK_TARGETS};
 
+/// 会话身份的 env 键是**双端契约**：PTY 侧注入（`live_sessions::SESSION_ID_ENV`）、
+/// 模板侧读取。任一侧改名都会让 hook 归因静默失效（表现是「侧栏标题不再跟随 CLI」），
+/// 故断言模板正文含**常量本身**而不是复写字面量。
+#[test]
+fn embedded_templates_read_the_session_id_env_key() {
+    for target in HOOK_TARGETS {
+        if target.shapes.is_empty() {
+            continue; // 自供源的上报代码在 CLI 自己的插件里（同上方用例的理由）
+        }
+        let read = format!("process.env.{}", crate::live_sessions::SESSION_ID_ENV);
+        assert!(
+            target.template.contains(&read),
+            "{} 模板未读取会话身份 {read:?}（hook 归因会静默失效）",
+            target.source
+        );
+    }
+}
+
 /// 模板自校验：每个受管 CLI 的嵌入模板必须含坐标目录扫描、token 头与 loopback 锚点
 /// （防手改丢关键行为）。断言引用**常量本身** —— 任一侧改名，测试立刻红。
 #[test]

@@ -142,6 +142,133 @@ fn signal_of_maps_every_lifecycle_event() {
     }
 }
 
+/// `agent_chat_open` 建的**静默**会话被用户用起来时，必须在这一步变得可见。
+///
+/// 这是真正的主链路：`openAgentChat`（静默）→ 用户发首条消息 → `agent_stream` 命中
+/// `manager.owns` 后**不进** `spawn_session_pipeline`。少了 `register_or_engage` 的第二分支，
+/// 该会话的 `has_user_input` 永远是 `false`，侧栏与 tab 标题也永远不会引用它的标题。
+#[test]
+fn silent_session_becomes_visible_on_the_first_turn() {
+    let registry = fresh_registry();
+    let ws = WorkspaceSession::main("p1");
+    let registration = |kind, prompt| ChatRegistration {
+        session_id: "s1",
+        agent_id: "pi",
+        workspace: &ws,
+        cwd: "/proj",
+        topic: None,
+        prompt,
+        kind,
+    };
+
+    // 静默建连：登记但不可见（也没有标题素材）
+    assert!(register_or_engage(
+        &registry,
+        registration(ChatRegistrationKind::Silent, "")
+    ));
+    let entry = &registry.snapshot()[0];
+    assert!(!entry.has_user_input, "只打开 tab 不算用过");
+    assert_eq!(entry.title, "", "静默建连没有标题素材");
+
+    // 用户发出第一条消息：同一会话 id，形态变成 Turn
+    assert!(register_or_engage(
+        &registry,
+        registration(ChatRegistrationKind::Turn, "修复登录竞态")
+    ));
+    let entry = &registry.snapshot()[0];
+    assert!(entry.has_user_input, "发出第一条消息 ⇒ 侧栏立刻列出");
+    assert_eq!(entry.title, "修复登录竞态", "补上首条 prompt 当标题");
+    assert_eq!(entry.title_source, TitleSource::Prompt);
+}
+
+/// 续聊分支使用的 Engage 原语：首次补标题 + 置位，之后重复调用不改变标题。
+///
+/// 命令路径 `agent_stream` 命中 `manager.owns` 后不能进 `spawn_session_pipeline`
+/// （那会重新登记），所以这里必须直接覆盖「Silent 已被登记、用户刚发出第一条消息」
+/// 的契约，避免只测试 `register_or_engage` 而漏掉命令实际走的分支。
+#[test]
+fn engage_registered_titles_only_the_first_turn() {
+    let registry = fresh_registry();
+    let ws = WorkspaceSession::main("p1");
+    assert!(register_or_engage(
+        &registry,
+        ChatRegistration {
+            session_id: "s1",
+            agent_id: "pi",
+            workspace: &ws,
+            cwd: "/proj",
+            topic: None,
+            prompt: "",
+            kind: ChatRegistrationKind::Silent,
+        },
+    ));
+    assert!(!registry.snapshot()[0].has_user_input);
+
+    assert!(engage_registered(
+        &registry,
+        "s1",
+        Some((TitleSource::Prompt, "first message"))
+    ));
+    let entry = &registry.snapshot()[0];
+    assert!(entry.has_user_input);
+    assert_eq!(entry.title, "first message");
+    assert_eq!(entry.title_source, TitleSource::Prompt);
+
+    assert!(!engage_registered(
+        &registry,
+        "s1",
+        Some((TitleSource::Prompt, "second message"))
+    ));
+    assert_eq!(registry.snapshot()[0].title, "first message");
+}
+
+/// 续聊不重新登记：会话在侧栏不该「闪一下」也不该改名，标题保持第一条。
+#[test]
+fn follow_up_turn_keeps_the_first_title_and_visibility() {
+    let registry = fresh_registry();
+    let ws = WorkspaceSession::main("p1");
+    // 首轮：用户发出第一条消息 ⇒ 登记即可见（`Turn` 形态）
+    assert!(register_or_engage(
+        &registry,
+        ChatRegistration {
+            session_id: "s1",
+            agent_id: "pi",
+            workspace: &ws,
+            cwd: "/proj",
+            topic: None,
+            prompt: "first message",
+            kind: ChatRegistrationKind::Turn,
+        },
+    ));
+    observe(
+        &registry,
+        "s1",
+        &[seq(0, session_start()), seq(1, turn_end())],
+    );
+    assert!(
+        registry.snapshot()[0].has_user_input,
+        "发送即可见（不等 TurnEnd）"
+    );
+
+    // 续聊：同一会话 id 的第二条消息
+    register_or_engage(
+        &registry,
+        ChatRegistration {
+            session_id: "s1",
+            agent_id: "pi",
+            workspace: &ws,
+            cwd: "/proj",
+            topic: None,
+            prompt: "second message",
+            kind: ChatRegistrationKind::Turn,
+        },
+    );
+    let entry = &registry.snapshot()[0];
+    assert_eq!(entry.title, "first message", "会话名不随每轮改名");
+    assert!(entry.has_user_input, "续聊不该把它从侧栏抹掉");
+    assert_eq!(registry.snapshot().len(), 1, "续聊不重复登记");
+}
+
 /// pi 形态（无 `TurnStart`）：首个内容事件把 `Ready` 推进到 `Running`，`TurnEnd` 落回 `Ready`。
 ///
 /// 这是「状态点永远不动」的回归钉子：只认 `TurnStart` 时，pi 会话整轮都停在 `Ready`。
@@ -149,7 +276,7 @@ fn signal_of_maps_every_lifecycle_event() {
 fn content_events_drive_running_without_turn_start() {
     let registry = fresh_registry();
     let ws = WorkspaceSession::main("p1");
-    register(
+    register_or_engage(
         &registry,
         ChatRegistration {
             session_id: "s1",
@@ -158,6 +285,7 @@ fn content_events_drive_running_without_turn_start() {
             cwd: "/proj",
             topic: None,
             prompt: "fix the parser",
+            kind: ChatRegistrationKind::Turn,
         },
     );
     assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
@@ -196,7 +324,7 @@ fn content_events_drive_running_without_turn_start() {
 fn register_prefers_native_title_then_prompt_then_leaves_it_empty() {
     let ws = WorkspaceSession::of("p1", None);
     let registry = fresh_registry();
-    register(
+    register_or_engage(
         &registry,
         ChatRegistration {
             session_id: "s1",
@@ -205,6 +333,7 @@ fn register_prefers_native_title_then_prompt_then_leaves_it_empty() {
             cwd: "/proj",
             topic: Some("Native title"),
             prompt: "fix the parser",
+            kind: ChatRegistrationKind::Turn,
         },
     );
     let entry = &registry.snapshot()[0];
@@ -212,7 +341,7 @@ fn register_prefers_native_title_then_prompt_then_leaves_it_empty() {
     assert_eq!(entry.title_source, TitleSource::Native);
 
     let registry = fresh_registry();
-    register(
+    register_or_engage(
         &registry,
         ChatRegistration {
             session_id: "s2",
@@ -221,6 +350,7 @@ fn register_prefers_native_title_then_prompt_then_leaves_it_empty() {
             cwd: "/proj",
             topic: None,
             prompt: "fix the parser",
+            kind: ChatRegistrationKind::Turn,
         },
     );
     let entry = &registry.snapshot()[0];
@@ -230,7 +360,7 @@ fn register_prefers_native_title_then_prompt_then_leaves_it_empty() {
     // 静默会话（`agent_chat_open`：无 prompt 无 topic）⇒ **空标题**，不拿 agent 名占位。
     // 视图据此只画图标（侧栏）/ 兜底 `tab.title`（tab），首条 prompt 一到就升级。
     let registry = fresh_registry();
-    register(
+    register_or_engage(
         &registry,
         ChatRegistration {
             session_id: "s3",
@@ -239,6 +369,7 @@ fn register_prefers_native_title_then_prompt_then_leaves_it_empty() {
             cwd: "/proj",
             topic: None,
             prompt: "",
+            kind: ChatRegistrationKind::Silent,
         },
     );
     let entry = &registry.snapshot()[0];
@@ -252,7 +383,7 @@ fn register_prefers_native_title_then_prompt_then_leaves_it_empty() {
 fn observe_drives_the_state_sequence() {
     let registry = fresh_registry();
     let ws = WorkspaceSession::main("p1");
-    register(
+    register_or_engage(
         &registry,
         ChatRegistration {
             session_id: "s1",
@@ -261,6 +392,7 @@ fn observe_drives_the_state_sequence() {
             cwd: "/proj",
             topic: None,
             prompt: "hello",
+            kind: ChatRegistrationKind::Turn,
         },
     );
 
@@ -355,7 +487,7 @@ impl AgentSession for ScriptedSession {
 async fn bridge_batches_reach_the_registry() {
     let registry = std::sync::Arc::new(fresh_registry());
     let ws = WorkspaceSession::main("p1");
-    register(
+    register_or_engage(
         &registry,
         ChatRegistration {
             session_id: "s1",
@@ -364,6 +496,7 @@ async fn bridge_batches_reach_the_registry() {
             cwd: "/proj",
             topic: None,
             prompt: "hello",
+            kind: ChatRegistrationKind::Turn,
         },
     );
 

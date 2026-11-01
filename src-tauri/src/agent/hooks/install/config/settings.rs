@@ -110,13 +110,16 @@ mod tests {
     /// 反证：改任一侧的键名字面量，本用例必红。
     #[test]
     fn config_key_is_mirrored_in_frontend() {
+        // 前端该键的**唯一**声明点是 shared 模块（设置页与侧栏提示共用一份判定，
+        // 见 `shared/utils/agentHookSources.ts` 的模块注释）。断言锁在这里而不是某个
+        // 组件上：组件只是消费者，锁消费方会让「多一个消费者」变成一次假红。
         const FRONTEND: &str =
-            include_str!("../../../../../../src/features/settings/components/CliHooksSection.tsx");
+            include_str!("../../../../../../src/shared/utils/agentHookSources.ts");
         assert!(
             FRONTEND.contains(&format!("'{AGENT_HOOK_SOURCES_KEY}'"))
                 || FRONTEND.contains(&format!("\"{AGENT_HOOK_SOURCES_KEY}\"")),
-            "前端 CliHooksSection 必须使用同一个 config 键 {AGENT_HOOK_SOURCES_KEY:?} \
-             （改一端必须同步另一端）"
+            "前端 shared/utils/agentHookSources.ts 必须使用同一个 config 键 \
+             {AGENT_HOOK_SOURCES_KEY:?}（改一端必须同步另一端）"
         );
     }
 

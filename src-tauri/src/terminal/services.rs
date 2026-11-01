@@ -212,6 +212,10 @@ pub(super) fn spawn_pty_pipeline(
 }
 
 /// Listen for terminal-input-{id} events and write data to the PTY.
+///
+/// **不在这里判定「用户开始输入」**：这条通道同时承载我们自动启动 agent 的那行命令
+/// （`TerminalViewBase` 创建会话后立即写入），后端无从区分。会话标题 / has_user_input 由前端
+/// 的 `set_live_session_title`（`source = prompt`）上报 —— 只有前端知道哪次写入来自用户。
 fn spawn_writer_listener(
     id: &str,
     writer: Box<dyn Write + Send>,
@@ -242,6 +246,40 @@ fn spawn_writer_listener(
             }
         },
     )
+}
+
+/// SSH 会话的 shell 前缀：注入会话身份、终端能力，并切到运行根。
+///
+/// 抽成纯函数（无 IO）以便直测；`cwd` / id 都经统一 POSIX 转义，
+/// `cd` 失败立即退出，避免后续输入在错误目录执行。
+#[must_use]
+pub(crate) fn remote_shell_prefix(cwd: &str, session_id: &str) -> String {
+    use crate::common::utils::command::local::quote_shell_arg;
+    format!(
+        "export {}={}; export COLORTERM=truecolor; cd {} || exit 1\n",
+        crate::live_sessions::SESSION_ID_ENV,
+        quote_shell_arg(session_id),
+        quote_shell_arg(cwd)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::remote_shell_prefix;
+
+    #[test]
+    fn remote_shell_prefix_quotes_cwd_and_session_id() {
+        let script = remote_shell_prefix("/tmp/a b'c", "sid'quote");
+        assert!(script.contains("export NEEKO_SESSION_ID='sid'\\''quote';"));
+        assert!(script.contains("cd '/tmp/a b'\\''c' || exit 1\n"));
+    }
+
+    #[test]
+    fn remote_shell_prefix_does_not_allow_extra_commands() {
+        let script = remote_shell_prefix("/tmp/x; touch /tmp/pwned", "sid");
+        assert!(script.contains("cd '/tmp/x; touch /tmp/pwned' || exit 1\n"));
+        assert_eq!(script.matches("touch /tmp/pwned").count(), 1);
+    }
 }
 
 /// Spawn a watcher thread that polls the child process exit status every 100ms.

@@ -123,6 +123,8 @@ pub async fn translation_stream(
         TRANSLATION_EVENT,
         None, // ephemeral: no resume cursor persisted
         &cwd,
+        // 翻译会话不登记进 live-sessions（临时流），形态无意义。
+        crate::live_sessions::wiring::chat::ChatRegistrationKind::Silent,
     );
 
     Ok(session_id)

@@ -14,18 +14,22 @@
 //!                                      ▼
 //!        event.rs      HookEvent：是谁 / 发生了什么 / 在哪   ← 公共数据资产
 //!                                      │
+//!                                      ▼
+//!        dispatch.rs   spawn_blocking 里按序把事件交给一组 HookSink
+//!                                      │
 //!              ┌───────────────────────┴───────────────────────┐
 //!              ▼                                               ▼
-//!        notify.rs（已有）                            未来的 state.rs 等
-//!        + dispatch.rs                                （读同一份 HookEvent）
-//!        投影为 NotificationSignal → 通知中心
+//!        notify.rs → 通知中心                    live_sessions/wiring/hooks.rs
+//!        （dispatch::notification_sink）          → 会话标题 + has_user_input
+//!                                                （live_sessions::…::sink）
 //!
 //!        attribution.rs  归属降级链（纯函数，供任意消费者复用）
 //!        endpoint.rs     坐标文件：客户端靠它找到我们（与请求链路正交）
 //! ```
 //!
-//! **新增消费者时**：读 [`event::HookEvent`]，自己写一个投影文件；不要改采集侧
-//! （`validation.rs` / `handlers.rs`），也不要把新逻辑塞进 [`dispatch`]（它只服务通知）。
+//! **新增消费者时**：读 [`event::HookEvent`]，在自己的域里写投影 + 暴露一个 [`dispatch::HookSink`]，
+//! 再由组合根（`app/boot.rs`）加进 `sinks` 列表。不要改采集侧（`validation.rs` / `handlers.rs`），
+//! 也不要把新逻辑塞进 [`dispatch`]（它只做扇出，不认识任何具体域）。
 //!
 //! # HTTP 传输在哪
 //!

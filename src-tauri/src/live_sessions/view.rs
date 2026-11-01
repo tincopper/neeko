@@ -37,6 +37,8 @@ pub struct SessionView {
     pub updated_at: DateTime<Utc>,
     /// 已完成回合数。
     pub turn_count: u32,
+    /// 用户是否已经开始在这个会话里输入（侧栏只列 `true` 的条目）。
+    pub has_user_input: bool,
 }
 
 impl SessionView {
@@ -54,6 +56,7 @@ impl SessionView {
             started_at: entry.started_at,
             updated_at: entry.updated_at,
             turn_count: entry.turn_count,
+            has_user_input: entry.has_user_input,
         }
     }
 }
@@ -181,6 +184,7 @@ mod tests {
         assert_eq!(session["state"], "running");
         assert_eq!(session["titleSource"], "placeholder");
         assert_eq!(session["turnCount"], 0);
+        assert_eq!(session["hasUserInput"], false, "刚登记 = 还没人用过");
         assert!(session["workspaceKey"].is_string());
         assert_eq!(session["agentId"], serde_json::Value::Null);
         assert!(json["version"].is_u64());

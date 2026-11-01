@@ -36,9 +36,16 @@ pub struct HookState {
 }
 
 /// 生产入口：构造 hooks 路由组（该组自己声明 fail-open）。
+///
+/// `sinks` 由组合根装配（`app/boot.rs`）：本层只把它们交给引擎侧的投递闭包，
+/// 不关心有哪些消费者。
 #[must_use]
-pub fn route_group(app: AppHandle, runtime: Arc<AppRuntime>) -> RouteGroup {
-    route_group_with(dispatch::via_blocking_pool(app, runtime))
+pub fn route_group(
+    app: AppHandle,
+    runtime: Arc<AppRuntime>,
+    sinks: Vec<dispatch::HookSink>,
+) -> RouteGroup {
+    route_group_with(dispatch::via_blocking_pool(app, runtime, sinks))
 }
 
 /// **测试缝（AC2）**：注入投递闭包，引擎 / 门 / 策略 / handler / 校验与生产入口完全同源。

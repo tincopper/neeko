@@ -110,8 +110,11 @@ impl RemoteTerminalManager {
         // 请求 shell
         channel.request_shell(true).await?;
 
-        // 切换到运行根并设置 COLORTERM 以启用 truecolor
-        let cd_cmd = format!("export COLORTERM=truecolor; cd {}\n", cwd);
+        // 切换到运行根并设置 COLORTERM 以启用 truecolor；同时把会话身份 export 给
+        // 这条 channel 的 shell（远端拿不到宿主 env，只能走 shell 前缀）。
+        // 统一复用 POSIX 单引号转义：远端路径允许空格 / 引号 / shell 元字符，
+        // 直接拼接会把「切目录」变成命令注入或静默落到 home。
+        let cd_cmd = crate::terminal::services::remote_shell_prefix(cwd, &id);
         channel.data(cd_cmd.as_bytes()).await?;
 
         // 创建 session 对象
@@ -130,6 +133,7 @@ impl RemoteTerminalManager {
 
         // live-sessions 登记：会话已在两张表里就绪，而退出信号的唯一生产者（IO 线程）
         // 尚未启动 —— 顺序不变量见 `live_sessions::wiring::pty` 模块注释。
+        let live_registry = live.map(|live| live.shared_registry());
         if let Some(live) = live {
             live.register(&app_handle, &id);
         }
@@ -139,7 +143,8 @@ impl RemoteTerminalManager {
         // mpsc channel：resize 请求 (cols, rows) → IO 任务
         let (resize_tx, mut resize_rx) = mpsc::unbounded_channel::<(u32, u32)>();
 
-        // 监听前端输入事件，把数据放入 mpsc
+        // 监听前端输入事件，把数据放入 mpsc。**不在这里判「用户开始输入」**：这条通道也
+        // 承载自动启动 agent 的那行命令，只有前端分得清（见 `set_live_session_title`）。
         let tx_clone = input_tx.clone();
         let input_listener_id =
             app_handle.listen(
@@ -179,7 +184,7 @@ impl RemoteTerminalManager {
         let io_id = id.clone();
         // live-sessions：SSH 通道结束（远端 shell 退出 / 用户关闭）时注销条目。
         // 远端不提供可靠的退出码，按「正常结束」处理（`None`）。
-        let io_live = live.map(|live| live.shared_registry());
+        let io_live = live_registry;
         let io_handle = app_handle.clone();
         let io_exit_id = io_id.clone();
         // 活动探针：io 线程 stamp 输出、tick 分支 poll（与本地 PTY 同一条判据）。

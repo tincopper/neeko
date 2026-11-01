@@ -134,12 +134,20 @@ fn on_setup(app: &tauri::App) {
     // 逐 CLI 覆盖表（`agentHookSources`）取自**上面那份快照**（agent 域自有键，不经核心域，
     // 见 agent/hooks/install/config/settings.rs）。读盘失败时传 `Null` = 「无覆盖项」→ 各 CLI 跟随主开关，
     // 与「成功但无该键」的退化行为一致；失败本身已由 `best_effort` 记 warn。
+    //
+    // 消费者表在本层装配（不是 agent 域里硬编码引用）：通知域 + live-sessions 注册表。
+    // 新增消费者 = 在自己的域里写投影 + 在这里加一行 —— ingest 层不知道谁在消费。
+    let hook_sinks = vec![
+        crate::agent::hooks::ingest::dispatch::notification_sink(),
+        crate::live_sessions::wiring::hooks::sink(),
+    ];
     let http_handle = crate::agent::hooks::boot::boot(
         app.handle().clone(),
         state.storage_manager.get_config_dir().to_path_buf(),
         state.notification.settings_snapshot().cli_hooks,
         config.as_ref().unwrap_or(&serde_json::Value::Null),
         state.runtime.clone(),
+        hook_sinks,
     );
     if let Some(handle) = http_handle {
         state.set_http_server(handle);

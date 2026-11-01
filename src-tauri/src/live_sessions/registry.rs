@@ -77,6 +77,26 @@ impl Registry {
         !duplicate
     }
 
+    /// 只在会话**尚未登记**时登记，返回「是否新增」（`false` = 已存在，**什么都没写**）。
+    ///
+    /// 与 [`Registry::register`] 的差别有两个：不覆盖既有条目、不为重复 id 记 warn 也不 bump。
+    /// 「登记 = 首次出现」这条判据只在锁内成立一次 —— 判据与写入必须同一个临界区，
+    /// 否则 `contains` 之后、`register` 之前插进来的条目会被静默覆盖。
+    pub fn register_if_absent(&self, entry: SessionEntry) -> bool {
+        let cursor = {
+            let mut sessions = self.guard();
+            if sessions.contains_key(&entry.session_id) {
+                return false;
+            }
+            let cursor = ResumeCursor::from_entry(&entry);
+            sessions.insert(entry.session_id.clone(), entry);
+            cursor
+        };
+        self.bump();
+        self.persist(cursor);
+        true
+    }
+
     /// 应用一条信号。返回「状态是否真的变了」（调用方据此决定是否发变更事件）。
     ///
     /// 未知会话 → `false` + `log::debug!`（不建条目）；状态未变 / 信号被吸收 → `false`。
@@ -117,35 +137,102 @@ impl Registry {
         }
     }
 
+    /// 一次上报的**合并写**：标题升级与该会话「已被用过」的置位在**同一个临界区**完成。
+    ///
+    /// 三个生产者（终端首条输入 / CLI hook / chat 首轮）此前各写一遍
+    /// 「升级标题 + 置位可见性」—— 两次加锁、两次 bump、升级规则两处。合并后
+    /// 升级规则只剩 [`title::should_upgrade`] 一份，版本号也不重复加。
+    ///
+    /// - `title = None`：只置位（`engage`）或什么都不做；
+    /// - `engage = false`：只升级标题（CLI 的纯信息类事件）。
+    ///
+    /// **打开 tab 不调用** —— PTY / 静默会话的创建不是「用户在用它」。
+    /// 未知会话 `false`（不建条目）。
+    pub fn report(
+        &self,
+        session_id: &str,
+        title: Option<(TitleSource, &str)>,
+        engage: bool,
+    ) -> bool {
+        let applied = self.mutate(session_id, |entry| {
+            let mut changed = false;
+            if let Some((source, text)) = title {
+                changed |= upgrade_title(entry, source, text);
+            }
+            if engage && !entry.has_user_input {
+                entry.has_user_input = true;
+                changed = true;
+            }
+            if changed {
+                entry.updated_at = Utc::now();
+            }
+            changed
+        });
+        self.finish(session_id, applied, "report")
+    }
+
+    /// chat 首次 Engage / 补标题的入口（`Silent → Turn`、续聊主链路）。
+    ///
+    /// - 未置位 ⇒ 置位并写入首个标题；
+    /// - 已置位但**还没有真标题** ⇒ 允许补一次标题（hook 的纯语义事件可能先置位）；
+    /// - 已置位且已有标题 ⇒ 什么也不写（续聊不改名、侧栏不闪）。
+    ///
+    /// 门控在锁内，避免「先读 has_user_input、再写标题」之间的竞态。
+    pub fn report_first(&self, session_id: &str, title: Option<(TitleSource, &str)>) -> bool {
+        let applied = self.mutate(session_id, |entry| {
+            let has_title =
+                !entry.title.trim().is_empty() && entry.title_source != TitleSource::Placeholder;
+            if entry.has_user_input && (title.is_none() || has_title) {
+                return false;
+            }
+            let mut changed = false;
+            if let Some((source, text)) = title {
+                changed |= upgrade_title(entry, source, text);
+            }
+            if !entry.has_user_input {
+                entry.has_user_input = true;
+                changed = true;
+            }
+            if changed {
+                entry.updated_at = Utc::now();
+            }
+            changed
+        });
+        self.finish(session_id, applied, "report_first")
+    }
+
+    /// 上报类写入的收尾（锁外）：未知会话记 debug，真变化才 bump 版本并唤醒长轮询。
+    ///
+    /// 不写穿 `ResumeCursor`：标题与可见性都不落库（`cursor::from_entry` 没有这两列），
+    /// 重启后的可见性由登记时的形态重新决定。
+    fn finish(&self, session_id: &str, applied: Option<bool>, op: &str) -> bool {
+        match applied {
+            None => {
+                log::debug!("[live_sessions] {op} for unknown session: {session_id}");
+                false
+            }
+            Some(changed) => {
+                if changed {
+                    self.bump();
+                }
+                changed
+            }
+        }
+    }
+
     /// 尝试升级标题（`should_upgrade` 把关：同级可覆盖，弱级永不覆盖强级）。
     ///
     /// 空白候选直接忽略（不把标题改成空串）；未知会话 `false` + `log::debug!`。
+    /// 与「用过」的置位无关 —— 终端 / CLI 的后续标题更新走这里，不经过 [`Registry::report`]。
     pub fn set_title(&self, session_id: &str, source: TitleSource, text: &str) -> bool {
-        let title = title::truncate(text, title::MAX_TITLE_CHARS);
-        if title.is_empty() {
-            return false;
-        }
         let applied = self.mutate(session_id, |entry| {
-            if !title::should_upgrade(entry.title_source, source) {
+            if !upgrade_title(entry, source, text) {
                 return false;
             }
-            if entry.title == title && entry.title_source == source {
-                return false;
-            }
-            entry.title = title;
-            entry.title_source = source;
             entry.updated_at = Utc::now();
             true
         });
-        let Some(changed) = applied else {
-            log::debug!("[live_sessions] set_title for unknown session: {session_id}");
-            return false;
-        };
-        if changed {
-            // 标题不落 cursor（`ResumeCursor` 没有标题列）⇒ 只有版本通知。
-            self.bump();
-        }
-        changed
+        self.finish(session_id, applied, "set_title")
     }
 
     /// 注销会话：先摘表（视图立即看不到），再 best-effort 关闭持久化游标。
@@ -245,6 +332,23 @@ impl Registry {
             );
         }
     }
+}
+
+/// 升级条目的标题，返回「是否真的改了」。
+///
+/// 规则集中在这里（截断 + 空白忽略 + 单调升级 + 同值不写）：`set_title`、`report`、
+/// `report_first` 三个入口共用同一份判据，调用方只决定「何时尝试」而不复述规则。
+fn upgrade_title(entry: &mut SessionEntry, source: TitleSource, text: &str) -> bool {
+    let title = title::truncate(text, title::MAX_TITLE_CHARS);
+    if title.is_empty() || !title::should_upgrade(entry.title_source, source) {
+        return false;
+    }
+    if entry.title == title && entry.title_source == source {
+        return false;
+    }
+    entry.title = title;
+    entry.title_source = source;
+    true
 }
 
 #[cfg(test)]

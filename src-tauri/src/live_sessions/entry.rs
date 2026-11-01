@@ -97,6 +97,12 @@ pub struct SessionEntry {
     pub updated_at: DateTime<Utc>,
     /// 已完成的回合数。
     pub turn_count: u32,
+    /// 用户是否已经在这个会话里**发出过输入**（= 侧栏该把它列出来的时刻）。
+    ///
+    /// 一旦置位就不再回落：发送那一刻标题已经拿到，用户就该在侧栏看到这条会话 ——
+    /// 不必等 agent 跑完。置位点：终端的首条输入行、chat 的 `agent_stream`（真回合）、
+    /// CLI 的 hook 上报。**打开 tab 不置位**（PTY / 静默会话的创建不算用户在用它）。
+    pub has_user_input: bool,
 }
 
 impl SessionEntry {
@@ -127,6 +133,7 @@ impl SessionEntry {
             started_at: now,
             updated_at: now,
             turn_count: 0,
+            has_user_input: false,
         }
     }
 
@@ -134,6 +141,14 @@ impl SessionEntry {
     #[must_use]
     pub const fn with_state(mut self, state: SessionState) -> Self {
         self.state = state;
+        self
+    }
+
+    /// 登记时的初始可见性（chat 的三种启动形态各不相同，见
+    /// `wiring::chat::ChatRegistrationKind`）。
+    #[must_use]
+    pub const fn with_user_input(mut self, has_user_input: bool) -> Self {
+        self.has_user_input = has_user_input;
         self
     }
 }

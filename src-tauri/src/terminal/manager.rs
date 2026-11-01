@@ -129,6 +129,9 @@ impl TerminalManager {
 
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        // 会话身份下发给子进程：`CommandBuilder::env` 只作用于**这个**子进程，多会话互不影响。
+        // hook shim 读它做精确归因（见 `live_sessions::SESSION_ID_ENV`）。
+        cmd.env(crate::live_sessions::SESSION_ID_ENV, &id);
         // 平台差异(Unix locale 环境变量)集中化于 crate::platform::shell_launch。
         crate::platform::shell_launch::apply_locale_env(&mut cmd);
         cmd.cwd(cwd);
@@ -176,7 +179,14 @@ impl TerminalManager {
         cmd.arg("--");
         cmd.arg("bash");
         cmd.arg("-c");
-        cmd.arg("export COLORTERM=truecolor; exec \"${SHELL:-bash}\" -l");
+        // WSL 不会把宿主 env 透进 Linux 侧（除非 WSLENV），所以会话身份必须在 shell 里
+        // export —— 与 COLORTERM 同一行，一条命令一次到位。值走统一 POSIX 转义，不依赖
+        // 「id 恰好是 uuid」这个当前事实。
+        cmd.arg(format!(
+            "export {}={}; export COLORTERM=truecolor; exec \"${{SHELL:-bash}}\" -l",
+            crate::live_sessions::SESSION_ID_ENV,
+            crate::common::utils::command::local::quote_shell_arg(&id)
+        ));
         cmd.env("TERM", "xterm-256color");
         cmd.env("WSL_UTF8", "1");
 
