@@ -36,6 +36,9 @@
 !skills/trellis-*/**
 !skills/ui-ux-pro-max/
 !skills/ui-ux-pro-max/**
+# Python bytecode is generated locally; keep it out of the repository even though
+# the skill directory itself is intentionally tracked.
+skills/ui-ux-pro-max/scripts/__pycache__/
 !skills/xterm-js/
 !skills/xterm-js/**
 !skills/zoom-out/
