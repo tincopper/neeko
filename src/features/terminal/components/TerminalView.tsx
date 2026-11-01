@@ -1,6 +1,5 @@
 import React, { useCallback } from 'react';
 
-import { setLiveSessionTitle } from '@/features/live-sessions/api/liveSessionsApi';
 import { useEditorContext } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { AuthMethod } from '@/shared/types';
@@ -58,19 +57,6 @@ function TerminalView({ paneId, tabSpaceKey, remoteConfig }: TerminalViewProps) 
     [tabSpaceKey, activeTabId],
   );
 
-  /**
-   * 终端自报的原生标题（xterm OSC 0/2）→ 注册表 `TitleSource::Native`。
-   *
-   * 走薄命令而不是新事件：前端→后端的既有通道只有 `terminal-input-{id}`（载荷是
-   * stdin 字节）与 agent chat（反向），两者都得新造通道名才能载标题（红线 5）。
-   * 单调升级（OSC 标题不得覆盖用户改名）由后端 `title::should_upgrade` 把关，
-   * 这里不做第二次判断。失败静默：标题是旁路，不能打断终端。
-   */
-  const handleSessionTitleChange = useCallback((sessionId: string, title: string) => {
-    // 静默豁免：标题回传，尽力而为，失败无需上报
-    setLiveSessionTitle(sessionId, title).catch(() => {});
-  }, []);
-
   if (!strategy) return null;
 
   return (
@@ -82,7 +68,6 @@ function TerminalView({ paneId, tabSpaceKey, remoteConfig }: TerminalViewProps) 
       taskConfigId={taskConfigId}
       taskRebuildKey={taskRebuildKey}
       onSessionCreated={handleSessionCreated}
-      onSessionTitleChange={handleSessionTitleChange}
     />
   );
 }
