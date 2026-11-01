@@ -131,18 +131,18 @@ terminal 路径只服务于未来的持久化 / 统计，不要在文档或 PRD 
 （`set_title_upgrades_but_never_downgrades` / `user_title_survives_automatic_sources`）。
 截断按**字符**（`truncate_never_splits_a_character`：中文不切半个字，总长恒 ≤ 80）。
 
-两个素材来源，都不新增捕获路径：
+三个素材来源，都不新增捕获路径：
 
 - chat 注册时 `pick([(Native, topic), (Prompt, prompt)])`（都没有则留空）——
   `topic` 是恢复会话时前端传入的 agent 原生标题
   （`register_prefers_native_title_then_prompt_then_leaves_it_empty`）；
-- terminal 的 OSC 0/2：xterm 的 `onTitleChange` → 薄命令 `set_live_session_title` →
-  `set_title(Native, …)`。**为什么是命令而不是事件**：前端→后端既有通道只有
+- terminal 的首条**用户输入**：前端 `createFirstLineCapture` → 薄命令
+  `set_live_session_title(source = prompt)` → `report(Prompt, engage = true)`；它同时置位
+  `has_user_input`。**为什么是命令而不是事件**：前端→后端既有通道只有
   `terminal-input-{id}`（载荷是 stdin 字节）与 agent chat（反向），复用要么污染语义、要么
-  新增事件名（红线 5）。前端只做「同一会话值不变不发」去重（xterm 的 `setTitle()` 无条件 fire，
-  spinner 帧会反复发同一串）；**不做时间窗节流** —— 把关键跃迁压掉比多发一次更糟
-  （`osc_title_is_native_so_it_can_replace_another_native_title` 钉住来源是 `Native`：
-  `Prompt` 会被同级覆盖判据拒掉，只断言最终文本区分不了这条）；
+  新增事件名（红线 5）；
+- CLI hook 的会话主题：`HookEvent.topic()` → `report(Native, engage = is_engaging)`；这是
+  原生标题的主路径（见下节），不是 OSC 状态栏；
 - 拿不到就停在 `Placeholder`，不猜（`blank_title_candidates_are_ignored`）。
 
 **没有真标题时占位是空串**（不是 agent 名、也不是项目名）。理由（2026-10-31 两轮实测反馈）：
@@ -153,14 +153,118 @@ terminal 路径只服务于未来的持久化 / 统计，不要在文档或 PRD 
 
 空标题是**「这条会话还没有名字」的唯一表示**，由视图解释成「先不列出来」，不是后端兜底一个假名字：
 
-- 侧栏**不列出**无名会话（前端 `isNamedSession` 在 `sessionsByUnit` 里过滤；单元角标同源）。
-  打开 agent tab 就注册了 PTY / 静默会话，但那时它还没有任何可辨认的名字 —— 列出来只是一行
-  只有图标的东西。`topic` / 首条 `prompt` / CLI 的 OSC 标题一到，`titleSource` 升级，条目才出现。
-- tab 回退到自己的占位标题（绑 agent 的 tab 是 agent 名，空白终端是 `Terminal N`），会话有真标题
-  后于渲染期换成它。
+- 侧栏**不列出**无名会话，也不列出「还没人用过」的会话：前端 `isListedSession`
+  （`has_user_input` && 有标题）在 `sessionsByUnit` 里过滤，单元角标同源。
+- tab 回退到自己的占位标题（绑 agent 的 tab 是 agent 名，空白终端是 `Terminal N`），
+  会话有真标题后于渲染期换成它。
+
+`has_user_input`（＝侧栏可见、tab 用会话标题）的置位点是**用户发出输入**，不是「打开 tab」：
+
+| 生产者 | 「用户发过东西」的信号 |
+| --- | --- |
+| chat | `agent_stream` 的第一条消息（登记时即 `has_user_input`） |
+| 终端 / WSL / SSH | 前端上报的首条输入行（`set_live_session_title`，`source = prompt`） |
+| 任意 CLI | hook 上报（`turn_completed` 等语义事件） |
+
+发送那一刻标题就已经拿到，用户就该在侧栏看到这条会话 —— **不等 agent 跑完**。
+（曾经按「一轮跑完才可见」实现，实测反馈是「发完消息什么都不出现」，与 Codex 桌面端的
+心智不符：它也是发出第一条消息就建会话。）
+
+`agent_chat_open` 的静默建连、终端 PTY 的创建都不置位（打开 tab ≠ 在用）；
+`agent_chat_resume` 恢复的是**已有历史**的对话，直接可见。
+
+# 三条写入原语（`Registry`），生产者只决定「何时写」
+
+| 原语 | 语义 | 谁用 |
+| --- | --- | --- |
+| `report(title, engage)` | 一次加锁内（可选）升级标题 +（可选）置位；真变化才 bump | 终端首条输入（`source = prompt`）、CLI hook |
+| `report_first(title)` | 未置位 ⇒ 置位 + 写标题；已置位但无真标题 ⇒ 只补标题；已有真标题 ⇒ 什么都不做 | chat 的首次 Engage（含 `Silent → Turn`） |
+| `set_title(source, text)` | 只升级标题，不碰可见性 | 领域内的纯标题更新原语（当前无生产调用；OSC 已退役） |
+
+升级规则（`truncate` + `should_upgrade` + 同值不写）只有 `upgrade_title` 一份实现。
+
+`register_or_engage` 是 chat 的**唯一**登记入口，读两次 `kind`：
+
+1. **未登记** ⇒ `register_if_absent`（「首次出现」的判据与写入同一个临界区）；
+2. **已登记** ⇒ `Silent` 什么都不做；`Turn` / `Resume` 走 `report_first` ——
+   这是 `agent_chat_open` → `agent_stream` 续聊主链路的**唯一**可见性来源
+   （那条分支命中 `manager.owns` 后提前返回，不进 `spawn_session_pipeline`）。
+
+续聊因此不重登记、不改名、不 bump：会话名取第一次 Engage 的素材。
+缺少第 2 条时，用户「选了 agent 再发第一条消息」的会话永远不出现在侧栏（2026-10-31 实测回归）。
 
 （`placeholder_title_is_empty_until_the_cli_names_itself` /
 `plain_shell_terminal_also_has_no_placeholder_name` 钉住后端不编名字。）
+
+#### hook 上报是最权威的标题源（`NEEKO_SESSION_ID` 精确归因）
+
+CLI 的 hook 上报（`agent/hooks/ingest/event.rs::HookEvent`）里带着 **`title`** —— 模板
+（`agent/hooks/templates/`）已经判好优先级：CLI 自己的会话名（pi 的 `getSessionName`、
+claude 的 `session_title`）→ 首条用户消息；服务端 `HookEvent::topic()` 再过滤占位
+（opencode 的 `New session - <ISO>`）。这正是 Codex 那类桌面端显示在会话列表里的东西，
+因此投影为 [`TitleSource::Native`]（`live_sessions::wiring::hooks`）。
+
+**归因只认 `hints.neeko_session_id`**：会话 id 由 PTY 子进程的 env 下发 ——
+
+| 传输 | 注入方式 |
+| --- | --- |
+| 本地 PTY | `CommandBuilder::env(SESSION_ID_ENV, id)`（**每子进程一份**） |
+| WSL | `bash -c "export NEEKO_SESSION_ID=…; export COLORTERM=…; exec ${SHELL:-bash} -l"`（WSL 不透传宿主 env） |
+| SSH | 同一条 channel 的 shell 前缀：`export NEEKO_SESSION_ID=…; export COLORTERM=…; cd …` |
+
+**为什么是 env 而不是 pid/祖先链或 cwd**：进程树是 `我们的 shell → agent CLI → hook shim`，
+只有根是我们知道的；祖先链要跨 2+ 跳并查进程表（Node 只有 1 跳 `ppid`，Windows 要起 CIM），
+cwd 在同一项目多会话时必然串号。env 是**唯一随进程树自动传播、零查询成本**的身份载体。
+**禁止 `std::env::set_var`**（进程全局，多会话互相覆盖，`common/executor/env_defaults.rs` 已否决）。
+
+两条边界：① 嵌套 agent 会把父会话 id 报上来 —— 可接受（那个 nest 确实在父会话的进程树里），
+且会话注销后的迟到上报由注册表的 fail-closed 丢弃；② **不按 cwd 猜**：同一项目多会话是常态，
+猜错的表现是「另一个会话的标题被改写」，而标题是用户直接读的文字 —— 宁可空着（`has_user_input`
+这类可回收的低代价判断才允许粗归因）。
+
+#### 终端会话的标题：首条**用户**输入（判据必须在前端）
+
+终端会话的标题只有一个来源：**用户敲的第一行**。它在用户回车那一刻就写进注册表
+（`set_live_session_title(source = prompt)`），侧栏与 tab 标题**立即**出现，不等 agent 跑完。
+
+**为什么判据在前端**：`terminal-input-{id}` 同时承载两类写入 ——
+
+1. 我们**自动启动 agent 的那行命令**（`TerminalViewBase` 创建会话后立即写入 `pi --approve\r`）；
+2. 用户在 `term.onData` 里敲的按键。
+
+而 `onData` **也不全是用户输入**：xterm 会把它**自己**对终端查询的应答从这里发出去 ——
+CLI 查前景色时回 `ESC ] 10 ; rgb:3838/3a3a/4242 ST`（OSC 10），查光标位置时回
+`ESC [ 12 ; 40 R`（DSR）。这些字节没有任何用户敲的字，混进来就会变成标题：实测侧栏出现
+`10;rgb:3838/3a3a/424211,…` 这种乱码。判据是 **ESC 转义序列整段丢弃**（用户打字与
+转义键同理不需要参与命名）；序列可能跨 `onData` 分块，必须保留不完整尾部而不是把尾段
+当正文。唯一例外是 bracketed paste：xterm 会把用户粘贴内容包在
+`ESC[200~ … ESC[201~` 中，标记必须剥离、内容仍按用户输入处理，且要支持跨 `onData`
+分块与结束标记后的同块按键。
+
+后端收到的是同一串字节，**无从区分**。早期实现把解析放在后端，结果一创建 tab 就把自动启动
+命令当成首条用户输入 ⇒ 侧栏立刻冒出一条标题为 `pi --approve` 的会话。现在：前端
+`features/terminal/utils/inputTitle.ts::createFirstLineCapture` 只在 `sendInput`（= `onData`）
+路径累积，结算出的首行经 `set_live_session_title(source = 'prompt')` 上报 ——
+同一次调用既写标题又标记 `has_user_input`（侧栏可见）。
+
+规则：除 bracketed paste 外的 ESC 序列整段丢弃（支持跨块）、粘贴起始/结束标记剥离后
+按用户输入处理、累积到
+回车才结算、控制字符不进标题、空回车不算、只取第一条非空行、超长截断
+（`inputTitle.test.ts` 覆盖 OSC 10 / DSR 应答、跨块粘贴与同块尾随按键；后端
+`reported_input` 用例钉住
+「`Native`/`User` 胜过 `Prompt`」「空白不置 `has_user_input`」）。
+
+#### OSC 0/2 标题**不再是标题来源**（2026-10-31）
+
+`term.onTitleChange` 拿到的多是 CLI 的**状态栏**：`pi` 会把自己的 logo `π` 设成终端标题，
+`claude` 用旋转符表示「正在想」。它是 `Native` 级别，会覆盖用户的首条输入 —— 侧栏因此出现
+一个 `π` 开头的会话名（实测反馈）。会话名必须来自真实内容：
+
+- 用户输入（`prompt`）—— 回车即生效；
+- CLI **自己命名的会话**（hook 上报的 `title`，`native`）—— 见上一节。
+
+`terminalTitle.ts`（OSC 订阅 + 去重）已随此决定删除；`set_live_session_title` 的
+`source` 参数保留，`native` 仍供 hook 侧使用。
 
 `TitleSource` **不进 UI**：界面只表达结果（有真标题 / 占位），排名徽标是内部判据。
 标题也**不写回 tab store** —— 渲染期由 `resolveTabTitle(tab, session)` 派生，否则会出现

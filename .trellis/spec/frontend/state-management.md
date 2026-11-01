@@ -2088,25 +2088,58 @@ failed > ready > stopped`），**无会话返回 `null` 且不渲染状态点**�
 **标题来源（`TitleSource`）不进 UI**：它只决定「谁能覆盖谁」（后端 `title::should_upgrade`），
 界面只表达结果。展示它等于把内部优先级暴露成用户概念，且会诱导前端复刻升级规则。
 
-**没有名字的会话不进侧栏**（`isNamedSession`：`titleSource !== 'placeholder'` 且标题非空白）。
-打开 agent tab 时 PTY / 静默会话已经存在，但既没有首条 prompt 也没有 CLI 自报的 OSC 标题；
-这时在侧栏列一行只有图标的东西，用户读不出它是什么。等标题到手（`prompt` / `native` / `user`）
-它才成为「一条会话」，单元角标也一起出现（`sessionsByUnit` 是唯一分组入口，过滤在那里做）。
+**选中态只出现在最具体的一层**（`row-current`，`styles/base/tailwind.css` 的 `@utility`）：
+会话行用强调色 12% 淡底 + 左侧 2px 色条（双通道，色觉障碍下仍可读）；父级（单元行）在
+**它里面有会话被选中时不再填充**，只保留文字语气，否则才用中性 `--bg-selected`。
+判据来源是 `selectActiveSessionRefs`（从稳定的 `tabs` / `editorLayout` 切片在 `useMemo`
+中派生前台会话的 `workspaceKey + kind + sessionId`）+ `unitsWithListedActiveSession`
+（再与 live 快照求交，未列出 / 未输入的会话不让父行失去选中态）。父行只在子列表**实际
+展开**时让出填充，折叠或当前会话被分页挡住时仍保留中性选中底。图标方块**不再叠第二层底色** ——
+同一个选中被强调两次，是「别扭」的第二个来源。
 
-**tab 不受影响**：会话没名字时 `resolveTabTitle` 回退 `tab.title`，而 tab 的占位标题是
+**侧栏只列「用户已经用过、且有名字」的会话**（`isListedSession` = `has_user_input` && `isNamedSession`）。
+`has_user_input` 由后端在**用户发出第一条输入**时翻转（chat 的首次 `agent_stream`——含
+`agent_chat_open` 静默会话被用起来的那一步，见 `.trellis/spec/backend/agent-chat-transports.md`
+「三条写入原语」/ 终端首条输入行 / CLI 的 hook 上报），**打开 tab 不翻转** —— 一创建 tab
+就冒出会话正是要消灭的形态。
+两个条件各挡一类假会话（2026-10-31 第三、四轮反馈）：
+
+1. **`has_user_input`（用户输入过）** —— 打开 agent tab 就会创建 PTY / 静默会话，而且 agent CLI 常常
+   一启动就自己发 OSC 标题。只看标题的话，侧栏会在用户还没敲一个字时冒出条目；Codex 那类
+   桌面端也是「发出第一条消息才建会话」。首条终端输入 / 首次 `agent_stream` 才置位。
+2. **`isNamedSession`（标题非占位且非空白）** —— 用户敲了东西但还没有标题时（纯 shell 不设
+   OSC 标题），列出来只是一行没有文字的图标；标题一到它自己出现。
+
+单元角标与子列表同源（`sessionsByUnit` 是唯一分组入口，过滤在那里做），不会一个有一个没有。
+
+**tab 同样以 `has_user_input` 为门**：`resolveTabTitle(tab, session)` 只在会话已可见时才用注册表
+标题 —— 否则会出现「tab 已经改名、侧栏还没这条会话」的错觉。tab 的占位标题是
 **agent 名**（绑 agent 的 tab：`agent.name`）或 `Terminal N`（空白终端：
 `shared/utils/terminalTabTitle.ts`，两个建 tab 入口共用）。一旦会话有真标题，tab 标题在渲染期
 换成它 —— 不写回 `tab.title`，否则用户改名后 tab 会显示旧值。
 
-会话子列表**不画左侧竖线**，层级只靠缩进（`ml-[3.25rem]` 让会话图标对齐单元标签）——
+会话子列表**不画左侧竖线**，层级只靠缩进（`ml-7` 让会话图标对齐单元标签）——
 窄侧栏里那条线是持续噪声。
 
-**终端原生标题只上行、不回读**：`term.onTitleChange`（OSC 0/2）→ `createTerminalTitleSync` →
-薄命令 `set_live_session_title`。前端只做「同一会话值不变不发」（`terminalTitle.test.ts`：同值
-一次、值变各一次、dispose 后不再发、没有 `ptySessionId` 时不发也不记基线）。升级判定在后端，
-前端不预判 —— 否则「OSC 不得覆盖用户改名」会出现两份规则。
+**终端标题只从用户输入上行、不回读 OSC**：`createFirstLineCapture` 在回车时结算首条非空
+用户输入（支持 bracketed paste，过滤协议应答 / 转义键），再经薄命令
+`set_live_session_title(source = prompt)` 上报。升级判定在后端，前端不预判 —— 否则
+「首条输入不得覆盖用户改名」会出现两份规则。
 
 **跨栈常量**：`SESSIONS_EVENT` 前端值必须与 `src-tauri/src/live_sessions/events.rs` 的声明
 **逐字相等**（`shared/__tests__/sessionsEventConstant.test.ts` 读后端源码取声明值比较，
 不是断言子串出现过），且不得与 `AGENT_CHAT_EVENT` / `TRANSLATION_EVENT` 撞名 ——
 值相等挡不住「两端一起抄错」。
+
+**hook 未生效必须可见**：会话标题的权威来源是 CLI hook 上报，而 hook 未安装 / 过期 / 未受信时
+那一路**静默失效**。`shared/utils/agentHookSources.ts` 是与设置页共用的唯一判据
+（`hookRowsNeedingAttention`：可安装 && 本机检测到 && 用户没关掉 && 且未安装/过期/未信任），
+`features/project/components/CliHookHint` 在侧栏底部提示「会话标题未跟随 CLI」并给一个
+「重新安装」入口（`agent_hooks_apply` + 重新探测）。四道降噪缺一不可：自供源不提示、
+本机没装该 CLI（`path === ''`）不提示、用户主动关掉不提示、探测失败静默降级为不提示。
+
+**单元会话列表的展开与分页**：新会话出现（`childCount` 增长）时该单元**自动展开** ——
+基线取 0，所以面板重挂载时「本来就有会话」也算一次出现；条数不变则尊重用户的手动折叠
+（否则每次快照刷新都会把它重新弹开）。分页按 **10 条一页**：`SessionList` 只渲染
+`visibleCount` 条，「显示更多」每次再加一页（不是一次全放开）；条数增长时回到第一页 ——
+新会话在后端已按开始时间倒序排在最前，不重置会让用户看不到刚出现的那条。
