@@ -13,6 +13,7 @@ import React, { useCallback, useState, useEffect, useMemo } from 'react';
 
 import { ConnectionProjectCard } from '@/features/connection';
 import { CommitDialog } from '@/features/git';
+import CliHookHint from '@/features/project/components/CliHookHint';
 import ProjectItem from '@/features/project/components/ProjectItem';
 import { SectionHeader } from '@/features/project/components/SectionHeader';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
@@ -347,6 +348,8 @@ const ProjectsPanel: React.FC = () => {
             </DndContext>
           </>
         )}
+        {/* CLI hook 未生效时提示 + 重新安装（会话标题的权威来源就是它）。 */}
+        <CliHookHint />
       </div>
 
       {dialog && (

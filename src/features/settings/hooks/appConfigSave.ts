@@ -47,8 +47,10 @@ export type ConfigSaveInput = AppConfig | ((current: AppConfig) => Partial<AppCo
  *
  * ## 写入面
  *
- * 经 `useAppConfig.saveConfig` 写入的所有调用方（设置页各面板 / CLI hook 开关 /
- * 隐藏 agent 开关）都走这条路径，因此都自动获得以上两条保证。
+ * 经 `useAppConfig.saveConfig` 写入的调用方（设置页各面板 / 隐藏 agent 开关）都走这条路径，
+ * 因此都自动获得以上两条保证。CLI hook 的窄键写入走 `sessionApi.patchConfig`，
+ * 它同样在 `runConfigWrite` 临界区内重新读盘，但不经过本函数（否则会把通用 `AppConfig`
+ * 当成本次完整写入意图）。
  *
  * 顺序即契约：
  * 1. `input` 若是函数 → 用 `base` 求值（updater 形态，`base` 必须是**临界区内的磁盘现值**）；

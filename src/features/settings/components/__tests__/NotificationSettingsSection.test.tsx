@@ -23,6 +23,9 @@ vi.mock('@/features/settings/api/settingsApi', () => ({
   loadConfig: vi.fn(),
   saveConfig: vi.fn(),
 }));
+vi.mock('@/features/session/api/sessionApi', () => ({
+  patchConfig: vi.fn(),
+}));
 
 import {
   applyCliHooks,
@@ -33,6 +36,7 @@ import {
 import { loadConfig, saveConfig } from '@/features/settings/api/settingsApi';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { DEFAULT_NOTIFICATION_SETTINGS } from '@/shared/types/notification';
+import type { HookInstallStatus } from '@/shared/types/notification';
 
 import NotificationSettingsSection from '../NotificationSettingsSection';
 
@@ -41,11 +45,22 @@ function latestNotification() {
   return useNotificationStore.getState().notifications[0];
 }
 
+const HOOK_ROWS: HookInstallStatus[] = [
+  {
+    source: 'pi',
+    path: '/x/neeko-status.ts',
+    selfSupplied: false,
+    installed: false,
+    versionCurrent: false,
+    trusted: null,
+  },
+];
+
 function setupSettings() {
   vi.mocked(getNotificationSettings).mockResolvedValue({ ...DEFAULT_NOTIFICATION_SETTINGS });
   vi.mocked(saveNotificationSettings).mockResolvedValue(undefined);
   vi.mocked(applyCliHooks).mockResolvedValue([]);
-  vi.mocked(getCliHookStatus).mockResolvedValue([]);
+  vi.mocked(getCliHookStatus).mockResolvedValue(HOOK_ROWS);
   vi.mocked(loadConfig).mockResolvedValue({});
   vi.mocked(saveConfig).mockResolvedValue(undefined);
 }
@@ -105,8 +120,7 @@ describe('NotificationSettingsSection', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('switch', { name: 'Notify agents launched in my terminal' }));
     await waitFor(() => expect(saveNotificationSettings).toHaveBeenCalledTimes(1));
-    // status 列表为空（查询未返回）→ 回退 `null` = 全部启用，不得当作「零个启用」。
-    await waitFor(() => expect(applyCliHooks).toHaveBeenCalledWith(true, null));
+    await waitFor(() => expect(applyCliHooks).toHaveBeenCalledWith(true, ['pi']));
     // 非 hooks 变更不触发联动（当前只点过一次开关）。
     expect(applyCliHooks).toHaveBeenCalledTimes(1);
   });

@@ -2,8 +2,9 @@
  * CliHooksSection 关键行为：数据驱动的逐 CLI 行、覆盖表写入 `agentHookSources`、
  * 生效集合计算、回执按 status 分类。api 门面与 config 命令整体 mock。
  *
- * 两个导出的**纯函数**（`readSourceOverrides` / `enabledSourcesFor`）在此直测 ——
- * 它们是「畸形容忍」与「空列表不得当空集」两条不变量的唯一实现点。
+ * `enabledSourcesFor`（本组件的纯函数）与 `readSourceOverrides` / `installableHookRows`
+ * （`shared/utils/agentHookSources`，与侧栏提示共用的唯一判据）在此直测 ——
+ * 后两者**从 shared 导入**：组件只是消费者，从它这里导入会造出第二个公开入口。
  */
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -19,17 +20,18 @@ vi.mock('@/features/settings/api/settingsApi', () => ({
   saveConfig: vi.fn(),
 }));
 
+vi.mock('@/features/session/api/sessionApi', () => ({
+  patchConfig: vi.fn(),
+}));
+
 import { applyCliHooks, getCliHookStatus } from '@/features/notification/api/notificationApi';
+import { patchConfig } from '@/features/session/api/sessionApi';
 import { loadConfig, saveConfig } from '@/features/settings/api/settingsApi';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { HookInstallStatus } from '@/shared/types/notification';
+import { installableHookRows, readSourceOverrides } from '@/shared/utils/agentHookSources';
 
-import CliHooksSection, {
-  describeHookStatus,
-  enabledSourcesFor,
-  installableHookRows,
-  readSourceOverrides,
-} from '../CliHooksSection';
+import CliHooksSection, { describeHookStatus, enabledSourcesFor } from '../CliHooksSection';
 
 function latestNotification() {
   return useNotificationStore.getState().notifications[0];
@@ -59,6 +61,9 @@ function setup() {
   vi.mocked(getCliHookStatus).mockResolvedValue(TWO_CLIS);
   vi.mocked(loadConfig).mockResolvedValue({});
   vi.mocked(saveConfig).mockResolvedValue(undefined);
+  vi.mocked(patchConfig).mockImplementation(async (patch) => {
+    if (typeof patch === 'function') patch({});
+  });
 }
 
 describe('CliHooksSection pure helpers', () => {
@@ -75,11 +80,12 @@ describe('CliHooksSection pure helpers', () => {
   });
 
   /**
-   * 生效集合：主开关关 → `null`（调用方语义为「不装」）；
-   * **已知列表为空 → `null` 而非 `[]`** —— 空集会让 Rust 侧把已装 hook 全卸掉。
+   * 生效集合：主开关关 → `null`（命令契约里的「全部卸载」）；
+   * 已知列表为空 → `[]`。`null` 绝不能被当作「状态未知」的哨兵 ——
+   * 它在 `agent_hooks_apply(enabled=true)` 下表示「全部启用」。
    */
-  it('enabledSourcesFor falls back to null when the known list is empty', () => {
-    expect(enabledSourcesFor(true, [], {})).toBeNull();
+  it('enabledSourcesFor uses null only for the disabled master switch', () => {
+    expect(enabledSourcesFor(true, [], {})).toEqual([]);
     expect(enabledSourcesFor(false, TWO_CLIS, {})).toBeNull();
     expect(enabledSourcesFor(true, TWO_CLIS, {})).toEqual(['pi', 'claude']);
     expect(enabledSourcesFor(true, TWO_CLIS, { claude: false })).toEqual(['pi']);
@@ -178,11 +184,40 @@ describe('CliHooksSection', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole('switch', { name: 'Install hook for claude' }));
 
-    await waitFor(() => expect(saveConfig).toHaveBeenCalled());
-    expect(vi.mocked(saveConfig).mock.calls.at(-1)?.[0]).toMatchObject({
+    await waitFor(() => expect(patchConfig).toHaveBeenCalled());
+    const patch = vi.mocked(patchConfig).mock.calls.at(-1)?.[0];
+    expect(typeof patch).toBe('function');
+    expect(typeof patch === 'function' ? patch({}) : null).toEqual({
       agentHookSources: { claude: false },
     });
+    expect(saveConfig).not.toHaveBeenCalled();
     await waitFor(() => expect(vi.mocked(applyCliHooks).mock.calls.at(-1)).toEqual([true, ['pi']]));
+  });
+
+  /**
+   * 覆盖表是**相对增量**：磁盘上已有的其它 CLI 选择必须在临界区内合并，
+   * 不能被本次点击的本地快照整体替换（否则会悄悄重新打开用户关掉的 CLI）。
+   */
+  it('merges the clicked source into the current on-disk override map', async () => {
+    const onDisk = {
+      theme: 'dark',
+      agentHookSources: { pi: false, codex: true },
+    };
+    vi.mocked(patchConfig).mockImplementation(async (patch) => {
+      if (typeof patch !== 'function') return;
+      expect(patch(onDisk)).toEqual({
+        agentHookSources: { pi: false, codex: true, claude: false },
+      });
+    });
+
+    render(<CliHooksSection master onMasterChange={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('switch', { name: 'Install hook for claude' }));
+
+    await waitFor(() => expect(patchConfig).toHaveBeenCalled());
+    expect(typeof vi.mocked(patchConfig).mock.calls.at(-1)?.[0]).toBe('function');
+    // 磁盘上 pi 已明确关闭，合并后只应保持“无 CLI 生效”，不能再装回 pi。
+    await waitFor(() => expect(vi.mocked(applyCliHooks).mock.calls.at(-1)).toEqual([true, []]));
   });
 
   /**
@@ -200,6 +235,38 @@ describe('CliHooksSection', () => {
     await waitFor(() =>
       expect(vi.mocked(applyCliHooks).mock.calls.at(-1)).toEqual([true, ['pi', 'claude']]),
     );
+  });
+
+  /**
+   * 状态查询失败会失败软化成空列表；此时 `null` 在命令契约里表示「全部启用」，
+   * 直接下发会把用户明确关掉的 CLI 重新安装。未知状态必须中止，不得猜测。
+   */
+  it('does not apply an all-sources fallback when hook status is unavailable', async () => {
+    vi.mocked(getCliHookStatus).mockResolvedValue([]);
+    const { rerender } = render(<CliHooksSection master onMasterChange={vi.fn()} syncToken={0} />);
+    await waitFor(() => expect(getCliHookStatus).toHaveBeenCalled());
+
+    rerender(<CliHooksSection master onMasterChange={vi.fn()} syncToken={1} />);
+
+    await waitFor(() => expect(latestNotification()).toMatchObject({ type: 'error' }));
+    expect(applyCliHooks).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 首次读配置失败只说明「当前覆盖未知」，不能把它当作空覆盖表。
+   * 主开关变更时必须重读；读不到则不得猜测用户选择。
+   */
+  it('reloads an unknown override map before syncing the master switch', async () => {
+    vi.mocked(loadConfig)
+      .mockRejectedValueOnce(new Error('first read failed'))
+      .mockResolvedValueOnce({ agentHookSources: { claude: false } });
+    const { rerender } = render(<CliHooksSection master onMasterChange={vi.fn()} syncToken={0} />);
+    await waitFor(() => expect(loadConfig).toHaveBeenCalledTimes(1));
+
+    rerender(<CliHooksSection master onMasterChange={vi.fn()} syncToken={1} />);
+
+    await waitFor(() => expect(loadConfig).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(vi.mocked(applyCliHooks).mock.calls.at(-1)).toEqual([true, ['pi']]));
   });
 
   /** 回执按机器可读 status 分类：failed → error，且只呈现失败项。 */
@@ -243,7 +310,7 @@ describe('CliHooksSection', () => {
   it('rolls back the override when saving fails', async () => {
     render(<CliHooksSection master onMasterChange={vi.fn()} />);
     const user = userEvent.setup();
-    vi.mocked(saveConfig).mockRejectedValueOnce(new Error('disk'));
+    vi.mocked(patchConfig).mockRejectedValueOnce(new Error('disk'));
     vi.mocked(loadConfig).mockResolvedValueOnce({ agentHookSources: { claude: true } });
 
     const claudeToggle = await screen.findByRole('switch', { name: 'Install hook for claude' });
@@ -252,6 +319,24 @@ describe('CliHooksSection', () => {
     await waitFor(() => expect(latestNotification()).toMatchObject({ type: 'error' }));
     // 回滚后该开关恢复为磁盘值（true ⇒ checked）。
     await waitFor(() => expect(claudeToggle).toHaveAttribute('data-state', 'checked'));
+  });
+
+  /** 回读也失败时保留最后一次已确认值，不能把未知覆盖表变成「全部启用」。 */
+  it('keeps the last known override map when both save and reload fail', async () => {
+    vi.mocked(loadConfig)
+      .mockResolvedValueOnce({ agentHookSources: { claude: false } })
+      .mockRejectedValueOnce(new Error('reload failed'));
+    vi.mocked(patchConfig).mockRejectedValueOnce(new Error('disk'));
+
+    render(<CliHooksSection master onMasterChange={vi.fn()} />);
+    const claudeToggle = await screen.findByRole('switch', { name: 'Install hook for claude' });
+    await waitFor(() => expect(claudeToggle).toHaveAttribute('data-state', 'unchecked'));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('switch', { name: 'Install hook for pi' }));
+
+    await waitFor(() => expect(latestNotification()).toMatchObject({ type: 'error' }));
+    expect(claudeToggle).toHaveAttribute('data-state', 'unchecked');
   });
 });
 

@@ -21,7 +21,7 @@
  * | 写入面 | 入口 | 排队处 | 读在哪 |
  * | --- | --- | --- | --- |
  * | 设置页各面板（外观 / 快捷键 / LSP …） | `useAppConfig.saveConfig` | 写点内部 | **临界区内** |
- * | CLI hook 逐项开关 | `CliHooksSection` → `saveConfig` | 写点内部 | **临界区内** |
+ * | CLI hook 逐项开关 | `CliHooksSection` → `patchConfig` | `patchConfig` 内部 | **临界区内** |
  * | 隐藏 agent 开关 | `useHiddenAgentToggle` → `saveConfig` | 写点内部 | **临界区内**（updater 形态） |
  * | 通知设置 | `notification_settings_set`（后端 RMW） | 本组件 | 后端一次 IPC 内 |
  * | 项目引导状态 | `onboardingApi.saveOnboardingState` | 模块内 | 临界区内 |

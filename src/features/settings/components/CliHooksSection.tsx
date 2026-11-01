@@ -14,34 +14,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { applyCliHooks, getCliHookStatus } from '@/features/notification/api/notificationApi';
-import { loadConfig, saveConfig } from '@/features/settings/api/settingsApi';
+import { patchConfig } from '@/features/session/api/sessionApi';
+import { loadConfig } from '@/features/settings/api/settingsApi';
 import { useNotify } from '@/shared/hooks/useNotify';
 import type { HookApplyOutcome, HookInstallStatus } from '@/shared/types/notification';
+// 判定与配置形状住在 `shared/`：侧栏的「未生效」提示用的是**同一套**判据
+// （复制一份必然漂移 —— 提示说未安装、设置页说已安装，是最难自证的一类 bug）。
+import {
+  AGENT_HOOK_SOURCES_KEY,
+  installableHookRows,
+  isHookSourceEnabled,
+  readSourceOverrides,
+} from '@/shared/utils/agentHookSources';
 import { Switch } from '@/ui';
-
-/** `config.json` 中承载逐 CLI hook 开关的键（镜像 `agent/hooks/settings.rs`）。 */
-const AGENT_HOOK_SOURCES_KEY = 'agentHookSources';
-
-/**
- * 过滤掉**自供源**（不需要 Neeko 安装的 CLI，如 DSH）。
- *
- * 为什么必须过滤而不是渲染成「未安装」：`HOOK_TARGETS` 同时驱动「接收白名单」与
- * 「Neeko 能装哪些 CLI」。DSH 只满足前者 —— 它的上报由自己的插件
- * （`packages/dsh-neeko`）完成，Neeko 不该往用户 profile 写文件。
- *
- * 若不过滤，用户会看到一行「dsh — not installed」+ 一个拨动后毫无效果的开关
- * （本组件的行是无条件 `map` 的）。那是本任务最想避免的「看起来有、实际没有」。
- *
- * 判据是后端显式字段 `selfSupplied`，**不是** `path === ""`：后者还可能是
- * 「目录定位不到」（CLI 本机未初始化）—— 那种仍要展示，用户可能要装它。
- * 把两种语义压进一个字段会让「未初始化的 pi」被误判成自供源而消失。
- *
- * @param rows - 后端 `agent_hooks_status` 的原始行。
- * @returns 可安装的 CLIs（供渲染与「全部启用」计算）。
- */
-export function installableHookRows(rows: readonly HookInstallStatus[]): HookInstallStatus[] {
-  return rows.filter((row) => !row.selfSupplied);
-}
 
 /** 回执呈现文案：`pi: skipped (…)` —— status 是判定源，detail 只做补充。 */
 function describeOutcome(outcome: HookApplyOutcome): string {
@@ -50,18 +35,9 @@ function describeOutcome(outcome: HookApplyOutcome): string {
     : `${outcome.source}: ${outcome.status}`;
 }
 
-/**
- * 读逐 CLI 覆盖表（畸形容忍：非对象 / 值非布尔 → 忽略）。
- * 键缺失 ⇒ 该 CLI 跟随主开关（默认启用）—— 与 Rust `hook_enabled_for` 同语义。
- */
-export function readSourceOverrides(config: Record<string, unknown>): Record<string, boolean> {
-  const raw = config[AGENT_HOOK_SOURCES_KEY];
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
-  const out: Record<string, boolean> = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === 'boolean') out[k] = v;
-  }
-  return out;
+/** 从磁盘读取覆盖表；读取成功才代表“没有覆盖项”，失败必须由调用方保留未知态。 */
+async function loadSourceOverrides(): Promise<Record<string, boolean>> {
+  return readSourceOverrides(await loadConfig());
 }
 
 /**
@@ -80,18 +56,19 @@ export function describeHookStatus(hook: HookInstallStatus): string {
 }
 
 /**
- * 按主开关 + 覆盖表算出「应处于安装态」的 CLI 集合（`null` = 全部启用）。
+ * 按主开关 + 覆盖表算出「应处于安装态」的 CLI 集合。
  *
- * `known` 为空 = 状态查询失败（api 门面失败回空列表）→ 回退 `null` 而非空集 ——
- * 空集会让 Rust 侧把已装 hook 全卸掉。
+ * `null` **只**表示主开关关闭（命令契约里 `enabled=false` + `null` = 全部卸载）；
+ * 主开关开启时必须给出显式集合。`known` 为空代表状态未知，绝不能返回 `null` ——
+ * 后端会把它解释为「全部启用」，从而重装用户明确关掉的 CLI。调用方必须先验状态。
  */
 export function enabledSourcesFor(
   master: boolean,
   known: HookInstallStatus[],
   overrides: Record<string, boolean>,
 ): string[] | null {
-  if (!master || known.length === 0) return null;
-  return known.map((h) => h.source).filter((s) => overrides[s] !== false);
+  if (!master) return null;
+  return known.map((h) => h.source).filter((s) => isHookSourceEnabled(s, overrides, master));
 }
 
 interface CliHooksSectionProps {
@@ -110,33 +87,74 @@ const CliHooksSection: React.FC<CliHooksSectionProps> = ({
 }) => {
   const [hookStatus, setHookStatus] = useState<HookInstallStatus[]>([]);
   const [sourceOverrides, setSourceOverrides] = useState<Record<string, boolean>>({});
+  /**
+   * 覆盖表是否来自一次成功读取。
+   *
+   * `{}` 同时可能表示「磁盘上确实没有覆盖项」和「读取失败后的初始值」；把两者混为一谈
+   * 会让文件面收敛把用户关掉的 CLI 重新安装。未知时只能在动作路径上重新读盘，禁止猜默认。
+   */
+  const overridesKnown = useRef(false);
+  /** 读取代次：写入/新读取会让旧的异步回包失效，避免初始读盘覆盖刚保存的选择。 */
+  const overrideReadVersion = useRef(0);
   /** 逐 CLI 变更的串行链（与父组件的设置链相互独立：写的是不同 config 键）。 */
   const chain = useRef<Promise<void>>(Promise.resolve());
   const { notify } = useNotify();
 
   useEffect(() => {
     let alive = true;
+    const version = ++overrideReadVersion.current;
     void getCliHookStatus().then((s) => {
       if (alive) setHookStatus(s);
     });
-    void loadConfig()
+    void loadSourceOverrides()
       .then((cfg) => {
-        if (alive) setSourceOverrides(readSourceOverrides(cfg));
+        if (!alive || version !== overrideReadVersion.current) return;
+        overridesKnown.current = true;
+        setSourceOverrides(cfg);
       })
       .catch(() => {
-        /* 读盘失败 ⇒ 全部跟随主开关（默认启用），不阻断设置页渲染 */
+        if (!alive || version !== overrideReadVersion.current) return;
+        overridesKnown.current = false;
+        // 读盘失败 ⇒ 覆盖选择未知；保留上一次已确认值，动作路径会再次读盘或明确报错。
       });
     return () => {
       alive = false;
     };
   }, []);
 
+  /** 读盘失败后的回滚：只有本次读取仍是最后一次请求时才能覆盖本地状态。 */
+  const restoreOverrides = useCallback(async (): Promise<void> => {
+    const version = ++overrideReadVersion.current;
+    try {
+      const current = await loadSourceOverrides();
+      if (version !== overrideReadVersion.current) return;
+      overridesKnown.current = true;
+      setSourceOverrides(current);
+    } catch {
+      if (version === overrideReadVersion.current) overridesKnown.current = false;
+    }
+  }, []);
+
   /** 同步文件面：把生效集合交给 agent 域命令，并按机器可读 status 分类提示。 */
   const syncHooks = useCallback(
     async (nextMaster: boolean, overrides: Record<string, boolean>) => {
+      let rows = installableHookRows(hookStatus);
+      // status 查询失败会被 API fail-soft 成空列表；此时 `null` 在命令契约里表示
+      // 「全部启用」，继续下发会重新安装用户明确关掉的 CLI。开启主开关时只能中止。
+      if (nextMaster && rows.length === 0) {
+        // 初始状态可能还没回来或瞬时失败，动作路径再探一次；仍为空才中止。
+        const refreshed = installableHookRows(await getCliHookStatus());
+        if (refreshed.length > 0) {
+          rows = refreshed;
+          setHookStatus(refreshed);
+        }
+      }
+      if (nextMaster && rows.length === 0) {
+        throw new Error('hook status unavailable');
+      }
       const results = await applyCliHooks(
         nextMaster,
-        enabledSourcesFor(nextMaster, installableHookRows(hookStatus), overrides),
+        enabledSourcesFor(nextMaster, rows, overrides),
       );
       setHookStatus(await getCliHookStatus());
       const failed = results.filter((r) => r.status === 'failed');
@@ -163,28 +181,69 @@ const CliHooksSection: React.FC<CliHooksSectionProps> = ({
   useEffect(() => {
     if (syncToken === lastToken.current) return;
     lastToken.current = syncToken;
-    chain.current = chain.current.then(() => syncHooks(master, sourceOverrides)).catch(() => {});
-  }, [syncToken, master, sourceOverrides, syncHooks]);
+    chain.current = chain.current
+      .then(async () => {
+        let overrides = overridesKnown.current ? sourceOverrides : null;
+        if (!overrides) {
+          const version = ++overrideReadVersion.current;
+          try {
+            overrides = await loadSourceOverrides();
+          } catch {
+            if (version === overrideReadVersion.current) overridesKnown.current = false;
+            notify('CLI hooks: failed to read hook selection', 'error');
+            return;
+          }
+          if (version === overrideReadVersion.current) {
+            overridesKnown.current = true;
+            setSourceOverrides(overrides);
+          }
+        }
+        await syncHooks(master, overrides);
+      })
+      .catch(() => {
+        notify('CLI hooks: failed to update hook files', 'error');
+      });
+  }, [syncToken, master, sourceOverrides, syncHooks, notify]);
 
   /** 逐 CLI 开关：写 `agentHookSources` + 立即重同步文件面。 */
   const toggleSource = useCallback(
     (source: string, checked: boolean) => {
-      const nextOverrides = { ...sourceOverrides, [source]: checked };
-      setSourceOverrides(nextOverrides);
-      chain.current = chain.current
-        .then(async () => {
-          // 串行化与读盘合并由写点（`useAppConfig.saveConfig`）负责 ——
-          // 此处再包 `runConfigWrite` 会在队列内二次入队，自我等待成死锁。
-          await saveConfig({ [AGENT_HOOK_SOURCES_KEY]: nextOverrides });
-          if (master) await syncHooks(master, nextOverrides);
-        })
-        .catch(async () => {
-          const cfg = await loadConfig().catch(() => ({}));
-          setSourceOverrides(readSourceOverrides(cfg));
+      // 已知时先乐观更新；未知时不伪造其它键，等 updater 读到磁盘现值后再整体落定。
+      ++overrideReadVersion.current;
+      if (overridesKnown.current) {
+        setSourceOverrides((current) => ({ ...current, [source]: checked }));
+      }
+      chain.current = chain.current.then(async () => {
+        let nextOverrides: Record<string, boolean> | null = null;
+        // updater 在全局 configWriteGate 临界区内读取磁盘现值；合并而不是替换整个
+        // 覆盖表，避免并发/未知初始值把其它 CLI 的选择抹掉。
+        try {
+          await patchConfig((current) => {
+            nextOverrides = { ...readSourceOverrides(current), [source]: checked };
+            return { [AGENT_HOOK_SOURCES_KEY]: nextOverrides };
+          });
+        } catch {
+          await restoreOverrides();
           notify('Failed to save CLI hook selection', 'error');
-        });
+          return;
+        }
+        if (!nextOverrides) {
+          await restoreOverrides();
+          notify('Failed to save CLI hook selection', 'error');
+          return;
+        }
+        overridesKnown.current = true;
+        setSourceOverrides(nextOverrides);
+        if (!master) return;
+        try {
+          await syncHooks(master, nextOverrides);
+        } catch {
+          // 配置已成功落盘，不能把它当作保存失败回滚；文件面错误单独呈现。
+          notify('CLI hooks: failed to update hook files', 'error');
+        }
+      });
     },
-    [sourceOverrides, master, notify, syncHooks],
+    [master, notify, restoreOverrides, syncHooks],
   );
 
   return (
