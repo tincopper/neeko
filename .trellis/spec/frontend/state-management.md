@@ -2100,7 +2100,7 @@ failed > ready > stopped`），**无会话返回 `null` 且不渲染状态点**�
 **侧栏只列「用户已经用过、且有名字」的会话**（`isListedSession` = `has_user_input` && `isNamedSession`）。
 `has_user_input` 由后端在**用户发出第一条输入**时翻转（chat 的首次 `agent_stream`——含
 `agent_chat_open` 静默会话被用起来的那一步，见 `.trellis/spec/backend/agent-chat-transports.md`
-「三条写入原语」/ 终端首条输入行 / CLI 的 hook 上报），**打开 tab 不翻转** —— 一创建 tab
+「五个写入原语」/ 终端用户提交 / CLI 的 hook 上报），**打开 tab 不翻转** —— 一创建 tab
 就冒出会话正是要消灭的形态。
 两个条件各挡一类假会话（2026-10-31 第三、四轮反馈）：
 
@@ -2121,10 +2121,10 @@ failed > ready > stopped`），**无会话返回 `null` 且不渲染状态点**�
 会话子列表**不画左侧竖线**，层级只靠缩进（`ml-7` 让会话图标对齐单元标签）——
 窄侧栏里那条线是持续噪声。
 
-**终端标题只从用户输入上行、不回读 OSC**：`createFirstLineCapture` 在回车时结算首条非空
-用户输入（支持 bracketed paste，过滤协议应答 / 转义键），再经薄命令
-`set_live_session_title(source = prompt)` 上报。升级判定在后端，前端不预判 —— 否则
-「首条输入不得覆盖用户改名」会出现两份规则。
+**终端标题只从用户输入上行、不回读 OSC**：`createUserInputActivityReporter` 在每次提交时
+经薄命令 `set_live_session_title(source = prompt)` 上报（支持 bracketed paste，过滤协议应答 /
+转义键）。首次非空行才成为标题，后续提交只清权威门；升级判定在后端，前端不预判 —— 否则
+「后续输入不得覆盖用户改名」会出现两份规则。
 
 **跨栈常量**：`SESSIONS_EVENT` 前端值必须与 `src-tauri/src/live_sessions/events.rs` 的声明
 **逐字相等**（`shared/__tests__/sessionsEventConstant.test.ts` 读后端源码取声明值比较，

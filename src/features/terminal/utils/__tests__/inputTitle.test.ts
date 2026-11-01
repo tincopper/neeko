@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createFirstLineCapture, createUserInputReporter } from '../inputTitle';
+import { createFirstLineCapture, createUserInputActivityReporter } from '../inputTitle';
 
 describe('createFirstLineCapture', () => {
   it('累积到回车才结算，只取第一行', () => {
@@ -125,29 +125,78 @@ describe('createFirstLineCapture', () => {
   });
 });
 
-describe('createUserInputReporter', () => {
-  it('只把「第一行」上报一次，之后不再上报', () => {
+describe('createUserInputActivityReporter', () => {
+  it('用户提交一行输入 ⇒ 每次上报活动与当前行', () => {
     const report = vi.fn();
-    const feed = createUserInputReporter({ getSessionId: () => 'pty-1', report });
-    feed('ls');
-    feed('\r');
-    feed('pwd\r');
-    expect(report).toHaveBeenCalledTimes(1);
-    expect(report).toHaveBeenCalledWith('pty-1', 'ls');
+    const feed = createUserInputActivityReporter({
+      getSessionId: () => 'pty-1',
+      report,
+    });
+    feed('ls\r');
+    feed('next prompt\r');
+    expect(report).toHaveBeenNthCalledWith(1, 'pty-1', 'ls');
+    expect(report).toHaveBeenNthCalledWith(2, 'pty-1', 'next prompt');
   });
 
-  it('会话 id 还没就绪（PTY 未创建）⇒ 不上报，也不记基线外的状态', () => {
+  it('只敲字符、尚未回车 ⇒ 不上报（活动态从提交开始）', () => {
     const report = vi.fn();
-    const feed = createUserInputReporter({ getSessionId: () => null, report });
-    feed('ls\r');
+    const feed = createUserInputActivityReporter({
+      getSessionId: () => 'pty-1',
+      report,
+    });
+    feed('abc');
     expect(report).not.toHaveBeenCalled();
   });
 
-  it('协议应答不触发上报（OSC 10 曾被当成输入）', () => {
+  it('同一数据块的多次提交只上报一次活动（避免粘贴触发 IPC 风暴）', () => {
     const report = vi.fn();
-    const feed = createUserInputReporter({ getSessionId: () => 'pty-1', report });
-    feed('\u001b]10;rgb:3838/3a3a/4242\u001b\\');
+    const feed = createUserInputActivityReporter({
+      getSessionId: () => 'pty-1',
+      report,
+    });
+    feed('one\rtwo\rthree\r');
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledWith('pty-1', 'one');
+  });
+
+  it('空回车也是一次提交（审批界面可能只按 Enter）', () => {
+    const report = vi.fn();
+    const feed = createUserInputActivityReporter({
+      getSessionId: () => 'pty-1',
+      report,
+    });
     feed('\r');
+    expect(report).toHaveBeenCalledWith('pty-1', '');
+  });
+
+  it('协议应答 / ESC 序列不算用户活动', () => {
+    const report = vi.fn();
+    const feed = createUserInputActivityReporter({
+      getSessionId: () => 'pty-1',
+      report,
+    });
+    feed('\u001b]10;rgb:3838/3a3a/4242\u001b\\');
+    feed('\u001b[A');
+    expect(report).not.toHaveBeenCalled();
+  });
+
+  it('bracketed paste 的换行属于用户输入 ⇒ 上报活动', () => {
+    const report = vi.fn();
+    const feed = createUserInputActivityReporter({
+      getSessionId: () => 'pty-1',
+      report,
+    });
+    feed('\u001b[200~first\nsecond\u001b[201~');
+    expect(report).toHaveBeenCalledWith('pty-1', 'first');
+  });
+
+  it('会话 id 还没就绪（PTY 未创建）⇒ 不上报', () => {
+    const report = vi.fn();
+    const feed = createUserInputActivityReporter({
+      getSessionId: () => null,
+      report,
+    });
+    feed('ls\r');
     expect(report).not.toHaveBeenCalled();
   });
 });

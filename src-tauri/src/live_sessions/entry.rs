@@ -100,9 +100,15 @@ pub struct SessionEntry {
     /// 用户是否已经在这个会话里**发出过输入**（= 侧栏该把它列出来的时刻）。
     ///
     /// 一旦置位就不再回落：发送那一刻标题已经拿到，用户就该在侧栏看到这条会话 ——
-    /// 不必等 agent 跑完。置位点：终端的首条输入行、chat 的 `agent_stream`（真回合）、
+    /// 不必等 agent 跑完。置位点：终端的用户提交、chat 的 `agent_stream`（真回合）、
     /// CLI 的 hook 上报。**打开 tab 不置位**（PTY / 静默会话的创建不算用户在用它）。
     pub has_user_input: bool,
+    /// 状态是否来自权威事件（CLI hook 的完成 / 审批 / 失败），且仍在等待下一次用户输入。
+    ///
+    /// PTY 输出只能推断“可能还在跑”；Codex TUI 在完成后的重绘、光标刷新或重新进入 CLI
+    /// 也会产生字节，若让它们覆盖 hook 的完成态，就会把 `Ready` 永久推回 `Running`。
+    /// 因此权威事件置位本门，只有用户真正提交输入时才清除。
+    pub awaiting_user_activity: bool,
 }
 
 impl SessionEntry {
@@ -134,6 +140,7 @@ impl SessionEntry {
             updated_at: now,
             turn_count: 0,
             has_user_input: false,
+            awaiting_user_activity: false,
         }
     }
 

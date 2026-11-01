@@ -2,8 +2,9 @@
 //!
 //! # 不变量
 //!
-//! 1. 状态只能经信号改变：写入面只有 [`Registry::apply`]（外加 `register` / `unregister`
-//!    这两个生命周期动作）。视图层拿不到 `&mut SessionEntry`。
+//! 1. 状态只能经信号改变：直接信号走 [`Registry::apply`]，PTY 推断走
+//!    [`Registry::apply_activity`]，CLI 权威事件走 [`Registry::report_authoritative`]
+//!    （外加 `register` / `unregister` 两个生命周期动作）。视图层拿不到 `&mut SessionEntry`。
 //! 2. 版本号只在**真的变了**时 bump（R2.3：审批往返不刷 IPC）。前端凭版本号决定是否再拉一次。
 //! 3. 未知会话的迟到信号被丢弃并 `log::debug!`，**绝不为它凭空建条目**
 //!    （凭空建条目 = 侧栏多出一条没人创建的会话）。
@@ -18,7 +19,7 @@ use std::time::Duration;
 use chrono::Utc;
 
 use crate::agent::chat::session_store::{ResumeCursor, SessionStore};
-use crate::live_sessions::entry::{SessionEntry, TitleSource};
+use crate::live_sessions::entry::{SessionEntry, SessionState, TitleSource};
 use crate::live_sessions::state::{reduce, Signal};
 use crate::live_sessions::title;
 
@@ -97,51 +98,51 @@ impl Registry {
         true
     }
 
-    /// 应用一条信号。返回「状态是否真的变了」（调用方据此决定是否发变更事件）。
+    /// 应用一条直接信号（chat 事件 / 终止等）。返回「状态是否真的变了」
+    /// （调用方据此决定是否发变更事件）。
     ///
     /// 未知会话 → `false` + `log::debug!`（不建条目）；状态未变 / 信号被吸收 → `false`。
     pub fn apply(&self, session_id: &str, signal: Signal) -> bool {
-        // 外层 `None` = 会话未知；内层 `None` = 状态未变（含终止吸收）。
-        let outcome = self.mutate(session_id, |entry| match reduce(entry.state, signal) {
-            Some(next) if next != entry.state => {
-                entry.state = next;
-                entry.updated_at = Utc::now();
-                let turn_finished = matches!(signal, Signal::TurnFinished);
-                if turn_finished {
-                    entry.turn_count = entry.turn_count.saturating_add(1);
-                }
-                // 只在「DB 读者真的会读到」的变化上写穿：`turn_count` 与终态
-                // （`SessionStore::list_active` 按 `status != Closed` 过滤）。中间态
-                // （Running / AwaitingApproval）重启后没有任何代码读回 live 条目，
-                // 而每次转移都同步写一次 SQLite 会把这些写压在异步执行器线程上
-                // （红线 3 取向）。
-                Some(if turn_finished || next.is_terminal() {
-                    ResumeCursor::from_entry(entry)
-                } else {
-                    None
-                })
+        self.apply_signal(session_id, signal, false)
+    }
+
+    /// 应用一条**输出推断**信号（PTY 字节活动）。权威状态门关闭期间，`TurnStarted` /
+    /// `TurnFinished` 都不得改写 hook 给出的完成 / 审批态。
+    pub fn apply_activity(&self, session_id: &str, signal: Signal) -> bool {
+        self.apply_signal(session_id, signal, true)
+    }
+
+    fn apply_signal(&self, session_id: &str, signal: Signal, from_activity: bool) -> bool {
+        // 外层 `None` = 会话未知；内层 `(changed, cursor)` = 状态是否变、是否写穿。
+        let outcome = self.mutate(session_id, |entry| {
+            if from_activity
+                && entry.awaiting_user_activity
+                && matches!(signal, Signal::TurnStarted | Signal::TurnFinished)
+            {
+                return (false, None);
             }
-            _ => None,
+            apply_transition(entry, signal)
         });
         match outcome {
             None => {
                 log::debug!("[live_sessions] dropped {signal:?} for unknown session: {session_id}");
                 false
             }
-            Some(None) => false,
-            Some(Some(cursor)) => {
-                self.bump();
-                self.persist(cursor);
-                true
+            Some((changed, cursor)) => {
+                if changed {
+                    self.bump();
+                    self.persist(cursor);
+                }
+                changed
             }
         }
     }
 
-    /// 一次上报的**合并写**：标题升级与该会话「已被用过」的置位在**同一个临界区**完成。
+    /// 标题升级与（可选）可见性置位的**合并写**。
     ///
-    /// 三个生产者（终端首条输入 / CLI hook / chat 首轮）此前各写一遍
-    /// 「升级标题 + 置位可见性」—— 两次加锁、两次 bump、升级规则两处。合并后
-    /// 升级规则只剩 [`title::should_upgrade`] 一份，版本号也不重复加。
+    /// 用户提交、权威 hook 与 chat 首次 Engage 已各自收敛到更明确的入口；本方法
+    /// 继续承载 CLI 纯信息事件与显式标题上报。所有入口共用 [`title::should_upgrade`]
+    /// 这一份升级规则。
     ///
     /// - `title = None`：只置位（`engage`）或什么都不做；
     /// - `engage = false`：只升级标题（CLI 的纯信息类事件）。
@@ -171,6 +172,84 @@ impl Registry {
         self.finish(session_id, applied, "report")
     }
 
+    /// 用户提交输入的**唯一合并写**：首次标题 + 置位已使用 + 清除权威状态门 + 进入 Running。
+    ///
+    /// 首次输入既要成为标题素材，也要让会话立刻可见；后续输入只需要把已完成的会话
+    /// 重新推回活跃态。两者共用本入口，避免调用方在多个锁之间拼状态。
+    ///
+    /// **只有尚无真标题时**才用 `Prompt` 命名。后续提交即使携带了不同的命令文本，
+    /// 也不能把会话名改掉（用户用侧栏识别会话，改名必须只来自显式改名或更强的来源）。
+    ///
+    /// 空白行仍是**一次用户提交**（审批界面可能只按 Enter），只是不作为标题素材。
+    pub fn report_user_input(&self, session_id: &str, title: &str) -> bool {
+        let applied = self.mutate(session_id, |entry| {
+            if entry.state.is_terminal() {
+                return false;
+            }
+            let mut changed = false;
+            if !has_real_title(entry) && !title.trim().is_empty() {
+                changed |= upgrade_title(entry, TitleSource::Prompt, title);
+            }
+            changed |= mark_entry_user_activity(entry);
+            if changed {
+                entry.updated_at = Utc::now();
+            }
+            changed
+        });
+        self.finish(session_id, applied, "report_user_input")
+    }
+
+    /// 权威 hook 事件：一次加锁内升级标题 / 置位 / 状态转移，并关闭 PTY 输出推断。
+    ///
+    /// 只有 `turn_completed` / 审批请求 / 失败会走这里；纯信息事件仍走 [`Registry::report`]，
+    /// 不得影响状态。权威事件本身就是「用户相关的会话事实」，因此同时置位
+    /// `has_user_input`，不额外暴露一个恒为 `true` 的调用参数。
+    pub fn report_authoritative(
+        &self,
+        session_id: &str,
+        title: Option<(TitleSource, &str)>,
+        signal: Signal,
+    ) -> bool {
+        let outcome = self.mutate(session_id, |entry| {
+            let mut changed = false;
+            if let Some((source, text)) = title {
+                changed |= upgrade_title(entry, source, text);
+            }
+            if !entry.has_user_input {
+                entry.has_user_input = true;
+                changed = true;
+            }
+            let (state_changed, cursor) = apply_transition(entry, signal);
+            changed |= state_changed;
+            // 只有非终止的「等待用户」态需要门。终止态已被状态机永久吸收，
+            // 再置门只会让字段语义失真。
+            if !entry.state.is_terminal()
+                && matches!(signal, Signal::TurnFinished | Signal::ApprovalRequested)
+            {
+                entry.awaiting_user_activity = true;
+            }
+            if changed {
+                entry.updated_at = Utc::now();
+            }
+            (changed, cursor)
+        });
+        match outcome {
+            None => {
+                log::debug!(
+                    "[live_sessions] authoritative event for unknown session: {session_id}"
+                );
+                false
+            }
+            Some((changed, cursor)) => {
+                if changed {
+                    self.bump();
+                    self.persist(cursor);
+                }
+                changed
+            }
+        }
+    }
+
     /// chat 首次 Engage / 补标题的入口（`Silent → Turn`、续聊主链路）。
     ///
     /// - 未置位 ⇒ 置位并写入首个标题；
@@ -180,9 +259,7 @@ impl Registry {
     /// 门控在锁内，避免「先读 has_user_input、再写标题」之间的竞态。
     pub fn report_first(&self, session_id: &str, title: Option<(TitleSource, &str)>) -> bool {
         let applied = self.mutate(session_id, |entry| {
-            let has_title =
-                !entry.title.trim().is_empty() && entry.title_source != TitleSource::Placeholder;
-            if entry.has_user_input && (title.is_none() || has_title) {
+            if entry.has_user_input && (title.is_none() || has_real_title(entry)) {
                 return false;
             }
             let mut changed = false;
@@ -349,6 +426,57 @@ fn upgrade_title(entry: &mut SessionEntry, source: TitleSource, text: &str) -> b
     entry.title = title;
     entry.title_source = source;
     true
+}
+
+/// 是否有可展示的真标题（空串与占位来源都不算）。
+fn has_real_title(entry: &SessionEntry) -> bool {
+    !entry.title.trim().is_empty() && entry.title_source != TitleSource::Placeholder
+}
+
+/// 用户活动解除权威状态门，并把非终止会话推回 Running。
+fn mark_entry_user_activity(entry: &mut SessionEntry) -> bool {
+    let mut changed = false;
+    if !entry.has_user_input {
+        entry.has_user_input = true;
+        changed = true;
+    }
+    if entry.awaiting_user_activity {
+        entry.awaiting_user_activity = false;
+        changed = true;
+    }
+    if entry.state != SessionState::Running {
+        entry.state = SessionState::Running;
+        changed = true;
+    }
+    changed
+}
+
+/// 应用一条状态信号并返回 `(是否变化, 是否写穿)`。
+fn apply_transition(entry: &mut SessionEntry, signal: Signal) -> (bool, Option<ResumeCursor>) {
+    match reduce(entry.state, signal) {
+        Some(next) if next != entry.state => {
+            entry.state = next;
+            entry.updated_at = Utc::now();
+            let turn_finished = matches!(signal, Signal::TurnFinished);
+            if turn_finished {
+                entry.turn_count = entry.turn_count.saturating_add(1);
+            }
+            // 只在「DB 读者真的会读到」的变化上写穿：`turn_count` 与终态
+            // （`SessionStore::list_active` 按 `status != Closed` 过滤）。中间态
+            // （Running / AwaitingApproval）重启后没有任何代码读回 live 条目，
+            // 而每次转移都同步写一次 SQLite 会把这些写压在异步执行器线程上
+            // （红线 3 取向）。
+            (
+                true,
+                if turn_finished || next.is_terminal() {
+                    ResumeCursor::from_entry(entry)
+                } else {
+                    None
+                },
+            )
+        }
+        _ => (false, None),
+    }
 }
 
 #[cfg(test)]

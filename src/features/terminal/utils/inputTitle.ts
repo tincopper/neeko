@@ -1,5 +1,5 @@
 /**
- * 终端**首条用户输入行**的捕获器（前端侧）。
+ * 终端**用户提交输入行**的解析器（前端侧）。
  *
  * # 为什么在前端
  *
@@ -29,8 +29,9 @@
  * - 累积到**回车**才结算（输入按键盘分块到达，一次一个键）；
  * - 退格（`DEL` / `BS`）回删缓冲区最后一个字符 —— 用户改错字时标题不该留着被删掉的字；
  * - 其余控制字符（制表等）不进标题；
- * - **空回车不算**一条输入（误触），继续等真正的那一行；
- * - 只取第一条非空行，之后永远不返回（后续命令不该反复改标题）。
+ * - 默认标题捕获忽略空回车；活动上报把空回车视为一次用户提交；
+ * - 默认只取第一条非空行；活动上报器关闭该限制，每次提交都回调（后续提交只恢复状态，
+ *   后端会忽略已有真标题时的 `Prompt` 改名）；
  */
 
 /** 保留上限：后端还会按字符截到 80，这里只为防粘贴大段文本。 */
@@ -43,14 +44,26 @@ const PASTE_END = '\u001b[201~';
 /** 退格：`BS`（部分终端的 Ctrl+Backspace）与 `DEL`（xterm 默认）。 */
 const is_backspace = (code: number): boolean => code === 0x08 || code === 0x7f;
 
-export interface FirstLineCapture {
+export interface InputLineCapture {
   /**
-   * 喂入一段输入；当**第一条非空行完成**时返回它（此后永远返回 `null`）。
+   * 喂入一段输入；返回本次结算的第一条行（空行可能返回 `''`）。
    */
   feed: (data: string) => string | null;
 }
 
-export function createFirstLineCapture(): FirstLineCapture {
+interface LineCaptureOptions {
+  /** 只结算首行（默认 `true`）；活动上报需要观察每次提交。 */
+  stopAfterFirst?: boolean;
+  /** 是否把空回车结算为一次提交（默认 `false`）。 */
+  includeEmpty?: boolean;
+  /** 每结算一行调用一次；同一数据块可包含多次提交。 */
+  onSubmit?: (line: string) => void;
+}
+
+function createLineCapture(options: LineCaptureOptions = {}): InputLineCapture {
+  const stopAfterFirst = options.stopAfterFirst ?? true;
+  const includeEmpty = options.includeEmpty ?? false;
+  const onSubmit = options.onSubmit;
   // 按**码点**存：退格要回删一个字符，用字符串拼接删不掉一个代理对。
   let buf: string[] = [];
   let done = false;
@@ -64,7 +77,7 @@ export function createFirstLineCapture(): FirstLineCapture {
 
   return {
     feed(data: string): string | null {
-      if (done) return null;
+      if (stopAfterFirst && done) return null;
       return inPaste ? processPaste(data) : processNormal(pendingEscape + data);
     },
   };
@@ -77,34 +90,40 @@ export function createFirstLineCapture(): FirstLineCapture {
    */
   function processNormal(data: string): string | null {
     let rest = data;
+    let first: string | null = null;
     pendingEscape = '';
     while (rest.length > 0) {
       const escapeAt = rest.indexOf('\u001b');
-      if (escapeAt < 0) return consume(rest);
+      if (escapeAt < 0) {
+        const line = consume(rest);
+        return first ?? line;
+      }
 
       if (escapeAt > 0) {
         const line = consume(rest.slice(0, escapeAt));
-        if (line) return line;
+        if (line !== null && stopAfterFirst) return line;
+        first ??= line;
         rest = rest.slice(escapeAt);
       }
 
       if (PASTE_START.startsWith(rest) && rest.length < PASTE_START.length) {
         pendingEscape = rest;
-        return null;
+        return first;
       }
       if (rest.startsWith(PASTE_START)) {
         inPaste = true;
-        return processPaste(rest.slice(PASTE_START.length));
+        const line = processPaste(rest.slice(PASTE_START.length));
+        return first ?? line;
       }
 
       const sequence = escapeSequenceLength(rest);
       if (sequence === 0) {
         pendingEscape = rest;
-        return null;
+        return first;
       }
       rest = rest.slice(sequence);
     }
-    return null;
+    return first;
   }
 
   /**
@@ -158,8 +177,9 @@ export function createFirstLineCapture(): FirstLineCapture {
     pasted = '';
     pasteTail = '';
     inPaste = false;
-    if (line) return line;
-    return processNormal(combined.slice(end + PASTE_END.length));
+    if (line !== null && stopAfterFirst) return line;
+    const trailing = processNormal(combined.slice(end + PASTE_END.length));
+    return line ?? trailing;
   }
 
   function appendPaste(current: string, next: string): string {
@@ -174,14 +194,18 @@ export function createFirstLineCapture(): FirstLineCapture {
   }
 
   function consume(data: string): string | null {
+    let first: string | null = null;
     for (const ch of data) {
       if (ch === '\r' || ch === '\n') {
         const line = buf.join('').trim();
         buf = [];
-        // 空回车不算一条输入：继续等真正的那一行。
-        if (!line) continue;
-        done = true;
-        return line;
+        if (!line && !includeEmpty) continue;
+        if (stopAfterFirst) done = true;
+        onSubmit?.(line);
+        if (first === null) first = line;
+        // 默认捕获器只关心首行，结算后不再扫描同块的后续字节。
+        if (stopAfterFirst) return first;
+        continue;
       }
       const code = ch.codePointAt(0) ?? 0;
       if (is_backspace(code)) {
@@ -192,24 +216,43 @@ export function createFirstLineCapture(): FirstLineCapture {
       if (code < 0x20) continue;
       if (buf.length < MAX_CHARS) buf.push(ch);
     }
-    return null;
+    return first;
   }
 }
 
+/** 默认终端标题捕获器：只结算第一条非空输入行。 */
+export function createFirstLineCapture(): InputLineCapture {
+  return createLineCapture();
+}
+
 /**
- * 「首条用户输入行 → 上报」的包装：内部持有捕获器，返回可直接用作 `sendInput` 副作用的函数。
+ * 「用户提交输入 → 上报」的包装：内部持有捕获器，返回可直接用作 `sendInput` 副作用的函数。
  *
- * 放在这里而不是组件体内：组件已贴近规模基线，而这段逻辑与「首行捕获」是同一职责。
+ * 每次非协议输入（含空回车、粘贴中的换行）都会回调，后端据此清除权威状态门；
+ * 首行素材同时参与标题升级，但「是否真的改名」由注册表统一裁决。
+ * 放在这里而不是组件体内：组件已贴近规模基线，而这段逻辑与输入解析是同一职责。
  */
-export function createUserInputReporter(opts: {
+export function createUserInputActivityReporter(opts: {
   getSessionId: () => string | null;
-  report: (sessionId: string, firstLine: string) => void;
+  report: (sessionId: string, line: string) => void;
 }): (text: string) => void {
-  const capture = createFirstLineCapture();
+  let submitted = false;
+  let submittedLine = '';
+  const capture = createLineCapture({
+    stopAfterFirst: false,
+    includeEmpty: true,
+    onSubmit: (line) => {
+      if (submitted) return;
+      submitted = true;
+      submittedLine = line;
+    },
+  });
   return (text: string): void => {
-    const line = capture.feed(text);
-    if (!line) return;
+    submitted = false;
+    submittedLine = '';
+    capture.feed(text);
+    if (!submitted) return;
     const sessionId = opts.getSessionId();
-    if (sessionId) opts.report(sessionId, line);
+    if (sessionId) opts.report(sessionId, submittedLine);
   };
 }

@@ -1,9 +1,10 @@
 //! terminal 生产者：PTY / WSL / SSH 会话的注册、活动与退出。
 //!
-//! 状态只经 [`Registry::apply`] 改变，本模块提供三件事：
+//! 状态只经注册表改变，本模块提供三件事：
 //!
 //! 1. **登记**（[`LiveTerminal::register`]）：进程创建后立即登记，早于退出信号生产者；
 //! 2. **活动**（[`OutputActivity`]）：输出流动 = 在跑，静默 = 回到就绪（唯一的「推断」，见下）；
+//!    该推断经 [`Registry::apply_activity`]，不得越过 CLI hook 的权威状态门；
 //! 3. **退出 / 关闭**（[`exit_and_notify`] / [`unregister_and_notify`]）。
 //!
 //! 会话的**标题与 has_user_input** 不在这里产生：用户输入只有前端分得清「人敲的」与「我们自动
@@ -177,7 +178,7 @@ impl OutputActivity {
         } else {
             Signal::TurnStarted
         };
-        let changed = registry.apply(session_id, signal);
+        let changed = registry.apply_activity(session_id, signal);
         if let (true, Some(app)) = (changed, app) {
             emit_changed(app, registry.version());
         }
@@ -417,5 +418,27 @@ mod tests {
             "有新输出 ⇒ 回到 Running"
         );
         assert_eq!(registry.snapshot()[0].state, SessionState::Running);
+    }
+
+    /// 生产探针不得越过 hook 的权威门：完成后重新进入 CLI 产生的输出只更新
+    /// `last_ms`，`poll` 仍应保持 Ready；用户提交后同一探针才恢复 Running。
+    #[test]
+    fn output_poll_respects_authoritative_completion_until_user_input() {
+        let registry = fresh_registry();
+        register_terminal(&registry, "t1", &registration(None));
+        assert!(registry.report_authoritative("t1", None, Signal::TurnFinished));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+
+        let activity = OutputActivity::new();
+        activity.stamp();
+        assert!(
+            !activity.poll(&registry, None, "t1"),
+            "CLI 完成后的 TUI 重绘不得把 Ready 推回 Running"
+        );
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+
+        assert!(registry.report_user_input("t1", ""));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Running);
+        assert!(!activity.poll(&registry, None, "t1"), "Running 已稳定");
     }
 }

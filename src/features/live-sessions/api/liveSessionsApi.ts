@@ -39,11 +39,11 @@ export function waitLiveSessions(
 }
 
 /**
- * 回传会话标题：CLI 的 OSC 0/2（`source = 'native'`）或用户的**首条输入行**
- * （`source = 'prompt'`，默认）。
+ * 回传会话标题 / 用户提交：CLI 的 `source = 'native'`，或终端用户每次提交的
+ * `source = 'prompt'`。
  *
- * - `prompt`：用户刚发出第一条输入 ⇒ 后端同时标记「已在用」（侧栏**立刻**列出该会话），
- *   标题按 `Prompt` 参与单调升级（`native` / `user` 更强，不会被覆盖）；
+ * - `prompt`：用户提交输入 ⇒ 首次无真标题时按 `Prompt` 命名并标记「已在用」；
+ *   后续提交只清除 CLI hook 的权威状态门。空回车同样清除门，但不会写空标题；
  * - `native`：CLI 自报的会话主题（hook 面在后端直接调注册表，目前无前端调用者 —— 保留以对齐
  *   命令契约 `TitleSource`）。
  *

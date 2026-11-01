@@ -396,6 +396,46 @@ fn terminal_entries_are_never_persisted() {
     assert!(store.list_active().is_empty(), "terminal 不落 chat 表");
 }
 
+/// hook 的完成态是权威事实：之后 Codex TUI 重绘产生的 PTY 输出不得把 Ready 推回 Running。
+/// 只有用户提交下一条输入才重新进入 Running。
+#[test]
+fn authoritative_completion_ignores_output_until_user_input() {
+    let (registry, _store) = registry();
+    registry.register(terminal_entry("t1", "/proj-wt"));
+
+    assert!(registry.report_authoritative("t1", None, Signal::TurnFinished));
+    assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+
+    // 进入 CLI / TUI 重绘 / 光标刷新都只是输出，不得复活为活跃态。
+    assert!(!registry.apply_activity("t1", Signal::TurnStarted));
+    assert!(!registry.apply_activity("t1", Signal::TurnFinished));
+    assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+
+    // 用户真正提交输入：清除权威完成门，进入 Running。
+    assert!(registry.report_user_input("t1", ""));
+    assert_eq!(registry.snapshot()[0].state, SessionState::Running);
+    assert!(
+        registry.apply_activity("t1", Signal::TurnFinished),
+        "用户输入后恢复 PTY 活动推断"
+    );
+    assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+}
+
+/// 审批等待同样是权威状态；PTY 的普通输出不得把它改回 Running。
+#[test]
+fn authoritative_approval_waits_for_user_activity() {
+    let (registry, _store) = registry();
+    registry.register(terminal_entry("t1", "/proj-wt"));
+
+    assert!(registry.report_authoritative("t1", None, Signal::ApprovalRequested));
+    assert_eq!(registry.snapshot()[0].state, SessionState::AwaitingApproval);
+    assert!(!registry.apply_activity("t1", Signal::TurnStarted));
+    assert_eq!(registry.snapshot()[0].state, SessionState::AwaitingApproval);
+
+    assert!(registry.report_user_input("t1", ""));
+    assert_eq!(registry.snapshot()[0].state, SessionState::Running);
+}
+
 #[test]
 fn unregister_removes_the_entry_and_closes_the_cursor() {
     let (registry, store) = registry();

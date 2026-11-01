@@ -28,7 +28,7 @@ import {
 import { drainTerminal, drainTerminalWait } from '../api/terminalApi';
 import type { TerminalStrategy, CacheEntry } from '../strategies/types';
 import { createFitScheduler, type FitScheduler } from '../utils/fitScheduler';
-import { createUserInputReporter } from '../utils/inputTitle';
+import { createUserInputActivityReporter } from '../utils/inputTitle';
 
 import { refreshTerminalEntry } from './terminalCache';
 
@@ -385,9 +385,9 @@ export default React.memo(function TerminalViewBase({
             unlistenClosed();
           };
 
-          // 每个会话一个捕获器：只在**会话创建**时构造（换 tab 是 reattach 既有 entry，不重建 ——
-          // 同一会话的首行只上报一次）。
-          const reportUserInput = createUserInputReporter({
+          // 每个会话一个捕获器：只在**会话创建**时构造（换 tab 是 reattach 既有 entry，不重建）。
+          // 每次提交都上报：首次提供标题素材，后续清除后端的权威状态门。
+          const reportUserInput = createUserInputActivityReporter({
             getSessionId: () => entry.sessionId,
             // 标题是旁路，失败不影响终端；但**不静默**：这条通道漏了会表现为
             // 「输入后侧栏一直不出现会话」，需要一个可见线索（旧构建缺命令就栽在这）。
@@ -403,7 +403,7 @@ export default React.memo(function TerminalViewBase({
               const bytes = Array.from(new TextEncoder().encode(text));
               // 静默豁免：终端输入，尽力而为，失败无需上报
               emit(terminalInputEvent(entry.sessionId), bytes).catch(() => {});
-              // 首条用户输入行 ⇒ 会话标题 + has_user_input。**只在这条路径上报**：自动启动
+              // 用户提交 ⇒ 首次标题 / 后续恢复活动态。**只在这条路径上报**：自动启动
               // agent 的命令走 `emit(...)` 直写，不经过 `sendInput`。
               reportUserInput(text);
             },

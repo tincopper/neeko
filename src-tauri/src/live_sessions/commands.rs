@@ -62,7 +62,7 @@ pub async fn wait_live_sessions(
     })
 }
 
-/// 回传会话标题：CLI 的 OSC 0/2（`source = native`）或用户的**首条输入行**
+/// 回传会话标题 / 用户提交：CLI 自报的 `source = native`，或终端用户的每次提交
 /// （`source = prompt`）。
 ///
 /// **为什么是一条命令而不是新的前端→后端事件**：既有前端→后端通道只有
@@ -76,11 +76,12 @@ pub async fn wait_live_sessions(
 ///
 /// # 语义
 ///
-/// - `source = prompt`（用户首条输入）⇒ 同时标记「用户已在用」（侧栏据此立刻列出该会话），
-///   标题按 `Prompt` 参与单调升级（`Native` / `User` 更强，不会被覆盖）；
+/// - `source = prompt`（用户提交）⇒ 首次无真标题时按 `Prompt` 命名并标记「用户已在用」；
+///   后续提交只清除 CLI hook 的权威状态门，不重复改名；
 /// - `source = native`（CLI 自报）⇒ 只升级标题。
 ///
-/// 空白文本什么都没发生。`Result` 是 IPC 契约而不是当下的错误分支（前端 `invoke<boolean>`
+/// 空白 `Prompt` 仍是一次用户提交（清除权威状态门），但不会写入空标题；
+/// 空白 `Native` 什么都不发生。`Result` 是 IPC 契约而不是当下的错误分支（前端 `invoke<boolean>`
 /// 依赖它，且失败形状已经存在：锁中毒 / 将来加校验），不从契约面上抹掉。
 #[allow(clippy::unnecessary_wraps)] // 同上：返回形状是契约，不是实际错误路径
 #[tauri::command]
@@ -94,7 +95,7 @@ pub fn set_live_session_title(
     let origin = source.unwrap_or(TitleSource::Native);
     let changed = apply_title(&state.live_sessions, &session_id, &title, origin);
     if changed {
-        // 与另外两个生产者（chat 合帧 emit / PTY 注册与退出）同口径：版本真的变了就
+        // 与其它生产者（chat 合帧 emit / PTY 注册与退出 / hook 投影）同口径：版本真的变了就
         // 通知一次（载荷只有版本号）。
         emit_changed(&app_handle, state.live_sessions.version());
     }
@@ -106,18 +107,16 @@ pub fn set_live_session_title(
 /// 抽成自由函数以便直测（不需要 Tauri 运行时）—— `Native` 与 `Prompt` 的差别只能靠
 /// 「同级可覆盖 / 弱级被拒」的用例区分，断言最终标题值本身区分不了。
 ///
-/// 两次写入（标题升级 + 可见性）合并成注册表的**一次**加锁（`Registry::report`）：
-/// 升级规则与「已在用」的判据各自只有一份实现。
+/// 用户提交走 `Registry::report_user_input`（标题 + 可见性 + 清权威门一次加锁）；
+/// `Native` 走 `Registry::report` 的纯标题路径。升级规则仍只有一份实现。
 fn apply_title(registry: &Registry, session_id: &str, title: &str, source: TitleSource) -> bool {
-    if title.trim().is_empty() {
-        return false;
+    match source {
+        // 用户提交 = 可能首次命名，也可能只是后续输入（清除权威状态门）。
+        // 两者必须共用一次加锁，不能拆成「先查标题、再写状态」。
+        TitleSource::Prompt => registry.report_user_input(session_id, title),
+        _ if title.trim().is_empty() => false,
+        _ => registry.report(session_id, Some((source, title)), false),
     }
-    registry.report(
-        session_id,
-        Some((source, title)),
-        // 用户发过输入 = 这条会话已经在用（即便标题被更强的来源挡住，可见性也该翻转）。
-        source == TitleSource::Prompt,
-    )
 }
 
 #[cfg(test)]
@@ -200,9 +199,25 @@ mod tests {
             assert_eq!(registry.version(), version);
         }
 
-        /// 未知会话 / 空白文本：不建条目、不报错（迟到上报是常态）。
+        /// 后续提交不能改名：同一会话第一次命名为 `ls` 后，`pwd` 只恢复活动态。
         #[test]
-        fn unknown_or_blank_reports_are_dropped() {
+        fn later_input_does_not_rename_the_session() {
+            let registry = registry_with((TitleSource::Placeholder, ""));
+            assert!(apply_title(&registry, "pty-1", "ls", TitleSource::Prompt));
+            let version = registry.version();
+            assert!(
+                !apply_title(&registry, "pty-1", "pwd", TitleSource::Prompt),
+                "已有真标题时后续输入只允许状态变化"
+            );
+            let entry = &registry.snapshot()[0];
+            assert_eq!(entry.title, "ls");
+            assert_eq!(entry.title_source, TitleSource::Prompt);
+            assert_eq!(registry.version(), version, "仅改名被拒时不 bump");
+        }
+
+        /// 未知会话：不建条目、不报错（迟到上报是常态）。
+        #[test]
+        fn unknown_report_is_dropped() {
             let registry = registry_with((TitleSource::Placeholder, ""));
             assert!(!apply_title(
                 &registry,
@@ -211,12 +226,44 @@ mod tests {
                 TitleSource::Prompt
             ));
             assert_eq!(registry.snapshot().len(), 1, "不得凭空建条目");
-            let version = registry.version();
+        }
+
+        /// 空白 `Prompt` 仍是用户提交（审批只按 Enter 也能解除门），但不会写成标题；
+        /// 空白 `Native` 则完全无动作。
+        #[test]
+        fn blank_input_engages_without_naming() {
+            let registry = registry_with((TitleSource::Placeholder, ""));
             assert!(
-                !apply_title(&registry, "pty-1", "   ", TitleSource::Prompt),
-                "空白不置 has_user_input"
+                apply_title(&registry, "pty-1", "   ", TitleSource::Prompt),
+                "空白 Prompt 也是一次用户提交"
             );
-            assert_eq!(registry.version(), version);
+            let entry = &registry.snapshot()[0];
+            assert_eq!(entry.title, "", "空白不能成为标题");
+            assert!(entry.has_user_input);
+            let version_after_prompt = registry.version();
+            assert!(
+                !apply_title(&registry, "pty-1", "   ", TitleSource::Native),
+                "空白 Native 不动作"
+            );
+            assert_eq!(registry.version(), version_after_prompt);
+        }
+
+        /// 审批界面按 Enter 时没有标题素材，但必须解除 hook 的权威门。
+        #[test]
+        fn blank_approval_response_clears_the_authority_gate() {
+            let registry = registry_with((TitleSource::Native, "claude"));
+            assert!(registry.report_authoritative(
+                "pty-1",
+                None,
+                crate::live_sessions::state::Signal::ApprovalRequested
+            ));
+            assert_eq!(registry.snapshot()[0].state, SessionState::AwaitingApproval);
+
+            assert!(apply_title(&registry, "pty-1", "  ", TitleSource::Prompt));
+            let entry = &registry.snapshot()[0];
+            assert_eq!(entry.state, SessionState::Running);
+            assert!(!entry.awaiting_user_activity);
+            assert_eq!(entry.title, "claude", "空提交不能覆盖真标题");
         }
     }
 

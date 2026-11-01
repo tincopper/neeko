@@ -1,4 +1,4 @@
-//! hooks 生产者：CLI hook 上报（[`HookEvent`]）→ 会话标题（`Native`）+ `has_user_input`。
+//! hooks 生产者：CLI hook 上报（[`HookEvent`]）→ 会话标题（`Native`）+ 权威状态。
 //!
 //! # 为什么这是**最权威**的标题源
 //!
@@ -32,21 +32,31 @@ use crate::agent::hooks::ingest::event::HookEvent;
 use crate::live_sessions::emit_changed;
 use crate::live_sessions::entry::TitleSource;
 use crate::live_sessions::registry::Registry;
+use crate::live_sessions::state::Signal;
 use crate::AppStateWrapper;
 
-/// 「用户确实在用了」的语义事件键。
+/// 语义事件 → 权威状态信号。
 ///
-/// 四者都意味着**有人对这条会话做了动作**：跑完一轮 / 请求审批 / 请求输入 / 会话失败。
-/// 其余键（未知或纯信息类）只用来取标题，不置 `has_user_input`。
+/// 这些事件来自 CLI 自己的生命周期，而不是对 PTY 字节流的推断：
+/// - `turn_completed` ⇒ `Ready`；
+/// - 审批 / 输入请求 ⇒ `AwaitingApproval`；
+/// - 失败 ⇒ `Failed`（终止态吸收迟到信号）。
+///
+/// 返回 `None` 的是纯信息事件，只允许更新标题。
 ///
 /// 键名直接引用 agent 域的**常量单一源**（`event_keys`）：模板与通知分类用的是同一份
 /// 词汇表，这里再抄一遍字面量就会在模板改名时静默失效。
-const ENGAGING_EVENTS: [&str; 4] = [
-    event_keys::TURN_COMPLETED,
-    event_keys::APPROVAL_REQUESTED,
-    event_keys::INPUT_REQUESTED,
-    event_keys::SESSION_FAILED,
-];
+#[must_use]
+fn authoritative_signal(event_key: &str) -> Option<Signal> {
+    match event_key {
+        event_keys::TURN_COMPLETED => Some(Signal::TurnFinished),
+        event_keys::APPROVAL_REQUESTED | event_keys::INPUT_REQUESTED => {
+            Some(Signal::ApprovalRequested)
+        }
+        event_keys::SESSION_FAILED => Some(Signal::Failed),
+        _ => None,
+    }
+}
 
 /// 上报归属的会话 id（`hints.neeko_session_id`，trim 后非空）。
 #[must_use]
@@ -59,28 +69,23 @@ fn attributed_session(event: &HookEvent) -> Option<&str> {
         .filter(|id| !id.is_empty())
 }
 
-/// 这条事件是否代表「用户在用了」。
-#[must_use]
-fn is_engaging(event_key: &str) -> bool {
-    ENGAGING_EVENTS.contains(&event_key)
-}
-
 /// 把一条 hook 上报投影进注册表；返回「真的有变化」（调用方据此发一次变更事件）。
 ///
-/// 标题与可见性同属一次上报，故只走一次 [`Registry::report`]：
+/// 标题、可见性与状态同属一次上报，故只走一次注册表写入：
 /// - 有 `topic` ⇒ 尝试升级标题（`Native`；`User` 永不覆盖）；
-/// - 语义键命中 ⇒ 顺手置位 `has_user_input`（侧栏据此列出该会话）。
+/// - 权威事件 ⇒ 置位 `has_user_input`、应用状态并开启输出推断门；
+/// - 纯信息事件 ⇒ 只更新标题。
 ///
 /// 任一件没命中都是正常的（模板很多事件只带 detail）。
 pub(crate) fn project(registry: &Registry, event: &HookEvent) -> bool {
     let Some(session_id) = attributed_session(event) else {
         return false;
     };
-    registry.report(
-        session_id,
-        event.topic().map(|topic| (TitleSource::Native, topic)),
-        is_engaging(event.event.as_str()),
-    )
+    let title = event.topic().map(|topic| (TitleSource::Native, topic));
+    match authoritative_signal(event.event.as_str()) {
+        Some(signal) => registry.report_authoritative(session_id, title, signal),
+        None => registry.report(session_id, title, false),
+    }
 }
 
 /// 投递入口（本域自己消费，见 [`on_hook_event`] 的调用方 sink）。
@@ -169,6 +174,73 @@ mod tests {
         assert_eq!(entry.title, "修复登录竞态");
         assert_eq!(entry.title_source, TitleSource::Native);
         assert!(entry.has_user_input);
+    }
+
+    /// Codex 的 `turn_completed` 必须把状态落到 Ready；随后仅由 PTY 重绘产生的
+    /// 输出活动不得再把它推回 Running。
+    #[test]
+    fn turn_completed_settles_status_against_output_activity() {
+        let registry = registry_with_terminal("pty-1");
+        assert!(project(
+            &registry,
+            &event("turn_completed", Some("pty-1"), Some("修复登录竞态"))
+        ));
+        let entry = &registry.snapshot()[0];
+        assert_eq!(entry.state, SessionState::Ready);
+
+        assert!(!registry.apply_activity("pty-1", crate::live_sessions::state::Signal::TurnStarted));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+    }
+
+    /// 迟到的纯信息事件只允许补标题，不得关闭权威门或改写完成态。
+    #[test]
+    fn informational_event_after_completion_keeps_the_authority_gate() {
+        let registry = registry_with_terminal("pty-1");
+        assert!(project(
+            &registry,
+            &event("turn_completed", Some("pty-1"), Some("first title"))
+        ));
+        assert!(project(
+            &registry,
+            &event("session_started", Some("pty-1"), Some("richer title"))
+        ));
+
+        let entry = &registry.snapshot()[0];
+        assert_eq!(entry.state, SessionState::Ready);
+        assert_eq!(entry.title, "richer title");
+        assert!(entry.awaiting_user_activity);
+        assert!(!registry.apply_activity("pty-1", Signal::TurnStarted));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+    }
+
+    /// 审批 / 等待输入都是权威状态；普通 PTY 输出不能覆盖。
+    #[test]
+    fn approval_events_settle_status_against_output_activity() {
+        let registry = registry_with_terminal("pty-1");
+        assert!(project(
+            &registry,
+            &event("approval_requested", Some("pty-1"), None)
+        ));
+        assert_eq!(registry.snapshot()[0].state, SessionState::AwaitingApproval);
+        assert!(!registry.apply_activity("pty-1", crate::live_sessions::state::Signal::TurnStarted));
+        assert_eq!(registry.snapshot()[0].state, SessionState::AwaitingApproval);
+    }
+
+    /// 失败事件是终止态；迟到输出不得复活。
+    #[test]
+    fn failure_event_settles_status_against_output_activity() {
+        let registry = registry_with_terminal("pty-1");
+        assert!(project(
+            &registry,
+            &event("session_failed", Some("pty-1"), None)
+        ));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Failed);
+        assert!(
+            !registry.snapshot()[0].awaiting_user_activity,
+            "终止态由状态机永久吸收，不需要额外的输出门"
+        );
+        assert!(!registry.apply_activity("pty-1", crate::live_sessions::state::Signal::TurnStarted));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Failed);
     }
 
     /// 占位标题（opencode 的 `New session - <ISO>`）不算主题：不写标题，但 `has_user_input` 照置。

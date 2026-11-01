@@ -43,8 +43,14 @@
 
 ### 状态只能经信号改变
 
-`Registry::apply(session_id, Signal) -> bool` 是唯一写入面（外加 `register` / `unregister`
-两个生命周期动作）；转移规则集中在纯函数 `state::reduce` 的穷举表里
+状态写入按来源分成三个明确入口（外加 `register` / `unregister` 两个生命周期动作）：
+
+- `apply(signal)`：chat 事件与终止等直接信号；
+- `apply_activity(signal)`：PTY 输出推断；权威门开启时忽略 `TurnStarted` / `TurnFinished`；
+- `report_authoritative(title, signal)`：CLI hook 的完成 / 审批 / 失败，一次加锁完成
+  标题、可见性、状态与权威门。
+
+转移规则集中在纯函数 `state::reduce` 的穷举表里
 （`reduce_covers_every_state_signal_pair`）。两条硬规则由事故形态定义：
 
 1. **终止态（`Failed` / `Stopped`）吸收一切迟到信号** —— pi 实测 `Error` 之后还会来 `TurnEnd`，
@@ -58,13 +64,14 @@
 未知会话的迟到信号丢弃并 `log::debug!`，**绝不为它凭空建条目** —— 凭空建条目等于侧栏多出
 一条没人创建的会话（`apply_on_unknown_session_is_dropped_and_creates_nothing`）。
 
-### 两个生产者，一条投影
+### 三类状态来源，一条投影
 
 | 生产者 | 接线点 | 原生事实 |
 | --- | --- | --- |
 | chat | `agent::chat::commands::spawn_session_pipeline`（会话注册 + **16ms 合帧 emit 闭包内**逐事件投影 + bridge 结束后注销） | `StreamEvent` → `Signal`（`wiring::chat::signal_of`） |
 | PTY / WSL | `services::spawn_pty_pipeline`（进程句柄入表之后、watcher 线程启动之前）+ 退出 watcher → `wiring::pty::exit_and_notify` | 输出流动 = `TurnStarted`，静默 ≥ `IDLE_AFTER` = `TurnFinished`；退出码 `0`/无 = `Exited`，非 0 = `Failed` |
 | SSH | `RemoteTerminalManager::create_session`（表项就绪之后、io 线程启动之前）+ io 循环的 250ms tick → `OutputActivity::poll` + io 线程收尾 → `exit_and_notify` | 同上（远端无可靠退出码，一律 `Exited`） |
+| CLI hook | `live_sessions::wiring::hooks::project` | `turn_completed` / `approval_requested` / `input_requested` / `session_failed` → 权威 `Signal`；纯信息事件只更新标题 |
 
 **不新增事件通道**：注册表是既有 chat 事件流与 PTY 生命周期的第二个消费者。
 `agent_id` 与 `workspace` 都是**显式入参**（`create_terminal_session` 的 `agent_id`、
@@ -79,12 +86,16 @@ spinner 帧只改标题、不表达完成 —— 早先版本因此让终端永�
 - reader / SSH io 线程每写一块输出就 `stamp()`；
 - watcher（100ms）与 io 循环（250ms）调 `poll()`：有输出 ⇒ `TurnStarted`（`Running`），
   静默 ≥ [`IDLE_AFTER`]（1.5s）⇒ `TurnFinished`（`Ready`）；
-- `poll` 幂等：状态没变时 `apply` 返回 `false`，不 bump、不发事件（tick 不会变成 IPC 风暴）。
+- `poll` 经 `apply_activity` 写入，幂等：状态没变时返回 `false`，不 bump、不发事件
+  （tick 不会变成 IPC 风暴）。
+- **权威门**：CLI hook 报完成 / 审批后，PTY 输出产生的 `TurnStarted` / `TurnFinished`
+  一律忽略，直到用户真正提交输入。Codex 完成后再进入 CLI 的 TUI 重绘、光标刷新因此不会把
+  `Ready` 推回 `Running`。
 
 **必须诚实标注的代价**：模型长时间无输出的思考会被读成「就绪」，`sleep 30` 这类无输出命令同理。
 阈值取「大于命令之间的间隔、小于人愿意等的反馈延迟」，这是「完全没有信号」与「宁可粗略也要有
-反馈」之间的取舍，不是精确状态机。`AwaitingApproval` 在终端路径上不可达（审批请求只在 chat 的
-`RequestApproval` 事件里），侧栏因此不会为终端画菱形。
+反馈」之间的取舍，不是精确状态机。终端 `AwaitingApproval` 只在 CLI hook 已安装且生效时可达；
+没有 hook 的纯 shell 仍只能观察字节活动。
 
 #### chat 侧的同一条坑：`TurnStart` 不是每个传输都发
 
@@ -136,12 +147,13 @@ terminal 路径只服务于未来的持久化 / 统计，不要在文档或 PRD 
 - chat 注册时 `pick([(Native, topic), (Prompt, prompt)])`（都没有则留空）——
   `topic` 是恢复会话时前端传入的 agent 原生标题
   （`register_prefers_native_title_then_prompt_then_leaves_it_empty`）；
-- terminal 的首条**用户输入**：前端 `createFirstLineCapture` → 薄命令
-  `set_live_session_title(source = prompt)` → `report(Prompt, engage = true)`；它同时置位
-  `has_user_input`。**为什么是命令而不是事件**：前端→后端既有通道只有
+- terminal 的**用户提交**：前端 `createUserInputActivityReporter` → 薄命令
+  `set_live_session_title(source = prompt)` → `report_user_input`。首次非空提交提供
+  `Prompt` 标题；后续提交只清权威门、进入 `Running`，不会反复改名。空回车也是一次提交
+  （审批界面可能只按 Enter），但不写空标题。**为什么是命令而不是事件**：前端→后端既有通道只有
   `terminal-input-{id}`（载荷是 stdin 字节）与 agent chat（反向），复用要么污染语义、要么
   新增事件名（红线 5）；
-- CLI hook 的会话主题：`HookEvent.topic()` → `report(Native, engage = is_engaging)`；这是
+- CLI hook 的会话主题：`HookEvent.topic()` → `report_authoritative(Native, signal)`；这是
   原生标题的主路径（见下节），不是 OSC 状态栏；
 - 拿不到就停在 `Placeholder`，不猜（`blank_title_candidates_are_ignored`）。
 
@@ -163,7 +175,7 @@ terminal 路径只服务于未来的持久化 / 统计，不要在文档或 PRD 
 | 生产者 | 「用户发过东西」的信号 |
 | --- | --- |
 | chat | `agent_stream` 的第一条消息（登记时即 `has_user_input`） |
-| 终端 / WSL / SSH | 前端上报的首条输入行（`set_live_session_title`，`source = prompt`） |
+| 终端 / WSL / SSH | 前端上报的每次用户提交（`set_live_session_title`，`source = prompt`）；首次非空行同时命名 |
 | 任意 CLI | hook 上报（`turn_completed` 等语义事件） |
 
 发送那一刻标题就已经拿到，用户就该在侧栏看到这条会话 —— **不等 agent 跑完**。
@@ -173,11 +185,13 @@ terminal 路径只服务于未来的持久化 / 统计，不要在文档或 PRD 
 `agent_chat_open` 的静默建连、终端 PTY 的创建都不置位（打开 tab ≠ 在用）；
 `agent_chat_resume` 恢复的是**已有历史**的对话，直接可见。
 
-# 三条写入原语（`Registry`），生产者只决定「何时写」
+# 五个写入原语（`Registry`），生产者只决定「何时写」
 
 | 原语 | 语义 | 谁用 |
 | --- | --- | --- |
-| `report(title, engage)` | 一次加锁内（可选）升级标题 +（可选）置位；真变化才 bump | 终端首条输入（`source = prompt`）、CLI hook |
+| `report(title, engage)` | 一次加锁内（可选）升级标题 +（可选）置位；真变化才 bump | CLI 纯信息事件（当前 `engage = false`） |
+| `report_user_input(title)` | 首次无真标题时写入 `Prompt`；每次提交清权威门、置位并回 `Running` | 终端 / WSL / SSH 用户提交 |
+| `report_authoritative(title, signal)` | 合并标题、可见性、权威状态转移与输出推断门 | CLI hook |
 | `report_first(title)` | 未置位 ⇒ 置位 + 写标题；已置位但无真标题 ⇒ 只补标题；已有真标题 ⇒ 什么都不做 | chat 的首次 Engage（含 `Silent → Turn`） |
 | `set_title(source, text)` | 只升级标题，不碰可见性 | 领域内的纯标题更新原语（当前无生产调用；OSC 已退役） |
 
@@ -243,16 +257,17 @@ CLI 查前景色时回 `ESC ] 10 ; rgb:3838/3a3a/4242 ST`（OSC 10），查光�
 
 后端收到的是同一串字节，**无从区分**。早期实现把解析放在后端，结果一创建 tab 就把自动启动
 命令当成首条用户输入 ⇒ 侧栏立刻冒出一条标题为 `pi --approve` 的会话。现在：前端
-`features/terminal/utils/inputTitle.ts::createFirstLineCapture` 只在 `sendInput`（= `onData`）
-路径累积，结算出的首行经 `set_live_session_title(source = 'prompt')` 上报 ——
-同一次调用既写标题又标记 `has_user_input`（侧栏可见）。
+`features/terminal/utils/inputTitle.ts::createUserInputActivityReporter` 只在 `sendInput`
+（= `onData`）路径解析。每次提交经 `set_live_session_title(source = 'prompt')` 上报：
+首次非空行写标题并标记 `has_user_input`，后续提交只清除 hook 权威门；单个数据块最多发一次
+活动 IPC，避免大段粘贴形成 IPC 风暴。
 
 规则：除 bracketed paste 外的 ESC 序列整段丢弃（支持跨块）、粘贴起始/结束标记剥离后
-按用户输入处理、累积到
-回车才结算、控制字符不进标题、空回车不算、只取第一条非空行、超长截断
+按用户输入处理、累积到回车才结算、控制字符不进标题、空回车不写标题但算一次用户提交、
+标题只取第一条非空行、超长截断
 （`inputTitle.test.ts` 覆盖 OSC 10 / DSR 应答、跨块粘贴与同块尾随按键；后端
 `reported_input` 用例钉住
-「`Native`/`User` 胜过 `Prompt`」「空白不置 `has_user_input`」）。
+「`Native`/`User` 胜过 `Prompt`」「后续提交不改名」「空白 Prompt 清门但不命名」）。
 
 #### OSC 0/2 标题**不再是标题来源**（2026-10-31）
 
