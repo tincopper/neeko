@@ -1134,3 +1134,35 @@ Turned the execution address into the single identity for agent-chat and session
 ### Status
 
 [OK] **Completed**
+
+
+## Session 390: live-sessions 审核问题修复：迁移版本回退、chat 续聊可见性、hook 扇出装配
+<!-- trellis-session: v=2 fp=6020238a3289455b -->
+
+**Date**: 2026-11-01
+**Task**: live-sessions 审核问题修复：迁移版本回退、chat 续聊可见性、hook 扇出装配
+**Branch**: `main`
+
+### Summary
+
+按 neeko-check 增量审核的 2 Block + 7 Warning + 8 Nit 清单逐条修复（未提交）。
+
+### Main Changes
+
+- 回退 LATEST_VERSION 14→13（无 migration step，曾令 84 个用例红、启动即失败）；Registry 新增 register_if_absent / report(title,engage) / report_first(title) 三条原子原语，取代 set_title+mark_user_input 的两次加锁组合，升级规则收敛到 upgrade_title；chat 的 register_or_mark 改为 register_or_engage 并在已登记+Turn 时走 report_first，修好 agent_chat_open→agent_stream 续聊主链路永不出现的会话；CLI hook 的消费者改由组合根装配（dispatch::HookSink 列表，agent 不再反向引用 live_sessions，deliver_notification 收 &HookEvent 免 clone）；ENGAGING_EVENTS 改引 event_keys 常量；SESSION_ID_ENV 移入 live_sessions/env.rs（红线 9）；inputTitle 退格回删；selectUnitsWithActiveSession 返回数组 + useShallow；SessionRow 首帧即展开；WSL/SSH export 值加引号；CliHooksSection 去掉 installableHookRows 兼容 re-export。
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test --lib 2509 passed / 0 failed（修复前 2422 passed / 84 failed）；pnpm check:quick 25 护栏全过；tsc + eslint + prettier + cargo fmt + clippy 干净
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 剩余 2 条 Nit 未动（useUnitsWithActiveSession 在 per-project 组件各订阅一次；SessionList 的 maxRows 变化不重置 visibleCount），等有实测性能信号再改

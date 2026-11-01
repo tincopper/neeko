@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 389
-- **Last Active**: 2026-10-31
+- **Total Sessions**: 390
+- **Last Active**: 2026-11-01
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1136 | Active |
+| `journal-8.md` | ~1168 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 390 | 2026-11-01 | live-sessions 审核问题修复：迁移版本回退、chat 续聊可见性、hook 扇出装配 | - | `main` |
 | 389 | 2026-10-31 | Workspace addressing: unit ownership rule, discriminated list scope, guard G | `88aba6d5`, `7ac7f134`, `cceafa5d`, `92ae3f1c`, `975ffa7d` | `main` |
 | 388 | 2026-10-31 | 提交 workspace 寻址三件套（feature / guards / task） | `7ff2363a`, `b75d2dd3`, `adb3f1f3` | `main` |
 | 387 | 2026-10-31 | agent-chat 地址寻址：审核修复（wire/持久化/护栏三处闭环） | - | `main` |

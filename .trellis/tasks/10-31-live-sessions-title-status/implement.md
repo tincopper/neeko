@@ -279,3 +279,247 @@ agent 名正是「会话起名前」唯一能辨认的信息。`agentName` 参�
 
 后端不动：无名条目仍登记在注册表里（OSC 标题 / 首条 prompt 一到就要能升级），只是视图不列出来。
 已知取舍：完全不设 OSC 标题的纯 shell 终端不会出现在侧栏 —— 它确实没有可辨认的名字。
+
+---
+
+## 13. 「会话何时出现」= 用户输入过（第四轮反馈，对齐 Codex 桌面会话流程）
+
+第三轮的判据（有标题就列）仍然不够：agent CLI（claude / codex / pi 一类）**一启动就发 OSC
+标题**，于是「有标题」在用户还没敲字时已经成立，侧栏照样立刻冒出条目。
+
+改成与 Codex 桌面端一致的流程——**打开窗口不算，用户输入才算**：
+
+| 阶段 | 侧栏 | tab 标题 |
+| --- | --- | --- |
+| 打开 agent tab（CLI 已发 OSC 标题） | 不列 | agent 名 |
+| 用户敲完第一条输入 | 列出（标题 = 首条输入 / CLI 标题） | 会话标题 |
+
+实现分两半：
+
+1. **`SessionEntry.has_user_input`**（wire 字段 `has_user_input`）——「用户是否已经在这个会话里输入过」。
+   置位点只有两处：首条终端输入、首次 `agent_stream`（真回合）。`agent_chat_open` 的静默建连
+   与 PTY 创建都不置位（`mark_user_input_is_idempotent_and_drops_unknown_sessions`）。
+2. **终端首条输入即标题**（`wiring::pty::FirstInputLine`）—— 没有它终端永远没有标题可显示。
+   累积到回车才结算、`ESC [ …` 整段丢弃、空回车不算、只取第一条非空行、超长截断；
+   取到后 `on_first_input` 同时 `set_title(Prompt)` + `mark_user_input`（一次 notify）。
+   CLI 之后的 OSC 标题按 `Native > Prompt` 正常接管。
+
+前端列出判据 = `has_user_input && isNamedSession`（`isListedSession`），过滤仍在 `sessionsByUnit` 一处。
+
+---
+
+## 14. 标题改由 hook 上报驱动（`NEEKO_SESSION_ID` 精确归因）
+
+第四轮之前，终端标题只有两个来源：CLI 自报的 OSC、`FirstInputLine` 解析键盘字节。前者依赖
+CLI 实现且格式随意，后者是猜。而 `agent/hooks` 域**早就有**更好的素材：
+`HookEvent.title` 是 CLI 自己的会话名（pi `getSessionName` / claude `session_title`）或首条
+用户消息，模板侧已判好优先级，服务端 `topic()` 再过滤占位标题 —— 正是 Codex 那类桌面端
+显示在会话列表里的东西。
+
+### 归因机制选型（第一性原理）
+
+要解决的不是「怎么传 id」，而是「一条由 CLI 后代进程发出的报告，如何证明属于哪条会话」。
+进程树是 `我们的 shell(pid 已知) → agent CLI → hook shim`，三者只有根是我们认识的：
+
+| 机制 | 能否穿过任意深度 | 继承污染 | 成本 |
+| --- | --- | --- | --- |
+| **env（per-child）** | **能，自动复制** | 会（嵌套 agent） | 0 |
+| pid / 祖先链 | 要查进程表 2+ 跳 | 不会 | Node 只有 1 跳 `ppid`；Windows 要 CIM |
+| cwd 匹配 | —（是线索不是身份） | — | 0，但同项目多会话必串 |
+
+选 env：它是**唯一随进程树自动传播、零查询成本**的身份载体。`CommandBuilder::env` 是
+每子进程一份（不是 `std::env::set_var` 的进程全局），多会话**不存在覆盖问题**。
+
+### 落地
+
+- `live_sessions::SESSION_ID_ENV`（`NEEKO_SESSION_ID`）单一常量；三处注入：
+  本地 `CommandBuilder::env` / WSL 的 `bash -c "export …"`（WSL 不透传宿主 env）/
+  SSH 的 channel shell 前缀（与已有 `export COLORTERM` 同一行）。
+- `live_sessions::wiring::hooks` —— 新的生产者：`hints.neeko_session_id` 精确命中 →
+  `set_title(Native, topic)` + 语义事件（`turn_completed` / `approval_requested` /
+  `input_requested` / `session_failed`）⇒ `mark_user_input()`。
+- `agent/hooks/ingest/dispatch.rs` 只加一次转发（投影逻辑住在消费方，符合该模块头
+  「新增消费者时不要改采集侧、不要塞进 dispatch」）。
+- 边界：**不按 cwd 猜**（同项目多会话是常态，猜错是可见的错标题）；未知会话 fail-closed；
+  嵌套 agent 归到父会话可接受；重复上报幂等（`turn_completed` 每轮都到）。
+- `FirstInputLine` 降级为兜底：`Prompt < Native`，hook/OSC 标题一到就永久接管。
+- 模板契约：`templates/tests.rs::embedded_templates_read_the_session_id_env_key` 断言每个
+  受管模板都读 `process.env.<SESSION_ID_ENV>`（任一侧改名 → 测试红，避免归因静默失效）。
+
+## 15. hook 未生效时的提示 + 重新安装
+
+标题走 hook 之后多了一条**静默失效**路径：hook 没装 / 装旧了 / CLI 侧还没确认信任，
+上报不来，用户只会看到「标题不跟随 CLI」，没有任何线索指向原因。
+
+- **判据与设置页同源**：`shared/utils/agentHookSources.ts` 承载 `installableHookRows` /
+  `readSourceOverrides` / `isHookSourceEnabled` / `hookRowsNeedingAttention`，设置页与侧栏
+  共用一份（复制一份必然漂移：提示说未安装、设置页说已安装是最难自证的一类 bug）。
+- **提示出现在后果发生的地方**：`features/project/components/CliHookHint`（侧栏底部）。
+  设置页是「我去改配置」的地方，而这个问题的表现就在侧栏标题上。
+- **四道降噪**：自供源不提示 / 本机没装该 CLI（`path === ''`）不提示 / 用户关掉该 CLI 或主开关
+  不提示 / 探测失败静默降级。健康时渲染 `null` —— 侧栏不留常驻横幅。
+- **重新安装**：`useCliHookHealth.reinstall()` → `agent_hooks_apply(true, 本机检测到且未关闭的集合)`
+  → 重新探测。失败回执（`status === 'failed'`）显示在提示里，不静默吞掉。
+- 用例：`agentHookSources.test.ts`（四道降噪逐条）、`useCliHookHealth.test.ts`（6 个，
+  含主开关关闭 / 探测失败 / 失败回执）、`CliHookHint.test.tsx`（4 个，含「装好后提示消失」）。
+
+## 16. 「首条输入」的判据移回前端（一创建 tab 就冒会话的根因）
+
+第 13/14 轮把「首条输入」的实现放在后端：`spawn_writer_listener`（本地）与 SSH 的 input
+listener 解析 `terminal-input-{id}` 的字节流。真机表现为**一创建 tab 侧栏就出现一条会话**。
+
+根因：这条通道同时承载两类写入 ——
+
+1. `TerminalViewBase` 在创建会话后**自动**写入 `pi --approve\r`（agent tab 的自动启动）；
+2. 用户在 `term.onData` 里敲的按键。
+
+后端拿到的是同一串字节，把 (1) 当成了「用户首条输入」⇒ 立刻 `has_user_input` + 标题
+（标题还会是 `pi --approve` 这种垃圾串）。
+
+修法：**判据只放在能区分写入来源的那一层**。
+
+- 前端 `features/terminal/utils/inputTitle.ts::createFirstLineCapture` 只在 `sendInput`
+  （= `onData`）路径累积；自动启动走的是 `emit(...)` 直写，不经过它。
+- 结算出的首行经新命令 `report_live_session_input(session_id, text)` 上报；后端
+  `apply_reported_input` 一次做两件事：`set_title(Prompt)` + `mark_user_input()`，空白文本直接
+  丢弃（不写标题、不置 has_user_input）。
+- 后端删除 `FirstInputLine` / `on_first_input` 及两处 listener 接线（`services.rs` /
+  `remote.rs`）与 5 个相关用例；规则搬到前端（`inputTitle.test.ts` 6 个用例），后端补
+  `reported_input` 4 个用例（含「`Native` 胜过 `Prompt`」「空白不置 has_user_input」）。
+
+这条同时说明了一个通用判据：**只有知道「谁写的」的那一层，才能判定「这是不是用户行为」**。
+
+## 17. 可见时机 = 一轮跑完（**已被 §18 推翻，保留为复盘**）
+
+> 这一轮把「可见」绑在「一轮跑完」上，真机验证是错的（发完消息什么都不出现）。§18 已回退。
+> 保留本节是为了记住两条被证伪的假设：① 「Codex 是跑完才建会话」（实测不是）；
+> ② 「输出静默能区分 banner 与跑完」——不能，只有「有没有用户输入」能区分。
+
+前几轮把「可见」绑在「用户输入过」上，结果仍是**发送即出现**。真机反馈：应该在 agent
+**跑完一轮**之后才出现，与 Codex 桌面端一致。
+
+拆成两个字段，因为它们在时间上不同：
+
+| 字段 | 含义 | 置位点 |
+| --- | --- | --- |
+| `user_input_seen` | 标题素材就绪（用户发出过输入） | 终端首条输入行；chat 的 `agent_stream` |
+| `has_user_input` | **侧栏可见 / tab 用会话标题** | 一轮跑完：chat `TurnEnd`、终端输出静默、CLI hook `turn_completed` |
+
+- `mark_user_input` 不 bump（视图无变化，不刷 IPC）；`apply(TurnFinished)` 在
+  `user_input_seen && !engaged && !is_terminal()` 时翻转可见性并 bump。
+  迟到的 `TurnEnd` 落在终止态上仍被吸收，不会让失败的会话突然出现。
+- chat 的三种启动形态收成 `ChatRegistrationKind::{Turn, Resume, Silent}`（一个 bool 会让
+  「发了消息」与「跑完一轮」混为一谈）：`Turn` = 不可见 + 有素材；`Resume` = 已有历史 ⇒ 直接可见；
+  `Silent` = 都否。
+- **续聊不重新登记**（`register_or_mark`：`contains` ⇒ 只 `mark_user_input`）：否则每发一条
+  消息都会重置 `has_user_input`（会话在侧栏闪一下）并把标题改成最新那句。
+- 前端 `resolveTabTitle` 以 `has_user_input` 为门：发送那一刻 tab 仍显示 agent 名，跑完才一起变。
+- 用例：`session_becomes_visible_only_when_a_turn_finishes` /
+  `silence_without_user_input_never_reveals_the_session` / `mark_user_input_does_not_bump_the_version` /
+  `follow_up_turn_keeps_the_first_title_and_visibility`（Rust）、`tabTitle` 的
+  「engaged=false ⇒ 仍显示 tab 标题」（前端）。
+
+## 18. 回到「发送即出现」+ 收紧子列表缩进（第五轮反馈）
+
+第 17 轮把可见性绑在「一轮跑完」上，实测反馈：**发完消息什么都不出现**，要等 agent 跑完才
+冒出来 —— 与预期相反。正常流程是「用户输入 → 立刻拿到标题 → 立刻建侧栏条目」。
+
+- `SessionEntry` 回到单一 `has_user_input`，语义改为「用户已经发出过输入」；
+  `apply` 不再翻转可见性（删掉 `Applied` 结构与 `TurnFinished` 分支里的翻转），
+  `mark_user_input` 删除（与 `mark_user_input` 合并）。
+- `report_live_session_input` ⇒ 标题 + `mark_user_input`（发送即出现）。
+- `ChatRegistrationKind::has_user_input()`：`Turn` / `Resume` ⇒ true，`Silent` ⇒ false。
+- `register_or_mark`：续聊（`contains`）**什么都不做**（既不重登记也不改标题）。
+- 前端 `resolveTabTitle` 的 `has_user_input` 门保持不变 —— 它现在等价于「用户发过输入就换标题」。
+
+视觉：会话子列表缩进从 `ml-[3.25rem]`（52px，离左缘太远）改成 `ml-7`（28px），
+行内 `pl-2 pr-1.5`。缩进仍能表达从属关系，但不再把会话行推到面板中间。
+
+## 19. 命名：`engaged` → `has_user_input`
+
+`engaged` 在英文里是「订婚 / 忙于」的意思，与「用户发过输入」没有自然联系；它还同时承载
+「侧栏可见」与「标题有效」两个含义，读代码的人必须先查一遍。按朴素命名统一改名：
+
+| 位置 | 旧 | 新 |
+| --- | --- | --- |
+| `SessionEntry` 字段 / wire 字段 | `engaged` / `engaged` | `has_user_input` / `hasUserInput` |
+| 构造器 | `with_engaged` | `with_user_input` |
+| 注册表入口 | `mark_engaged` | `mark_user_input` |
+| chat 启动形态 | `ChatRegistrationKind::engaged()` | `has_user_input()` |
+
+不选 `visible` / `listed`：那是视图关注点，塞进数据层会让「已读 / 置顶」之类的下一次需求
+又造一个同名字段。行为零变化（纯重命名 + 断言文案同步）。
+
+## 20. 标题在「用户回车」时立即生成 + 停用 OSC 标题（第六轮反馈）
+
+两条真机反馈，各指向一个具体缺陷：
+
+### 20.1 「要会话结束才出现标题」
+
+不是可见性判据的问题（第 18 轮已回到「发送即出现」），而是**依赖了一条新加的命令**：
+前端调 `report_live_session_input`，而失败被 `.catch(() => {})` 吞掉 —— 运行中的构建只要
+没重建 Rust（或缺这条命令），标题就永远只从 hook 的 `turn_completed` 来，表现为「跑完才出现」。
+
+修法：**合并进既有命令**，不再新增通道。
+
+- `set_live_session_title(session_id, title, source)` —— `source = 'prompt'`（用户首条输入）
+  ⇒ 同时 `mark_user_input`（侧栏立刻列出）+ `set_title(Prompt)`；`source = 'native'` 只升级标题。
+- 前端失败不再静默：`console.warn('[Terminal] 会话标题上报失败:', err)` —— 这条通道漏了会
+  表现为「输入后侧栏一直不出现」，必须有可见线索。
+- 删除 `report_live_session_input` 命令与其注册（多一个命令名在多版本并存时只会多一个静默失败点）。
+
+### 20.2 标题开头有 `π`
+
+`π` 是 `pi` CLI 把自己的 logo 设成终端标题（OSC 0/2）。它以 `Native` 级别覆盖了用户刚输入
+的 `Prompt` 标题 —— 所以侧栏显示 `π …`。
+
+修法：**OSC 不再是标题来源**。会话名必须来自真实内容：用户输入（`prompt`，回车即生效）或
+CLI 自己命名的会话（hook 的 `title`，`native`）。随之删除 `features/terminal/utils/terminalTitle.ts`
+与其 6 个用例、`TerminalViewBase` 的 `onSessionTitleChange` 通道（`TerminalViewBase.tsx`
+从 553 → 529 行，低于基线，ratchet 满足）。
+
+### 20.3 标题乱码 `10;rgb:3838/3a3a/4242…`（`onData` 不全是用户输入）
+
+xterm 会把它**自己**对终端查询的应答从 `onData` 发出去：CLI 查前景色 → 终端回
+`ESC ]10;rgb:3838/3a3a/4242 ST`（OSC 10）；查光标位置 → `ESC [12;40R`（DSR）。
+第一版捕获器只处理 `ESC [ …`（CSI），把 `ESC ]` 之后的 payload 当成了正文，于是
+「首条输入行」攒出 `10;rgb:…`，回车一结算就变成了会话标题（tab 与侧栏同时显示）。
+
+修法：**含 `ESC` 的整块输入整块丢弃**。判据站得住：用户打字与粘贴都不会带 ESC，
+方向键 / 功能键的转义序列也不该参与命名。顺带删掉原来的 CSI 状态机
+（`pendingEscape` / `inCsi`），捕获器只剩「丢 ESC 块 + 攒到回车」。
+用例：`inputTitle.test.ts` 新增 OSC 10 / DSR / 「应答不污染缓冲」三条。
+
+## 21. 新会话自动展开 + 每页 10 条分页
+
+- `SessionRow` 新增 `childCount`：条数**增长**即 `setExpanded(true)`。基线取 0（面板重挂载时
+  「本来就有会话」也算出现）；条数不变则尊重用户手动折叠，不会被快照刷新弹开。
+- `SessionList` 从「折叠 / 全部展开」二态改为**分页**：每页 10 条，`显示更多（还有 N 条）`
+  每次再加一页；条数增长时回到第一页（新会话在后端排在最前，不重置就看不到它）。
+- 三个装配点传入 `childCount`：`ProjectGitSection`（主仓）、`WorktreeRowList`（linked worktree）、
+  `ConnectionProjectCard`（WSL / SSH 主仓）。
+- 用例：`SessionRow.test.tsx` 增「新会话自动展开」「条数不变尊重手动折叠」；
+  `SessionList.test.tsx` 改「每页 10 条」「显示更多每次一页」「新会话回到第一页」。
+
+## 22. 侧栏选中态：选中只在最具体的一层
+
+问题：会话被选中时父级（单元行）也亮，形成「同色套同色」；单元行内的图标方块还叠了
+第二层 `--bg-selected`。同一事实被强调两遍，读者分不清哪个是「当前」。
+
+按「一个轴只有一个当前项 + 表现层级用不同通道」重做：
+
+| 元素 | 之前 | 现在 |
+| --- | --- | --- |
+| 会话行（当前） | `bg-bg-selected` | `row-current`：强调色 12% 淡底 + 左侧 2px 色条（原型口径） |
+| 单元行（当前，且其内有当前会话） | `bg-bg-selected` | **不填充**（只保留文字语气） |
+| 单元行（当前，无当前会话，如文件 tab） | `bg-bg-selected` | 不变 |
+| 图标方块（当前） | 再叠一层 `--bg-selected` | 只有尺寸圆角 |
+
+- 判据：`selectUnitsWithActiveSession`（纯函数，只看 tab 身份，不看 live 快照）+
+  `useUnitsWithActiveSession`（选择器返回**排序拼接的字符串**再切 `Set`，否则每次 store
+  变更都因新引用重渲染侧栏）。
+- `row-current` 写成 `@utility`（`styles/base/tailwind.css`）而不是 `components/*.css`：
+  只服务一个状态、够不上「组件域」门槛（该目录要求 ≥20 行），而 Tailwind 任意值会让类名
+  退化成 `shadow-[inset_2px_0_0_0_var(--accent-blue)]`。
+- 用例：`editorTabSelectors.test.ts` 5 个（终端 / chat / 未铸造 id / 文件 tab / 多单元排序），
+  `SessionRow.test.tsx` 2 个（父行三态、图标方块无内联背景），`SessionList.test.tsx` 1 个。
