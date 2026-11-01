@@ -6,7 +6,12 @@
  * 于是「同一份快照」这件事在代码里也只有一份实现。
  */
 
-import type { SessionKind, SessionState, SessionView } from '@/shared/types/liveSessions';
+import type {
+  SessionKind,
+  SessionState,
+  SessionRef,
+  SessionView,
+} from '@/shared/types/liveSessions';
 import type { Tab } from '@/shared/types/tab';
 
 /** 稳定的空数组：无会话的单元每帧重新 `[]` 会让 memo 失效。 */
@@ -51,18 +56,56 @@ export function isSameSession(
 /**
  * 会话是否已经有名字（＝注册表里存在真标题）。
  *
- * **没名字的会话不进侧栏**：打开一个 agent tab 时 PTY / 静默会话就已经存在，但它既没有
- * 首条 prompt 也没有 CLI 自报的 OSC 标题 —— 那时列出一行「只有一个图标」的条目，只是在
- * 侧栏里多一条无法辨认的东西。等标题到手（`titleSource` 升到 `prompt` / `native` /
- * `user`）它才成为「一条会话」。tab 侧不受影响：标题为空时 `resolveTabTitle` 回退
- * agent 名（初版行为）。
+ * 标题可能来自首条 prompt / 首条终端输入（`Prompt`）、CLI hook 的会话主题
+ * （`Native`）、用户改名（`User`）；`Placeholder` 只是「还没起名」的占位。
  */
 export function isNamedSession(session: SessionView): boolean {
   return session.titleSource !== 'placeholder' && session.title.trim().length > 0;
 }
 
 /**
- * 按单元分组（`workspaceKey → 会话列表`），**只含已命名的会话**。
+ * 是否该把这条会话列进侧栏：**用户已经在里面输入过、且它已经有名字**。
+ *
+ * 两个条件缺一不可，各自挡住一类「假的会话」：
+ *
+ * 1. `hasUserInput` —— 打开 agent tab 就会创建 PTY / 静默会话，而且 CLI 常常一启动就自己
+ *    产生标题。只看标题的话，侧栏会在用户还没敲一个字时就冒出条目（Codex 那样的桌面端
+ *    也是「发出第一条消息后才建会话」）。
+ * 2. `isNamedSession` —— 用户敲了东西但还没有任何标题（例如纯 shell 没设 OSC 标题）时，
+ *    列出来只是一行没有文字的图标。等标题到手它会自己出现（快照版本会变，列表随之重算）。
+ */
+export function isListedSession(session: SessionView): boolean {
+  return session.hasUserInput && isNamedSession(session);
+}
+
+/**
+ * 前台会话已实际列出的单元集合（父行据此让出选中态）。
+ *
+ * 父行不能只看 tab 身份：无标题 / 未输入 / 已注销的会话不会出现在子列表，
+ * 此时让出填充色会让「当前」在整个侧栏消失。判据与 `sessionsByUnit` 同源。
+ */
+export function unitsWithListedActiveSession(
+  refs: readonly SessionRef[],
+  sessions: readonly SessionView[],
+): Set<string> {
+  const units = new Set<string>();
+  for (const ref of refs) {
+    if (
+      sessions.some(
+        (session) =>
+          session.workspaceKey === ref.workspaceKey &&
+          isSameSession(session, ref) &&
+          isListedSession(session),
+      )
+    ) {
+      units.add(ref.workspaceKey);
+    }
+  }
+  return units;
+}
+
+/**
+ * 按单元分组（`workspaceKey → 会话列表`），**只含该列出的会话**（`isListedSession`）。
  *
  * 单元归属只做 `workspaceKey` **相等比较**：key 是后端铸造的唯一地址表示，
  * 在这里拼分隔符或比路径前缀就是第二套身份判据（红线 12）。一次 O(n) 分组供所有
@@ -74,7 +117,7 @@ export function isNamedSession(session: SessionView): boolean {
 export function sessionsByUnit(sessions: readonly SessionView[]): Map<string, SessionView[]> {
   const byUnit = new Map<string, SessionView[]>();
   for (const session of sessions) {
-    if (!isNamedSession(session)) continue;
+    if (!isListedSession(session)) continue;
     const list = byUnit.get(session.workspaceKey);
     if (list) list.push(session);
     else byUnit.set(session.workspaceKey, [session]);

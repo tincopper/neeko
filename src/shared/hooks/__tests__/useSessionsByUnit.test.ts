@@ -21,6 +21,7 @@ function session(sessionId: string, workspaceKey: string): SessionView {
     startedAt: '2026-10-31T10:00:00.000Z',
     updatedAt: '2026-10-31T10:00:00.000Z',
     turnCount: 0,
+    hasUserInput: true,
   };
 }
 

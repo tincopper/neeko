@@ -17,6 +17,7 @@ function session(overrides: Partial<SessionView> & { sessionId: string }): Sessi
     startedAt: new Date(Date.now() - 120_000).toISOString(),
     updatedAt: new Date(Date.now() - 60_000).toISOString(),
     turnCount: 0,
+    hasUserInput: true,
     ...overrides,
   };
 }
@@ -126,20 +127,80 @@ describe('SessionList', () => {
     expect(onActivate).toHaveBeenCalledWith(target);
   });
 
-  it('超过 maxRows 折叠，展开后全部渲染（原型「查看全部 N 条」）', () => {
+  it('超过一页折叠，点「显示更多」**每次只再放出同样多条**（不是一次全放开）', () => {
     const sessions = Array.from({ length: 5 }, (_, i) =>
       session({ sessionId: `s${i}`, title: `会话 ${i}` }),
     );
     render(<SessionList sessions={sessions} maxRows={2} />);
 
     expect(screen.getByText('会话 0')).toBeInTheDocument();
+    expect(screen.queryByText('会话 2')).not.toBeInTheDocument();
+
+    // 一页 2 条：第一次显示更多 ⇒ 4 条可见
+    fireEvent.click(screen.getByText('显示更多（还有 3 条）'));
+    expect(screen.getByText('会话 3')).toBeInTheDocument();
     expect(screen.queryByText('会话 4')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('查看全部 5 条'));
+    // 第二次 ⇒ 5 条全在，按钮消失
+    fireEvent.click(screen.getByText('显示更多（还有 1 条）'));
     expect(screen.getByText('会话 4')).toBeInTheDocument();
+    expect(screen.queryByText(/显示更多/)).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByText('只看最近 2 条'));
-    expect(screen.queryByText('会话 4')).not.toBeInTheDocument();
+  it('默认每页 10 条（超过才出现「显示更多」）', () => {
+    const ten = Array.from({ length: 10 }, (_, i) => session({ sessionId: `s${i}` }));
+    const { unmount } = render(<SessionList sessions={ten} />);
+    expect(screen.queryByText(/显示更多/)).not.toBeInTheDocument();
+    unmount();
+
+    const eleven = Array.from({ length: 11 }, (_, i) => session({ sessionId: `s${i}` }));
+    render(<SessionList sessions={eleven} />);
+    expect(screen.getByText('显示更多（还有 1 条）')).toBeInTheDocument();
+  });
+
+  it('新会话出现（条数增长）⇒ 回到第一页，最新的那条可见', () => {
+    const early = Array.from({ length: 12 }, (_, i) =>
+      session({ sessionId: `s${i}`, title: `会话 ${i}` }),
+    );
+    const { rerender } = render(<SessionList sessions={early} />);
+    fireEvent.click(screen.getByText('显示更多（还有 2 条）'));
+    expect(screen.getByText('会话 11')).toBeInTheDocument();
+
+    // 后端按开始时间倒序：新会话排在最前
+    const withNew = [session({ sessionId: 'new', title: '新会话' }), ...early];
+    rerender(<SessionList sessions={withNew} />);
+    expect(screen.getByText('新会话')).toBeInTheDocument();
+    expect(screen.queryByText('会话 11')).not.toBeInTheDocument();
+    expect(screen.getByText('显示更多（还有 3 条）')).toBeInTheDocument();
+  });
+
+  it('当前会话位于后续页 ⇒ 自动纳入可见范围（否则父行让出选中但子行看不见）', () => {
+    const sessions = Array.from({ length: 12 }, (_, i) =>
+      session({ sessionId: `s${i}`, title: `会话 ${i}` }),
+    );
+    render(
+      <SessionList
+        sessions={sessions}
+        maxRows={2}
+        activeSession={session({ sessionId: 's11', title: '会话 11' })}
+      />,
+    );
+    expect(screen.getByText('会话 11')).toBeInTheDocument();
+  });
+
+  it('选中行只用一个语义类表达（淡底 + 左条在 CSS 里，不是中性选中底）', () => {
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: 'A' })]}
+        activeSession={session({ sessionId: 's1', title: 'A' })}
+      />,
+    );
+
+    const row = screen.getByRole('button', { name: /^A/ });
+    expect(row).toHaveClass('row-current');
+    // 中性选中底是父级（单元行）的通道，子行不能也用它
+    expect(row).not.toHaveClass('bg-bg-selected');
+    expect(row).toHaveAttribute('aria-current', 'true');
   });
 
   it('前台会话行带 aria-current（只有一行是当前）', () => {

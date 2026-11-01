@@ -7,6 +7,7 @@ import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
 import {
   selectActiveTab,
   selectActiveTabId,
+  selectActiveSessionRefs,
   selectOrderedTabIds,
   selectOrderedTabs,
   type EditorTabSpaceState,
@@ -140,5 +141,59 @@ describe('selectActiveTab — 前台 Tab 对象', () => {
       editorLayout: { [SPACE]: layout },
     };
     expect(selectActiveTab(stale, SPACE)).toBeNull();
+  });
+});
+
+describe('selectActiveSessionRefs', () => {
+  /** 由一个前台 tab 的数据构造「单单元、单 tab」状态。 */
+  function stateWithActive(data: Tab['data'], tabKey = SPACE): EditorTabSpaceState {
+    const layout = createDefaultEditorLayout();
+    const tab: Tab = { id: 'tab-1', scope: { kind: 'app' }, title: 't', data };
+    layout.groups.left = { tabIds: [tab.id], activeTabId: tab.id };
+    return { tabs: { [tabKey]: { tabs: [tab] } }, editorLayout: { [tabKey]: layout } };
+  }
+
+  it('前台是终端会话（有 ptySessionId）⇒ 该单元计入', () => {
+    const state = stateWithActive({ kind: 'terminal', agentId: null, ptySessionId: 'pty-1' });
+    expect(selectActiveSessionRefs(state)).toEqual([
+      { workspaceKey: SPACE, kind: 'terminal', sessionId: 'pty-1' },
+    ]);
+  });
+
+  it('前台是 agent chat 会话（有 sessionId）⇒ 该单元计入', () => {
+    const state = stateWithActive({ kind: 'agent-chat', sessionId: 'chat-1' });
+    expect(selectActiveSessionRefs(state)).toEqual([
+      { workspaceKey: SPACE, kind: 'chat', sessionId: 'chat-1' },
+    ]);
+  });
+
+  it('会话 tab 但还没铸造 id（PTY 未创建）⇒ 不计入（子行也没被高亮）', () => {
+    expect(selectActiveSessionRefs(stateWithActive({ kind: 'terminal', agentId: null }))).toEqual(
+      [],
+    );
+    expect(selectActiveSessionRefs(stateWithActive({ kind: 'agent-chat' }))).toEqual([]);
+  });
+
+  it('前台是文件 tab ⇒ 不计入（父行保留自己的选中底色）', () => {
+    expect(selectActiveSessionRefs(stateWithActive(mkTab('f').data))).toEqual([]);
+  });
+
+  it('多个单元时按 key 排序，供稳定快照比较', () => {
+    const a: EditorTabSpaceState = stateWithActive(
+      { kind: 'terminal', agentId: null, ptySessionId: 'p-a' },
+      'p-a\0',
+    );
+    const b: EditorTabSpaceState = stateWithActive(
+      { kind: 'terminal', agentId: null, ptySessionId: 'p-b' },
+      'p-b\0',
+    );
+    const merged: EditorTabSpaceState = {
+      tabs: { ...b.tabs, ...a.tabs },
+      editorLayout: { ...b.editorLayout, ...a.editorLayout },
+    };
+    expect(selectActiveSessionRefs(merged).map((ref) => ref.workspaceKey)).toEqual([
+      'p-a\0',
+      'p-b\0',
+    ]);
   });
 });

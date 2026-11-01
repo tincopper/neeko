@@ -10,6 +10,7 @@ import ProjectGroup from '@/shared/components/ProjectGroup';
 import ProjectSettingsDialog from '@/shared/components/ProjectSettingsDialog';
 import SessionRow from '@/shared/components/SessionRow';
 import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
+import { useUnitsWithActiveSession } from '@/shared/hooks/useUnitsWithActiveSession';
 import { NO_SESSIONS, dominantState } from '@/shared/selectors/liveSessionSelectors';
 import { useGitStore } from '@/shared/store/gitStore';
 import {
@@ -162,6 +163,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     // 主仓单元的角标与子列表（与本地侧栏同一份快照、同一把 key）。
     const mainUnitKey = WorkspaceSession.of(project.id, null).key;
     const mainUnitSessions = sessionsByUnit.get(mainUnitKey) ?? NO_SESSIONS;
+    const childActive = useUnitsWithActiveSession().has(mainUnitKey);
 
     const style = {
       transform: CSS.Transform.toString(transform),
@@ -204,6 +206,8 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
               ahead={localActive ? aheadBehind?.ahead : undefined}
               title="Open primary terminal"
               status={dominantState(mainUnitSessions)}
+              childCount={mainUnitSessions.length}
+              childActive={childActive}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelectProject(project.id);

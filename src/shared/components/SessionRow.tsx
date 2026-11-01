@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import { ChevronRightIcon, TerminalIcon, FolderGitIcon } from '@/shared/components/icons';
@@ -23,10 +23,26 @@ interface SessionRowProps {
   /**
    * 单元下的会话子列表（`SessionList`）。给出时行尾出现展开箭头。
    *
-   * **默认折叠**，且折叠时子节点根本**不渲染** —— 挂载即订阅 + 每单元可能的几十行
-   * 会话在侧栏里全是白付的成本。
+   * 已有会话时首次渲染默认展开；折叠时子节点根本**不渲染** —— 挂载即订阅 + 每单元
+   * 可能的几十行会话在侧栏里全是白付的成本。后续只在会话数增长时自动展开，尊重用户
+   * 的手动折叠。
    */
   children?: React.ReactNode;
+  /**
+   * 该单元内**有会话被选中**（前台 tab 是它的一条会话）。
+   *
+   * 选中样式只出现在最具体的一层：子行用强调色淡底 + 左侧色条，父行则**不再填充** ——
+   * 「当前会话」本来就蕴含「当前单元」，两级同色填充会让读者分不清哪个是当前。
+   * 传 `true` 时父行只靠文字对比度表达「当前单元」。
+   */
+  childActive?: boolean;
+  /**
+   * 子列表当前条数（`SessionList` 的会话数）。
+   *
+   * 用于「**新会话出现就自动展开**」：条数比上一次多 ⇒ 展开；条数不变则尊重用户的手动
+   * 折叠（否则用户刚收起，下一次轮询/状态刷新又把它弹开）。`undefined` = 不自动展开。
+   */
+  childCount?: number;
   /**
    * 待 push 提交数（相对 `@{upstream}`）。**只在激活行展示**（`isActive`）——
    * 该数字的值只有激活单元才会被写入 store（见 `useAheadBehindSync` / `useGitStatusEventsSync`），
@@ -78,20 +94,35 @@ const SessionRow: React.FC<SessionRowProps> = ({
   deleting = false,
   trailing,
   children,
+  childCount,
+  childActive = false,
 }) => {
   const Icon = kind === 'worktree' ? FolderGitIcon : TerminalIcon;
-  const [expanded, setExpanded] = useState(false);
   const hasChildren = children !== undefined && children !== null;
+
+  // 首次渲染就展开「本来就有会话」的单元（用初值而不是 effect：否则首帧是收起的，
+  // 第二帧才弹开 —— 侧栏会在每次面板重挂载时闪一下）。
+  const [expanded, setExpanded] = useState(() => (childCount ?? 0) > 0);
+
+  // 之后只认**增长**：新会话出现 ⇒ 自动展开；条数不变则尊重用户的手动折叠。
+  const previousCount = useRef(childCount ?? 0);
+  useEffect(() => {
+    const count = childCount ?? 0;
+    if (count > previousCount.current) setExpanded(true);
+    previousCount.current = count;
+  }, [childCount]);
+
+  /** 只有子列表真的存在且展开时，子行才能接管父行的选中态。 */
+  const childTakesSelection = hasChildren && expanded && childActive;
 
   const leading = (
     <span
+      data-testid="unit-face"
       className={cn(
+        // 不再给图标方块上第二层底色：行已经表达选中，方块再加一层就是同一个选中被强调两次。
         'relative w-7 h-7 rounded-md flex items-center justify-center shrink-0',
         isActive ? 'text-text-primary' : 'text-text-muted',
       )}
-      style={{
-        backgroundColor: isActive ? 'var(--bg-selected)' : 'transparent',
-      }}
     >
       <Icon size={16} />
       {status && (
@@ -124,10 +155,14 @@ const SessionRow: React.FC<SessionRowProps> = ({
   return (
     <>
       <div
+        data-testid="unit-row"
         className={cn(
           'group flex items-center gap-2.5 pl-4 pr-3 py-2 mx-1.5 rounded-md transition-colors',
           deleting && 'wt-deleting',
-          isActive ? 'bg-bg-selected' : 'hover:bg-bg-hover',
+          // 三态：子行被选中 ⇒ 父行不填充（把「当前」让给子行）；否则按单元是否当前填充。
+          // 子行只有真的画出来时才接管选中态；折叠期间父行仍是唯一可见的「当前」。
+          isActive && !childTakesSelection && 'bg-bg-selected',
+          !isActive && 'hover:bg-bg-hover',
         )}
         title={title}
       >
@@ -175,9 +210,9 @@ const SessionRow: React.FC<SessionRowProps> = ({
           {trailing}
         </div>
       </div>
-      {/* 子列表：只靠缩进表达层级 —— 竖线在窄侧栏里是一条持续的视觉噪声，
-          而且和单元行自己的左缘打架。缩进值让会话图标对齐单元标签的起点。 */}
-      {hasChildren && expanded && <div className="ml-[3.25rem] mr-1 mb-1">{children}</div>}
+      {/* 子列表：不画竖线（窄侧栏里是持续噪声），只缩进一个「图标槽」——
+          看得从属关系，又不会把会话行推到面板中间。 */}
+      {hasChildren && expanded && <div className="ml-7 mr-1 mb-1">{children}</div>}
     </>
   );
 };

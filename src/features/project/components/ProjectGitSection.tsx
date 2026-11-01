@@ -3,6 +3,7 @@ import React from 'react';
 import { UnitSessionList } from '@/features/live-sessions';
 import SessionRow from '@/shared/components/SessionRow';
 import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
+import { useUnitsWithActiveSession } from '@/shared/hooks/useUnitsWithActiveSession';
 import { NO_SESSIONS, dominantState } from '@/shared/selectors/liveSessionSelectors';
 import { useGitStore } from '@/shared/store/gitStore';
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
@@ -45,6 +46,8 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
   // 单元角标与会话子列表都取自**同一份注册表快照**（视图不持有状态副本）。
   // 分组用共享的 `useSessionsByUnit`：与 worktree 行 / 会话子列表同一份实现。
   const unitSessions = useSessionsByUnit().get(mainWorkspaceKey) ?? NO_SESSIONS;
+  // 子行被选中时父行不填充（选中样式只出现在最具体的一层）。
+  const childActive = useUnitsWithActiveSession().has(mainWorkspaceKey);
 
   const localActive = isActive && !activeCheckoutPath;
 
@@ -59,6 +62,8 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
         shortcut={shortcut}
         title="Open primary terminal"
         status={dominantState(unitSessions)}
+        childCount={unitSessions.length}
+        childActive={childActive}
         onClick={(e) => {
           e.stopPropagation();
           onSelectProject(project.id);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import AgentIcon from '@/shared/components/AgentIcon';
@@ -22,8 +22,13 @@ import { formatRelativeTime } from '@/shared/utils/relativeTime';
  * - **无会话传入 → 渲染 null**（无会话不画点，也不留空壳）。
  */
 
-/** 每个单元默认最多渲染的行数（超出折叠到「查看全部」）。 */
-const DEFAULT_MAX_ROWS = 20;
+/**
+ * 每页行数：一个单元的会话超过它就折叠，点「显示更多」**一次再放出这么多条**。
+ *
+ * 10 是「一眼能扫完、又不至于占满侧栏」的量级；分页而不是「全部展开」，
+ * 是因为一个跑了很久的单元可能有几十条会话。
+ */
+const DEFAULT_MAX_ROWS = 10;
 
 /**
  * 相对时间的刷新节拍。
@@ -45,7 +50,7 @@ export interface SessionListProps {
    * （`isSameSession`），只比 id 就是第二套判据。
    */
   activeSession?: SessionView | null;
-  /** 超过该行数折叠（原型 `MAX_ROWS = 20`）。 */
+  /** 每页行数（超过它折叠，点「显示更多」再放出同样多条）。 */
   maxRows?: number;
   className?: string;
 }
@@ -63,7 +68,7 @@ const SessionListRow: React.FC<SessionListRowProps> = ({ session, isActive, now,
     session.agentId ? s.agents?.find((a) => a.id === session.agentId)?.icon : undefined,
   );
   const ago = formatRelativeTime(session.updatedAt, now);
-  // 没有会话级标题（CLI 还没自报 OSC 标题 / 首条 prompt 未到）⇒ 只画图标。
+  // 没有会话级标题（CLI 还没给出 hook 主题 / 首条 prompt 未到）⇒ 只画图标。
   // 不拿 agent 名或项目名占位：前者不可读，后者与单元行重复（行已经在单元下面）。
   const hasTitle = session.title.trim().length > 0;
   // 无标题时按钮仍需要一个可读名字（否则屏幕阅读器只念出「2m」+ 状态）
@@ -76,9 +81,11 @@ const SessionListRow: React.FC<SessionListRowProps> = ({ session, isActive, now,
       className={cn(
         // 密度对齐原型（`.session`：4px/6px、gap 6px、radius 5px、11.5px）：
         // 会话行是单元的**子项**，字号比单元标签小一档才有层级。
-        'flex w-full items-center gap-1.5 rounded-[5px] px-1.5 py-1 text-left transition-colors',
+        'flex w-full items-center gap-1.5 rounded-[5px] pl-2 pr-1.5 py-1 text-left transition-colors',
         'cursor-pointer focus-visible:outline-2 focus-visible:outline-accent-blue',
-        isActive ? 'bg-bg-selected' : 'hover:bg-bg-hover',
+        // 选中态由 `row-current` 一个语义类表达（强调色淡底 + 左侧 2px 色条，
+        // 见 `styles/components/session-row.css`）。父级用中性色，两级分属不同通道。
+        isActive ? 'row-current' : 'hover:bg-bg-hover',
       )}
       title={hasTitle ? session.title : undefined}
       aria-label={hasTitle ? undefined : fallbackLabel}
@@ -117,12 +124,29 @@ const SessionList: React.FC<SessionListProps> = ({
   maxRows = DEFAULT_MAX_ROWS,
   className,
 }) => {
-  const [showAll, setShowAll] = useState(false);
+  // 可见条数：初值一页；「显示更多」每次 +一页（不是一次全放开）。
+  const [visibleCount, setVisibleCount] = useState(maxRows);
+  // 新会话出现（条数增长）⇒ 回到第一页：它是**最新**的那条，后端已按开始时间倒序排在前面，
+  // 若不重置，用户会「看不到刚出现的会话」。
+  const previousTotal = useRef(sessions.length);
+  useEffect(() => {
+    if (sessions.length > previousTotal.current) setVisibleCount(maxRows);
+    previousTotal.current = sessions.length;
+  }, [sessions.length, maxRows]);
+
   // 单个定时器服务整张列表：每行各起一个 setInterval 会把「刷新相对时间」变成 N 个时钟。
   const now = useNowTick(RELATIVE_TIME_TICK_MS);
   if (sessions.length === 0) return null;
 
-  const visible = showAll ? sessions : sessions.slice(0, maxRows);
+  // 当前会话必须可见：父行是否让出选中态取决于「子行真的画出来了」，
+  // 分页把当前行藏到后续页会让整个侧栏失去「当前」提示。
+  const activeIndex = activeSession
+    ? sessions.findIndex((session) => isSameSession(session, activeSession))
+    : -1;
+  const effectiveVisibleCount =
+    activeIndex >= 0 ? Math.max(visibleCount, activeIndex + 1) : visibleCount;
+  const visible = sessions.slice(0, effectiveVisibleCount);
+  const remaining = sessions.length - visible.length;
 
   return (
     <div className={cn('flex flex-col gap-0.5 pb-1', className)}>
@@ -135,13 +159,13 @@ const SessionList: React.FC<SessionListProps> = ({
           onActivate={onActivate}
         />
       ))}
-      {sessions.length > maxRows && (
+      {remaining > 0 && (
         <button
           type="button"
           className="px-1.5 py-0.5 text-left text-[0.82em] text-text-muted cursor-pointer hover:text-text-primary transition-colors"
-          onClick={() => setShowAll((v) => !v)}
+          onClick={() => setVisibleCount((count) => count + maxRows)}
         >
-          {showAll ? `只看最近 ${maxRows} 条` : `查看全部 ${sessions.length} 条`}
+          显示更多（还有 {remaining} 条）
         </button>
       )}
     </div>

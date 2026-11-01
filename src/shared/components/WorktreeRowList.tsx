@@ -4,6 +4,7 @@ import DeleteConfirmDialog from '@/shared/components/DeleteConfirmDialog';
 import { BranchIcon, TrashIcon } from '@/shared/components/icons';
 import SessionRow from '@/shared/components/SessionRow';
 import WorktreeRenameInput from '@/shared/components/WorktreeRenameInput';
+import { useUnitsWithActiveSession } from '@/shared/hooks/useUnitsWithActiveSession';
 import type { ConfirmDeleteState, WorktreeRowState } from '@/shared/hooks/useWorktreeRowState';
 import {
   NO_SESSIONS,
@@ -73,6 +74,8 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
   // 每个 worktree 行的角标与子列表都取自同一份快照（按 `workspaceKey` 分组，红线 12）。
   const sessions = useLiveSessionsStore((s) => s.sessions);
   const byUnit = useMemo(() => sessionsByUnit(sessions), [sessions]);
+  // 子行被选中时父行不填充（选中样式只出现在最具体的一层）。
+  const childActiveUnits = useUnitsWithActiveSession();
 
   if (worktrees.length === 0) return null;
 
@@ -115,6 +118,8 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
             labelTitle="Double-click to rename"
             deleting={isDeleting}
             status={dominantState(unitSessions)}
+            childCount={unitSessions.length}
+            childActive={childActiveUnits.has(unitKey)}
             trailing={
               isDeleting ? (
                 <span className="wt-spinner" title="Removing..." />

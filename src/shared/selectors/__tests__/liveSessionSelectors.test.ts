@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   dominantState,
+  isListedSession,
   isNamedSession,
   isSameSession,
   sessionTab,
   sessionsByUnit,
   tabSession,
+  unitsWithListedActiveSession,
 } from '@/shared/selectors/liveSessionSelectors';
 import type { SessionKind, SessionState, SessionView } from '@/shared/types/liveSessions';
 import type { Tab, TabData } from '@/shared/types/tab';
@@ -26,6 +28,7 @@ function session(overrides: Partial<SessionView> & { sessionId: string }): Sessi
     startedAt: '2026-10-31T10:00:00.000Z',
     updatedAt: '2026-10-31T10:00:00.000Z',
     turnCount: 0,
+    hasUserInput: true,
     ...overrides,
   };
 }
@@ -49,6 +52,31 @@ describe('isNamedSession', () => {
     for (const titleSource of ['prompt', 'native', 'user'] as const) {
       expect(isNamedSession(session({ sessionId: 'a', title: 'x', titleSource }))).toBe(true);
     }
+  });
+});
+
+describe('isListedSession', () => {
+  it('有标题但用户还没输入 ⇒ 不列出（CLI 启动就发 OSC 标题也不能算「会话已开始」）', () => {
+    const startupTitle = session({
+      sessionId: 'a',
+      title: 'claude',
+      titleSource: 'native',
+      hasUserInput: false,
+    });
+    expect(isNamedSession(startupTitle)).toBe(true);
+    expect(isListedSession(startupTitle)).toBe(false);
+  });
+
+  it('用户输入了但还没有标题 ⇒ 不列出（等标题到手再出现）', () => {
+    expect(
+      isListedSession(
+        session({ sessionId: 'a', title: '', titleSource: 'placeholder', hasUserInput: true }),
+      ),
+    ).toBe(false);
+  });
+
+  it('已输入 + 有标题 ⇒ 列出', () => {
+    expect(isListedSession(session({ sessionId: 'a', title: 'npm test' }))).toBe(true);
   });
 });
 
@@ -88,6 +116,40 @@ describe('sessionsByUnit', () => {
     const byUnit = sessionsByUnit(list);
     expect(byUnit.get(nested)?.map((s) => s.sessionId)).toEqual(['nested']);
     expect(byUnit.get(deeper)?.map((s) => s.sessionId)).toEqual(['deeper']);
+  });
+});
+
+describe('unitsWithListedActiveSession', () => {
+  it('前台 tab 的会话未列出（未输入 / 无标题 / 已注销）⇒ 父行不应让出选中态', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'hidden' }];
+    expect(
+      unitsWithListedActiveSession(refs, [
+        session({
+          sessionId: 'hidden',
+          hasUserInput: false,
+          title: 'claude',
+          titleSource: 'native',
+        }),
+      ]),
+    ).toEqual(new Set());
+  });
+
+  it('前台 tab 的会话在可见集合里 ⇒ 对应单元计入', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'listed' }];
+    expect(
+      unitsWithListedActiveSession(refs, [
+        session({ sessionId: 'listed', title: 'npm test', hasUserInput: true }),
+      ]),
+    ).toEqual(new Set([MAIN_KEY]));
+  });
+
+  it('同 id 但不同 kind 不算同一条会话', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'chat' as const, sessionId: 'same' }];
+    expect(
+      unitsWithListedActiveSession(refs, [
+        session({ sessionId: 'same', kind: 'terminal', title: 'npm test', hasUserInput: true }),
+      ]),
+    ).toEqual(new Set());
   });
 });
 

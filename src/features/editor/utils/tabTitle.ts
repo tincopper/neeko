@@ -2,7 +2,7 @@ import type { SessionView } from '@/shared/types/liveSessions';
 import type { TabLike } from '@/shared/types/tab';
 
 /**
- * tab 标题的**派生**规则：注册表标题 > tab 自带标题。
+ * tab 标题的**派生**规则：会话已可见（`hasUserInput`）时用注册表标题，否则用 tab 自带标题。
  *
  * ## 为什么不写回 tab store
  *
@@ -15,8 +15,10 @@ import type { TabLike } from '@/shared/types/tab';
  * 但一份空的 `title` 在 tab 栏上就是一条不可辨认的空白，兜底成本是零。
  */
 export function resolveTabTitle(tab: TabLike, session?: SessionView | null): string {
-  const derived = session?.title.trim();
-  // `derived` 非空 ⇒ `session` 非空，所以这里不需要再兜一次 `tab.title`。
-  if (!derived || !session) return tab.title;
+  // `hasUserInput` = 用户已经在这个会话里发出过输入（= 侧栏列出它的时刻，也是标题成立的时刻）。
+  // 在那之前（只打开了 tab）标题还是占位，tab 显示自己的 `title`（agent 名 / `Terminal N`）。
+  if (!session?.hasUserInput) return tab.title;
+  const derived = session.title.trim();
+  if (!derived) return tab.title;
   return session.title;
 }

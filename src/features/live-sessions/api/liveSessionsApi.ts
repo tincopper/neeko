@@ -39,16 +39,28 @@ export function waitLiveSessions(
 }
 
 /**
- * 回传终端自己声明的标题（xterm OSC 0/2，`titleSource = native`）。
+ * 回传会话标题：CLI 的 OSC 0/2（`source = 'native'`）或用户的**首条输入行**
+ * （`source = 'prompt'`，默认）。
  *
- * 返回「标题是否真的变了」：注册表按**单调升级**把关（`placeholder < prompt <
- * native < user`），所以同一串 OSC 重复帧、以及任何自动来源试图覆盖用户改名，
- * 都返回 `false` 且不 bump 版本 —— 调用方据此判断「发出去有没有用」，但通常
- * 只需忽略返回值（标题是尽力而为的旁路）。
+ * - `prompt`：用户刚发出第一条输入 ⇒ 后端同时标记「已在用」（侧栏**立刻**列出该会话），
+ *   标题按 `Prompt` 参与单调升级（`native` / `user` 更强，不会被覆盖）；
+ * - `native`：CLI 自报的会话主题（hook 面在后端直接调注册表，目前无前端调用者 —— 保留以对齐
+ *   命令契约 `TitleSource`）。
  *
- * 为什么是命令而不是事件：前端→后端的既有通道是 `terminal-input-{id}`（载荷为
- * stdin 字节）和 agent chat（反向），复用它们要么污染语义、要么新增事件名（红线 5）。
+ * `source` **必传**：两端各持一个默认值（前端 `prompt` / 后端 `native`）时，同一个调用的语义
+ * 取决于谁在调用 —— 那是两条规则而不是一条。
+ *
+ * # 为什么不再回传 OSC 标题
+ *
+ * `term.onTitleChange`（OSC 0/2）拿到的多是 CLI 的**状态栏**（`pi` 的 `π`、`claude` 的
+ * 旋转符…），与「这条会话在做什么」无关，却因为是 `Native` 级别而覆盖掉用户的首条输入 ——
+ * 侧栏因此显示一个 `π` 开头的标题。会话名应当来自真实内容：用户输入（`prompt`）或 CLI
+ * 自己命名的会话（hook 上报的 `title`）。
  */
-export function setLiveSessionTitle(sessionId: string, title: string): Promise<boolean> {
-  return invoke<boolean>('set_live_session_title', { sessionId, title });
+export function setLiveSessionTitle(
+  sessionId: string,
+  title: string,
+  source: 'prompt' | 'native',
+): Promise<boolean> {
+  return invoke<boolean>('set_live_session_title', { sessionId, title, source });
 }

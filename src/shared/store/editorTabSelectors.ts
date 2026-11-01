@@ -1,4 +1,5 @@
 import type { EditorSplitLayout, ProjectTabs, Tab } from '@/shared/types';
+import type { SessionRef } from '@/shared/types/liveSessions';
 
 /**
  * tab 空间的「视图投影」唯一读取面。
@@ -68,4 +69,26 @@ export function selectActiveTab(state: EditorTabSpaceState, tabKey: string): Tab
   const activeId = selectActiveTabId(state, tabKey);
   if (!activeId) return null;
   return state.tabs[tabKey]?.tabs.find((tab) => tab.id === activeId) ?? null;
+}
+
+/**
+ * 前台会话的完整身份（含所在单元），供 live-session 派生层过滤。
+ *
+ * 返回排序后的数组，调用方应在 `useMemo` 中按稳定的 `tabs` / `editorLayout`
+ * 引用计算，而不是把它直接作为 zustand selector 的返回值（后者每次 getSnapshot
+ * 都会生成新数组）。空集也无需共享常量：只有状态切片变化时才会重算。
+ */
+export function selectActiveSessionRefs(state: EditorTabSpaceState): readonly SessionRef[] {
+  const refs: SessionRef[] = [];
+  for (const tabKey of Object.keys(state.tabs)) {
+    const tab = selectActiveTab(state, tabKey);
+    if (!tab) continue;
+    const data = tab.data;
+    if (data.kind === 'agent-chat' && data.sessionId) {
+      refs.push({ workspaceKey: tabKey, kind: 'chat', sessionId: data.sessionId });
+    } else if (data.kind === 'terminal' && data.ptySessionId) {
+      refs.push({ workspaceKey: tabKey, kind: 'terminal', sessionId: data.ptySessionId });
+    }
+  }
+  return refs.sort((a, b) => a.workspaceKey.localeCompare(b.workspaceKey));
 }

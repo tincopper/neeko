@@ -47,7 +47,22 @@ export interface SessionView {
   /** ISO8601 —— UI 的相对时间用它（不伪造 Idle）。 */
   updatedAt: string;
   turnCount: number;
+  /**
+   * 用户是否已经在这个会话里**发出过输入**（Rust `SessionEntry::has_user_input`）。
+   *
+   * 打开 tab 就会创建 PTY / 静默会话，agent CLI 往往还会自己发 OSC 标题 —— 所以
+   * 「有标题」不等于「有人在用」。侧栏只列 `hasUserInput` 的会话（见 `isListedSession`）。
+   */
+  hasUserInput: boolean;
 }
+
+/**
+ * 会话的**定位身份**：会话种类 + 后端铸造的 id + 所属单元 key。
+ *
+ * 只在「需要跨 tab / live 快照求交」的派生层使用；同一条会话的判据仍由
+ * `isSameSession` 统一消费，禁止调用侧只比较字段子集。
+ */
+export type SessionRef = Pick<SessionView, 'workspaceKey' | 'kind' | 'sessionId'>;
 
 /** `list_live_sessions` 回包（Rust `LiveSessionsSnapshot`）。 */
 export interface LiveSessionsSnapshot {
