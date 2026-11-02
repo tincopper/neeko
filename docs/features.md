@@ -48,7 +48,7 @@
 | 3.5 | 会话恢复 | 列出历史会话并从 Agent 侧 resume | `src/features/agent-chat/components/ResumeList.tsx` | ✅ |
 | 3.6 | 输入增强 | 附件、slash 命令、@ 提及补全 | `src/features/agent-chat/components/ComposerPalette.tsx` | ✅ |
 | 3.7 | MockAgent | 未安装任何 CLI 时也能试用 Agent Chat | `src-tauri/src/agent/builtin/providers.rs` | — |
-| 3.8 | Agent 团队（多 Agent 编排） | 一个 CLI 会话当队长，把活派给多个成员；共享任务板 + 租约回收 + 团队面板（花名册 / 任务板 / 六态徽标） | `src/features/agent-team/` · `src-tauri/src/agent/team/` | — |
+| 3.8 | Agent 团队（多 Agent 编排） | 一个 CLI 会话当队长，把活派给多个成员；建队时配成员池/上限/缺省，队长按角色 preamble 行动；共享任务板 + 租约回收；团队面板可见花名册/任务板/六态徽标，可列出现有团队、重开与关闭（请求关进程 + 归档成员 + 作废凭证，worktree 保留） | `src/features/agent-team/` · `src-tauri/src/agent/team/` | — |
 
 ## 4. 编码（Editor / LSP / Debug / Run）
 

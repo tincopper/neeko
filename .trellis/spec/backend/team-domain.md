@@ -16,7 +16,8 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `completion.rs` / `lease.rs` | 完成判定 / 租约（纯函数） | 状态机规则 |
 | `reaper.rs` | **时间驱动**的租约回收（周期性循环 + `stop`）；将来 L3 的 `Stalled` 也长在这里 | 到期判据 / 节拍 |
 | `wait.rs` | `team_wait` 的阻塞等待（只读内存快照） | 等待语义 |
-| `identity/` | `env`（注入）/ `token`（签发与解析）/ `verdict`（归因） | 三者无共同变化理由，故分文件 |
+| `identity/` | `env`（注入）/ `token`（签发与解析）/ `verdict`（归因）/ **`preamble`（角色上下文）** | 四者无共同变化理由，故分文件 |
+| `options.rs` | **只读可选项面的唯一推导**：池子 / 上限 / 三个缺省值（面板、`team_options`、preamble 三个消费者） | 团队组成的读法变了 |
 | `admission.rs` | **红线 15 落点**：per-CLI 准入事实表 + 纯函数推导 | P0 实测结果变了 |
 | `mcp/schema.rs` | 工具清单（`TOOLS`）与入参 Schema | 新增工具 |
 | `mcp/dispatch.rs` | 工具调用：翻译 → 授权 → 入参校验 → 委派 | 工具语义 |
@@ -26,11 +27,11 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `execution.rs` | 执行层：启动计划（纯函数）+ 端口（`MemberExecutor` / `CredentialLedger`）+ 回复副作用映射 | 执行语义（见 §2.2） |
 | `delivery.rs` | 投递：通道路由 + 两笔写入协议（纯函数） | 投递协议 |
 | `boot.rs` | 域级 boot 入口：独立 loopback listener + 活集合门 | 端点坐标 |
-| `authorize.rs` | 授权矩阵（9 工具 × 2 角色 = 18 格，表驱动测试） | 加减工具 |
+| `authorize.rs` | 授权矩阵（工具数 × 角色数，**当前 11 × 2 = 22 格**；格数由 `ALL_TOOL_NAMES` 自算，见 `matrix_is_enforced_cell_by_cell`） | 加减工具 |
 | `observe.rs` / `deliver.rs` | hook 事件的团队投影 / 投递入口（见 §6） | 新信号 |
 | `events.rs` | 前端事件：`TEAM_EVENT` 常量 + 失效脉冲载荷 + `TeamNotifier` 端口（见 §8） | 改事件名 / 载荷 |
 | `view.rs` | **视图构造的唯一落点**：`TeamStatusView`（MCP 读者）/ `TeamSnapshot` / `TaskCard` / `TaskDetail`（前端读者） | 加读字段 / 改列载荷（见 §8） |
-| `commands.rs` | 本地 Tauri 入口（三条：建队开场 / 快照 / 任务详情），保持极薄（红线 6） | 新入口命令 |
+| `commands.rs` | 本地 Tauri 入口（七条：建队开场 / 快照 / 任务详情 / 可启动清单 / 团队配置面 / 团队清单 / 关闭），保持极薄（红线 6） | 新入口命令 |
 | `fixtures.rs` | `#[cfg(test)]` 夹具单一源（`Team` / `TeamMember` 全字段）；`store.rs` 的 round-trip 夹具是**刻意例外**（每列都要偏离默认值，否则"某列没写进库"会变绿） | 加字段时只改一处 |
 
 ## 0. 租约 = **活性**信号，不是时长上限
@@ -68,14 +69,30 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 
 所有会产生**进程副作用**的工具都返回「意图」而不是「已生效」：
 
-| 工具 | 决策层返回 | 执行层（2.5b 接线段）动作 |
-| --- | --- | --- |
-| `team_spawn` | `ToolReply::MemberCreated`（成员已落库） | 写 MCP 配置 → 起 PTY → 注入 env |
-| `team_send` | `ToolReply::NeedsDelivery` | 经 `Pty` / `Mcp` 通道投递字节 |
-| `team_close` | `ToolReply::Closed`（已校验的关闭目标） | 关 PTY → 归档成员 |
+| 工具 | 决策层返回（线协议） | 领域副作用（`execution::Effect`） | 执行层动作 |
+| --- | --- | --- | --- |
+| `team_spawn` | `ToolReply::MemberCreated`（成员已落库） | `StartMember { member_id }` | 签发凭证 → 起 PTY → 注入 env |
+| `team_send` | `ToolReply::NeedsDelivery { to, text }` | `Deliver { to, text }` | 经 `Pty` 通道投递字节 |
+| `team_close` | `ToolReply::Closed`（已校验的关闭目标） | `Close(ClosePlan)` | 关 PTY → 归档成员 → 作废凭证 |
 
 **理由**：PTY 起不来时成员必须是「已落库、可查询、可清理」的，而不是半生不死的进程；
 决策层因此保持纯逻辑 + 可单测（不需要 `AppHandle`）。
+
+**线协议词汇只活在 MCP 入口**：`ToolReply` 是 wire 词汇（变体名 = wire 名、整段进模型上下文），
+所以「回复 → 副作用」与「结果 → 回复」各只有一份实现，都在 `mcp::dispatch`
+（`effect_for` / `reply_for`）。执行层只认识 `Effect` / `EffectOutcome`：
+
+```text
+ToolReply ──effect_for──▶ Option<Effect> ──apply_effect──▶ EffectOutcome ──reply_for──▶ ToolReply
+```
+
+- **「没有副作用」只有一种表示法**：`effect_for` 返回 `None`（没有 `Effect::Nothing`）。
+- **一一对应由编译器兜住**：`effect_for` 的 `match` 没有 `_` ⇒ 新增 `ToolReply` 变体直接编译
+  不过，直到你回答「它要不要副作用」。运行期判据：
+  `dispatch::tests::every_tool_reply_variant_is_translated`。
+- **本地入口不认识它**：`commands::team_close` 走 `apply_effect(Effect::Close(plan))`，源码级判据
+  `commands::tests::the_local_entry_does_not_depend_on_the_mcp_vocabulary`（本文件不得出现 MCP
+  的模块路径与工具回复类型名）。
 
 ### 执行参数不随工具返回走（红线 14 的**输出侧**）
 
@@ -113,14 +130,15 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 ## 2.2 执行层：纯计划 + 端口 + 回复副作用（`execution.rs`）
 
 决策层只落库；执行层要的三件套由 **`execution::plan_member_spawn`** 算出来。执行者本身是
-**端口**，组合根提供唯一 impl；两者之间只隔 `apply_reply` 一行。
+**端口**，组合根提供唯一 impl；两者之间只隔 `apply_effect` 一行。
 
 | 组成 | 是什么 | 为什么在这一层 |
 | --- | --- | --- |
 | `plan_member_spawn` | 纯函数：成员行 → `cwd` / `env` / `args` | 全部输入可从库重建，可直测 |
 | `MemberExecutor::{spawn, deliver}` | 端口：起进程 / 投递字节 | 端点不该认识 PTY / 项目库 |
 | `CredentialLedger::admit` | 端口：签发明文 + **同一动作内**让门接受它 | 拆开就留一个「库里有新凭证、门还不认识」的窗口 |
-| `apply_reply` | 回复 → 副作用的**唯一**映射 | 写在 handler 里会漂移，且只能靠发真 HTTP 才能测 |
+| `Effect` / `apply_effect` | 领域副作用 → 动手的**唯一**映射 | 写在 handler 里会漂移，且只能靠发真 HTTP 才能测 |
+| `ClosePlan` / `CloseOutcome` | 关闭的**意图**（关谁）与**事实**（关掉了谁、停在哪个状态） | 合成一个类型就会出现「同一字段两个时刻的含义」 |
 
 **`SpawnPlan { cwd, env, args }`** —— 输入全部来自已落库的成员行：
 
@@ -134,17 +152,31 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 未规范化的根会让「落在根内」整体失效，而 `Shared` 成员的 cwd 也会与判据存在两种写法。
 
 两条容易写错的地方：**凭证明文只出现在 `args` 里**（env 会被子进程继承、会进
-`/proc/<pid>/environ`），**模板替换只认完整等于占位符的元素**（模板是数据，不是格式化字符串）。
+`/proc/<pid>/environ`），**模板替换是行内的**（`admission::render_argv` → `render_arg`：
+单个 argv 元素里**任意位置**的 `{{name}}` 都被换成值，「只认整串等于占位符」是 2026-11 之前的
+旧行为，已被 `execution::tests::placeholders_are_substituted_inside_arguments_too` 当成 bug 钉住）。
+行内是必须的：真实模板里占位符**嵌在值中间**（pi 的 header 写法就是
+`x-neeko-team-token={{token}}`，见 `admission::ADMISSIONS` 里 pi 那一行的 `mcp_argv`），
+整串匹配会把它留成字面量，成员拿到的就是错的 token/地址 —— 而它**不会报错**，只会 401 或
+连不上。拿不到值时只有一个错误出口（`missing_placeholder`），所以拼错的占位符不会静默变空串。
 `plan_member_spawn` 会 `canonicalize` ⇒ 调用方必须在阻塞池里调（红线 3）。
 
-**依赖方向**：`execution` 只依赖 `dispatch`（回复形态）、`admission`（per-CLI 数据）与
-`mcp::protocol`（wire 常量），**不认识** `mcp::server` / `AppHandle` / `TerminalRouter`。
-`server → execution` 是单向的（handler 把结论交出去）—— 线协议常量之所以搬进
-`mcp/protocol.rs`，就是为了不让这两者互相依赖。
+**依赖方向**：`execution` 只依赖 `admission`（per-CLI 数据）与 `mcp::protocol`（wire 常量），
+**不认识** `mcp::dispatch` / `mcp::server` / `AppHandle` / `TerminalRouter`。
+`dispatch → execution` 与 `server → execution` 都是单向的（入口把副作用交出去）—— 线协议常量
+之所以搬进 `mcp/protocol.rs`，就是为了不让这几层互相依赖。`execution` 曾经 import 过
+`ToolReply`（为了 `apply_reply`），那是「本地入口被绑上线协议」的根源，已消除。
 
-**`apply_reply` 的顺序是契约**：`admit` **先于** `spawn`。反过来成员的首次工具调用会 401
+**`apply_effect(StartMember)` 的顺序是契约**：`admit` **先于** `spawn`。反过来成员的首次工具调用会 401
 （它就在那个窗口里刚启动）。`spawn` 失败的错误里**必须带 `member_id`** —— 成员已落库，
 丢掉 id 就等于毁掉两相位承诺的「可查询、可清理」。
+
+**投递文本在决定层拼好**：`dispatch::send`（principal 就在手边）用
+`delivery::delivery_text(from, message)` 得到 `[team] {发送者}: {正文}`，`Effect::Deliver { to, text }`
+只带**最终文本**。理由是「执行参数不随工具回复走」的同一条：执行层不该认识「谁是发送者」这个
+决定层的事实，它只该拿到「要写进 stdin 的那一行」。wire 上也因此只有 `to` + `text`（**模型看到的
+是投递文本，不是发送者字段**；一个 `from` 字段既无行动可做，又给「谁发的」造了第二个源）。
+判据：`dispatch::tests::the_needs_delivery_payload_uses_the_documented_wire_keys`。
 
 **`Pty` 投递恒为两笔**：`emit(terminal-input-{id}, text_bytes)` → `sleep(150ms)` →
 `emit(..., "\r")`。一次写 `"text\n"` 会被部分 AI TUI 丢弃或误解释（`research/04` 实测）。
@@ -158,12 +190,10 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 `extra_env` 返回 `Unsupported`。静默丢弃的后果是成员「有进程、无身份」，而上报归因失败在团队
 上下文里是**拒绝归属** —— 表现为「成员永远不产出」，离家太远。
 
-**环境来自项目，不来自团队**：`Team` 只持久化 `project_path`（它不持凭证，而
-`ProjectEnvironment::Remote` 内含 SSH 认证）。执行层用
-`AppStateWrapper::project_environment_for_path` 反查归属项目，匹配规则在
-`core::project::environment_for_path`（两侧 canonicalize + **最长前缀**，嵌套项目取最具体的
-那个）。反查失败一律拒绝 —— 降级成 `Local` 会在本机起一个指向远端路径的 PTY，而那种错在
-花名册上看不出来。
+**环境来自项目，不来自团队**：`Team` 不持凭证（`ProjectEnvironment::Remote` 内含 SSH 认证）。
+环境归属是 **`team.project_id`**（v16 起），执行层据此精确查表；只有 v16 之前的旧行才退回
+路径前缀反查。两者的判据与完整理由见下面 **§2.4**。反查 / 查表失败一律拒绝 —— 降级成
+`Local` 会在本机起一个指向远端路径的 PTY，而那种错在花名册上看不出来。
 
 ## 2.3 端点启动（`team/boot.rs`）与门的活集合
 
@@ -185,7 +215,155 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 `endpoint_url(port)` 是唯一拼装点（`http://127.0.0.1:{port}/team/mcp`）：
 loopback 而非 `localhost` —— 后者在某些平台先解析到 `::1`，而 listener 只绑 IPv4。
 
-## 3. 准入表（红线 15 落点）
+## 2.4 团队执行环境来自**项目 id**（v16）
+
+`Team` 同时记住两件事，**不要当成一件**：
+
+| 字段 | 是什么 |
+| --- | --- |
+| `project_path` | 团队根的**工作区根**。可以是工作树，而 Neeko 自己的工作树按设计在 `~/.neeko/worktrees/<name>`（项目目录**之外**）|
+| `project_id` | 拥有这个团队**执行环境**的项目 id。环境是项目的事实（`Project.environment`）|
+
+建队时 `project_id` 来自前端 `activeProjectId`，**不是**从路径反推。
+
+### 为什么不是路径前缀
+
+`core::project::environment_for_path` 的**最长前缀**语义对别的调用方是对的（嵌套项目落最具体
+的那个）。缺陷不在那个函数，而在「用路径反查**项目**」这个决策：工作树不在项目目录之下，
+前缀永远匹配不上 ⇒ **从工作树单元开团队必失败**。失败点又在「建队写入之后、起进程之前」，
+库里因此留下真实团队行（面板里能看见的孤儿队）。
+
+所以：
+
+- 命令层 `start_team_session` 在**任何写入之前**调 `state.project_environment(&project_id)`（与端点
+  门面同一台阶：两件都是「有没有能力做这件事」），未知 id 直接返回可读 `NotFound`；
+- 执行环境来源是**纯函数** `execution::environment_source(&team)`：
+  `EnvironmentSource::{ProjectId, LegacyPath}`。`app::team_executor` 只按变体调
+  `project_environment(id)` / `project_environment_for_path(path)` —— 执行层不写匹配规则。
+
+**不要**改 `environment_for_path` 的前缀规则来「修」这个缺陷：那会改变项目域的语义，
+而这里的缺陷是选错了依据。
+
+### 空 id = 旧行，不是「没有项目」
+
+`project_id TEXT NOT NULL DEFAULT ''`：空串只可能是 **v16 之前建的行**（那时环境只能靠路径
+前缀猜），因为写入路径在纯函数层就拒绝空 id（判据
+`planning_a_team_without_a_project_id_is_refused`）。执行层对这类行退回 `LegacyPath` ——
+**它对工作树仍然无效**（旧数据缺了「项目归属」这个事实），这是有意保留的行为：
+默默降级成 `Local` 会让一个 SSH 项目的旧团队突然在老本机跑起来。
+
+### 迁移与三个写入点
+
+v15→v16 用既有的 `add_column_if_missing`（与 v14→v15 同形状，所以可手工重放）。
+**三处必须同时改**，漏一处就是「新库能写、旧库读不出」：`CREATE TABLE team` 建表串、
+`SELECT_TEAM`、`INSERT … ON CONFLICT` 的列与绑定。
+
+判据：`a_v15_team_row_upgrades_to_an_empty_project_id` / `a_team_row_round_trips_its_project_id` /
+`planning_a_team_without_a_project_id_is_refused` /
+`a_team_row_with_a_project_id_resolves_the_environment_by_id` / `a_legacy_team_row_falls_back_to_the_path`，
+前端两条：建队 `invoke` 带 `projectId`（值与激活项目一致）、无激活项目 ⇒ 按钮禁用 +
+可见理由 + 零 `invoke`。
+
+命令级的 `project_environment` 预检**没有单测**（它需要 `AppStateWrapper`）：改坏它不会让任何
+单测变红，靠集成 / 手测验证 —— 不要把它当成「已覆盖」。
+
+## 2.5 任务 id 是**队内**标识符，`TaskRef = (team_id, id)` 是唯一寻址形式
+
+`team_task` 的主键是 **`(team_id, id)`**，任务 id 形如 `t{seq}` 且 **每个队的板都从 `t1`
+开始编号**：
+
+```text
+store::TeamStore::next_task_seq(team_id)              -- 本队板的水位线
+  SELECT coalesce(max(CAST(substr(id, 2) AS INTEGER)), 0)
+    FROM team_task WHERE team_id = ?1 AND id GLOB 't[0-9]*'
+dispatch::next_task_id(manager, team_id) = format!("t{}", next_task_seq(team_id)?)   -- 已是「下一个」
+```
+
+两个 SQL 细节是**承重**的：`GLOB 't[0-9]*'` 挡住将来任何非 `t{n}` 的行（否则
+`CAST('x' AS INTEGER)` = 0 会静默污染水位线）；`CAST(substr(id, 2) AS INTEGER)` 给**数值**序
+（字符串比较下 `max('t9') > 't10'`，会算出 `t2` 并重撞）。
+
+### 「单独一个 `id` 不是任务的标识符」是**类型**约束，不是纪律
+
+`types::TaskRef { team_id, id }` 是任务的唯一寻址形式：
+
+- `TeamTask::key()` 是「从任务行回到它的键」的唯一方式；
+- `TeamManager` 的内存镜像是 `HashMap<TaskRef, TeamTask>`（不是 `HashMap<String, _>`）；
+- `store::get_task(&TaskRef)`；`manager.task / claim_task / update_task / force_done /
+  set_task_workspace` 全部收 `&TaskRef`；`reclaim_expired` / `finish_member_close` 返回
+  `Vec<TaskRef>`（不是裸 id）；
+- `Display for TaskRef` 是 `{team_id}/{id}`，**只给错误信息与日志用**，刻意没有
+  `Deserialize` —— 用字符串解析回键就是重新引入「拼字符串找身份」（红线 12）。
+
+为什么必须做成类型：`t1` 在每个队都存在，漏传 / 传错队的症状是「**静默读到别队的任务**」，
+比任何报错都难查。判据 `a_task_id_is_only_unique_inside_its_team`（A/t1 与 B/t1 内容不同、
+改 A 不动 B、`task_detail(B/t1)` 返回 B 的正文）与
+`task_detail_rejects_a_pair_that_does_not_belong`。
+
+### 两个入口的 team 从哪来（语义分界，不许互相借用）
+
+| 入口 | 线上形状 | `team_id` 从哪来 | 为什么 |
+| --- | --- | --- | --- |
+| MCP 工具（`task_claim` / `task_update` / `task_list` / `team_wait` …） | **仍然只有 `task_id`** | `principal.team_id` | token 已经声明了它在哪个队；让模型自己传 `team_id` 等于给它一个伪造（或写错）的机会。唯一的构造点是 `mcp::dispatch::task_of_team(manager, &principal.team_id, task_id)`（它同时返回 `TaskRef` 与任务行，避免第二个拼接点） |
+| 本地 IPC（面板） | `team_task_detail(team_id, task_id)` | 调用方显式给 | 本地入口没有 principal（模块文档已写明），所以**两个参数都必填、顺序固定** |
+
+`view::TaskCard` 与 `TaskDetail` **都带 `team_id`**：面板拿一张卡片就能凑出详情请求的两个
+参数，不必去猜父级（猜错 = 静默看到别队的任务）。审计行 `team_event.subject` 仍然只放队内
+id —— 同一行的 `team_id` 列就是另一半键，「id 必须与 `team_id` 一起出现」在那张表上是
+**行级**满足的。
+
+`depends_on` 同理按队内解析：`TaskRef::new(task.team_id, dependency)`。只按 id 找会让 A 队
+任务的依赖被 B 队的同名 id 满足（判据 `depends_on_resolves_inside_the_team`，构造「本队没有
+该 id、别队有且已 done」的局面 —— 否则 `values().find(..)` 这类实现在两个队都有该 id 时是
+**不确定**的，测试会假绿）。
+
+### 迁移 v17：复合主键是**整表重建**，为什么这次安全
+
+`v16_to_v17` 走 `CREATE TABLE team_task_v17 / INSERT ... SELECT / DROP / RENAME` 并重建三个
+索引。安全性的依据是结构性的：
+
+1. **`team_task` 是子表**：没有任何表引用它，所以重建期间它身上的 `ON DELETE CASCADE`
+   永远不会被触发 —— 「重建中途级联掉父行」这条路径不存在（v14 期否决复合主键的理由只对
+   父表成立）；
+2. 整步跑在 `migrations::run_migrations` 的 `EXCLUSIVE` 事务里，DDL 在 SQLite 里是事务性的
+   ⇒ 失败 = 整步回滚，旧表原样还在；
+3. `INSERT ... SELECT` 在 `foreign_keys=ON` 时顺带校验每行的 `team_id` 都能在 `team` 找到，
+   等于一次免费的一致性检查（孤儿行确实会让迁移失败 —— 那是数据损坏，不是可静默丢弃的东西）；
+4. **幂等**：先查 `pragma_table_info('team_task')` 的 `pk` 列（`team_id = 1 且 id = 2` 即已迁移）
+   —— 重建本身不幂等，半迁移后手工重放不得炸（判据 `migration_step_is_idempotent` /
+   `v17_step_is_idempotent`）；
+5. **列序也是承重的**：`(team_id, id)` 的隐式索引直接服务 `WHERE team_id = ?`
+   （`list_tasks` / `next_task_seq` 都是这个形状），`(id, team_id)` 的索引对它们无用。判据
+   `the_task_primary_key_is_team_first`。
+
+判据：`a_v16_database_regains_the_task_id_for_a_second_team`（v16 库里 `(tm_a, t1)` 升级后
+行仍在 + `user_version == 17` + 队 B 能插入 `t1`，并断言**改前**那次插入确实被单列主键挡住）/
+`a_new_team_numbers_its_tasks_from_one` / `next_task_seq_is_per_team` /
+`next_task_seq_ignores_rows_that_are_not_t_numbered` / `next_task_seq_is_numeric_not_lexicographic` /
+`the_task_sequence_grows_numerically_past_t9` / `next_task_seq_is_one_on_an_empty_board`。
+
+### 复盘：先做了全局序号（D1），为什么后来它不再需要
+
+v16 期的裁决是「任务 id 的命名空间**就是 DB 全局单调**」，起因是一次真实事故
+（2026-11-03）：`tm_1a196cefa87` 已占 t1/t2/t3，新建一个队时按本队板取最大值算出 `t1`，
+撞上 `id TEXT PRIMARY KEY` ⇒ **新队第一次 `task_create` 必然 Conflict**，队长永远派不出活。
+当时的解法是让水位线**全库**最大（跨团队共享一条 seq），代价是单个团队的 id 不连续
+（`t4` 起头很正常）。
+
+那时**否决过**复合主键，理由是「整表重建 + 事务内 `PRAGMA foreign_keys` 是 no-op，没有安全
+形态」。这个理由在**子表**上不成立（见上一节），而且它把「任务 id 是队内句柄」这个**语义**
+事实误当成了「主键凑巧全局唯一」这个**实现**事实 —— 于是全局唯一性反过来泄漏到了产品语义里
+（队长看到 `t7` 会以为漏了任务）。
+
+本轮按用户裁决改回队内编号：「肯定不能单独传 `task_id`，`team_id` 一定要和 `task_id` 在一起
+这样语义才完整」。**全局序号唯一的理由（避开单列主键冲突）被复合主键消掉之后，它就不再
+需要了** —— 而它留下的代价（id 不连续）反而变成了一个会被误读的信号。
+
+判据里的 `a_second_team_continues_the_global_task_sequence` / `max_task_seq_*` 已**删除**，
+替换成队内版本（见上一节列表）。谁再想改回全局序号，必须先回答：既然主键是复合的，
+全局唯一换来了什么？（答案是：什么都没有。）
+
+## 3. 准入表（红线 15 落点）## 3. 准入表（红线 15 落点）
 
 「这个 CLI 能不能当成员、走哪条通道」是 **per-CLI 数据**，只允许是 `ADMISSIONS` 里的一行：
 
@@ -218,14 +396,23 @@ loopback 而非 `localhost` —— 后者在某些平台先解析到 `::1`，而
   把「子命令写配置」记成 `Argv` 的后果是执行层传一个 CLI 不认的启动参数 —— **成员起得来，
   MCP 面静默不可见**。因此 `launch_refusal()` 是**单一判据**：`team_spawn` 写库之前、
   执行层起进程之前、以及面板的 CLI 清单（`team_launchable_agents`）三处都问它。
+- **`prompt_argv` 是第五列**（`{{preamble}}` 模板）：它回答「这个 CLI 能不能在**启动时**收到角色
+  上下文」。非空 ⇔ 能当队长；空 + 队长 ⇒ `lead_refusal` 拒绝（一个不知道自己是谁的队长会坐在
+  那儿一动不动，看起来和正常团队一模一样）；空 + 成员 ⇒ **照常起**（成员的第一份上下文由
+  `team_send` 沿 PTY 带来）。这条不对称是本域最容易写错的一处。
+  - 「谁可以当 X」是**准入问题**，所以角色选择 `refusal_for(role, agent_id)` 住在准入域，不在执行层：
+    执行层只是提问者之一。放在执行层的结果是面板只能问成员那一半 —— `team_launchable_agents`
+    曾经就把成员判据当队长判据在用，而两个集合**当时恰好相同**，于是错了也看不出来。
+  - 不在准入表里的 id 对**两种角色**都是拒绝（返回「可启动」会让面板显示一个永远起不来的 CLI）。
 - 准入表与 `builtin_configs()` 是两个真相源，中间只有一条机器桥：
   `every_admitted_agent_has_an_agent_config`（`dsh` 被拒的理由正是「没有 `AgentConfig`」）。
 
 ### 3.1 模板占位符（不是字符串拼接）
 
 `mcp_argv` / `add_argv` 是 `&'static [&'static str]` 模板，由 `render_argv` 做**元素内**替换：
-`{{mcp_config}}`（JSON 整段）/ `{{url}}` / `{{token}}` / `{{token_env}}`。
-**未知或未闭合占位符 → 报错**（静默留字面量等于把 `{{token}}` 当参数发给 CLI）。
+`{{mcp_config}}`（JSON 整段）/ `{{url}}` / `{{token}}` / `{{token_env}}` / `{{preamble}}`。
+**未知或未闭合占位符 → 报错**，**`{{preamble}}` 缺值也报错**（用 `Option` 而不是空串：否则会退化成
+`--append-system-prompt ""`，队长安静地不知道自己是谁）。静默留字面量等于把 `{{token}}` 当参数发给 CLI。
 `pi --header x-neeko-team-token={{token}}` 这种嵌在参数里的形态是它存在的理由 —— 「整元素等于占位符」的旧实现会
 把它原样发出去。
 
@@ -269,6 +456,150 @@ loopback 而非 `localhost` —— 后者在某些平台先解析到 `::1`，而
 `disabled` ⇒ 不可聚焦，键盘与读屏用户拿不到 tooltip），并在点击路径上再拦一次。
 不允许 UI 自己维护第二套「能不能启动」的判据 —— 那一定会与后端漂移。
 
+**「能不能提交」与「能不能启动」是两件事**：前者是 `utils/launchGate.ts` 的纯函数
+（`launchGate`），四条否决来源（无激活项目 / 无工作区根 / 无可启动 CLI / 配置草稿不可提交）
+各自单独成立就足以打掉主按钮，理由也从同一返回值出（**可见**文字）。没有激活项目那条
+是 v16 的：执行环境按 `projectId` 查表（见 §2.4），所以「有根但没项目」也算不可提交。
+
+### 3.5 关闭协议（`team_close`）
+
+状态机：`Active → Closing → Closed`（单向）。**两个入口同一份决策**：MCP 工具（有 principal，
+走授权矩阵）与本地面板命令（无 principal，走本机用户）都调 `execution::plan_close`；
+执行都在 `execution::apply_effect(Effect::Close(..))`。判据只此一份。
+
+| 阶段 | 做什么 | 失败后 |
+| --- | --- | --- |
+| 决策（写库 ⇒ 阻塞池） | 校验 + `begin_team_close`（整队）/ 单成员校验 + 审计 `close_request` | 什么都没变 |
+| 执行 | `executor.close`（请求关 PTY）→ `finish_member_close`（Dead + 清 `terminal_id` + 作废凭证 + 在飞任务回 `pending`）→ 全部成功才 `finish_team_close`（`closed` + `closed_at`）→ **收尾**：`credentials.refresh()` | 停在 `Closing`，错误逐个点名，**可重试** |
+
+几条不显然但必须守住的语义：
+
+- **先请求关进程，再归档成员**（design §7.1）。反过来会留「成员已 Dead、PTY 还活着」——那是
+  「会撒谎的状态」：面板说关了，进程还在跑。
+- **但 `close` 只是「请求」**：`MemberExecutor::close` 的 `Ok` 只保证 kill 已发出（PTY 的收尾
+  在另一个线程里，`close_session` 是 remove-then-close）。所以「归档 + 撤凭证」可能先于
+  「进程消失」发生 —— 这**不影响**正确性（凭证撤掉之后它再也调不动工具），但 `notes` 里有一条
+  明说这件事（`member processes exit asynchronously: …`），**不许**写成「进程已关」。
+  不引入「等进程消失」是刻意的：那会把关闭变成一个可能卡住的操作，而换来的不是安全性质。
+- **手动关闭不加 `reclaim_count`**：它是「反复失败」的判据（>3 → `blocked`），不是操作计数。
+  让任务替人的决定背锅，这个指标就废了。`reclaim_expired` 那条路仍然 +1，两条不可合并。
+- **凭证立即作废**：`finish_member_close` 清 `token_hash` → `principals_from` 过滤空 hash →
+  `CredentialLedger::refresh`（唯一 writer = `TeamServerState::refresh_credentials`，先表后门）。
+  不清 hash 的后果有反例测试钉着（关掉的成员旧 token 仍可用）。
+- **`graceful` 本期不兑现**：PTY 没有可发的关闭协议，所以行为等同于直接关；**必须写进 `notes`**，
+  不许假装协商过（红线 14）。
+- **worktree 一个都不删**（本期零 fs 操作）：路径收进 `notes`（`worktree kept for manual review: …`），
+  协商式清理要等 worktree 创建接线之后（P4）。
+- **`Closing` 期间只允许读**：`team_status` / `task_list` / `team_list` / `team_close`；
+  其余工具一律 `Conflict`，理由里带当前状态与允许清单。否则「正在解散的队」还能 spawn/派活。
+- 幂等：对 `Closed` 再关 → `Ok`，不重写 `closed_at`；对已归档成员再关 → 空操作。
+- 判据：`a_member_whose_process_survives_is_not_archived` / `a_partially_closed_team_stays_closing` /
+  `finish_member_close_archives_and_releases_without_touching_reclaim_count` /
+  `closing_a_member_revokes_its_credential_before_the_gate_is_rebuilt` /
+  `a_closing_team_refuses_writes_but_answers_reads`
+
+### 3.5.1 关闭的后置条件是**一条**不可分割的动作
+
+「关掉一个成员」不是一串调用，是库里的四个事实必须**同时**成立：
+
+| 事实 | 谁写 | 漏了会怎样 |
+| --- | --- | --- |
+| `member.state = Dead` | `finish_member_close` | 花名册上还显示在跑 |
+| `member.terminal_id = None` | 同上（**同一把锁的同一次写**） | 已关闭成员仍给一个「打开终端」的死按钮（前端唯一判据是 `terminalId == null`） |
+| `member.token_hash = ""` | 同上 | 旧 token 还能调工具（直到门重建） |
+| 门**忘掉**那把钥匙 | `credentials.refresh()` | 上面三条都做对了也没用：**门还认旧 hash** |
+
+前三条由 `archive_member` 在锁内一次写完（判据
+`a_closed_member_has_no_terminal_and_no_credential` 用一条断言钉住三个事实）。第四条不属于任何
+**单个成员** —— 它属于整次关闭，所以它的位置不是「某一步之后」，而是**收尾**。
+
+#### 为什么 `refresh` 不能被 `?` 跳过
+
+旧形状是 `finish_team_close(...)??` 排在 `credentials.refresh()` **之前**。任一 `?` 提前返回 ⇒
+已经归档的成员 `token_hash` 已在库里清空、**门却还认那把钥匙** ⇒ 一个「已关闭」的成员旧 token
+照样能调工具（包括 `team_close`）。库里看起来一切正确，而门放行了一个已经不存在的成员。
+
+所以 `execution::close_targets` 的形状是写死的：
+
+```text
+① 循环：executor.close(id) → finish_member_close(id)
+        每个失败只记进 failed，**没有一个 `?`**（含 spawn_blocking 的 JoinError）
+② seal：finish_team_close(team)（仅在「整队 + 全部成员已归档」时）
+        结果记进变量，**没有一个 `?`**
+③ 收尾：if 有任何凭证被作废（含 seal 顺手归档的队长）→ credentials.refresh()
+        这是**唯一**一处没有 `?` 的 await：错误记进变量
+④ 判定顺序：成员失败 → refresh 失败 → seal 失败（安全面最重的先说）
+```
+
+判据：
+
+- `a_failed_seal_still_revokes_the_credentials`（让 `finish_team_close` 因状态冲突失败，
+  断言 `refresh` **仍**被调用、成员 `token_hash` **已**清空、错误文案诚实说明「凭证已撤、
+  团队还没 sealed」）—— 变异验证：把 `refresh` 移回 seal 之后的 `?` 链上，这条立即红；
+- `a_partially_closed_team_stays_closing`（有成员关不掉时已关成员的凭证仍失效）；
+- `a_member_whose_process_survives_is_not_archived`（没关掉进程 ⇒ 不得归档、不得撤凭证、
+  **也不得白刷新门**）。
+
+#### `notes` 必须诚实（第三条 note）
+
+`close_notes` 恒带一条「进程是**异步**退出的」：`MemberExecutor::close` 只保证 kill 已发出，
+归档与撤凭证可能先于进程消失。这不影响正确性（凭证撤了它再也调不动工具），但**不许**把关闭
+说成「进程已关」。`graceful` 那条也改成了「请求 kill」而不是「已经关掉」——两条 note 各说一件事，
+不重复。
+
+### 3.6 团队清单（`team_list`）
+
+重启后团队从库里 hydrate，但「有哪些队」必须有个读路径，否则用户既看不到也重不开自己的队。
+
+- `view::list_teams` 是唯一构造点；MCP 工具与 Tauri 命令同源。
+- **有界**：`MAX_LISTED_TEAMS = 50` + `truncated`（红线 4：历史团队会一直累积，单次载荷不许无界）。
+  排序 `created_at` 倒序、同毫秒按 id 稳定。
+- `member_count` **不含队长、含已 Dead 的成员** —— 与 `team_options` / `team_spawn` 的上限判据同源；
+  同一个队不能有两个成员数。`TeamStatusView.member_count` 与 `TeamSummary.member_count` 因此走
+  **同一个**访问器（`TeamManager::member_count`），判据
+  `view::tests::the_two_faces_of_a_team_report_the_same_member_count`。花名册 `members` **含队长**，
+  所以 `members.length` 永远不能当成员数用。
+- 三个计数走 `TeamManager::task_counts`（锁内一次遍历、**不 clone 任务行**）：`list_teams` 是每次
+  面板脉冲都会走的读路径，`tasks()` 会把整段任务行 clone 出来（红线 4 的时间维度）。
+- 面板据此渲染三态徽标（`active` / `closing` / `closed` **不许合并**：`closing` 就是「关到一半」）。
+
+### 3.7 团队组成：配置是数据列，三个消费者一个推导
+
+团队允许谁进来、还能加几个、成员继承什么缺省，都存在 `team` 行上（v15 迁移：
+`allowed_agent_ids` / `default_model` / `default_workspace` / `default_approval_policy` / `max_members`）。
+
+| 消费者 | 用法 |
+| --- | --- |
+| 面板（`team_options` 命令） | 建队前看目录（`team_id = None`）、建队后看该队的实际配置 |
+| 队长（MCP 工具 `team_options`） | 派活前读「我能选谁 / 还能加几个 / 缺省是什么」 |
+| `team_spawn` + 角色 preamble | 校验池子与上限、**填**缺省、**只广告**池内的 CLI |
+
+- **空池 = 不限制**（`allowed_agent_ids` 为空表示「本机全部可启动」）。开一个团队不该先逼用户
+  勾选；**限制**才是显式动作。于是有两个概念，不可互换：`Team.allowed_agent_ids` 是**意图**（可空），
+  `TeamOptions.defaults.allowed_agent_ids` 是**解析结果**（永不为空）。
+- **不许静默过滤**：池子里写了今天起不来的 CLI → **构造期拒绝**，不是悄悄丢掉。一个被勾了却
+  消失的选项，是这里最难发现的失败。
+- 上限区间 [1, 8]：前端有镜像（只用于「不发必败请求」），**后端先拒**，镜像不成判据。
+- 三个缺省值必须从**团队行**读，不是从常量：否则成员的 model / workspace / approval 会变成
+  「模型当时随手写的」而不是可复现的事实。
+- 判据：`a_spawn_outside_the_team_pool_is_refused_with_the_pool` /
+  `the_member_limit_is_enforced_and_the_lead_does_not_count` / `spawn_defaults_come_from_the_team_row` /
+  `team_options_is_the_same_derivation_as_the_panel` / `the_lead_preamble_only_advertises_the_teams_pool` /
+  `a_v14_team_row_upgrades_to_the_documented_defaults`
+
+### 3.8 角色 preamble 的位置：argv，不是任务体
+
+队长/成员的角色上下文（你是谁、工具面、硬规则、可 spawn 的 CLI）**作为启动 argv 注入**，
+不写进任务体。理由与 design §5.7 同源：任务体经 PTY 打进 pane，整段会回显进字节流，
+既抬高 sentinel 误匹配面，也顶大 prompt。
+
+- 工具清单**从 `TOOLS` 派生**（`preamble_is_derived_from_the_tool_table`）——手写第二份就会漂移。
+- 可 spawn 的 CLI 列表来自 `options_for(...)` 的池子，**不是**全机目录：广告一个永远失败的选项
+  只会让队长把时间花在重试上。
+- 注入形态**逐家实测后落数据**（`--append-system-prompt` / `--prompt` / 位置参数三种形态），
+  验法可零成本复用：**未知开关**与**不存在的 `--model`** 退出签名不同 —— 前者证明「这个 flag 不认识」，
+  后者证明「argv 被完整解析了」。
+
 ## 4. 凭证：明文只在执行层出现一次
 
 - 落库只存 `sha256`（`member.token_hash`）；**明文从来不经工具返回**（那会进模型上下文、
@@ -305,6 +636,35 @@ loopback 而非 `localhost` —— 后者在某些平台先解析到 `::1`，而
 消费者与通知共享**同一次** `spawn_blocking`（通知在前），且各自被 `run_guarded` 隔离 panic ——
 顺序不等于依赖：任一侧崩溃都不该让另一侧收不到事件。理由见同一文件
 「一次 spawn_blocking，N 个消费者」。
+
+### 6.1 上报模板是**生产侧**：契约两端都要有判据
+
+团队归因的输入是 `EnvHints.{team_id, team_member_id}`，而它们的**唯一生产者**是五份上报模板
+（`hooks/templates/` 下的 `neeko-report.mjs` / `neeko-pi-status.ts` /
+`neeko-opencode-status-v2.js` / `neeko-opencode-status.js` / `neeko-omp-status.ts`）。
+
+**事故（2026-11-03）**：这两个字段在 Rust 侧早就有了，`attribution_verdict` 也靠它们判团队
+上下文——但**生产侧从来没填过**（模板只发 `{neeko_session_id, project_id}`）。于是每条成员
+hook 都走 `NotTeamContext` → 静默跳过：成员 `state` 永远 `spawned`、`last_seq` 永远 0、
+`team_wait` 只能超时。而 Rust 侧测试用手搓的 `HookEvent`（自带 hints）所以**全绿**——
+**契约两端只有一端被测过，于是链路上没有任何一处会红**。
+
+两条规则：
+
+1. **新增/修改任何上报模板都要加一条「内容守卫」**：`include_str!`（或扫目录）后断言模板正文
+   包含 Rust 常量的**值**（`identity::TEAM_ID_ENV` / `TEAM_MEMBER_ID_ENV`，不是字面量
+   `"NEEKO_TEAM_ID"`）——而且断言**读取形态** `process.env.{NAME} || null`，否则只写在注释里
+   也能命中。
+2. **清单要靠扫描而不是手写**：`templates::tests::every_hook_template_forwards_the_team_identity_env`
+   扫 `hooks/templates/` 目录并对**每一份** `.js/.mjs/.ts` 断言（新增模板自动被盯上），再把
+   文件名清单逐字比一次——手写清单会漏，而漏的那份就是下一个静默缺口。
+
+落盘不必手工重装：`shim_is_current` 比**内容**，`install` 在内容变化时原子重写；app 重启时的
+`reconcile`（`hooks/boot.rs`）会把新 shim 刷到已安装的 CLI 上。
+
+**仍未修**：`team::deliver` 的 `SkippedUnknownAgent` 把「身份缺失」与「非团队上下文」压成同一个
+结论——它让本次事故难查（如果日志能分开，一开始就能看出是模板没发 env）。那是观察者层的改动，
+要单独做。
 
 ## 7. 验证入口
 
@@ -355,7 +715,9 @@ cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / serv
 
 ### 8.4 本地 Tauri 入口 vs MCP 工具：授权分界
 
-`authorize.rs` 的 18 格矩阵回答的是「**成员（模型进程）能不能对队友做某事**」—— 那是不可信主体。
+`authorize.rs` 的**工具数 × 角色数**矩阵（当前 11 工具 × 2 角色 = 22 格，由
+`mcp/schema.rs::ALL_TOOL_NAMES` 派生，见 `matrix_is_enforced_cell_by_cell`）回答的是
+「**成员（模型进程）能不能对队友做某事**」—— 那是不可信主体。
 `team_snapshot` / `team_task_detail` / `start_team_session` 是**本机用户**的入口，不做 principal 校验
 （否则像是漏了授权）；它们也**不得**顺手放宽矩阵里的任何一格。
 
@@ -386,4 +748,72 @@ cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / serv
 
 
 新增工具的清单：`ToolName` 变体 → `ALL_TOOL_NAMES` → `TOOLS`（含 `input_schema`）→
-`dispatch_tool` 的 `match` → `authorize.rs` 的 18 格表（编译器与表驱动测试会同时追着你补）。
+`dispatch_tool` 的 `match` → `authorize.rs` 的矩阵表（格数 = `ALL_TOOL_NAMES` 长度 × 2 个角色，
+当前 22 格；编译器与 `matrix_is_enforced_cell_by_cell` 会同时追着你补）。
+
+### 8.6 成员详情与**有界事件读法**（`team_member_detail`）
+
+花名册能看「谁在干什么」，但点开一个成员此前什么都没有：不知道它手上有哪些任务、刚才
+发生了什么、是不是卡在审批上。`team_member_detail` 补这条读路径，同时是 **AC5 待批队列**
+的落点（`prd.md` R5.3 / design §6.1）。
+
+#### 载荷形状（`view.rs::MemberDetail`）
+
+| 字段 | 内容 | 上界 |
+| --- | --- | --- |
+| `member` | **花名册的同一行**（`member_status_view`，全仓唯一构造点）| 恒定小字段 |
+| `tasks` | 它在飞的任务 + 它最近完成的 | `MAX_BOARD_TASKS`（200）+ `tasksTruncated` |
+| `awaitingApproval` | `state == awaiting_approval` 且 `owner == 该成员` | `tasks` 的**子集** |
+| `events` | 最近审计（最新在前）| `MAX_MEMBER_EVENTS`（50）+ `eventsTruncated` |
+
+- **为什么不进 `team_snapshot`**：花名册是「每次脉冲都拉一遍」的恒定小载荷；任务行 + 50 条
+  事件只在**点开**时拉一次（与 `team_task_detail` 的正文同一条原则，红线 4 的时间维度）。
+- **`member` 必须复用 `member_status_view`**：分成第二份推导，同一个人会在花名册与抽屉里得到
+  两种「租约剩余秒」/ 两种「取证水位线」，而这类偏差只在数字不对时才被发现。
+- **`awaitingApproval` 是 `tasks` 的子集**（同一遍过滤产出，不是第二遍扫板）：它在 UI 上置顶，
+  但判据只有一条。前端**不得**自己从 `tasks` 里筛 —— 那样抽屉一折叠/截断「当前任务」块，
+  待批块就会静默消失。
+
+#### 事件读法：`actor` 与 `subject` **两边都算**
+
+`store::TeamStore::member_events(team_id, member_id, limit)` 的过滤条件是
+`actor = ?2 OR subject = ?2`。少一半就半边瞎：
+
+| 来源 | `actor` | `subject` | 例子 |
+| --- | --- | --- | --- |
+| 成员自己动手 | 成员 | 任务 / 成员 | `claim` / `update` / `signal` |
+| 别人对它动手 | 队长 / `system` | **成员** | `close_member`（队长关了它）、`signal` 的陈旧 seq 判定 |
+
+只按 `actor` 过滤的症状是「队长把它关了」从抽屉里消失 —— 而那恰好是用户最想看到的一句话。
+
+#### 上界在 SQL 里，不在内存里
+
+`ORDER BY id DESC LIMIT ?` 且**多读一行**（`limit + 1`）来回答「还有更早的吗」：
+
+- 事件表**只追加**，一个队跑久了会上万条。`list_events` 的全量读法在「抽屉每秒重取」面前
+  不可用（红线 4：单次载荷不大，但每次都大）。
+- `truncated` 因此不需要额外的 `COUNT(*)`：多出来的那一行就是证据。
+- 顺序用 `id DESC`（`AUTOINCREMENT` = 写入顺序）：按 `at` 排会在同毫秒内给出不稳定顺序，
+  抽屉每次重取都会换一遍行序。
+
+**这一条只有一半能靠单测**：`LIMIT` 改成「读全量再 `truncate`」在行为上完全等价，单测全绿。
+判据因此是**代码审查 + 集成观察**（判据表见 `.trellis/tasks/…/implement.md` C21），
+不许当成「已测过」。
+
+#### 成员归属：从行里读，不从 id 反解
+
+命令签名只有 `member_id`（id 自带 `@{team}` 后缀，但**不拆字符串** —— 红线 12）。团队归属由
+`team_member.team_id` 那一列回答，于是「成员属于别的队」不需要调用方判：任务与事件自然只能
+从它自己的队里读。未知成员 → `NotFound`（可读信息里带 id）。
+
+#### 前端契约（`MemberDetailDrawer`）
+
+- **两个动作不合并**：点行 → 抽屉；行内「打开终端」→ 直接接管 PTY。合并成一个就得选一个，
+  而它们是两个不同的问题（「它在等什么」vs「我去按那个键」）。
+- **待批块空则不渲染**，且必须写「Neeko 不代批」：审批发生在成员自己的终端里，面板上没有
+  批准按钮；只列一行「待批准」会让用户去找一个不存在的东西。
+- **租约走动用抽屉自己的 1s 定时器**（`LEASE_TICK_MS`，`unmount` 清）。全局定时器会让没打开
+  抽屉的面板也每秒重渲染 —— 而后端只在**写路径**发脉冲，时间流逝本来就没有事件。
+- **失败不清数据**：重取失败保留上一次的 `MemberDetail`，错误另起一条可见文字（闪空比旧数据更糟，
+  同 `teamStore.refresh`）。
+
