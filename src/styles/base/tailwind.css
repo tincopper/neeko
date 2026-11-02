@@ -105,14 +105,12 @@
 }
 
 /* 「当前项」的唯一视觉实现（侧栏会话行）。**必须是 @utility 而不是 components/*.css**：
- * 这条规则只服务一个状态、不足一个组件域（护栏判据：components/ 下每个文件 ≥20 行），
- * 而写成 Tailwind 任意值又会让类名退化成一串 `shadow-[inset_2px_0_0_0_var(--accent-blue)]`，
- * 测试只能靠子串断言。
+ * 这条规则只服务一个状态、不足一个组件域（护栏判据：components/ 下每个文件 ≥20 行）。
  *
- * 两个通道：`background`（强调色 12%，与既有 `.agent-popover-item.selected` 的 8% /
- * `bubble.u` 的 14% 同族）+ 左侧 2px 色条（色觉障碍下仍能读出「当前」）。
- * 父级（单元行）用中性 `--bg-selected`，两级分属不同通道，嵌套时不再「同色套同色」。 */
+ * 只有一个通道：`background`（强调色 12%，与既有 `.agent-popover-item.selected` 的 8% /
+ * `bubble.u` 的 14% 同族）。曾经还有一条左侧 2px 色条，但它和行内的 agent 图标挤在同一段
+ * 左内边距上，读起来像一个错位的装饰块（2026-11-02 反馈）—— 底色已经足够表达「当前」。
+ * 父级（单元行）用中性 `--bg-selected`，两级仍是不同通道，嵌套时不会「同色套同色」。 */
 @utility row-current {
   background: rgba(var(--accent-blue-rgb), 0.12);
-  box-shadow: inset 2px 0 0 var(--accent-blue);
 }
