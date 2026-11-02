@@ -44,6 +44,10 @@ pub(crate) const W1: &str = "w1@tm_1";
 
 /// 一个 `Active` 团队；`project_path` 由 manifest 目录推导（红线 13）。
 ///
+/// `project_id` 非空（v16 以后的行都带它）：空串的语义是「v16 之前建的行」，
+/// 而夹具表达的是一个普通团队。需要旧行形态的用例自己覆盖成 `String::new()`
+/// （判据：`store` 的 `a_v15_team_row_upgrades_to_an_empty_project_id`）。
+///
 /// 配置五列一律取**缺省值**（空池 / `None` / `shared` / `queue` / 4）：需要非缺省配置的
 /// 用例用 [`fixture_team_configured`]，那里的覆盖值在 diff 里一眼可见。
 pub(crate) fn fixture_team(id: &str) -> Team {
@@ -54,6 +58,7 @@ pub(crate) fn fixture_team(id: &str) -> Team {
         // 真实内置 id（`agent/builtin/providers.rs`），与 `fixture_member` 同口径。
         lead_agent_id: "claude-code".into(),
         project_path: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+        project_id: "p1".into(),
         created_at: 1_700_000_000_000,
         closed_at: None,
         state: TeamState::Active,
@@ -152,10 +157,39 @@ impl TeamNotifier for RecordingNotifier {
     }
 }
 
+/// 花名册一行（[`crate::agent::team::view::MemberStatusView`]）的夹具。
+///
+/// 用在只关心**载荷形状**的地方（命令层的 camelCase 判据）：那里不需要一个真实成员行，
+/// 但若手写全量字面量，每加一列都要改一次 —— 而这与“载荷键名对不对”这个判据毫无关系。
+/// 需要具体语义（租约 / 取证 / 终端的用例）走 `view::member_detail` 这类真路径，
+/// 不要拿本夹具当真相。
+pub(crate) fn fixture_member_status(member_id: &str) -> crate::agent::team::view::MemberStatusView {
+    // 团队 id 从成员 id 的后半取（`{name}@{team}`）：这个夹具只用来钉载荷**形状**，
+    // 多一个「没人用」的位置参数只会让每个调用点都要编一个值。
+    let team_id = member_id.split_once('@').map_or("tm_1", |(_, team)| team);
+    let member = fixture_member(member_id, team_id);
+    crate::agent::team::view::MemberStatusView {
+        member_id: member.id,
+        name: member.name,
+        role: member.role,
+        state: member.state,
+        verification: crate::agent::team::types::DoneVerification::Unverified,
+        lease_remaining_secs: None,
+        agent_id: member.agent_id,
+        terminal_id: member.terminal_id,
+        workspace: member.workspace,
+        channel: member.channel,
+        tier: member.tier,
+    }
+}
+
 /// 什么都不做的执行者：只关心「端口有没有被调用」以外的测试用它打底。
 ///
 /// 需要断言调用顺序 / 载荷的用例自己写记录型假体（见 `execution` 的 `Recorder`）；
 /// 而 handler 级用例关心的是 RPC / 鉴权 / 授权矩阵，进程副作用不在断言范围内。
+///
+/// `close` 也必须在这里实现：端口新增一个方法就会让所有假体编译失败（这是刻意的 ——
+/// 漏实现一个方法意味着某个测试路径在跑一个“不支持关闭”的执行者）。
 pub struct NoopExecutor;
 
 #[async_trait::async_trait]
@@ -173,6 +207,10 @@ impl crate::agent::team::execution::MemberExecutor for NoopExecutor {
         _member_id: &str,
         _message: &str,
     ) -> Result<(), crate::common::error::AppError> {
+        Ok(())
+    }
+
+    async fn close(&self, _member_id: &str) -> Result<(), crate::common::error::AppError> {
         Ok(())
     }
 }

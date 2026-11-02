@@ -33,6 +33,7 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 
 use crate::agent::team::manager::{now_millis, TeamManager};
+use crate::agent::team::types::TaskRef;
 use crate::common::error::AppError;
 use crate::common::runtime::AppRuntime;
 
@@ -90,7 +91,7 @@ impl TeamReaper {
 async fn reap_once(
     runtime: &AppRuntime,
     manager: &Arc<TeamManager>,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Vec<TaskRef>, AppError> {
     let manager = Arc::clone(manager);
     let now = now_millis();
     let joined = runtime
@@ -105,7 +106,7 @@ mod tests {
     use super::*;
     use crate::agent::team::fixtures::{fixture_member, fixture_team, TEAM, W1};
     use crate::agent::team::store::TeamStore;
-    use crate::agent::team::types::{TeamTask, TeamTaskState, Workspace};
+    use crate::agent::team::types::{TaskRef, TeamTask, TeamTaskState, Workspace};
     use std::time::Instant;
 
     const TASK: &str = "t1";
@@ -147,9 +148,11 @@ mod tests {
         manager.create_task(task()).expect("task");
         // 起租时间 = 现在 - (ttl + 1s)：已经到期。
         let claimed_at = now_millis() - (1800 + 1) * 1_000;
-        manager.claim_task(TASK, W1, claimed_at).expect("claim");
+        manager
+            .claim_task(&TaskRef::new(TEAM, TASK), W1, claimed_at)
+            .expect("claim");
         assert_eq!(
-            manager.task(TASK).expect("task").state,
+            manager.task(&TaskRef::new(TEAM, TASK)).expect("task").state,
             TeamTaskState::Claimed,
             "前置条件：先真的在飞"
         );
@@ -167,13 +170,15 @@ mod tests {
         // 有界等待：5ms 一拍，2s 上限足够宽；不能无限等（那是挂死而不是失败）。
         let deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < deadline {
-            if manager.task(TASK).expect("task").state == TeamTaskState::Pending {
+            if manager.task(&TaskRef::new(TEAM, TASK)).expect("task").state
+                == TeamTaskState::Pending
+            {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
 
-        let task = manager.task(TASK).expect("task");
+        let task = manager.task(&TaskRef::new(TEAM, TASK)).expect("task");
         assert_eq!(task.state, TeamTaskState::Pending, "过期租约必须回 pending");
         assert_eq!(task.reclaim_count, 1, "回收次数用于 UI 标「反复失败」");
         assert_eq!(task.owner, None, "回收后不再属于任何人");
@@ -200,11 +205,13 @@ mod tests {
 
         manager.create_task(task()).expect("task");
         let claimed_at = now_millis() - (1800 + 1) * 1_000;
-        manager.claim_task(TASK, W1, claimed_at).expect("claim");
+        manager
+            .claim_task(&TaskRef::new(TEAM, TASK), W1, claimed_at)
+            .expect("claim");
 
         tokio::time::sleep(Duration::from_millis(150)).await;
         assert_eq!(
-            manager.task(TASK).expect("task").state,
+            manager.task(&TaskRef::new(TEAM, TASK)).expect("task").state,
             TeamTaskState::Claimed,
             "stop 之后不允许再回收"
         );

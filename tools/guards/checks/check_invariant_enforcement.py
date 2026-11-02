@@ -8,8 +8,10 @@
 本护栏把这条元规则变成可执行判据：
 
 1. **落点必须可解析**：`ledger/invariants.json` 每条不变量的 `enforcement` 里，`guard` 指向
-   真实存在的 `checks/{ref}.py`、`test` 指向真实文件、`lint` 规则出现在 `.eslintrc.cjs`；
-   `type` / `structure` 必须给出机制所在路径 + `note`。
+   真实存在的 `checks/{ref}.py`、`test` 指向真实文件**且声明的测试名真的在该文件里被声明**
+   （declared 形态：显式 `tests` 数组，或 note 里的 `…::tests::{a, b}` / `…::tests::a`）；
+   `lint` 规则出现在 `.eslintrc.cjs`；`type` / `structure` 必须给出机制所在路径 + `note`。
+   **弱档是可见的**：`test` 落点不声明测试名时仍只验文件存在，metrics 里每次报「声明了几条」。
 2. **`prose` 是合法档但必须带理由**，且每次运行都打印 —— 目标不是「全部机械化」，而是
    「没有无人知晓的未机械化」：沉默债务才是危险的。
 3. **引用完整性**：每条不变量与每个 guard 的 `red_lines` 编号都必须真实存在于
@@ -28,6 +30,13 @@ REQUIRED_TIERS = frozenset({"type", "structure", "guard", "lint", "test", "prose
 
 # guard 源码里 `red_lines=(1, 3)` 的形态（单行；本仓 GUARD 定义皆为单行）。
 RED_LINES_RE = re.compile(r"red_lines\s*=\s*\(([^)]*)\)")
+
+# 测试名声明：显式 `tests` 数组，或 note 里的 `…::tests::{a, b}` / `…::tests::a` 形态。
+# **只认这两种可解析的写法**：note 里的散文（「三条确定性回归：…」）不猜成测试名 ——
+# 猜错的代价是护栏自己噪声化，而噪声化的护栏等于没有。
+NOTE_BRACE_RE = re.compile(r"[A-Za-z0-9_:]*tests::\{([^}]*)\}")
+NOTE_SINGLE_RE = re.compile(r"[A-Za-z0-9_:]*tests::([A-Za-z_][A-Za-z0-9_]*)")
+TEST_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 ESLINT_CONFIG = ".eslintrc.cjs"
 CHECKS_GLOB = "tools/guards/checks/*.py"
@@ -50,7 +59,8 @@ GUARD = Guard(
     ledger="invariants",
     fix_hint=(
         "把不变量登记进 tools/guards/ledger/invariants.json，并给可解析落点"
-        "（guard=checks/{ref}.py / test=路径 / lint=.eslintrc.cjs 规则 / type|structure=路径+note）；"
+        "（guard=checks/{ref}.py / test=路径（+ 显式 tests 数组或 note 里的 ::tests:: 测试名）/"
+        "lint=.eslintrc.cjs 规则 / type|structure=路径+note）；"
         "确实无法机械化的写 tier=\"prose\" + reason（会成为可见债务）。"
     ),
 )
@@ -81,6 +91,40 @@ def _eslint_config(ctx: Context) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def declared_test_names(entry: dict) -> list[str]:
+    """该落点声明的测试名：显式 `tests` 数组优先，其次 note 里的 `::tests::` 形态。
+
+    note 是给人读的，但其中「`manager::tests::{a, b}`」这种写法已经把名字写成了
+    可解析的形态 —— 不白收。只收这两种：拆散文猜名字的代价是护栏噪声化。
+    """
+    explicit = entry.get("tests")
+    if isinstance(explicit, list) and explicit:
+        return [str(name).strip() for name in explicit]
+    note = entry.get("note")
+    if not isinstance(note, str):
+        return []
+    names: list[str] = []
+    for group in NOTE_BRACE_RE.finditer(note):
+        names += [item.strip() for item in group.group(1).split(",") if item.strip()]
+    names += NOTE_SINGLE_RE.findall(NOTE_BRACE_RE.sub("", note))
+    return [name for name in names if TEST_NAME_RE.match(name)]
+
+
+def declares_test(source: str, suffix: str, name: str) -> bool:
+    """该文件源码里是否**真的**声明了这个测试（不是只在 note 里被提及）。
+
+    按语言取声明形态：Rust `fn name` / Python `def name` / 前端脚本把测试名写成
+    字符串字面量（`it("name", …)`）—— 三者的共同点是「删了就不存在」，
+    而“名字被拼错”也会在这里现形。
+    """
+    pattern = re.escape(name)
+    if suffix == ".rs":
+        return re.search(rf"\bfn\s+{pattern}\b", source) is not None
+    if suffix == ".py":
+        return re.search(rf"\bdef\s+{pattern}\b", source) is not None
+    return re.search(rf"[\"']{pattern}[\"']", source) is not None
+
+
 def _check_enforcement(iid: str, entry: object, ctx: Context) -> list[Finding]:
     if not isinstance(entry, dict):
         return [Finding(f"{iid}: enforcement 条目必须是对象")]
@@ -99,7 +143,22 @@ def _check_enforcement(iid: str, entry: object, ctx: Context) -> list[Finding]:
     if kind == "test":
         if not ref or not ctx.path(str(ref)).is_file():
             return [Finding(f"{iid}: test 落点不存在：{ref}")]
-        return []
+        names = declared_test_names(entry)
+        if not names:
+            return []
+        try:
+            source = ctx.path(str(ref)).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            return [Finding(f"{iid}: test 落点读不出来（{ref}）：{exc}")]
+        suffix = ctx.path(str(ref)).suffix
+        return [
+            Finding(
+                f"{iid}: test 落点 {ref} 的源码里没有 `{name}`（按 {suffix or '无后缀'} 的声明形态找）"
+                " —— ⭐ 测名是**可执行**的指针，不是散文：改名/删除测试必须同时改台账"
+            )
+            for name in names
+            if not declares_test(source, suffix, name)
+        ]
     if kind == "lint":
         rule = str(ref or "")
         if not rule:
@@ -215,11 +274,21 @@ def check(ctx: Context) -> GuardResult:
 
     invariants = ledger["invariants"]
     scanned = len(invariants) + len(guard_paths)
+    test_entries = [
+        entry
+        for inv in invariants
+        if isinstance(inv, dict)
+        for entry in (inv.get("enforcement") or [])
+        if isinstance(entry, dict) and entry.get("kind") == "test"
+    ]
+    named = [entry for entry in test_entries if declared_test_names(entry)]
     prose = [i.get("id") for i in invariants if isinstance(i, dict) and i.get("tier") == "prose"]
     notes = tuple(f"prose（可见债务，需人工复审）：{pid}" for pid in prose)
     metrics = (
         f"{len(invariants)} 条不变量 / {len(guard_paths)} 个 guard 文件"
-        f"（prose {len(prose)} 条），{len(findings)} 处违规"
+        f"（prose {len(prose)} 条），{len(findings)} 处违规；"
+        f"test 落点声明了测试名 {len(named)}/{len(test_entries)} 条"
+        "（未声明的只验文件存在 —— 可见的弱档，不是静默豁免）"
     )
     if findings:
         return GuardResult.violated(scanned, findings, metrics=metrics, notes=notes)

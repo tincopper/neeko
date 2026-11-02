@@ -7,14 +7,14 @@
 //! 塞进新的 MCP server —— 而队长的全部能力都在那个工具面上。
 //!
 //! ⇒ 「提升」被替换成**新开一个会话**：本模块造出「团队 + 队长」两行，之后走与成员
-//! **完全相同**的执行路径（`execution::apply_reply` → `admit` + `spawn`）。promote 的
+//! **完全相同**的执行路径（`execution::start_member` → `admit` + `spawn`）。promote 的
 //! 代码量因此是 0 —— 不是省事，而是**只有一条执行路径**。
 //!
 //! # 为什么是纯函数
 //!
 //! 准入拒绝（该 CLI 能不能当队长）、id 形状、字段装配全部可直测，且不碰时钟 / 库 /
 //! 文件系统：`now` 与 `team_id` 由调用方给。真正有副作用的只有三步，都在组合根：
-//! 规范化项目路径（`spawn_blocking`）→ `create_team_with_lead`（一次写入）→ `apply_reply`。
+//! 规范化项目路径（`spawn_blocking`）→ `create_team_with_lead`（一次写入）→ `start_member`。
 //!
 //! **一个刻意的例外**：[`validate_config`] 会 `canonicalize` 团队 `default_workspace`
 //! 给的 worktree 路径（红线 8 的唯一判据在 `execution::workspace_cwd`，不复制一份）。
@@ -62,7 +62,7 @@ pub fn new_team_id(now: i64) -> String {
 
 /// 算出一个「团队 + 队长」。
 ///
-/// # 拒绝的三种情形
+/// # 拒绝的四种情形
 ///
 /// | 情形 | 为什么 |
 /// | --- | --- |
@@ -70,21 +70,36 @@ pub fn new_team_id(now: i64) -> String {
 /// | 起得来但用不了（无 MCP 面 / 注入档未实现） | 与 `team_spawn` 同一判据（`launch_refusal`）：不允许「有会话、连不上工具面」的队长 |
 /// | 能当成员但不能当队长（无 `prompt_argv`） | `lead_refusal` 多问的那一条：队长的第一个动作没有人能替它触发，拿不到角色 preamble 的队长就是一个不动的会话 |
 /// | 项目路径不是绝对路径 | 它是团队的**信任根**，`plan_member_spawn` 会拿它做 `starts_with` 判据（红线 8） |
+/// | `project_id` 为空 | 环境归属必须是一个事实；空 id 只可能来自 v16 之前的旧行 |
 ///
 /// # 参数
 ///
+/// - `project_id`：拥有这个团队**执行环境**的项目 id（前端传 `activeProjectId`，**不是**从
+///   路径猜）。它与 `project_path` 不是一个事实：路径是工作区根（可以是工作树，落在项目
+///   目录之外），id 才是环境的归属 —— 执行层按 id 精确查表
+///   （[`super::execution::environment_source`]）。空 id 在这里就拒绝：晚到执行层的后果是
+///   「团队行已写入、进程起不来」的孤儿队。
 /// - `name`：团队显示名；`None` / 空白 → 取项目目录名（再退到 `team_id`）。
 /// - `team_id`：由 [`new_team_id`] 提供（纯函数，便于测试固定 id）。
 /// - `config`：团队组成配置（池 / 上限 / 默认值）。**调用方必须已过 [`validate_config`]** ——
 ///   本函数不重复校验（一次构造、一次裁决；两处各判一遍会让「哪个先拒」变成运气）。
 pub fn plan_team(
     agent_id: &str,
+    project_id: &str,
     project_path: &Path,
     name: Option<&str>,
     team_id: &str,
     now: i64,
     config: &TeamConfig,
 ) -> Result<TeamBootstrap, AppError> {
+    if project_id.trim().is_empty() {
+        return Err(AppError::InvalidInput(
+            "a team must belong to a project: `project_id` is empty. The team's execution \
+             environment is the environment of its project, and it is resolved by that id — a \
+             team without a project cannot be launched"
+                .to_string(),
+        ));
+    }
     if !project_path.is_absolute() {
         return Err(AppError::InvalidInput(format!(
             "team project path {} must be absolute: it is the trust root every member's \
@@ -109,6 +124,7 @@ pub fn plan_team(
         lead_session_id: String::new(),
         lead_agent_id: agent_id.to_owned(),
         project_path: project_path.to_path_buf(),
+        project_id: project_id.to_owned(),
         created_at: now,
         closed_at: None,
         state: TeamState::Active,
@@ -247,15 +263,19 @@ fn resolve_name(name: Option<&str>, project_path: &Path, team_id: &str) -> Strin
 mod tests {
     use super::*;
     use crate::agent::team::types::{AdmissionTier, McpInjection, ResultChannel, WorkerChannel};
+    use std::path::PathBuf;
 
     const NOW: i64 = 1_700_000_000_000;
     const TEAM: &str = "tm_18bcfe53700";
     /// 绝对路径，且平台无关（红线 13：不许手写 `/tmp/x`）。
     const ROOT: &str = env!("CARGO_MANIFEST_DIR");
+    /// 拥有这个团队执行环境的项目 id（v16 起必填）。
+    const PROJECT: &str = "p1";
 
     fn plan(agent_id: &str) -> TeamBootstrap {
         plan_team(
             agent_id,
+            PROJECT,
             Path::new(ROOT),
             None,
             TEAM,
@@ -328,6 +348,7 @@ mod tests {
     fn an_agent_outside_the_admission_table_is_refused_with_the_available_ids() {
         let err = plan_team(
             "dsh",
+            PROJECT,
             Path::new(ROOT),
             None,
             TEAM,
@@ -344,6 +365,7 @@ mod tests {
     fn an_agent_that_could_not_reach_the_tool_surface_is_refused() {
         let err = plan_team(
             "omp",
+            PROJECT,
             Path::new(ROOT),
             None,
             TEAM,
@@ -356,6 +378,7 @@ mod tests {
 
         let err = plan_team(
             "grok",
+            PROJECT,
             Path::new(ROOT),
             None,
             TEAM,
@@ -366,10 +389,50 @@ mod tests {
         assert!(err.to_string().contains("Subcommand"), "{err}");
     }
 
+    /// 空 `project_id` 在**纯函数层**就被拒：晚到执行层的后果是「团队行已写入、进程起不来」
+    /// 的孤儿队。
+    ///
+    /// 理由必须**点名 project**：只说「invalid input」会让调用方以为错在路径或 CLI。
+    /// 空白串与空串同判（`"  "` 不是一个项目 id）。
+    #[test]
+    fn planning_a_team_without_a_project_id_is_refused() {
+        for project_id in ["", "   "] {
+            let err = plan_team(
+                "claude-code",
+                project_id,
+                Path::new(ROOT),
+                None,
+                TEAM,
+                NOW,
+                &TeamConfig::default(),
+            )
+            .expect_err("没有项目归属不能建队");
+            assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+            assert!(
+                err.to_string().contains("project"),
+                "理由必须点名 project：{err}"
+            );
+        }
+    }
+
+    /// 合法的 `project_id` 原样进团队行：它与 `project_path` 是**两个**字段。
+    #[test]
+    fn the_plan_carries_the_project_id_alongside_the_path() {
+        let TeamBootstrap { team, .. } = plan("claude-code");
+        assert_eq!(team.project_id, PROJECT);
+        assert_eq!(team.project_path, PathBuf::from(ROOT));
+        assert_ne!(
+            team.project_id,
+            team.project_path.to_string_lossy(),
+            "id 与路径不是同一件事：一个团队可以在工作树上（路径在项目目录之外）"
+        );
+    }
+
     #[test]
     fn a_relative_project_path_is_refused() {
         let err = plan_team(
             "claude-code",
+            PROJECT,
             Path::new("relative/dir"),
             None,
             TEAM,
@@ -385,6 +448,7 @@ mod tests {
     fn the_display_name_falls_back_from_explicit_to_directory_to_id() {
         let explicit = plan_team(
             "claude-code",
+            PROJECT,
             Path::new(ROOT),
             Some("  小队  "),
             TEAM,
@@ -396,6 +460,7 @@ mod tests {
 
         let derived = plan_team(
             "claude-code",
+            PROJECT,
             Path::new(ROOT),
             Some("   "),
             TEAM,
@@ -412,8 +477,16 @@ mod tests {
         let root = Path::new(ROOT).ancestors().last().expect("路径必有根");
         assert!(root.is_absolute(), "根必须绝对：{root:?}");
         assert_eq!(root.file_name(), None, "根没有文件名：{root:?}");
-        let fallback = plan_team("claude-code", root, None, TEAM, NOW, &TeamConfig::default())
-            .expect("根目录");
+        let fallback = plan_team(
+            "claude-code",
+            PROJECT,
+            root,
+            None,
+            TEAM,
+            NOW,
+            &TeamConfig::default(),
+        )
+        .expect("根目录");
         assert_eq!(fallback.team.name, TEAM);
     }
 
@@ -451,8 +524,16 @@ mod tests {
             default_approval_policy: ApprovalPolicy::Bypass,
             max_members: 2,
         };
-        let TeamBootstrap { team, lead } =
-            plan_team("claude-code", Path::new(ROOT), None, TEAM, NOW, &config).expect("配置合法");
+        let TeamBootstrap { team, lead } = plan_team(
+            "claude-code",
+            PROJECT,
+            Path::new(ROOT),
+            None,
+            TEAM,
+            NOW,
+            &config,
+        )
+        .expect("配置合法");
         assert_eq!(team.allowed_agent_ids, config.allowed_agent_ids);
         assert_eq!(team.default_model, config.default_model);
         assert_eq!(team.default_workspace, Workspace::ReadOnly);

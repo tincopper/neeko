@@ -50,8 +50,8 @@ use crate::agent::team::events::TeamNotifier;
 use crate::agent::team::lease::{lease_expired, next_reclaim_count, should_auto_release};
 use crate::agent::team::store::{clamp_task_summary, TeamEventRecord, TeamStore};
 use crate::agent::team::types::{
-    DoneVerification, MemberRole, MemberSignal, MemberState, Team, TeamMember, TeamTask,
-    TeamTaskState, Workspace,
+    DoneVerification, MemberRole, MemberSignal, MemberState, TaskRef, Team, TeamMember, TeamState,
+    TeamTask, TeamTaskState, Workspace,
 };
 use crate::common::error::AppError;
 
@@ -73,6 +73,21 @@ pub const EVENT_ISSUE_TOKEN: &str = "issue_token";
 
 /// 成员 PTY 绑定（审计记 `terminal_id`，它是进程句柄不是凭证）。
 pub const EVENT_BIND_TERMINAL: &str = "bind_terminal";
+
+/// 审计事件类别：一名成员被归档（进程已关 → `Dead` + 凭证作废 + 在飞任务回 `pending`）。
+pub const EVENT_CLOSE_MEMBER: &str = "close_member";
+
+/// 审计事件类别：团队进入 `Closing`（整队关闭开始）。
+pub const EVENT_CLOSE_BEGIN: &str = "close_begin";
+
+/// 审计事件类别：团队落终态 `Closed`（`closed_at` 写入的那一次）。
+pub const EVENT_CLOSE_TEAM: &str = "close_team";
+
+/// 审计事件类别：收到一次关闭**请求**（`graceful` 是否被要求）。
+///
+/// `graceful` 本期不兑现（没有 shutdown 协议），所以这里记的是「收到过这个意图」而不是
+/// 「做过优雅收尾」—— 红线 14：审计不得声明没发生的能力。
+pub const EVENT_CLOSE_REQUEST: &str = "close_request";
 
 /// 属于「有 owner 在干活」的任务态集合 —— 租约与审批只对这些态有意义。
 /// **活性即续期**：把起租时间前移到 `now`。
@@ -112,6 +127,20 @@ const fn is_terminal_member(state: MemberState) -> bool {
         state,
         MemberState::Done | MemberState::Failed | MemberState::Dead
     )
+}
+
+/// 一个队任务板的三个计数（[`TeamManager::task_counts`]）。
+///
+/// 单独成类型而不是三个 `usize` 返回值：调用点看到 `counts.open` 就知道它是「未终结」，
+/// 而不是「open 是第几个参数」—— 三个同型参数是最容易传反的一种签名。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TaskCounts {
+    /// 板上任务总数。
+    pub total: usize,
+    /// 未终结的任务数（非 `done` / `failed` / `blocked`）。
+    pub open: usize,
+    /// 已完成的任务数。
+    pub done: usize,
 }
 
 /// 内存镜像 + 共享库。
@@ -255,7 +284,11 @@ impl Drop for WriteGuard<'_> {
 struct Inner {
     teams: HashMap<String, Team>,
     members: HashMap<String, TeamMember>,
-    tasks: HashMap<String, TeamTask>,
+    /// 任务镜像，键是 [`TaskRef`]（`team_id` + `id`），**不是** `id`。
+    ///
+    /// `t1` 在每个队都存在，所以 `HashMap<String, TeamTask>` 会让两个队的 `t1` 互相覆盖
+    /// —— 症状是「改 A 队的任务，B 队的同名任务跟着变了」，而任何单队测试都发现不了。
+    tasks: HashMap<TaskRef, TeamTask>,
     /// 每个成员的取证水位线（`verified` 只能由显式 `task_update(done)` / `force_done` 抬高）。
     ///
     /// 不进库：design §6 硬规则 3 说 done 的权威是任务板，所以重启后由
@@ -338,7 +371,7 @@ impl TeamManager {
                 inner.members.insert(member.id.clone(), member);
             }
             for task in tasks {
-                inner.tasks.insert(task.id.clone(), task);
+                inner.tasks.insert(task.key(), task);
             }
         }
         manager.recompute_all_verification();
@@ -367,10 +400,27 @@ impl TeamManager {
         self.inner.lock().members.get(member_id).cloned()
     }
 
-    /// 读一个任务。
+    /// 读一个任务（**必须同时给队与 id**，见 [`TaskRef`]）。
+    ///
+    /// 签名里没有「只给 id」的形态是刻意的：`t1` 在每个队都存在，只给 id 的查询要么
+    /// 需要猜一个队、要么需要遍历全部队再挑一条 —— 两种都会把「读到别队的同名任务」
+    /// 变成一个随时可能发生的事故（判据：`a_task_id_is_only_unique_inside_its_team`）。
     #[must_use]
-    pub fn task(&self, task_id: &str) -> Option<TeamTask> {
-        self.inner.lock().tasks.get(task_id).cloned()
+    pub fn task(&self, key: &TaskRef) -> Option<TeamTask> {
+        self.inner.lock().tasks.get(key).cloned()
+    }
+
+    /// 读**全部**团队行（按 id 排序），供 `view::list_teams` 这类跨队读路径用。
+    ///
+    /// 只读内存镜像：团队行是 `load` 时期 hydrate 的，与库同一把锁内一起改。排序在这里做是
+    /// 为了让调用方看到的是一个**稳定集合**（`HashMap` 的遍历顺序不稳定，而排序口径 ——
+    /// 「最近的在前」—— 属于展示层，见 `view::list_teams`）。
+    #[must_use]
+    pub fn teams(&self) -> Vec<Team> {
+        let inner = self.inner.lock();
+        let mut teams: Vec<Team> = inner.teams.values().cloned().collect();
+        teams.sort_by(|a, b| a.id.cmp(&b.id));
+        teams
     }
 
     /// 团队的**成员数（不含队长）**。
@@ -391,6 +441,32 @@ impl TeamManager {
             .filter(|member| member.team_id == team_id && member.role == MemberRole::Worker)
             .count();
         u32::try_from(count).unwrap_or(u32::MAX)
+    }
+
+    /// 任务板的三个计数（`team_list` 这类**只需要数字**的读路径用它）。
+    ///
+    /// # 为什么不是 `tasks(team_id).len()`
+    ///
+    /// [`Self::tasks`] 会在锁内把整段任务行 clone 出来。对「要板视图」的调用方那是必需的，
+    /// 对「要三个数字」的调用方则是把红线 4 的时间维度破了：`team_list` 每次面板脉冲都会走，
+    /// 而它要的只是 `total` / `open` / `done`。
+    ///
+    /// 判据的口径与 `view::team_status_view` **一致**（未终结 = 非 `done` / `failed` /
+    /// `blocked`），因为两处用的是同一个判据函数（[`is_terminal_task`]）。
+    #[must_use]
+    pub fn task_counts(&self, team_id: &str) -> TaskCounts {
+        let inner = self.inner.lock();
+        let mut counts = TaskCounts::default();
+        for task in inner.tasks.values().filter(|task| task.team_id == team_id) {
+            counts.total += 1;
+            if !is_terminal_task(task.state) {
+                counts.open += 1;
+            }
+            if task.state == TeamTaskState::Done {
+                counts.done += 1;
+            }
+        }
+        counts
     }
 
     /// 读团队全部任务（板视图），按 id 排序。
@@ -590,25 +666,28 @@ impl TeamManager {
         if !inner.teams.contains_key(&task.team_id) {
             return Err(not_found(format!("team {}", task.team_id)));
         }
-        if inner.tasks.contains_key(&task.id) {
-            return Err(conflict(format!("task {} already exists", task.id)));
+        // 唯一性判据是 `(team_id, id)`：别的队的同名任务不是冲突（每个队的板都从 t1 开始）。
+        if inner.tasks.contains_key(&task.key()) {
+            return Err(conflict(format!("task {} already exists", task.key())));
         }
         if !matches!(task.state, TeamTaskState::Pending | TeamTaskState::Proposed) {
             return Err(invalid(format!(
                 "task {} must start pending or proposed, got {:?}",
-                task.id, task.state
+                task.key(),
+                task.state
             )));
         }
         // `lease_ttl <= 0` 会让任务一被认领就到期，看起来像「成员永远在丢失任务」。
         if task.lease_ttl <= 0 {
             return Err(invalid(format!(
                 "task {} lease_ttl must be positive, got {}",
-                task.id, task.lease_ttl
+                task.key(),
+                task.lease_ttl
             )));
         }
         let task = clamp_task_summary(&task);
         self.store.upsert_task(&task)?;
-        inner.tasks.insert(task.id.clone(), task.clone());
+        inner.tasks.insert(task.key(), task.clone());
         Ok(task)
     }
 
@@ -619,16 +698,16 @@ impl TeamManager {
     /// 认领任务（不变量 1 / 3）。
     pub fn claim_task(
         &self,
-        task_id: &str,
+        key: &TaskRef,
         member_id: &str,
         now: i64,
     ) -> Result<TeamTask, AppError> {
         let mut inner = self.lock_writing();
         let mut task = inner
             .tasks
-            .get(task_id)
+            .get(key)
             .cloned()
-            .ok_or_else(|| not_found(format!("task {task_id}")))?;
+            .ok_or_else(|| not_found(format!("task {key}")))?;
         let member = inner
             .members
             .get(member_id)
@@ -639,32 +718,32 @@ impl TeamManager {
         // `blocked` 是冻结态，`proposed` 还必须先被队长 accept。
         if task.state != TeamTaskState::Pending {
             return Err(conflict(format!(
-                "task {task_id} is {:?}, only pending can be claimed",
+                "task {key} is {:?}, only pending can be claimed",
                 task.state
             )));
         }
         // 跨队认领：owner 关系跨队毫无意义，且会让授权矩阵算错队伍。
         if member.team_id != task.team_id {
             return Err(conflict(format!(
-                "member {member_id} belongs to {}, task {task_id} to {}",
+                "member {member_id} belongs to {}, task {key} to {}",
                 member.team_id, task.team_id
             )));
         }
-        // 不变量 3：依赖必须存在、同队、且已 done。
+        // 不变量 3：依赖必须在本队板上存在、且已 done。
+        //
+        // **跨队 id 不被当成依赖满足**：`depends_on` 里只有一个队内 id，所以解析时
+        // 必须补上本队 —— 只按 id 找会让 A 队任务的 `t1` 被 B 队的 `t1` 满足
+        // （判据：`depends_on_resolves_inside_the_team`）。
         // 「依赖不存在」抛 NotFound 而不是 Conflict：那是数据缺陷，不是瞬时冲突。
         for dependency in &task.depends_on {
+            let dep_key = TaskRef::new(task.team_id.clone(), dependency.as_str());
             let dep = inner
                 .tasks
-                .get(dependency)
-                .ok_or_else(|| not_found(format!("dependency {dependency}")))?;
-            if dep.team_id != task.team_id {
-                return Err(conflict(format!(
-                    "dependency {dependency} belongs to another team"
-                )));
-            }
+                .get(&dep_key)
+                .ok_or_else(|| not_found(format!("dependency {dep_key}")))?;
             if dep.state != TeamTaskState::Done {
                 return Err(conflict(format!(
-                    "dependency {dependency} is {:?}, not done",
+                    "dependency {dep_key} is {:?}, not done",
                     dep.state
                 )));
             }
@@ -682,7 +761,7 @@ impl TeamManager {
             .insert(member.id.clone(), DoneVerification::Unverified);
 
         self.store.upsert_task(&task)?;
-        inner.tasks.insert(task.id.clone(), task.clone());
+        inner.tasks.insert(task.key(), task.clone());
         self.audit(
             &mut inner,
             &task.team_id,
@@ -697,29 +776,29 @@ impl TeamManager {
     /// 改任务的 `workspace`（不变量 5：`state != pending` 后不可变）。
     pub fn set_task_workspace(
         &self,
-        task_id: &str,
+        key: &TaskRef,
         workspace: Workspace,
         actor: &str,
     ) -> Result<TeamTask, AppError> {
         let mut inner = self.lock_writing();
         let mut task = inner
             .tasks
-            .get(task_id)
+            .get(key)
             .cloned()
-            .ok_or_else(|| not_found(format!("task {task_id}")))?;
+            .ok_or_else(|| not_found(format!("task {key}")))?;
 
         // 不变量 5：一旦被认领，workspace 就是成员的 cwd —— 改它等于让产物落在
         // 一个没人看过的地方。只允许在 `pending` 时指定。
         if task.state != TeamTaskState::Pending {
             return Err(conflict(format!(
-                "task {task_id} is {:?}, workspace is immutable after claim",
+                "task {key} is {:?}, workspace is immutable after claim",
                 task.state
             )));
         }
 
         task.workspace = workspace;
         self.store.upsert_task(&task)?;
-        inner.tasks.insert(task.id.clone(), task.clone());
+        inner.tasks.insert(task.key(), task.clone());
         self.audit(
             &mut inner,
             &task.team_id,
@@ -737,7 +816,7 @@ impl TeamManager {
     /// 摘要被清掉会让板上那一行失去唯一上下文）。
     pub fn update_task(
         &self,
-        task_id: &str,
+        key: &TaskRef,
         actor: &str,
         new_state: TeamTaskState,
         summary: Option<&str>,
@@ -746,9 +825,9 @@ impl TeamManager {
         let mut inner = self.lock_writing();
         let mut task = inner
             .tasks
-            .get(task_id)
+            .get(key)
             .cloned()
-            .ok_or_else(|| not_found(format!("task {task_id}")))?;
+            .ok_or_else(|| not_found(format!("task {key}")))?;
         let actor_member = inner
             .members
             .get(actor)
@@ -759,16 +838,13 @@ impl TeamManager {
         // 队长越过 owner 的唯一路径是 [`Self::force_done`]，那条路径会记审计。
         if task.owner.as_deref() != Some(actor) {
             return Err(conflict(format!(
-                "task {task_id} is owned by {:?}, not {actor}",
+                "task {key} is owned by {:?}, not {actor}",
                 task.owner
             )));
         }
         // 吸收态：已完成的判死不可撤销（否则「done」可以被悄悄改回进行中）。
         if is_terminal_task(task.state) {
-            return Err(conflict(format!(
-                "task {task_id} is already {:?}",
-                task.state
-            )));
+            return Err(conflict(format!("task {key} is already {:?}", task.state)));
         }
         // 合法目标态：owner 能做的只有「继续/等审批/完成/失败」。
         // `pending`/`claimed`/`blocked` 由系统或队长路径负责，`proposed` 是另一种起点。
@@ -780,13 +856,13 @@ impl TeamManager {
                 | TeamTaskState::Failed
         ) {
             return Err(invalid(format!(
-                "owner cannot move task {task_id} to {new_state:?}"
+                "owner cannot move task {key} to {new_state:?}"
             )));
         }
         // 任务必须真的在 owner 手里（`pending` 先 claim，`proposed` 先 accept）。
         if !is_active(task.state) {
             return Err(conflict(format!(
-                "task {task_id} is {:?}, claim it first",
+                "task {key} is {:?}, claim it first",
                 task.state
             )));
         }
@@ -805,7 +881,7 @@ impl TeamManager {
                 .insert(actor_member.id.clone(), DoneVerification::Verified);
         }
         self.store.upsert_task(&task)?;
-        inner.tasks.insert(task.id.clone(), task.clone());
+        inner.tasks.insert(task.key(), task.clone());
         self.audit(
             &mut inner,
             &task.team_id,
@@ -820,7 +896,7 @@ impl TeamManager {
     /// 队长越过 owner 判 `done`，**必须记审计**（不变量 2）。
     pub fn force_done(
         &self,
-        task_id: &str,
+        key: &TaskRef,
         actor: &str,
         reason: &str,
         now: i64,
@@ -828,9 +904,9 @@ impl TeamManager {
         let mut inner = self.lock_writing();
         let mut task = inner
             .tasks
-            .get(task_id)
+            .get(key)
             .cloned()
-            .ok_or_else(|| not_found(format!("task {task_id}")))?;
+            .ok_or_else(|| not_found(format!("task {key}")))?;
         let lead = inner
             .members
             .get(actor)
@@ -847,7 +923,7 @@ impl TeamManager {
         // 只有「在干活」的任务能被判死：`pending` 没人做过，终态不该被改写。
         if !is_active(task.state) {
             return Err(conflict(format!(
-                "task {task_id} is {:?}, cannot force_done",
+                "task {key} is {:?}, cannot force_done",
                 task.state
             )));
         }
@@ -860,7 +936,7 @@ impl TeamManager {
                 .insert(owner.clone(), DoneVerification::Verified);
         }
         self.store.upsert_task(&task)?;
-        inner.tasks.insert(task.id.clone(), task.clone());
+        inner.tasks.insert(task.key(), task.clone());
         self.audit(
             &mut inner,
             &task.team_id,
@@ -1011,7 +1087,7 @@ impl TeamManager {
                 }
                 if task.state != task_state || task.claimed_at != before {
                     self.store.upsert_task(&task)?;
-                    inner.tasks.insert(task.id.clone(), task);
+                    inner.tasks.insert(task.key(), task);
                 }
             }
         }
@@ -1033,9 +1109,10 @@ impl TeamManager {
 
     /// 回收过期租约（不变量 4 / AC3）。
     ///
-    /// 返回被回收（含被冻结）的任务 id。过期任务的 owner 若不是终态，成员落 `Stalled`
+    /// 返回被回收（含被冻结）的任务的 [`TaskRef`]（不是裸 id —— `t1` 在别的队也存在）。
+    /// 过期任务的 owner 若不是终态，成员落 `Stalled`
     /// —— design §2.1 的「任意 ──lease 到期──▶ Stalled」。
-    pub fn reclaim_expired(&self, now: i64) -> Result<Vec<String>, AppError> {
+    pub fn reclaim_expired(&self, now: i64) -> Result<Vec<TaskRef>, AppError> {
         let mut inner = self.lock_writing();
         let mut expired: Vec<TeamTask> = inner
             .tasks
@@ -1048,7 +1125,9 @@ impl TeamManager {
             })
             .cloned()
             .collect();
-        expired.sort_by(|a, b| a.id.cmp(&b.id));
+        // 回收是**跨队**的一拍：排序必须带上 `team_id`，否则两个队的 `t1` 谁先谁后取决于
+        // `HashMap` 的遍历顺序，而审计行的次序就不再稳定。
+        expired.sort_by(|a, b| (&a.team_id, &a.id).cmp(&(&b.team_id, &b.id)));
 
         let mut reclaimed = Vec::new();
         for mut task in expired {
@@ -1068,8 +1147,8 @@ impl TeamManager {
             task.reclaim_count = count;
 
             self.store.upsert_task(&task)?;
-            inner.tasks.insert(task.id.clone(), task.clone());
-            reclaimed.push(task.id.clone());
+            inner.tasks.insert(task.key(), task.clone());
+            reclaimed.push(task.key());
 
             let kind = if release {
                 EVENT_RECLAIM
@@ -1090,6 +1169,334 @@ impl TeamManager {
             }
         }
         Ok(reclaimed)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 关闭（单成员 / 整队）—— 两相位的「归档」那一半
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// 记录一次关闭**请求**（决定层已经校验完目标之后调）。
+    ///
+    /// # 为什么单独一条审计
+    ///
+    /// `graceful` 的值只对这个事实有意义：本期没有 shutdown 协议，能否优雅收尾**不是**
+    /// 状态迁移。把它塞进 `close_member` 的 detail 会让人以为「那次关闭是优雅的」——
+    /// 而它只是「被要求过」。审计行是唯一能区分这两者的地方。
+    ///
+    /// # 它是**写路径**（用 `lock_writing()`，不是 `inner.lock()`）
+    ///
+    /// 它确实不改内存镜像，但它要写库（审计行）—— 而「写库」这件事的观察面不是内存镜像，
+    /// 是**面板与等待者**：审计是抽屉里的事件流，一条新事件出现却不发脉冲，抽屉就会停在
+    /// 旧列表上（用户的观感是「我点了关闭，什么都没发生」）。先用读锁再写库则更糟：那把锁
+    /// 没有守卫，`?` 早退时连一次脉冲都不会有，而这类遗漏在所有行为测试里都是静默的。
+    ///
+    /// 判据：`recording_a_close_request_emits_exactly_one_pulse`。
+    pub fn record_close_request(
+        &self,
+        team_id: &str,
+        member_id: Option<&str>,
+        graceful: bool,
+        now: i64,
+    ) -> Result<(), AppError> {
+        let mut inner = self.lock_writing();
+        let actor = lead_of(&inner, team_id);
+        self.audit(
+            &mut inner,
+            team_id,
+            &actor,
+            EVENT_CLOSE_REQUEST,
+            member_id.map(str::to_owned),
+            Some(format!("graceful={graceful} at={now}")),
+        )
+    }
+
+    /// 成员关闭成功后的归档：`MemberState → Dead` + 清 `terminal_id` + 凭证立即作废，
+    /// 在飞任务回 `pending`。
+    ///
+    /// 返回被释放（回到 `pending`）的任务的 [`TaskRef`]（不是裸 id —— `t1` 在别的队也有）。
+    ///
+    /// # 调用顺序是契约（design §7.1）
+    ///
+    /// 只允许在**进程已经关掉之后**调（`MemberExecutor::close` 成功之后）。反过来会留一个
+    /// 悬空的 `terminal_id`：成员行已 `Dead`，而 terminal 域里那个会话还在跑，谁也不会去收。
+    ///
+    /// # 为什么不加 `reclaim_count`
+    ///
+    /// `reclaim_count` 是**失败**判据（`> MAX_RECLAIM_COUNT → blocked`），不是操作计数。
+    /// 手动关队不是任务失败 —— 让它替人的决定背锅会让「这个任务反复失败」这个指标失去
+    /// 意义。`reclaim_expired` 那条路仍然 +1，两者**不可合并**。
+    ///
+    /// # 凭证
+    ///
+    /// `token_hash` 被清空 ⇒ 身份表（从库组装、过滤空 hash）里不再有这个成员 ⇒
+    /// 旧 token 下一次请求就是 401。清空与「让门重新组装」是两个动作：后者是端口的
+    /// 责任（`CredentialLedger::refresh`），因为只有端点持有身份表与门。
+    ///
+    /// # 幂等
+    ///
+    /// 对已 `Dead` 且凭证已空的成员再调一次是**一次空操作**（不重复写行、不重复审计）。
+    /// 这使「整队关闭失败后重试」不会在审计里制造噪音。
+    ///
+    /// # 队长
+    ///
+    /// 队长成员**不允许**走这条（关队长 = 关队）：返回 `InvalidInput` 并指向整队关闭。
+    pub fn finish_member_close(&self, member_id: &str, now: i64) -> Result<Vec<TaskRef>, AppError> {
+        let mut inner = self.lock_writing();
+        let member = inner
+            .members
+            .get(member_id)
+            .cloned()
+            .ok_or_else(|| not_found(format!("member {member_id}")))?;
+        if member.role == MemberRole::Lead {
+            return Err(invalid(format!(
+                "member `{member_id}` is the lead of team `{}`; closing the lead is closing the \
+                 team — call `team_close` without `member_id` (that path archives the lead too)",
+                member.team_id
+            )));
+        }
+        let actor = lead_of(&inner, &member.team_id);
+        self.archive_member(&mut inner, member_id, &actor, "member_close", now)
+    }
+
+    /// 整队进入关闭中：`Active → Closing`，返回**需要关进程**的成员 id（worker 全部）。
+    ///
+    /// # 为什么返回全部 worker（含已 `Dead` 的）
+    ///
+    /// `Dead` 只说明「上一次判定它死了」，不说明它的 `terminal_id` 指向的会话真的不在了
+    /// —— 那是 terminal 域的事实，本域看不到。把它们一并交出去（`close` 是幂等的）
+    /// 就得到一条**安全的重复路径**：整队关闭可以反复调，每次都把「没有进程」这个事实
+    /// 重新确认一遍。
+    ///
+    /// 队长**不在**返回列表里：它的进程就是发起这次调用的那个会话，从内部关掉它等于在
+    /// 应答途中杀掉调用方。队长行由 [`Self::finish_team_close`] 随团队一起归档。
+    ///
+    /// # 幂等
+    ///
+    /// 已 `Closed` 的团队返回空列表（没有进程可关，也不重复写 `closed_at`）；
+    /// 已在 `Closing` 的团队返回同样的目标集，且**不重复写审计**。
+    pub fn begin_team_close(&self, team_id: &str, now: i64) -> Result<Vec<String>, AppError> {
+        let mut inner = self.lock_writing();
+        let mut team = inner
+            .teams
+            .get(team_id)
+            .cloned()
+            .ok_or_else(|| not_found(format!("team {team_id}")))?;
+        if team.state == TeamState::Closed {
+            return Ok(Vec::new());
+        }
+
+        let mut targets: Vec<String> = inner
+            .members
+            .values()
+            .filter(|member| member.team_id == team_id && member.role == MemberRole::Worker)
+            .map(|member| member.id.clone())
+            .collect();
+        targets.sort();
+
+        if team.state == TeamState::Active {
+            team.state = TeamState::Closing;
+            self.store.upsert_team(&team)?;
+            inner.teams.insert(team.id.clone(), team.clone());
+            let actor = lead_of(&inner, team_id);
+            self.audit(
+                &mut inner,
+                team_id,
+                &actor,
+                EVENT_CLOSE_BEGIN,
+                Some(team_id.to_owned()),
+                Some(format!(
+                    "active → closing targets=[{}] at={now}",
+                    targets.join(",")
+                )),
+            )?;
+        }
+        Ok(targets)
+    }
+
+    /// 所有成员都关完之后落终态：`Closing → Closed` + `closed_at`，队长行一并归档。
+    ///
+    /// # 拒绝条件
+    ///
+    /// - 团队还 `Active` ⇒ `Conflict`（跳过 `begin_team_close` 会让「先关进程、再落终态」
+    ///   这个顺序失去保障 —— 那正是会留下悬空 `terminal_id` 的路径）；
+    /// - 还有 worker 不是 `Dead` ⇒ `Conflict` 并点名它们（否则会出现「团队已关闭、成员还活着」）。
+    ///
+    /// # 幂等
+    ///
+    /// 已 `Closed` ⇒ `Ok(())`，**不重写** `closed_at`（第一次关闭的时间是事实）。
+    pub fn finish_team_close(&self, team_id: &str, now: i64) -> Result<(), AppError> {
+        let mut inner = self.lock_writing();
+        let mut team = inner
+            .teams
+            .get(team_id)
+            .cloned()
+            .ok_or_else(|| not_found(format!("team {team_id}")))?;
+        match team.state {
+            TeamState::Closed => return Ok(()),
+            TeamState::Active => {
+                return Err(conflict(format!(
+                    "team `{team_id}` is active; it must enter `closing` before it can be sealed \
+                     (call `team_close` — that path closes members first)"
+                )))
+            }
+            TeamState::Closing => {}
+        }
+
+        let mut open: Vec<String> = inner
+            .members
+            .values()
+            .filter(|member| {
+                member.team_id == team_id
+                    && member.role == MemberRole::Worker
+                    && member.state != MemberState::Dead
+            })
+            .map(|member| member.id.clone())
+            .collect();
+        open.sort();
+        if !open.is_empty() {
+            return Err(conflict(format!(
+                "team `{team_id}` still has members that are not closed: {}; it stays in \
+                 `closing` until they are",
+                open.join(", ")
+            )));
+        }
+
+        let actor = lead_of(&inner, team_id);
+        // 队长随团队归档：它的进程是**发起方**（关它等于在应答途中杀掉调用方），
+        // 所以这里只做状态迁移与凭证作废 —— 进程的收尾归 app 的关闭协议 / 面板。
+        let leads: Vec<String> = inner
+            .members
+            .values()
+            .filter(|member| member.team_id == team_id && member.role == MemberRole::Lead)
+            .map(|member| member.id.clone())
+            .collect();
+        for lead in leads {
+            self.archive_member(&mut inner, &lead, &actor, "team_close", now)?;
+        }
+
+        team.state = TeamState::Closed;
+        team.closed_at = Some(now);
+        self.store.upsert_team(&team)?;
+        inner.teams.insert(team.id.clone(), team.clone());
+        self.audit(
+            &mut inner,
+            team_id,
+            &actor,
+            EVENT_CLOSE_TEAM,
+            Some(team_id.to_owned()),
+            Some(format!("closing → closed closed_at={now}")),
+        )?;
+        Ok(())
+    }
+
+    /// 归档一名成员（**调用方已持锁**）：`Dead` + 清 `terminal_id` + 凭证作废 + 在飞任务回
+    /// `pending`。
+    ///
+    /// 单成员关闭与整队关闭共用一个实现：两处各写一遍的话，「凭证到底清没清」这类问题的
+    /// 答案会随入口而变（而它的症状只在成员用旧 token 调工具时才出现）。
+    fn archive_member(
+        &self,
+        inner: &mut Inner,
+        member_id: &str,
+        actor: &str,
+        reason: &str,
+        now: i64,
+    ) -> Result<Vec<TaskRef>, AppError> {
+        let mut member = inner
+            .members
+            .get(member_id)
+            .cloned()
+            .ok_or_else(|| not_found(format!("member {member_id}")))?;
+        let already_dead = member.state == MemberState::Dead;
+        let had_credential = !member.token_hash.is_empty();
+        let had_terminal = member.terminal_id.is_some();
+        let terminal = member
+            .terminal_id
+            .clone()
+            .unwrap_or_else(|| "<none>".to_owned());
+
+        let released = self.release_in_flight_tasks(inner, member_id, actor, now)?;
+
+        member.state = MemberState::Dead;
+        // 凭证作废：`principals_from` 过滤空 hash ⇒ 旧 token 再也进不了门。
+        // 端点要**重新组装**身份表才会看到这件事（`CredentialLedger::refresh`）。
+        member.token_hash = String::new();
+        // 进程句柄一并清掉：`terminal_id` 是「点开它的唯一凭据」（`view::MemberStatusView`），
+        // 前端唯一的判据是 `terminalId == null` ⇒ 已关闭。留着它等于给一个已归档的成员
+        // 一个「打开终端」的死按钮，点了只会得到终端的可读错误。
+        //
+        // 与另外两列在**同一把锁的同一次写**里落地：三件事共同定义「这个成员不存在了」，
+        // 分成两次写就会有一个「已 Dead 但还能点开」的窗口。
+        member.terminal_id = None;
+        if !already_dead || had_credential || had_terminal {
+            self.store.upsert_member(&member)?;
+            inner.members.insert(member.id.clone(), member.clone());
+        }
+
+        if !already_dead || had_credential || had_terminal || !released.is_empty() {
+            self.audit(
+                inner,
+                &member.team_id,
+                actor,
+                EVENT_CLOSE_MEMBER,
+                Some(member.id.clone()),
+                Some(format!(
+                    "{reason} terminal={terminal} released=[{}] at={now}",
+                    released
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )),
+            )?;
+        }
+        Ok(released)
+    }
+
+    /// 把成员的**在飞任务**放回 `pending`（**调用方已持锁**）。
+    ///
+    /// `reclaim_count` **不变**：见 [`Self::finish_member_close`] 的「为什么不加」那一节。
+    /// 每个被释放的任务各记一条审计（`subject = task_id`）—— 「t3 为什么回到 pending」
+    /// 必须能按任务 id 查到，只写在成员行上就查不到。
+    ///
+    /// 审计行的 `subject` 只放队内 id 是安全的：同一行的 `team_id` 列就是另一半键，
+    /// 所以「id 必须与 team_id 一起出现」在这张表上是**行级**满足的（不需要拼成 `tm/x`）。
+    fn release_in_flight_tasks(
+        &self,
+        inner: &mut Inner,
+        member_id: &str,
+        actor: &str,
+        now: i64,
+    ) -> Result<Vec<TaskRef>, AppError> {
+        let mut owned: Vec<TeamTask> = inner
+            .tasks
+            .values()
+            .filter(|task| task.owner.as_deref() == Some(member_id) && is_active(task.state))
+            .cloned()
+            .collect();
+        owned.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut released = Vec::with_capacity(owned.len());
+        for mut task in owned {
+            let previous = format!("{:?}", task.state);
+            task.state = TeamTaskState::Pending;
+            task.owner = None;
+            task.claimed_at = None;
+            self.store.upsert_task(&task)?;
+            inner.tasks.insert(task.key(), task.clone());
+            self.audit(
+                inner,
+                &task.team_id,
+                actor,
+                EVENT_CLOSE_MEMBER,
+                Some(task.id.clone()),
+                Some(format!(
+                    "{previous} → pending (owner {member_id} closed) at={now}"
+                )),
+            )?;
+            released.push(task.key());
+        }
+        Ok(released)
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1169,6 +1576,18 @@ pub(crate) fn now_millis() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
         .unwrap_or(0)
+}
+
+/// 团队的队长 id（审计的 `actor`）。
+///
+/// 只有队长能触发关闭（授权矩阵），所以「谁关的」在关闭路径上恒等于队长；队长行缺失时
+/// 退化为 `system`（数据缺陷，不 panic —— 审计失败不该让一次关闭卡住）。
+fn lead_of(inner: &Inner, team_id: &str) -> String {
+    inner
+        .members
+        .values()
+        .find(|member| member.team_id == team_id && member.role == MemberRole::Lead)
+        .map_or_else(|| "system".to_owned(), |member| member.id.clone())
 }
 
 const fn conflict(message: String) -> AppError {
@@ -1264,7 +1683,7 @@ mod tests {
                 std::thread::spawn(move || {
                     barrier.wait();
                     manager
-                        .claim_task("t1", member_id, 1_000)
+                        .claim_task(&TaskRef::new(TEAM, "t1"), member_id, 1_000)
                         .map(|task| task.owner.unwrap_or_default())
                 })
             })
@@ -1280,7 +1699,7 @@ mod tests {
         assert_eq!(outcomes.iter().filter(|o| o.is_err()).count(), 1);
 
         // 库里那一行的 owner 必须就是赢家（不变量 1：有且只有一个 owner）。
-        let persisted = manager.task("t1").unwrap();
+        let persisted = manager.task(&TaskRef::new(TEAM, "t1")).unwrap();
         assert_eq!(persisted.owner.as_deref(), Some(winners[0].as_str()));
         assert_eq!(persisted.state, TeamTaskState::Claimed);
     }
@@ -1328,7 +1747,9 @@ mod tests {
         );
         // 又一次写：认领也要抬。
         let after_create = manager.epoch();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
         assert!(manager.epoch() > after_create, "认领也是写路径");
     }
 
@@ -1355,7 +1776,9 @@ mod tests {
         let after_create = manager.epoch();
         assert_eq!(recorder.pulses()[0], after_create, "rev = 写之后的代数");
 
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
         assert_eq!(recorder.pulses().len(), 2, "认领也是一次写");
         assert!(
             recorder.pulses()[1] > recorder.pulses()[0],
@@ -1379,7 +1802,7 @@ mod tests {
 
         assert_eq!(manager.team(TEAM).unwrap().id, TEAM);
         let _ = manager.tasks(TEAM);
-        let _ = manager.task("t1");
+        let _ = manager.task(&TaskRef::new(TEAM, "t1"));
         let _ = manager.member(W1);
         let _ = manager.member_with_verification(W1);
         let _ = manager.verification(W1);
@@ -1398,12 +1821,20 @@ mod tests {
 
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         let recorder = Arc::new(RecordingNotifier::new());
         manager.set_notifier(recorder.clone());
         manager
-            .update_task("t1", W1, TeamTaskState::InProgress, None, 2_000)
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::InProgress,
+                None,
+                2_000,
+            )
             .unwrap();
         assert_eq!(recorder.pulses().len(), 1, "晚绑定必须立刻生效");
     }
@@ -1413,11 +1844,22 @@ mod tests {
     fn second_sequential_claim_is_rejected() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
-        let err = manager.claim_task("t1", W2, 1_001).unwrap_err();
+        let err = manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W2, 1_001)
+            .unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
-        assert_eq!(manager.task("t1").unwrap().owner.as_deref(), Some(W1));
+        assert_eq!(
+            manager
+                .task(&TaskRef::new(TEAM, "t1"))
+                .unwrap()
+                .owner
+                .as_deref(),
+            Some(W1)
+        );
     }
 
     /// 不变量 3：依赖未 `done` 时不可认领。
@@ -1429,9 +1871,14 @@ mod tests {
         manager.create_task(task("t1")).unwrap();
         manager.create_task(blocked).unwrap();
 
-        let err = manager.claim_task("t2", W1, 1_000).unwrap_err();
+        let err = manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W1, 1_000)
+            .unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
-        assert_eq!(manager.task("t2").unwrap().state, TeamTaskState::Pending);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t2")).unwrap().state,
+            TeamTaskState::Pending
+        );
     }
 
     /// 不变量 3（正例）：依赖 `done` 之后可以认领。
@@ -1443,13 +1890,30 @@ mod tests {
         manager.create_task(task("t1")).unwrap();
         manager.create_task(blocked).unwrap();
 
-        manager.claim_task("t1", W1, 1_000).unwrap();
         manager
-            .update_task("t1", W1, TeamTaskState::Done, None, 1_100)
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
             .unwrap();
-        manager.claim_task("t2", W2, 1_200).unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                None,
+                1_100,
+            )
+            .unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W2, 1_200)
+            .unwrap();
 
-        assert_eq!(manager.task("t2").unwrap().owner.as_deref(), Some(W2));
+        assert_eq!(
+            manager
+                .task(&TaskRef::new(TEAM, "t2"))
+                .unwrap()
+                .owner
+                .as_deref(),
+            Some(W2)
+        );
     }
 
     /// 不变量 3：依赖指向不存在的任务时必须拒绝，而不是「当作已完成」。
@@ -1460,7 +1924,9 @@ mod tests {
         blocked.depends_on = vec!["nope".into()];
         manager.create_task(blocked).unwrap();
 
-        let err = manager.claim_task("t2", W1, 1_000).unwrap_err();
+        let err = manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W1, 1_000)
+            .unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
     }
 
@@ -1474,7 +1940,9 @@ mod tests {
             .unwrap();
         manager.create_task(task("t1")).unwrap();
 
-        let err = manager.claim_task("t1", "w9@tm_2", 1_000).unwrap_err();
+        let err = manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), "w9@tm_2", 1_000)
+            .unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
     }
 
@@ -1483,18 +1951,38 @@ mod tests {
     fn done_is_reachable_only_by_the_owner() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         let err = manager
-            .update_task("t1", W2, TeamTaskState::Done, None, 1_100)
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W2,
+                TeamTaskState::Done,
+                None,
+                1_100,
+            )
             .unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
-        assert_ne!(manager.task("t1").unwrap().state, TeamTaskState::Done);
+        assert_ne!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Done
+        );
 
         manager
-            .update_task("t1", W1, TeamTaskState::Done, Some("ok"), 1_200)
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                Some("ok"),
+                1_200,
+            )
             .unwrap();
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Done);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Done
+        );
     }
 
     /// 不变量 2：队长 `force_done` 是**唯一**的越权路径，且必须留审计。
@@ -1502,9 +1990,13 @@ mod tests {
     fn force_done_by_lead_records_an_audit_row() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
-        let done = manager.force_done("t1", LEAD, "stuck", 1_100).unwrap();
+        let done = manager
+            .force_done(&TaskRef::new(TEAM, "t1"), LEAD, "stuck", 1_100)
+            .unwrap();
         assert_eq!(done.state, TeamTaskState::Done);
 
         let events = manager.events(TEAM).unwrap();
@@ -1526,11 +2018,18 @@ mod tests {
     fn force_done_by_a_worker_is_rejected() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
-        let err = manager.force_done("t1", W2, "mine now", 1_100).unwrap_err();
+        let err = manager
+            .force_done(&TaskRef::new(TEAM, "t1"), W2, "mine now", 1_100)
+            .unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Claimed);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Claimed
+        );
     }
 
     /// `done` / `failed` / `blocked` 是吸收态：不能被重新打开（否则「完成」可被撤销）。
@@ -1538,16 +2037,33 @@ mod tests {
     fn terminal_tasks_cannot_be_reopened() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
         manager
-            .update_task("t1", W1, TeamTaskState::Done, None, 1_100)
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                None,
+                1_100,
+            )
             .unwrap();
 
         let err = manager
-            .update_task("t1", W1, TeamTaskState::InProgress, None, 1_200)
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::InProgress,
+                None,
+                1_200,
+            )
             .unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Done);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Done
+        );
     }
 
     /// 不变量 5：`state != pending` 后 `workspace` 不可变（改指向会让产物落在错的地方）。
@@ -1555,11 +2071,13 @@ mod tests {
     fn workspace_is_immutable_once_claimed() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         let err = manager
             .set_task_workspace(
-                "t1",
+                &TaskRef::new(TEAM, "t1"),
                 Workspace::Worktree {
                     path: root().join("wt"),
                 },
@@ -1567,7 +2085,10 @@ mod tests {
             )
             .unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
-        assert_eq!(manager.task("t1").unwrap().workspace, Workspace::Shared);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().workspace,
+            Workspace::Shared
+        );
     }
 
     /// 不变量 5（正例）：`pending` 时可以指定工作区。
@@ -1579,9 +2100,12 @@ mod tests {
             path: root().join("wt"),
         };
         manager
-            .set_task_workspace("t1", target.clone(), LEAD)
+            .set_task_workspace(&TaskRef::new(TEAM, "t1"), target.clone(), LEAD)
             .unwrap();
-        assert_eq!(manager.task("t1").unwrap().workspace, target);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().workspace,
+            target
+        );
     }
 
     /// 不变量 4：回收 3 次之后第 4 次过期必须冻结成 `blocked`，
@@ -1592,12 +2116,14 @@ mod tests {
         let mut t = task("t1");
         t.reclaim_count = 3;
         manager.create_task(t).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         let reclaimed = manager.reclaim_expired(1_000 + 1_800_000).unwrap();
-        assert_eq!(reclaimed, vec!["t1".to_owned()]);
+        assert_eq!(reclaimed, vec![TaskRef::new(TEAM, "t1")]);
 
-        let frozen = manager.task("t1").unwrap();
+        let frozen = manager.task(&TaskRef::new(TEAM, "t1")).unwrap();
         assert_eq!(frozen.state, TeamTaskState::Blocked);
         assert_eq!(frozen.owner, None);
         assert_eq!(frozen.reclaim_count, 4);
@@ -1607,7 +2133,10 @@ mod tests {
             .reclaim_expired(1_000 + 10_000_000_000)
             .unwrap()
             .is_empty());
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Blocked);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Blocked
+        );
         assert!(manager
             .events(TEAM)
             .unwrap()
@@ -1624,19 +2153,24 @@ mod tests {
         dependent.depends_on = vec!["t1".into()];
         manager.create_task(task("t1")).unwrap();
         manager.create_task(dependent).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         // 未到期：什么都不发生。
         assert!(manager
             .reclaim_expired(1_000 + 1_799_999)
             .unwrap()
             .is_empty());
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Claimed);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Claimed
+        );
 
         let reclaimed = manager.reclaim_expired(1_000 + 1_800_000).unwrap();
-        assert_eq!(reclaimed, vec!["t1".to_owned()]);
+        assert_eq!(reclaimed, vec![TaskRef::new(TEAM, "t1")]);
 
-        let task = manager.task("t1").unwrap();
+        let task = manager.task(&TaskRef::new(TEAM, "t1")).unwrap();
         assert_eq!(task.state, TeamTaskState::Pending);
         assert_eq!(task.owner, None);
         assert_eq!(task.claimed_at, None);
@@ -1644,7 +2178,9 @@ mod tests {
         assert_eq!(manager.member(W1).unwrap().state, MemberState::Stalled);
 
         // 回收后任务可被重新认领（依赖链不会永久堵死）。
-        manager.claim_task("t1", W2, 1_000 + 1_800_001).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W2, 1_000 + 1_800_001)
+            .unwrap();
     }
 
     /// AC2：`turn_completed` 后成员落 `Idle` + `Unverified`，**任务仍在进行中**。
@@ -1652,16 +2188,27 @@ mod tests {
     fn turn_completed_leaves_the_task_in_progress_and_the_member_unverified() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
         manager
-            .update_task("t1", W1, TeamTaskState::InProgress, None, 1_050)
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::InProgress,
+                None,
+                1_050,
+            )
             .unwrap();
 
         let state = manager
             .observe_signal(W1, MemberSignal::TurnCompleted, 1_100)
             .unwrap();
         assert_eq!(state, MemberState::Idle);
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::InProgress);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::InProgress
+        );
         assert_eq!(
             manager.verification(W1),
             Some(DoneVerification::Unverified),
@@ -1675,9 +2222,17 @@ mod tests {
     fn explicit_done_is_verified_and_survives_late_signals() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
         manager
-            .update_task("t1", W1, TeamTaskState::Done, None, 1_100)
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                None,
+                1_100,
+            )
             .unwrap();
         assert_eq!(manager.verification(W1), Some(DoneVerification::Verified));
 
@@ -1685,7 +2240,10 @@ mod tests {
             .observe_signal(W1, MemberSignal::TurnCompleted, 1_200)
             .unwrap();
         assert_eq!(manager.verification(W1), Some(DoneVerification::Verified));
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Done);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Done
+        );
     }
 
     /// 回填 `terminal_id`：内存镜像与库一起改，且**允许覆盖**（重试会拿到新 session id）。
@@ -1882,13 +2440,23 @@ mod tests {
         manager.create_task(task("t1")).unwrap();
         manager.create_task(task("t2")).unwrap();
 
-        manager.claim_task("t1", W1, 1_000).unwrap();
         manager
-            .update_task("t1", W1, TeamTaskState::Done, None, 1_100)
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                None,
+                1_100,
+            )
             .unwrap();
         assert_eq!(manager.verification(W1), Some(DoneVerification::Verified));
 
-        manager.claim_task("t2", W1, 1_200).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W1, 1_200)
+            .unwrap();
         assert_eq!(
             manager.verification(W1),
             Some(DoneVerification::Unverified),
@@ -1907,14 +2475,16 @@ mod tests {
     fn approval_request_moves_both_member_and_task() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         manager
             .observe_signal(W1, MemberSignal::ApprovalRequested, 1_100)
             .unwrap();
         assert_eq!(manager.member(W1).unwrap().state, MemberState::Awaiting);
         assert_eq!(
-            manager.task("t1").unwrap().state,
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
             TeamTaskState::AwaitingApproval
         );
     }
@@ -1925,16 +2495,24 @@ mod tests {
     fn exited_marks_member_dead_and_leaves_reclaim_to_the_lease() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         manager
             .observe_signal(W1, MemberSignal::Exited, 1_100)
             .unwrap();
         assert_eq!(manager.member(W1).unwrap().state, MemberState::Dead);
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Claimed);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Claimed
+        );
 
         manager.reclaim_expired(1_000 + 1_800_000).unwrap();
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Pending);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Pending
+        );
         // 终态成员不得被洗成 Stalled。
         assert_eq!(manager.member(W1).unwrap().state, MemberState::Dead);
     }
@@ -1955,14 +2533,25 @@ mod tests {
                 .add_member(member(W2, "w2", MemberRole::Worker, TEAM))
                 .unwrap();
             manager.create_task(task("t1")).unwrap();
-            manager.claim_task("t1", W1, 1_000).unwrap();
             manager
-                .update_task("t1", W1, TeamTaskState::Done, Some("done"), 1_100)
+                .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+                .unwrap();
+            manager
+                .update_task(
+                    &TaskRef::new(TEAM, "t1"),
+                    W1,
+                    TeamTaskState::Done,
+                    Some("done"),
+                    1_100,
+                )
                 .unwrap();
         }
 
         let reloaded = TeamManager::load(TeamStore::open(&db).unwrap()).unwrap();
-        assert_eq!(reloaded.task("t1").unwrap().state, TeamTaskState::Done);
+        assert_eq!(
+            reloaded.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Done
+        );
         assert_eq!(reloaded.team(TEAM).unwrap().name, "T");
         assert_eq!(reloaded.verification(W1), Some(DoneVerification::Verified));
         assert_eq!(
@@ -2003,13 +2592,18 @@ mod tests {
     fn an_owner_update_renews_the_lease() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
-        assert_eq!(manager.task("t1").unwrap().claimed_at, Some(1_000));
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().claimed_at,
+            Some(1_000)
+        );
 
         // 1_700s 后报进度：起租时间前移。
         manager
             .update_task(
-                "t1",
+                &TaskRef::new(TEAM, "t1"),
                 W1,
                 TeamTaskState::InProgress,
                 Some("half"),
@@ -2017,7 +2611,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            manager.task("t1").unwrap().claimed_at,
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().claimed_at,
             Some(1_000 + 1_700_000),
             "owner 的活动必须续期"
         );
@@ -2037,13 +2631,15 @@ mod tests {
     fn a_hook_signal_from_the_owner_renews_the_lease() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         manager
             .observe_signal(W1, MemberSignal::TurnCompleted, 1_000 + 1_700_000)
             .unwrap();
         assert_eq!(
-            manager.task("t1").unwrap().claimed_at,
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().claimed_at,
             Some(1_000 + 1_700_000)
         );
         assert!(manager
@@ -2058,19 +2654,21 @@ mod tests {
     fn a_death_signal_does_not_renew_the_lease() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         manager
             .observe_signal(W1, MemberSignal::Exited, 1_000 + 1_700_000)
             .unwrap();
         assert_eq!(
-            manager.task("t1").unwrap().claimed_at,
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().claimed_at,
             Some(1_000),
             "死亡信号不是活性证据"
         );
         assert_eq!(
             manager.reclaim_expired(1_000 + 1_800_000 + 1).unwrap(),
-            vec!["t1".to_owned()]
+            vec![TaskRef::new(TEAM, "t1")]
         );
     }
 
@@ -2079,12 +2677,319 @@ mod tests {
     fn a_silent_task_still_expires() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         assert_eq!(
             manager.reclaim_expired(1_000 + 1_800_000 + 1).unwrap(),
-            vec!["t1".to_owned()]
+            vec![TaskRef::new(TEAM, "t1")]
         );
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Pending);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Pending
+        );
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // 关闭（两相位的「归档」那一半，design §7.1）
+    // ───────────────────────────────────────────────────────────────
+
+    /// 单成员归档：`Dead` + 凭证作废 + 在飞任务回 `pending`，且 `reclaim_count` **不变**。
+    ///
+    /// 变异验证：把 `reclaim_count + 1` 加回来时本用例变红 —— 手动关队不是任务失败，
+    /// 让它背锅会让「反复失败」这个指标失去意义（四轮之后任务会被冻结成 `blocked`）。
+    #[test]
+    fn finish_member_close_archives_and_releases_without_touching_reclaim_count() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager.create_task(task("t2")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W2, 1_000)
+            .unwrap();
+
+        let released = manager.finish_member_close(W1, 5_000).unwrap();
+        assert_eq!(released, vec![TaskRef::new(TEAM, "t1")]);
+
+        let member = manager.member(W1).unwrap();
+        assert_eq!(member.state, MemberState::Dead);
+        assert!(member.token_hash.is_empty(), "凭证必须立即作废");
+
+        let task = manager.task(&TaskRef::new(TEAM, "t1")).unwrap();
+        assert_eq!(task.state, TeamTaskState::Pending);
+        assert_eq!(task.owner, None);
+        assert_eq!(task.claimed_at, None);
+        assert_eq!(task.reclaim_count, 0, "手动关队不是失败");
+
+        // 别人的任务不受影响（释放是 per-member 的）。
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t2")).unwrap().state,
+            TeamTaskState::Claimed
+        );
+        assert_eq!(
+            manager.member(W2).unwrap().state,
+            MemberState::Spawned,
+            "关一个成员不得波及其它人"
+        );
+    }
+
+    /// **一条断言钉住三个事实**：归档之后 `state == Dead`、`terminal_id` 为空、`token_hash` 为空。
+    ///
+    /// # 为什么三条必须在同一个用例里
+    ///
+    /// 它们共同定义「这个成员不存在了」，而且**任缺一条都会让面板撒谎**：
+    ///
+    /// | 缺哪条 | 症状 |
+    /// | --- | --- |
+    /// | `state` | 花名册上还显示"在跑" |
+    /// | `terminal_id` | 已关闭的成员仍给一个「打开终端」按钮（`view` 的唯一判据是 `terminalId == null`）|
+    /// | `token_hash` | 旧 token 还能调工具（直到门重建）|
+    ///
+    /// 变异验证：从 `archive_member` 里删掉 `member.terminal_id = None;` 时**只有**这里会红
+    /// —— 其它关闭用例只看状态与凭证，终端列漏清是静默的。
+    #[test]
+    fn a_closed_member_has_no_terminal_and_no_credential() {
+        let manager = seeded();
+        // 反证：归档之前三项都不是终态（否则「已清空」不成判据）。
+        let before = manager.member(W1).unwrap();
+        assert!(before.terminal_id.is_some(), "夹具必须带一个进程句柄");
+        assert!(!before.token_hash.is_empty(), "夹具必须带一个已签发的凭证");
+        assert_ne!(before.state, MemberState::Dead);
+
+        manager.finish_member_close(W1, 5_000).unwrap();
+
+        let member = manager.member(W1).unwrap();
+        assert_eq!(member.state, MemberState::Dead);
+        assert!(
+            member.terminal_id.is_none(),
+            "归档必须清掉 terminal_id —— 否则面板给一个已关闭成员一个「打开终端」的死按钮"
+        );
+        assert!(member.token_hash.is_empty(), "凭证必须立即作废");
+    }
+
+    /// 整队关闭时队长的三列也要一起落地（队长行由 `finish_team_close` 归档）。
+    #[test]
+    fn sealing_a_team_also_clears_the_leads_terminal_and_credential() {
+        let manager = seeded();
+        manager
+            .begin_team_close(TEAM, crate::agent::team::manager::now_millis())
+            .unwrap();
+        for id in [W1, W2] {
+            manager.finish_member_close(id, 5_000).unwrap();
+        }
+        manager.finish_team_close(TEAM, 6_000).unwrap();
+
+        let lead = manager.member(LEAD).unwrap();
+        assert_eq!(lead.state, MemberState::Dead);
+        assert!(lead.terminal_id.is_none(), "队长进程句柄同样要清");
+        assert!(lead.token_hash.is_empty(), "队长的凭证同样要作废");
+    }
+
+    /// 记一次关闭请求**是一次写路径**：恰好一次脉冲。
+    ///
+    /// 反例（本用例挡的正是它）：用 `inner.lock()` 写审计 —— 库变了、面板却收不到任何信号，
+    /// 抽屉里的事件流停在旧列表上（「我点了关闭，什么都没发生」）。而这类遗漏在所有行为
+    /// 断言里都是静默的：审计行确实写进去了。
+    #[test]
+    fn recording_a_close_request_emits_exactly_one_pulse() {
+        use crate::agent::team::fixtures::RecordingNotifier;
+
+        let manager = seeded();
+        let recorder = Arc::new(RecordingNotifier::new());
+        manager.set_notifier(recorder.clone());
+        let before = manager.epoch();
+
+        manager
+            .record_close_request(TEAM, Some(W1), true, 5_000)
+            .unwrap();
+
+        assert_eq!(recorder.pulses().len(), 1, "写路径恰好一次脉冲");
+        assert!(manager.epoch() > before, "代数必须被推过");
+        assert_eq!(recorder.pulses()[0], manager.epoch());
+    }
+
+    /// 三个计数与板上的行一致，且**不改**代数（读路径）。
+    #[test]
+    fn task_counts_reports_total_open_and_done() {
+        let manager = seeded();
+        for id in ["t1", "t2", "t3", "t4"] {
+            manager.create_task(task(id)).unwrap();
+        }
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                None,
+                2_000,
+            )
+            .unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t2"),
+                W1,
+                TeamTaskState::Failed,
+                None,
+                2_000,
+            )
+            .unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t3"), W2, 1_000)
+            .unwrap();
+
+        let before = manager.epoch();
+        let counts = manager.task_counts(TEAM);
+        assert_eq!(
+            counts,
+            TaskCounts {
+                total: 4,
+                open: 2,
+                done: 1
+            }
+        );
+        assert_eq!(manager.epoch(), before, "读路径不得改代数");
+        // 另一个队互不影响（键是 `TaskRef`，不是裸 id）。
+        assert_eq!(manager.task_counts("tm_other"), TaskCounts::default());
+    }
+
+    /// 队长不能走「单成员关闭」：关队长 = 关队。
+    #[test]
+    fn the_lead_cannot_be_closed_as_a_member() {
+        let manager = seeded();
+        let err = manager.finish_member_close(LEAD, 5_000).unwrap_err();
+        let AppError::InvalidInput(message) = err else {
+            panic!("关队长必须是 InvalidInput，实际 {err:?}");
+        };
+        assert!(message.contains(LEAD), "{message}");
+        assert!(message.contains("without `member_id`"), "{message}");
+        assert_eq!(manager.member(LEAD).unwrap().state, MemberState::Spawned);
+    }
+
+    /// 幂等：对已归档的成员再关一次是**空操作**（不报错、不重复审计）。
+    ///
+    /// 这条是整队关闭可重试的前提：重试会把同样的目标集再走一遍。
+    #[test]
+    fn finishing_a_member_close_twice_is_a_no_op() {
+        let manager = seeded();
+        assert!(manager.finish_member_close(W1, 5_000).unwrap().is_empty());
+        let before = manager.events(TEAM).unwrap().len();
+
+        assert!(
+            manager.finish_member_close(W1, 6_000).unwrap().is_empty(),
+            "重复关闭不得再释放任务"
+        );
+        assert_eq!(
+            manager.events(TEAM).unwrap().len(),
+            before,
+            "重复关闭不得重复记审计"
+        );
+    }
+
+    /// 整队关闭：`active → closing → closed`，`closed_at` 写入，全员 `Dead`。
+    #[test]
+    fn a_team_close_walks_active_closing_closed() {
+        let manager = seeded();
+        let targets = manager.begin_team_close(TEAM, 1_000).unwrap();
+        assert_eq!(targets, vec![W1.to_owned(), W2.to_owned()]);
+        assert_eq!(manager.team(TEAM).unwrap().state, TeamState::Closing);
+
+        for member_id in [W1, W2] {
+            manager.finish_member_close(member_id, 1_000).unwrap();
+        }
+        manager.finish_team_close(TEAM, 2_000).unwrap();
+
+        let team = manager.team(TEAM).unwrap();
+        assert_eq!(team.state, TeamState::Closed);
+        assert_eq!(team.closed_at, Some(2_000));
+        for member_id in [LEAD, W1, W2] {
+            let member = manager.member(member_id).unwrap();
+            assert_eq!(member.state, MemberState::Dead, "{member_id} 必须归档");
+            assert!(member.token_hash.is_empty(), "{member_id} 凭证必须作废");
+        }
+    }
+
+    /// 幂等：已 `Closed` 的队再关一次 = `Ok`，且 `closed_at` **不被重写**。
+    #[test]
+    fn closing_a_closed_team_keeps_the_first_closed_at() {
+        let manager = seeded();
+        manager.begin_team_close(TEAM, 1_000).unwrap();
+        for member_id in [W1, W2] {
+            manager.finish_member_close(member_id, 1_000).unwrap();
+        }
+        manager.finish_team_close(TEAM, 2_000).unwrap();
+
+        assert!(
+            manager.begin_team_close(TEAM, 9_000).unwrap().is_empty(),
+            "已关闭的队没有进程可关"
+        );
+        manager.finish_team_close(TEAM, 9_000).unwrap();
+        assert_eq!(
+            manager.team(TEAM).unwrap().closed_at,
+            Some(2_000),
+            "第一次关闭的时间是事实，不得被重试改写"
+        );
+    }
+
+    /// 成员还没关完就落终态 → `Conflict` 并点名还活着的成员。
+    #[test]
+    fn sealing_a_team_with_open_members_is_refused() {
+        let manager = seeded();
+        manager.begin_team_close(TEAM, 1_000).unwrap();
+        manager.finish_member_close(W1, 1_000).unwrap();
+
+        let err = manager.finish_team_close(TEAM, 2_000).unwrap_err();
+        let AppError::Conflict(message) = err else {
+            panic!("还有成员没关必须 Conflict，实际 {err:?}");
+        };
+        assert!(message.contains(W2), "必须点名还活着的成员：{message}");
+        assert!(!message.contains(W1), "已关掉的成员不该被点名：{message}");
+        assert_eq!(manager.team(TEAM).unwrap().state, TeamState::Closing);
+        assert_eq!(manager.team(TEAM).unwrap().closed_at, None);
+    }
+
+    /// 跳过 `begin_team_close` 直接落终态 → `Conflict`（先关进程、再落终态的顺序）。
+    #[test]
+    fn sealing_an_active_team_is_refused() {
+        let manager = seeded();
+        let err = manager.finish_team_close(TEAM, 2_000).unwrap_err();
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+        assert_eq!(manager.team(TEAM).unwrap().state, TeamState::Active);
+    }
+
+    /// 已 `Dead` 的 worker **也**在待关列表里：那是「terminal 里可能还挂着一个会话」的
+    /// 唯一可重试路径（`close` 幂等，重复确认无害）。
+    #[test]
+    fn dead_members_are_still_handed_to_the_executor_for_a_retry() {
+        let manager = seeded();
+        manager
+            .observe_signal(W2, MemberSignal::Exited, 1_000)
+            .unwrap();
+
+        let targets = manager.begin_team_close(TEAM, 2_000).unwrap();
+        assert_eq!(
+            targets,
+            vec![W1.to_owned(), W2.to_owned()],
+            "已 Dead 的成员也要再确认一次（否则那条会话永远没人收）"
+        );
+    }
+
+    /// 关闭是**写路径**：它会唤醒等待者并给面板发一次脉冲（且恰好一次）。
+    #[test]
+    fn closing_seals_emit_exactly_one_pulse_per_write() {
+        let manager = seeded();
+        let notifier = std::sync::Arc::new(crate::agent::team::fixtures::RecordingNotifier::new());
+        manager.set_notifier(notifier.clone());
+
+        manager.begin_team_close(TEAM, 1_000).unwrap();
+        assert_eq!(notifier.pulses().len(), 1, "一次写恰好一次脉冲");
     }
 }

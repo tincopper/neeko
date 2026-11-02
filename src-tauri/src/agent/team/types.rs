@@ -17,9 +17,15 @@ use std::path::PathBuf;
 
 /// 一个团队：一名队长 + N 名成员 + 一块共享任务板。
 ///
-/// `project_path` 是**归一化根**，刻意不复用 `project_id` —— design §7.4 把
-/// `AgentContext.project_id → project_path` 的改名划给 chat 域的债；PTY 侧成员
-/// 只需要一个 cwd。
+/// `project_path` 与 `project_id` 是**两个不同的事实**，不要互相顶替：
+///
+/// | 字段 | 是什么 |
+/// | --- | --- |
+/// | `project_path` | 团队根的**工作区根**（可以是工作树，落在项目目录之外）|
+/// | `project_id` | 拥有这个团队执行环境的**项目 id**（环境的权威是项目）|
+///
+/// 为什么两者不能合并见 [`super::execution::environment_source`]：路径前缀反查对
+/// Neeko 自己的工作树（`~/.neeko/worktrees/<name>`）永远匹配不上。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Team {
@@ -33,6 +39,15 @@ pub struct Team {
     pub lead_agent_id: String,
     /// 团队根工作区（归一化后的绝对路径）。
     pub project_path: PathBuf,
+    /// 拥有这个团队**执行环境**的项目 id。
+    ///
+    /// 与 `project_path` 不是同一件事：路径是工作区根（可以是工作树，按设计落在项目
+    /// 目录之外），id 是环境归属。执行层按 id 精确查表，不再拿路径去反查项目。
+    ///
+    /// **空串 = v16 之前建的行**（那时环境只能靠路径前缀猜），**不是**「没有项目」：
+    /// 写入路径（`bootstrap::plan_team`）对空 id 直接拒绝，所以空只可能来自旧库。
+    #[serde(default)]
+    pub project_id: String,
     /// 建队时间（epoch 毫秒）。
     pub created_at: i64,
     /// 关闭时间；`None` = 未关闭。
@@ -232,6 +247,54 @@ pub enum MemberState {
     Stalled,
 }
 
+/// 任务的**唯一寻址形式**：`(team_id, id)`。
+///
+/// 单独一个 `id` 在全仓**不再是任务的标识符** —— `t1` 在每个队都存在（每个队从 `t1`
+/// 开始编号）。把这个事实做成一个类型，而不是让每个调用点自己拼两个字符串：拼错了
+/// （少传 / 传错队）的症状是「静默读到别队的任务」，比任何报错都难查（红线 12 的同一
+/// 条纪律：身份不从字符串拼）。
+///
+/// # 两个入口分别怎么拿到 `team_id`（语义分界，不要互相借用）
+///
+/// | 入口 | 线上形状 | `team_id` 从哪来 |
+/// | --- | --- | --- |
+/// | MCP 工具（`task_claim` / `task_update` / `task_list` / `team_wait` …） | 仍然只有 `task_id` | `principal.team_id`（既有的 [`crate::agent::team::mcp`] `task_of_team` 是唯一的构造点） |
+/// | 本地 IPC（面板） | `team_task_detail(team_id, task_id)` | 调用方显式给（本地入口没有 principal，两个参数都必填） |
+///
+/// MCP 侧不让模型自己传 `team_id` 是刻意的：token 已经声明了它是哪个队，再让它传一个
+/// 队 id 就等于给它一个伪造（或写错）的机会。
+///
+/// [`TeamTask::key`] 是**从任务行回到它的键**的唯一方式（不要在外层重复拼）。
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskRef {
+    /// 所属团队 id。
+    pub team_id: String,
+    /// 队内任务 id（形如 `t{seq}`）。
+    pub id: String,
+}
+
+impl TaskRef {
+    /// 拼一个寻址键。取 `impl Into<String>` 是为了让 `&str` / `String` 调用点都能直写。
+    #[must_use]
+    pub fn new(team_id: impl Into<String>, id: impl Into<String>) -> Self {
+        Self {
+            team_id: team_id.into(),
+            id: id.into(),
+        }
+    }
+}
+
+/// `{team_id}/{id}` —— **只给错误信息与日志用**。
+///
+/// 它不是第二个序列化口径（线上是 `{teamId, id}` 对象），所以没有 `Deserialize`：
+/// 让人用字符串解析回 `TaskRef` 就是重新引入「拼字符串找身份」的老毛病（红线 12）。
+impl std::fmt::Display for TaskRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.team_id, self.id)
+    }
+}
+
 /// 任务板上的一个任务。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -268,6 +331,17 @@ pub struct TeamTask {
     pub artifacts: Vec<Artifact>,
     /// 被回收次数，用于板上标「反复失败」（不变量 4 的输入）。
     pub reclaim_count: u32,
+}
+
+impl TeamTask {
+    /// 这个任务的**唯一寻址形式**（`team_id` + `id`）。
+    ///
+    /// 内存镜像与库都以它为键：单独一个 `id` 只在队内唯一（每个队的板都从 `t1` 开始），
+    /// 拿 `id` 去查必然存在「读到别队的 `t1`」这个可能。
+    #[must_use]
+    pub fn key(&self) -> TaskRef {
+        TaskRef::new(self.team_id.clone(), self.id.clone())
+    }
 }
 
 /// 产物引用 —— 只存定位信息，绝不存内容（design §2、红线 4）。
@@ -641,6 +715,39 @@ mod tests {
         assert!(json.get("lease_ttl").is_none(), "{json}");
     }
 
+    /// `TaskRef` 是 `(team_id, id)` 的配对：`TeamTask::key()` 必须把**两列**都带上。
+    ///
+    /// 变异验证：把 `key()` 改成只带 `id` 时本用例变红 —— 而那个形状的症状（两个队的
+    /// `t1` 互相覆盖）在单队测试里完全看不出来。
+    #[test]
+    fn a_task_key_carries_both_halves() {
+        let task = TeamTask {
+            id: "t1".into(),
+            team_id: "tm_1".into(),
+            title: "T".into(),
+            body: "B".into(),
+            state: TeamTaskState::Pending,
+            owner: None,
+            workspace: Workspace::Shared,
+            depends_on: vec![],
+            claimed_at: None,
+            lease_ttl: 1800,
+            summary: None,
+            summary_truncated: false,
+            artifacts: vec![],
+            reclaim_count: 0,
+        };
+        assert_eq!(
+            task.key(),
+            TaskRef::new("tm_1", "t1"),
+            "键必须同时带 team_id 与 id"
+        );
+        // Display 只给错误信息 / 日志用（线上是 `{teamId, id}` 对象，不是这个字符串）。
+        assert_eq!(task.key().to_string(), "tm_1/t1");
+        // 同样的 id、不同的队 ⇒ 不同的键（Hash/Eq 是内存镜像的依赖）。
+        assert_ne!(task.key(), TaskRef::new("tm_2", "t1"));
+    }
+
     /// 旧行（没有 `summary_truncated` 列出现的版本）反序列化不能失败：
     /// 该字段带 `#[serde(default)]`，缺省即 `false`。
     #[test]
@@ -668,6 +775,9 @@ mod tests {
             lead_session_id: "s".into(),
             lead_agent_id: "pi".into(),
             project_path: PathBuf::from("root"),
+            // 线上键集的判据（下方）：`projectId` 与 `projectPath` 是**两个**不同的键 ——
+            // 合并它们就等于把「环境归属」和「工作区根」搞成同一件事。
+            project_id: "p1".into(),
             created_at: 1,
             closed_at: None,
             state: TeamState::Active,
@@ -699,6 +809,7 @@ mod tests {
                 "leadSessionId",
                 "maxMembers",
                 "name",
+                "projectId",
                 "projectPath",
                 "state",
             ]

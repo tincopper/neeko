@@ -249,13 +249,18 @@ impl AppStateWrapper {
             .map(crate::agent::team::TeamServer::surface)
     }
 
-    /// 项目根路径 → 执行环境（团队执行层的**环境来源**）。
+    /// 项目根路径 → 执行环境（v15 行团队执行层的**兼容**环境来源）。
     ///
-    /// # 为什么按路径而不是按 id
+    /// # 为什么 v16 起不再是主路径
     ///
-    /// `Team` 只持久化 `project_path`：它不持有任何凭证，而 `ProjectEnvironment::Remote`
-    /// 内含 SSH 认证 —— 把环境复制进团队行就是给同一份秘密造第二个存放点。所以执行层
-    /// 必须回来问项目库「这条路属于谁」，项目才是环境的权威（`Project.environment`）。
+    /// 团队行现在带 `project_id`（环境的归属），执行层按 id 精确查表
+    /// （[`crate::agent::team::execution::environment_source`]）。路径反查只留给
+    /// **v16 之前建的行**：它对 Neeko 自己的工作树（`~/.neeko/worktrees/<name>`，按设计在项目
+    /// 目录**之外**）永远匹配不上 —— 那正是「从工作树开团队必失败」的根因。
+    ///
+    /// 仍然不能用「把环境复制进团队行」来绕：`ProjectEnvironment::Remote` 内含 SSH 认证，
+    /// 复制就是给同一份秘密造第二个存放点。所以团队行只记 id，环境仍向项目库要
+    /// （`Project.environment` 是权威）。
     ///
     /// # 为什么在组合根
     ///

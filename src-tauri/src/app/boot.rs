@@ -221,3 +221,90 @@ fn best_effort<T, E: std::fmt::Display>(step: &str, result: Result<T, E>) -> Opt
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::common::testing::{enclosed_body, strip_line_comments};
+
+    /// **接线判据**：团队观察者是 hook 端点的**那一个**额外消费者。
+    ///
+    /// # 为什么只能读源码
+    ///
+    /// 这条边就是「谁接到谁」本身。把它换成 no-op 之后，两端的行为测试**全绿**：
+    /// hooks 侧证明「额外消费者被调用」（它注入自己的闭包）、团队侧证明「喂一条事件就
+    /// 推进成员」（它直接调 `observe_in`）—— 各自的接缝都写着 observe，唯独**组合根**
+    /// 那一行没人看。2026-11-03 的独立审计正是这样做的：把闭包体换成 `{}`，
+    /// 2761 条测试一条不红。
+    ///
+    /// 所以判据落在两处，缺一不可：
+    ///
+    /// 1. `team_consumer` 的**闭包体**里出现 `crate::agent::team::deliver::observe(`
+    ///    （空壳、别的 `observe`、被注释的调用都过不去 —— 注释先被剥掉）；
+    /// 2. 同一个值出现在 `hooks::boot::boot(…)` 的**实参表**里 —— 闭包写得再对，
+    ///    没交给端点等于没接。
+    ///
+    /// `concat!` 是必需的：`include_str!` 会把本用例自己也读进来，裸字面量会匹配到断言本身。
+    #[test]
+    fn the_team_observer_is_the_extra_consumer_of_the_hook_endpoint() {
+        let source = strip_line_comments(include_str!("boot.rs"));
+
+        // ① 闭包体必须真的调用团队投递入口。
+        let anchor = concat!("let team_", "consumer");
+        let at = source
+            .find(anchor)
+            .unwrap_or_else(|| panic!("boot.rs 里找不到 `{anchor}`：团队观察者的消费者绑定没了"));
+        let open = at
+            + source[at..]
+                .find('{')
+                .unwrap_or_else(|| panic!("`{anchor}` 后面没有闭包体/块"));
+        let body = enclosed_body(&source, open);
+        let call = concat!("crate::agent::team::deliver::", "observe(");
+        assert!(
+            body.contains(call),
+            "`{anchor}` 的块里没有 `{call}` —— 团队观察者没被挂上去：成员状态只会停在 \
+             `spawned`，`team_wait` 只能超时，而两端的行为测试仍然全绿（这正是本判据存在的理由）"
+        );
+
+        // ② 同一个值必须被交给 hooks 端点。
+        let boot = concat!("crate::agent::hooks::boot::", "boot(");
+        let boot_at = source
+            .find(boot)
+            .unwrap_or_else(|| panic!("boot.rs 里找不到 `{boot}`：hooks 端点入口没了"));
+        let args_open = boot_at + source[boot_at..].find('(').expect("`{boot}` 后面是实参表");
+        let args = enclosed_body(&source, args_open);
+        assert!(
+            args.contains("team_consumer"),
+            "`{boot}` 的实参表里没有 `team_consumer` —— 团队观察者没接到 hook 端点（闭包本身\
+             写得对也没用：没有任何一条上报会走到它）"
+        );
+    }
+
+    /// **端到端骨架（`#[ignore]`）**：从 `/hook/{source}` 的 HTTP 入口发一条
+    /// `turn_completed`，断言成员从 `Spawned` 走到 `Idle`。
+    ///
+    /// # 为什么 `cargo test` 里跑不了
+    ///
+    /// 入口是 `handlers::route_group(app: AppHandle, …)`，第一个实参是**真实** `AppHandle`；
+    /// 本仓 `tauri` 未开 `test` feature（全仓无 `tauri::test` 先例），单测/集成测试都造不出
+    /// `AppHandle`。可达的那一段（模板形状的 envelope → `validation::validate` → 团队观察者
+    /// → 成员 `Idle`）已由 `agent::team::deliver::tests::a_template_shaped_envelope_advances_the_member`
+    /// 真跑；不可达的那一跳（`AppHandle` → `try_state` → `observe_in`，共三行）由上面那条
+    /// 源码级判据盯着。
+    ///
+    /// 骨架保留的目的：等 `tauri::test` / e2e harness 可用时，把 `panic!` 换成下面四步即可 ——
+    /// 判据内容已经写在 panic 消息里（不接受「先写个空壳再补」：空体会静默通过，那正是要防的）。
+    #[test]
+    #[ignore = "需要真实 `tauri::AppHandle`（本仓未开 tauri 的 `test` feature）；请在 e2e harness 里启用"]
+    fn the_hook_endpoint_advances_a_member_through_the_team_observer() {
+        // `todo!` / `unimplemented!` 在本 crate 是 deny（`clippy::todo`）：骨架用 `panic!`
+        // 表达「跑起来就必须失败」，语义同样是「绝不由空体冒充通过」。
+        panic!(
+            "e2e 骨架：① `isolated_state(&tmp)` + `create_team` / `add_member`（成员初始 Spawned）\
+             ② 用 boot.rs 的同一段接线构造 ExtraConsumer（`app.handle()` 换成 harness 给的真实 \
+             AppHandle）③ `handlers::route_group(handle, runtime, team_consumer)` 起真端点，POST \
+             `{{\"agent_session_id\":\"agent-1\",\"event\":\"turn_completed\",\
+             \"hints\":{{\"team_id\":…,\"team_member_id\":…}}}}`（不写 `seq`：模板不发它）④ 断言 \
+             `state.team_manager.member(W1).state == MemberState::Idle`"
+        )
+    }
+}

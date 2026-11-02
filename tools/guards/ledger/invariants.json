@@ -581,7 +581,12 @@
         {
           "kind": "test",
           "ref": "src-tauri/src/agent/team/store.rs",
-          "note": "store::tests 中 clamp_task_summary 的截断 + truncated 标记断言"
+          "tests": [
+            "summary_over_4k_is_truncated_and_flagged",
+            "summary_exactly_at_limit_is_not_flagged",
+            "truncation_does_not_split_a_multibyte_character"
+          ],
+          "note": "store::tests 中 clamp_task_summary 的截断 + truncated 标记断言（名字进 tests 数组后才可解析）"
         }
       ],
       "red_line": 4
@@ -597,9 +602,9 @@
           "note": "observe::tests::{stale_seq_is_dropped_and_state_stays_put, missing_seq_is_processed_even_when_watermark_is_high, seq_zero_is_stale_against_the_initial_watermark, unknown_event_key_is_skipped_and_keeps_watermark}；`seq=None`（旧模板）必须照常处理 —— 缺字段不等于序号 0"
         },
         {
-          "kind": "test",
+          "kind": "structure",
           "ref": "src-tauri/src/agent/team/manager.rs",
-          "note": "TeamManager::note_signal_seq：≤ 水位线返回 false 并落 audit；> 水位线持久化新水位"
+          "note": "TeamManager::note_signal_seq 是水位线的唯一写点：≤ 水位线返回 false 并落 audit 行；> 水位线持久化新水位。行为取证在上一条（observe.rs 的 stale_seq_is_dropped_and_state_stays_put / seq_zero_is_stale_against_the_initial_watermark）—— manager.rs 里没有同名测试，故这里是 structure 而不是 test"
         }
       ]
     },
@@ -668,16 +673,24 @@
         {
           "kind": "test",
           "ref": "src-tauri/src/agent/team/wait.rs",
+          "tests": ["mutation_wakes_the_waiter_in_milliseconds"],
           "note": "wait::tests 中「真唤醒」条：变更后 20ms 量级返回（timeout 2s），同时卡上界 500ms **与下界 15ms** —— 下界防的是「快照/判据为假导致的立刻返回」"
         },
         {
           "kind": "test",
           "ref": "src-tauri/src/agent/team/wait.rs",
+          "tests": ["a_new_owner_never_satisfies_the_old_waiter"],
           "note": "钉住条：waiter 等 A；A 消亡 → TargetGone{A}；随后 B 接手同一任务并 done。断言 ① 报的是 A ② 快照只含 A ③ **先证 B 真的 Verified**（防空断言）④ 再查 A 的判据仍不可被满足"
         },
         {
           "kind": "test",
           "ref": "src-tauri/src/agent/team/wait.rs",
+          "tests": [
+            "satisfied_follows_the_three_untils",
+            "all_targets_must_be_satisfied",
+            "empty_target_set_is_never_satisfied",
+            "gone_covers_only_dead_and_failed"
+          ],
           "note": "`satisfied` 纯函数表驱动：3 个 until × 满足/部分/全不满足；TargetGone 只对 Dead/Failed 生效"
         }
       ],
@@ -691,6 +704,7 @@
         {
           "kind": "test",
           "ref": "src-tauri/src/agent/team/wait.rs",
+          "tests": ["snapshot_carries_no_transcript"],
           "note": "快照键集断言：成员仅 id/name/role/state/verification，任务仅 id/state/owner/reclaim_count/租约剩余秒"
         }
       ],

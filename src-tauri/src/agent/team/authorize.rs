@@ -5,8 +5,10 @@
 //! 授权判据只有两个输入维度：**谁**（`TeamPrincipal.role`）与**想做什么**
 //! （`ToolName`）。把它做成纯函数有三个直接收益：
 //!
-//! 1. 矩阵的 20 格（`team_options` 进表后从 18 格扩到 20 格：10 工具 × 2 角色）可以在一条表驱动
-//!    测试里逐格断言（不需要起库、锁、线程）；
+//! 1. 矩阵的 **工具数 × 角色数** 格（工具数 = `mcp::schema::ALL_TOOL_NAMES` 的长度，角色数 =
+//!    `MemberRole` 的两个变体；**当前** 11 × 2 = 22 格）可以在一条表驱动测试里逐格断言
+//!    （不需要起库、锁、线程）；格数不在文档里写死：`matrix_is_enforced_cell_by_cell` 用
+//!    `table.len() == ALL_TOOL_NAMES.len() * 2` 自算 + 逐对覆盖，加减工具时它自己跟着变；
 //! 2. 「谁能 close 团队」这类问题的答案只有一处，新增工具时 `match` 会强制补格；
 //! 3. 它**不认识** `TeamManager`：授权与状态迁移彻底解耦，所以授权失败永远不会
 //!    留下半截写操作。
@@ -32,7 +34,7 @@ use crate::common::error::AppError;
 ///
 /// | 工具 | Lead | Worker |
 /// |---|---|---|
-/// | `team_status` / `team_options` / `team_send` / `task_list` | ✅ | ✅ |
+/// | `team_status` / `team_list` / `team_options` / `team_send` / `task_list` | ✅ | ✅ |
 /// | `task_claim` / `task_update` | ✅ | ✅（自有任务；归属判定在 dispatch） |
 /// | `team_wait` | ✅ | ✅（design §3.2：通常只有队长用，但成员等同伴是合法的） |
 /// | `task_create` / `team_close` / `team_spawn` | ✅ | ❌ |
@@ -50,6 +52,10 @@ pub fn authorize(principal: &TeamPrincipal, tool: ToolName) -> Result<(), AppErr
     // （design §3.2 「成员不能做的事」第三条）。
     match tool {
         ToolName::TeamStatus
+        // `team_list` 是**跨队只读**的清单：成员读到「这台机器上还有哪些队」没有额外权力
+        // （那些队的 token 不在它手上，它进不去）。而拦住它会让「关队前先看看还有谁」这种
+        // 正常动作变成一次注定失败的调用。与 `team_status` 同列。
+        | ToolName::TeamList
         // `team_options` 是**只读**的团队配置（池 / 上限 / 默认值）：成员读到它没有额外
         // 权力（它已经知道自己是哪条队、谁能给它派活），而拦住它只会让成员多写一次
         // 注定失败的调用。与 `team_status` 同列。
@@ -89,7 +95,7 @@ mod tests {
         }
     }
 
-    /// **逐格**：10 工具 × 2 角色 = 20 格，一格一行断言。
+    /// **逐格**：11 工具 × 2 角色 = 22 格，一格一行断言。
     ///
     /// 保护的不变量：design §3.2 的两列（Lead 全通、Worker 除 `task_create` /
     /// `team_close` / `team_spawn` 外全通）逐格落地。写表而不是写「worker 被拒的三条」
@@ -97,9 +103,10 @@ mod tests {
     /// 人必须先回答「worker 能不能调」。
     #[test]
     fn matrix_is_enforced_cell_by_cell() {
-        let table: [(MemberRole, ToolName, bool); 20] = [
-            // ── Lead 列（10 格，全通过）──
+        let table: [(MemberRole, ToolName, bool); 22] = [
+            // ── Lead 列（11 格，全通过）──
             (MemberRole::Lead, ToolName::TeamStatus, true),
+            (MemberRole::Lead, ToolName::TeamList, true),
             (MemberRole::Lead, ToolName::TeamOptions, true),
             (MemberRole::Lead, ToolName::TeamSpawn, true),
             (MemberRole::Lead, ToolName::TeamSend, true),
@@ -109,8 +116,9 @@ mod tests {
             (MemberRole::Lead, ToolName::TaskList, true),
             (MemberRole::Lead, ToolName::TeamWait, true),
             (MemberRole::Lead, ToolName::TeamClose, true),
-            // ── Worker 列（10 格：只差 task_create / team_close / team_spawn）──
+            // ── Worker 列（11 格：只差 task_create / team_close / team_spawn）──
             (MemberRole::Worker, ToolName::TeamStatus, true),
+            (MemberRole::Worker, ToolName::TeamList, true),
             (MemberRole::Worker, ToolName::TeamOptions, true),
             (MemberRole::Worker, ToolName::TeamSpawn, false),
             (MemberRole::Worker, ToolName::TeamSend, true),
@@ -122,7 +130,7 @@ mod tests {
             (MemberRole::Worker, ToolName::TeamClose, false),
         ];
 
-        // 表格本身必须覆盖 20 格（10 工具 × 2 角色），否则「漏掉一格」会静默变成放行。
+        // 表格本身必须覆盖 22 格（11 工具 × 2 角色），否则「漏掉一格」会静默变成放行。
         assert_eq!(table.len(), ALL_TOOL_NAMES.len() * 2);
         for name in ALL_TOOL_NAMES {
             for role in [MemberRole::Lead, MemberRole::Worker] {

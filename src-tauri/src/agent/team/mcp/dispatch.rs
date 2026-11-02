@@ -11,8 +11,21 @@
 //!
 //! 不做：状态机裁决（`manager`/`completion`）、租约计算（`lease`）。投递与起进程都是
 //! **执行层**的事（`team_send` 只返回 [`ToolReply::NeedsDelivery`]、`team_spawn` 只返回
-//! [`ToolReply::MemberCreated`]），消费侧在 [`crate::agent::team::execution::apply_reply`]
+//! [`ToolReply::MemberCreated`]），消费侧是 [`crate::agent::team::execution::apply_effect`]
 //! —— 那是决策 → 执行的**唯一**交接点：本函数不写任何字节、不起任何进程。
+//!
+//! # 线协议词汇只在本文件与 handler 之间出现（[`effect_for`] / [`reply_for`]）
+//!
+//! `ToolReply` 是**线协议**词汇（变体名就是 wire 名、整段会进模型上下文）。执行层因此不认识
+//! 它，只认识领域副作用 [`crate::agent::team::execution::Effect`]：
+//!
+//! ```text
+//! ToolReply ──effect_for──▶ Option<Effect> ──apply_effect──▶ EffectOutcome ──reply_for──▶ ToolReply
+//! ```
+//!
+//! 两个箭头各只有一份实现：本文件负责「回复 → 副作用」与「结果 → 回复」，执行层负责「副作用
+//! → 动手」。于是新增一个工具时漏加翻译会以**编译错误**出现（`effect_for` 的 `match` 没有
+//! `_` 分支），而不是让那个工具的副作用静默地不发生。
 //! 回复只携带「队长能行动的信息」—— 执行参数从成员行推导，不随回复走（见该变体的文档）。
 //!
 //! # 入口：生产只有 [`call_async`]
@@ -42,14 +55,16 @@
 
 use crate::agent::team::admission::{admission_for, refusal, tier_of};
 use crate::agent::team::authorize::authorize;
+use crate::agent::team::delivery;
+use crate::agent::team::execution;
 use crate::agent::team::manager::{now_millis, TeamManager};
 use crate::agent::team::mcp::schema::{self, spec_for, ToolName, UPDATABLE_STATES};
 use crate::agent::team::options::{options_for, TeamOptions};
 use crate::agent::team::types::{
-    AdmissionTier, ApprovalPolicy, MemberRole, MemberState, Team, TeamMember, TeamPrincipal,
-    TeamTask, TeamTaskState, WorkerChannel, Workspace,
+    AdmissionTier, ApprovalPolicy, MemberRole, MemberState, TaskRef, Team, TeamMember,
+    TeamPrincipal, TeamState, TeamTask, TeamTaskState, WorkerChannel, Workspace,
 };
-use crate::agent::team::view::{team_status_view, TeamStatusView};
+use crate::agent::team::view::{self, team_status_view, TeamStatusView};
 use crate::agent::team::wait::{WaitOutcome, WaitTargets, WaitUntil};
 use crate::common::error::AppError;
 
@@ -82,7 +97,8 @@ pub enum ToolReply {
     Options(TeamOptions),
     /// `task_create` / `task_claim` / `task_update`：单个任务的最新态。
     Task(TeamTask),
-    /// `team_spawn`：成员已落库，**待执行层起进程**（消费侧：`execution::apply_reply`）。
+    /// `team_spawn`：成员已落库，**待执行层起进程**（消费侧：`dispatch::effect_for` →
+    /// `execution::apply_effect(Effect::StartMember)`）。
     ///
     /// 两相位与 `team_send → NeedsDelivery` 同构：本层不做任何进程副作用，
     /// 所以 PTY 起不来时成员是「已落库、可查询、可清理」的，而不是半生不死。
@@ -117,21 +133,67 @@ pub enum ToolReply {
         /// 未实测确认的点，原样回给队长（让他知道自己在用不确定的能力）。
         unverified: Vec<String>,
     },
-    /// `team_send`：已通过全部校验，**待投递**（消费侧：`execution::apply_reply` →
-    /// `delivery::route` 按成员的 `WorkerChannel` 选择投递方式）。
+    /// `team_send`：已通过全部校验，**待投递**（消费侧：`execution::apply_effect` →
+    /// `MemberExecutor::deliver`，通道由执行层按成员的 `WorkerChannel` 选）。
+    ///
+    /// # 载荷是**投递文本**，不是发送者字段
+    ///
+    /// 接收方在 TUI 里只能看到一行文本，那行文本是它**唯一**的身份线索（没有发送者时，
+    /// 队长收到 `1275` / `3775` 也分不清是谁在说话 —— 一次真实冒烟测试的现场）。所以发送者
+    /// 身份必须进那一行字：本层（principal 在场）用
+    /// [`crate::agent::team::delivery::delivery_text`] 把它拼好，执行层只负责把这段字节写进
+    /// stdin。
+    ///
+    /// 因此 wire 上只有 `to` + `text`：**模型看到的是投递文本，不是发送者字段**。
+    /// 一个 `from` 字段是模型无行动可做的执行参数（它既不能改也不能用），按
+    /// 「执行参数不随工具回复走」的口径不该出现在这里 —— 同时它还会让「谁发的」在两个
+    /// 地方各有一份（字段与正文里拼好的那一份），而两份迟早会不一致。
     #[serde(rename_all = "camelCase")]
     NeedsDelivery {
         /// 目标成员 id（队内）。
         to: String,
-        /// 消息正文。
-        message: String,
+        /// **完整的投递文本**（`[team] {发送者}: {正文}`）—— 就是接收方会看到的那一行。
+        text: String,
     },
-    /// `team_close`：已校验的关闭目标（PTY 收尾由调用方编排）。
+    /// `team_close`：已校验的关闭目标（进程收尾与状态迁移由
+    /// [`crate::agent::team::execution::apply_effect`] 的 `Close` 那一半完成）。
+    ///
+    /// # 字段都是一句话就能行动的信息（红线 14 的输出侧）
+    ///
+    /// | 字段 | 队长拿它做什么 |
+    /// | --- | --- |
+    /// | `member_id` | 单成员关闭时的目标；整队关闭时 `None` |
+    /// | `members_closed` | 这次关闭涉及的成员（单成员 = 它自己；整队 = 待关列表）；成功返回时**就是刚刚被关掉的** |
+    /// | `members_failed` | 失败面（成功返回时恒空：有失败就以错误结束）|
+    /// | `team_state` | 关完之后团队在哪（`closing` = 还有成员没关掉；`closed` = 终态）|
+    /// | `notes` | 诚实面：本期没兑现的东西（`graceful` / 保留的 worktree 路径）|
+    ///
+    /// `notes` 存在而不是静默：`graceful=true` **本期不会被真正兑现**（没有 shutdown 协议
+    /// 可发），不说就等于让队长以为成员做过收尾。
     #[serde(rename_all = "camelCase")]
     Closed {
-        /// 待关闭的成员 id。
-        member_id: String,
+        /// 被关闭的团队。
+        team_id: String,
+        /// 单成员关闭的目标；整队关闭 = `None`。
+        member_id: Option<String>,
+        /// 本次确实关掉的成员（队长据此知道还剩谁）。
+        members_closed: Vec<String>,
+        /// 关不掉的成员与原因。
+        ///
+        /// **成功返回时恒为空**：有成员关不掉时整次调用以 `Err` 结束（错误文案逐个点名），
+        /// 这个载荷根本不会到模型手里。它保留为失败面的形状 —— 逆命题：若哪天允许部分成功，
+        /// 这个键已经在这里了。
+        members_failed: Vec<(String, String)>,
+        /// 团队当前状态（`closing` = 还有成员没关掉）。
+        team_state: TeamState,
+        /// 诚实面：`graceful` 本期是否真的被兑现（为什么不是），以及没有删除的目录。
+        notes: Vec<String>,
     },
+    /// `team_list`：这台机器上**全部**团队（不按队过滤，只读）。
+    ///
+    /// 载荷与本地命令 `team_list` 同形同源（[`crate::agent::team::view::list_teams`]）：
+    /// 队长与面板读到的是同一份推导，不是两份长得像的清单。
+    TeamList(crate::agent::team::view::TeamList),
     /// `team_wait`：Satisfied / Timeout / TargetGone 三结局之一（design §4.3）。
     ///
     /// 超时落在这里的 `Timeout` 而不是 `Err` —— 调用方拿到的是**现状**，不是失败。
@@ -162,6 +224,7 @@ fn call(
 ) -> Result<ToolReply, AppError> {
     let tool = resolve(wire)?;
     authorize(principal, tool)?;
+    ensure_team_accepts(manager, principal, tool)?;
     dispatch_tool(manager, principal, tool, args)
 }
 
@@ -191,6 +254,7 @@ pub async fn call_async(
 ) -> Result<ToolReply, AppError> {
     let tool = resolve(wire)?;
     authorize(principal, tool)?;
+    ensure_team_accepts(manager, principal, tool)?;
     match tool {
         ToolName::TeamWait => team_wait(manager, principal, args).await,
         other => {
@@ -231,6 +295,7 @@ fn dispatch_tool(
 ) -> Result<ToolReply, AppError> {
     match tool {
         ToolName::TeamStatus => status(manager, principal),
+        ToolName::TeamList => Ok(ToolReply::TeamList(view::list_teams(manager))),
         ToolName::TeamOptions => options(manager, principal),
         ToolName::TeamSpawn => spawn(manager, principal, args),
         ToolName::TeamSend => send(manager, principal, args),
@@ -244,6 +309,69 @@ fn dispatch_tool(
             spec_for(ToolName::TeamWait).wire
         ))),
         ToolName::TeamClose => close(manager, principal, args),
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 关闭中的写门禁（唯一的实现点）
+// ═══════════════════════════════════════════════════════════════════
+
+/// 团队处于 `closing` / `closed` 时**仍允许**的工具（其余一律 `Conflict`）。
+///
+/// # 为什么是一张表而不是在每个 handler 里判
+///
+/// 「哪些工具在关闭中还能调」是一条域规则（design 的 `active → closing → closed` 状态机），
+/// 而不是 11 个工具各自的巧合。写在表里还有一个直接收益：新增工具时它必须在**两种状态里**
+/// 各被想一次 —— 否则新工具会静默地绕过整条状态机（表驱动测试守着这件事）。
+///
+/// - `team_close`：**必须**允许，否则一个关不干净的队永远关不了（重试路径）；
+/// - `team_status` / `task_list` / `team_list`：只读，关完还要能查现状（面板的重开与归档
+///   也靠它们）。
+///
+/// `closed` 与 `closing` 用同一张表：`closed` 只多一层「写操作已经不是 `Conflict` 而是
+/// 无意义」的差别，而 `team_close` 本身对 `closed` 是幂等的。
+const ALLOWED_WHILE_CLOSING: [ToolName; 4] = [
+    ToolName::TeamStatus,
+    ToolName::TaskList,
+    ToolName::TeamList,
+    ToolName::TeamClose,
+];
+
+/// 非 `active` 的团队只接受 [`ALLOWED_WHILE_CLOSING`] 里的工具。
+///
+/// 错误里带上**当前状态**：队长看到 `closing` 就知道「有人在关队」，看到 `closed` 就知道
+/// 「这个队已经完了」—— 两者的下一步不同，把它们归成一句「不能写」会让模型去猜。
+fn ensure_team_accepts(
+    manager: &TeamManager,
+    principal: &TeamPrincipal,
+    tool: ToolName,
+) -> Result<(), AppError> {
+    if ALLOWED_WHILE_CLOSING.contains(&tool) {
+        return Ok(());
+    }
+    let team = team_of(manager, &principal.team_id)?;
+    if team.state == TeamState::Active {
+        return Ok(());
+    }
+    Err(AppError::Conflict(format!(
+        "team `{}` is {}; `{}` is not accepted in that state (allowed while closing/closed: {})",
+        team.id,
+        team_state_text(team.state),
+        spec_for(tool).wire,
+        ALLOWED_WHILE_CLOSING
+            .iter()
+            .map(|allowed| spec_for(*allowed).wire)
+            .collect::<Vec<_>>()
+            .join(", "),
+    )))
+}
+
+/// 状态的线上文本（与 serde 的 `snake_case` 口径一致，错误信息与载荷因此不漂移）。
+const fn team_state_text(state: TeamState) -> &'static str {
+    match state {
+        TeamState::Active => "active",
+        TeamState::Closing => "closing",
+        TeamState::Closed => "closed",
     }
 }
 
@@ -297,7 +425,10 @@ fn send(
     }
     Ok(ToolReply::NeedsDelivery {
         to: target.id,
-        message: message.to_owned(),
+        // 发送者**是 principal**，不是入参：`team_send` 没有 `from` 参数（模型不得冒充队友）。
+        // 拼进正文在这里做（principal 就在手边），而不是在执行层：执行层不该认识「谁是发送者」
+        // 这个决定层的事实，它只该拿到「要写进 stdin 的那一行」。
+        text: delivery::delivery_text(&principal.member_id, message),
     })
 }
 
@@ -460,10 +591,12 @@ fn create(
     let lease_ttl = lease_ttl_arg(wire, args)?;
 
     let task = TeamTask {
-        // 任务 id 形如 `t{seq}`（design §2）。序号取板上最大数字后缀 +1：
+        // 任务 id 形如 `t{seq}`（design §2），seq 是**本队板**的水位线
+        // （`store::TeamStore::next_task_seq(team_id)`）：任务 id 是队内标识符，
+        // 主键是 `(team_id, id)`，所以每个队的板都从 `t1` 开始。
         // 并发创任务时两边可能算出同一个 id，但那会让 `create_task` 报 `Conflict`
         // （可见的重试），而不是静默覆盖别人的任务。
-        id: next_task_id(manager, &principal.team_id),
+        id: next_task_id(manager, &principal.team_id)?,
         team_id: principal.team_id.clone(),
         title: title.to_owned(),
         body: body.to_owned(),
@@ -489,9 +622,9 @@ fn claim(
 ) -> Result<ToolReply, AppError> {
     let wire = spec_for(ToolName::TaskClaim).wire;
     let task_id = required_str(wire, args, "task_id")?;
-    task_of_team(manager, &principal.team_id, task_id)?;
+    let (key, _) = task_of_team(manager, &principal.team_id, task_id)?;
     Ok(ToolReply::Task(manager.claim_task(
-        task_id,
+        &key,
         &principal.member_id,
         now_millis(),
     )?))
@@ -506,7 +639,7 @@ fn update(
     let wire = spec_for(ToolName::TaskUpdate).wire;
     let task_id = required_str(wire, args, "task_id")?;
     let raw_state = required_str(wire, args, "state")?;
-    let task = task_of_team(manager, &principal.team_id, task_id)?;
+    let (key, task) = task_of_team(manager, &principal.team_id, task_id)?;
 
     // design §3.2 的 `task_update(他人任务)` 行：Worker ❌ / Lead ✅。
     // 归属是「读任务表才能判」的格，所以它在这里而不是 `authorize`。
@@ -524,7 +657,7 @@ fn update(
     let state = parse_updatable_state(wire, raw_state)?;
     let summary = optional_str(wire, args, "summary")?;
     Ok(ToolReply::Task(manager.update_task(
-        task_id,
+        &key,
         &principal.member_id,
         state,
         summary,
@@ -688,37 +821,149 @@ fn wait_timeout(wire: &str, args: &serde_json::Value) -> Result<std::time::Durat
     Ok(std::time::Duration::from_secs(seconds))
 }
 
-/// `team_close`：协商式关机的**校验部分**（队长）。
-/// 真正收尾（关 PTY → 归档成员 → 处理 worktree）需要 terminal 域编排，属于
-/// **P4 §4.2「协商式清理」**（不是 2.5b 的接线段 —— 那里只起进程）。本层返回的是
-/// 「已校验的关闭目标」，**不**声称进程已死 —— 所以对已 `Dead` 的成员直接 `Conflict`，
-/// 而不是又返回一个 `Closed` 让调用方“再关一次”。
+/// `team_close`：关闭目标与状态的**决策部分**（队长）。
+///
+/// # 两相位（design §7.1）
+///
+/// 本层只决定「关谁」并把团队推到正确的状态（整队关闭时先 `active → closing`），
+/// **进程副作用与成员归档不做** —— 它们在
+/// [`crate::agent::team::execution::apply_effect`] 里，那里才有 `MemberExecutor` 与
+/// 状态迁移的成套动作。两个理由：① 本层必须能单测（不需要 `AppHandle`）；
+/// ② 「先 close PTY，再归档成员」的顺序只能由一个地方拥有。
+///
+/// # 两种形态
+///
+/// | 入参 | 含义 | 本层做的状态迁移 |
+/// | --- | --- | --- |
+/// | `member_id` 有值 | 关**一个**成员（不能是队长：关队长 = 关队） | 无（归档在执行层）|
+/// | `member_id` 缺省 | 关**整队** → `active → closing`，返回待关的成员列表 | `begin_team_close` |
+///
+/// # `graceful`：本期不兑现（红线 14）
+///
+/// 缺省 `true` 意味着「先给它一次收尾机会」，而**本期没有可发的 shutdown 协议**
+/// （`Pty` 只有字节流，没有消息边界）。所以 `true` 与 `false` 的行为完全相同，区别只在于：
+/// ① 审计多一条 `close_request`（`graceful=true`）；② 返回里`notes` **明说没兑现**。
+/// 假装做过比不做更坏：队长会以为成员收到过收尾信号，从而不去查它到底停在哪。
 fn close(
     manager: &TeamManager,
     principal: &TeamPrincipal,
     args: &serde_json::Value,
 ) -> Result<ToolReply, AppError> {
     let wire = spec_for(ToolName::TeamClose).wire;
-    let Some(member_id) = optional_str(wire, args, "member_id")? else {
-        return Err(AppError::Unsupported(format!(
-            "{wire} closes one member at a time; pass `member_id`. \
-             Whole-team close is not implemented yet (it needs the `closing` state machine)"
-        )));
-    };
     if args.get("graceful").is_some_and(|v| !v.is_boolean()) {
         return Err(AppError::InvalidInput(format!(
             "`graceful` for {wire} must be a boolean"
         )));
     }
-    let member = member_of_team(manager, &principal.team_id, member_id)?;
-    if member.state == MemberState::Dead {
-        return Err(AppError::Conflict(format!(
-            "member `{member_id}` process is already gone"
-        )));
+    // 缺省 `true`：协商式是**预设**，直接拔电源是显式选择。
+    let graceful = args
+        .get("graceful")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let member_id = optional_str(wire, args, "member_id")?;
+    // 决策（校验 + 状态迁移 + 审计 + 诚实面）在 `execution::plan_close`：**本地面板命令走
+    // 同一个函数**（它没有 principal）。这里只负责「按线协议解析入参」与「谁在调」。
+    let plan = execution::plan_close(
+        manager,
+        &principal.team_id,
+        member_id.map(str::trim),
+        graceful,
+        now_millis(),
+    )?;
+    // 计划是**领域**类型；把它翻译成线协议载荷是本层的职责（见 [`effect_for`] 的另一半）。
+    Ok(closed_reply(&plan))
+}
+
+/// [`execution::ClosePlan`] → 决定层的 `Closed` 载荷。
+///
+/// 这是「决定层能说的话」：`members_closed` 是**待关列表**（还没关），`team_state` 是团队
+/// **此刻**的状态（整队关闭刚被推成 `closing`）。执行之后的事实由
+/// [`crate::agent::team::execution::CloseOutcome`] + [`reply_for`] 给出。
+fn closed_reply(plan: &execution::ClosePlan) -> ToolReply {
+    ToolReply::Closed {
+        team_id: plan.team_id.clone(),
+        member_id: plan.member_id.clone(),
+        members_closed: plan.targets.clone(),
+        members_failed: Vec::new(),
+        team_state: plan.team_state,
+        notes: plan.notes.clone(),
     }
-    Ok(ToolReply::Closed {
-        member_id: member.id,
-    })
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 线协议 ⇄ 领域副作用（**唯一**翻译点）
+// ═══════════════════════════════════════════════════════════════════
+
+/// 这条回复有没有**副作用**要做？做哪一件？
+///
+/// # 为什么翻译只在这里
+///
+/// `ToolReply` 是线协议（变体名 = wire 名、整段进模型上下文），`Effect` 是领域动作。
+/// 两者之间的翻译若散在调用点，第二个入口（本地面板命令）就会写一份长得像、判据不同的
+/// `match`；更糟的是**新增一个工具时谁都可能忘了加翻译**，而症状是「工具返回成功、副作用
+/// 静默不发生」。
+///
+/// # 「没有副作用」只有一种表示法：`None`
+///
+/// 不引入 `Effect::Nothing`：两个表示法意味着调用方要同时处理 `None` 与 `Nothing`，而它们
+/// 永远不会同时出现。
+///
+/// # 一一对应由**编译器**兜住
+///
+/// 下面的 `match` 是穷尽的（没有 `_ => None`）：新增 `ToolReply` 变体 → 编译不过，直到你
+/// 明确回答「它要不要副作用」。判据：`every_tool_reply_variant_is_translated`。
+#[must_use]
+pub fn effect_for(reply: &ToolReply) -> Option<execution::Effect> {
+    match reply {
+        ToolReply::MemberCreated { member_id, .. } => Some(execution::Effect::StartMember {
+            member_id: member_id.clone(),
+        }),
+        ToolReply::NeedsDelivery { to, text } => Some(execution::Effect::Deliver {
+            to: to.clone(),
+            text: text.clone(),
+        }),
+        ToolReply::Closed {
+            team_id,
+            member_id,
+            members_closed,
+            team_state,
+            notes,
+            ..
+        } => Some(execution::Effect::Close(execution::ClosePlan {
+            team_id: team_id.clone(),
+            member_id: member_id.clone(),
+            targets: members_closed.clone(),
+            team_state: *team_state,
+            notes: notes.clone(),
+        })),
+        // 纯数据（板视图 / 任务行 / 等待结局 / 只读配置面）：没有进程副作用。
+        ToolReply::Status(_)
+        | ToolReply::Tasks(_)
+        | ToolReply::Options(_)
+        | ToolReply::Task(_)
+        | ToolReply::TeamList(_)
+        | ToolReply::Wait(_) => None,
+    }
+}
+
+/// 执行结果 → 要交给调用方的回复（**只**在 MCP 入口调用）。
+///
+/// `Applied` ⇒ 决定层那条回复本身就是事实（起进程 / 投递成功没有第二个版本）。
+/// `Closed` ⇒ 用执行之后的**事实**构造一条新 `Closed`（团队可能已经从 `closing` 变成
+/// `closed`，`members_closed` 也从待关列表变成了真关掉的名单）。
+#[must_use]
+pub fn reply_for(reply: &ToolReply, outcome: execution::EffectOutcome) -> ToolReply {
+    match outcome {
+        execution::EffectOutcome::Applied => reply.clone(),
+        execution::EffectOutcome::Closed(closed) => ToolReply::Closed {
+            team_id: closed.team_id,
+            member_id: closed.member_id,
+            members_closed: closed.members_closed,
+            members_failed: closed.members_failed,
+            team_state: closed.team_state,
+            notes: closed.notes,
+        },
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -784,11 +1029,26 @@ fn member_of_team(
     }
 }
 
-/// 任务必须存在且**属于本队**。
-fn task_of_team(manager: &TeamManager, team_id: &str, task_id: &str) -> Result<TeamTask, AppError> {
-    match manager.task(task_id) {
-        Some(task) if task.team_id == team_id => Ok(task),
-        _ => Err(AppError::NotFound(format!(
+/// 任务必须存在且**属于本队** —— 返回它的 [`TaskRef`] 与任务行。
+///
+/// # 这是本文件**唯一**构造 `TaskRef` 的地方（语义分界）
+///
+/// 工具面的线上形状仍然只有 `task_id`（不给模型一个伪造 / 写错 `team_id` 的机会）：
+/// 队从 `principal.team_id`（token 里声明的）来。所以「拼 `(team_id, task_id)`」这个动作
+/// 必须只有一个落点 —— 散落的拼接一旦漏了队（或用了别处的队），症状是**静默读到别队的
+/// 同名任务**，比任何报错都难查（红线 12 的同一条纪律）。
+///
+/// 局部 `member_of_team` / `task_of_team` 这种「先按 id 取，再比 team」的写法在这里
+/// **不能**沿用：那种形状的前提是 id 全局唯一，而现在 `t1` 在每个队都有。
+fn task_of_team(
+    manager: &TeamManager,
+    team_id: &str,
+    task_id: &str,
+) -> Result<(TaskRef, TeamTask), AppError> {
+    let key = TaskRef::new(team_id, task_id);
+    match manager.task(&key) {
+        Some(task) => Ok((key, task)),
+        None => Err(AppError::NotFound(format!(
             "task `{task_id}` is not on team `{team_id}`'s board"
         ))),
     }
@@ -1081,16 +1341,13 @@ fn lease_ttl_arg(wire: &str, args: &serde_json::Value) -> Result<i64, AppError> 
     }
 }
 
-/// 下一个任务 id：板上 `t{n}` 的最大 `n` + 1（没有任务 = `t1`）。
-fn next_task_id(manager: &TeamManager, team_id: &str) -> String {
-    let max = manager
-        .tasks(team_id)
-        .iter()
-        .filter_map(|task| task.id.strip_prefix('t'))
-        .filter_map(|seq| seq.parse::<u32>().ok())
-        .max()
-        .unwrap_or(0);
-    format!("t{}", max.saturating_add(1))
+/// 本队的下一个任务 id：`t{seq}`，`seq` 来自本队板的水位线（空板 = `t1`）。
+///
+/// 极薄是刻意的：命名空间规则（队内单调 / `GLOB` / 数值序 / 为什么可以整表重建）
+/// 全部归 [`crate::agent::team::store::TeamStore::next_task_seq`] —— 这里只做
+/// 「seq → `t{n}`」这一句拼接，不重复推导任何规则，也**不**自己 `+1`。
+fn next_task_id(manager: &TeamManager, team_id: &str) -> Result<String, AppError> {
+    Ok(format!("t{}", manager.store().next_task_seq(team_id)?))
 }
 
 #[cfg(test)]
@@ -1098,7 +1355,7 @@ mod tests {
     use super::*;
     use crate::agent::team::fixtures::{fixture_member, fixture_team, fixture_team_configured};
     use crate::agent::team::identity;
-    use crate::agent::team::manager::TeamManager;
+    use crate::agent::team::manager::{self, TeamManager};
     use crate::agent::team::store::TeamStore;
     use crate::agent::team::types::{
         AdmissionTier, ApprovalPolicy, McpInjection, ResultChannel, Team, TeamConfig, TeamState,
@@ -1298,7 +1555,9 @@ mod tests {
     fn worker_cannot_update_another_members_task() {
         let manager = seeded();
         manager.create_task(task("t1", TEAM)).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         let err = call(
             &manager,
@@ -1308,7 +1567,10 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Claimed);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Claimed
+        );
     }
 
     /// 归属格：worker 改**自己**任务 → 成功，且板上真的变成 `done`。
@@ -1316,7 +1578,9 @@ mod tests {
     fn worker_can_update_own_task() {
         let manager = seeded();
         manager.create_task(task("t1", TEAM)).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         let reply = call(
             &manager,
@@ -1330,7 +1594,10 @@ mod tests {
         };
         assert_eq!(task.state, TeamTaskState::Done);
         assert_eq!(task.summary.as_deref(), Some("ok"));
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Done);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Done
+        );
     }
 
     /// 内部态必须被工具层拒绝（`in_progress` / `claimed` / `pending` 等）。
@@ -1341,7 +1608,9 @@ mod tests {
     fn task_update_rejects_internal_states() {
         let manager = seeded();
         manager.create_task(task("t1", TEAM)).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
         for state in [
             "in_progress",
             "claimed",
@@ -1364,7 +1633,10 @@ mod tests {
             assert!(message.contains("done"), "{}", message);
             assert!(message.contains("failed"), "{}", message);
         }
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Claimed);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Claimed
+        );
     }
 
     /// `blocked` 过了工具层校验，但**冻结的裁决仍在 manager**（不变量 4）。
@@ -1378,7 +1650,9 @@ mod tests {
     fn task_update_blocked_is_judged_by_the_manager_not_the_tool_layer() {
         let manager = seeded();
         manager.create_task(task("t1", TEAM)).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
 
         let err = call(
             &manager,
@@ -1388,7 +1662,10 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
-        assert_eq!(manager.task("t1").unwrap().state, TeamTaskState::Claimed);
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Claimed
+        );
     }
 
     /// `to` 必须是**本队**成员：外队成员与不存在一律 `NotFound`（不泄漏别队花名册）。
@@ -1478,10 +1755,12 @@ mod tests {
     /// 错误文案面向**队长模型**：它只该读到「现在还不能整队关，请逐个关」，不该读到
     /// 本仓的阶段编号（那对模型是噪声，也无法行动）。
     #[test]
-    fn team_close_without_member_id_is_unsupported() {
+    fn team_close_without_member_id_is_no_longer_unsupported() {
         let manager = seeded();
-        let err = call(&manager, &lead(), "team_close", &json!({})).unwrap_err();
-        assert!(matches!(err, AppError::Unsupported(_)), "{err:?}");
+        // 这条护栏原本钉的是「整队关闭还没实现」（Unsupported）。现在它已实现，
+        // 判据翻转为「必须真的把团队推进 closing」—— 见 `team_close_without_a_member_id_*`。
+        assert!(call(&manager, &lead(), "team_close", &json!({})).is_ok());
+        assert_eq!(manager.team(TEAM).unwrap().state, TeamState::Closing);
     }
 
     // ── 全部工具的 happy path（每个 `ToolReply` 变体各一条）─────────────────
@@ -1494,9 +1773,17 @@ mod tests {
         let manager = seeded();
         manager.create_task(task("t1", TEAM)).unwrap();
         let now = now_millis();
-        manager.claim_task("t1", W1, now).unwrap();
         manager
-            .update_task("t1", W1, TeamTaskState::Done, Some("ok"), now + 10)
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, now)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                Some("ok"),
+                now + 10,
+            )
             .unwrap();
         manager.create_task(task("t2", TEAM)).unwrap();
 
@@ -1525,6 +1812,8 @@ mod tests {
         assert_eq!(
             keys,
             vec![
+                // 成员数（不含队长）：两个面（`team_status` 与团队清单）必须同源。
+                "memberCount",
                 "members",
                 "taskDone",
                 "taskOpen",
@@ -1542,15 +1831,24 @@ mod tests {
         member_keys.sort_unstable();
         // `verification` 是 AC2 的判据（见 `view::MemberStatusView` 的文档）：花名册必须能
         // 区分「空闲」与「空闲但未声明」，而这两者的 `state` 完全相同。
+        //
+        // 另外四项是「这一行能干什么」：`agentId` + `tier`（能力边界）、`workspace`（在哪干活）、
+        // `channel`（怎么发消息）、`terminalId`（**点开它的唯一凭据**）。少了最后一项，
+        // 成员进程虽然在跑，面板却只能看队长 —— 花名册成了只读名单。
         assert_eq!(
             member_keys,
             vec![
+                "agentId",
+                "channel",
                 "leaseRemainingSecs",
                 "memberId",
                 "name",
                 "role",
                 "state",
-                "verification"
+                "terminalId",
+                "tier",
+                "verification",
+                "workspace"
             ]
         );
     }
@@ -1560,7 +1858,9 @@ mod tests {
     fn team_status_computes_lease_remaining_from_the_live_task() {
         let manager = seeded();
         manager.create_task(task("t1", TEAM)).unwrap();
-        manager.claim_task("t1", W1, now_millis()).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, now_millis())
+            .unwrap();
 
         let ToolReply::Status(view) = call(&manager, &lead(), "team_status", &json!({})).unwrap()
         else {
@@ -1576,7 +1876,10 @@ mod tests {
         assert_eq!(lead_row.lease_remaining_secs, None);
     }
 
-    /// `team_send` → `ToolReply::NeedsDelivery`（本步不投递）。
+    /// `team_send` → `ToolReply::NeedsDelivery`（本步不投递），且**投递文本已带发送者**。
+    ///
+    /// 发送者来自 principal，不是入参（`team_send` 没有 `from` 参数）：模型不得冒充队友。
+    /// 拼接发生在**这一层**（principal 在手边），执行层只拿到「要写进 stdin 的那一行」。
     #[test]
     fn team_send_returns_needs_delivery_without_writing_anything() {
         let manager = seeded();
@@ -1591,8 +1894,268 @@ mod tests {
             reply,
             ToolReply::NeedsDelivery {
                 to: W2.into(),
-                message: "please rebase".into()
+                // 发送者是 principal（W1），**不是**收件人。
+                text: format!("[team] {W1}: please rebase"),
             }
+        );
+    }
+
+    /// 投递文本里的发送者必须是 principal，**不是**收件人。
+    ///
+    /// 保护的不变量：把 `from` 换成 `to` 时投递仍然「成功」（成员确实收到了一行字），差别只
+    /// 在于那一行把发送者写成了接收人自己 —— 队长永远看不出谁在跟它说话，而所有测试依然是
+    /// 绿的。所以这条用例必须存在。
+    #[test]
+    fn the_delivery_text_names_the_sender_not_the_recipient() {
+        let manager = seeded();
+        let ToolReply::NeedsDelivery { text, .. } = call(
+            &manager,
+            &worker(W1),
+            "team_send",
+            &json!({"to": W2, "message": "please rebase"}),
+        )
+        .unwrap() else {
+            panic!("必须是 NeedsDelivery");
+        };
+        assert!(text.contains(&format!("[team] {W1}:")), "{text}");
+        assert!(
+            !text.contains(&format!("[team] {W2}:")),
+            "投递文本不得把收件人当作发送者：{text}"
+        );
+    }
+
+    /// 正文**逐字**保留（拼接不做任何加工）。
+    #[test]
+    fn the_delivery_text_keeps_the_body_verbatim() {
+        let manager = seeded();
+        let body = "\n  line1\n\tline2  \n";
+        let ToolReply::NeedsDelivery { text, .. } = call(
+            &manager,
+            &worker(W1),
+            "team_send",
+            &json!({"to": W2, "message": body}),
+        )
+        .unwrap() else {
+            panic!("必须是 NeedsDelivery");
+        };
+        assert_eq!(text, format!("[team] {W1}: {body}"));
+    }
+
+    /// `NeedsDelivery` 的**线上键名**（camelCase）与变体名逐字钉住。
+    ///
+    /// # 为什么是 `text` 而不是 `from` + `message`
+    ///
+    /// 模型看到的是**投递文本**，不是发送者字段：发送者已经在正文里（`[team] w1@tm_1: …`）。
+    /// 一个 `from` 字段是模型无行动可做的执行参数（它既改不了也用不上），并且会给「谁发的」
+    /// 造出第二个源（字段 vs 正文里拼好的那一份）—— 两份迟早不一致。
+    ///
+    /// 反例（本用例挡的正是它）：把 `from` 加回 wire —— 键集多一个键，而「模型只该看到投递
+    /// 文本」这条裁决没有任何别的地方能发现被推翻。
+    #[test]
+    fn the_needs_delivery_payload_uses_the_documented_wire_keys() {
+        let manager = seeded();
+        let reply = call(
+            &manager,
+            &worker(W1),
+            "team_send",
+            &json!({"to": W2, "message": "hi"}),
+        )
+        .unwrap();
+        let json = serde_json::to_value(&reply).unwrap();
+        let body = json
+            .get("needs_delivery")
+            .unwrap_or_else(|| panic!("变体名必须是 `needs_delivery`：{json}"));
+        let mut keys: Vec<&str> = body
+            .as_object()
+            .unwrap_or_else(|| panic!("载荷必须是对象：{json}"))
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec!["text", "to"],
+            "载荷键集变了就必须同步模型侧 / 执行层的读法"
+        );
+        assert_eq!(body["to"], W2);
+        assert_eq!(
+            body["text"],
+            format!("[team] {W1}: hi"),
+            "发送者必须在**正文里**（那是接收方唯一的身份线索）"
+        );
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // 线协议 ⇄ 领域副作用（一一对应）
+    // ───────────────────────────────────────────────────────────────
+
+    /// **每个** `ToolReply` 变体都必须在 [`effect_for`] 里有明确答案。
+    ///
+    /// # 这条判据挡的是什么
+    ///
+    /// 新增一个工具（因此新增一个 `ToolReply` 变体）而忘了写翻译 —— 症状是「工具返回成功、
+    /// 副作用静默不发生」：队长以为成员起来了 / 消息送达了，实际上什么都没做。
+    ///
+    /// # 两层保护
+    ///
+    /// ① `effect_for` 的 `match` 没有 `_` 分支 ⇒ 新增变体直接**编译不过**；
+    /// ② 这条用例把「九个变体各自的答案」写下来，于是变体名单本身在 diff 里可见 ——
+    ///    改判据（比如「`team_list` 也要落副作用」）必须显式改这里。
+    #[test]
+    fn every_tool_reply_variant_is_translated() {
+        use crate::agent::team::execution::{Effect, EffectOutcome};
+        use crate::agent::team::options::default_options;
+        use crate::agent::team::view::{TeamList, TeamStatusView};
+        use crate::agent::team::wait::{WaitOutcome, WaitSnapshot};
+
+        let samples: Vec<(&str, ToolReply, bool)> = vec![
+            (
+                "status",
+                ToolReply::Status(TeamStatusView {
+                    team_id: TEAM.into(),
+                    team_state: TeamState::Active,
+                    members: Vec::new(),
+                    task_total: 0,
+                    task_open: 0,
+                    task_done: 0,
+                    member_count: 0,
+                }),
+                false,
+            ),
+            ("tasks", ToolReply::Tasks(Vec::new()), false),
+            ("options", ToolReply::Options(default_options(0)), false),
+            ("task", ToolReply::Task(task("t1", TEAM)), false),
+            (
+                "member_created",
+                ToolReply::MemberCreated {
+                    member_id: W1.into(),
+                    tier: tier_of(admission_for("claude-code").expect("admitted")),
+                    unverified: Vec::new(),
+                },
+                true,
+            ),
+            (
+                "needs_delivery",
+                ToolReply::NeedsDelivery {
+                    to: W1.into(),
+                    text: format!("[team] {LEAD}: hi"),
+                },
+                true,
+            ),
+            (
+                "closed",
+                ToolReply::Closed {
+                    team_id: TEAM.into(),
+                    member_id: None,
+                    members_closed: vec![W1.into()],
+                    members_failed: Vec::new(),
+                    team_state: TeamState::Closing,
+                    notes: vec!["n".into()],
+                },
+                true,
+            ),
+            (
+                "team_list",
+                ToolReply::TeamList(TeamList {
+                    teams: Vec::new(),
+                    truncated: false,
+                }),
+                false,
+            ),
+            (
+                "wait",
+                ToolReply::Wait(WaitOutcome::Timeout {
+                    snapshot: WaitSnapshot {
+                        team_id: TEAM.into(),
+                        members: Vec::new(),
+                        tasks: Vec::new(),
+                        gone: None,
+                    },
+                }),
+                false,
+            ),
+        ];
+
+        for (name, reply, has_effect) in samples {
+            assert_eq!(
+                effect_for(&reply).is_some(),
+                has_effect,
+                "`{name}` 的副作用判定变了就必须同步执行层：{reply:?}"
+            );
+        }
+
+        // 三个有副作用的变体：**逐字段**落到领域类型里（少一个字段 = 执行层拿不到那条信息）。
+        assert_eq!(
+            effect_for(&ToolReply::NeedsDelivery {
+                to: W1.into(),
+                text: "hi".into(),
+            }),
+            Some(Effect::Deliver {
+                to: W1.into(),
+                text: "hi".into()
+            })
+        );
+        assert_eq!(
+            effect_for(&ToolReply::Closed {
+                team_id: TEAM.into(),
+                member_id: Some(W1.into()),
+                members_closed: vec![W2.into()],
+                members_failed: Vec::new(),
+                team_state: TeamState::Closing,
+                notes: vec!["n".into()],
+            }),
+            Some(Effect::Close(execution::ClosePlan {
+                team_id: TEAM.into(),
+                member_id: Some(W1.into()),
+                targets: vec![W2.into()],
+                team_state: TeamState::Closing,
+                notes: vec!["n".into()],
+            }))
+        );
+
+        // 回翻：`Applied` 原样返回那条回复（起进程 / 投递没有第二个版本）。
+        let created = ToolReply::MemberCreated {
+            member_id: W1.into(),
+            tier: tier_of(admission_for("claude-code").expect("admitted")),
+            unverified: Vec::new(),
+        };
+        assert_eq!(
+            reply_for(&created, EffectOutcome::Applied),
+            created,
+            "没有「执行之后」的事实可说的动作，回复必须原样"
+        );
+
+        // 回翻：`Closed` 用**执行之后**的事实（团队可能已经从 closing 变成 closed）。
+        let decision = ToolReply::Closed {
+            team_id: TEAM.into(),
+            member_id: None,
+            members_closed: vec![W1.into(), W2.into()],
+            members_failed: Vec::new(),
+            team_state: TeamState::Closing,
+            notes: vec![],
+        };
+        let factual = reply_for(
+            &decision,
+            EffectOutcome::Closed(execution::CloseOutcome {
+                team_id: TEAM.into(),
+                member_id: None,
+                members_closed: vec![W1.into()],
+                members_failed: Vec::new(),
+                team_state: TeamState::Closed,
+                notes: vec!["n".into()],
+            }),
+        );
+        assert_eq!(
+            factual,
+            ToolReply::Closed {
+                team_id: TEAM.into(),
+                member_id: None,
+                members_closed: vec![W1.into()],
+                members_failed: Vec::new(),
+                team_state: TeamState::Closed,
+                notes: vec!["n".into()],
+            },
+            "执行之后的事实必须覆盖决定层的意图（teamState / membersClosed 都是）"
         );
     }
 
@@ -1629,6 +2192,193 @@ mod tests {
         assert_eq!(second.lease_ttl, DEFAULT_LEASE_TTL_SECS);
     }
 
+    /// 任务 id 的命名空间是**队内**的：另一个队建的第一个任务**必须**是 `t1`。
+    ///
+    /// # 这条判据的来历（D1 的复盘）
+    ///
+    /// v16 期这里是反过来的（`a_second_team_continues_the_global_task_sequence`）：
+    /// `team_task.id` 是单列主键，于是新团队的空板算出 `t1` 会撞上别队的 `t1`
+    /// （2026-11-03 真实现场：`tm_1a196cefa87` 已占 t1/t2/t3，再建一个队就派不出活），
+    /// 权宜之计是让序号**全库**单调 —— 代价是新队的第一件活叫 `t7`。
+    ///
+    /// 主键改成 `(team_id, id)` 之后，全局序号唯一的理由消失了：现在**必须**回到
+    /// 每队从 `t1` 开始（任务 id 是队长与成员在对话里互相指代的东西，越短越好），
+    /// 而「跨队同名」由 `TaskRef` 在类型层兜住（见 `a_task_id_is_only_unique_inside_its_team`）。
+    #[test]
+    fn a_new_team_numbers_its_tasks_from_one() {
+        let manager = seeded();
+        for title in ["a", "b", "c"] {
+            let ToolReply::Task(task) = call(
+                &manager,
+                &lead(),
+                "task_create",
+                &json!({"title": title, "body": "work"}),
+            )
+            .unwrap() else {
+                panic!("必须是 Task");
+            };
+            assert_eq!(task.team_id, TEAM);
+        }
+        assert_eq!(manager.tasks(TEAM).len(), 3);
+
+        // 队 B 的空板 → `t1`（不是接着队 A 的水位线往下数）。
+        let other_lead = principal(OUTSIDER, MemberRole::Lead, OTHER);
+        let ToolReply::Task(first_of_other) = call(
+            &manager,
+            &other_lead,
+            "task_create",
+            &json!({"title": "first", "body": "work"}),
+        )
+        .unwrap() else {
+            panic!("必须是 Task（新团队的第一个任务不得 Conflict）");
+        };
+        assert_eq!(
+            first_of_other.id, "t1",
+            "队 B 从 t1 开始编号（队 A 的 t1/t2/t3 不是它的水位线）"
+        );
+        assert_eq!(first_of_other.team_id, OTHER);
+
+        // 两个队的 `t1` 并存，互不覆盖（复合主键的直接收益）。
+        assert_eq!(manager.tasks(TEAM).len(), 3);
+        assert_eq!(manager.tasks(OTHER).len(), 1);
+    }
+
+    /// **判据 1**：`t1` 只在队内唯一 —— A 的 `t1` 与 B 的 `t1` 是两条不同的任务。
+    ///
+    /// 三个断言各挡一个事故：
+    ///
+    /// 1. 内容不同：两行没有互相覆盖（`HashMap<String, TeamTask>` 会在这里变红）；
+    /// 2. `update_task(A/t1, done)` 之后 B/t1 状态不变（写路径没有串台）；
+    /// 3. `view::task_detail(B/t1)` 返回 B 的正文而不是 A 的（读路径没有串台）。
+    #[test]
+    fn a_task_id_is_only_unique_inside_its_team() {
+        let manager = seeded();
+        let mut a = task("t1", TEAM);
+        a.title = "A 的活".into();
+        a.body = "A 的正文".into();
+        let mut b = task("t1", OTHER);
+        b.title = "B 的活".into();
+        b.body = "B 的正文".into();
+        manager.create_task(a).unwrap();
+        manager.create_task(b).unwrap();
+
+        let a_key = TaskRef::new(TEAM, "t1");
+        let b_key = TaskRef::new(OTHER, "t1");
+        assert_eq!(manager.task(&a_key).unwrap().title, "A 的活");
+        assert_eq!(manager.task(&b_key).unwrap().title, "B 的活");
+
+        // 队 A 的 t1 由 W1 认领并声明完成。
+        manager.claim_task(&a_key, W1, 1_000).unwrap();
+        manager
+            .update_task(&a_key, W1, TeamTaskState::Done, Some("ok"), 1_100)
+            .unwrap();
+        assert_eq!(manager.task(&a_key).unwrap().state, TeamTaskState::Done);
+        assert_eq!(
+            manager.task(&b_key).unwrap().state,
+            TeamTaskState::Pending,
+            "改 A/t1 不得改动 B/t1"
+        );
+
+        // 读路径：详情必须是 B 自己的正文。
+        let detail = view::task_detail(&manager, &b_key).expect("B/t1 的详情");
+        assert_eq!(detail.body, "B 的正文");
+        assert_eq!(detail.card.team_id.as_str(), OTHER);
+        assert_eq!(detail.card.id, "t1");
+    }
+
+    /// **判据 4**：`(tm_b, t1)` 不存在时返回 `NotFound`，**不许回落到 `tm_a` 的 t1`**。
+    #[test]
+    fn task_detail_rejects_a_pair_that_does_not_belong() {
+        let manager = seeded();
+        manager.create_task(task("t1", TEAM)).unwrap();
+
+        // 队 B 上没有 `t1`（尽管队 A 有）。
+        let err = view::task_detail(&manager, &TaskRef::new(OTHER, "t1")).expect_err("必须 404");
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+        let message = err.to_string();
+        assert!(message.contains(OTHER), "错误必须点名被问的队：{message}");
+    }
+
+    /// **判据 5**：`depends_on` 按**队内**解析 —— 跨队的同名 id **不得**被当成依赖满足。
+    ///
+    /// # 为什么把「本队缺那个 id」做成主判据
+    ///
+    /// 「按 id 找」的实现（`values().find(|t| t.id == dep)`）在两个队都有 `t1` 时是
+    /// **不确定**的：它可能命中本队那个（于是看起来正确）。所以这里构造一个只有一种
+    /// 可能命中的局面：**本队没有 `t1`**，而队 B 的 `t1` 已经 `done`。
+    ///
+    /// - 正确实现（按 `(team_id, id)` 解析）→ `NotFound`（依赖不存在）；
+    /// - 按 id 解析 → 命中队 B 那个 `done` → 认领成功（正是「跨队依赖被满足」的事故）。
+    #[test]
+    fn depends_on_resolves_inside_the_team() {
+        let manager = seeded();
+
+        // 队 B 的 t1 已经完成（一个「看起来能满足依赖」的跨队同名任务）。
+        manager.create_task(task("t1", OTHER)).unwrap();
+        let other_key = TaskRef::new(OTHER, "t1");
+        manager.claim_task(&other_key, "x9@tm_2", 1_000).unwrap();
+        manager
+            .update_task(&other_key, "x9@tm_2", TeamTaskState::Done, None, 1_100)
+            .unwrap();
+
+        // 队 A 的 t2 依赖 `t1`，而**队 A 根本没有 t1**。
+        let mut dependent = task("t2", TEAM);
+        dependent.depends_on = vec!["t1".into()];
+        manager.create_task(dependent).unwrap();
+
+        let err = manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W1, 1_200)
+            .expect_err("本队没有 t1：依赖不得被队 B 的 t1 满足");
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+        assert!(
+            err.to_string().contains(TEAM),
+            "错误必须点名本队（依赖解析在队内）：{err}"
+        );
+
+        // 本队的 t1 建出来但还没 done → 仍然不能认领（依赖是「done」而不是「存在」）。
+        manager.create_task(task("t1", TEAM)).unwrap();
+        let err = manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W1, 1_300)
+            .expect_err("本队 t1 还是 pending");
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+
+        // 本队 t1 完成后才可以。
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_400)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                Some("ok"),
+                1_500,
+            )
+            .unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W1, 1_600)
+            .expect("本队依赖已满足");
+    }
+
+    /// 序号是**数值**序：`t10` 之后是 `t11`（字符串比较会退回 `t2`）。
+    #[test]
+    fn the_task_sequence_grows_numerically_past_t9() {
+        let manager = seeded();
+        for id in ["t9", "t10"] {
+            manager.create_task(task(id, TEAM)).unwrap();
+        }
+        let ToolReply::Task(next) = call(
+            &manager,
+            &lead(),
+            "task_create",
+            &json!({"title": "next", "body": "work"}),
+        )
+        .unwrap() else {
+            panic!("必须是 Task");
+        };
+        assert_eq!(next.id, "t11", "`max(id)` 字符串比较会得到 t9 → t10 重撞");
+    }
+
     /// `task_claim` → `ToolReply::Task`（`claimed` + owner = 调用者）。
     #[test]
     fn task_claim_returns_the_claimed_task() {
@@ -1655,7 +2405,9 @@ mod tests {
         let manager = seeded();
         manager.create_task(task("t1", TEAM)).unwrap();
         manager.create_task(task("t2", TEAM)).unwrap();
-        manager.claim_task("t2", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W1, 1_000)
+            .unwrap();
 
         let ToolReply::Tasks(all) = call(&manager, &worker(W1), "task_list", &json!({})).unwrap()
         else {
@@ -1685,23 +2437,240 @@ mod tests {
         assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
     }
 
-    /// `team_close` → `ToolReply::Closed`（已校验的关闭目标）。
-    #[test]
-    fn team_close_returns_the_validated_target() {
-        let manager = seeded();
-        let reply = call(
-            &manager,
-            &lead(),
-            "team_close",
-            &json!({"member_id": W2, "graceful": true}),
-        )
-        .unwrap();
-        assert_eq!(
-            reply,
+    // ───────────────────────────────────────────────────────────────
+    // `team_close`（决策层）+ 关闭中的写门禁 + `team_list`
+    // ───────────────────────────────────────────────────────────────
+
+    /// `Closed` 的字段摊平成测试结构，让每条断言都能点名自己保护哪条不变量。
+    #[derive(Debug)]
+    struct ClosedReply {
+        team_id: String,
+        member_id: Option<String>,
+        members_closed: Vec<String>,
+        members_failed: Vec<(String, String)>,
+        team_state: TeamState,
+        notes: Vec<String>,
+    }
+
+    fn closed_reply(reply: ToolReply) -> ClosedReply {
+        match reply {
             ToolReply::Closed {
-                member_id: W2.into()
-            }
+                team_id,
+                member_id,
+                members_closed,
+                members_failed,
+                team_state,
+                notes,
+            } => ClosedReply {
+                team_id,
+                member_id,
+                members_closed,
+                members_failed,
+                team_state,
+                notes,
+            },
+            other => panic!("team_close 必须返回 Closed，实际 {other:?}"),
+        }
+    }
+
+    /// 单成员关闭：目标由 `member_id` 指明，**进程还没关**（那是执行层的事）。
+    ///
+    /// 两条同时钉住：① 决定层不声称已关（`members_closed` 还空着 —— 两相位）；
+    /// ② `graceful` 本期不兑现必须在 `notes` 里**明说**（红线 14 的诚实面）。
+    #[test]
+    fn team_close_of_one_member_names_the_target_and_admits_graceful_is_a_no_op() {
+        let manager = seeded();
+        let reply = closed_reply(
+            call(
+                &manager,
+                &lead(),
+                "team_close",
+                &json!({"member_id": W2, "graceful": true}),
+            )
+            .unwrap(),
         );
+
+        assert_eq!(reply.team_id, TEAM);
+        assert_eq!(reply.member_id.as_deref(), Some(W2));
+        assert!(
+            reply.members_closed.is_empty(),
+            "决定层还没关掉任何东西：{:?}",
+            reply.members_closed
+        );
+        assert!(reply.members_failed.is_empty());
+        assert_eq!(
+            reply.team_state,
+            TeamState::Active,
+            "关一个成员不改团队状态"
+        );
+        assert!(
+            reply.notes.iter().any(|note| note.contains("graceful")),
+            "graceful 没兑现必须写在 notes 里：{:?}",
+            reply.notes
+        );
+        assert!(
+            !reply.notes.iter().any(|note| note.contains("lead")),
+            "关一个成员时不该出现「队长 PTY 不关」这种噪音（那是整队关闭的事实）：{:?}",
+            reply.notes
+        );
+        // 审计里留下「被要求过 graceful」这一条（与「做过」严格区分）。
+        let events = manager.events(TEAM).unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|event| event.kind == manager::EVENT_CLOSE_REQUEST
+                    && event
+                        .detail
+                        .as_deref()
+                        .is_some_and(|d| d.contains("graceful=true"))),
+            "必须记录 graceful_requested：{events:?}"
+        );
+    }
+
+    /// 整队关闭：`active → closing`，返回待关列表（**不含队长**）。
+    #[test]
+    fn team_close_without_a_member_id_closes_the_whole_team() {
+        let manager = seeded();
+        let reply = closed_reply(call(&manager, &lead(), "team_close", &json!({})).unwrap());
+
+        assert_eq!(reply.team_id, TEAM);
+        assert_eq!(reply.member_id, None, "整队关闭没有单一目标");
+        assert_eq!(
+            reply.members_closed,
+            vec![W1.to_owned(), W2.to_owned()],
+            "待关列表 = 全部 worker（队长是发起方，不在里面）"
+        );
+        assert_eq!(reply.team_state, TeamState::Closing);
+        assert_eq!(
+            manager.team(TEAM).unwrap().state,
+            TeamState::Closing,
+            "状态必须真的落到库里（不是只在载荷里说说）"
+        );
+    }
+
+    /// 队长成员不能走单成员关闭：关队长 = 关队。
+    #[test]
+    fn team_close_refuses_to_close_the_lead_as_a_member() {
+        let manager = seeded();
+        let err = call(&manager, &lead(), "team_close", &json!({"member_id": LEAD})).unwrap_err();
+        let AppError::Conflict(message) = err else {
+            panic!("关队长必须 Conflict，实际 {err:?}");
+        };
+        assert!(message.contains(LEAD), "{message}");
+        assert!(
+            message.contains("without `member_id`"),
+            "必须指向正确的路径：{message}"
+        );
+    }
+
+    /// `closing` 期间写操作一律拒绝（理由里带当前状态），读操作仍然可用。
+    ///
+    /// 保护的不变量：状态机不是摆设 —— 一个正在解散的队不该还能 spawn / 派活 / 认领，
+    /// 但队长必须还能看到「还剩谁」（`team_status` / `task_list` / `team_list`）并重试关闭。
+    #[test]
+    fn a_closing_team_refuses_writes_but_answers_reads() {
+        let manager = seeded();
+        manager
+            .begin_team_close(TEAM, crate::agent::team::manager::now_millis())
+            .unwrap();
+
+        for (wire, args) in [
+            (
+                "team_spawn",
+                json!({"agent_id": "claude-code", "name": "w9"}),
+            ),
+            ("task_create", json!({"title": "t", "body": "b"})),
+            ("task_claim", json!({"task_id": "t1"})),
+            ("task_update", json!({"task_id": "t1", "state": "done"})),
+            ("team_send", json!({"to": W1, "message": "hi"})),
+            ("team_wait", json!({"on": {"members": [W1]}})),
+        ] {
+            let err = call(&manager, &lead(), wire, &args).unwrap_err();
+            let AppError::Conflict(message) = err else {
+                panic!("{wire} 在 closing 里必须 Conflict，实际 {err:?}");
+            };
+            assert!(
+                message.contains("closing"),
+                "{wire} 的理由必须带当前状态：{message}"
+            );
+            assert!(
+                message.contains(wire),
+                "{wire} 的错误必须点名工具：{message}"
+            );
+        }
+
+        // 读仍然可用（关队期间要看还剩谁）。
+        for wire in ["team_status", "task_list", "team_list"] {
+            assert!(
+                call(&manager, &lead(), wire, &json!({})).is_ok(),
+                "{wire} 在 closing 里必须可读"
+            );
+        }
+        // 关闭本身必须可重试（否则一个关不干净的队永远关不了）。
+        assert!(call(&manager, &lead(), "team_close", &json!({})).is_ok());
+        // 重试是幂等的：状态没被重新推进，审计也不重复。
+        let begins = manager
+            .events(TEAM)
+            .unwrap()
+            .into_iter()
+            .filter(|event| event.kind == manager::EVENT_CLOSE_BEGIN)
+            .count();
+        assert_eq!(begins, 1, "重复进入 closing 不得重复记审计");
+    }
+
+    /// `Closed` 载荷的**线上键名**（camelCase）与变体名逐字钉住。
+    ///
+    /// 这条载荷会进模型上下文（`content[0].text`），键名错了不会有任何报错 ——
+    /// 队长只是读不到 `teamState` / `membersClosed`，于是它对「还剩谁」的判断永远是空的。
+    #[test]
+    fn the_closed_payload_uses_the_documented_wire_keys() {
+        let manager = seeded();
+        let reply = call(&manager, &lead(), "team_close", &json!({"member_id": W2})).unwrap();
+        let json = serde_json::to_value(&reply).unwrap();
+        let body = json
+            .get("closed")
+            .unwrap_or_else(|| panic!("变体名必须是 `closed`：{json}"));
+        let mut keys: Vec<&str> = body
+            .as_object()
+            .unwrap_or_else(|| panic!("载荷必须是对象：{json}"))
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec![
+                "memberId",
+                "membersClosed",
+                "membersFailed",
+                "notes",
+                "teamId",
+                "teamState",
+            ],
+            "载荷键集变了就必须同步模型侧的读法"
+        );
+    }
+
+    /// `team_list`：列出**这台机器上**的团队（跨队只读，worker 也能调）。
+    #[test]
+    fn team_list_lists_every_team_and_is_readable_by_a_worker() {
+        let manager = seeded();
+        let ToolReply::TeamList(list) =
+            call(&manager, &worker(W1), "team_list", &json!({})).unwrap()
+        else {
+            panic!("team_list 必须返回 TeamList");
+        };
+        let ids: Vec<&str> = list
+            .teams
+            .iter()
+            .map(|team| team.team_id.as_str())
+            .collect();
+        assert_eq!(ids, vec![TEAM, OTHER], "同毫秒建队时按 id 升序");
+        assert!(!list.truncated);
+        let team = &list.teams[0];
+        assert_eq!(team.state, TeamState::Active);
+        assert_eq!(team.member_count, 2, "成员数不含队长");
+        assert_eq!(team.lead_agent_id, "claude-code");
     }
 
     /// 入参缺失 / 类型错时的错误必须点名参数与工具（可读性契约）。
@@ -1789,7 +2758,9 @@ mod tests {
     fn wrong_argument_types_are_rejected_instead_of_ignored() {
         let manager = seeded();
         manager.create_task(task("t1", TEAM)).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
         let cases = [
             (
                 "task_create",
@@ -2269,9 +3240,17 @@ mod tests {
     async fn team_wait_on_tasks_reports_the_task_rows() {
         let manager = seeded();
         manager.create_task(task("t1", TEAM)).unwrap();
-        manager.claim_task("t1", W1, 1_000).unwrap();
         manager
-            .update_task("t1", W1, TeamTaskState::Done, Some("ok"), 1_100)
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                Some("ok"),
+                1_100,
+            )
             .unwrap();
 
         let reply = call_async(

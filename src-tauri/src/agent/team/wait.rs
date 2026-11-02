@@ -362,7 +362,7 @@ mod tests {
     use crate::agent::team::fixtures::{fixture_member, fixture_team};
     use crate::agent::team::manager::TeamManager;
     use crate::agent::team::store::TeamStore;
-    use crate::agent::team::types::{MemberSignal, Team, TeamMember, TeamTask, Workspace};
+    use crate::agent::team::types::{MemberSignal, TaskRef, Team, TeamMember, TeamTask, Workspace};
 
     const TEAM: &str = "tm_1";
     const LEAD: &str = "lead@tm_1";
@@ -671,9 +671,17 @@ mod tests {
             let manager = std::sync::Arc::clone(&manager);
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(20)).await;
-                manager.claim_task("t1", A, 1_000).unwrap();
                 manager
-                    .update_task("t1", A, TeamTaskState::Done, Some("ok"), 1_100)
+                    .claim_task(&TaskRef::new(TEAM, "t1"), A, 1_000)
+                    .unwrap();
+                manager
+                    .update_task(
+                        &TaskRef::new(TEAM, "t1"),
+                        A,
+                        TeamTaskState::Done,
+                        Some("ok"),
+                        1_100,
+                    )
                     .unwrap();
             })
         };
@@ -755,7 +763,9 @@ mod tests {
         let manager = std::sync::Arc::new(seeded());
         manager.create_task(task("t1")).unwrap();
         // A 认领（起租约），随后退出。
-        manager.claim_task("t1", A, 1_000).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), A, 1_000)
+            .unwrap();
 
         let mutator = {
             let manager = std::sync::Arc::clone(&manager);
@@ -767,9 +777,17 @@ mod tests {
                     .unwrap();
                 manager.reclaim_expired(1_000 + 1_800_000 + 1).unwrap();
                 // B 接手同一任务并完成。
-                manager.claim_task("t1", B, 2_000_000).unwrap();
                 manager
-                    .update_task("t1", B, TeamTaskState::Done, Some("b 做的"), 2_000_100)
+                    .claim_task(&TaskRef::new(TEAM, "t1"), B, 2_000_000)
+                    .unwrap();
+                manager
+                    .update_task(
+                        &TaskRef::new(TEAM, "t1"),
+                        B,
+                        TeamTaskState::Done,
+                        Some("b 做的"),
+                        2_000_100,
+                    )
                     .unwrap();
             })
         };
@@ -826,7 +844,9 @@ mod tests {
     fn snapshot_carries_no_transcript() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
-        manager.claim_task("t1", A, now_millis()).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), A, now_millis())
+            .unwrap();
 
         let member_snapshot = build_snapshot(&manager, TEAM, &members(&[A])).unwrap();
         let json = serde_json::to_value(&member_snapshot).unwrap();

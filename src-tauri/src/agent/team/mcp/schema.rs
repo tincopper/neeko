@@ -22,6 +22,8 @@ use crate::agent::team::types::TeamTaskState;
 pub enum ToolName {
     /// 读团队状态（成员 + 板摘要）。
     TeamStatus,
+    /// 列**这台机器上**的全部团队（跨队只读；重启后重开自己的队靠它）。
+    TeamList,
     /// 读**这个队**的可选项：允许谁当成员、还能加几个、缺省值是什么（只读）。
     TeamOptions,
     /// 建成员（P2.5a：准入 + 落库，返回 `MemberCreated`；起进程在 2.5b）。
@@ -46,8 +48,9 @@ pub enum ToolName {
 ///
 /// 与 [`TOOLS`] 故意分成两份而不是由 `TOOLS` 派生：只有「两份独立清单」才能让
 /// 「新增变体却忘了登记」变成测试失败，而不是被派生逻辑自动吞掉。
-pub const ALL_TOOL_NAMES: [ToolName; 10] = [
+pub const ALL_TOOL_NAMES: [ToolName; 11] = [
     ToolName::TeamStatus,
+    ToolName::TeamList,
     ToolName::TeamOptions,
     ToolName::TeamSpawn,
     ToolName::TeamSend,
@@ -71,7 +74,8 @@ pub struct ToolSpec {
     pub input_schema: &'static str,
 }
 
-/// 工具清单 —— **恰好 10 条**，与 [`ALL_TOOL_NAMES`] 一一对应（design §4.2 + `team_options`）。
+/// 工具清单 —— **恰好 11 条**，与 [`ALL_TOOL_NAMES`] 一一对应
+/// （design §4.2 的 9 条 + `team_options` + `team_list`）。
 ///
 /// `input_schema` 只声明本层**真的会读**的字段：Schema 里写一个 dispatch 不校验的参数，
 /// 就是向模型声明一个「传了也没用」的能力（红线 14 的同族违规）。
@@ -89,6 +93,12 @@ pub static TOOLS: &[ToolSpec] = &[
         name: ToolName::TeamStatus,
         wire: "team_status",
         summary: "Read the team roster and a board summary (id/name/state/lease only, no transcripts).",
+        input_schema: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
+    },
+    ToolSpec {
+        name: ToolName::TeamList,
+        wire: "team_list",
+        summary: "List the teams on this machine (id/name/state/root/member+task counts) so an existing team can be reopened after a restart. Read-only and cross-team.",
         input_schema: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
     ToolSpec {
@@ -274,6 +284,7 @@ mod tests {
     fn every_documented_tool_is_in_the_catalogue_including_team_spawn() {
         for wire in [
             "team_status",
+            "team_list",
             "team_spawn",
             "team_send",
             "task_create",
@@ -287,8 +298,9 @@ mod tests {
         }
         assert_eq!(
             TOOLS.len(),
-            10,
-            "design §4.2 的 9 条 + `team_options`（团队组成配置的只读面）"
+            11,
+            "design §4.2 的 9 条 + `team_options`（团队组成配置的只读面）+ `team_list`\
+             （重启后重开自己的队 / 关队前的清点）"
         );
         assert_eq!(lookup("team_spawn"), Some(ToolName::TeamSpawn));
         // 反向：清单里不得有形如 `team_*` 的遗留别名（wire 名是协议）。
@@ -401,6 +413,7 @@ mod tests {
         assert_eq!(lookup(""), None);
         // wire 字面量钉死：改名会让 CLI 侧 MCP 配置里的工具名对不上。
         assert_eq!(spec_for(ToolName::TeamStatus).wire, "team_status");
+        assert_eq!(spec_for(ToolName::TeamList).wire, "team_list");
         assert_eq!(spec_for(ToolName::TeamSpawn).wire, "team_spawn");
         assert_eq!(spec_for(ToolName::TeamSend).wire, "team_send");
         assert_eq!(spec_for(ToolName::TaskCreate).wire, "task_create");

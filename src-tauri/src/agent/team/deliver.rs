@@ -133,6 +133,62 @@ mod tests {
         );
     }
 
+    /// **端到端（`cargo test` 可达的那一段）**：一份**模板形状的**上报（`hints` 的 wire 键名
+    /// 逐字照抄 `templates/`）经 handler 的解码本体 [`validation::validate`] 进入团队观察者，
+    /// 成员从 `Spawned` 推进到 `Idle`。
+    ///
+    /// # 这条判据补的是**中间那一段**
+    ///
+    /// 2026-11-03 的事故（D2）形态就是「契约两端只有一端被测过」：模板侧不知道有没有发，
+    /// 服务端侧用**手搓的** `HookEvent`（hints 直接赋值）测 —— 而 `hints.team_id` 这个
+    /// **wire 键名**是否真被解成 `EnvHints.team_id`，两侧都覆盖不到。这里从 JSON 字节进来，
+    /// 载荷里出现的就是模板发的两个键名（拼错一个就红）。
+    ///
+    /// 载荷里**没有 `seq`**：五份模板目前都不发它（`HookEvent.seq` 是 `Option`，缺字段 =
+    /// 「旧模板」）。照实抄是刻意的 —— 带上一个模板不会发的字段，测的就不是生产形状了。
+    #[test]
+    fn a_template_shaped_envelope_advances_the_member() {
+        use crate::agent::hooks::ingest::validation;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+        state
+            .team_manager
+            .create_team(fixture_team(TEAM))
+            .expect("create_team");
+        state
+            .team_manager
+            .add_member(fixture_member(W1, TEAM))
+            .expect("add_member");
+
+        let body = serde_json::json!({
+            "agent_session_id": "agent-1",
+            "event": "turn_completed",
+            "cwd": "/x/proj",
+            "detail": null,
+            "title": null,
+            "hints": {
+                "neeko_session_id": null,
+                "project_id": null,
+                "team_id": TEAM,
+                "team_member_id": W1,
+            },
+        })
+        .to_string();
+
+        // `ingest_hook` 只多做「取 path/body + 恒 204」；解码与投递就是这两步。
+        validation::validate(SOURCE, body.as_bytes(), |source, event| {
+            observe_in(&state, source, &event);
+        });
+
+        assert_eq!(
+            state.team_manager.member(W1).map(|m| (m.state, m.last_seq)),
+            Some((MemberState::Idle, 0)),
+            "模板形状的 turn_completed 必须经 wire 解码把成员从 Spawned 推到 Idle \
+             （不带 seq 的旧模板也必须照常处理）"
+        );
+    }
+
     /// **fail-open 不变量**：`agent_session_id` 不属于任何成员时，投递不 panic、不改状态。
     ///
     /// 观察者不读 `agent_session_id`（身份只认 env，design §5.4），所以“不属于任何成员”

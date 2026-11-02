@@ -15,7 +15,7 @@
 //! ```text
 //! 端点坐标        → 起进程前就知道「成员该连哪里」；端点没起来直接拒绝
 //! 成员行 / 团队行  → 内存镜像（锁内无 I/O）
-//! 项目环境        → 由团队根反查项目（`Team` 只持久化路径，不持凭证）
+//! 项目环境        → 由团队行给出的项目 id 查表（旧行退回团队根前缀）
 //! 启动计划        → 纯函数 + canonicalize（I/O ⇒ 阻塞池）
 //! 配置目录        → 只有 `ConfigDir` 档有：mkdir + 符号链接镜像 + 该 CLI 自己的 `mcp add`
 //! create_session  → 起 PTY（`Argv` 形态：不经 shell，无引号规则）
@@ -36,7 +36,7 @@
 //! | --- | --- |
 //! | `mcp add` 或镜像失败 | 本文件的 [`provision_config_dir`]（失败即删，不留残留）|
 //! | PTY 起进程失败 | 本文件的 `spawn`（删掉刚 provision 的目录）|
-//! | 成员/团队关闭 | **关队命令**（尚未实现）—— 那是唯一有权判“这个成员真的不在了”的地方 |
+//! | 成员/团队关闭 | `PtyMemberExecutor::close`（只关 PTY），行归档与凭证作废在团队域 |
 //!
 //! 成功路径**不在这里删**：目录还要给那个还在跑的成员进程读。
 
@@ -93,11 +93,22 @@ impl MemberExecutor for PtyMemberExecutor {
 
         // 成员行与团队行都是内存镜像（`TeamManager` 的锁内无 I/O）。
         let (member, team) = member_and_team(&state, member_id)?;
-        // 环境是**项目**的事实，不是团队的：`Team` 只持久化 `project_path`（不持凭证）。
-        // 反查失败 = 团队根不属于任何项目 ⇒ 拒绝（不降级成 Local，见该方法文档）。
-        let environment = state
-            .project_environment_for_path(&team.project_path)
-            .await?;
+        // 环境是**项目**的事实，不是团队的：`Team` 不持凭证，只持久化「哪个项目」与
+        // 「工作区根」。来源判定是纯函数（`execution::environment_source`），这里只读结果：
+        //
+        // | 变体 | 何时 | 怎么查 |
+        // | --- | --- | --- |
+        // | `ProjectId` | v16 之后的写入（主路径）| 按 id 精确查表 |
+        // | `LegacyPath` | v15 及更早的行（空 id）| 退回路径前缀反查 |
+        //
+        // 反查失败 = 团队根不属于任何项目 ⇒ 拒绝（不降级成 Local，见 `project_environment_for_path`
+        // 的文档）。旧行 + 工作树是已知会失败的那一类：那是旧数据缺了「项目归属」。
+        let environment = match execution::environment_source(&team) {
+            execution::EnvironmentSource::ProjectId(id) => state.project_environment(&id)?,
+            execution::EnvironmentSource::LegacyPath(path) => {
+                state.project_environment_for_path(&path).await?
+            }
+        };
 
         // 可执行程序名一次算出（含用户覆盖）：隔离目录的 `mcp add` 与 PTY 必须是**同一个**
         // 程序，否则会出现“配置写给了 A、成员跑的是 B”。
@@ -250,11 +261,58 @@ impl MemberExecutor for PtyMemberExecutor {
             .await
             .map_err(|err| AppError::Unknown(format!("delivering to member failed: {err}")))?
     }
+
+    /// **请求**关掉成员的 PTY 会话（**只关进程**；状态迁移由调用方做，design §7.1）。
+    ///
+    /// # 返回 `Ok` 只保证 kill 已发出（**不是**「进程已消失」）
+    ///
+    /// `TerminalRouter::close_session` 是 remove-then-close 的形态：会话立刻从表里摘掉，而
+    /// PTY 的收尾在它自己的线程里完成（SSH 只是摘监听器）。所以「归档成员 + 撤凭证」可能先于
+    /// 「进程真的消失」发生 —— 这**不影响**正确性（凭证撤掉之后它再也调不动工具），但任何
+    /// 面向用户的说明都不得写成「进程已关」（`execution::close_notes` 里有一条讲这件事）。
+    ///
+    /// 不改成「等到进程消失」是刻意的：那会让每一次 `team_close` 变成一个可能卡住的操作，
+    /// 而它换来的保证并不属于安全性质。
+    ///
+    /// # 红线 1：走既有的 `TerminalRouter`
+    ///
+    /// 团队域不持有 `PtyHandle`，也不该持有：`SessionOwner`（Local / WSL / SSH）的路由是
+    /// terminal 域的事实，绕过去自己找 handle 就会得到一套只对 Local 成立的关闭逻辑。
+    ///
+    /// # 幂等（端口契约，见 `MemberExecutor::close` 的文档）
+    ///
+    /// - `terminal_id = None`：成员从未起来，本来就没进程 ⇒ `Ok`；
+    /// - 会话已经不在了：`close_session` 自己就是 remove-then-close 的幂等形态（找不到
+    ///   只 warn 不报错）⇒ `Ok`。
+    ///
+    /// 不把「已经不在」报成错误是刻意的：整队关闭必须可重试，而一个已经死透的成员每次重试
+    /// 都返回同一条错误会让队长永远卡在同一个点上。
+    async fn close(&self, member_id: &str) -> Result<(), AppError> {
+        let state = self.app.state::<AppStateWrapper>();
+        let member = state
+            .team_manager
+            .member(member_id)
+            .ok_or_else(|| AppError::NotFound(format!("member {member_id}")))?;
+        let Some(terminal_id) = member.terminal_id else {
+            log::info!(
+                "[agent-team] member {member_id} was never started (no pty session); \
+                 nothing to close"
+            );
+            return Ok(());
+        };
+
+        // `close_session` 不阻塞调用线程（Local 在后台线程收 PTY，SSH 只摘监听器），
+        // 所以这里不需要再进阻塞池。
+        state.terminal_router.close_session(&terminal_id);
+        log::info!("[agent-team] member {member_id} pty session {terminal_id} closed");
+        Ok(())
+    }
 }
 
 /// 成员行 + 它的团队行（两者都在 `TeamManager` 的内存镜像里）。
 ///
-/// 团队行是必需的一半：环境由 `team.project_path` 反查，而 `member` 只带 `team_id`。
+/// 团队行是必需的一半：环境由 `team.project_id`（v15 及更早的行退回 `team.project_path`）
+/// 决定，而 `member` 只带 `team_id`。
 fn member_and_team(
     state: &AppStateWrapper,
     member_id: &str,

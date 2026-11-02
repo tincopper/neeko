@@ -156,6 +156,68 @@ mod tests {
         assert!(!gate.authorize(&HeaderMap::new()), "缺 header 必须拒");
     }
 
+    /// 一个用给定 manager 组装的「门 + 判定闭包」（与 handler 侧同一份表）。
+    fn gate_for(manager: &TeamManager) -> impl Fn(&str) -> bool {
+        let principals = principals_from(manager).expect("principals");
+        let gate = AuthGate::with_shared_hashed_tokens(
+            SharedTokenSet::new(token_hashes(&principals)),
+            vec![Arc::new(HeaderToken { name: TOKEN_HEADER })],
+        );
+        move |value: &str| {
+            let mut headers = HeaderMap::new();
+            headers.insert(TOKEN_HEADER, value.parse().expect("header value"));
+            gate.authorize(&headers)
+        }
+    }
+
+    /// **关掉的成员立即失效**：归档清空 `token_hash` ⇒ 表里没有它 ⇒ 旧明文过不了门。
+    ///
+    /// 这是「成员进 `Dead` 之后旧 token 还能不能用」的判据。答案曾经是「能」——
+    /// `principals_from` 只看 hash 是否为空，与成员状态无关，所以一个被杀掉的成员仍然
+    /// 能继续调工具（包括 `team_close`）。清 hash 因此**必须**发生在归档的那一步。
+    #[test]
+    fn closing_a_member_revokes_its_credential_before_the_gate_is_rebuilt() {
+        let manager = seeded();
+        assert!(gate_for(&manager)("w1-token"), "关闭前必须能用");
+
+        manager.finish_member_close(W1, 1_000).expect("close");
+
+        assert!(
+            !gate_for(&manager)("w1-token"),
+            "关闭后旧明文必须过不了门（否则归档只是改了个状态字段）"
+        );
+        assert!(
+            principals_from(&manager)
+                .expect("principals")
+                .values()
+                .all(|principal| principal.member_id != W1),
+            "身份表里不得再有这个成员"
+        );
+        // 别人不受影响：一把钥匙的作废不得顺手作废全队。
+        assert!(gate_for(&manager)("lead-token"));
+    }
+
+    /// 反例（本条证明上一条的**必要性**）：只落 `Dead` 不改 hash 的成员仍然**能用**旧凭证。
+    ///
+    /// 这不是「期望行为」，而是当前身份表的真实语义 —— 把它写成用例，是为了让
+    /// 「为什么必须在归档时清 hash」无法被当成冗余动作删掉。
+    #[test]
+    fn a_member_that_died_without_being_archived_still_holds_a_usable_credential() {
+        let manager = seeded();
+        manager
+            .observe_signal(W1, crate::agent::team::types::MemberSignal::Exited, 1_000)
+            .expect("signal");
+
+        assert_eq!(
+            manager.member(W1).expect("member").state,
+            crate::agent::team::types::MemberState::Dead
+        );
+        assert!(
+            gate_for(&manager)("w1-token"),
+            "L4 进程死亡不撤凭证：作废只发生在 `finish_member_close`（单成员 / 整队关闭）"
+        );
+    }
+
     /// 轮换立即生效：签发新凭证后旧明文不再能过门（表从库重建）。
     #[test]
     fn rotating_a_credential_invalidates_the_previous_plaintext() {

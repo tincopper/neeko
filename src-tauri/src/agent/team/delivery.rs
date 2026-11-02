@@ -5,6 +5,7 @@
 //! | 层 | 是什么 | 为什么 |
 //! | --- | --- | --- |
 //! | [`route`] | 纯函数：成员通道 → 怎么送 | 通道是**数据**（`WorkerChannel`），送法是策略；纯函数才能直测三档 |
+//! | [`delivery_text`] | 纯函数：发送者 + 正文 → 接收方看到的那一行 | 投递文本是对方**唯一**的身份线索，只拼一次 |
 //! | [`pty_write_plan`] | 纯函数：消息 → 两笔写入 | AC14 的机器判据 |
 //! | [`deliver_via_pty`] | 真的写（`emit` + 等待） | 唯一不可单测的部分，因此只剩三行 |
 //!
@@ -121,6 +122,26 @@ pub fn pty_write_plan(message: &str) -> PtyWritePlan {
     }
 }
 
+/// 把一条队内消息拼成**接收方在 TUI 里看到的那一行**（纯函数）。
+///
+/// # 为什么这段文本存在
+///
+/// `team_send` 的唯一效果就是往对方 stdin 写一行字节。对方（另一个 CLI agent）看见的
+/// 就是这行字 —— 没有 `from` 时队长收到 `1275` / `3775` 根本不知道是谁在说话（真实
+/// 冒烟测试的现场：发送者在链路上整段丢失）。
+///
+/// # 格式是契约，且只做一件事
+///
+/// `"[team] {from}: {message}"` —— 一行、可 grep、**不加工正文**：
+///
+/// - 不 `trim`：正文的前后空白也是内容（粘贴的代码片段 / 缩进块）；
+/// - 不 `escape` / 不折行：正文里的 `\n` 原样保留（同 [`pty_write_plan`] 的立场）；
+/// - 不加第二个分隔符：前缀必须能一眼认出，而正文必须能**逐字**匹配回去。
+#[must_use]
+pub fn delivery_text(from: &str, message: &str) -> String {
+    format!("[team] {from}: {message}")
+}
+
 /// 真正投递：两笔写入 + 中间的间隔。
 ///
 /// 阻塞 150ms，调用方必须在阻塞池里调（红线 3）。
@@ -159,6 +180,36 @@ mod tests {
             !plan.text.ends_with(b"\r") && !plan.text.ends_with(b"\n"),
             "正文不得自带回车 —— 那正是部分 TUI 会丢弃的形态"
         );
+    }
+
+    /// 投递文本带**发送者**：接收方只能看到这一行字，没有发送者就无法归因。
+    #[test]
+    fn the_delivery_text_names_the_sender() {
+        let text = delivery_text("w2@tm_1", "please rebase");
+        assert_eq!(text, "[team] w2@tm_1: please rebase");
+        assert!(text.starts_with("[team] "), "前缀必须可 grep：{text}");
+    }
+
+    /// 正文**逐字**保留：前后空白 / 多行 / 制表符都不被加工。
+    ///
+    /// 反例（本用例挡的正是它）：对正文做 `trim()` —— 粘贴的代码片段会因此变形，而
+    /// 「投递成功」这件事依然成立，所以没有任何其它测试会红。
+    #[test]
+    fn the_delivery_text_keeps_the_body_verbatim() {
+        let body = "\n  line1\n\tline2  \n";
+        assert_eq!(
+            delivery_text("w2@tm_1", body),
+            format!("[team] w2@tm_1: {body}")
+        );
+        // 空正文不被折成空行之外的东西（前缀 + 空格原样）。
+        assert_eq!(delivery_text("w2@tm_1", ""), "[team] w2@tm_1: ");
+    }
+
+    /// 发送者原样拼进前缀（成员 id 含 `@`，任何「归一化」都会让它找不到成员）。
+    #[test]
+    fn the_delivery_text_does_not_normalise_the_sender() {
+        let text = delivery_text(" w2@tm_1 ", "hi");
+        assert_eq!(text, "[team]  w2@tm_1 : hi", "发送者同样不得 trim");
     }
 
     /// 正文里的换行/回车是**内容**，不得被规范化掉（代码片段会因此变样）。

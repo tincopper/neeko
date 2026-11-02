@@ -95,8 +95,8 @@ pub struct TeamServerState {
     /// handler 刷新身份表时要同步它 —— 两处必须来自同一次 `principals_from`
     /// （门放行谁 / 认出谁，不能有两份表）。
     pub tokens: SharedTokenSet,
-    /// 成员执行者（**必填**：组合根总是注入它，见 [`crate::agent::team::execution::apply_reply`]
-    /// 关于「不留会撒谎的 None 分支」的说明）。
+    /// 成员执行者（**必填**：组合根总是注入它，见
+    /// [`crate::agent::team::execution::apply_effect`] 关于「不留会撒谎的 None 分支」的说明）。
     pub executor: Arc<dyn crate::agent::team::execution::MemberExecutor>,
 }
 
@@ -123,10 +123,15 @@ impl TeamServerState {
     }
 }
 
-/// 端点实现凭证面：签发 + **同一动作内**认门。
+/// 端点实现凭证面：签发 + **同一动作内**认门；以及单独的「只刷新」。
 ///
 /// 顺序（签发 → 刷新）不可拆：拆开就留一个「库里已有新凭证、门还不认识它」的窗口，
 /// 而成员进程恰好会在这个窗口里发第一次工具调用（401）。
+///
+/// `refresh` 是同一个写入点的**另一个入口**：关闭成员会把它行里的 `token_hash` 清空，
+/// 但那只是库里的改动 —— 门必须重新组装才会**忘掉**旧 hash。所以 `admit` 与「归档后
+/// 失效」共用 [`TeamServerState::refresh_credentials`] 这一份实现（再写一份 = 两个会漂移的
+/// 「谁能进」）。
 #[async_trait::async_trait]
 impl crate::agent::team::execution::CredentialLedger for TeamServerState {
     async fn admit(&self, member_id: &str) -> Result<String, AppError> {
@@ -141,6 +146,12 @@ impl crate::agent::team::execution::CredentialLedger for TeamServerState {
             .map_err(|err| AppError::Unknown(format!("issuing a member token failed: {err}")))??;
 
         // 认门：读库 → 重建身份表 → 替换门的期望集合，整段在阻塞池里（红线 3）。
+        self.refresh().await?;
+        Ok(token)
+    }
+
+    async fn refresh(&self) -> Result<(), AppError> {
+        // 读库 + 重建表 = 阻塞 I/O（红线 3）。
         let state = self.clone();
         self.runtime
             .spawn_blocking(move || state.refresh_credentials())
@@ -148,7 +159,7 @@ impl crate::agent::team::execution::CredentialLedger for TeamServerState {
             .map_err(|err| {
                 AppError::Unknown(format!("refreshing team credentials failed: {err}"))
             })??;
-        Ok(token)
+        Ok(())
     }
 }
 
@@ -324,11 +335,32 @@ async fn tools_call(
         .await
         .map_err(|err| RpcError::new(SERVER_ERROR, err.to_string()))?;
 
-    // 决策层只落库；**执行在这里**（两相位）。副作用映射与先后顺序的唯一实现在
-    // `execution::apply_reply` —— 本层只负责把结论交出去，以及把错误翻成 JSON-RPC 码。
-    crate::agent::team::execution::apply_reply(state, state.executor.as_ref(), &reply)
-        .await
-        .map_err(|err| RpcError::new(SERVER_ERROR, err.to_string()))?;
+    // 决策层只落库；**执行在这里**（两相位）。三件事各有唯一的实现：
+    //
+    // ```text
+    // dispatch::effect_for        ToolReply → Option<Effect>（线协议 → 领域副作用）
+    // execution::apply_effect     Effect → EffectOutcome（领域副作用 → 动手）
+    // dispatch::reply_for         EffectOutcome → ToolReply（结果 → 线协议）
+    // ```
+    //
+    // 本层只负责把它们串起来，以及把错误翻成 JSON-RPC 码。返回的是**执行之后**的回复
+    // （`team_close` 的 `teamState` / `membersClosed` 因此是事实而不是意图）。
+    let reply = match dispatch::effect_for(&reply) {
+        Some(effect) => {
+            let outcome = crate::agent::team::execution::apply_effect(
+                &state.runtime,
+                state,
+                state.executor.as_ref(),
+                &state.manager,
+                &effect,
+            )
+            .await
+            .map_err(|err| RpcError::new(SERVER_ERROR, err.to_string()))?;
+            dispatch::reply_for(&reply, outcome)
+        }
+        // 纯数据回复：决定层给的就是事实，没有副作用要做。
+        None => reply,
+    };
 
     // 红线 4：`ToolReply` 里没有任何字段承载 transcript（只有 id / 名字 / 状态 /
     // 租约剩余秒 / 任务行），所以把它整段序列化成文本内容不会把对话正文拖进上下文。
@@ -563,6 +595,10 @@ mod tests {
             async fn deliver(&self, _member_id: &str, _message: &str) -> Result<(), AppError> {
                 panic!("team_spawn 不该触发投递")
             }
+
+            async fn close(&self, _member_id: &str) -> Result<(), AppError> {
+                panic!("team_spawn 不该触发关闭")
+            }
         }
 
         let recording = Arc::new(Recording(AtomicUsize::new(0)));
@@ -620,6 +656,10 @@ mod tests {
                     .push(format!("{member_id}:{message}"));
                 Ok(())
             }
+
+            async fn close(&self, _member_id: &str) -> Result<(), AppError> {
+                panic!("team_send 不该触发关闭")
+            }
         }
 
         let recorder = Arc::new(Recorder(std::sync::Mutex::new(Vec::new())));
@@ -641,8 +681,8 @@ mod tests {
         assert_eq!(response["error"], Value::Null, "{response}");
         assert_eq!(
             *recorder.0.lock().expect("calls"),
-            vec!["w1@tm_1:run the tests".to_owned()],
-            "NeedsDelivery 必须被交给执行者"
+            vec![format!("{W1}:[team] {LEAD}: run the tests")],
+            "NeedsDelivery 必须被交给执行者，且投递文本带**发送者**（不是收件人）"
         );
     }
 
@@ -1082,6 +1122,10 @@ mod tests {
                 vec![
                     "teamId",
                     "teamState",
+                    // 成员数（**不含队长**）：与团队清单的 `memberCount` 同一个数
+                    // （`TeamManager::member_count`）。面板曾经只能用 `members.length`
+                    // （含队长）来代替它 —— 于是同一个队有两个成员数。
+                    "memberCount",
                     "members",
                     "taskTotal",
                     "taskOpen",
@@ -1105,7 +1149,12 @@ mod tests {
                         "role",
                         "state",
                         "verification",
-                        "leaseRemainingSecs"
+                        "leaseRemainingSecs",
+                        "agentId",
+                        "terminalId",
+                        "workspace",
+                        "channel",
+                        "tier"
                     ]
                 );
             }

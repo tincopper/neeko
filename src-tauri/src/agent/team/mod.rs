@@ -42,13 +42,17 @@ pub use authorize::authorize;
 pub use boot::{boot as boot_endpoint, endpoint_url, TeamServer, TeamSurface};
 pub use completion::advance;
 pub use events::{TeamNotifier, TeamPulse, TEAM_EVENT};
-pub use execution::{apply_reply, plan_member_spawn, ConfigDirPlan, MemberExecutor, SpawnPlan};
+pub use execution::{
+    apply_effect, plan_close, plan_member_spawn, CloseOutcome, ClosePlan, ConfigDirPlan, Effect,
+    EffectOutcome, MemberExecutor, SpawnPlan,
+};
 pub use lease::{lease_expired, next_reclaim_count, should_auto_release};
-pub use manager::{TeamManager, TeamWake};
+pub use manager::{TaskCounts, TeamManager, TeamWake};
 pub use options::{default_options, options_for, TeamDefaults, TeamOptions};
 pub use store::{TeamEventRecord, TeamStore};
 pub use view::{
-    MemberStatusView, TaskCard, TaskDetail, TeamSnapshot, TeamStatusView, MAX_BOARD_TASKS,
+    MemberDetail, MemberEventView, MemberStatusView, TaskCard, TaskDetail, TeamSnapshot,
+    TeamStatusView, MAX_BOARD_TASKS, MAX_MEMBER_EVENTS,
 };
 pub use wait::{
     satisfied, WaitMemberRow, WaitOutcome, WaitSnapshot, WaitTargets, WaitTaskRow, WaitUntil,
