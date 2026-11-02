@@ -3,10 +3,8 @@ import { useCallback } from 'react';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { AgentConfig, EditorGroupId, Tab } from '@/shared/types';
-import { nextTerminalTitle } from '@/shared/utils/terminalTabTitle';
+import { MAX_TERMINAL_TABS, nextTerminalTitle } from '@/shared/utils/terminalTabTitle';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
-
-const MAX_TERMINAL_TABS = 10;
 
 /**
  * 工作区终端 Tab 创建：普通终端 + 指定 agent 的终端。

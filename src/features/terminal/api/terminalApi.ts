@@ -68,6 +68,18 @@ export function createTerminalSession(
   });
 }
 
+/**
+ * 切换会话的**分离态**：`true` = 后台运行（tab 关了但进程继续跑），`false` = 接回界面。
+ *
+ * 分离后没有消费者，照常背压会把 PTY 写入堵死（后台 agent 冻住）—— 所以后端在分离态
+ * 只保留尾部输出、丢掉最旧的字节。接回时恢复正常背压。
+ *
+ * 返回值同时是**存活探针**：`false` = 这个会话已经不在跑了。
+ */
+export function detachTerminalSession(sessionId: string, detached: boolean): Promise<boolean> {
+  return invoke<boolean>('detach_terminal_session', { sessionId, detached });
+}
+
 export function closeTerminalSession(sessionId: string): Promise<void> {
   return invoke<void>('close_terminal_session', { sessionId });
 }

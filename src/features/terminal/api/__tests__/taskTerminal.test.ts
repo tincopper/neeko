@@ -5,9 +5,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { activeTabIdOf, useEditorStore } from '@/shared/store/editorStore';
+import { MAX_TERMINAL_TABS } from '@/shared/utils/terminalTabTitle';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
-import { MAX_TERMINAL_TABS, createTaskTerminal } from '../taskTerminal';
+import { createTaskTerminal } from '../taskTerminal';
 
 const PROJECT_ID = 'task-terminal-test';
 

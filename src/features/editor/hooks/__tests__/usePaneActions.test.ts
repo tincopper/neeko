@@ -122,7 +122,10 @@ describe('usePaneActions', () => {
     act(() => {
       closing = result.current.handleCloseTab('tab1');
     });
-    expect(useCloseConfirmStore.getState().pending).toEqual({ fileName: 'Untitled-1' });
+    expect(useCloseConfirmStore.getState().pending).toEqual({
+      kind: 'unsaved-file',
+      fileName: 'Untitled-1',
+    });
 
     await act(async () => {
       useCloseConfirmStore.getState().resolve('discard');
@@ -144,7 +147,10 @@ describe('usePaneActions', () => {
     act(() => {
       closing = result.current.handleCloseTab('tab1');
     });
-    expect(useCloseConfirmStore.getState().pending).toEqual({ fileName: 'src/index.ts' });
+    expect(useCloseConfirmStore.getState().pending).toEqual({
+      kind: 'unsaved-file',
+      fileName: 'src/index.ts',
+    });
 
     await act(async () => {
       useCloseConfirmStore.getState().resolve('cancel');

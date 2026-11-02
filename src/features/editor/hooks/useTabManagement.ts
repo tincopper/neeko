@@ -1,14 +1,13 @@
 import { useCallback } from 'react';
 
-import {
-  closeTabWithConfirmation,
-  type SaveTabAction,
-} from '@/features/editor/store/closeConfirmStore';
 import { useTerminalTabs } from '@/features/terminal';
 import { useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 import type { AgentConfig, TerminalTab } from '@/shared/types';
 import { tabSpaceKeyOf } from '@/shared/utils/tabIdentity';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
+
+import type { SaveTabAction } from '../store/closeConfirmStore';
+import { closeTabWithConfirmation } from '../store/closeTab';
 
 interface UseTabManagementOptions {
   activeProject: { id: ProjectId; selected_agents?: string[] } | null;

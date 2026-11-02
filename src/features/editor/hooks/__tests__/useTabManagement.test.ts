@@ -139,7 +139,10 @@ describe('useTabManagement handleCloseTab', () => {
     act(() => {
       closing = result.current.handleCloseTab('f1');
     });
-    expect(useCloseConfirmStore.getState().pending).toEqual({ fileName: 'f1.ts' });
+    expect(useCloseConfirmStore.getState().pending).toEqual({
+      kind: 'unsaved-file',
+      fileName: 'f1.ts',
+    });
 
     await act(async () => {
       useCloseConfirmStore.getState().resolve('cancel');

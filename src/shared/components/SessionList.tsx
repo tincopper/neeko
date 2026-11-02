@@ -16,8 +16,9 @@ import { formatRelativeTime } from '@/shared/utils/relativeTime';
  * 视觉契约（`<prototype.html>` 的 `.session`）：
  * - 图标 = **该会话的 agent 品牌图标**（不是 kind 图标）：扫一眼就知道哪个 agent 在跑；
  *   纯 shell / 未知 agent 回落 `cli.svg`（`AgentIcon` 自带兜底，本组件不另建映射表）。
- * - 标题：`titleSource === 'placeholder'` 时斜体 + 次级灰（**不画任何来源徽标** ——
- *   标题来源是内部事实，见 design §10）。
+ * - 标题：真标题用主色（**不画任何来源徽标** —— 标题来源是内部事实，见 design §10）。
+ *   占位会话没有标题可画（`Placeholder` 恒为空串，且 `isListedSession` 已把它挡在列表外），
+ *   所以这里不存在「占位样式」分支。
  * - 相对时间取 `updatedAt`：terminal 全程 `running`，用「还在动」表达而不是伪造 Idle。
  * - **无会话传入 → 渲染 null**（无会话不画点，也不留空壳）。
  */
@@ -83,8 +84,8 @@ const SessionListRow: React.FC<SessionListRowProps> = ({ session, isActive, now,
         // 会话行是单元的**子项**，字号比单元标签小一档才有层级。
         'flex w-full items-center gap-1.5 rounded-[5px] pl-2 pr-1.5 py-1 text-left transition-colors',
         'cursor-pointer focus-visible:outline-2 focus-visible:outline-accent-blue',
-        // 选中态由 `row-current` 一个语义类表达（强调色淡底 + 左侧 2px 色条，
-        // 见 `styles/components/session-row.css`）。父级用中性色，两级分属不同通道。
+        // 选中态由 `row-current` 一个语义类表达（强调色淡底，见 `styles/base/tailwind.css`）。
+        // 父级用中性色，两级分属不同通道。
         isActive ? 'row-current' : 'hover:bg-bg-hover',
       )}
       title={hasTitle ? session.title : undefined}
@@ -97,13 +98,7 @@ const SessionListRow: React.FC<SessionListRowProps> = ({ session, isActive, now,
         className="w-[13px] h-[13px] shrink-0 object-contain"
       />
       {hasTitle && (
-        <span
-          className={cn(
-            'min-w-0 flex-1 truncate text-[0.92em]',
-            // 占位来源（理论上已为空）只降一档颜色；真标题用主色
-            session.titleSource === 'placeholder' ? 'text-text-secondary' : 'text-text-primary',
-          )}
-        >
+        <span className="min-w-0 flex-1 truncate text-[0.92em] text-text-primary">
           {session.title}
         </span>
       )}

@@ -89,7 +89,10 @@ describe('AppModals — 全局弹窗宿主', () => {
         .request('a.ts')
         .then((v) => (action = v));
     });
-    expect(useCloseConfirmStore.getState().pending).toEqual({ fileName: 'a.ts' });
+    expect(useCloseConfirmStore.getState().pending).toEqual({
+      kind: 'unsaved-file',
+      fileName: 'a.ts',
+    });
     expect(useOverlayStore.getState().count).toBe(1);
 
     unmount();

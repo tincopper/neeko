@@ -214,7 +214,10 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
               }}
             >
               {mainUnitSessions.length > 0 ? (
-                <UnitSessionList workspaceKey={mainUnitKey} />
+                <UnitSessionList
+                  workspaceKey={mainUnitKey}
+                  onRevealUnit={() => onSelectProject(project.id)}
+                />
               ) : undefined}
             </SessionRow>
             <ConnectionWorktreeList

@@ -36,7 +36,10 @@ describe('closeConfirmStore', () => {
       .request('a.ts')
       .then((v) => (resolved = v));
 
-    expect(useCloseConfirmStore.getState().pending).toEqual({ fileName: 'a.ts' });
+    expect(useCloseConfirmStore.getState().pending).toEqual({
+      kind: 'unsaved-file',
+      fileName: 'a.ts',
+    });
     expect(resolved).toBeUndefined();
   });
 
@@ -73,7 +76,10 @@ describe('closeConfirmStore', () => {
 
     const second = useCloseConfirmStore.getState().request('b.ts');
 
-    expect(useCloseConfirmStore.getState().pending).toEqual({ fileName: 'b.ts' });
+    expect(useCloseConfirmStore.getState().pending).toEqual({
+      kind: 'unsaved-file',
+      fileName: 'b.ts',
+    });
     await Promise.resolve();
     expect(firstResolved).toBe('cancel');
 

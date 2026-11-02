@@ -1,7 +1,5 @@
-import {
-  closeTabWithConfirmation,
-  type SaveTabAction,
-} from '@/features/editor/store/closeConfirmStore';
+import type { SaveTabAction } from '@/features/editor/store/closeConfirmStore';
+import { closeTabWithConfirmation } from '@/features/editor/store/closeTab';
 import { activeTabIdOf } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { getActiveCheckoutPath } from '@/shared/store/workspaceStore';

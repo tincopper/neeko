@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   dominantState,
+  isBusySession,
+  isLiveSession,
   isListedSession,
   isNamedSession,
   isSameSession,
@@ -239,5 +241,26 @@ describe('sessionTab（tabSession 的逆）', () => {
   it('找不到（tab 已关闭）返回 null', () => {
     const terminal = session({ sessionId: 'pty-1', kind: 'terminal' });
     expect(sessionTab(terminal, [])).toBeNull();
+  });
+});
+
+describe('isLiveSession / isBusySession —— 两个不同的问题', () => {
+  it('进程还活着：running / awaitingApproval / ready 都算，终止态不算', () => {
+    for (const state of ['running', 'awaitingApproval', 'ready'] as const) {
+      expect(isLiveSession(session({ sessionId: 'a', state }))).toBe(true);
+    }
+    for (const state of ['stopped', 'failed'] as const) {
+      expect(isLiveSession(session({ sessionId: 'a', state }))).toBe(false);
+    }
+  });
+
+  it('正在干活：只有 running / awaitingApproval', () => {
+    for (const state of ['running', 'awaitingApproval'] as const) {
+      expect(isBusySession(session({ sessionId: 'a', state }))).toBe(true);
+    }
+    // ready = agent 干完了（进程还在等下一次输入）—— 关 tab 时不该弹「它还在跑」。
+    for (const state of ['ready', 'stopped', 'failed'] as const) {
+      expect(isBusySession(session({ sessionId: 'a', state }))).toBe(false);
+    }
   });
 });

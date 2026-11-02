@@ -4,8 +4,8 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { Terminal } from '@xterm/xterm';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { setLiveSessionTitle } from '@/features/live-sessions/api/liveSessionsApi';
 import { resolveAgent } from '@/shared/store/agentStore';
+import { buildAgentCommand } from '@/shared/utils/agentCommand';
 import { observeContainerSize } from '@/shared/utils/containerObserver';
 import { createDrainTransportScheduler } from '@/shared/utils/drainLoop';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
@@ -28,7 +28,8 @@ import {
 import { drainTerminal, drainTerminalWait } from '../api/terminalApi';
 import type { TerminalStrategy, CacheEntry } from '../strategies/types';
 import { createFitScheduler, type FitScheduler } from '../utils/fitScheduler';
-import { createUserInputActivityReporter } from '../utils/inputTitle';
+import { attachLiveSession } from '../utils/sessionAttach';
+import { installTerminalReporting } from '../utils/sessionTitleReporter';
 
 import { refreshTerminalEntry } from './terminalCache';
 
@@ -60,6 +61,8 @@ interface TerminalViewBaseProps {
    * （侧栏来自注册表，不依赖打开的 tab）。终点由上层决定（本组件不碰 editor store）。
    */
   onSessionCreated?: (sessionId: string) => void;
+  /** 已有且仍活着的 PTY 会话 id（关 tab 时选了「后台运行」）：接回它，不新建。 */
+  attachSessionId?: string | null;
 }
 
 export default React.memo(function TerminalViewBase({
@@ -69,6 +72,7 @@ export default React.memo(function TerminalViewBase({
   taskConfigId,
   taskRebuildKey = 0,
   onSessionCreated,
+  attachSessionId = null,
 }: TerminalViewBaseProps) {
   const { cacheKey, fontSize, fontFamily: fontFamilyProp } = strategy;
 
@@ -262,12 +266,17 @@ export default React.memo(function TerminalViewBase({
         cache.set(cacheKey, entry);
 
         try {
-          const sessionId = await createSessionVal(term.cols, term.rows, {
-            command: taskCommand ?? undefined,
-            configId: taskConfigId ?? undefined,
-            // agent 身份在创建时就已知（tab 上带着）—— 显式下发，不从命令行字符串反推
-            agentId: tabAgentId,
-          });
+          // 接回一条还活着的会话（后台运行中）；会话已结束则照常新建。
+          const attached = attachSessionId
+            ? await attachLiveSession(attachSessionId, term.cols, term.rows)
+            : null;
+          const sessionId =
+            attached ??
+            (await createSessionVal(term.cols, term.rows, {
+              command: taskCommand ?? undefined,
+              configId: taskConfigId ?? undefined,
+              agentId: tabAgentId,
+            }));
 
           if (currentKeyRef.current !== cacheKey) return;
           entry.sessionId = sessionId;
@@ -275,8 +284,8 @@ export default React.memo(function TerminalViewBase({
           onSessionReadyVal?.();
           onSessionCreated?.(sessionId);
 
-          // 当 taskCommand 已设置时（如 resume），跳过 auto-launch
-          if (tabAgentId && !taskCommand) {
+          // taskCommand 已设置（如 resume）/ 接回既有会话时，跳过 auto-launch
+          if (tabAgentId && !taskCommand && !attached) {
             setTimeout(async () => {
               if (!entry.sessionId) return;
               // 命令的唯一来源是 agent 缓存（后端 `AgentManager` 的快照）。
@@ -288,7 +297,7 @@ export default React.memo(function TerminalViewBase({
                 console.warn('[Terminal] agent not in cache, skipping auto-launch:', tabAgentId);
                 return;
               }
-              const cmdStr = [agent.command, ...agent.args].join(' ') + '\r';
+              const cmdStr = buildAgentCommand(agent) + '\r';
               const bytes = Array.from(new TextEncoder().encode(cmdStr));
               // 静默豁免：终端输入，尽力而为，失败无需上报
               emit(terminalInputEvent(entry.sessionId), bytes).catch(() => {});
@@ -377,25 +386,24 @@ export default React.memo(function TerminalViewBase({
           });
           const unlistenClosed = safeUnlisten(rawUnlistenClosed);
 
+          // CLI 自报的终端标题（OSC 0/2）→ 注册表 `Native`；用户输入 → 活动 + `Prompt` 素材。
+          // 判据在后端 `title::admit`，这里只有传输优化（见 `sessionTitleReporter`）。
+          const reporting = installTerminalReporting({
+            term,
+            getSessionId: () => entry.sessionId,
+          });
+
           // 调度器注销挂到 entry.unlisten 槽位：terminalCache 销毁/重建统一经
-          // entry.unlisten?.() 清理，幂等安全。closed 监听一并收口，避免
-          // Tauri 事件注册表残留死闭包。
+          // entry.unlisten?.() 清理，幂等安全。closed 与两条上报通道一并收口，避免
+          // Tauri 事件注册表 / xterm disposables 残留死闭包。
           entry.unlisten = () => {
             scheduler.dispose();
             unlistenClosed();
+            reporting.dispose();
           };
 
           // 每个会话一个捕获器：只在**会话创建**时构造（换 tab 是 reattach 既有 entry，不重建）。
           // 每次提交都上报：首次提供标题素材，后续清除后端的权威状态门。
-          const reportUserInput = createUserInputActivityReporter({
-            getSessionId: () => entry.sessionId,
-            // 标题是旁路，失败不影响终端；但**不静默**：这条通道漏了会表现为
-            // 「输入后侧栏一直不出现会话」，需要一个可见线索（旧构建缺命令就栽在这）。
-            report: (sid, line) =>
-              void setLiveSessionTitle(sid, line, 'prompt').catch((err) =>
-                console.warn('[Terminal] 会话标题上报失败:', err),
-              ),
-          });
           entry.inputController = setupTerminalInput({
             term,
             sendInput: (text: string) => {
@@ -405,7 +413,7 @@ export default React.memo(function TerminalViewBase({
               emit(terminalInputEvent(entry.sessionId), bytes).catch(() => {});
               // 用户提交 ⇒ 首次标题 / 后续恢复活动态。**只在这条路径上报**：自动启动
               // agent 的命令走 `emit(...)` 直写，不经过 `sendInput`。
-              reportUserInput(text);
+              reporting.reportUserInput(text);
             },
           });
           // session-ready 触发源（3）：统一经 scheduleFit
@@ -486,6 +494,7 @@ export default React.memo(function TerminalViewBase({
     tabAgentId,
     taskCommand,
     taskConfigId,
+    attachSessionId,
     onSessionCreated,
     scheduleFit,
     // 字体属性：syncFont 在 effect 体内同步执行，须作为依赖（原本是独立 effect 的依赖）

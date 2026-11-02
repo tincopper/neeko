@@ -4,16 +4,11 @@ import { useShallow } from 'zustand/shallow';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from '@/shared/types';
-import { requireTabWorkspaceSession } from '@/shared/utils/tabIdentity';
-import { nextTerminalTitle } from '@/shared/utils/terminalTabTitle';
+import { generateTabId, requireTabWorkspaceSession } from '@/shared/utils/tabIdentity';
+import { MAX_TERMINAL_TABS, nextTerminalTitle } from '@/shared/utils/terminalTabTitle';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
-import { MAX_TERMINAL_TABS, generateTerminalTabId } from '../api/taskTerminal';
 import { closeAllEditorTabs, closeEditorTab } from '../components/terminalTabCleanup';
-
-function generateTabId(): string {
-  return generateTerminalTabId();
-}
 
 /** Type guard: narrow Tab to terminal kind */
 function isTerminalTab(tab: Tab): tab is Tab & { data: TerminalTabData } {

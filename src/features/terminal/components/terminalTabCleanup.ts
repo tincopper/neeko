@@ -13,8 +13,12 @@ import { destroyTerminalsForSession, destroyTerminalsForTab } from './terminalCa
  */
 
 /** Tear down local / WSL / remote terminal PTY caches for a single editor tab. */
-export function cleanupTerminalsForTab(tabKey: string, tabId: string): void {
-  destroyTerminalsForTab(WorkspaceSession.fromKeyOrId(tabKey), tabId);
+export function cleanupTerminalsForTab(
+  tabKey: string,
+  tabId: string,
+  options: { keepSession?: boolean } = {},
+): void {
+  destroyTerminalsForTab(WorkspaceSession.fromKeyOrId(tabKey), tabId, options);
 }
 
 /**
@@ -26,9 +30,16 @@ export function cleanupTerminalsForTabKey(tabKey: string): void {
   destroyTerminalsForSession(WorkspaceSession.fromKeyOrId(tabKey));
 }
 
-/** Close one editor tab and recycle any terminal PTY behind it. */
-export function closeEditorTab(tabKey: string, tabId: string): void {
-  cleanupTerminalsForTab(tabKey, tabId);
+/** Close one editor tab and recycle any terminal PTY behind it.
+ *
+ * `keepSession` = 「后台运行」：tab 收起来，进程继续跑（会话列表仍监控它的状态）。
+ */
+export function closeEditorTab(
+  tabKey: string,
+  tabId: string,
+  options: { keepSession?: boolean } = {},
+): void {
+  cleanupTerminalsForTab(tabKey, tabId, options);
   useEditorStore.getState().closeTab(tabKey, tabId);
 }
 

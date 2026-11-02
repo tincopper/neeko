@@ -9,6 +9,7 @@ import { ActionPalette, SaveFileDialog } from '@/features/action-menu';
 import type { ActionRegistryItem, ActionContext } from '@/features/action-menu/types/actionMenu';
 import { setProjectAgents } from '@/features/agent/api/agentApi';
 import { insertToSessionAgent } from '@/features/agent-chat/api/insertToSessionAgent';
+import { openAgentChatTab } from '@/features/agent-chat/api/openChatTab';
 import { useRemoteContext } from '@/features/connection';
 import { EditorGroupLayout } from '@/features/editor';
 import { useFileDrop } from '@/features/file';
@@ -99,20 +100,9 @@ function ProjectView() {
   }, [selectedAgent, handleAgentClick]);
 
   const handleGuideOpenAgentChat = useCallback(() => {
-    if (!tabKey || !currentProjectId) return;
-    const tabId = `tab_${crypto.randomUUID()}`;
-    useEditorStore.getState().addTab({
-      id: tabId,
-      scope: { kind: 'workspace', session: activeWorkspaceSession(currentProjectId) },
-      title: 'Agent Chat',
-      data: {
-        kind: 'agent-chat' as const,
-        agentId: undefined,
-        sessionId: undefined,
-      },
-    });
-    useEditorStore.getState().activateTab(tabKey, tabId);
-  }, [tabKey, currentProjectId]);
+    if (!currentProjectId) return;
+    openAgentChatTab(activeWorkspaceSession(currentProjectId));
+  }, [currentProjectId]);
 
   const handleGuideNewFile = useCallback(() => {
     if (!tabKey || !currentProjectId) return;

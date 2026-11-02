@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect } from 'react';
 
 import { RemoteAuthDialog, RemoteDialog, WSLDialog } from '@/features/connection';
-import { CloseConfirmDialog } from '@/features/editor';
+import { CloseConfirmDialog, TerminalCloseConfirmDialog } from '@/features/editor';
 import {
   setCloseConfirmHostMounted,
   useCloseConfirmStore,
@@ -81,6 +81,11 @@ function AppModals({
     () => resolveCloseConfirm('cancel'),
     [resolveCloseConfirm],
   );
+  const onTerminalCloseBackground = useCallback(
+    () => resolveCloseConfirm('background'),
+    [resolveCloseConfirm],
+  );
+  const onTerminalCloseExit = useCallback(() => resolveCloseConfirm('exit'), [resolveCloseConfirm]);
 
   // 本组件是 close-confirm 的唯一渲染点：挂载即声明就绪，卸载时把在途请求按 cancel 结算 ——
   // 否则 `closeTabWithConfirmation` 的 await 永久挂起（见 closeConfirmStore 的 hostMounted）。
@@ -123,10 +128,18 @@ function AppModals({
       />
       {/* 未保存关闭确认对话框（全局单例：TabBar X / 菜单 Close Tab / Cmd+W 三条关闭路径共用） */}
       <CloseConfirmDialog
-        open={closeConfirmPending !== null}
-        fileName={closeConfirmPending?.fileName ?? ''}
+        open={closeConfirmPending?.kind === 'unsaved-file'}
+        fileName={closeConfirmPending?.kind === 'unsaved-file' ? closeConfirmPending.fileName : ''}
         onSave={onCloseConfirmSave}
         onDiscard={onCloseConfirmDiscard}
+        onCancel={onCloseConfirmCancel}
+      />
+      {/* 「会话还在跑」的关闭确认：后台运行 / 退出进程 / 取消（与上面同一个宿主与结算） */}
+      <TerminalCloseConfirmDialog
+        open={closeConfirmPending?.kind === 'running-terminal'}
+        title={closeConfirmPending?.kind === 'running-terminal' ? closeConfirmPending.title : ''}
+        onBackground={onTerminalCloseBackground}
+        onExit={onTerminalCloseExit}
         onCancel={onCloseConfirmCancel}
       />
       {pendingAuthEntry && (

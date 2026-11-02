@@ -336,6 +336,49 @@ describe('editorStore.updateTab — file tab 只读字段透传（mergeTabData�
  * 而当时那条 `ModelSelectionPersistence.test.tsx` 把整个 `@/shared/store/editorStore`
  * mock 掉了 —— 它保护的是 mock，不是行为。**护栏必须跑真 store。**
  */
+describe('editorStore.updateTab — terminal 字段是 `keep` 语义（与 agent-chat 相反）', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ tabs: {}, editorLayout: {} });
+  });
+
+  function seedTerminalTab() {
+    useEditorStore.getState().addTab({
+      id: 'tt1',
+      scope: { kind: 'workspace', session: mkSession('p1') },
+      title: 'Terminal 1',
+      data: { kind: 'terminal', agentId: null, ptySessionId: 'pty-1' },
+    });
+  }
+
+  const termData = () =>
+    useEditorStore.getState().tabs[SPACE]!.tabs.find((t) => t.id === 'tt1')!.data;
+
+  it('挂载键 / 恢复标记写入后必须能读回', () => {
+    seedTerminalTab();
+    useEditorStore
+      .getState()
+      .updateTab(SPACE, 'tt1', { attachSessionId: 'pty-2', resumeFromSessionId: 'pty-3' });
+
+    const data = termData();
+    if (data.kind !== 'terminal') throw new Error('kind changed');
+    expect(data.attachSessionId).toBe('pty-2');
+    expect(data.resumeFromSessionId).toBe('pty-3');
+    expect(data.ptySessionId).toBe('pty-1');
+  });
+
+  /**
+   * 与 agent-chat 的 `clear` 恰好相反：终端写 `undefined` 表示「这次不更新」
+   * （挂载键由 PTY 创建回调写入，清掉等于丢掉 tab ↔ 会话的唯一映射）。
+   */
+  it('显式 undefined 不清除（`keep` 语义）', () => {
+    seedTerminalTab();
+    useEditorStore.getState().updateTab(SPACE, 'tt1', { ptySessionId: undefined });
+
+    const data = termData();
+    expect(data.kind === 'terminal' && data.ptySessionId).toBe('pty-1');
+  });
+});
+
 describe('editorStore.updateTab — agent-chat 字段落盘（mergeTabData 穷举白名单）', () => {
   beforeEach(() => {
     useEditorStore.setState({ tabs: {}, editorLayout: {} });

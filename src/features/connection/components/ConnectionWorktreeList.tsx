@@ -53,7 +53,9 @@ const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
       activeCheckoutPath={activeCheckoutPath}
       rowState={rowState}
       onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-      renderUnitSessions={(workspaceKey) => <UnitSessionList workspaceKey={workspaceKey} />}
+      renderUnitSessions={(workspaceKey, revealUnit) => (
+        <UnitSessionList workspaceKey={workspaceKey} onRevealUnit={revealUnit} />
+      )}
     />
   );
 };

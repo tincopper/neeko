@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 
 import type { ActionRegistryItem, ActionContext } from '@/features/action-menu/types/actionMenu';
+import { openAgentChatTab } from '@/features/agent-chat/api/openChatTab';
 import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
 import { useRecentFilesStore } from '@/features/quick-open/store/recentFilesStore';
 import { useDockStore } from '@/shared/store/dockStore';
@@ -11,7 +12,7 @@ import type { AgentConfig, EditorGroupId, Tab } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
-import { closeTabWithConfirmation } from '../store/closeConfirmStore';
+import { closeTabWithConfirmation } from '../store/closeTab';
 
 interface UsePaneActionsParams {
   tabKey: string;
@@ -71,22 +72,8 @@ export function usePaneActions({
           break;
         case 'new-agent-chat': {
           if (projectIdForCheck) {
-            const tabId = `tab_${crypto.randomUUID()}`;
-            // 新建 tab 落组跟随发起 pane（pinned pane 内创建落 pinned）
-            useEditorStore.getState().addTab(
-              {
-                id: tabId,
-                scope: { kind: 'workspace', session: activeWorkspaceSession(projectIdForCheck) },
-                title: 'Agent Chat',
-                data: {
-                  kind: 'agent-chat' as const,
-                  agentId: undefined,
-                  sessionId: undefined,
-                },
-              },
-              groupId,
-            );
-            useEditorStore.getState().activateTab(tabKey, tabId);
+            // 落组跟随发起 pane（pinned pane 内创建落 pinned）；id / 激活在端口内。
+            openAgentChatTab(activeWorkspaceSession(projectIdForCheck), { targetGroup: groupId });
           }
           break;
         }

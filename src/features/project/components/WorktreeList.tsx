@@ -41,7 +41,9 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
       activeCheckoutPath={activeCheckoutPath}
       rowState={rowState}
       onOpenWorktreeTerminal={(path, branch) => onOpenWorktreeTerminal?.(projectId, path, branch)}
-      renderUnitSessions={(workspaceKey) => <UnitSessionList workspaceKey={workspaceKey} />}
+      renderUnitSessions={(workspaceKey, revealUnit) => (
+        <UnitSessionList workspaceKey={workspaceKey} onRevealUnit={revealUnit} />
+      )}
     />
   );
 };

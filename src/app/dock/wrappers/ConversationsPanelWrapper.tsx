@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 
 import { useChatResumableAgents } from '@/features/agent-chat';
+import { openAgentChatTab } from '@/features/agent-chat/api/openChatTab';
 import {
   conversationLiveChatTabRefs,
   conversationTabTitle,
@@ -12,6 +13,7 @@ import {
 } from '@/features/conversation';
 import { deleteConversation } from '@/features/conversation/api/conversationApi';
 import { useActiveProject } from '@/features/project';
+import { createTaskTerminal } from '@/features/terminal';
 import { useAppContext } from '@/shared/contexts';
 import { confirmAction } from '@/shared/store/confirmStore';
 import { useDockStore } from '@/shared/store/dockStore';
@@ -19,6 +21,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { activeWorkspaceSession, useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
+import { buildResumeTaskCommand } from '@/shared/utils/agentCommand';
 import { logFrontendError } from '@/shared/utils/errorReporting';
 
 /**
@@ -63,10 +66,9 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
       const { getAgent } = await import('@/features/agent/api/agentApi');
       const { getResumeCommand } = await import('@/features/conversation/api/conversationApi');
       // Get agent config
-      let agentCommand: string;
+      let agent: Awaited<ReturnType<typeof getAgent>>;
       try {
-        const agent = await getAgent(meta.agentId);
-        agentCommand = agent.command;
+        agent = await getAgent(meta.agentId);
       } catch {
         showToast(`Agent "${meta.agentId}" not found`, 'error');
         return;
@@ -87,32 +89,15 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
         return;
       }
 
-      // Native resume: adapter returns e.g. ["--resume", "<id>"] or ["resume", "<id>"]
-      const taskCommand = `${agentCommand} ${resumeCmd.join(' ')}`;
+      // Native resume: adapter returns e.g. ["--resume", "<id>"] or ["resume", "<id>"].
+      // 拼装与引号走 `agentCommand` 的唯一实现（侧栏「点回来」的恢复路径用同一个函数）。
+      // PTY 直接执行 taskCommand，因此必须是完整命令行，而不是只给 resume 参数。
+      const taskCommand = buildResumeTaskCommand(agent, resumeCmd);
 
-      // Create a new terminal tab — the PTY will execute taskCommand directly
-      const tabId = `tab_${crypto.randomUUID()}`;
-      const editorState = useEditorStore.getState();
-      const existingTabs = editorState.tabs[tabKey];
-      const terminalCount = (existingTabs?.tabs ?? []).filter(
-        (t) => t.data.kind === 'terminal',
-      ).length;
-      if (terminalCount >= 10) {
+      // 创建即激活、配额与占位标题都在 terminal 域的端口里（这里不手造 Tab）。
+      if (!createTaskTerminal(currentProjectId, { agentId: meta.agentId, taskCommand })) {
         showToast('Maximum terminal tabs reached', 'error');
-        return;
       }
-      const tab: Tab = {
-        id: tabId,
-        scope: { kind: 'workspace', session: activeWorkspaceSession(currentProjectId) },
-        title: meta.agentId,
-        data: {
-          kind: 'terminal',
-          agentId: meta.agentId,
-          taskCommand,
-        },
-      };
-      editorState.addTab(tab);
-      editorState.activateTab(tabKey, tabId);
     },
     [currentProjectId, tabKey, showToast],
   );
@@ -120,22 +105,16 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
   const handleChatResumeConversation = useCallback(
     (meta: ConversationMeta) => {
       if (!currentProjectId || !tabKey || !meta.nativeSessionId) return;
-      const editorState = useEditorStore.getState();
-      const tabId = `tab_${crypto.randomUUID()}`;
-      const tab: Tab = {
-        id: tabId,
-        scope: { kind: 'workspace', session: activeWorkspaceSession(currentProjectId) },
+      // id / 激活 / 落组在端口内；`resume*` 是 agent-chat 域的 data 语义。
+      openAgentChatTab(activeWorkspaceSession(currentProjectId), {
+        agentId: meta.agentId,
         title: `${meta.userTitle ?? meta.title ?? 'Agent Chat'}`,
         data: {
-          kind: 'agent-chat',
-          agentId: meta.agentId,
           sessionId: undefined,
           resumeConversationId: meta.id,
           resumeNativeSessionId: meta.nativeSessionId,
         },
-      };
-      editorState.addTab(tab);
-      editorState.activateTab(tabKey, tabId);
+      });
       showToast(`Restoring "${meta.userTitle ?? meta.title}" in Agent Chat…`, 'info');
     },
     [currentProjectId, tabKey, showToast],

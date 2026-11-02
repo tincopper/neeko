@@ -34,9 +34,12 @@ interface WorktreeRowListProps {
    * tab 激活 —— 那是 feature 侧的能力（分层约束：`shared/` 不得依赖 `features/`）。
    * 与 `rowState` 同模式：本组件只说「这一行长什么样」，能力由调用方给。
    *
+   * `revealUnit` 是「把这个单元亮出来」的现成动作（本行的 `onOpenWorktreeTerminal`）——
+   * 会话行点击要先调它，否则切了 tab 而视图没切，表现就是「点了没反应」。
+   *
    * 返回 `undefined` = 不提供子列表（行尾也不出现展开箭头）。
    */
-  renderUnitSessions?: (workspaceKey: string) => React.ReactNode;
+  renderUnitSessions?: (workspaceKey: string, revealUnit: () => void) => React.ReactNode;
 }
 
 /**
@@ -136,7 +139,9 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
               )
             }
           >
-            {unitSessions.length > 0 ? renderUnitSessions?.(unitKey) : undefined}
+            {unitSessions.length > 0
+              ? renderUnitSessions?.(unitKey, () => onOpenWorktreeTerminal(wt.path, wt.branch))
+              : undefined}
           </SessionRow>
         );
       })}

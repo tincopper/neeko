@@ -54,13 +54,42 @@ export function isSameSession(
 }
 
 /**
+ * 会话的**进程是否还活着**（不是「已终止」）。
+ *
+ * 唯一用途：点击侧栏会话行时该**接回**那条活着的 PTY，还是按会话重建。
+ * 注意它与 [`isBusySession`] **不是**同一个问题 —— 空闲（`ready`）的会话进程仍然活着，
+ * 接回它是对的，但关 tab 时不该弹框（见那个函数的说明）。
+ */
+export function isLiveSession(session: SessionView): boolean {
+  return session.state !== 'stopped' && session.state !== 'failed';
+}
+
+/**
+ * 会话是否**正在干活**（跑着，或在等审批）。
+ *
+ * 唯一用途：关 tab 时要不要弹「后台运行 / 退出进程 / 取消」。
+ *
+ * 为什么不能复用 [`isLiveSession`]：`ready` 的会话进程还活着，但 agent 已经**干完了**
+ * —— 这时关 tab 就是普通的关 tab，弹一个「它还在跑」的框是在说假话（2026-11-02 反馈）。
+ * 「进程活着」与「有活要丢」是两个问题，判据也因此是两个。
+ */
+export function isBusySession(session: SessionView): boolean {
+  return session.state === 'running' || session.state === 'awaitingApproval';
+}
+
+/**
  * 会话是否已经有名字（＝注册表里存在真标题）。
  *
- * 标题可能来自首条 prompt / 首条终端输入（`Prompt`）、CLI hook 的会话主题
- * （`Native`）、用户改名（`User`）；`Placeholder` 只是「还没起名」的占位。
+ * 判据只有「非空」一条：后端 `title::admit` 对 `Placeholder` **恒**返回 `None`，
+ * 于是 `titleSource === 'placeholder' ⟺ title === ''` 恒成立（`registry::has_real_title`
+ * 因此退化成同一个判据）。把来源再写一遍就是同一事实的第二份表达 —— 而两份判据
+ * 迟早会漂移。
+ *
+ * 标题可能来自首条 prompt / 首条终端输入（`Prompt`）、CLI 自报的会话主题（`Native`）、
+ * 用户改名（`User`）；`Placeholder` 只是「还没起名」的占位，恒为空串。
  */
 export function isNamedSession(session: SessionView): boolean {
-  return session.titleSource !== 'placeholder' && session.title.trim().length > 0;
+  return session.title.trim().length > 0;
 }
 
 /**

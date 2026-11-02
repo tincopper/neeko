@@ -69,7 +69,12 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
           onSelectProject(project.id);
         }}
       >
-        {unitSessions.length > 0 ? <UnitSessionList workspaceKey={mainWorkspaceKey} /> : undefined}
+        {unitSessions.length > 0 ? (
+          <UnitSessionList
+            workspaceKey={mainWorkspaceKey}
+            onRevealUnit={() => onSelectProject(project.id)}
+          />
+        ) : undefined}
       </SessionRow>
 
       <WorktreeList

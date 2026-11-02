@@ -3,6 +3,7 @@ import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
 import { resolveAgent } from '@/shared/store/agentStore';
+import { buildAgentCommand } from '@/shared/utils/agentCommand';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { safeDisposeTerminal } from '@/shared/utils/terminal';
 import { terminalInputEvent } from '@/shared/utils/terminalEvents';
@@ -10,7 +11,7 @@ import type { TerminalInputController } from '@/shared/utils/terminalInput';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
-import { closeTerminalSession } from '../api/terminalApi';
+import { closeTerminalSession, detachTerminalSession } from '../api/terminalApi';
 
 import {
   terminalAddress,
@@ -55,7 +56,16 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     console.debug(`['${ts}'] ${logPrefix} ${msg}`);
   }
 
-  function destroyCache(key: string): void {
+  /**
+   * 销毁缓存条目。
+   *
+   * `keepSession` = 只拆界面，**不结束进程**（「后台运行」）。此时必须先把后端 drain
+   * 切到分离态，否则没有消费者却照常背压，PTY 写入会堵死、后台 agent 冻住。
+   *
+   * 分离态在这里切而不是在关闭编排里切：一个 tab 可以拆成多个 pane、各自一条 PTY，
+   * 只有这里能枚举到**全部** session id（编排层只看到 `tab.data.ptySessionId` 一个）。
+   */
+  function destroyCache(key: string, options: { keepSession?: boolean } = {}): void {
     const entry = cache.get(key);
     if (!entry) return;
 
@@ -67,9 +77,16 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     safeDisposeTerminal(entry.term);
 
     if (entry.sessionId) {
-      closeSession(entry.sessionId).catch((err) =>
-        reportFrontendError('terminal.closeSession', err),
-      );
+      if (options.keepSession) {
+        // 后台运行：进程留着，drain 转分离态（只留尾部，不背压）。每个 pane 各切一次。
+        detachTerminalSession(entry.sessionId, true).catch((err) =>
+          reportFrontendError('terminal.detachSession', err),
+        );
+      } else {
+        closeSession(entry.sessionId).catch((err) =>
+          reportFrontendError('terminal.closeSession', err),
+        );
+      }
     }
 
     cache.delete(key);
@@ -119,7 +136,7 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     emit(terminalInputEvent(sessionId), ctrlC).catch(() => {});
 
     setTimeout(() => {
-      const cmdStr = [command, ...args].join(' ') + '\r';
+      const cmdStr = buildAgentCommand({ command, args }) + '\r';
       const bytes = Array.from(new TextEncoder().encode(cmdStr));
       // 静默豁免：终端高频输入，尽力而为，失败无需上报
       emit(terminalInputEvent(sessionId), bytes).catch(() => {});
@@ -212,7 +229,7 @@ interface TerminalBackendHandle {
   cache: Map<string, CacheEntry>;
   wrapperRefs: Map<string, HTMLDivElement>;
   rebuildCallbacks: Map<string, () => void>;
-  destroyCache: (key: string) => void;
+  destroyCache: (key: string, options?: { keepSession?: boolean }) => void;
   refreshTerminal: (key: string) => void;
   launchAgentInTerminal: (key: string, cmd: string, args: string[]) => void;
 }
@@ -303,10 +320,10 @@ export async function switchAgentInSessionTerminal(
   if (oldCache?.term) safeDisposeTerminal(oldCache.term);
 }
 
-function destroyTerminalsByPrefix(prefix: string): void {
+function destroyTerminalsByPrefix(prefix: string, options: { keepSession?: boolean } = {}): void {
   for (const bk of allBackends()) {
     for (const key of Array.from(bk.cache.keys())) {
-      if (key.startsWith(prefix)) bk.destroyCache(key);
+      if (key.startsWith(prefix)) bk.destroyCache(key, options);
     }
   }
 }
@@ -327,9 +344,16 @@ export function destroyTerminalsForProject(projectId: ProjectId): void {
   destroyTerminalsByPrefix(WorkspaceSession.of(projectId, null).key);
 }
 
-/** ③ 面：销毁该 session 下某个 tab 的终端（关闭单个 tab）。 */
-export function destroyTerminalsForTab(session: WorkspaceSession, tabId: string): void {
-  destroyTerminalsByPrefix(terminalAddressPrefixOfTab(session, tabId));
+/** ③ 面：销毁该 session 下某个 tab 的终端（关闭单个 tab）。
+ *
+ * `keepSession` = 「后台运行」：只拆界面，进程留着继续跑（见 `destroyCache`）。
+ */
+export function destroyTerminalsForTab(
+  session: WorkspaceSession,
+  tabId: string,
+  options: { keepSession?: boolean } = {},
+): void {
+  destroyTerminalsByPrefix(terminalAddressPrefixOfTab(session, tabId), options);
 }
 
 /** ③ 面：刷新该 session 的终端；给定 tabId 精确，否则首个（agent 切换 / 重建自愈）。 */

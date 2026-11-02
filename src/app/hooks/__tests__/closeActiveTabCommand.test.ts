@@ -171,7 +171,10 @@ describe('closeActiveTabCommand — Cmd+W 关闭当前激活 tab（根治竞态/
       const saveTab = vi.fn().mockResolvedValue(true);
 
       const closing = closeActiveTabForTabKey(WorkspaceSession.of('p1', null).key, saveTab);
-      expect(useCloseConfirmStore.getState().pending).toEqual({ fileName: 'f1.ts' });
+      expect(useCloseConfirmStore.getState().pending).toEqual({
+        kind: 'unsaved-file',
+        fileName: 'f1.ts',
+      });
 
       useCloseConfirmStore.getState().resolve('cancel');
       expect(await closing).toBe(false);
@@ -282,7 +285,10 @@ describe('closeActiveTabCommand — Cmd+W 关闭当前激活 tab（根治竞态/
       const saveTab = vi.fn().mockResolvedValue(true);
 
       const closing = closeActiveTabCommand(saveTab);
-      expect(useCloseConfirmStore.getState().pending).toEqual({ fileName: 'f1.ts' });
+      expect(useCloseConfirmStore.getState().pending).toEqual({
+        kind: 'unsaved-file',
+        fileName: 'f1.ts',
+      });
 
       useCloseConfirmStore.getState().resolve('discard');
       expect(await closing).toBe(true);

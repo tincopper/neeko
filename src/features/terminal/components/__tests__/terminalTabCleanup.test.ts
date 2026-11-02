@@ -1,13 +1,18 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { closeTabMock, clearProjectTabsMock } = vi.hoisted(() => ({
-  closeTabMock: vi.fn(),
-  clearProjectTabsMock: vi.fn(),
-}));
+const { closeTabMock, clearProjectTabsMock, closeSessionMock, detachSessionMock } = vi.hoisted(
+  () => ({
+    closeTabMock: vi.fn(),
+    clearProjectTabsMock: vi.fn(),
+    closeSessionMock: vi.fn().mockResolvedValue(undefined),
+    detachSessionMock: vi.fn().mockResolvedValue(true),
+  }),
+);
 
 vi.mock('../../api/terminalApi', () => ({
-  closeTerminalSession: vi.fn().mockResolvedValue(undefined),
+  closeTerminalSession: closeSessionMock,
+  detachTerminalSession: detachSessionMock,
   resizeTerminal: vi.fn(),
 }));
 
@@ -97,6 +102,20 @@ describe('terminalTabCleanup', () => {
     closeEditorTab(main.key, 'tab_a');
 
     expect(terminalCache.has(terminalAddress(main, 'tab_a', 'p1'))).toBe(false);
+    expect(closeTabMock).toHaveBeenCalledWith(main.key, 'tab_a');
+  });
+
+  it('keepSession ⇒ 每个 pane 的 drain 都切分离态，进程不结束', () => {
+    terminalCache.set(terminalAddress(main, 'tab_a', 'p1'), makeEntry('s1'));
+    terminalCache.set(terminalAddress(main, 'tab_a', 'p2'), makeEntry('s2'));
+
+    closeEditorTab(main.key, 'tab_a', { keepSession: true });
+
+    // 一个 tab 可以拆成多 pane、各自一条 PTY —— 这正是「分离态只能在缓存层切」的理由：
+    // 编排层只看到 `tab.data.ptySessionId` 一个 id，漏掉的那个 pane 会照常背压、冻住。
+    expect(detachSessionMock).toHaveBeenCalledWith('s1', true);
+    expect(detachSessionMock).toHaveBeenCalledWith('s2', true);
+    expect(closeSessionMock).not.toHaveBeenCalled();
     expect(closeTabMock).toHaveBeenCalledWith(main.key, 'tab_a');
   });
 

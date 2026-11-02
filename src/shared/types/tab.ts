@@ -32,6 +32,27 @@ export interface TerminalTabData {
   taskCommand?: string;
   taskConfigId?: string;
   rebuildKey?: number;
+  /**
+   * 「这条 tab 是从哪条已结束的会话恢复来的」。
+   *
+   * PTY 创建成功后由 `TerminalView` 消费一次：让新会话**继承**旧会话的标题与「已使用」
+   * 标记，旧条目随即退场（`adopt_live_session`）。
+   *
+   * 不继承的话，新会话要等用户敲第一条输入才会被侧栏列出 —— 表现是「点了恢复，
+   * 那一行反而消失了」。
+   *
+   * **不清理**：`adopt` 对已消失的 `from` 是 no-op（幂等），所以 tab 重建时再消费一次
+   * 也没有副作用；而 `updateTab` 的 merge 把 `undefined` 读作「保持原值」，本来也清不掉。
+   */
+  resumeFromSessionId?: string;
+  /**
+   * 「接回这条**还活着**的会话」：关 tab 时选了「后台运行」，点击侧栏会话行重建的 tab
+   * 带着它。`TerminalViewBase` 见到就跳过 createSession，改用 `attach`。
+   *
+   * 与会话已结束时的 `resumeFromSessionId`（继承 + `--resume`）是两条路，不能合并：
+   * 一个接现有进程，一个起新进程。
+   */
+  attachSessionId?: string;
 }
 
 export interface FileTabData {

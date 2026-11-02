@@ -12,11 +12,11 @@ import type {
   PRDetailTabData,
   BrowserTabData,
   AgentChatTabData,
-  ComposerDocJson,
   TabKind,
 } from '@/shared/types/tab';
 import { emitTabActivated } from '@/shared/utils/editorActivity';
 import { tabSpaceKeyOf } from '@/shared/utils/tabIdentity';
+import { MAX_TERMINAL_TABS } from '@/shared/utils/terminalTabTitle';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { selectActiveTabId } from './editorTabSelectors';
@@ -65,6 +65,66 @@ function ensureLayout(
   return layout;
 }
 
+/**
+ * 字段合并规则：
+ *
+ * - `keep`：只有拿到**真值**才覆盖（`undefined` 读作「保持原值」）—— 挂载键 / 恢复标记；
+ * - `clear`：显式 `undefined` 也是写入（**清除**）—— 切 agent 丢模型、恢复标记一次性消费。
+ */
+type MergeRule = 'keep' | 'clear';
+
+/**
+ * 每类 tab data 的**字段表** —— 新增字段只改这里。
+ *
+ * 为什么用 `Record<Exclude<keyof X, 'kind'>, MergeRule>` 而不是数组：漏登记的症状是
+ * **静默 no-op**（`updateTab` 看起来成功、读回来还是旧值），而漏登记一个字段的数组是
+ * 合法的 TypeScript，编译器一声不响。写成 `Record<…>` 之后，类型会强制这张表描述**整个**
+ * data 形状 —— 「加字段忘登记」从运行时缺陷变成编译错误。
+ *
+ * 只登记规则**一致**的 kind。`file` 混用两种规则（必填字段 `keep`、可选字段 `clear`），
+ * 需要逐字段 rule，尚未纳入。
+ */
+const TERMINAL_DATA_FIELDS: Record<Exclude<keyof TerminalTabData, 'kind'>, MergeRule> = {
+  agentId: 'keep',
+  ptySessionId: 'keep',
+  taskCommand: 'keep',
+  taskConfigId: 'keep',
+  rebuildKey: 'keep',
+  resumeFromSessionId: 'keep',
+  attachSessionId: 'keep',
+};
+
+const AGENT_CHAT_DATA_FIELDS: Record<Exclude<keyof AgentChatTabData, 'kind'>, MergeRule> = {
+  agentId: 'clear',
+  sessionId: 'clear',
+  modelId: 'clear',
+  resumeConversationId: 'clear',
+  resumeNativeSessionId: 'clear',
+  composerDoc: 'clear',
+};
+
+/**
+ * 按字段表合并；表内一个字段都没出现 ⇒ 不是本 kind 的 partial，**原样返回**（同一引用，
+ * 调用方据此避免无意义的 re-render）。
+ */
+function mergeByFields<T extends { kind: string }>(
+  data: T,
+  partial: Record<string, unknown>,
+  fields: Record<Exclude<keyof T, 'kind'>, MergeRule>,
+): T {
+  const keys = Object.keys(fields) as Exclude<keyof T, 'kind'>[];
+  if (!keys.some((key) => key in partial)) return data;
+  const next = { ...data } as Record<string, unknown>;
+  for (const key of keys) {
+    if (!(key in partial)) continue;
+    const value = partial[key as string];
+    // `keep`：`undefined` 表示「这次不更新」；`clear`：`undefined` 本身就是写入。
+    if (fields[key] === 'keep' && value === undefined) continue;
+    next[key as string] = value;
+  }
+  return next as T;
+}
+
 function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
   if (partial.kind !== undefined && partial.kind !== data.kind) {
     return data;
@@ -72,37 +132,11 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
 
   switch (data.kind) {
     case 'terminal': {
-      const p = partial as Record<string, unknown>;
-      const isTerminalPartial =
-        'agentId' in p ||
-        'ptySessionId' in p ||
-        'taskCommand' in p ||
-        'taskConfigId' in p ||
-        'rebuildKey' in p;
-      if (!isTerminalPartial) return data;
-      return {
-        kind: 'terminal' as const,
-        agentId:
-          p.agentId !== undefined
-            ? (p.agentId as string | null)
-            : (data as TerminalTabData).agentId,
-        ptySessionId:
-          p.ptySessionId !== undefined
-            ? (p.ptySessionId as string | undefined)
-            : (data as TerminalTabData).ptySessionId,
-        taskCommand:
-          p.taskCommand !== undefined
-            ? (p.taskCommand as string | undefined)
-            : (data as TerminalTabData).taskCommand,
-        taskConfigId:
-          p.taskConfigId !== undefined
-            ? (p.taskConfigId as string | undefined)
-            : (data as TerminalTabData).taskConfigId,
-        rebuildKey:
-          p.rebuildKey !== undefined
-            ? (p.rebuildKey as number | undefined)
-            : (data as TerminalTabData).rebuildKey,
-      };
+      return mergeByFields(
+        data as TerminalTabData,
+        partial as Record<string, unknown>,
+        TERMINAL_DATA_FIELDS,
+      );
     }
     case 'file': {
       const p = partial as Record<string, unknown>;
@@ -199,30 +233,13 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
       };
     }
     case 'agent-chat': {
-      const p = partial as Record<string, unknown>;
-      const d = data as AgentChatTabData;
-      return {
-        kind: 'agent-chat' as const,
-        // 逐字段 presence 合并 —— 每个字段必须单独出现，漏一个就是
-        // 「写进去了但读不回来」：`useSelectedModel` 的 effect 写 `modelId`、
-        // `useChatRestore` 写 resume 目标，三者都靠这里落盘。
-        //
-        // `'x' in p` 而不是 `p.x !== undefined`：显式写 `undefined` 是
-        // **清除**语义（切 agent 丢模型、恢复标记一次性消费），必须能落盘。
-        agentId: 'agentId' in p ? (p.agentId as string | undefined) : d.agentId,
-        sessionId: 'sessionId' in p ? (p.sessionId as string | undefined) : d.sessionId,
-        modelId: 'modelId' in p ? (p.modelId as string | undefined) : d.modelId,
-        resumeConversationId:
-          'resumeConversationId' in p
-            ? (p.resumeConversationId as string | undefined)
-            : d.resumeConversationId,
-        resumeNativeSessionId:
-          'resumeNativeSessionId' in p
-            ? (p.resumeNativeSessionId as string | undefined)
-            : d.resumeNativeSessionId,
-        composerDoc:
-          'composerDoc' in p ? (p.composerDoc as ComposerDocJson | undefined) : d.composerDoc,
-      };
+      // 逐字段规则见 `AGENT_CHAT_DATA_FIELDS`：显式 `undefined` 是**清除**语义，
+      // 与 terminal 的 `keep` 相反（切 agent 丢模型、恢复标记一次性消费）。
+      return mergeByFields(
+        data as AgentChatTabData,
+        partial as Record<string, unknown>,
+        AGENT_CHAT_DATA_FIELDS,
+      );
     }
     default:
       return data;
@@ -413,7 +430,9 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         const terminalCount = (existing?.tabs ?? []).filter(
           (t) => t.data.kind === 'terminal',
         ).length;
-        if (terminalCount >= 10) return state;
+        // 配额门（唯一的硬门）：数字来自 `shared/utils/terminalTabTitle`，
+        // 与 terminal 端口、侧栏入口同一来源。
+        if (terminalCount >= MAX_TERMINAL_TABS) return state;
       }
 
       if (existing?.tabs.some((t) => t.id === tab.id)) return state;
