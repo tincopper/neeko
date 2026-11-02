@@ -5,7 +5,10 @@
 //! 1. **登记**（[`LiveTerminal::register`]）：进程创建后立即登记，早于退出信号生产者；
 //! 2. **活动**（[`OutputActivity`]）：输出流动 = 在跑，静默 = 回到就绪（唯一的「推断」，见下）；
 //!    该推断经 [`Registry::apply_activity`]，不得越过 CLI hook 的权威状态门；
-//! 3. **退出 / 关闭**（[`exit_and_notify`] / [`close_and_notify`] / [`unregister_and_notify`]）。
+//! 3. **退出 / 关闭**（[`exit_and_notify`]；关闭与注销的唯一入口在
+//!    [`crate::live_sessions::lifecycle`]）。
+//!
+//! 本模块只负责**把原生事实变成信号**；「转移 + 通知」的收尾在注册表域，不在生产者里。
 //!
 //! 会话的**标题与 has_user_input** 不在这里产生：用户输入只有前端分得清「人敲的」与「我们自动
 //! 启动 agent 的那一行」，故由前端经 `set_live_session_title`（`source = prompt`）上报
@@ -44,9 +47,9 @@
 //! # 通知只此一份
 //!
 //! 「改状态 + 只有真变了才 `emit_changed`」的判据收在本模块的入口里
-//! （[`LiveTerminal::register`] / [`OutputActivity::poll`] / [`exit_and_notify`] /
-//! [`unregister_and_notify`]）：分散到各调用点的话，第 N 个生产者忘写通知的表现是
-//! 「侧栏不刷新、无报错、无日志」。
+//! （[`LiveTerminal::register`] / [`OutputActivity::poll`] / [`exit_and_notify`]），
+//! 关闭与注销则统一走 [`crate::live_sessions::lifecycle`]：分散到各调用点的话，第 N 个
+//! 生产者忘写通知的表现是「侧栏不刷新、无报错、无日志」。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -218,12 +221,7 @@ impl OutputActivity {
             };
             changed |= registry.apply_activity(session_id, signal);
         }
-        if changed {
-            if let Some(app) = app {
-                emit_changed(app, registry.version());
-            }
-        }
-        changed
+        crate::live_sessions::notify_if_changed(app, registry.version(), changed)
     }
 
     /// 应用 CLI 自报的最后一档状态（没有待应用项 ⇒ `false`）。
@@ -260,7 +258,8 @@ pub(crate) const fn exit_signal(exit_code: Option<i32>) -> Signal {
 /// 注销是必须的（tab 已随进程消失），终止态仍要在注销前落一次：写入面只有
 /// `apply(signal)`，跳过它会让「退出原因」在未来接入持久化 / 统计时丢失。
 fn on_exit(registry: &Registry, session_id: &str, exit_code: Option<i32>) -> bool {
-    // 已被**主动关闭**（[`close_and_notify`] 先标了 `Stopped`）⇒ 这次退出是那次关闭的尾巴。
+    // 已被**主动关闭**（[`crate::live_sessions::lifecycle::close_and_notify`] 先标了 `Stopped`）⇒
+    // 这次退出是那次关闭的尾巴。
     // 条目要留着：侧栏那一行是「点回来」的入口，关 tab 不该让它消失。
     if registry
         .entry(session_id)
@@ -282,53 +281,14 @@ pub(crate) fn exit_and_notify(
     exit_code: Option<i32>,
 ) -> bool {
     let changed = on_exit(registry, session_id, exit_code);
-    if changed {
-        emit_changed(app, registry.version());
-    }
-    changed
-}
-
-/// 关闭 tab：把会话标成 `Stopped` 并**保留**条目（唯一「关 tab」入口）。
-///
-/// 与 [`exit_and_notify`] 的唯一差别就是**留不留**：
-///
-/// - 进程自己退出（用户敲 `exit` / agent 崩了）⇒ 会话结束了，条目跟着消失；
-/// - 用户关掉 tab ⇒ 只是收起视图。那条会话仍是「可以点回来」的入口 —— 侧栏不该因为
-///   关 tab 就少一行（点击时按会话重建，能续写就续写，见 `useActivateSession`）。
-///
-/// 不注销的副作用是条目会留到本次运行结束（注册表是内存态）。这是刻意的：它是「恢复点」，
-/// 不是垃圾。`on_exit` 认得这个标记，不会再补一次注销。
-pub(crate) fn close_and_notify(
-    registry: &Registry,
-    app: Option<&AppHandle>,
-    session_id: &str,
-) -> bool {
-    let changed = registry.apply(session_id, Signal::Stopped);
-    if let (true, Some(app)) = (changed, app) {
-        emit_changed(app, registry.version());
-    }
-    changed
-}
-
-/// 销毁会话（删单元 / 清 tab 空间）：注销 + 通知。
-///
-/// `app` 为 `None` 的调用方（退出清理 / 测试）只做注销不发事件 —— 那时没有前端在听。
-pub(crate) fn unregister_and_notify(
-    registry: &Registry,
-    app: Option<&AppHandle>,
-    session_id: &str,
-) -> bool {
-    let removed = registry.unregister(session_id);
-    if let (true, Some(app)) = (removed, app) {
-        emit_changed(app, registry.version());
-    }
-    removed
+    crate::live_sessions::notify_if_changed(Some(app), registry.version(), changed)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::agent::chat::session_store::SqliteSessionStore;
+    use crate::live_sessions::lifecycle::close_and_notify;
     use crate::live_sessions::state::reduce;
 
     fn fresh_registry() -> Registry {
@@ -434,24 +394,6 @@ mod tests {
         assert!(registry.version() > before);
         // 幂等：重复退出（watcher 与 close 双路径）不 panic、不再变化。
         assert!(!on_exit(&registry, "t1", Some(0)));
-    }
-
-    /// 关 tab **不摘条目**：只标 `Stopped`，侧栏那一行留着当「点回来」的入口。
-    #[test]
-    fn closing_a_tab_keeps_the_session_as_stopped() {
-        let registry = fresh_registry();
-        register_terminal(&registry, "t1", &registration(None));
-        let before = registry.version();
-
-        assert!(close_and_notify(&registry, None, "t1"));
-        let entry = registry.entry("t1").expect("关 tab 后条目仍在");
-        assert_eq!(entry.state, SessionState::Stopped);
-        assert!(registry.version() > before, "状态变了要通知一次");
-
-        // 幂等：再关一次什么都不变（不重复 bump）。
-        let after = registry.version();
-        assert!(!close_and_notify(&registry, None, "t1"));
-        assert_eq!(registry.version(), after);
     }
 
     /// 主动关闭之后 PTY 的退出是**那次关闭的尾巴**：不得把条目注销掉。

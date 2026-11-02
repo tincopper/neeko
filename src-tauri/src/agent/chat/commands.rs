@@ -19,11 +19,11 @@ use crate::agent::chat::session_store::{ResumeCursor, SessionStatus};
 use crate::common::agent::types::AgentConfig;
 use crate::core::project::ProjectEnvironment;
 use crate::live_sessions::emit_changed;
+use crate::live_sessions::lifecycle::unregister_and_notify as unregister_live_session;
 use crate::live_sessions::wiring::chat::{
     engage_existing as engage_live_session, register_and_notify as register_live_session,
     ChatRegistration, ChatRegistrationKind,
 };
-use crate::live_sessions::wiring::pty::unregister_and_notify as unregister_live_session;
 use crate::AppError;
 use crate::AppStateWrapper;
 

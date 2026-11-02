@@ -104,7 +104,7 @@ pub fn set_live_session_title(
 
 /// 恢复成功后，让新会话**继承**旧会话的身份并让旧条目退场。
 ///
-/// 关 tab 只把条目标成 `Stopped`（见 `wiring::pty::close_and_notify`），于是侧栏仍留着
+/// 关 tab 只把条目标成 `Stopped`（见 `lifecycle::close_and_notify`），于是侧栏仍留着
 /// 「点回来」的入口。用户点回来后，新 PTY 是那条会话的**延续**：
 ///
 /// - 不继承 ⇒ 新会话要等用户敲第一条输入才会被列出，表现是「点了恢复，那一行反而消失了」；

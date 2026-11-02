@@ -15,6 +15,10 @@
 //! list_live_sessions / wait_live_sessions + SESSIONS_EVENT（只发版本号）
 //! ```
 //!
+//! 生命周期转移（关 tab / 注销 / 删除）的入口在 [`lifecycle`]：它们只改注册表 +
+//! 发版本号，**不含**任何进程控制 —— 进程怎么停是各生产者（终端路由 / chat 管理器）
+//! 的知识，组合根按归属接起来。
+//!
 //! 视图层（tab 标题、侧栏图标、侧栏会话列表）只是同一快照的**纯投影**：不持有状态
 //! 副本、不推断状态、不写标题。
 
@@ -23,6 +27,7 @@ mod cursor;
 mod entry;
 mod env;
 mod events;
+pub mod lifecycle;
 mod registry;
 mod state;
 mod title;
@@ -31,7 +36,7 @@ pub(crate) mod wiring;
 
 pub use entry::{SessionEntry, SessionKind, SessionState, TitleSource};
 pub use env::SESSION_ID_ENV;
-pub use events::{emit_changed, SESSIONS_EVENT};
+pub use events::{emit_changed, notify_if_changed, SESSIONS_EVENT};
 pub use registry::Registry;
 pub use state::{reduce, Signal};
 pub use view::{LiveSessionsSnapshot, LiveSessionsWait, SessionView};

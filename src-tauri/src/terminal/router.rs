@@ -16,7 +16,8 @@ use std::time::Duration;
 
 use crate::common::terminal::types::TerminalSession;
 use crate::core::project::ProjectEnvironment;
-use crate::live_sessions::wiring::pty::{close_and_notify, LiveTerminal, TerminalRegistration};
+use crate::live_sessions::lifecycle::close_and_notify;
+use crate::live_sessions::wiring::pty::{LiveTerminal, TerminalRegistration};
 use crate::live_sessions::Registry;
 use crate::terminal::manager::TerminalManager;
 use crate::terminal::remote::RemoteTerminalManager;
@@ -99,6 +100,16 @@ impl TerminalRouter {
 
     // 路由表查询：锁中毒视为不可恢复而 expect —— 中毒后继续跑只会产出误诊的 NotFound
     // （把存活会话判成不存在），不如显式 panic 让问题暴露。
+    //
+    /// 这个 id 背后**有没有** PTY 会话。
+    ///
+    /// 唯一外部用途是「要不要先结束进程」的判断（删除会话 / 收尾幂等）。
+    /// `SessionOwner` 仍是私有的 —— 探测方拿不到归属细节，也就无法在别处复制路由判定。
+    #[must_use]
+    pub fn owns_terminal_session(&self, session_id: &str) -> bool {
+        self.owner_of(session_id).is_some()
+    }
+
     #[allow(clippy::expect_used)]
     fn owner_of(&self, session_id: &str) -> Option<SessionOwner> {
         self.owners
@@ -123,6 +134,16 @@ impl TerminalRouter {
             .lock()
             .expect("infallible: terminal session owners")
             .insert(session_id.to_string(), owner);
+    }
+
+    /// 只登记归属、不起进程（测试用）。
+    ///
+    /// 「删除会话」的编排要验证「探测 → 派发 → 释放归属」整条链路，而起一条真实 PTY
+    /// 会把单元测试变成进程集成测试（`check_unit_tests_spawn_real_binaries` 不允许）。
+    /// 与 `common/file/watcher` 的 `revoke_dead_mount_for_test` 同一条先例。
+    #[cfg(test)]
+    pub(crate) fn register_owner_for_test(&self, session_id: &str) {
+        self.register(session_id, SessionOwner::Pty);
     }
 
     /// 按项目环境创建会话，并登记归属。
@@ -270,15 +291,26 @@ impl TerminalRouter {
     /// 仍是侧栏里「点回来」的入口（点击时按会话重建，能续写就续写）。
     /// `app_handle` 为 `None` 的调用方（退出清理 / 测试）只改状态不发事件 ——
     /// 那时没有前端在听。
-    pub fn close_session(&self, session_id: &str, app_handle: Option<&tauri::AppHandle>) {
+    ///
+    /// # 幂等：归属探测与后端关闭在**同一个**临界区里
+    ///
+    /// 早先的调用方是「先 `owns_terminal_session`、再 `close_session`」，两步之间会话可能
+    /// 已经结束 —— 那时 `take_owner` 返回 `None`，只留一条误导性的「unknown session」告警。
+    /// 现在探测（`take_owner`）与派发是同一个动作，返回「是否由本路由处理」：
+    /// `false` 是**正常路径**（这本来就不是终端会话，或者已经被关过了），不是错误。
+    pub fn close_session(&self, session_id: &str, app_handle: Option<&tauri::AppHandle>) -> bool {
+        let Some(owner) = self.take_owner(session_id) else {
+            return false;
+        };
+        // 只有真的归本路由管，才动注册表：否则会把一条 chat 会话错标成 `Stopped`。
         if let Some(registry) = self.live_sessions.as_deref() {
             close_and_notify(registry, app_handle, session_id);
         }
-        match self.take_owner(session_id) {
-            Some(SessionOwner::Pty) => self.local.close_session_in_background(session_id),
-            Some(SessionOwner::Ssh) => self.remote.close_session(session_id),
-            None => log::warn!("[Terminal] Attempted to close unknown session: {session_id}"),
+        match owner {
+            SessionOwner::Pty => self.local.close_session_in_background(session_id),
+            SessionOwner::Ssh => self.remote.close_session(session_id),
         }
+        true
     }
 }
 
@@ -289,6 +321,8 @@ fn unknown_session(session_id: &str) -> AppError {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     /// 超时钳制：低于下限抬到 1s、高于上限压到 30s、区间内原样。
@@ -324,8 +358,62 @@ mod tests {
             );
         }
 
-        // 未知会话关闭：不得 panic（原实现同样只告警）。
-        router.close_session(id, None);
+        // 未知会话关闭：不得 panic，且如实回答「不是我处理的」（不是错误路径）。
+        assert!(!router.close_session(id, None), "未登记会话不属于本路由");
+    }
+
+    /// 「这个 id 背后有没有 PTY」—— 删除会话时据此决定要不要先结束进程。
+    #[test]
+    fn owns_terminal_session_answers_by_registration_only() {
+        let router = TerminalRouter::new();
+        assert!(!router.owns_terminal_session("nope"));
+
+        router.register("ssh-session-1", SessionOwner::Ssh);
+        assert!(router.owns_terminal_session("ssh-session-1"));
+
+        // 关闭后归属释放 ⇒ 探测随之变假（不会留下「还存在」的假信号）。
+        assert!(
+            router.close_session("ssh-session-1", None),
+            "归我管的由我处理"
+        );
+        assert!(!router.owns_terminal_session("ssh-session-1"));
+
+        // 再关一次是幂等 no-op：`false` 表示「已经不在我这儿了」，不是失败。
+        assert!(!router.close_session("ssh-session-1", None));
+    }
+
+    /// 关闭只认**归本路由管**的会话：一个 chat 会话的 id 不该把注册表条目错标成 `Stopped`。
+    ///
+    /// 早先的实现是「先 `owns_terminal_session`、再 `close_session`」两步，探测与派发之间
+    /// 会话可能已经结束，于是留下一条误导性的「unknown session」告警；现在两者同一个临界区。
+    #[test]
+    fn closing_a_session_it_does_not_own_touches_nothing() {
+        let store = Arc::new(
+            crate::agent::chat::session_store::SqliteSessionStore::open_in_memory()
+                .expect("in-memory store"),
+        );
+        let registry = Arc::new(crate::live_sessions::Registry::new(store));
+        registry.register(
+            crate::live_sessions::SessionEntry::new(
+                "chat-1",
+                crate::live_sessions::SessionKind::Chat,
+                None,
+                crate::common::git::WorkspaceSession::of("p1", None),
+                "/proj",
+            )
+            .with_state(crate::live_sessions::SessionState::Running),
+        );
+        let router = TerminalRouter::with_live_sessions(Arc::clone(&registry));
+
+        assert!(
+            !router.close_session("chat-1", None),
+            "终端不认领 chat 会话"
+        );
+        assert_eq!(
+            registry.entry("chat-1").expect("条目仍在").state,
+            crate::live_sessions::SessionState::Running,
+            "不归我管就不能改它的状态"
+        );
     }
 
     /// 后端访问器暴露的必须是**同一实例**（Arc 内部共享）：关闭后再次查询仍路由一致。
