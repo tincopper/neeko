@@ -25,6 +25,16 @@ export function tabSpaceKeyOf(scope: TabScope): string {
 }
 
 /**
+ * tab id 的**唯一铸造点**。
+ *
+ * 此前 `tab_${crypto.randomUUID()}` 散在四处调用点（新建终端 / 新建 chat / 恢复会话 /
+ * dock 面板），形态靠互抄维护。id 是 tab 身份的一部分，与键推导同属本模块。
+ */
+export function generateTabId(): string {
+  return `tab_${crypto.randomUUID()}`;
+}
+
+/**
  * 消费方只需项目粒度时的投影读取（环境探测 / quick-open 记录等）。
  * App 空间 tab 无项目身份，返回 null。
  */

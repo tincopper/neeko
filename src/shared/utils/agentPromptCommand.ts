@@ -1,4 +1,5 @@
 import type { AgentConfig } from '@/shared/types';
+import { quoteShellArg, quoteShellValue } from '@/shared/utils/agentCommand';
 
 /**
  * 构建 agent CLI 的 prompt 命令，用于诊断 AI 动作在打开的终端里执行。
@@ -10,6 +11,9 @@ import type { AgentConfig } from '@/shared/types';
  *
  * 终端场景优先交互式形态；未声明（`None`）则回落到 headless `prompt_args`。
  * `-f`（文件模式）在内联场景去掉，prompt 作位置参数直接传。
+ *
+ * 转义统一走 `quoteShellArg`（arg 级引号的唯一实现）—— prompt 与参数是同一类东西：
+ * 都必须在交给 shell 之前保住边界。
  */
 export function buildAgentPromptCommand(
   agent: Pick<
@@ -18,9 +22,15 @@ export function buildAgentPromptCommand(
   >,
   prompt: string,
 ): string {
-  const escaped = prompt.replace(/'/g, `'\\''`);
-  const args = agent.interactive_prompt_args ?? agent.prompt_args ?? [];
-  const post = (agent.post_prompt_args ?? []).join(' ');
-  const inlineArgs = args.filter((arg) => arg !== '-f').join(' ');
-  return [agent.command, inlineArgs, `'${escaped}'`, post].filter(Boolean).join(' ');
+  const args = (agent.interactive_prompt_args ?? agent.prompt_args ?? []).filter(
+    (arg) => arg !== '-f',
+  );
+  return [
+    agent.command,
+    ...args.map(quoteShellArg),
+    quoteShellValue(prompt),
+    ...(agent.post_prompt_args ?? []).map(quoteShellArg),
+  ]
+    .filter((part) => part !== '')
+    .join(' ');
 }

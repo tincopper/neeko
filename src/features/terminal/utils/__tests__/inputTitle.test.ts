@@ -138,6 +138,18 @@ describe('createUserInputActivityReporter', () => {
     expect(report).toHaveBeenNthCalledWith(2, 'pty-1', 'next prompt');
   });
 
+  it('斜杠命令原样上报 —— 「配不配当标题」由后端唯一裁决', () => {
+    // 契约：前端只管「用户提交了什么」。过滤斜杠命令 / 纯符号的判据在
+    // `live_sessions::title::admit`；这里若也过滤一次，就有了两套判据。
+    const report = vi.fn();
+    const feed = createUserInputActivityReporter({
+      getSessionId: () => 'pty-1',
+      report,
+    });
+    feed('/model\r');
+    expect(report).toHaveBeenCalledExactlyOnceWith('pty-1', '/model');
+  });
+
   it('只敲字符、尚未回车 ⇒ 不上报（活动态从提交开始）', () => {
     const report = vi.fn();
     const feed = createUserInputActivityReporter({
