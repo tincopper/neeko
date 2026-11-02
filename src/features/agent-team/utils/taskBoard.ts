@@ -1,4 +1,4 @@
-import type { TaskCard, TeamTaskState, Workspace } from '@/shared/types/team';
+import type { TaskCard, TeamTaskState } from '@/shared/types/team';
 
 /**
  * 任务板的列契约（`prototype-agent-team.html` 视图 ① 的五列）。
@@ -21,18 +21,60 @@ export interface TaskColumn {
   states: readonly TeamTaskState[];
 }
 
-export const TASK_COLUMNS: readonly TaskColumn[] = [
+/**
+ * 状态 → 列的**映射表**（不是数组）。
+ *
+ * 这里刻意写成 `Record<TeamTaskState, TaskColumnId>`：后端新增一个 `TeamTaskState` 变体时，
+ * `src/shared/types/team.ts` 的镜像一改，**这个对象就编不过**。写成
+ * `[{ id, states: [...] }] + find()` 时漏一个变体不会编译失败，它只会静默落进
+ * `unplaced` —— 而 `unplaced` 是面板不渲染的那一堆，症状是「队长派了活，板上没有」。
+ */
+const COLUMN_OF: Record<TeamTaskState, TaskColumnId> = {
   // `proposed` 与 `pending` 同列：都是「还没人干活」，只是 proposed 还多了「等队长 accept」。
-  { id: 'pending', label: '待认领', states: ['pending', 'proposed'] },
-  { id: 'in_progress', label: '进行中', states: ['claimed', 'in_progress'] },
-  { id: 'awaiting_approval', label: '待批准', states: ['awaiting_approval'] },
-  { id: 'done', label: '已完成', states: ['done'] },
-  { id: 'frozen', label: '阻塞', states: ['failed', 'blocked'] },
+  pending: 'pending',
+  proposed: 'pending',
+  // `claimed` 与 `in_progress` 是同一件事的两个阶段：起了租约 / 收到首轮 TurnStart。
+  claimed: 'in_progress',
+  in_progress: 'in_progress',
+  awaiting_approval: 'awaiting_approval',
+  done: 'done',
+  // 两者对队长的动作相同（人工介入），但卡片上仍分别标注。
+  failed: 'frozen',
+  blocked: 'frozen',
+};
+
+/** 列的**顺序**（纯展示顺序，与映射表分开维护）。 */
+export const TASK_COLUMN_ORDER: readonly TaskColumnId[] = [
+  'pending',
+  'in_progress',
+  'awaiting_approval',
+  'done',
+  'frozen',
 ];
 
-/** 状态 → 列。未登记的状态会落 `null`（测试断言它不存在，而不是静默丢弃）。 */
+const COLUMN_LABEL: Record<TaskColumnId, string> = {
+  pending: '待认领',
+  in_progress: '进行中',
+  awaiting_approval: '待批准',
+  done: '已完成',
+  frozen: '阻塞',
+};
+
+/** 五列（顺序来自 [`TASK_COLUMN_ORDER`]；每列的 `states` 由映射表反查，不另写一份）。 */
+export const TASK_COLUMNS: readonly TaskColumn[] = TASK_COLUMN_ORDER.map((id) => ({
+  id,
+  label: COLUMN_LABEL[id],
+  states: (Object.keys(COLUMN_OF) as TeamTaskState[]).filter((state) => COLUMN_OF[state] === id),
+}));
+
+/**
+ * 状态 → 列。
+ *
+ * 返回类型里保留 `null` 只为**运行时**兜底：类型层面已经穷尽（见 [`COLUMN_OF`]），但后端
+ * 可能比前端先发一个尚未镜像的新状态，那时宁可把它挑出来（`unplaced`）也不要静默丢弃。
+ */
 export function columnOf(state: TeamTaskState): TaskColumnId | null {
-  return TASK_COLUMNS.find((column) => column.states.includes(state))?.id ?? null;
+  return COLUMN_OF[state] ?? null;
 }
 
 /**
@@ -86,15 +128,11 @@ export function taskStateLabel(state: TeamTaskState): string {
 }
 
 /**
- * 工作区的展示文案（`Workspace` 是带数据的枚举，`worktree` 要看路径）。
+ * 待批的任务数（面板头部的「M 待批」）。
  *
- * 只显示路径最后一段：完整绝对路径在窄面板里会挤掉标题，而分支/worktree 目录名对
- * 「两个成员是不是并行改同一个树」这个问题才是有信息的。
+ * 与「列的计数」**同源但不同用途**：列计数是「这一列有几行」，这里是「有多少条活在等人动手」。
+ * 它必须从同一份 `tasks` 数出来 —— 另存一个计数器就是第二份真相（脉冲刷新时必然漂移）。
  */
-export function workspaceLabel(workspace: Workspace): string {
-  if (workspace === 'shared') return '共享工作区';
-  if (workspace === 'read_only') return '只读';
-  const path = workspace.worktree.path;
-  const base = path.split(/[\\/]/).filter(Boolean).pop();
-  return base ? `worktree ${base}` : 'worktree';
+export function awaitingApprovalCount(tasks: readonly TaskCard[]): number {
+  return tasks.filter((task) => task.state === 'awaiting_approval').length;
 }

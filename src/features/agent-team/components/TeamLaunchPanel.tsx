@@ -1,16 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import { useAgentStore } from '@/shared/store/agentStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useActiveWorkspaceRoot } from '@/shared/store/workspaceStore';
-import type { LaunchableAgent, TeamSession } from '@/shared/types/team';
+import type { TeamSession } from '@/shared/types/team';
 
 import { useLaunchableAgents } from '../hooks/useLaunchableAgents';
 import { useStartTeam } from '../hooks/useStartTeam';
 import { useTeamConfigDraft } from '../hooks/useTeamConfigDraft';
 import { useTeamOptions } from '../hooks/useTeamOptions';
+import { convergeAgentId, isLaunchable, launchGate, startableAgentIds } from '../utils/launchGate';
 
+import ErrorNotice from './ErrorNotice';
 import TeamConfigSection from './TeamConfigSection';
 
 /**
@@ -32,13 +34,16 @@ import TeamConfigSection from './TeamConfigSection';
  * `refusal` 是该行下方的可见文字（不是 `title`）：tooltip 在触屏 / 键盘（禁用的按钮
  * 根本不可聚焦）上永远拿不到，而这句话正是用户唯一需要的解释（「缺的是哪个事实」）。
  *
- * # 三条「不要自己发明」的边界
+ * # 四条「不要自己发明」的边界
  *
  * 1. **准入**：见上。理由文字由后端给（人读句，已含注入方式），这里不改写、不归纳。
  * 2. **团队根**：走既有单一派生 [`useActiveWorkspaceRoot`]（≡ `workspaceRootOf` 作用在
  *    激活单元 key 上）。自己用 `project.path` 当根会让 worktree 视图下团队开在主仓，
  *    而成员 cwd 与用户在看的树不是同一棵。
- * 3. **起进程之后的动作**：终端接管由 app 层注入（`onOpenLeaderTerminal`），团队域
+ * 3. **团队的项目**：那个根所属的**项目**是 `activeProjectId`，不是从路径反推出来的。
+ *    执行环境按项目 id 查表（工作树按设计在项目目录之外，用路径前缀永远对不上），
+ *    所以没有激活项目时主按钮不可用，且理由是**可见文字**（禁用按钮不可聚焦）。
+ * 4. **起进程之后的动作**：终端接管由 app 层注入（`onOpenLeaderTerminal`），团队域
  *    不认识终端域。
  *
  * # 团队配置：默认值的唯一来源是 `team_options(null)`
@@ -52,11 +57,6 @@ import TeamConfigSection from './TeamConfigSection';
 interface TeamLaunchPanelProps {
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
   onOpenLeaderTerminal?: (session: TeamSession, title: string) => void;
-}
-
-/** 行内「能不能起」的收敛点：**只有** `refusal === null` 才算能起。 */
-function isLaunchable(row: LaunchableAgent): boolean {
-  return row.refusal === null;
 }
 
 const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
@@ -83,59 +83,43 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
 
     const rows = useMemo(() => launchable ?? [], [launchable]);
 
-    /** 可启动的 agent id（顺序即后端给的行序 —— 后端已按 id 排序，这里不再排）。 */
-    const startableIds = useMemo(() => rows.filter(isLaunchable).map((row) => row.agentId), [rows]);
+    /** 用户**点过**的那个 CLI；真正用于提交的 id 由它 + 当前候选派生（见下）。 */
+    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
-    const [agentId, setAgentId] = useState<string | null>(null);
-
-    // 选择收敛：已选且仍可启动就保持，否则落到**第一个可启动的**（没有就 null）。
-    // 依赖的是 `startableIds` 这个 useMemo 值，不是每次渲染新建的数组。
-    useEffect(() => {
-      if (agentId !== null && startableIds.includes(agentId)) return;
-      setAgentId(startableIds[0] ?? null);
-    }, [startableIds, agentId]);
+    // 可启动清单（唯一判据 `startableAgentIds`，`launchGate` 内部用的是同一个函数）。
+    const startableIds = useMemo(() => startableAgentIds(launchable), [launchable]);
+    // 选择收敛在**渲染期**完成（`convergeAgentId` 是纯函数）：用 `useEffect` 收敛会多出一帧
+    // 「假 disabled」—— 面板刚打开、清单刚落地的那一帧按钮是灰的，而它其实马上就能点。
+    const agentId = useMemo(
+      () => convergeAgentId(selectedAgentId, startableIds),
+      [selectedAgentId, startableIds],
+    );
 
     const { busy, error, start } = useStartTeam({ onShowToast, onOpenLeaderTerminal });
+    const { canStart, blockedReason } = useMemo(
+      () =>
+        launchGate({
+          hasActiveProject: activeProjectId !== null,
+          hasWorkspaceRoot: workspaceRoot !== null,
+          launchable,
+          agentId,
+          draftValid: draft.valid,
+          busy,
+        }),
+      [activeProjectId, workspaceRoot, launchable, agentId, draft.valid, busy],
+    );
 
     // 只有载荷本身是依赖：整个草稿对象每次渲染都是新引用。
     const teamConfig = draft.config;
 
     const handleStart = useCallback(() => {
-      if (!agentId || !workspaceRoot || busy) return;
+      if (!activeProjectId || !agentId || !workspaceRoot || busy) return;
       // **第二道拦截**：`canStart` 已经把这种状态挡在主按钮之外，这里是给键盘 /
       // 程序化触发（可绕过 `disabled`）留的防守层 —— 把必然被后端拒绝的请求发出去只会
       // 多一条错误信息，不解决任何问题。
       if (!startableIds.includes(agentId)) return;
-      void start(agentId, workspaceRoot, teamConfig);
-    }, [agentId, startableIds, workspaceRoot, busy, start, teamConfig]);
-
-    // 可启动 = 有选中项 **且它现在仍可启动**（`startableIds` 而不是「非 null」）。
-    // 只判 `agentId !== null` 会在「清单刷新后这个 CLI 变成被拒」的那一帧留下一个
-    // 可点但必然被拒绝的按钮。
-    //
-    // 加上 `draft.valid`：成员池空、上限越界、缺省值未到 —— 三种状态后端都会拒绝，
-    // 面板不该把必败请求发出去（判据在 `useTeamConfigDraft`，这里只是「能提交吗」）。
-    const canStart =
-      agentId !== null &&
-      startableIds.includes(agentId) &&
-      workspaceRoot !== null &&
-      draft.valid &&
-      !busy;
-
-    /**
-     * 主按钮不可用时**必须说清楚为什么**（否则用户只看到一个灰按钮）。
-     *
-     * 加载中 / 空清单这两件事已经在选择器上方说过，这里不重复 —— 同一句话出现两次
-     * 会让人以为遇到了两个不同的故障。
-     */
-    const blockedReason = useMemo(() => {
-      if (workspaceRoot === null) return '没有活动项目（先选择一个项目）。';
-      if (launchable === null || launchable.length === 0) return null;
-      if (startableIds.length === 0) {
-        return '清单里的 CLI 现在都不能启动（每行的原因见上方），所以还不能开团队。';
-      }
-      return null;
-    }, [workspaceRoot, launchable, startableIds]);
+      void start(activeProjectId, agentId, workspaceRoot, teamConfig);
+    }, [activeProjectId, agentId, startableIds, workspaceRoot, busy, start, teamConfig]);
 
     const nameOf = useCallback(
       (id: string): string => agents?.find((agent) => agent.id === id)?.name ?? id,
@@ -177,7 +161,7 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
                     <button
                       type="button"
                       // 被拒的行不可选中：选中一个起不来的 CLI 只会让主按钮变成必然失败。
-                      onClick={launchableRow ? () => setAgentId(row.agentId) : undefined}
+                      onClick={launchableRow ? () => setSelectedAgentId(row.agentId) : undefined}
                       disabled={!launchableRow}
                       aria-disabled={!launchableRow}
                       aria-pressed={launchableRow ? selected : undefined}
@@ -219,22 +203,9 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
             </ul>
           )}
 
-          {launchError ? (
-            <p role="alert" className="whitespace-pre-wrap text-meta text-accent-red">
-              {launchError}
-            </p>
-          ) : null}
-
-          {launchError ? (
-            // 重试入口**只看错误**，不看有没有拿到过清单：首次拉取就失败时正是最需要它的时候。
-            <button
-              type="button"
-              onClick={reload}
-              className="self-start rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
-            >
-              重新检查
-            </button>
-          ) : null}
+          {/* 后端原文 + 重试（重试入口只看错误，不看有没有拿到过清单）。
+              这块的形态与团队配置 / 团队列表共用 `ErrorNotice`：三处不许各写一份。 */}
+          <ErrorNotice message={launchError} retryLabel="重新检查" onRetry={reload} />
         </div>
 
         <TeamConfigSection

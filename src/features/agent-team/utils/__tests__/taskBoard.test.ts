@@ -5,11 +5,13 @@ import { createTaskCard } from '@/testing/factories';
 
 import {
   TASK_COLUMNS,
+  TASK_COLUMN_ORDER,
+  awaitingApprovalCount,
   buildTaskBoard,
   columnOf,
   taskStateLabel,
-  workspaceLabel,
 } from '../taskBoard';
+import { workspaceLabel } from '../workspaceLabel';
 
 /**
  * 任务板分列。
@@ -48,6 +50,16 @@ describe('columnOf — 状态到列的映射', () => {
     expect(taskStateLabel('failed')).not.toBe(taskStateLabel('blocked'));
   });
 
+  it('列顺序是常量（映射表与展示顺序分开维护，新增一列不会打乱既有顺序）', () => {
+    expect(TASK_COLUMNS.map((column) => column.id)).toEqual([...TASK_COLUMN_ORDER]);
+    // 每列的 `states` 由映射表反查得出，所以「列里有哪些状态」与 `columnOf` 恒一致
+    for (const column of TASK_COLUMNS) {
+      for (const state of column.states) {
+        expect({ state, column: columnOf(state) }.column).toBe(column.id);
+      }
+    }
+  });
+
   it('proposed 与 pending 同列（都是「还没人干活」）', () => {
     expect(columnOf('proposed')).toBe('pending');
     expect(columnOf('done')).toBe('done');
@@ -82,5 +94,19 @@ describe('workspaceLabel', () => {
     expect(workspaceLabel('shared')).toBe('共享工作区');
     expect(workspaceLabel('read_only')).toBe('只读');
     expect(workspaceLabel({ worktree: { path: '/tmp/wt-a' } })).toBe('worktree wt-a');
+  });
+});
+
+describe('awaitingApprovalCount', () => {
+  it('只数 awaiting_approval（待批 ≠ 进行中 ≠ 阻塞）', () => {
+    const tasks = [
+      createTaskCard({ id: 't1', state: 'awaiting_approval' }),
+      createTaskCard({ id: 't2', state: 'awaiting_approval' }),
+      createTaskCard({ id: 't3', state: 'in_progress' }),
+      createTaskCard({ id: 't4', state: 'blocked' }),
+      createTaskCard({ id: 't5', state: 'done' }),
+    ];
+    expect(awaitingApprovalCount(tasks)).toBe(2);
+    expect(awaitingApprovalCount([])).toBe(0);
   });
 });

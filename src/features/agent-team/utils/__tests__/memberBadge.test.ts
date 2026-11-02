@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { MemberState } from '@/shared/types/team';
 
-import { leaseRemainingText, memberBadge, memberRoleLabel } from '../memberBadge';
+import { memberBadge, memberRoleLabel } from '../memberBadge';
 
 /**
  * 六态徽标（`prototype-agent-team.html` 视图 ②）。
@@ -65,22 +65,6 @@ describe('memberBadge — 六态徽标', () => {
     const badge = memberBadge({ state: 'stalled', verification: 'unverified' });
     expect(badge.text).toBe('可能等待输入');
     expect(badge.text).not.toContain('工作');
-  });
-});
-
-describe('leaseRemainingText — 租约剩余三态', () => {
-  it('null = 无在飞任务（不是 0）', () => {
-    expect(leaseRemainingText(null)).toBe('无在飞任务');
-  });
-
-  it('0 = 已超时（与「无在飞任务」是两件事）', () => {
-    expect(leaseRemainingText(0)).toBe('超时');
-    expect(leaseRemainingText(-5)).toBe('超时');
-  });
-
-  it('大于 0 时给出 mm:ss', () => {
-    expect(leaseRemainingText(90)).toBe('租约剩 1:30');
-    expect(leaseRemainingText(1800)).toBe('租约剩 30:00');
   });
 });
 

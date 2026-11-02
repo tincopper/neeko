@@ -130,16 +130,6 @@ export function memberRoleLabel(role: MemberRole): string {
   return role === 'lead' ? '队长' : '成员';
 }
 
-/**
- * 租约剩余秒 → 人读文案。
- *
- * 三态必须可区分（后端 `view.rs::lease_remaining_secs` 的语义）：
- * `null` = 无在飞任务，`0` = 已超时（该回收了），`> 0` = 剩余时长。
- */
-export function leaseRemainingText(secs: number | null): string {
-  if (secs === null) return '无在飞任务';
-  if (secs <= 0) return '超时';
-  const minutes = Math.floor(secs / 60);
-  const rest = secs % 60;
-  return `租约剩 ${minutes}:${String(rest).padStart(2, '0')}`;
-}
+// 租约文案**不在这里**：它是「同一个任务在花名册与卡片上必须是同一句话」的判据，
+// 唯一实现在 `utils/leaseText.ts`（花名册吃后端快照值，卡片吃现算的实时值，
+// 两边先收敛成「剩余秒」再交给同一个函数）。本文件只管六态徽标。

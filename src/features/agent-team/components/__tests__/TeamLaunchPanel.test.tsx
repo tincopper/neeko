@@ -115,6 +115,7 @@ const startCalls = (): unknown[][] =>
 
 /** `start_team_session` 的入参（最后一次调用）。 */
 function lastStartPayload(): {
+  projectId: string;
   agentId: string;
   projectPath: string;
   name: unknown;
@@ -123,6 +124,7 @@ function lastStartPayload(): {
   const calls = startCalls();
   expect(calls).toHaveLength(1);
   return calls[0][1] as {
+    projectId: string;
     agentId: string;
     projectPath: string;
     name: unknown;
@@ -208,6 +210,8 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('start_team_session', {
+        // 环境归属来自激活项目（v16），不是从 `projectPath` 猜出来的。
+        projectId: 'p1',
         agentId: 'codex',
         projectPath: PROJECT_PATH,
         name: null,
@@ -240,6 +244,7 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('start_team_session', {
+        projectId: 'p1',
         agentId: 'claude-code',
         projectPath: PROJECT_PATH,
         name: null,
@@ -309,15 +314,25 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     expect(screen.queryByText(MANAGER_DOWN)).not.toBeInTheDocument();
   });
 
-  it('没有活动项目时主按钮禁用并说明原因', async () => {
+  it('没有活动项目时主按钮禁用、理由可见，且一次 start_team_session 都不发', async () => {
     useProjectStore.setState({ activeProjectId: null, activeProject: null });
     mockBackend({ agents: [createLaunchableAgent({ agentId: 'claude-code' })] });
 
     render(<TeamLaunchPanel />);
     await waitForPanelReady();
+    await waitForConfigForm();
 
-    expect(screen.getByRole('button', { name: '以队长身份开会话' })).toBeDisabled();
-    expect(screen.getByText(/没有活动项目（先选择一个项目）。/)).toBeVisible();
+    const startButton = screen.getByRole('button', { name: '以队长身份开会话' });
+    expect(startButton).toBeDisabled();
+
+    // 理由必须是**可见文字**：禁用的按钮不可聚焦，`title` 在触屏 / 键盘上拿不到。
+    // 项目是团队执行环境的归属（v16 按 `projectId` 查表），所以这句话必须点名项目。
+    expect(screen.getByText(/没有活动项目（先选择一个项目）：.*项目/)).toBeVisible();
+    expect(startButton).not.toHaveAttribute('title');
+
+    // 零请求：把必败的请求发出去只会多一条错误信息（而且后端拒绝点在建队之后会留孤儿队）。
+    fireEvent.click(startButton);
+    expect(startCalls()).toHaveLength(0);
   });
 });
 

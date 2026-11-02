@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { LaunchableAgent } from '@/shared/types/team';
+import { invokeErrorMessage } from '@/shared/utils/invokeError';
 
 import { fetchLaunchableAgents } from '../api/teamApi';
-import { messageOf } from '../utils/errors';
 
 /**
  * 队长入口的**能力面**（`team_launchable_agents`）。
@@ -74,7 +74,9 @@ export function useLaunchableAgents(): LaunchableAgentsState {
       .catch((err: unknown) => {
         if (mine !== generation.current) return;
         // 不清空 agents：见文件头「失败不清空」。
-        setError(messageOf(err, 'Could not read the launch capability of the configured CLIs'));
+        setError(
+          invokeErrorMessage(err, 'Could not read the launch capability of the configured CLIs'),
+        );
         setLoading(false);
       });
   }, []);

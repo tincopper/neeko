@@ -100,9 +100,14 @@ describe('teamStore', () => {
     useTeamStore.setState({ ...EMPTY, teamId: 'tm_1' });
     mockInvoke.mockImplementation(async (cmd) => (cmd === 'team_task_detail' ? detail : undefined));
 
-    await useTeamStore.getState().openTaskDetail('t1');
+    await useTeamStore.getState().openTaskDetail('tm_1', 't1');
 
-    expect(mockInvoke).toHaveBeenCalledWith('team_task_detail', { taskId: 't1' });
+    // **判据 6**：两个参数都必须上线 —— 任务 id 只在队内唯一，缺了 `teamId` 就无从知道
+    // 用户点的是哪个队的 `t1`（把这条改成只传 `taskId` 时本断言变红）。
+    expect(mockInvoke).toHaveBeenCalledWith('team_task_detail', {
+      teamId: 'tm_1',
+      taskId: 't1',
+    });
     expect(useTeamStore.getState().detail?.body).toBe('派活正文：只在这里出现');
 
     useTeamStore.getState().closeTaskDetail();
@@ -114,7 +119,7 @@ describe('teamStore', () => {
     useTeamStore.setState({ ...EMPTY, teamId: 'tm_1' });
     mockInvoke.mockImplementation(() => slow.promise);
 
-    const pending = useTeamStore.getState().openTaskDetail('t1');
+    const pending = useTeamStore.getState().openTaskDetail('tm_1', 't1');
     // 用户在响应回来之前关掉了抽屉
     useTeamStore.getState().closeTaskDetail();
     slow.resolve(createTaskDetail({ id: 't1', body: '迟到的正文' }));

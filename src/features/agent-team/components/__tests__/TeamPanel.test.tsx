@@ -14,6 +14,7 @@ import {
   createTaskCard,
   createTaskDetail,
   createTeam,
+  createTeamList,
   createTeamOptions,
   createTeamSession,
   createTeamSnapshot,
@@ -84,6 +85,8 @@ describe('TeamPanel — 空态队长入口', () => {
     const session = createTeamSession();
     const snapshot = createTeamSnapshot();
     mockInvoke.mockImplementation(async (cmd) => {
+      // 面板空态 = 队长入口 + **已有团队**列表（`team_list`）；这里没有历史团队。
+      if (cmd === 'team_list') return createTeamList({ teams: [] });
       // 候选清单由后端给（`team_launchable_agents`）—— 面板不再自己筛 agent 配置。
       if (cmd === 'team_launchable_agents')
         return [
@@ -120,6 +123,8 @@ describe('TeamPanel — 空态队长入口', () => {
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('start_team_session', {
+        // 项目 = 激活项目；路径 = 激活单元的**工作树根**。两者不是同一件事。
+        projectId: 'p1',
         agentId: 'codex',
         projectPath: WORKTREE_PATH,
         name: null,
@@ -144,6 +149,7 @@ describe('TeamPanel — 空态队长入口', () => {
   it('失败时显示后端拒绝原因原文（不改写、不吞掉）', async () => {
     setActiveProject();
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return createTeamList({ teams: [] });
       if (cmd === 'team_launchable_agents') return [createLaunchableAgent({ agentId: 'gemini' })];
       if (cmd === 'team_options')
         return createTeamOptions({ members: [createLaunchableAgent({ agentId: 'gemini' })] });
@@ -220,8 +226,8 @@ describe('TeamPanel — 花名册', () => {
 
     // 空闲 + 未声明（AC2）
     expect(within(rows[1]).getByText('空闲 ⚠ 未声明')).toBeInTheDocument();
-    // leaseRemainingSecs === 0 ⇒ 已超时（不是「无在飞任务」）
-    expect(within(rows[1]).getByText('超时')).toBeInTheDocument();
+    // leaseRemainingSecs === 0 ⇒ 已超时（不是「无在飞任务」），文案与卡片 / 抽屉同一份
+    expect(within(rows[1]).getByText('租约已超时')).toBeInTheDocument();
 
     expect(within(rows[2]).getByText('待批准')).toBeInTheDocument();
     expect(within(rows[2]).getByText('租约剩 2:00')).toBeInTheDocument();
@@ -321,7 +327,9 @@ describe('TeamPanel — 任务详情（红线 4：点开才拉）', () => {
 
   it('初始渲染不调 team_task_detail；点卡片才拉正文', async () => {
     const snapshot = createTeamSnapshot({
-      tasks: [createTaskCard({ id: 't1', title: '登录页骨架', state: 'in_progress' })],
+      tasks: [
+        createTaskCard({ id: 't1', teamId: 'tm_1', title: '登录页骨架', state: 'in_progress' }),
+      ],
       team: createTeam({ id: 'tm_1' }),
     });
     const detail = createTaskDetail({
@@ -346,8 +354,13 @@ describe('TeamPanel — 任务详情（红线 4：点开才拉）', () => {
     expect(screen.queryByText('派活正文：独占这一段')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /打开任务 t1/ }));
+    // **判据 6**：请求必须带上 `(teamId, taskId)` 两个值 —— 任务 id 只在队内唯一，
+    // 只传 `taskId` 时本断言变红（后端也无从判断点的是哪个队的 `t1`）。
     await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith('team_task_detail', { taskId: 't1' }),
+      expect(mockInvoke).toHaveBeenCalledWith('team_task_detail', {
+        teamId: 'tm_1',
+        taskId: 't1',
+      }),
     );
     expect(await screen.findByText('派活正文：独占这一段')).toBeInTheDocument();
 

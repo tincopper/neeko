@@ -1,3 +1,5 @@
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 /**
  * Agent Team 域的**类型镜像**（IPC 载荷）。
  *
@@ -101,6 +103,22 @@ export interface Team {
   leadAgentId: string;
   /** 团队根工作区（后端**已规范化**的绝对路径）。 */
   projectPath: string;
+  /**
+   * 拥有这个团队**执行环境**的项目 id（`types.rs::Team::project_id`）。
+   *
+   * 与 `projectPath` 是**两个事实**，不要互相顶替：路径是工作区根（可以是落在项目目录
+   * 之外的 worktree），id 是环境归属。消费侧最典型的一处是「打开成员终端」—— 终端 tab
+   * 按 `(projectId, 工作区)` 落键，用**激活项目**顶替会让用户切项目后把 tab 登记到另一棵
+   * 树下面（进程接得上，登记错位）。
+   *
+   * **空串 = v16 之前建的行**（那时环境只能靠路径前缀猜），不是「没有项目」：
+   * 写入路径对空 id 直接拒绝，所以空只可能来自旧库。
+   *
+   * 类型是 `ProjectId`（与 `shared/types/project.ts` 同一口径）：后端给的 id 到了 IPC 边界
+   * 就是项目身份，消费侧不该再拿裸 `string` 去和激活项目比较 —— 裸串能赋给任何字段，
+   * 「用激活项目顶替团队自己的项目」这类错误在类型层面就没有摩擦力。
+   */
+  projectId: ProjectId;
   createdAt: number;
   closedAt: number | null;
   state: TeamState;
@@ -178,7 +196,33 @@ export interface TeamConfig {
   maxMembers?: number;
 }
 
-/** 花名册一行。**只有 id / 名字 / 角色 / 状态 / 取证 / 租约剩余秒** —— 不含任何正文。 */
+/**
+ * 怎么**发**消息给一个成员（`types.rs::WorkerChannel`）。
+ *
+ * CLI 成员恒为 `pty`（design §4.4）：MCP over HTTP 是客户端发起的，我们**没有**反向推送
+ * 通道，所以「能调 MCP 工具」≠「能往它嘴里推消息」。`none` = 只能一次性派活。
+ */
+export type WorkerChannel = 'mcp' | 'pty' | 'none';
+
+/**
+ * 准入档位（`types.rs::AdmissionTier`）—— 能力缺口的唯一出处（红线 14）。
+ *
+ * | 档 | 有 hook | 有 MCP | 卡住可见 | UI 必须写 |
+ * | --- | --- | --- | --- | --- |
+ * | `a` | ✅ | ✅ | ✅ | 无额外约束 |
+ * | `b` | ✅ | ❌ | ✅ | 结果靠 sentinel 补 |
+ * | `c` | ❌ | ❌ | ❌ | 「sentinel only」+「可能等待输入」|
+ */
+export type AdmissionTier = 'a' | 'b' | 'c';
+
+/**
+ * 花名册一行：**身份 + 状态 + 它能被打开的那个终端** —— 不含任何正文。
+ *
+ * 五个附加字段回答面板的三件事（`view.rs::MemberStatusView`）：「这是谁」
+ * （`agentId` / `tier`）、「它在哪干活」（`workspace`）、「我怎么看它」
+ * （`terminalId` / `channel`）。缺了 `terminalId`，成员进程虽然在跑、用户却只能看见队长 ——
+ * 那正是「看着一队 agent 干活」的反面。
+ */
 export interface MemberStatusView {
   memberId: string;
   name: string;
@@ -188,6 +232,22 @@ export interface MemberStatusView {
   verification: DoneVerification;
   /** 在飞任务的租约剩余秒：`null` = 无在飞任务；`0` = 已超时（尚未回收）。 */
   leaseRemainingSecs: number | null;
+  /** 它跑的是哪个 CLI（`AgentConfig.id`）—— 花名册上的第一枚 chip。 */
+  agentId: string;
+  /**
+   * 它那个 PTY 的会话 id；`null` = 还没有进程（没起来 / 起失败 / 已关掉）。
+   *
+   * **这是「打开成员终端」的唯一凭据**：成员是 Neeko 起的 PTY，会话 id 只在团队域里，
+   * 前端推不出来（红线 12：不许从路径 / 名字拼）。`null` 时按钮必须置灰并写出理由，
+   * 不能点下去再报错。
+   */
+  terminalId: string | null;
+  /** 它在哪个工作区干活（共享团队根 / 独立 worktree / 只读）。 */
+  workspace: Workspace;
+  /** 怎么给它发消息（CLI 成员恒为 `pty`）。 */
+  channel: WorkerChannel;
+  /** 准入档位（`c` 档必须带可见的「sentinel only」警告）。 */
+  tier: AdmissionTier;
 }
 
 /**
@@ -196,7 +256,20 @@ export interface MemberStatusView {
  * `summary` 是另一件事：后端落库时已硬截到 4 KiB，并置 `summaryTruncated`。
  */
 export interface TaskCard {
+  /**
+   * 任务 id —— **只在 [`teamId`] 之内唯一**（每个队的板都从 `t1` 开始编号）。
+   *
+   * 两列必须一起用：详情请求是 `team_task_detail(teamId, taskId)`，只传 id 无法表达
+   * 「点的是哪个队的 t1」。
+   */
   id: string;
+  /**
+   * 所属团队（后端 `view.rs::TaskCard::team_id`）。
+   *
+   * 存在的唯一理由是**让面板不必猜父级**：卡片是详情请求的两个参数的唯一来源，
+   * 缺了它调用点要么去取当前团队的 id（换队/多队并列时就错），要么从别处拼（红线 12）。
+   */
+  teamId: string;
   title: string;
   state: TeamTaskState;
   /** 持有者 member id。 */
@@ -218,9 +291,62 @@ export interface TaskDetail extends TaskCard {
   body: string;
 }
 
+/**
+ * 一条审计记录的**成员详情视图**（真相源 `view.rs::MemberEventView`）。
+ *
+ * `kind` 是**开集字符串**（后端：新增事件类别不该要求一次迁移，也不要求一次 TS 改动）：
+ * 未知类别必须原样显示，不得当成空字符串或丢行。
+ */
+export interface MemberEventView {
+  /** 发生时间（epoch 毫秒）。 */
+  at: number;
+  /** 事件类别（`claim` / `update` / `signal` / `close_member` …）。 */
+  kind: string;
+  /** 触发者：成员 id 或 `system` / 队长 id。 */
+  actor: string;
+  /** 被操作对象（任务 id / 成员 id）。 */
+  subject: string | null;
+  /** 附加上下文（后端写的短文本）。 */
+  detail: string | null;
+}
+
+/**
+ * 成员详情（`team_member_detail`，**点开一个成员才拉**）。
+ *
+ * # 为什么它不在 `TeamSnapshot` 里
+ *
+ * 花名册每行是恒定小字段，而这里带任务行 + 最多 50 条事件：放进快照就是「每次脉冲刷新
+ * 都搬一遍全部成员的全部事件」（红线 4 的时间维度）。抽屉关掉就不再有任何读请求。
+ *
+ * `awaitingApproval` 是 `tasks` 的**子集**（AC5 待批队列）：两字段由同一遍过滤产出，
+ * 前端不得自己从 `tasks` 里筛 —— 那会在「当前任务」块被折叠/截断时让待批块静默消失。
+ */
+export interface MemberDetail {
+  /** 花名册的**同一行**（后端复用同一个构造点，不是第二份推导）。 */
+  member: MemberStatusView;
+  /** 该成员在飞的任务 + 它最近完成的（至多 `MAX_BOARD_TASKS` = 200 行）。 */
+  tasks: TaskCard[];
+  /** `tasks` 是否被截断（抽屉据此说「只显示前 N 条」）。 */
+  tasksTruncated: boolean;
+  /** AC5 待批队列（`tasks` 里 `state === 'awaiting_approval'` 的那几行）。 */
+  awaitingApproval: TaskCard[];
+  /** 最近 `MAX_MEMBER_EVENTS` = 50 条审计（**最新在前**）。 */
+  events: MemberEventView[];
+  /** 是否还有更早的事件没被列出。 */
+  eventsTruncated: boolean;
+}
+
 /** 面板快照（`team_snapshot`）—— 面板渲染的**唯一**数据源。 */
 export interface TeamSnapshot {
   team: Team;
+  /**
+   * 成员数（**后端口径**：不含队长、含已退出的成员）。
+   *
+   * 与 `TeamSummary.memberCount` / `TeamStatusView.memberCount` **同一个访问器**
+   * （`TeamManager::member_count`）：同一个队只有这一个成员数。曾经面板头数
+   * `members.length`（含队长）、列表行用这个字段，于是列表写 3、点进去写 4。
+   */
+  memberCount: number;
   members: MemberStatusView[];
   /** 任务板列（后端至多 `view::MAX_BOARD_TASKS` = 200 行）。 */
   tasks: TaskCard[];
@@ -253,6 +379,91 @@ export interface LaunchableAgent {
 export interface TeamPulse {
   /** 写之后的团队代数（单调递增）。它不含团队 id —— 触发器里不放语义。 */
   rev: number;
+}
+
+/**
+ * 团队列表的一条（`team_list` 的载荷，真相源 `view.rs::TeamSummary`）。
+ *
+ * # 为什么它**不是** [`Team`] 的裁剪版
+ *
+ * 这是**选队**用的行，不是「某一个队的视图」：它只有「够不够让我决定点开」的信息。
+ * 花名册与任务行不在这里（要看内容用 `teamId` 去拉 `team_snapshot`）—— 那正是红线 4 的
+ * 结构性落点：app 重启会把历史团队全部 hydrate 回来，列表每多一列就是给「重开自己的队」
+ * 这件事多传一份用不上的数据。
+ */
+export interface TeamSummary {
+  /** 团队 id（下一步的入口参数）。 */
+  teamId: string;
+  /** 用户可读名字。 */
+  name: string;
+  /** 团队状态：`active` 能重开 / `closing` 关到一半 / `closed` 只读快照。 */
+  state: TeamState;
+  /** 团队根（后端**已规范化**的绝对路径）。 */
+  projectPath: string;
+  /** 队长用哪个 CLI。 */
+  leadAgentId: string;
+  /** 建队时间（epoch 毫秒）。 */
+  createdAt: number;
+  /** 关闭时间；`null` = 未关闭。 */
+  closedAt: number | null;
+  /**
+   * 成员数（**不含队长、含已 `Dead` 的成员**）。
+   *
+   * 与 `team_options` 的「还能加几个」同源：已关闭的成员仍占名额，所以这里刻意**不**改成
+   * 「只数活着的」—— 那样同一个队会有两个成员数，而偏差只在「刚好卡在上限」时显形。
+   */
+  memberCount: number;
+  /** 板上任务总数。 */
+  taskTotal: number;
+  /** 未终结的任务数（`pending`/`claimed`/`in_progress`/`awaiting_approval`/`proposed`）。 */
+  taskOpen: number;
+  /** 已完成的任务数。 */
+  taskDone: number;
+}
+
+/**
+ * 团队列表（`team_list` 的载荷，真相源 `view.rs::TeamList`）。
+ *
+ * `createdAt` 倒序（同毫秒按 id 升序 —— 排序在后端，前端**不重排**：面板每次重取都换一个
+ * 顺序会让「上次那一行」找不回来）。
+ */
+export interface TeamList {
+  /** 最近的团队（至多 `view::MAX_LISTED_TEAMS` = 50 行）。 */
+  teams: TeamSummary[];
+  /** 是否还有更早的团队没被列出（面板据此显示「只显示最近 50 个团队」）。 */
+  truncated: boolean;
+}
+
+/**
+ * `team_close` 的返回（真相源 `commands.rs::ClosedReply`）—— **扁平**，不背 MCP 的工具信封。
+ *
+ * # 失败面不在这个形状里
+ *
+ * 有成员关不掉时后端**整次调用以 `Err` 结束**（错误文本已逐个点名），团队停在 `closing`。
+ * 所以成功路径上 [`ClosedReply.membersFailed`] 恒为空 —— 它保留在类型里是因为 MCP 侧的
+ * `ToolReply::Closed` 有这一列，两面同一个形状便于排查，不是因为面板要读它。
+ */
+export interface ClosedReply {
+  /** 被关闭的团队。 */
+  teamId: string;
+  /** 单成员关闭的目标；整队关闭为 `null`。 */
+  memberId: string | null;
+  /** **本次真的关掉的**成员。 */
+  membersClosed: string[];
+  /**
+   * 关不掉的成员与原因。成功路径恒空（见上面的模块注释）。
+   *
+   * Rust 侧是 `Vec<(String, String)>` ⇒ JSON 是**二元数组** `[[memberId, reason], ...]`，
+   * 不是 `{ memberId, reason }` 对象。写成对象就是前端凭空造了一个后端不存在的形状。
+   */
+  membersFailed: [string, string][];
+  /** 执行后的真实团队状态（整队成功 = `closed`；有成员关不掉 = `closing`）。 */
+  teamState: TeamState;
+  /**
+   * 诚实面（后端原文，英文）：`graceful` 未兑现、队长自身 PTY 不由本次关闭、
+   * worktree 一律保留。**面板的确认文案必须与这里同口径** —— 前端不许自造承诺。
+   */
+  notes: string[];
 }
 
 /** `start_team_session` 的返回：队长能行动的三样（队 / 成员 / 落脚的终端）。 */

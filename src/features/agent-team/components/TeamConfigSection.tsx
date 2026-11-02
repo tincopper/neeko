@@ -11,6 +11,8 @@ import {
   type TeamConfigDraft,
 } from '../hooks/useTeamConfigDraft';
 
+import ErrorNotice from './ErrorNotice';
+
 /**
  * 建队面板的**团队配置区**：成员池 / 上限 / 三个缺省值。
  *
@@ -214,23 +216,8 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
           </>
         )}
 
-        {error ? (
-          // 后端错误原文（不改写：唯一有用的信息是它）。
-          <p role="alert" className="whitespace-pre-wrap text-meta text-accent-red">
-            {error}
-          </p>
-        ) : null}
-
-        {error ? (
-          // 重试入口只看错误：首次就失败时正是最需要它的时候。
-          <button
-            type="button"
-            onClick={onRetry}
-            className="self-start rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
-          >
-            重新读取团队配置
-          </button>
-        ) : null}
+        {/* 后端原文（不改写）+ 重试；形态与队长入口 / 团队列表共用 `ErrorNotice`。 */}
+        <ErrorNotice message={error} retryLabel="重新读取团队配置" onRetry={onRetry} />
       </section>
     );
   },

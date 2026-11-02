@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 
 import type { TaskDetail, TeamSnapshot } from '@/shared/types/team';
+import { invokeErrorMessage } from '@/shared/utils/invokeError';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
-import { fetchTaskDetail, fetchTeamSnapshot } from '../api/teamApi';
-import { messageOf } from '../utils/errors';
+import { fetchTaskDetail, fetchTeamSnapshot, subscribeTeamPulse } from '../api/teamApi';
 
 /**
  * 团队面板状态（`snapshot` 是**唯一**渲染真相）。
@@ -20,14 +21,36 @@ import { messageOf } from '../utils/errors';
  * | `detail` | 点开过的那个任务的正文（**只有这里**有 body，红线 4）|
  * | `lastRev` | 已应用的脉冲代数（`rev` 去重的唯一状态）|
  *
- * # `rev` 去重为什么在 store 而不在 hook
+ * # 为什么订阅是**本 store 独占**的
  *
- * 「要不要重取」是状态判断（与 `lastRev` 比较），「什么时候重取」是调度（合并窗口）。
- * 前者放这里才能被多个订阅点共享一份水位线；后者属 hook（见 `hooks/useTeamPanel`）。
+ * 曾经每个读面（快照 / 列表 / 成员详情）各自 `listen(AGENT_TEAM_EVENT)` + 各自的合并窗口，
+ * 于是「一次拉数」要做对四件事：**订阅、`rev` 去重、合并窗口、卸载闩**。四件事散在三个
+ * hook 里各写一遍，其中一块漏一项时行为仍然「看起来正常」—— 失败是静默的（团队列表就漏了
+ * 订阅，列表页因此永远看不见建队 / 关队 / 另一窗口的变更）。
+ *
+ * 现在只有一个所有者：
+ *
+ * ```text
+ * listen(AGENT_TEAM_EVENT)  ← 只有这里
+ *   → applyPulse(rev)       ← 去重（陈旧脉冲不改状态，也就不会惊动任何读面）
+ *   → lastRev 变化           ← 唯一的通知通道
+ *     → usePulseRefresh     ← 合并窗口 / 在飞排队 / 卸载闩（一份实现，三处共用）
+ * ```
+ *
+ * 「通知」不用回调注册表而用 `lastRev` 这个状态本身：zustand 的订阅已经是回调分发层，
+ * 再造一套 `Set<() => void>` 只是把同一件事做两遍（而且要自己管注销）。
  */
 
 /** 快照的代数守卫：只有最新一代的响应可以写入（换队 / 并发刷新时丢弃陈旧响应）。 */
 let generation = 0;
+
+/**
+ * 团队事件的**唯一**订阅（惰性建立，见 [`ensureTeamPulseListener`]）。
+ *
+ * 存 Promise 而不是 `UnlistenFn`：`listen()` 是跨进程往返，同一个 tick 里可能被多个读面
+ * 同时要求「确保有人在听」—— 用一个 Promise 做身份，保证只会注册**一个**监听。
+ */
+let pulseSubscription: Promise<unknown> | null = null;
 
 /**
  * 详情请求的代数守卫：抽屉可能已经被关掉或换了一张卡片，迟到的响应**不许**把抽屉又打开。
@@ -54,8 +77,13 @@ export interface TeamStoreState {
   closeTeam: () => void;
   /** 重取快照（脉冲 / 手动刷新共用）。 */
   refresh: () => Promise<void>;
-  /** 点开任务详情（**只有这里**会走 `team_task_detail`）。 */
-  openTaskDetail: (taskId: string) => Promise<void>;
+  /**
+   * 点开任务详情（**只有这里**会走 `team_task_detail`）。
+   *
+   * 两个参数都必填：任务 id 只在队内唯一（每个队的板都从 `t1` 开始），
+   * 而详情请求的后端签名就是 `(team_id, task_id)`。调用点从 `TaskCard` 上取两列。
+   */
+  openTaskDetail: (teamId: string, taskId: string) => Promise<void>;
   /** 关闭详情抽屉（清掉正文，不留残影）。 */
   closeTaskDetail: () => void;
   /**
@@ -113,20 +141,20 @@ export const useTeamStore = create<TeamStoreState>((set, get) => ({
     } catch (err) {
       if (mine !== generation || get().teamId !== teamId) return;
       // 失败**不清空** snapshot：脉冲/瞬时故障之后闪白会让面板看起来像团队没了。
-      set({ loading: false, error: messageOf(err, 'Could not load the team snapshot') });
+      set({ loading: false, error: invokeErrorMessage(err, 'Could not load the team snapshot') });
     }
   },
 
-  openTaskDetail: async (taskId) => {
+  openTaskDetail: async (teamId, taskId) => {
     const mine = ++detailRequest;
     try {
-      const detail = await fetchTaskDetail(taskId);
+      const detail = await fetchTaskDetail(teamId, taskId);
       // 期间可能已经关闭了抽屉 / 换了团队 / 点了另一张卡片：不在这些情形下把正文塞回去。
       if (mine !== detailRequest || get().teamId === null) return;
       set({ detail });
     } catch (err) {
       if (mine !== detailRequest) return;
-      set({ error: messageOf(err, `Could not load task ${taskId}`) });
+      set({ error: invokeErrorMessage(err, `Could not load task ${taskId}`) });
     }
   },
 
@@ -142,7 +170,38 @@ export const useTeamStore = create<TeamStoreState>((set, get) => ({
   },
 }));
 
+/**
+ * 确保团队事件有一个（且仅一个）监听者。
+ *
+ * 幂等：多个读面同时挂载时只有第一次真的去 `listen`。由 [`usePulseRefresh`] 在挂载时调 ——
+ * 不在模块加载时就订阅，因为那是 import 期的副作用（测试会拿到上一个用例的 mock，
+ * 而生产里「谁在听」也就不再可追溯）。
+ */
+export function ensureTeamPulseListener(): void {
+  if (pulseSubscription !== null) return;
+  pulseSubscription = subscribeTeamPulse((rev) => {
+    // 陈旧脉冲（一次动作会连发多条）不改 `lastRev`，于是没有读面被惊动 ——
+    // 去重与通知是同一件事的两个面。
+    useTeamStore.getState().applyPulse(rev);
+  });
+}
+
 /** 仅供测试：重置模块级代数守卫（生产代码不得调用）。 */
 export function __resetTeamGenerationForTests(): void {
   generation = 0;
+}
+
+/**
+ * 仅供测试：忘掉当前订阅，让下一个 `usePulseRefresh` 重新 `listen`。
+ *
+ * 生产代码不得调用（它就是「没人听了」这个状态的人造版本）。测试需要它是因为
+ * `listen` 在全局 mock 里是**按用例重置**的：保留旧订阅会让后续用例的脉冲落到上一份 mock 上。
+ */
+export function __resetTeamPulseForTests(): void {
+  const pending = pulseSubscription;
+  pulseSubscription = null;
+  if (pending === null) return;
+  void pending.then((unlisten) => {
+    if (typeof unlisten === 'function') safeUnlisten(unlisten as () => void)();
+  });
 }

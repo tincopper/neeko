@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { TeamOptions } from '@/shared/types/team';
+import { invokeErrorMessage } from '@/shared/utils/invokeError';
 
 import { fetchTeamOptions } from '../api/teamApi';
-import { messageOf } from '../utils/errors';
 
 /**
  * 团队配置面（`team_options`）：这个队允许谁当成员 / 上限 / 三个缺省值是什么。
@@ -67,7 +67,7 @@ export function useTeamOptions(teamId: string | null = null): TeamOptionsState {
       .catch((err: unknown) => {
         if (mine !== generation.current) return;
         // 不清空 options：见文件头「失败不清空」。
-        setError(messageOf(err, 'Could not read the team configuration defaults'));
+        setError(invokeErrorMessage(err, 'Could not read the team configuration defaults'));
         setLoading(false);
       });
   }, [teamId]);

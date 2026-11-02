@@ -3,9 +3,12 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import { AGENT_TEAM_EVENT } from '@/shared/events';
 import type {
+  ClosedReply,
   LaunchableAgent,
+  MemberDetail,
   TaskDetail,
   TeamConfig,
+  TeamList,
   TeamOptions,
   TeamPulse,
   TeamSession,
@@ -15,15 +18,18 @@ import type {
 /**
  * Agent Team 域的 Tauri 命令 wrapper。
  *
- * 五条命令的**真相源**是 `src-tauri/src/agent/team/commands.rs`（入参名、返回形状）；
+ * 命令的**真相源**是 `src-tauri/src/agent/team/commands.rs`（入参名、返回形状）；
  * 两条读命令的区别是红线 4 的结构性落点：
  *
  * | wrapper | 命令 | 载荷 |
  * | --- | --- | --- |
+ * | [`fetchTeamList`] | `team_list` | **这台机器上**的团队行（有界 + `truncated`；无花名册/任务行）|
  * | [`fetchLaunchableAgents`] | `team_launchable_agents` | 每个 CLI 一条 `{ agentId, refusal }`（面板置灰依据）|
  * | [`fetchTeamOptions`] | `team_options` | 这个队允许谁当成员 / 上限 / 三个缺省值 |
  * | [`fetchTeamSnapshot`] | `team_snapshot` | 团队 + 花名册 + 任务板列（**无 task body**）|
  * | [`fetchTaskDetail`] | `team_task_detail` | 列视图 + 派活正文（**点开才拉**）|
+ * | [`fetchMemberDetail`] | `team_member_detail` | 成员行 + 它的任务 + 待批队列 + 最近 50 条事件（**点开才拉**）|
+ * | [`closeTeam`] | `team_close` | 本次真关掉了谁 + 诚实面 `notes` |
  *
  * 两条快照不在同一条命令里：「顺手把 body 一起拉回来」会让每次脉冲刷新都搬一遍全部派活正文，
  * 而脉冲是高频的（一个动作可能连发多条）。
@@ -31,10 +37,22 @@ import type {
  * `team_launchable_agents` 与 `team_options` 也**不许合并**：前者是「这台机器上谁能当成员」
  * （`admission.rs` 的准入事实），后者是「这个队允许谁 + 上限 + 缺省」（`team` 行经准入解析后
  * 的结果）。它们的失败方式不同（一个是改配置、一个是换 CLI），合并会把两件事压成一个字段。
+ *
+ * `team_list` 与 `team_snapshot` 同理**不许合并**：前者回答「这台机器上有哪些队」（每个都带
+ * 一行的代价），后者回答「这一个队长什么样」（一次一个队）。把列表做成「每队一份快照」
+ * 会让面板打开时搬 N 份花名册与任务板 —— 而用户只想看一眼能重开哪个队。
  */
 
 /** `start_team_session` 的入参。 */
 export interface StartTeamSessionParams {
+  /**
+   * 拥有这个团队**执行环境**的项目 id。
+   *
+   * **必须**是 `useProjectStore` 的 `activeProjectId`（用户选中的那个项目），
+   * **不是**从路径猜出来的：环境归属是项目的事实，而 `projectPath` 可能是落在项目目录
+   * 之外的工作树（`~/.neeko/worktrees/<name>`）。后端按 id 精确查表；未知 id 在写库前拒绝。
+   */
+  projectId: string;
   /** 队长用哪个 CLI（后端会在写库前做准入校验，起不来即拒绝）。 */
   agentId: string;
   /** 团队根：**必须是既有派生点给出的工作区根**，不要自己拼。 */
@@ -53,6 +71,8 @@ export interface StartTeamSessionParams {
 /** 以队长身份开一个会话（建队 + 起队长 PTY）。失败时拒绝原因是 `AppError` 的可读字符串。 */
 export function startTeamSession(params: StartTeamSessionParams): Promise<TeamSession> {
   return invoke<TeamSession>('start_team_session', {
+    // 项目 id 与工作区根是**两个**入参：后者可以是项目目录之外的工作树。
+    projectId: params.projectId,
     agentId: params.agentId,
     projectPath: params.projectPath,
     name: params.name ?? null,
@@ -92,14 +112,69 @@ export function fetchTeamOptions(teamId?: string | null): Promise<TeamOptions> {
   return invoke<TeamOptions>('team_options', { teamId: teamId ?? null });
 }
 
+/**
+ * 这台机器上的团队清单（`team_list`）—— **重启后重开自己的队**的入口。
+ *
+ * 真相源是 `src-tauri/src/agent/team/view.rs::list_teams`（与 MCP 工具 `team_list` **同一个**
+ * 推导）。载荷有界：至多 [`TeamList.teams`] 50 行 + `truncated`，理由与 `MAX_BOARD_TASKS`
+ * 同一条红线 4 纪律 —— 历史团队只增不减，所以「列出所有队」必须有一个明确的截断点。
+ *
+ * 它只读 `TeamManager` 的内存镜像（app 启动时 hydrate），因此**不会**因为某个团队已经
+ * 关掉而没有行：已关闭的队照样列出来（面板照 `state` 决定「能重开」还是「只读」）。
+ */
+export function fetchTeamList(): Promise<TeamList> {
+  return invoke<TeamList>('team_list');
+}
+
+/**
+ * 关闭团队（**本机用户**的面板入口；与队长经 MCP 调 `team_close` 是同一条执行路径）。
+ *
+ * # 语义全部在后端（前端不要重新判断）
+ *
+ * - `memberId` 缺省 = **整队关闭**：`Active → Closing →`（全部成功）`Closed`；
+ * - 有成员关不掉 ⇒ **整次调用 `Err`**，团队停在 `closing`，错误文本已逐个点名。
+ *   所以调用方在失败时**不清任何本地状态**：能查询的 `closing` 比一个假装干净的界面诚实。
+ * - 需要团队端点已启动（`team_surface`）；端点没起来时返回可读错误 —— 原样显示，不翻译。
+ *
+ * `graceful` **不传**：省略 ⇒ 后端取 `true`，而 `true` 在 `notes` 里已声明未兑现（PTY 没有
+ * 可发的关机协议）。前端在这里传一个值只会制造「我们协商过关机」的错觉。
+ */
+export function closeTeam(teamId: string, memberId?: string | null): Promise<ClosedReply> {
+  return invoke<ClosedReply>('team_close', { teamId, memberId: memberId ?? null });
+}
+
 /** 拉一次团队快照（面板的唯一数据源；无 task body）。 */
 export function fetchTeamSnapshot(teamId: string): Promise<TeamSnapshot> {
   return invoke<TeamSnapshot>('team_snapshot', { teamId });
 }
 
-/** 拉单个任务的详情（含正文）。**只在用户点开卡片时调用**。 */
-export function fetchTaskDetail(taskId: string): Promise<TaskDetail> {
-  return invoke<TaskDetail>('team_task_detail', { taskId });
+/**
+ * 拉单个任务的详情（含正文）。**只在用户点开卡片时调用**。
+ *
+ * # 两个参数都必填
+ *
+ * 任务 id 是**队内**标识符（每个队的板都从 `t1` 开始），所以 `taskId` 单独一个不构成
+ * 寻址。后端的 `team_task_detail(team_id, task_id)` 也把两者都声明成必填 —— 只传 id
+ * 的那种调用在 TS 层就编不过，而不是等到运行时静默看到别队的正文。
+ *
+ * `teamId` 由卡片自己带着（`TaskCard.teamId`），调用点不需要知道「当前在哪个队」。
+ */
+export function fetchTaskDetail(teamId: string, taskId: string): Promise<TaskDetail> {
+  return invoke<TaskDetail>('team_task_detail', { teamId, taskId });
+}
+
+/**
+ * 拉单个**成员**的详情（花名册行 + 任务 + 待批队列 + 最近事件）。
+ *
+ * **只在用户点开一个成员时调用**（与 `fetchTaskDetail` 同一条原则）：花名册每行是恒定
+ * 小字段，而这里带任务行与 50 条事件 —— 放进快照就是「每次脉冲刷新都搬一遍全部事件」。
+ *
+ * 三个上界全在后端（`view.rs::member_detail`）：`tasks` ≤ `MAX_BOARD_TASKS`、
+ * `awaitingApproval` 是它的子集、`events` ≤ `MAX_MEMBER_EVENTS`（SQL 侧 `LIMIT`）。
+ * 前端**不要**再截一刀：两个上界各自漂移时，抽屉会说出一个后端并没用过的数字。
+ */
+export function fetchMemberDetail(memberId: string): Promise<MemberDetail> {
+  return invoke<MemberDetail>('team_member_detail', { memberId });
 }
 
 /**
