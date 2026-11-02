@@ -343,6 +343,53 @@ async 作用域且永不收敛 ⇒ 后续渲染全部丢失（表现为「明明
 4. **约束就近声明为模块常量**：内容驱动的下限用 px（如导航列 200px），上限用相对百分比
 > （如 40%）；导航列不设 `collapsible`（zone 级折叠是 DockLayout 的专属语义）。
 
+### 变体：面板**没有** owning persisted store 时（`useDefaultLayout`）
+
+上节第 3 条的前提是「这个面板已经有一个会 persist 的域 store」。`TeamPanel` 的列表页不满足：
+它的布局只有这一个数字，而团队域的 store（`teamStore`）是**不持久化**的（快照是后端的推导
+产物，缓存它等于造第二个真相源）—— 为这一个数字新建一个 zustand + `persist` 是过度设计。
+
+这种情况下用库自带的 `useDefaultLayout({ id, panelIds, onlySaveAfterUserInteractions: true })`：
+它把「面板 id → 尺寸」的存储格式、版本校验与解析失败回退都做了（手写一份 localStorage 就是
+第二个存储口径，而格式漂移是**静默**的 —— 读不出来只是回到默认，没人会报）。判据是**谁拥有
+存储格式**：域 store 已持久化布局 ⇒ 走 store；没有 ⇒ 走 `useDefaultLayout`。两条都不允许手写
+`localStorage.getItem` + `JSON.parse`。
+
+两个必须照做的细节：
+
+- **`onlySaveAfterUserInteractions: true` 不能省**：不传的默认是**每次布局提交都存**，包括
+  首次布局与窗口 resize。省了它，注释里那句「只存用户拖动」就是假的 —— 「注释说一套、代码
+  做另一套」比没有注释更糟。
+- **`panelIds` 用模块级常量**，不要行内数组字面量：它进了库内若干 `useMemo` / `useCallback`
+  的依赖表，行内字面量会让持久化的回调引用每帧都变（白掉 memo）。
+
+### 分隔条必须与 Group 同轴向（`ResizableHandle` 的 `orientation`）
+
+`ResizableHandle` 的默认几何是**横向**（`w-px` + `cursor-col-resize`）。放进
+`orientation="vertical"` 的 Group 里而不传 `orientation="vertical"`，症状是：手柄塌成一根
+1px 宽的竖线（拖拽命中区几乎为零）、光标还是左右箭头 —— **布局看着对，就是拖不动**。
+竖向 Group 必须同时写 `<ResizablePanelGroup orientation="vertical">` 与
+`<ResizableHandle orientation="vertical">`。
+
+### 分栏的两侧各自滚动（禁止分栏外面再包一层滚动）
+
+分栏的意义是「两块都同时在场」。如果 Group 外面再包一层 `overflow-auto`，两块又变回一整个
+长文档：滚到底之后上一块的信息找不回来，而且两个滚动条叠在同一可视区里时，滚轮命中哪个取决于
+光标位置 —— 用户看不出这件事。
+
+规则：**Group 用 `min-h-0`，每个 Panel 内部自己 `min-h-0` + `overflow-auto`**（`ResizablePanel`
+自带 `overflow-hidden`）。`TeamPanel` 的列表页就是这个形状（`TeamListPane`）：队长入口与
+「已有团队」各滚各的，而 `TeamListSection` 内部只有**行区**滚动，标题 / 刷新 / 截断提示留在原地。
+
+分隔线仍然需要一条可见的 `border-t`：`ResizableHandle` 默认 `bg-transparent`（只在悬停/拖拽
+时点亮），`gap-px` 露出的又是同色底 —— 去掉它两层之间就没有任何可见边界。
+
+**注意这条 `border-t` 是给分隔条做的「可见替代」，不是在 `islands.ts` 的 3px 几何上加线**。
+两者是同一个 1px 槽位的两种画法：`islands.ts` 的规则管的是**岛屿之间**（窗口级 `w-px` 手柄 /
+面板内 `gap-px`），而这里的目标是让用户**看得见边界在哪、能拖**。想同时满足「不越出 3px 几何」
+与「边界可见」的正确画法是让手柄自己可见（`bg-border`）而不是加 border —— 那是 `ui/Resizable`
+的改动，超出本次范围，故记账于此。
+
 ### 层级对照
 
 | 层级 | Group 归属 | 尺寸存哪 | 示例 |

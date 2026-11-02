@@ -51,8 +51,18 @@ const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
     const retry = useCallback(() => onRetry(), [onRetry]);
 
     return (
-      <section aria-label="已有团队" className="flex flex-col gap-1 border-t border-border p-3">
-        <header className="flex items-center justify-between px-1">
+      // `flex-1` + `min-h-0`：本块由宿主的分隔条分隔，占住下半区并**自己滚动**。
+      // 不给它确定高度（只有 `flex-col`）时，行多起来它会把内容顶到父容器外 —— 用户看不到
+      // 下半截，也滚不到（父容器 scrollHeight 比它高）。
+      //
+      // `border-t` **不是**与分隔条重复的装饰：`ResizableHandle` 默认 `bg-transparent`
+      // （只在悬停/拖拽时点亮），`gap-px` 露出的又是同色底 —— 去掉这条线，两层之间就没有
+      // 任何可见分隔，用户看不出这里有可拖的边界。
+      <section
+        aria-label="已有团队"
+        className="flex min-h-0 flex-1 flex-col gap-1 border-t border-border p-3"
+      >
+        <header className="flex shrink-0 items-center justify-between px-1">
           <h3 className="text-meta font-semibold text-text-secondary">已有团队</h3>
           <div className="flex items-center gap-1.5">
             {list ? (
@@ -71,29 +81,36 @@ const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
 
         <ErrorNotice message={error} onRetry={retry} />
 
-        {list === null ? (
-          loading ? (
-            <p className="px-1 text-meta text-text-muted">正在读取团队列表…</p>
-          ) : // 失败且从未成功：错误已在上方，这里只说明后果。
-          null
-        ) : list.teams.length === 0 ? (
-          <p className="px-1 py-1 text-meta text-text-muted">还没有团队，先以队长身份开一个</p>
-        ) : (
-          <ul aria-label="团队列表" className="flex flex-col gap-1">
-            {list.teams.map((team) => (
-              <TeamListRow
-                key={team.teamId}
-                team={team}
-                onOpen={onOpen}
-                onRequestClose={onRequestClose}
-              />
-            ))}
-          </ul>
-        )}
+        {/* 只有**行区**滚动：标题与刷新按钮、错误块与截断提示留在原地。
+            整块一起滚时，行多起来用户滚到底就看不到「还有多少行 / 刷新在哪」了。 */}
+        <div
+          data-testid="team-list-scroller"
+          className="flex min-h-0 flex-1 flex-col gap-1 overflow-auto"
+        >
+          {list === null ? (
+            loading ? (
+              <p className="px-1 text-meta text-text-muted">正在读取团队列表…</p>
+            ) : // 失败且从未成功：错误已在上方，这里只说明后果。
+            null
+          ) : list.teams.length === 0 ? (
+            <p className="px-1 py-1 text-meta text-text-muted">还没有团队，先以队长身份开一个</p>
+          ) : (
+            <ul aria-label="团队列表" className="flex flex-col gap-1">
+              {list.teams.map((team) => (
+                <TeamListRow
+                  key={team.teamId}
+                  team={team}
+                  onOpen={onOpen}
+                  onRequestClose={onRequestClose}
+                />
+              ))}
+            </ul>
+          )}
 
-        {list?.truncated ? (
-          <p className="px-1 text-micro text-text-muted">只显示最近 50 个团队</p>
-        ) : null}
+          {list?.truncated ? (
+            <p className="shrink-0 px-1 text-micro text-text-muted">只显示最近 50 个团队</p>
+          ) : null}
+        </div>
       </section>
     );
   },

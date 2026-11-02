@@ -578,3 +578,68 @@ describe('TeamPanel — 关闭团队', () => {
     expect(useTeamStore.getState().snapshot).not.toBeNull();
   });
 });
+describe('TeamPanel — 列表页的上下分栏（队长入口 | 已有团队）', () => {
+  beforeEach(() => {
+    resetStores();
+    mockInvoke.mockReset();
+    setActiveProject();
+  });
+
+  it('两区之间有可拖的分隔条（而不是一个把列表顶出去的滚动容器）', async () => {
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return createTeamList({ teams: [] });
+      return emptyLaunchSurface(cmd);
+    });
+
+    render(<TeamPanel />);
+    await screen.findByRole('region', { name: '已有团队' });
+
+    // 分隔条是 react-resizable-panels 的 Separator（role=separator）：用户可拖、可键盘调。
+    // 修之前没有它 —— 列表页只有一个 overflow-auto，入口块把「已有团队」顶到下面看不见。
+    expect(screen.getByRole('separator')).toBeInTheDocument();
+
+    // 两区各自挂稳定的面板 id（尺寸持久化与布局锚点；拼错会直接破坏布局）。
+    expect(screen.getByTestId('team-launch')).toBeInTheDocument();
+    expect(screen.getByTestId('team-list')).toBeInTheDocument();
+
+    // 两个 region 同时可见（上下并存），不是「滚到下面才看得见第二个」
+    expect(screen.getByRole('region', { name: '队长入口' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '已有团队' })).toBeInTheDocument();
+  });
+
+  it('列表区自己滚动：标题与刷新按钮留在原地（行区才是滚动容器）', async () => {
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list')
+        return createTeamList({
+          teams: Array.from({ length: 12 }, (_, i) =>
+            createTeamSummary({ teamId: `tm_${i}`, name: `team-${i}` }),
+          ),
+        });
+      return emptyLaunchSurface(cmd);
+    });
+
+    render(<TeamPanel />);
+    await screen.findByText('team-0');
+
+    const list = listRegion();
+    // 行区是唯一的滚动容器（`data-testid` 是稳定钩子：类名会随样式调整而变）。
+    const scroller = within(list).getByTestId('team-list-scroller');
+    expect(scroller).toBeInTheDocument();
+    expect(scroller).toHaveClass('overflow-auto');
+    // 行都在滚动容器里；标题与刷新按钮在它**外面**（否则滚到底就看不见刷新入口了）。
+    expect(within(scroller).getByRole('list', { name: '团队列表' })).toBeInTheDocument();
+    expect(
+      within(scroller).queryByRole('button', { name: '重新拉取团队列表' }),
+    ).not.toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: '重新拉取团队列表' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * 错误的**归属**：每条错误都要显示在「它的动作能从哪里发起」的那一屏。
+ *
+ * 这一组钉的是一次真实回归：两个 hook 各有 `error`，曾经被合成一个「按当前视图二选一」的
+ * 槽位（`showingTeamId !== null ? closeError : deleteError`）。而「关闭」在**列表行**上也能
+ * 发起 —— 于是从列表行关闭失败时，后端逐个点名关不掉成员的那句话一个字都不显示，用户只看到
+ * 徽标变成「正在关闭」，不知道原因，也不知道能重试。
+ */

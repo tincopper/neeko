@@ -9,8 +9,7 @@ import { useTeamPanel } from '../hooks/useTeamPanel';
 import { useTeamStore } from '../store/teamStore';
 
 import TeamCloseConfirmDialog, { type TeamCloseIntent } from './TeamCloseConfirmDialog';
-import TeamLaunchPanel from './TeamLaunchPanel';
-import TeamListSection from './TeamListSection';
+import TeamListPane from './TeamListPane';
 import TeamView from './TeamView';
 
 /**
@@ -20,8 +19,16 @@ import TeamView from './TeamView';
  *
  * | 视图 | 何时 | 内容 |
  * | --- | --- | --- |
- * | 列表 | `teamStore.teamId === null`，或用户按了「返回列表」| 队长入口 + **已有团队**（`team_list`）|
+ * | 列表 | `teamStore.teamId === null`，或用户按了「返回列表」| 队长入口 + **已有团队**（`team_list`），上下可拖分栏 |
  * | 团队 | 打开了某个队 | 头部（关闭 / 返回列表 / 刷新）+ 横幅 + 花名册 + 任务板 |
+ *
+ * # 列表页为什么是**可拖的分栏**而不是一个滚动容器
+ *
+ * 队长入口那一块在窄 dock 列里很高（候选清单 + 团队配置 + 团队根 + 主按钮 + 拒绝理由），
+ * 而「已有团队」是用户回头找旧队时要看的东西。整页一个 `overflow-auto` 时，想看列表就得
+ * 先把入口滚上去，而滚上去之后「我在看哪一层」就没有坐标了（嵌套滚动会让上一块的信息
+ * 找不回来）。分栏把两层各变成一个确定高度、各自滚动的区域，比例由用户拖、由
+ * `useDefaultLayout` 记住。
  *
  * # 为什么列表的入口是「返回列表」而不是清 store
  *
@@ -195,20 +202,18 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
             onCloseTaskDetail={closeTaskDetail}
           />
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-            <TeamLaunchPanel
-              onShowToast={onShowToast}
-              onOpenLeaderTerminal={onOpenLeaderTerminal}
-            />
-            <TeamListSection
-              list={list}
-              loading={listLoading}
-              error={listError}
-              onRetry={reloadList}
-              onOpen={handleOpenTeam}
-              onRequestClose={handleRequestClose}
-            />
-          </div>
+          // 列表页 = 上下可拖分栏（队长入口 | 已有团队）。分栏与滚动细节在 `TeamListPane`：
+          // 那是**呈现**，而「两个视图怎么切」是这里唯一的职责。
+          <TeamListPane
+            list={list}
+            listLoading={listLoading}
+            listError={listError}
+            onRetryList={reloadList}
+            onOpenTeam={handleOpenTeam}
+            onRequestClose={handleRequestClose}
+            onShowToast={onShowToast}
+            onOpenLeaderTerminal={onOpenLeaderTerminal}
+          />
         )}
 
         <TeamCloseConfirmDialog
