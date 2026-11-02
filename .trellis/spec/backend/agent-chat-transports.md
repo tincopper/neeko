@@ -146,10 +146,28 @@ chat 侧同一条规则：先 `register` 再起事件泵。
 
 #### 通知只此一份
 
-「改状态 + 只有真变了才 `emit_changed`」的判据收在 `live_sessions::wiring` 的五个入口：
-`pty::LiveTerminal::register` / `pty::exit_and_notify` / `pty::close_and_notify` /
-`pty::unregister_and_notify` / `chat::register_and_notify`。分散到各调用点的话，第 N 个生产者忘写通知的表现是
-「侧栏不刷新、无报错、无日志」—— 属于最难定位的一类。
+「改状态 + 只有真变了才 `emit_changed`」的收尾收在 `live_sessions::notify_if_changed`
+（`events.rs`）：`app` 为 `None`（退出清理 / 测试）时只做转移不发事件。
+
+调用它的入口只有五处，各自负责一类**转移**：
+
+| 入口 | 归属 | 转移 |
+| --- | --- | --- |
+| `pty::LiveTerminal::register` | 生产者 | 登记 |
+| `pty::OutputActivity::poll` | 生产者 | 活动推断 |
+| `pty::exit_and_notify` | 生产者 | 进程自己退出（落终止态 + 注销） |
+| `lifecycle::close_and_notify` | 注册表域 | 关 tab（只标 `Stopped`，**保留**条目） |
+| `lifecycle::unregister_and_notify` / `delete_and_notify` | 注册表域 | 注销 / 删除 |
+| `chat::register_and_notify` | 生产者 | chat 登记 / 续聊 |
+
+**为什么 `close_*` / `unregister_*` 不在 `wiring::pty`**：它们是「注册表 + 事件」的知识，
+与 PTY 无关。放在 `pty` 里时，chat 侧与组合根要复用只能
+`use ...::wiring::pty::unregister_and_notify` —— 一个 chat 命令依赖终端模块，第一条例外出现时
+「通知只此一份」就只剩注释。现在它们住在 `live_sessions::lifecycle`，生产者只负责
+「把原生事实变成信号」和「怎么结束自己的进程」。
+
+分散到各调用点的话，第 N 个生产者忘写通知的表现是「侧栏不刷新、无报错、无日志」——
+属于最难定位的一类。
 
 #### 关 tab ≠ 会话消失（`close_and_notify`）
 
@@ -157,13 +175,27 @@ chat 侧同一条规则：先 `register` 再起事件泵。
 
 | 触发 | 动作 | 侧栏 |
 | --- | --- | --- |
-| 用户关 tab（`TerminalRouter::close_session`） | `close_and_notify`：只 `apply(Stopped)`，**不注销** | 那一行留着，状态点变 stopped，点击可恢复 |
-| 进程自己退出（`exit_and_notify`） | `apply(exit_signal)` + `unregister` | 行消失 |
-| 销毁单元 / 清 tab 空间（`unregister_and_notify`） | 注销 | 行消失 |
+| 用户关 tab（`TerminalRouter::close_session`） | `lifecycle::close_and_notify`：只 `apply(Stopped)`，**不注销** | 那一行留着，状态点变 stopped，点击可恢复 |
+| 进程自己退出（`pty::exit_and_notify`） | `apply(exit_signal)` + `unregister` | 行消失 |
+| 销毁单元 / 清 tab 空间（`lifecycle::unregister_and_notify`） | 注销 | 行消失 |
+| 用户删除侧栏行（`app::session_lifecycle::delete_live_session`） | 结束进程（按归属分派）→ `lifecycle::delete_and_notify` | 行消失 |
 
 `on_exit` 因此多一条前置判据：**条目已经是 `Stopped` 就说明这次退出是主动关闭的尾巴**，
 只确认状态、不注销。少了这条，关 tab 仍会少一行（`close_session` 先标状态，PTY 随后退出
 又把它摘掉）—— 正是用户看到的「关了 tab 会话就没了」。
+
+**删除**（侧栏行尾菜单）是另一件事：结束进程 → 摘掉条目 → **连 tab 一起关掉**。
+它跨终端与 chat 两个生产者，所以编排在组合根（`app::session_lifecycle::delete_session`）：
+
+- **归属探测而不是 `kind` 分支**：`TerminalRouter::close_session` 返回「是否由我处理」
+  （探测与派发在同一个临界区，`false` 是正常路径而不是告警），未命中再问
+  `AgentChatManager`。「怎么停」永远只有生产者那一份实现。
+- **先停进程，再摘条目**：反过来会让注册表已摘而进程还在跑，之后再没有入口能定位到它。
+
+**视图侧的顺序在前端定**（`features/live-sessions/utils/sessionRowActions.ts`）：
+先 `closeEditorTab`（走既有的关闭入口，进程正常结束），再 `deleteLiveSession`
+（此时只剩一次 `unregister`）。反过来先删条目，tab 的关闭路径会再去关一个已不存在的进程。
+后端命令的文档把这条**前置条件**写明了 —— 前端是唯一满足它的地方，也是唯一的调用方。
 
 恢复成功后由新会话**继承**那一行：`adopt_live_session(from, into)` 把旧条目的标题 /
 `has_user_input` / 原生 id 搬进新条目，旧条目退场。两半都不可省：
