@@ -1,3 +1,4 @@
+import type { DraggableSyntheticListeners } from '@dnd-kit/core';
 import React from 'react';
 
 import { cn } from '@/lib/utils';
@@ -41,6 +42,25 @@ interface ProjectGroupProps {
   headerExtra?: React.ReactNode;
   /** 强制显示 hover 槽位（如 Git 下拉打开期间） */
   forceShowActions?: boolean;
+  /**
+   * 拖拽把手（`dnd-kit` 的 `setActivatorNodeRef`）：只有项目头能发起拖动。
+   *
+   * 只收 `listeners`（指针），**不收** `attributes`：后者会给这个 div 再套一层
+   * `role`/`tabIndex`/键盘激活键，而项目头自己已经有 `role="button"` 与 Enter/Space
+   * 折叠语义 —— 两套键盘约定叠在同一个节点上，空格键到底该折叠还是该开始拖动就说不清了。
+   *
+   * 因为不收 `attributes`，dnd-kit 的 `KeyboardSensor` 注入的 `onKeyDown` 也随之消失：
+   * 项目列表**只支持指针拖拽**。注册了却无人消费的传感器是死配置（`useSensors` 里
+   * 的 `KeyboardSensor` 已同步移除），两边必须一起说真话。
+   */
+  dragHandleRef?: (node: HTMLElement | null) => void;
+  /**
+   * 把手的指针监听器（dnd-kit `listeners` 的真实类型）。
+   *
+   * 收窄成 `DraggableSyntheticListeners` 而不是 `HTMLAttributes`：后者能塞进 `children` /
+   * `style` / 任意 `on*`，一个误传就能让「拖拽把手」变成「整行行为覆写」的入口。
+   */
+  dragHandleProps?: DraggableSyntheticListeners;
   /** 展开后的 session 行内容 */
   children?: React.ReactNode;
 }
@@ -92,6 +112,8 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
   ideIconSrc,
   headerExtra,
   forceShowActions = false,
+  dragHandleRef,
+  dragHandleProps,
   children,
 }) => {
   const avatarStyle = getAvatarStyle({ name, color: avatarColor });
@@ -106,13 +128,21 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
     // ConnectionProjectCard → ProjectGroup）—— 它唯一的消费者就是这条线。
     <div className="group/proj">
       <div
+        ref={dragHandleRef}
         role="button"
         tabIndex={0}
+        // 拖拽把手只在**项目头**（不是整张卡）：整卡可拖时，点会话行 / 工作树行时手一抖
+        // 就变成「拖动了整个项目」，卡片会被抬起并跟手 —— 用户看到的是「项目块自己飘了」。
+        {...dragHandleProps}
         className={cn(
           'flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-bg-hover relative',
         )}
         onClick={actions.onToggle}
         onKeyDown={(e) => {
+          // 折叠是本节点**唯一**的键盘语义：Enter/Space 展开/收起。
+          // 展开 `dragHandleProps` 之后再写这一行，于是即使调用方误传了 `onKeyDown`
+          // （dnd-kit 的键盘激活就在 `attributes` 里，本项目不传），也不会把折叠顶掉 ——
+          // 「空格到底是折叠还是开始拖动」在构造上只有一个答案。
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             actions.onToggle();

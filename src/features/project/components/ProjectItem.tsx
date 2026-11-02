@@ -1,5 +1,4 @@
 import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import React, { useMemo, useState } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -9,6 +8,7 @@ import { MoreVerticalIcon } from '@/shared/components/icons';
 import ProjectGroup from '@/shared/components/ProjectGroup';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';
+import { sortableCardStyle } from '@/shared/utils/sortableCardStyle';
 
 import { setProjectCollapsed as setProjectCollapsedApi } from '../api/projectApi';
 
@@ -60,9 +60,8 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
     return `Ctrl+${idx + 1}`;
   }, [projects, project.id]);
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: project.id,
-  });
+  const { listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
+    useSortable({ id: project.id });
 
   const {
     gitMenuOpen,
@@ -112,10 +111,7 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
     ? getIdeIconByCommand(project.selected_ide, ideCommandOverrides)
     : undefined;
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition ?? undefined,
-  };
+  const style = sortableCardStyle({ isDragging, transition, transform });
 
   return (
     <div
@@ -127,8 +123,6 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
         isDragging && 'opacity-50 scale-[1.02] shadow-lg shadow-black/20 z-50',
         !isDragging && 'cursor-grab',
       )}
-      {...attributes}
-      {...listeners}
     >
       <ProjectGroup
         name={project.name}
@@ -138,6 +132,8 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
         isActive={isActive}
         ideIconSrc={ideIconSrc}
         forceShowActions={gitMenuOpen}
+        dragHandleRef={setActivatorNodeRef}
+        dragHandleProps={listeners}
         actions={{
           onToggle: () => void toggleCollapsed(),
           onContextMenu: handleContextMenu,

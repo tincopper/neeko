@@ -1,5 +1,4 @@
 import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import React, { useCallback, useMemo, useState } from 'react';
 
 import { UnitSessionList } from '@/features/live-sessions';
@@ -19,6 +18,7 @@ import {
   useWorkspaceStore,
 } from '@/shared/store/workspaceStore';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';
+import { sortableCardStyle } from '@/shared/utils/sortableCardStyle';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { useConnectionWorktreeActions } from '../hooks/useConnectionWorktreeActions';
@@ -80,9 +80,10 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     }, [gitInfo]);
 
     // Drag support
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-      id: project.id,
-    });
+    const { listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
+      useSortable({
+        id: project.id,
+      });
 
     const handleOpenWorktreeTerminal = useCallback(
       (wtPath: string, branch: string) => {
@@ -165,10 +166,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const mainUnitSessions = sessionsByUnit.get(mainUnitKey) ?? NO_SESSIONS;
     const childActive = useUnitsWithActiveSession().has(mainUnitKey);
 
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition: transition ?? undefined,
-    };
+    const style = sortableCardStyle({ isDragging, transition, transform });
 
     return (
       <div
@@ -180,10 +178,10 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
           isDragging && 'opacity-50 scale-[1.02] shadow-lg shadow-black/20 z-50',
           !isDragging && 'cursor-grab',
         )}
-        {...attributes}
-        {...listeners}
       >
         <ProjectGroup
+          dragHandleRef={setActivatorNodeRef}
+          dragHandleProps={listeners}
           name={project.name}
           avatarColor={project.avatar_color}
           sessionCount={sessionCount}

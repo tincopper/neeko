@@ -2,7 +2,6 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
-  KeyboardSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -84,10 +83,12 @@ const ProjectsPanel: React.FC = () => {
 
   useAheadBehindSync(commands);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor),
-  );
+  // 只有指针拖拽：项目头的键盘约定是 Enter/Space 折叠（`ProjectGroup`），
+  // 而 `KeyboardSensor` 的激活键恰好也是 Space/Enter —— 两套叠在同一节点上就说不清
+  // 「空格到底该折叠还是开始拖动」。所以把手只接指针监听器，键盘拖拽不声明
+  // （`ProjectGroup` 的 `dragHandleProps` 因此也只收 `DraggableSyntheticListeners`）。
+  // 声明了却不被消费的传感器 = 死配置，这一行以前就是那个形态。
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const isEmpty = projects.length === 0;
 
