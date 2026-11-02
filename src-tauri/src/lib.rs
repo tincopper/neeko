@@ -133,6 +133,7 @@ macro_rules! neeko_invoke_handler {
             $crate::live_sessions::commands::set_live_session_title,
             $crate::live_sessions::commands::live_session_resume_command,
             $crate::live_sessions::commands::adopt_live_session,
+            $crate::app::session_lifecycle::delete_live_session,
             // ── agent ────────────────────────────────────────────────────────
             $crate::agent::commands::list_agents,
             $crate::agent::commands::get_agent,

@@ -1,7 +1,10 @@
 //! 应用生命周期命令（与前端 `settingsApi.ts` 的 `invoke` 名一一对应）。
 //!
 //! 命令层保持极薄（红线 6）：只做参数接收 + 转调，规则在 `app::close` /
-//! 各域服务里。
+//! `app::session_lifecycle` / 各域服务里。
+//!
+//! 会话生命周期**不在本文件**：它跨终端与 chat 两个生产者，属编排（见
+//! `app::session_lifecycle`）。本文件只放「进程自身」的生命周期（退出窗口）。
 
 use crate::common::error::AppError;
 
