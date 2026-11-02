@@ -959,6 +959,26 @@ impl ConversationManager {
         ))
     }
 
+    /// 按 **agent + 原生会话 id** 直接取恢复命令，不经过 conversation 缓存。
+    ///
+    /// `get_resume_command` 走缓存是为了拿 `file_path`（少数 adapter 需要绝对路径）。
+    /// 但**实时会话**（live-sessions 注册表里的那条）手里只有 agent 与 native id ——
+    /// 要求用户先打开过 Histor 才能恢复，就是一个死入口。
+    ///
+    /// 代价：需要 `file_path` 的 adapter（如 Reasonix）在这里拿不到路径，返回 `None`
+    /// （`resume_command` 的默认实现即如此）—— 表现为「这条会话不支持一键恢复」，
+    /// 比静默失败好。
+    #[must_use]
+    pub fn resume_command_for_native(
+        &self,
+        agent_id: &str,
+        native_session_id: &str,
+        project_path: &str,
+    ) -> Option<Vec<String>> {
+        let adapter = self.adapters.get(agent_id)?;
+        adapter.resume_command(native_session_id, project_path)
+    }
+
     /// 构建恢复上下文字符串
     ///
     /// 从最近 max_messages 条消息构建，用于不支持原生恢复的 Agent 的兜底方案。
@@ -2038,6 +2058,30 @@ mod tests {
                 "resume".to_string(),
                 conv.native_session_id.clone(),
             ])
+        );
+    }
+
+    /// 实时会话只有 agent + 原生 id，没有 conversation 缓存条目 —— 恢复命令仍要能取到，
+    /// 否则「点了没反应」会变成「必须先去 Histor 打开一次才能恢复」。
+    #[test]
+    fn resume_command_for_native_does_not_need_a_scanned_conversation() {
+        let dir = TempDir::new().unwrap();
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+
+        // 没有 scan_all：缓存是空的。
+        assert_eq!(
+            manager.resume_command_for_native("test-agent", "native-42", "/proj"),
+            Some(vec![
+                "test-agent".to_string(),
+                "resume".to_string(),
+                "native-42".to_string(),
+            ])
+        );
+        // 未注册的 agent ⇒ None（不猜命令）。
+        assert_eq!(
+            manager.resume_command_for_native("ghost", "native-42", "/proj"),
+            None
         );
     }
 

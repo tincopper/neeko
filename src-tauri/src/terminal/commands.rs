@@ -75,6 +75,21 @@ pub fn close_terminal_session(
         .close_session(&session_id, Some(&app_handle));
 }
 
+/// 切换会话的分离态：`true` = 后台运行（tab 关了但进程继续跑），`false` = 接回界面。
+///
+/// 返回 `false` = 该会话已经不在跑（drain 不存在）—— 调用方据此跳过「后台运行」这个选项。
+#[tauri::command]
+#[must_use]
+pub fn detach_terminal_session(
+    session_id: String,
+    detached: bool,
+    state: State<'_, AppStateWrapper>,
+) -> bool {
+    state
+        .terminal_router
+        .set_drain_detached(&session_id, detached)
+}
+
 /// Resizes a terminal session to the specified column/row dimensions.
 #[tauri::command]
 pub fn resize_terminal(

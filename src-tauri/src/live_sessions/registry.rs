@@ -187,7 +187,7 @@ impl Registry {
                 return false;
             }
             let mut changed = false;
-            if !has_real_title(entry) && !title.trim().is_empty() {
+            if !has_real_title(entry) {
                 changed |= upgrade_title(entry, TitleSource::Prompt, title);
             }
             changed |= mark_entry_user_activity(entry);
@@ -252,18 +252,21 @@ impl Registry {
 
     /// chat 首次 Engage / 补标题的入口（`Silent → Turn`、续聊主链路）。
     ///
-    /// - 未置位 ⇒ 置位并写入首个标题；
+    /// - 未置位 ⇒ 置位并按**升序**写入候选（强的自然覆盖弱的）；
     /// - 已置位但**还没有真标题** ⇒ 允许补一次标题（hook 的纯语义事件可能先置位）；
     /// - 已置位且已有标题 ⇒ 什么也不写（续聊不改名、侧栏不闪）。
     ///
+    /// `titles` 按**质量升序**给（`Prompt` 在前、`Native` 在后）：顺序即语义，
+    /// 「取最强候选」不再需要一个单独的 `pick` —— 它就是 `should_upgrade` 在空条目上的特例。
+    ///
     /// 门控在锁内，避免「先读 has_user_input、再写标题」之间的竞态。
-    pub fn report_first(&self, session_id: &str, title: Option<(TitleSource, &str)>) -> bool {
+    pub fn report_first(&self, session_id: &str, titles: &[(TitleSource, &str)]) -> bool {
         let applied = self.mutate(session_id, |entry| {
-            if entry.has_user_input && (title.is_none() || has_real_title(entry)) {
+            if entry.has_user_input && (titles.is_empty() || has_real_title(entry)) {
                 return false;
             }
             let mut changed = false;
-            if let Some((source, text)) = title {
+            for &(source, text) in titles {
                 changed |= upgrade_title(entry, source, text);
             }
             if !entry.has_user_input {
@@ -276,6 +279,76 @@ impl Registry {
             changed
         });
         self.finish(session_id, applied, "report_first")
+    }
+
+    /// 让 `into` 继承 `from` 的身份（标题 / 已使用 / 原生会话 id），并摘掉 `from`。
+    ///
+    /// 用途：用户点「恢复」之后，新 PTY 是旧会话的**延续**，不是一条新会话。不继承的话，
+    /// 新会话要等用户敲第一条输入才会被侧栏列出 —— 表现正是「点了恢复，那一行反而消失了」。
+    ///
+    /// 两条硬规则：
+    /// - `from` 必须是**终止态**：把还活着的会话合并掉，等于让用户点一次就丢一条正在跑的会话；
+    /// - 只搬 `into` 缺的字段（新条目本来就是空的），不覆盖它已经拿到的更新事实。
+    pub fn adopt(&self, from_session_id: &str, into_session_id: &str) -> bool {
+        if from_session_id == into_session_id {
+            return false;
+        }
+        let adopted = {
+            let mut sessions = self.guard();
+            let Some(from) = sessions.get(from_session_id).cloned() else {
+                return false;
+            };
+            if !from.state.is_terminal() {
+                return false;
+            }
+            let Some(into) = sessions.get_mut(into_session_id) else {
+                return false;
+            };
+            // 标题经**唯一写点**继承：`upgrade_title` 会重跑一次准入 + 覆盖序，
+            // 于是「只能在 upgrade_title 一处写 title」这条不变量在继承路径上也成立 ——
+            // 直接搬字段会开一条绕过准入的旁路（而单调升级会让旁路的噪声粘住）。
+            upgrade_title(into, from.title_source, &from.title);
+            if !into.has_user_input && from.has_user_input {
+                into.has_user_input = true;
+            }
+            if into.native_session_id.is_none() {
+                into.native_session_id = from.native_session_id;
+            }
+            sessions.remove(from_session_id);
+            true
+        };
+        if adopted {
+            self.bump();
+        }
+        adopted
+    }
+
+    /// 记录 agent 侧的原生会话 id（hook 上报携带）。返回「是否真的写了」。
+    ///
+    /// **不 bump 版本**：这个字段不进 wire 契约（视图不显示、不派生），只有点击恢复时
+    /// 后端自己读一次。为一个 UI 看不见的字段刷快照，会让侧栏跟着重渲染。
+    ///
+    /// 只写一次：CLI 的同一条会话后续 hook 上报里 native id 不会变，重复写是噪声。
+    pub fn record_native_session_id(&self, session_id: &str, native_session_id: &str) -> bool {
+        let native_session_id = native_session_id.trim();
+        if native_session_id.is_empty() {
+            return false;
+        }
+        let mut sessions = self.guard();
+        let Some(entry) = sessions.get_mut(session_id) else {
+            return false;
+        };
+        if entry.native_session_id.is_some() {
+            return false;
+        }
+        entry.native_session_id = Some(native_session_id.to_string());
+        true
+    }
+
+    /// 按 id 取一条条目的快照（点击恢复时读 agent / native id / cwd）。
+    #[must_use]
+    pub fn entry(&self, session_id: &str) -> Option<SessionEntry> {
+        self.guard().get(session_id).cloned()
     }
 
     /// 上报类写入的收尾（锁外）：未知会话记 debug，真变化才 bump 版本并唤醒长轮询。
@@ -413,11 +486,22 @@ impl Registry {
 
 /// 升级条目的标题，返回「是否真的改了」。
 ///
-/// 规则集中在这里（截断 + 空白忽略 + 单调升级 + 同值不写）：`set_title`、`report`、
-/// `report_first` 三个入口共用同一份判据，调用方只决定「何时尝试」而不复述规则。
+/// **标题的唯一写入点**。规则集中在这里：准入（`title::admit`，什么不配）、截断、
+/// 单调升级（`title::should_upgrade`，谁能覆盖谁）、同值不写。调用方只决定
+/// 「何时尝试」而不复述规则。
 fn upgrade_title(entry: &mut SessionEntry, source: TitleSource, text: &str) -> bool {
-    let title = title::truncate(text, title::MAX_TITLE_CHARS);
-    if title.is_empty() || !title::should_upgrade(entry.title_source, source) {
+    let Some(title) = title::admit(source, text, entry.agent_id.as_deref()) else {
+        // 只在「这条会话还没有任何名字」时记一笔：那正是排障「为什么侧栏没名字」
+        // 的场景；已有标题时噪声是常态，逐帧记会把日志刷成噪声。
+        if entry.title.is_empty() {
+            log::debug!(
+                "[live_sessions] title candidate rejected ({source:?}): {:?}",
+                text.chars().take(32).collect::<String>()
+            );
+        }
+        return false;
+    };
+    if !title::should_upgrade(entry.title_source, source) {
         return false;
     }
     if entry.title == title && entry.title_source == source {
@@ -428,9 +512,13 @@ fn upgrade_title(entry: &mut SessionEntry, source: TitleSource, text: &str) -> b
     true
 }
 
-/// 是否有可展示的真标题（空串与占位来源都不算）。
-fn has_real_title(entry: &SessionEntry) -> bool {
-    !entry.title.trim().is_empty() && entry.title_source != TitleSource::Placeholder
+/// 是否有可展示的真标题。
+///
+/// 退化为「非空」是因为 [`title::admit`] 对 `Placeholder` 恒返回 `None`：
+/// 于是 `title_source == Placeholder ⟺ title.is_empty()` 恒成立。
+/// 这条不变量同时让前端的 `isNamedSession` 退化成同一个判据。
+const fn has_real_title(entry: &SessionEntry) -> bool {
+    !entry.title.is_empty()
 }
 
 /// 用户活动解除权威状态门，并把非终止会话推回 Running。

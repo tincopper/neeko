@@ -189,7 +189,9 @@ pub(super) fn spawn_pty_pipeline(
     }
 
     // 活动探针：reader 线程 stamp，watcher 线程 poll（输出流动 = 在跑 / 静默 = 就绪）。
-    let activity = crate::live_sessions::wiring::pty::OutputActivity::new();
+    let activity = crate::live_sessions::wiring::pty::OutputActivity::new(
+        live.and_then(|l| l.status_channel()),
+    );
 
     spawn_watcher_thread(
         id,
@@ -452,8 +454,8 @@ fn spawn_reader_thread(
             // long-poll 路径经 Notify 唤醒挂起的 terminal_drain_wait；
             // 轮询降级路径 tick 即唤醒（take_drain 保持空闭包）。
             let flush = |data: &[u8]| {
-                // 活动打点：只有「有字节出来」这一件事实，供 watcher 判定运行 / 就绪。
-                activity.stamp();
+                // 活动打点 + CLI 自报状态扫描（自报优先于静默推断，见 wiring::pty 模块注释）。
+                activity.observe(data);
                 session_drain.push(data, || session_drain.notify_one())
             };
             #[cfg(unix)]

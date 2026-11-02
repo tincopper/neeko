@@ -5,7 +5,7 @@
 //! 1. **登记**（[`LiveTerminal::register`]）：进程创建后立即登记，早于退出信号生产者；
 //! 2. **活动**（[`OutputActivity`]）：输出流动 = 在跑，静默 = 回到就绪（唯一的「推断」，见下）；
 //!    该推断经 [`Registry::apply_activity`]，不得越过 CLI hook 的权威状态门；
-//! 3. **退出 / 关闭**（[`exit_and_notify`] / [`unregister_and_notify`]）。
+//! 3. **退出 / 关闭**（[`exit_and_notify`] / [`close_and_notify`] / [`unregister_and_notify`]）。
 //!
 //! 会话的**标题与 has_user_input** 不在这里产生：用户输入只有前端分得清「人敲的」与「我们自动
 //! 启动 agent 的那一行」，故由前端经 `set_live_session_title`（`source = prompt`）上报
@@ -18,13 +18,24 @@
 //! `on_exit_for_unknown_session_is_a_no_op`），随后登记出来的条目永远停在 `Running`
 //! —— 没有任何后续信号能清理它，用户看到一条点不动的幽灵行。
 //!
-//! # 活动判据（唯一的「推断」，也是唯一会退化成假数据的地方）
+//! # 活动判据：先看 CLI 说什么，再猜
 //!
-//! PTY 只有一种可观测事实：**有没有字节出来**。进程存活不区分「在算」与「在等你」，
-//! CLI 的 spinner 帧只改标题、不表达完成。因此：
+//! **第一级事实 —— CLI 自报**（`agent::cli_status`）：Codex 会在输出流里发
+//! `ESC ] 7501 ; state=working|idle:app=codex ST`。这是逐次状态转换的明确宣告，
+//! 一旦出现，本模块**立刻停止**用字节静默推断该会话（[`OutputActivity::observe`] 记下
+//! 「已自报」，[`OutputActivity::poll`] 之后只应用它）。
+//!
+//! 为什么必须停掉推断：Codex 完成后仍会周期性重绘（光标 / 状态行），静默永远达不到
+//! [`IDLE_AFTER`]，于是「任务已结束」一直显示绿色运行中（2026-11-02 真机反馈）。用
+//! 更弱的事实覆盖更强的事实，正是这条 bug 的形态。
+//!
+//! **第二级（退路）—— 字节静默推断**：没有自报通道的 CLI 只有一种可观测事实
+//! （**有没有字节出来**）。进程存活不区分「在算」与「在等你」，spinner 帧只改标题：
 //!
 //! - 有输出 ⇒ `TurnStarted`（`Running`）；
 //! - 静默超过 [`IDLE_AFTER`] ⇒ `TurnFinished`（`Ready`）。
+//!
+//! 自报通道是**机会性升级**：CLI 版本不再发那个 OSC 时不会锁死状态（推断仍在跑）。
 //!
 //! **代价（必须诚实标注）**：模型长时间无输出的思考会被读成「就绪」，`sleep 30` 这类
 //! 无输出命令同理。阈值取得比「命令之间的间隔」大、比「人愿意等的反馈延迟」小（1.5s），
@@ -43,11 +54,13 @@ use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
 
+use crate::agent::cli_status::{CliStatus, StatusChannel};
 use crate::common::git::WorkspaceSession;
 use crate::live_sessions::emit_changed;
-use crate::live_sessions::entry::{SessionEntry, SessionKind, SessionState, TitleSource};
+use crate::live_sessions::entry::{SessionEntry, SessionKind, SessionState};
 use crate::live_sessions::registry::Registry;
 use crate::live_sessions::state::Signal;
+use crate::live_sessions::wiring::status_mailbox::StatusMailbox;
 
 /// 输出静默多久算「这一轮结束」。见模块注释的取舍说明。
 pub(crate) const IDLE_AFTER: Duration = Duration::from_millis(1_500);
@@ -97,6 +110,13 @@ impl<'a> LiveTerminal<'a> {
         emit_changed(app, self.registry.version());
     }
 
+    /// 本会话的 CLI 是否在输出流里自报状态（`agent::cli_status` 的数据表）。
+    ///
+    /// 只凭 `agent_id` 查表 —— 调用点（reader / io 线程）不需要认识任何具体 CLI。
+    pub(crate) fn status_channel(&self) -> Option<&'static StatusChannel> {
+        crate::agent::cli_status::channel_for(self.registration.agent_id.as_deref())
+    }
+
     /// 供 watcher / io 线程持有的注册表句柄（跨线程需要 `'static`）。
     pub(crate) fn shared_registry(&self) -> Arc<Registry> {
         Arc::clone(self.registry)
@@ -105,10 +125,10 @@ impl<'a> LiveTerminal<'a> {
 
 /// 登记终端会话（进程创建成功后**立即**登记，早于退出信号生产者）。
 ///
-/// **占位标题是空串**：终端在 CLI 自己发 OSC 0/2 之前没有名字，而任何我们替它编的名字
-/// （agent 名 / 项目名 / `Terminal`）都是噪声 —— 行已经在单元下面，项目名冗余；agent 由
-/// 品牌图标表达。空标题由视图解释：侧栏只画图标，tab 兜底到自己的 `title`
-/// （`resolveTabTitle`）。
+/// **占位标题是空串**（`SessionEntry::new` 的固有形态，不给参数）：终端在 CLI 自己发
+/// OSC 0/2 之前没有名字，而任何我们替它编的名字（agent 名 / 项目名 / `Terminal`）都是噪声 ——
+/// 行已经在单元下面，项目名冗余；agent 由品牌图标表达。空标题由视图解释：侧栏只画图标，
+/// tab 兜底到自己的 `title`（`resolveTabTitle`）。
 ///
 /// 返回 `Registry::register` 的「是否新增」—— 只有测试用它区分「首登 / 覆盖」。
 fn register_terminal(registry: &Registry, session_id: &str, input: &TerminalRegistration) -> bool {
@@ -120,44 +140,57 @@ fn register_terminal(registry: &Registry, session_id: &str, input: &TerminalRegi
             agent_id.map(str::to_string),
             input.workspace.clone(),
             input.cwd.as_str(),
-            (TitleSource::Placeholder, String::new()),
         )
         // 进程已存活 ⇒ Running；静默 1.5s 后由 `OutputActivity` 落到 Ready。
         .with_state(SessionState::Running),
     )
 }
 
-/// 终端输出活动探针：跨线程共享的「最后一次输出」时间戳。
+/// 终端输出活动探针：跨线程共享的「最后一次输出」时间戳 + 可选的 CLI 自报信箱。
 ///
-/// 由 reader / SSH io 线程 `stamp()`，由 watcher / io 循环 `poll()` —— 读写双方都不持锁
-/// （`AtomicU64` 存「相对 start 的毫秒数」，单调时钟不会受系统时间调整影响）。
+/// 由 reader / SSH io 线程 `observe()`，由 watcher / io 循环 `poll()` —— 两条共享边都是
+/// 原子量（`AtomicU64` 存「相对 start 的毫秒数」，单调时钟不受系统时间调整影响；
+/// 自报信箱见 [`StatusMailbox`] 的读侧无锁设计）。
 #[derive(Clone)]
 pub(crate) struct OutputActivity {
     start: Instant,
     last_ms: Arc<AtomicU64>,
+    /// 该 agent 的自报通道；`None` = 没有自报，只有字节静默推断。
+    cli: Option<Arc<StatusMailbox>>,
 }
 
 impl OutputActivity {
     /// 新建探针（时间原点 = 现在）。
-    pub(crate) fn new() -> Self {
+    ///
+    /// `channel = None`（该 agent 没有状态播报通道）⇒ 行为与旧版完全一致：只有静默推断。
+    pub(crate) fn new(channel: Option<&'static StatusChannel>) -> Self {
         Self {
             start: Instant::now(),
             last_ms: Arc::new(AtomicU64::new(0)),
+            cli: channel.map(|channel| Arc::new(StatusMailbox::new(channel))),
         }
     }
 
     /// 时间原点在过去的探针（仅测试：等价于「已经静默很久」，不 sleep 墙钟）。
     #[cfg(test)]
     fn started_at(start: Instant) -> Self {
-        Self {
-            start,
-            last_ms: Arc::new(AtomicU64::new(0)),
-        }
+        Self::started_at_with(start, None)
     }
 
-    /// 记录一次输出（每个字节块调用一次）。
-    pub(crate) fn stamp(&self) {
+    /// 同上，但带一个自报通道（测试用）。
+    #[cfg(test)]
+    fn started_at_with(start: Instant, channel: Option<&'static StatusChannel>) -> Self {
+        let mut activity = Self::new(channel);
+        activity.start = start;
+        activity
+    }
+
+    /// 记录一次输出（每个字节块调用一次）：打点 + 喂给自报扫描器。
+    pub(crate) fn observe(&self, bytes: &[u8]) {
         self.last_ms.store(self.elapsed_ms(), Ordering::Relaxed);
+        if let Some(cli) = &self.cli {
+            cli.feed(bytes);
+        }
     }
 
     /// 按当前活动状态推进注册表；返回「状态是否真的变了」。
@@ -170,19 +203,42 @@ impl OutputActivity {
         app: Option<&AppHandle>,
         session_id: &str,
     ) -> bool {
-        let quiet = self
-            .elapsed_ms()
-            .saturating_sub(self.last_ms.load(Ordering::Relaxed));
-        let signal = if quiet >= u64::try_from(IDLE_AFTER.as_millis()).unwrap_or(u64::MAX) {
-            Signal::TurnFinished
-        } else {
-            Signal::TurnStarted
-        };
-        let changed = registry.apply_activity(session_id, signal);
-        if let (true, Some(app)) = (changed, app) {
-            emit_changed(app, registry.version());
+        let mut changed = self.apply_cli_status(registry, session_id);
+        // CLI 已经在自报 ⇒ 不再用字节静默猜。否则 Codex 完成后的周期性重绘会把
+        // `Ready` 一直推回 `Running`（绿点不灭）。
+        let infer_from_bytes = self.cli.as_ref().is_none_or(|cli| !cli.has_reported());
+        if infer_from_bytes {
+            let quiet = self
+                .elapsed_ms()
+                .saturating_sub(self.last_ms.load(Ordering::Relaxed));
+            let signal = if quiet >= u64::try_from(IDLE_AFTER.as_millis()).unwrap_or(u64::MAX) {
+                Signal::TurnFinished
+            } else {
+                Signal::TurnStarted
+            };
+            changed |= registry.apply_activity(session_id, signal);
+        }
+        if changed {
+            if let Some(app) = app {
+                emit_changed(app, registry.version());
+            }
         }
         changed
+    }
+
+    /// 应用 CLI 自报的最后一档状态（没有待应用项 ⇒ `false`）。
+    ///
+    /// 走 `Registry::apply`（直接信号）而不是 `apply_activity`：自报是 **CLI 自己**说的
+    /// 事实，不是我们对字节流的推断，因此不受「权威 hook 门」约束（门存在的目的是挡住推断）。
+    fn apply_cli_status(&self, registry: &Registry, session_id: &str) -> bool {
+        let Some(status) = self.cli.as_ref().and_then(|cli| cli.take_pending()) else {
+            return false;
+        };
+        let signal = match status {
+            CliStatus::Working => Signal::TurnStarted,
+            CliStatus::Idle => Signal::TurnFinished,
+        };
+        registry.apply(session_id, signal)
     }
 
     fn elapsed_ms(&self) -> u64 {
@@ -204,6 +260,14 @@ pub(crate) const fn exit_signal(exit_code: Option<i32>) -> Signal {
 /// 注销是必须的（tab 已随进程消失），终止态仍要在注销前落一次：写入面只有
 /// `apply(signal)`，跳过它会让「退出原因」在未来接入持久化 / 统计时丢失。
 fn on_exit(registry: &Registry, session_id: &str, exit_code: Option<i32>) -> bool {
+    // 已被**主动关闭**（[`close_and_notify`] 先标了 `Stopped`）⇒ 这次退出是那次关闭的尾巴。
+    // 条目要留着：侧栏那一行是「点回来」的入口，关 tab 不该让它消失。
+    if registry
+        .entry(session_id)
+        .is_some_and(|entry| entry.state == SessionState::Stopped)
+    {
+        return false;
+    }
     let signal = exit_signal(exit_code);
     let changed = registry.apply(session_id, signal);
     let removed = registry.unregister(session_id);
@@ -224,7 +288,29 @@ pub(crate) fn exit_and_notify(
     changed
 }
 
-/// 主动关闭：注销 + 通知（唯一关闭入口）。
+/// 关闭 tab：把会话标成 `Stopped` 并**保留**条目（唯一「关 tab」入口）。
+///
+/// 与 [`exit_and_notify`] 的唯一差别就是**留不留**：
+///
+/// - 进程自己退出（用户敲 `exit` / agent 崩了）⇒ 会话结束了，条目跟着消失；
+/// - 用户关掉 tab ⇒ 只是收起视图。那条会话仍是「可以点回来」的入口 —— 侧栏不该因为
+///   关 tab 就少一行（点击时按会话重建，能续写就续写，见 `useActivateSession`）。
+///
+/// 不注销的副作用是条目会留到本次运行结束（注册表是内存态）。这是刻意的：它是「恢复点」，
+/// 不是垃圾。`on_exit` 认得这个标记，不会再补一次注销。
+pub(crate) fn close_and_notify(
+    registry: &Registry,
+    app: Option<&AppHandle>,
+    session_id: &str,
+) -> bool {
+    let changed = registry.apply(session_id, Signal::Stopped);
+    if let (true, Some(app)) = (changed, app) {
+        emit_changed(app, registry.version());
+    }
+    changed
+}
+
+/// 销毁会话（删单元 / 清 tab 空间）：注销 + 通知。
 ///
 /// `app` 为 `None` 的调用方（退出清理 / 测试）只做注销不发事件 —— 那时没有前端在听。
 pub(crate) fn unregister_and_notify(
@@ -286,7 +372,10 @@ mod tests {
         register_terminal(&registry, "t1", &registration(Some("claude-code")));
         let entry = &registry.snapshot()[0];
         assert_eq!(entry.title, "", "不替会话编名字");
-        assert_eq!(entry.title_source, TitleSource::Placeholder);
+        assert_eq!(
+            entry.title_source,
+            crate::live_sessions::entry::TitleSource::Placeholder
+        );
         assert_eq!(
             entry.agent_id.as_deref(),
             Some("claude-code"),
@@ -347,6 +436,41 @@ mod tests {
         assert!(!on_exit(&registry, "t1", Some(0)));
     }
 
+    /// 关 tab **不摘条目**：只标 `Stopped`，侧栏那一行留着当「点回来」的入口。
+    #[test]
+    fn closing_a_tab_keeps_the_session_as_stopped() {
+        let registry = fresh_registry();
+        register_terminal(&registry, "t1", &registration(None));
+        let before = registry.version();
+
+        assert!(close_and_notify(&registry, None, "t1"));
+        let entry = registry.entry("t1").expect("关 tab 后条目仍在");
+        assert_eq!(entry.state, SessionState::Stopped);
+        assert!(registry.version() > before, "状态变了要通知一次");
+
+        // 幂等：再关一次什么都不变（不重复 bump）。
+        let after = registry.version();
+        assert!(!close_and_notify(&registry, None, "t1"));
+        assert_eq!(registry.version(), after);
+    }
+
+    /// 主动关闭之后 PTY 的退出是**那次关闭的尾巴**：不得把条目注销掉。
+    ///
+    /// 回归钉子：`close_and_notify` 只标状态，随后的 `exit_and_notify` 若照常注销，
+    /// 关 tab 仍会让侧栏少一行 —— 用户看到的就是「关了 tab 会话就没了」。
+    #[test]
+    fn exit_after_an_explicit_close_does_not_unregister() {
+        let registry = fresh_registry();
+        register_terminal(&registry, "t1", &registration(None));
+        assert!(close_and_notify(&registry, None, "t1"));
+
+        assert!(!on_exit(&registry, "t1", None), "尾巴不该产生变更");
+        assert!(
+            registry.entry("t1").is_some(),
+            "关 tab 之后的退出不得摘条目"
+        );
+    }
+
     /// 未知会话的退出信号被丢弃（不会凭空建条目）。
     ///
     /// 这条也是「登记必须早于信号」的判据：若登记晚于退出，这里丢弃的那条信号
@@ -393,7 +517,7 @@ mod tests {
     fn polling_a_stable_state_bumps_once() {
         let registry = fresh_registry();
         register_terminal(&registry, "t1", &registration(None));
-        let activity = OutputActivity::new();
+        let activity = OutputActivity::new(None);
         // 刚注册 = Running；静默未达阈值 ⇒ TurnStarted ⇒ 状态未变。
         let before = registry.version();
         assert!(!activity.poll(&registry, None, "t1"));
@@ -412,7 +536,7 @@ mod tests {
         assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
         assert!(!activity.poll(&registry, None, "t1"), "重复 poll 不 bump");
 
-        activity.stamp();
+        activity.observe(b"x");
         assert!(
             activity.poll(&registry, None, "t1"),
             "有新输出 ⇒ 回到 Running"
@@ -429,8 +553,8 @@ mod tests {
         assert!(registry.report_authoritative("t1", None, Signal::TurnFinished));
         assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
 
-        let activity = OutputActivity::new();
-        activity.stamp();
+        let activity = OutputActivity::new(None);
+        activity.observe(b"x");
         assert!(
             !activity.poll(&registry, None, "t1"),
             "CLI 完成后的 TUI 重绘不得把 Ready 推回 Running"
@@ -440,5 +564,88 @@ mod tests {
         assert!(registry.report_user_input("t1", ""));
         assert_eq!(registry.snapshot()[0].state, SessionState::Running);
         assert!(!activity.poll(&registry, None, "t1"), "Running 已稳定");
+    }
+
+    /// Codex 之所以要自报通道：**任务完成后它仍会周期性重绘**，静默永远攒不到阈值。
+    /// 这里用「有输出」模拟重绘：没有自报通道时这确实会被读成 Running（旧 bug 的形态）。
+    #[test]
+    fn repaint_without_a_status_channel_reads_as_running() {
+        let registry = fresh_registry();
+        register_terminal(&registry, "t1", &registration(Some("codex")));
+        let activity = OutputActivity::started_at(Instant::now() - IDLE_AFTER * 2);
+        assert!(activity.poll(&registry, None, "t1"), "先静默落到 Ready");
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+
+        // 无自报通道 ⇒ 重绘（有新字节）把状态推回 Running。
+        activity.observe(b"\x1b[?25l");
+        assert!(activity.poll(&registry, None, "t1"));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Running);
+    }
+
+    /// 有自报通道时：CLI 说 idle ⇒ Ready，且之后的字节重绘**不再**改动状态。
+    #[test]
+    fn cli_reported_state_wins_over_byte_silence_inference() {
+        let registry = fresh_registry();
+        register_terminal(&registry, "t1", &registration(Some("codex")));
+        let channel = crate::agent::cli_status::channel_for(Some("codex"));
+        let activity = OutputActivity::started_at_with(Instant::now() - IDLE_AFTER * 2, channel); // 先靠静默推断落到 Ready（还没出现自报之前的默认行为）。
+        assert!(activity.poll(&registry, None, "t1"));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+
+        // 一轮开始 → working。
+        activity.observe(b"\x1b]7501;state=working:app=codex\x1b\\");
+        assert!(activity.poll(&registry, None, "t1"));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Running);
+
+        // 一轮结束（hook 没装 / 归因失败也不要紧，CLI 自己说了算）。
+        activity.observe(b"\x1b]7501;state=idle:app=codex\x1b\\");
+        assert!(activity.poll(&registry, None, "t1"));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+
+        // 进入 tab 触发的 TUI 重绘：有字节，但状态不许再变（绿点必须灭着）。
+        activity.observe(b"\x1b[2K\x1b[1;1H repaint");
+        assert!(
+            !activity.poll(&registry, None, "t1"),
+            "CLI 已经在自报状态，字节静默推断必须停用"
+        );
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+    }
+
+    /// 没有新字节也必须把「已收到的自报」应用一次（reader 写、watcher 取，两者解耦）。
+    #[test]
+    fn cli_status_is_applied_on_the_next_poll() {
+        let registry = fresh_registry();
+        register_terminal(&registry, "t1", &registration(Some("codex")));
+        let channel = crate::agent::cli_status::channel_for(Some("codex"));
+        let activity = OutputActivity::new(channel);
+
+        activity.observe(b"\x1b]7501;state=idle:app=codex\x1b\\");
+        assert!(activity.poll(&registry, None, "t1"));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+        // 幂等：同一档状态不重复 bump。
+        assert!(!activity.poll(&registry, None, "t1"));
+    }
+
+    /// 数据表之外的 agent 拿不到通道：旧行为原样保留（字节 = 活动，静默 = 就绪）。
+    ///
+    /// 这条用例同时钉住「机会性升级」的边界：解析器只认声明过的 agent，不会把别的
+    /// CLI 输出里偶然出现的同样字节当成状态。
+    #[test]
+    fn agents_without_a_channel_keep_pure_byte_inference() {
+        assert!(crate::agent::cli_status::channel_for(Some("claude-code")).is_none());
+        let registry = fresh_registry();
+        register_terminal(&registry, "t1", &registration(Some("claude-code")));
+        let activity = OutputActivity::started_at(Instant::now() - IDLE_AFTER * 2);
+        assert!(activity.poll(&registry, None, "t1"));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+
+        // 同样的字节，在没有通道的会话里只是一次「有输出」。
+        activity.observe(b"\x1b]7501;state=idle:app=codex\x1b\\");
+        assert!(activity.poll(&registry, None, "t1"));
+        assert_eq!(
+            registry.snapshot()[0].state,
+            SessionState::Running,
+            "没有通道 ⇒ 走静默推断（有字节 = 在跑），不解析状态"
+        );
     }
 }

@@ -80,6 +80,11 @@ impl TerminalManager {
         crate::common::terminal::drain::take_drain(&self.drains, session_id)
     }
 
+    /// 切换该会话的分离态（后台运行 / 接回界面）。
+    pub(crate) fn set_drain_detached(&self, session_id: &str, detached: bool) -> bool {
+        crate::common::terminal::drain::set_drain_detached(&self.drains, session_id, detached)
+    }
+
     /// Long-poll drain: 有积压立即返回；空则挂起至 push/close/超时。
     /// closed/missing 返回 `None`（调用方转 `NotFound`，前端停止续挂）。
     pub(crate) async fn wait_drain(

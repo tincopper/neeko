@@ -81,6 +81,8 @@ pub(crate) fn project(registry: &Registry, event: &HookEvent) -> bool {
     let Some(session_id) = attributed_session(event) else {
         return false;
     };
+    // 原生会话 id：`resume_command` 的唯一入参，点击恢复时用（不进 wire 契约）。
+    registry.record_native_session_id(session_id, &event.agent_session_id);
     let title = event.topic().map(|topic| (TitleSource::Native, topic));
     match authoritative_signal(event.event.as_str()) {
         Some(signal) => registry.report_authoritative(session_id, title, signal),
@@ -140,7 +142,6 @@ mod tests {
                 Some("claude-code".into()),
                 WorkspaceSession::of("p1", Some("/proj-wt".into())),
                 "/proj-wt",
-                (TitleSource::Placeholder, String::new()),
             )
             .with_state(SessionState::Running),
         );

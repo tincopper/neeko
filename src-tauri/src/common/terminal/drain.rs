@@ -24,6 +24,12 @@ use std::time::Duration;
 /// （design.md §2.2 / §3）。
 pub(crate) const DRAIN_BUFFER_CAPACITY: usize = 512 * 1024;
 
+/// 分离态（关掉 tab 后台运行）保留的**尾部**字节数。
+///
+/// 分离后没有消费者：照常背压会把 PTY 写入堵死 → 后台的 agent 冻在那里。所以分离态
+/// 永远接收、丢**最旧**的字节，只留尾部 —— 重新接回来时至少能看到最近的输出。
+pub(crate) const DETACHED_TAIL_CAPACITY: usize = 256 * 1024;
+
 #[derive(Default)]
 pub(crate) struct DrainBuffer {
     data: Vec<u8>,
@@ -59,6 +65,17 @@ impl DrainBuffer {
     const fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
+
+    /// 分离态：永远接收，超出 `tail_capacity` 时丢掉**最旧**的字节。
+    ///
+    /// 一次多丢一些（削到半容量）避免每次 push 都做 O(n) 的前移。
+    fn push_dropping_head(&mut self, bytes: &[u8], tail_capacity: usize) {
+        self.data.extend_from_slice(bytes);
+        if self.data.len() > tail_capacity {
+            let excess = self.data.len() - tail_capacity / 2;
+            self.data.drain(..excess);
+        }
+    }
 }
 
 /// Shared per-session drain endpoint. Cheap to clone via [`Arc`].
@@ -74,6 +91,8 @@ pub(crate) struct SessionDrain {
     /// Long-poll waker: `push` 成功后 `notify_one`，无 waiter 时存一个 permit，
     /// 下一次 `notified().await` 立即完成——覆盖 take 与 await 注册之间的竞态窗口。
     notify: tokio::sync::Notify,
+    /// 分离态：tab 已关闭但进程继续跑（后台运行）。见 [`DETACHED_TAIL_CAPACITY`]。
+    detached: AtomicBool,
 }
 
 impl Default for SessionDrain {
@@ -93,7 +112,18 @@ impl SessionDrain {
             wake_in_flight: AtomicBool::new(false),
             closed: AtomicBool::new(false),
             notify: tokio::sync::Notify::const_new(),
+            detached: AtomicBool::new(false),
         }
+    }
+
+    /// 切换分离态：`true` = 后台运行（无消费者，只留尾部）；`false` = 已接回界面。
+    pub(crate) fn set_detached(&self, detached: bool) {
+        self.detached.store(detached, Ordering::Release);
+    }
+
+    #[must_use]
+    pub(crate) fn is_detached(&self) -> bool {
+        self.detached.load(Ordering::Acquire)
     }
 
     /// Marks the drain as closed. Idempotent.
@@ -119,9 +149,15 @@ impl SessionDrain {
         if self.is_closed() {
             return true;
         }
+        let detached = self.is_detached();
         let accepted = {
             let mut buf = lock(&self.buffer);
-            buf.push(bytes)
+            if detached {
+                buf.push_dropping_head(bytes, DETACHED_TAIL_CAPACITY);
+                true
+            } else {
+                buf.push(bytes)
+            }
         };
         // Accepted or not, bytes may now be pending; ensure one wake in flight.
         if !self.wake_in_flight.swap(true, Ordering::AcqRel) {
@@ -201,6 +237,17 @@ pub(crate) fn new_drain_map() -> SessionDrainMap {
 /// 否则唤醒合并被破坏，后续 push 的唤醒会被吞。空闭包仅表示轮询路径无须补发
 /// 事件（唤醒由前端轮询器"拉空为止"保证，wake hint 事件已退役）。
 /// `None` 仅表示 session 缺席；锁中毒时容忍继续（`lock_warn`），已注册数据不丢。
+/// 切换分离态；drain 不存在（会话已结束）返回 `false`。
+pub(crate) fn set_drain_detached(map: &SessionDrainMap, session_id: &str, detached: bool) -> bool {
+    match get_drain(map, session_id) {
+        Some(drain) => {
+            drain.set_detached(detached);
+            true
+        }
+        None => false,
+    }
+}
+
 pub(crate) fn take_drain(map: &SessionDrainMap, session_id: &str) -> Option<Vec<u8>> {
     let drain = get_drain(map, session_id)?;
     Some(drain.take_and_rearm(|| {}))
@@ -257,6 +304,33 @@ mod tests {
     }
 
     // ── DrainBuffer ───────────────────────────────────────────────────────
+
+    /// 分离态：永远接收、不背压、只留尾部。
+    ///
+    /// 回归钉子：分离后若照常背压，没有消费者 → drain 满 → PTY 写入被堵死，
+    /// 后台的 agent 冻在那里（用户选了「后台运行」却得到一条卡死的会话）。
+    #[test]
+    fn detached_drain_never_backpressures_and_keeps_only_the_tail() {
+        let drain = SessionDrain::with_capacity(8);
+        assert!(drain.push(b"12345678", || {}), "满之前正常接收");
+
+        drain.set_detached(true);
+        // 满着也照收（分离态丢最旧，不返回 false）。
+        assert!(drain.push(b"9", || {}), "分离态必须永远接收");
+        assert!(drain.push(b"abcdefgh", || {}));
+
+        let tail = drain.take_and_rearm(|| {});
+        assert!(
+            tail.ends_with(b"abcdefgh"),
+            "尾部必须完整保留：{:?}",
+            String::from_utf8_lossy(&tail)
+        );
+        assert!(tail.len() <= DETACHED_TAIL_CAPACITY, "只留尾部，不无限增长");
+
+        // 接回界面：恢复正常背压。
+        drain.set_detached(false);
+        assert!(!drain.is_detached());
+    }
 
     #[test]
     fn buffer_roundtrip_and_clear() {

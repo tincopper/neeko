@@ -102,20 +102,69 @@ pub fn set_live_session_title(
     Ok(changed)
 }
 
+/// 恢复成功后，让新会话**继承**旧会话的身份并让旧条目退场。
+///
+/// 关 tab 只把条目标成 `Stopped`（见 `wiring::pty::close_and_notify`），于是侧栏仍留着
+/// 「点回来」的入口。用户点回来后，新 PTY 是那条会话的**延续**：
+///
+/// - 不继承 ⇒ 新会话要等用户敲第一条输入才会被列出，表现是「点了恢复，那一行反而消失了」；
+/// - 不退场 ⇒ 侧栏同时挂着「已停止」与「新会话」两行。
+///
+/// 语义全在 [`Registry::adopt`]：只接受**终止态**的 `from`，且只搬 `into` 缺的字段。
+#[tauri::command]
+pub fn adopt_live_session(
+    from_session_id: String,
+    into_session_id: String,
+    state: State<'_, AppStateWrapper>,
+    app_handle: tauri::AppHandle,
+) -> bool {
+    let adopted = state
+        .live_sessions
+        .adopt(&from_session_id, &into_session_id);
+    if adopted {
+        emit_changed(&app_handle, state.live_sessions.version());
+    }
+    adopted
+}
+
+/// 这条会话的**原生恢复命令**（`["--resume", "<native id>"]` 这类）；`None` = 不支持。
+///
+/// 点击侧栏会话行、需要重建 tab 时调用：拿到的 args 由前端拼进 `taskCommand`，于是新建的
+/// 终端是**续写**而不是重开（与 Histor 面板的恢复路径同形）。
+///
+/// 判据全在后端，前端不维护能力表：
+/// - `native_session_id` 只来自 CLI hook（neeko 自己的 `session_id` 对 CLI 无意义，
+///   拼不出 `--resume`）；
+/// - 「这个 agent 支不支持原生恢复」由 adapter 回答；
+/// - 无 hook 的会话（或需要 file path 的 adapter）返回 `None` —— 前端退回「新建一个同
+///   agent 的终端」，不猜。
+#[tauri::command]
+pub fn live_session_resume_command(
+    session_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Option<Vec<String>> {
+    let entry = state.live_sessions.entry(&session_id)?;
+    let agent_id = entry.agent_id?;
+    let native_session_id = entry.native_session_id?;
+    state
+        .conversation_manager
+        .resume_command_for_native(&agent_id, &native_session_id, &entry.cwd)
+}
+
 /// 标题上报的**唯一**决策（`source` 决定是否顺带把会话标成「在用」）。
 ///
 /// 抽成自由函数以便直测（不需要 Tauri 运行时）—— `Native` 与 `Prompt` 的差别只能靠
 /// 「同级可覆盖 / 弱级被拒」的用例区分，断言最终标题值本身区分不了。
 ///
 /// 用户提交走 `Registry::report_user_input`（标题 + 可见性 + 清权威门一次加锁）；
-/// `Native` 走 `Registry::report` 的纯标题路径。升级规则仍只有一份实现。
+/// 其余来源走 `Registry::set_title` 的纯标题路径。空白已由 `title::admit` 判负，
+/// 这里不再重复检查。准入与升级规则仍只有一份实现。
 fn apply_title(registry: &Registry, session_id: &str, title: &str, source: TitleSource) -> bool {
     match source {
         // 用户提交 = 可能首次命名，也可能只是后续输入（清除权威状态门）。
         // 两者必须共用一次加锁，不能拆成「先查标题、再写状态」。
         TitleSource::Prompt => registry.report_user_input(session_id, title),
-        _ if title.trim().is_empty() => false,
-        _ => registry.report(session_id, Some((source, title)), false),
+        _ => registry.set_title(session_id, source, title),
     }
 }
 
@@ -156,10 +205,12 @@ mod tests {
                     Some("pi".into()),
                     WorkspaceSession::of("p1", Some("/proj-wt".into())),
                     "/proj-wt",
-                    (title.0, title.1.to_string()),
                 )
                 .with_state(SessionState::Running),
             );
+            // 夹具走**生产同一条**写路径（`set_title` → 准入 + 覆盖序），
+            // 不直接改字段：否则夹具能造出 `admit` 不会放行的状态。
+            registry.set_title("pty-1", title.0, title.1);
             registry
         }
 
@@ -213,6 +264,35 @@ mod tests {
             assert_eq!(entry.title, "ls");
             assert_eq!(entry.title_source, TitleSource::Prompt);
             assert_eq!(registry.version(), version, "仅改名被拒时不 bump");
+        }
+
+        /// 斜杠命令不是会话主题：不命名，但仍算「用户提交」（解除权威状态门）；
+        /// 之后第一条真正的消息才命名。
+        ///
+        /// 实测事故：用户敲 `/model`，在自动补全菜单里按回车 —— 捕获到的是半截命令 `/mo`，
+        /// 侧栏与 tab 标题都变成了这个既不是完整输入、也无从辨认的字符串。
+        #[test]
+        fn slash_command_does_not_become_the_title() {
+            let registry = registry_with((TitleSource::Placeholder, ""));
+            assert!(
+                apply_title(&registry, "pty-1", "/model", TitleSource::Prompt),
+                "用户确实提交了（活动态要变），只是不该命名"
+            );
+            let entry = &registry.snapshot()[0];
+            assert_eq!(entry.title, "", "命令不是标题");
+            assert!(entry.has_user_input, "但发送事实照记");
+            assert_eq!(entry.title_source, TitleSource::Placeholder, "来源不升级");
+
+            // 第一条真正的消息才命名。
+            assert!(apply_title(
+                &registry,
+                "pty-1",
+                "帮我看下 routing group",
+                TitleSource::Prompt
+            ));
+            let entry = &registry.snapshot()[0];
+            assert_eq!(entry.title, "帮我看下 routing group");
+            assert_eq!(entry.title_source, TitleSource::Prompt);
         }
 
         /// 未知会话：不建条目、不报错（迟到上报是常态）。
@@ -286,10 +366,11 @@ mod tests {
                     Some("claude-code".into()),
                     WorkspaceSession::of("p1", Some(cwd.into())),
                     cwd,
-                    (title.0, title.1.to_string()),
                 )
                 .with_state(SessionState::Running),
             );
+            // 同上：夹具经唯一写路径，`Placeholder` 的非空文本会被判负（这是正确行为）。
+            registry.set_title("pty-1", title.0, title.1);
             registry
         }
 
@@ -330,12 +411,10 @@ mod tests {
         #[test]
         fn native_title_never_overrides_a_user_title() {
             let registry = registry_with("/proj-wt", (TitleSource::User, "my tab"));
-            assert!(!apply_title(
-                &registry,
-                "pty-1",
-                "claude",
-                TitleSource::Native
-            ));
+            assert!(
+                !apply_title(&registry, "pty-1", "a cli topic", TitleSource::Native),
+                "Native 主题本身通过准入，被拒的唯一理由是覆盖序"
+            );
             assert_eq!(
                 title_of(&registry),
                 ("my tab".to_string(), TitleSource::User)
@@ -354,7 +433,30 @@ mod tests {
             ));
             assert!(!apply_title(&registry, "pty-1", "   ", TitleSource::Native));
             assert_eq!(registry.snapshot().len(), 1, "不得凭空建条目");
-            assert_eq!(title_of(&registry).0, "Terminal");
+            assert_eq!(
+                title_of(&registry),
+                (String::new(), TitleSource::Placeholder),
+                "占位标题恒为空（`Placeholder` 永远不进标题）"
+            );
+        }
+
+        /// `Placeholder` 经 IPC 传进来也不能写标题：占位不是标题。
+        ///
+        /// `source` 是前端可控的（`set_live_session_title` 的 `Option<TitleSource>`），
+        /// 没有准入时它能造出一条「有名字的占位会话」，而那正是本任务从占位里删掉的噪声。
+        #[test]
+        fn placeholder_source_never_writes_a_title() {
+            let registry = registry_with("/proj-wt", (TitleSource::Placeholder, ""));
+            assert!(!apply_title(
+                &registry,
+                "pty-1",
+                "claude-code",
+                TitleSource::Placeholder
+            ));
+            assert_eq!(
+                title_of(&registry),
+                (String::new(), TitleSource::Placeholder)
+            );
         }
 
         /// 同值不发：CLI hook 可能重复上报同一标题，
@@ -365,14 +467,14 @@ mod tests {
             assert!(apply_title(
                 &registry,
                 "pty-1",
-                "claude",
+                "fix the parser",
                 TitleSource::Native
             ));
             let version = registry.version();
             assert!(!apply_title(
                 &registry,
                 "pty-1",
-                "claude",
+                "fix the parser",
                 TitleSource::Native
             ));
             assert_eq!(registry.version(), version, "同值不得 bump 版本");

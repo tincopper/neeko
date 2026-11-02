@@ -85,15 +85,20 @@ fn registry() -> (Registry, Arc<RecordingStore>) {
     (Registry::new(store.clone()), store)
 }
 
+/// 夹具：生产路径经 `set_title` 写入标题；这里直接给字段，省掉每条用例一次额外写入。
+/// 值必须满足 `title::admit` 的不变量（`Placeholder` ⇒ 空标题），否则夹具会造出
+/// 生产不可能出现的状态。
 fn entry(id: &str, cwd: &str) -> SessionEntry {
-    SessionEntry::new(
+    let mut entry = SessionEntry::new(
         id,
         SessionKind::Chat,
         Some("pi".into()),
         WorkspaceSession::of("p1", None),
         cwd,
-        (TitleSource::Prompt, format!("title-{id}")),
-    )
+    );
+    entry.title = format!("title-{id}");
+    entry.title_source = TitleSource::Prompt;
+    entry
 }
 
 fn terminal_entry(id: &str, cwd: &str) -> SessionEntry {
@@ -103,7 +108,6 @@ fn terminal_entry(id: &str, cwd: &str) -> SessionEntry {
         Some("pi".into()),
         WorkspaceSession::of("p1", Some(cwd.to_string())),
         cwd,
-        (TitleSource::Placeholder, "pi".into()),
     )
     .with_state(SessionState::Running)
 }
@@ -230,25 +234,93 @@ fn engaging_without_a_title_is_idempotent_and_drops_unknown_sessions() {
 
 /// `report_first` 只在**第一次**生效：`Silent` 会话被用起来时补标题 + 置位，
 /// 而续聊（已用过）既不改名也不 bump。
+/// 恢复：新条目继承旧条目的标题与「已使用」，旧条目退场。
+///
+/// 不继承的话，新会话要等用户敲第一条输入才会被侧栏列出 —— 表现是「点了恢复，
+/// 那一行反而消失了」。
+#[test]
+fn adopt_moves_identity_from_a_stopped_session() {
+    let (registry, _store) = registry();
+    let mut old = entry("old", "/proj");
+    old.title = "修复登录竞态".into();
+    old.title_source = TitleSource::Prompt;
+    old.has_user_input = true;
+    registry.register(old);
+    registry.apply("old", Signal::TurnFinished);
+    registry.apply("old", Signal::Stopped);
+
+    let mut fresh = terminal_entry("new", "/proj");
+    fresh.title = String::new();
+    fresh.title_source = TitleSource::Placeholder;
+    registry.register(fresh);
+
+    assert!(registry.adopt("old", "new"));
+    let into = registry.entry("new").expect("新条目仍在");
+    assert_eq!(into.title, "修复登录竞态");
+    assert_eq!(into.title_source, TitleSource::Prompt);
+    assert!(into.has_user_input, "继承「已使用」，否则侧栏不列它");
+    assert!(registry.entry("old").is_none(), "旧条目退场");
+    assert_eq!(registry.snapshot().len(), 1);
+
+    // 幂等：旧条目已消失，再继承一次什么都不发生。
+    assert!(!registry.adopt("old", "new"));
+}
+
+/// 活着的会话**不得**被一次点击合并掉（否则用户点一下丢一条正在跑的会话）。
+#[test]
+fn adopt_refuses_a_live_source() {
+    let (registry, _store) = registry();
+    registry.register(entry("live", "/proj"));
+    registry.register(terminal_entry("new", "/proj"));
+
+    assert!(!registry.adopt("live", "new"));
+    assert!(registry.entry("live").is_some());
+    assert_eq!(registry.snapshot().len(), 2);
+}
+
+/// 原生会话 id：只写一次、未知会话不建条目、**不 bump 版本**（它不进 wire 契约）。
+#[test]
+fn native_session_id_is_recorded_once_without_bumping_the_version() {
+    let (registry, _store) = registry();
+    registry.register(entry("s1", "/proj"));
+    let before = registry.version();
+
+    assert!(registry.record_native_session_id("s1", " native-42 "));
+    assert_eq!(
+        registry.entry("s1").and_then(|e| e.native_session_id),
+        Some("native-42".to_string()),
+        "trim 后落库"
+    );
+    assert_eq!(registry.version(), before, "UI 看不见的字段不刷快照");
+
+    assert!(
+        !registry.record_native_session_id("s1", "another"),
+        "同一条会话的原生 id 不变，重复写是噪声"
+    );
+    assert!(!registry.record_native_session_id("ghost", "native-9"));
+    assert!(!registry.record_native_session_id("s1", "   "), "空白不写");
+    assert_eq!(registry.snapshot().len(), 1, "不得为未知会话建条目");
+}
+
 #[test]
 fn report_first_titles_and_engages_once_only() {
     let (registry, _store) = registry();
     registry.register(entry("s1", "/proj"));
     let before = registry.version();
 
-    assert!(registry.report_first("s1", Some((TitleSource::Prompt, "第一条消息"))));
+    assert!(registry.report_first("s1", &[(TitleSource::Prompt, "第一条消息")]));
     assert_eq!(registry.version(), before + 1);
     assert!(registry.snapshot()[0].has_user_input);
     assert_eq!(registry.snapshot()[0].title, "第一条消息");
 
     assert!(
-        !registry.report_first("s1", Some((TitleSource::Prompt, "第二条消息"))),
+        !registry.report_first("s1", &[(TitleSource::Prompt, "第二条消息")]),
         "续聊不改名"
     );
     assert_eq!(registry.version(), before + 1, "续聊不 bump");
     assert_eq!(registry.snapshot()[0].title, "第一条消息");
 
-    assert!(!registry.report_first("ghost", None), "未知会话不建条目");
+    assert!(!registry.report_first("ghost", &[]), "未知会话不建条目");
     assert_eq!(registry.snapshot().len(), 1);
 }
 
@@ -266,7 +338,7 @@ fn report_first_fills_a_missing_title_after_hook_engagement() {
     assert_eq!(registry.snapshot()[0].title, "");
 
     assert!(
-        registry.report_first("s1", Some((TitleSource::Prompt, "first prompt"))),
+        registry.report_first("s1", &[(TitleSource::Prompt, "first prompt")]),
         "已置位但无标题时仍应补标题"
     );
     assert_eq!(registry.snapshot()[0].title, "first prompt");

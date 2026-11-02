@@ -87,10 +87,20 @@ pub struct SessionEntry {
     pub cwd: String,
     /// 当前状态（只能经 `Registry::apply(signal)` 改变）。
     pub state: SessionState,
-    /// 当前标题（由 `title::pick` / `title::should_upgrade` 决定）。
+    /// 当前标题（由 `title::admit` + `title::should_upgrade` 裁决，只在
+    /// `upgrade_title` 一处写入）。
     pub title: String,
     /// 标题来源（质量顺序见 [`TitleSource`]）。
     pub title_source: TitleSource,
+    /// agent 侧的**原生**会话 id（CLI 自己的 session id），用于恢复。
+    ///
+    /// 来源只有一处：CLI hook 上报的 `HookEvent.agent_session_id`。它是
+    /// `conversation::adapter::resume_command` 唯一的入参 —— neeko 自己的 `session_id`
+    /// 对 CLI 毫无意义，拿它拼不出 `--resume`。
+    ///
+    /// **不进 wire 契约**：视图不需要它（UI 不显示、也不据此派生），只有
+    /// `live_session_resume_command` 在点击时读一次。
+    pub native_session_id: Option<String>,
     /// 会话开始时刻。
     pub started_at: DateTime<Utc>,
     /// 最后一次状态 / 标题变化时刻（UI 的相对时间用它，别伪造 Idle）。
@@ -114,8 +124,10 @@ pub struct SessionEntry {
 impl SessionEntry {
     /// 新建条目：状态从 [`SessionState::Ready`] 开始，时间戳取当前时刻。
     ///
-    /// `title` 收 `(来源, 文本)` 元组：两者由 [`crate::live_sessions::title::pick`]
-    /// 同时产出，分开传参只会让「文本与来源不匹配」成为可能。
+    /// 标题恒为**空串的 `Placeholder`** —— 标题只能经注册表的 `upgrade_title` 写入。
+    /// 留一个 title 参数就等于开一条绕过准入判据（`title::admit`）的旁路：登记路径
+    /// 会拿到未经准入的成品，而单调升级会让它粘住（弱级永不覆盖强级）。
+    /// 调用方要命名，就在登记后依次上报候选（见 `wiring::chat`）。
     #[must_use]
     pub fn new(
         session_id: impl Into<String>,
@@ -123,10 +135,8 @@ impl SessionEntry {
         agent_id: Option<String>,
         workspace: WorkspaceSession,
         cwd: impl Into<String>,
-        title: (TitleSource, String),
     ) -> Self {
         let now = Utc::now();
-        let (title_source, title) = title;
         Self {
             session_id: session_id.into(),
             kind,
@@ -134,8 +144,9 @@ impl SessionEntry {
             workspace,
             cwd: cwd.into(),
             state: SessionState::Ready,
-            title,
-            title_source,
+            title: String::new(),
+            title_source: TitleSource::Placeholder,
+            native_session_id: None,
             started_at: now,
             updated_at: now,
             turn_count: 0,
@@ -192,20 +203,23 @@ mod tests {
         assert!(SessionState::Stopped.is_terminal());
     }
 
+    /// 新条目**没有标题**：标题只能经注册表的 `upgrade_title` 写入。
+    ///
+    /// 留一个 title 参数就等于开一条绕过准入判据（`title::admit`）的旁路 ——
+    /// 而单调升级会让绕过判据的噪声粘住。
     #[test]
-    fn new_entry_starts_ready_with_zero_turns() {
+    fn new_entry_starts_ready_with_zero_turns_and_no_title() {
         let entry = SessionEntry::new(
             "s1",
             SessionKind::Chat,
             Some("pi".into()),
             ws("p1", None),
             "/proj",
-            (TitleSource::Prompt, "hello".into()),
         );
         assert_eq!(entry.state, SessionState::Ready);
         assert_eq!(entry.turn_count, 0);
-        assert_eq!(entry.title, "hello");
-        assert_eq!(entry.title_source, TitleSource::Prompt);
+        assert_eq!(entry.title, "");
+        assert_eq!(entry.title_source, TitleSource::Placeholder);
         assert_eq!(entry.started_at, entry.updated_at);
     }
 
@@ -217,7 +231,6 @@ mod tests {
             None,
             ws("p1", Some("/proj-wt")),
             "/proj-wt",
-            (TitleSource::Placeholder, "Terminal".into()),
         )
         .with_state(SessionState::Running);
         assert_eq!(entry.state, SessionState::Running);

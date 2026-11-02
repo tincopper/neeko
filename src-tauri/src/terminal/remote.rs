@@ -188,7 +188,9 @@ impl RemoteTerminalManager {
         let io_handle = app_handle.clone();
         let io_exit_id = io_id.clone();
         // 活动探针：io 线程 stamp 输出、tick 分支 poll（与本地 PTY 同一条判据）。
-        let io_activity = crate::live_sessions::wiring::pty::OutputActivity::new();
+        let io_activity = crate::live_sessions::wiring::pty::OutputActivity::new(
+            live.as_ref().and_then(|l| l.status_channel()),
+        );
         let tick_live = io_live.clone();
         let tick_handle = io_handle.clone();
         let tick_id = io_id.clone();
@@ -239,8 +241,8 @@ impl RemoteTerminalManager {
                             msg = channel.wait() => {
                                 match msg {
                                     Some(ChannelMsg::Data { data }) => {
-                                        // 活动打点：远端有输出 ⇒ 会话在跑（判据见 wiring::pty）。
-                                        io_activity.stamp();
+                                        // 活动打点 + CLI 自报状态扫描（判据见 wiring::pty）。
+                                        io_activity.observe(&data);
                                         // 内存治理：写入有界 drain 队列，前端经
                                         // terminal_drain(_wait) 拉二进制块（默认
                                         // long-poll 挂起式 drain，VITE_TERMINAL_DRAIN_POLL=1
@@ -365,6 +367,12 @@ impl RemoteTerminalManager {
     #[must_use]
     pub fn take_drain(&self, session_id: &str) -> Option<Vec<u8>> {
         crate::common::terminal::drain::take_drain(&self.drains, session_id)
+    }
+
+    /// 切换该会话的分离态（后台运行 / 接回界面）。
+    #[must_use]
+    pub fn set_drain_detached(&self, session_id: &str, detached: bool) -> bool {
+        crate::common::terminal::drain::set_drain_detached(&self.drains, session_id, detached)
     }
 
     /// Long-poll drain: 有积压立即返回；空则挂起至 push/close/超时。

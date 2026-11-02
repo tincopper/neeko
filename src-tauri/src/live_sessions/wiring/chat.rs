@@ -17,7 +17,6 @@ use crate::live_sessions::emit_changed;
 use crate::live_sessions::entry::{SessionEntry, SessionKind, TitleSource};
 use crate::live_sessions::registry::Registry;
 use crate::live_sessions::state::Signal;
-use crate::live_sessions::title;
 
 /// 注册 chat 会话所需的原生输入。
 ///
@@ -105,31 +104,32 @@ pub(crate) const fn signal_of(event: &StreamEvent) -> Option<Signal> {
 /// 两个派生项都放在 `impl` 里：`register_or_engage` 的两条分支（首次登记 / 首次 Engage）
 /// 必须用**同一份**标题素材，否则「登记时的名字」与「被用起来的名字」会分叉。
 impl ChatRegistration<'_> {
-    /// 标题素材：`topic`（Native）> `prompt`（Prompt）；都没有 ⇒ `None`。
+    /// 标题候选，**按质量升序**（`Prompt` 在前、`Native` 在后）。
+    ///
+    /// 顺序即语义：调用方依次上报，`should_upgrade` 自己让强的赢。不另写「取最强候选」
+    /// 的函数 —— 那就是序关系在空条目上的特例，两份实现会各自漂移。
     ///
     /// 不留 agent 名当占位：`pi` / `claude-code` 这类 id 对用户没有意义，而会话行本身
     /// 就在单元下面（项目名也是冗余的）。空标题由视图解释 —— 未 Engage 前侧栏不列，
     /// tab 回退 `tab.title`；首条 prompt 一到就自动升级成真标题。
-    fn title(&self) -> Option<(TitleSource, String)> {
-        let candidates = [
-            (TitleSource::Native, self.topic.unwrap_or("")),
+    fn title_candidates(&self) -> [(TitleSource, &str); 2] {
+        [
             (TitleSource::Prompt, self.prompt),
-        ];
-        title::pick(&candidates)
+            (TitleSource::Native, self.topic.unwrap_or("")),
+        ]
     }
 
     /// 登记用的条目（初始可见性取启动形态）。
+    ///
+    /// 标题不在构造时给：`SessionEntry::new` 恒为空的 `Placeholder`，标题只能经注册表的
+    /// `upgrade_title` 写入（准入 + 覆盖序的唯一裁决点）。
     fn entry(&self) -> SessionEntry {
-        let title = self
-            .title()
-            .unwrap_or((TitleSource::Placeholder, String::new()));
         SessionEntry::new(
             self.session_id,
             SessionKind::Chat,
             Some(self.agent_id.to_string()),
             self.workspace.clone(),
             self.cwd,
-            title,
         )
         .with_user_input(self.kind.has_user_input())
     }
@@ -160,30 +160,19 @@ pub(crate) fn engage_existing(
     session_id: &str,
     prompt: &str,
 ) -> bool {
-    let changed = engage_registered(registry, session_id, Some((TitleSource::Prompt, prompt)));
+    let changed = registry.report_first(session_id, &[(TitleSource::Prompt, prompt)]);
     if changed {
         emit_changed(app, registry.version());
     }
     changed
 }
 
-/// 对**已登记**会话做一次 Engage；不依赖 Tauri AppHandle，命令层与接线层共用。
-///
-/// `report_first` 把「首次置位 / 无标题时补名 / 已有标题不覆盖」的门控放在 Registry
-/// 锁内；这里只负责把标题素材转换成统一的上报形状，避免命令层复述 `TitleSource::Prompt`。
-fn engage_registered(
-    registry: &Registry,
-    session_id: &str,
-    title: Option<(TitleSource, &str)>,
-) -> bool {
-    registry.report_first(session_id, title)
-}
-
 /// 「首次出现就登记，之后再出现只做一次 Engage」的**唯一**决策（可直测，不需要 `AppHandle`）。
 ///
 /// 每轮 `agent_stream` 都会走到这里，而续聊的会话 id 与首轮相同：
 ///
-/// 1. **未登记** ⇒ 登记（`register_if_absent`：「首次出现」这条判据在锁内成立一次）；
+/// 1. **未登记** ⇒ 登记（`register_if_absent`：「首次出现」这条判据在锁内成立一次），
+///    然后按**升序**依次上报标题候选；
 /// 2. **已登记** ⇒ 只可能是两种情况，由 `kind` 区分：
 ///    - `Silent`（`agent_chat_open` 静默建连）— 什么也不做；
 ///    - `Turn` / `Resume`（用户真的在用它）— `report_first`：**第一次** Engage 补上标题 +
@@ -192,20 +181,18 @@ fn engage_registered(
 /// 第 2 条是 `agent_chat_open` → `agent_stream` 续聊主链路的**唯一**可见性来源：那条分支
 /// 命中 `manager.owns` 后会提前返回，不进 `spawn_session_pipeline`，因此不经过登记。
 fn register_or_engage(registry: &Registry, input: ChatRegistration<'_>) -> bool {
+    let titles = input.title_candidates();
     if registry.register_if_absent(input.entry()) {
+        // 登记后的补名：按升序 apply，让 `should_upgrade` 选强的（与 Engage 路径同一套判据）。
+        for (source, text) in titles {
+            registry.report(input.session_id, Some((source, text)), false);
+        }
         return true;
     }
     if !input.kind.has_user_input() {
         return false;
     }
-    let title = input.title();
-    engage_registered(
-        registry,
-        input.session_id,
-        title
-            .as_ref()
-            .map(|(source, text)| (*source, text.as_str())),
-    )
+    registry.report_first(input.session_id, &titles)
 }
 
 /// 投影一个合帧批次（在 `emit` 闭包里与通知投影并列调用）。

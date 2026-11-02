@@ -187,7 +187,7 @@ fn silent_session_becomes_visible_on_the_first_turn() {
 /// （那会重新登记），所以这里必须直接覆盖「Silent 已被登记、用户刚发出第一条消息」
 /// 的契约，避免只测试 `register_or_engage` 而漏掉命令实际走的分支。
 #[test]
-fn engage_registered_titles_only_the_first_turn() {
+fn first_engagement_titles_only_once() {
     let registry = fresh_registry();
     let ws = WorkspaceSession::main("p1");
     assert!(register_or_engage(
@@ -204,21 +204,13 @@ fn engage_registered_titles_only_the_first_turn() {
     ));
     assert!(!registry.snapshot()[0].has_user_input);
 
-    assert!(engage_registered(
-        &registry,
-        "s1",
-        Some((TitleSource::Prompt, "first message"))
-    ));
+    assert!(registry.report_first("s1", &[(TitleSource::Prompt, "first message")]));
     let entry = &registry.snapshot()[0];
     assert!(entry.has_user_input);
     assert_eq!(entry.title, "first message");
     assert_eq!(entry.title_source, TitleSource::Prompt);
 
-    assert!(!engage_registered(
-        &registry,
-        "s1",
-        Some((TitleSource::Prompt, "second message"))
-    ));
+    assert!(!registry.report_first("s1", &[(TitleSource::Prompt, "second message")]));
     assert_eq!(registry.snapshot()[0].title, "first message");
 }
 

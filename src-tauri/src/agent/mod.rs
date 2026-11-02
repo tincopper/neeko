@@ -6,6 +6,7 @@
 pub mod boot;
 pub mod builtin;
 pub mod chat;
+pub mod cli_status;
 
 pub mod commands;
 pub mod commands_commit;

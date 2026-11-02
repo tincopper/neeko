@@ -8,7 +8,7 @@
 //!   ▼
 //! Registry（内存唯一事实，写穿 SessionStore）
 //!   ├─ state.rs   纯转移 reduce(state, Signal)
-//!   ├─ title.rs   纯优先级 pick / truncate / should_upgrade
+//!   ├─ title.rs   纯判据 admit（准入）/ should_upgrade（覆盖序）
 //!   └─ wiring/{chat,pty}.rs  原生信号 → Signal
 //!   │
 //!   ▼

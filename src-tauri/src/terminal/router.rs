@@ -16,9 +16,7 @@ use std::time::Duration;
 
 use crate::common::terminal::types::TerminalSession;
 use crate::core::project::ProjectEnvironment;
-use crate::live_sessions::wiring::pty::{
-    unregister_and_notify, LiveTerminal, TerminalRegistration,
-};
+use crate::live_sessions::wiring::pty::{close_and_notify, LiveTerminal, TerminalRegistration};
 use crate::live_sessions::Registry;
 use crate::terminal::manager::TerminalManager;
 use crate::terminal::remote::RemoteTerminalManager;
@@ -231,6 +229,18 @@ impl TerminalRouter {
         })
     }
 
+    /// 切换会话的分离态（关 tab 后台运行 / 重新接回界面）。
+    ///
+    /// 会话已结束（drain 不存在）返回 `false` —— 调用方据此知道「它已经不在跑了」，
+    /// 不需要再问用户要不要后台运行。
+    pub fn set_drain_detached(&self, session_id: &str, detached: bool) -> bool {
+        match self.owner_of(session_id) {
+            Some(SessionOwner::Pty) => self.local.set_drain_detached(session_id, detached),
+            Some(SessionOwner::Ssh) => self.remote.set_drain_detached(session_id, detached),
+            None => false,
+        }
+    }
+
     /// Long-poll drain: 无数据时挂起至 push/close/超时，而非立即返回空。
     /// `timeout_ms` 后端钳制 1–30s；drain 不存在或已关闭返回 `NotFound`
     ///（前端据此终止该 session 的挂起循环；debug 日志便于排查 dispose 泄漏）。
@@ -256,12 +266,13 @@ impl TerminalRouter {
 
     /// Close a terminal session, dispatching to the correct backend.
     ///
-    /// 同时从 live-sessions 注册表注销（会话已不在，侧栏不得留幽灵行）。
-    /// `app_handle` 为 `None` 的调用方（退出清理 / 测试）只做注销不发事件 ——
+    /// **不注销** live-sessions 条目，只把它标成 `Stopped`：关 tab 是收起视图，那条会话
+    /// 仍是侧栏里「点回来」的入口（点击时按会话重建，能续写就续写）。
+    /// `app_handle` 为 `None` 的调用方（退出清理 / 测试）只改状态不发事件 ——
     /// 那时没有前端在听。
     pub fn close_session(&self, session_id: &str, app_handle: Option<&tauri::AppHandle>) {
         if let Some(registry) = self.live_sessions.as_deref() {
-            unregister_and_notify(registry, app_handle, session_id);
+            close_and_notify(registry, app_handle, session_id);
         }
         match self.take_owner(session_id) {
             Some(SessionOwner::Pty) => self.local.close_session_in_background(session_id),

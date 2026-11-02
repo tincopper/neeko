@@ -123,7 +123,6 @@ mod tests {
             None,
             WorkspaceSession::of("p1", worktree.map(str::to_string)),
             cwd,
-            (TitleSource::Placeholder, "Terminal".into()),
         )
         .with_state(SessionState::Running)
     }
@@ -157,7 +156,7 @@ mod tests {
         assert_eq!(view.version, registry.version());
     }
 
-    /// 注册表不二次加工标题：截断只发生在写入侧（`title::pick` / `set_title`），
+    /// 注册表不二次加工标题：截断只发生在写入侧（`title::admit`），
     /// wire 形态原样携带 —— 否则前端会拿到「省略号叠省略号」。
     #[test]
     fn view_carries_the_title_verbatim() {

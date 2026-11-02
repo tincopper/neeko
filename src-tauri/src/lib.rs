@@ -123,6 +123,7 @@ macro_rules! neeko_invoke_handler {
             // ── terminal ─────────────────────────────────────────────────────
             $crate::terminal::commands::create_terminal_session,
             $crate::terminal::commands::close_terminal_session,
+            $crate::terminal::commands::detach_terminal_session,
             $crate::terminal::commands::resize_terminal,
             $crate::terminal::commands::terminal_drain,
             $crate::terminal::commands::terminal_drain_wait,
@@ -130,6 +131,8 @@ macro_rules! neeko_invoke_handler {
             $crate::live_sessions::commands::list_live_sessions,
             $crate::live_sessions::commands::wait_live_sessions,
             $crate::live_sessions::commands::set_live_session_title,
+            $crate::live_sessions::commands::live_session_resume_command,
+            $crate::live_sessions::commands::adopt_live_session,
             // ── agent ────────────────────────────────────────────────────────
             $crate::agent::commands::list_agents,
             $crate::agent::commands::get_agent,

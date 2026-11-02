@@ -53,7 +53,6 @@ impl ResumeCursor {
 mod tests {
     use super::*;
     use crate::common::git::WorkspaceSession;
-    use crate::live_sessions::entry::TitleSource;
 
     fn entry(kind: SessionKind, agent_id: Option<&str>, state: SessionState) -> SessionEntry {
         SessionEntry::new(
@@ -62,7 +61,6 @@ mod tests {
             agent_id.map(str::to_string),
             WorkspaceSession::of("p1", Some("/proj-wt".into())),
             "/proj-wt",
-            (TitleSource::Prompt, "hello".into()),
         )
         .with_state(state)
     }
