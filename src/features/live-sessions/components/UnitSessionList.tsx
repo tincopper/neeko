@@ -8,6 +8,7 @@ import { selectActiveTabId } from '@/shared/store/editorTabSelectors';
 import type { SessionView } from '@/shared/types/liveSessions';
 
 import { useActivateSession } from '../hooks/useActivateSession';
+import { useSessionRowActions } from '../hooks/useSessionRowActions';
 
 interface UnitSessionListProps {
   /** 单元地址 key（`WorkspaceSession.key()`，与注册表快照同源）。 */
@@ -37,6 +38,7 @@ const UnitSessionList: React.FC<UnitSessionListProps> = ({ workspaceKey, onRevea
   const tabSpace = useEditorStore((s) => s.tabs[workspaceKey]);
   const activeTabId = useEditorStore((s) => selectActiveTabId(s, workspaceKey));
   const activate = useActivateSession();
+  const { rename, remove } = useSessionRowActions();
 
   const unitSessions = byUnit.get(workspaceKey) ?? NO_SESSIONS;
 
@@ -59,6 +61,8 @@ const UnitSessionList: React.FC<UnitSessionListProps> = ({ workspaceKey, onRevea
       sessions={unitSessions}
       activeSession={activeSession}
       onActivate={handleActivate}
+      onRename={rename}
+      onDelete={remove}
     />
   );
 };

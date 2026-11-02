@@ -24,7 +24,7 @@ interface ConnectionWorktreeListProps {
 
 /**
  * WSL / SSH 侧栏的 worktree 行列表 —— **薄适配器**：把连接域的回调接进共用的行渲染
- * [`WorktreeRowList`]（同一 `SessionRow` / `useWorktreeRowState` / `WorktreeRenameInput` /
+ * [`WorktreeRowList`]（同一 `SessionRow` / `useWorktreeRowState` / `InlineRenameInput` /
  * `DeleteConfirmDialog`）。本组件不含 JSX 结构。
  *
  * **刻意的差异只有一处**：删除后延迟 800ms 清 spinner。远端父级是**异步刷新**列表，

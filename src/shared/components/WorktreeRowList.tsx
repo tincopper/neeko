@@ -2,8 +2,8 @@ import React, { useMemo } from 'react';
 
 import DeleteConfirmDialog from '@/shared/components/DeleteConfirmDialog';
 import { BranchIcon, TrashIcon } from '@/shared/components/icons';
+import InlineRenameInput from '@/shared/components/InlineRenameInput';
 import SessionRow from '@/shared/components/SessionRow';
-import WorktreeRenameInput from '@/shared/components/WorktreeRenameInput';
 import { useUnitsWithActiveSession } from '@/shared/hooks/useUnitsWithActiveSession';
 import type { ConfirmDeleteState, WorktreeRowState } from '@/shared/hooks/useWorktreeRowState';
 import {
@@ -46,7 +46,7 @@ interface WorktreeRowListProps {
  * linked worktree 行的**行级渲染**（本地侧栏与 WSL/SSH 侧栏的唯一实现）。
  *
  * **为什么抽到这里**：至此两域已经共用 `SessionRow`（视觉）、`useWorktreeRowState`（交互状态）
- * 与 `WorktreeRenameInput` / `DeleteConfirmDialog`（子件），但仍各自保留了一段 ~45 行的
+ * 与 `InlineRenameInput` / `DeleteConfirmDialog`（子件），但仍各自保留了一段 ~45 行的
  * `SessionRow` 装配（`editing` / `trailing` / `ahead` / `onClick` 的门）。`diff` 实测只有 3 处
  * 差异，其中 2 处是**意外漂移**（`hover:bg-bg-hover` vs `hover:bg-bg-tertiary`、可选的
  * `onOpenWorktreeTerminal?.(projectId,…)` vs 必选的 `(path, branch)`）—— 这正是
@@ -108,7 +108,7 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
             }}
             editing={
               isRenaming ? (
-                <WorktreeRenameInput
+                <InlineRenameInput
                   inputRef={rowState.renameInputRef}
                   value={rowState.renameValue}
                   onChange={rowState.setRenameValue}

@@ -188,7 +188,7 @@ describe('SessionList', () => {
     expect(screen.getByText('会话 11')).toBeInTheDocument();
   });
 
-  it('选中行只用一个语义类表达（淡底 + 左条在 CSS 里，不是中性选中底）', () => {
+  it('选中行只用一个语义类表达（淡底在 CSS 里，不是中性选中底）', () => {
     render(
       <SessionList
         sessions={[session({ sessionId: 's1', title: 'A' })]}
@@ -196,11 +196,13 @@ describe('SessionList', () => {
       />,
     );
 
-    const row = screen.getByRole('button', { name: /^A/ });
-    expect(row).toHaveClass('row-current');
+    // 淡底画在**整行**（`role="listitem"` 的外层）上：行尾工具栏是按钮的兄弟节点，
+    // 底色若只给按钮，高亮就会在 `⋯` 前面断掉。`aria-current` 仍在按钮上 —— 那才是可交互元素。
+    const shell = screen.getByRole('listitem');
+    expect(shell).toHaveClass('row-current');
     // 中性选中底是父级（单元行）的通道，子行不能也用它
-    expect(row).not.toHaveClass('bg-bg-selected');
-    expect(row).toHaveAttribute('aria-current', 'true');
+    expect(shell).not.toHaveClass('bg-bg-selected');
+    expect(screen.getByRole('button', { name: /^A/ })).toHaveAttribute('aria-current', 'true');
   });
 
   it('前台会话行带 aria-current（只有一行是当前）', () => {
@@ -253,5 +255,133 @@ describe('SessionList', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('SessionList — 行工具栏（重命名 / 删除）', () => {
+  it('不传 onRename / onDelete ⇒ 不渲染工具栏（只读列表不受影响）', () => {
+    render(<SessionList sessions={[session({ sessionId: 's1', title: 'A' })]} />);
+    expect(screen.queryByRole('button', { name: /Session actions/ })).not.toBeInTheDocument();
+  });
+
+  it('传了能力 ⇒ 每行一个工具栏按钮（标签点名是哪条会话）', () => {
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: '修复登录竞态' })]}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Session actions: 修复登录竞态' }),
+    ).toBeInTheDocument();
+  });
+
+  it('双击标题进入改名态；回车提交回传新标题', () => {
+    const onRename = vi.fn();
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: '旧名字' })]}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.doubleClick(screen.getByRole('button', { name: /^旧名字/ }));
+    const input = screen.getByDisplayValue('旧名字');
+    fireEvent.change(input, { target: { value: '新名字' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onRename).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1' }), '新名字');
+  });
+
+  it('改名态下按 Escape 取消：不回调，标题复原', () => {
+    const onRename = vi.fn();
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: '旧名字' })]}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.doubleClick(screen.getByRole('button', { name: /^旧名字/ }));
+    const input = screen.getByDisplayValue('旧名字');
+    fireEvent.change(input, { target: { value: '不想要的名字' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /^旧名字/ })).toBeInTheDocument();
+  });
+
+  it('提交空白标题 ⇒ 不回调（空标题不是名字）', () => {
+    const onRename = vi.fn();
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: '旧名字' })]}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.doubleClick(screen.getByRole('button', { name: /^旧名字/ }));
+    const input = screen.getByDisplayValue('旧名字');
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it('标题没改动 ⇒ 不回调（不打扰后端）', () => {
+    const onRename = vi.fn();
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: '旧名字' })]}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.doubleClick(screen.getByRole('button', { name: /^旧名字/ }));
+    fireEvent.keyDown(screen.getByDisplayValue('旧名字'), { key: 'Enter' });
+
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it('点击行仍会激活会话（工具栏是兄弟节点，不抢行的点击）', () => {
+    const onActivate = vi.fn();
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: 'A' })]}
+        onActivate={onActivate}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^A/ }));
+    expect(onActivate).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1' }));
+  });
+});
+
+describe('SessionList — 工具栏菜单的视觉契约', () => {
+  it('菜单项带图标与文字；删除项单独用破坏性配色', async () => {
+    const { default: SessionRowMenu } = await import('@/shared/components/SessionRowMenu');
+    render(<SessionRowMenu sessionTitle="A" onRename={vi.fn()} onDelete={vi.fn()} />);
+
+    // 菜单未展开时不渲染内容（Radix 只在打开时挂载）。
+    expect(screen.queryByRole('menuitem', { name: 'Rename' })).not.toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Session actions: A' }), {
+      button: 0,
+      ctrlKey: false,
+    });
+
+    const rename = await screen.findByRole('menuitem', { name: 'Rename' });
+    const remove = await screen.findByRole('menuitem', { name: 'Delete' });
+    // 破坏性动作单独着色 —— 这是「删除压在一组操作最下面」的视觉判据之一。
+    expect(remove).toHaveClass('text-accent-red');
+    expect(rename).not.toHaveClass('text-accent-red');
+    // 两项都是「图标 + 文字」的排版（图标由 primitive 的 `[&_svg]` 统一尺寸）。
+    expect(rename).toHaveAttribute('data-orientation', expect.anything());
   });
 });
