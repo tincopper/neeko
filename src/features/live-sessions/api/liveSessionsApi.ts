@@ -39,8 +39,8 @@ export function waitLiveSessions(
 }
 
 /**
- * 回传会话标题 / 用户提交：CLI 的 `source = 'native'`，或终端用户每次提交的
- * `source = 'prompt'`。
+ * 回传会话标题 / 用户提交：CLI 的 `source = 'native'`、终端用户每次提交的
+ * `source = 'prompt'`，或侧栏手改名的 `source = 'user'`。
  *
  * - `prompt`：用户提交输入 ⇒ 首次无真标题时按 `Prompt` 命名并标记「已在用」；
  *   后续提交只清除 CLI hook 的权威状态门。空回车同样清除门，但不会写空标题；
@@ -90,7 +90,20 @@ export function adoptLiveSession(fromSessionId: string, intoSessionId: string): 
 export function setLiveSessionTitle(
   sessionId: string,
   title: string,
-  source: 'prompt' | 'native',
+  source: 'prompt' | 'native' | 'user',
 ): Promise<boolean> {
   return invoke<boolean>('set_live_session_title', { sessionId, title, source });
+}
+
+/**
+ * 删除一条会话：**结束进程（若还活着）→ 摘掉注册表条目**。
+ *
+ * 与「关 tab」的差别：关 tab 只标 `Stopped` 并保留条目（那是「点回来」的入口）；
+ * 删除是用户明确要扔掉这一行。
+ *
+ * 结束进程由后端按归属探测分派到两个生产者各自的终止入口（终端 / chat），前端不判断
+ * 「这是哪种会话」—— 那需要一份与后端同形的归属表。
+ */
+export function deleteLiveSession(sessionId: string): Promise<boolean> {
+  return invoke<boolean>('delete_live_session', { sessionId });
 }

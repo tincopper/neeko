@@ -18,17 +18,21 @@ export type CloseAction = 'save' | 'discard' | 'cancel';
 /** 「会话还在跑」时的关闭选择：后台运行 / 退出进程 / 取消。 */
 export type TerminalCloseAction = 'background' | 'exit' | 'cancel';
 
+/** 删除一条会话：一步确认（删除是明确动作，不需要「要不要继续」那一层）。 */
+export type SessionDeleteAction = 'delete' | 'cancel';
+
 /** 保存指定 tab（关闭确认「保存」分支调用）。返回 true 表示保存成功。 */
 export type SaveTabAction = (tabId: string) => Promise<boolean>;
 
 /**
- * 待确认的请求。**两种关闭语义共用一套宿主与结算**（同一个浮层 id、同一份 hostMounted
+ * 待确认的请求。**三种「丢掉东西」的语义共用一套宿主与结算**（同一个浮层 id、同一份 hostMounted
  * 守卫、同一个 resolver 槽位）—— 各自再写一套的话，`hostMounted` 那条「无宿主时必须
  * 立即 cancel，否则调用方永久挂起」的守卫会漏掉其中一套，表现为关闭静默失效。
  */
 export type CloseConfirmPending =
   | { kind: 'unsaved-file'; fileName: string }
-  | { kind: 'running-terminal'; title: string };
+  | { kind: 'running-terminal'; title: string }
+  | { kind: 'delete-session'; title: string };
 
 /**
  * 两个请求入口的公共取值域。
@@ -36,7 +40,7 @@ export type CloseConfirmPending =
  * `'cancel'` 同时属于两者，也是「并发请求 / 无宿主」时的结算值 —— 于是各入口可以用
  * 泛型把自己那个子类型收窄回来，而不必在调用侧断言。
  */
-type CloseConfirmDecision = CloseAction | TerminalCloseAction;
+type CloseConfirmDecision = CloseAction | TerminalCloseAction | SessionDeleteAction;
 
 interface CloseConfirmStoreState {
   /** 当前待确认的请求；null = 对话框关闭 */
@@ -45,6 +49,8 @@ interface CloseConfirmStoreState {
   request: (fileName: string) => Promise<CloseAction>;
   /** 弹出「后台运行 / 退出 / 取消」确认框 */
   requestTerminalClose: (title: string) => Promise<TerminalCloseAction>;
+  /** 弹出「删除这条会话？」确认框 */
+  requestSessionDelete: (title: string) => Promise<SessionDeleteAction>;
   /** 用户选择后结算当前请求 */
   resolve: (action: CloseConfirmDecision) => void;
 }
@@ -53,7 +59,7 @@ interface CloseConfirmStoreState {
 let resolver: ((action: CloseConfirmDecision) => void) | null = null;
 
 /**
- * 两个请求入口共用的「挂起 + 结算」骨架。
+ * 三个请求入口共用的「挂起 + 结算」骨架。
  *
  * 泛型参数是**调用方语言里的那张取值表**（`CloseAction` / `TerminalCloseAction`）；
  * 结算值只可能来自用户点击那一个框，所以内部按联合存、对外按子类型给。
@@ -98,6 +104,8 @@ export const useCloseConfirmStore = create<CloseConfirmStoreState>((set) => ({
   request: (fileName) => suspend<CloseAction>(set, { kind: 'unsaved-file', fileName }),
   requestTerminalClose: (title) =>
     suspend<TerminalCloseAction>(set, { kind: 'running-terminal', title }),
+  requestSessionDelete: (title) =>
+    suspend<SessionDeleteAction>(set, { kind: 'delete-session', title }),
   resolve: (action) => {
     useOverlayStore.getState().setOverlayOpen(CLOSE_CONFIRM_OVERLAY_ID, false);
     set({ pending: null });

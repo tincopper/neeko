@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect } from 'react';
 
 import { RemoteAuthDialog, RemoteDialog, WSLDialog } from '@/features/connection';
-import { CloseConfirmDialog, TerminalCloseConfirmDialog } from '@/features/editor';
+import {
+  CloseConfirmDialog,
+  SessionDeleteConfirmDialog,
+  TerminalCloseConfirmDialog,
+} from '@/features/editor';
 import {
   setCloseConfirmHostMounted,
   useCloseConfirmStore,
@@ -86,6 +90,10 @@ function AppModals({
     [resolveCloseConfirm],
   );
   const onTerminalCloseExit = useCallback(() => resolveCloseConfirm('exit'), [resolveCloseConfirm]);
+  const onSessionDeleteConfirm = useCallback(
+    () => resolveCloseConfirm('delete'),
+    [resolveCloseConfirm],
+  );
 
   // 本组件是 close-confirm 的唯一渲染点：挂载即声明就绪，卸载时把在途请求按 cancel 结算 ——
   // 否则 `closeTabWithConfirmation` 的 await 永久挂起（见 closeConfirmStore 的 hostMounted）。
@@ -140,6 +148,13 @@ function AppModals({
         title={closeConfirmPending?.kind === 'running-terminal' ? closeConfirmPending.title : ''}
         onBackground={onTerminalCloseBackground}
         onExit={onTerminalCloseExit}
+        onCancel={onCloseConfirmCancel}
+      />
+      {/* 删除侧栏会话：与上面两个共用同一个宿主与结算（见 closeConfirmStore 的 hostMounted） */}
+      <SessionDeleteConfirmDialog
+        open={closeConfirmPending?.kind === 'delete-session'}
+        title={closeConfirmPending?.kind === 'delete-session' ? closeConfirmPending.title : ''}
+        onDelete={onSessionDeleteConfirm}
         onCancel={onCloseConfirmCancel}
       />
       {pendingAuthEntry && (

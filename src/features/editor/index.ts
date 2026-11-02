@@ -1,6 +1,7 @@
 // Components
 export { default as CloseConfirmDialog } from './components/CloseConfirmDialog';
 export { default as TerminalCloseConfirmDialog } from './components/TerminalCloseConfirmDialog';
+export { default as SessionDeleteConfirmDialog } from './components/SessionDeleteConfirmDialog';
 export { default as FileViewer } from './components/FileViewer';
 export { default as HtmlPreview } from './components/HtmlPreview';
 export { default as InlineHtmlPreview } from './components/InlineHtmlPreview';
