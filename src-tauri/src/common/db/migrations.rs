@@ -233,7 +233,6 @@ mod upgrade_tests {
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .unwrap();
             assert_eq!(v, LATEST_VERSION);
-            assert_eq!(v, 13);
         }
 
         let conn = Connection::open(&path).unwrap();
