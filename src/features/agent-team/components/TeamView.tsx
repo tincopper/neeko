@@ -1,10 +1,9 @@
 import React, { useCallback, useState } from 'react';
 
-import type { TaskDetail, TeamSnapshot } from '@/shared/types/team';
+import type { TaskDetail, TeamRef, TeamSnapshot } from '@/shared/types/team';
 
 import MemberDetailDrawer from './MemberDetailDrawer';
 import TaskDetailDrawer from './TaskDetailDrawer';
-import type { TeamCloseIntent } from './TeamCloseConfirmDialog';
 import TeamHeader from './TeamHeader';
 import TeamRoster from './TeamRoster';
 import TeamTaskBoard from './TeamTaskBoard';
@@ -49,7 +48,7 @@ interface TeamViewProps {
   /** 回列表视图（**不清** store）。 */
   onBack: () => void;
   /** 请求关闭（二次确认由宿主弹）。 */
-  onRequestClose: (intent: TeamCloseIntent) => void;
+  onRequestClose: (team: TeamRef) => void;
   /** 打开某个成员的 PTY 终端（跨域动作，由 app 层 wrapper 注入）。 */
   onOpenTerminal: (terminalId: string, title: string) => void;
   /** 打开任务详情（`teamId` 在前：任务 id 只在队内唯一）。 */

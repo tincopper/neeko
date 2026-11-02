@@ -1389,6 +1389,72 @@ impl TeamManager {
         Ok(())
     }
 
+    /// **永久删除**一个已关闭的团队（面板的「删除」入口）。
+    ///
+    /// # 为什么只允许 `closed`
+    ///
+    /// 删除是**不可逆**的：行没了，成员、任务、审计一起没了，`team_list` 再也看不到它。
+    /// 而 `active` / `closing` 的队背后是**还在跑的进程**（`closing` 正是「还有成员关不掉」）
+    /// —— 把那种队删掉，就是把「它还在跑」这件事从唯一能看见它的界面上抹掉，换成一个
+    /// 更糟的结果：库里没有它了，可成员进程还活着，还能用旧 token 调工具（`principals_from`
+    /// 从**库**组装身份表，行没了表就空了，门会把它们**全部**拒掉 —— 那不是一个可以撤销的
+    /// 状态）。
+    ///
+    /// 所以判据只有一条，且与 `team_close` 同向：**先关闭，再删除**。拒绝信息要指出下一步
+    /// （「先关闭」），而不是只说「不行」。
+    ///
+    /// # 幂等性
+    ///
+    /// 不幂等：已不存在 ⇒ `NotFound`。理由同上 —— 「删一个本来就没有的东西」和「它还在」
+    /// 是两件不同的事实，合成 `Ok` 会让面板在竞态下（另一窗口已经删了）报一个假成功。
+    ///
+    /// # 锁与库的次序
+    ///
+    /// 库写成功才动内存镜像（与 `insert_team` / `archive_member` 同一纪律）：反过来的话，
+    /// 库写失败时镜像里已经没有那一行，而库里还在 —— 那是第二个真相源。
+    ///
+    /// # 镜像清的理由是「无主键不可留」，不是「读不到了」
+    ///
+    /// 四个内存容器都以**队内 id**（`{name}@{team}` / `TaskRef`）为键，所以只清三个就会
+    /// 留下不变量里没有的第四个（`verification`）：它当前不可达（读入口都先查 `members`），
+    /// 但它是只增不减的。而 `Inner` 的契约是「与库在同一把锁内一起改」—— 留下无法回收的
+    /// 残留键就是那条约定的反例，且下一个人加字段时会照着这个不完整的形状再漏一次。
+    pub fn delete_team(&self, team_id: &str) -> Result<(), AppError> {
+        let mut inner = self.lock_writing();
+        let team = inner
+            .teams
+            .get(team_id)
+            .ok_or_else(|| not_found(format!("team {team_id}")))?;
+        if team.state != TeamState::Closed {
+            // 状态用 `{:?}`：本文件里「把枚举写进错误句」一律是这个口径（`task {key} is {:?}`）。
+            // 另起一个 enum→文本投影就等于造第二份口径，而它只在「恰好这一句」上生效。
+            let state = team.state;
+            return Err(conflict(format!(
+                "team `{team_id}` is {state:?} and still owns member processes; close it before \
+                 deleting — removing the row while members are running hides those processes from \
+                 the only surface that can still show them"
+            )));
+        }
+        self.store.delete_team(team_id)?;
+        // 级联在库里完成；镜像必须跟着同一步走，否则下一帧 `teams()` 还看得见一行
+        // 库里已经没有的队（那正是 `team_list` 的数据源）。
+        //
+        // 四个容器各清一次，用同一形状写出来才看得出「漏了哪个」：键的类型不同
+        // （`String` / `TaskRef`），判据是同一个（「行属于这个队」）。`verification` 的
+        // 键是成员 id（没有 `team_id` 列），所以先把该队的成员 id 收下来。
+        let member_ids: Vec<String> = inner
+            .members
+            .values()
+            .filter(|member| member.team_id == team_id)
+            .map(|member| member.id.clone())
+            .collect();
+        inner.teams.remove(team_id);
+        inner.members.retain(|_, member| member.team_id != team_id);
+        inner.tasks.retain(|key, _| key.team_id != team_id);
+        inner.verification.retain(|id, _| !member_ids.contains(id));
+        Ok(())
+    }
+
     /// 归档一名成员（**调用方已持锁**）：`Dead` + 清 `terminal_id` + 凭证作废 + 在飞任务回
     /// `pending`。
     ///
@@ -2991,5 +3057,107 @@ mod tests {
 
         manager.begin_team_close(TEAM, 1_000).unwrap();
         assert_eq!(notifier.pulses().len(), 1, "一次写恰好一次脉冲");
+    }
+
+    /// 删队是**破坏性**写路径：只允许删 `closed`。
+    ///
+    /// 三条判据（缺一条都会变成「进程还在跑但界面上看不见了」）：
+    /// 1. `active` / `closing` 一律 `Conflict`，且错误里点名当前状态与下一步；
+    /// 2. `closed` 删得掉，且**镜像与库同步**（`team()` / `member()` / `task()` 全部消失）；
+    /// 3. 已不存在 ⇒ `NotFound`（不是静默 `Ok`：面板在竞态下不该报假成功）。
+    #[test]
+    fn only_a_closed_team_can_be_deleted() {
+        let manager = seeded();
+        // 板上放一张活任务并让它被认领：认领会往 `verification` 里写一条水位线，
+        // 于是「删队有没有把它清掉」才有物可查（不建任务的话那条断言是空转的）。
+        manager.create_task(task("t1")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        assert!(
+            manager.inner.lock().verification.contains_key(W1),
+            "夹具前提：认领后应当有一条取证水位线"
+        );
+
+        // ① 还活着（`active`）：拒绝，并指出下一步。
+        let err = manager.delete_team(TEAM).expect_err("active 不可删");
+        let AppError::Conflict(message) = err else {
+            panic!("active 删队必须 Conflict，实际 {err:?}");
+        };
+        // 状态用本文件既有的 Debug 口径（`Active` / `Closing`），不另造 enum→文本投影。
+        assert!(message.contains("Active"), "必须点名当前状态：{message}");
+        assert!(
+            message.contains("close it before deleting"),
+            "必须指出下一步：{message}"
+        );
+        assert!(manager.team(TEAM).is_some(), "拒绝时不得删任何东西");
+
+        // ② 关到一半（`closing`）：同样拒绝 —— 那正是「还有成员关不掉」的状态。
+        manager.begin_team_close(TEAM, 1_000).unwrap();
+        let err = manager.delete_team(TEAM).expect_err("closing 不可删");
+        let AppError::Conflict(message) = err else {
+            panic!("closing 删队必须 Conflict，实际 {err:?}");
+        };
+        assert!(message.contains("Closing"), "必须点名当前状态：{message}");
+
+        // ③ 关完之后才能删。
+        for member_id in [W1, W2] {
+            manager.finish_member_close(member_id, 1_000).unwrap();
+        }
+        manager.finish_team_close(TEAM, 2_000).unwrap();
+        manager.delete_team(TEAM).expect("closed 可删");
+
+        // 镜像与库必须同一步：只删库会让 `team_list`（读镜像）继续列出一个不存在的队。
+        assert!(manager.team(TEAM).is_none());
+        assert!(manager.member(LEAD).is_none(), "成员镜像必须一并清掉");
+        assert!(
+            manager.task(&TaskRef::new(TEAM, "t1")).is_none(),
+            "任务镜像必须一并清掉"
+        );
+        assert!(
+            manager.store().list_teams().expect("teams").is_empty(),
+            "库里的行必须一并删掉（成员 / 任务 / 审计走级联）"
+        );
+        // 第四个内存容器：`verification` 以成员 id 为键，没有 team_id 可过滤。
+        // 不清的话它**当前**读不到（四个读入口都先查 `members`），但它是只增不减的，
+        // 而 `Inner` 的契约是与库在同一把锁内一起改。
+        assert!(
+            manager.inner.lock().verification.is_empty(),
+            "取证水位线必须随成员一起清掉（否则残留键永不回收）"
+        );
+
+        // ④ 已经不存在了 ⇒ `NotFound`（不假装成功）。
+        let err = manager.delete_team(TEAM).expect_err("再删一次");
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+    }
+
+    /// 删队是写路径：恰好一次脉冲（面板据此重取清单，行才会真的消失）。
+    #[test]
+    fn deleting_a_team_emits_exactly_one_pulse() {
+        let manager = seeded();
+        manager.begin_team_close(TEAM, 1_000).unwrap();
+        for member_id in [W1, W2] {
+            manager.finish_member_close(member_id, 1_000).unwrap();
+        }
+        manager.finish_team_close(TEAM, 2_000).unwrap();
+
+        let notifier = std::sync::Arc::new(crate::agent::team::fixtures::RecordingNotifier::new());
+        manager.set_notifier(notifier.clone());
+
+        manager.delete_team(TEAM).unwrap();
+        assert_eq!(notifier.pulses().len(), 1, "一次删队恰好一次脉冲");
+
+        // 反证：拒绝路径**不改数据**。这里刻意**不断言脉冲数** —— `lock_writing` 的守卫在
+        // `?` 早退路径上也会置位 + notify，那是刻意的（漏唤醒不可恢复，多余唤醒只是让等待者
+        // 重查一次）；把「拒绝也发脉冲」钉进测试等于把一个可优化掉的实现细节变成契约。
+        // 要钉的是「拒绝不改数据」，那是本用例后半段在做的事。
+        manager.create_team(team("tm_2")).unwrap();
+        assert!(manager.delete_team("tm_2").is_err());
+        assert!(manager.team("tm_2").is_some(), "拒绝时不得删任何东西");
+        assert_eq!(
+            manager.store().list_teams().expect("teams").len(),
+            1,
+            "库里仍然只有那一个未删除的队"
+        );
     }
 }

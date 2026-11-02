@@ -440,6 +440,27 @@ impl TeamStore {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// **永久删除**一个团队行（连同它的成员 / 任务 / 审计）。
+    ///
+    /// # 为什么只有一条 `DELETE`
+    ///
+    /// `team_member` / `team_task` / `team_event` 都声明了 `team_id … REFERENCES team(id)
+    /// ON DELETE CASCADE`，而池里每条连接的 `PRAGMA foreign_keys=ON` 由
+    /// [`crate::common::db::pool::open_pool`] 的 `with_init` 保证（见那里的注释：pragma 是
+    /// per-connection 的，池懒建连接，只能挂在 `with_init` 上）。所以删父行就是删整队 ——
+    /// 在 Rust 里手写四张表的删除顺序是第二份级联定义，两份一旦漂移，症状是「删了队但板上
+    /// 还留着任务」（看不见的孤儿行）。
+    ///
+    /// # 调用方必须已经判过状态
+    ///
+    /// 本方法**不做**任何业务判断（这一层没有业务判断，见模块文档）：`active` / `closing`
+    /// 的队也能被它删掉。判据在 [`crate::agent::team::manager::TeamManager::delete_team`]。
+    pub fn delete_team(&self, id: &str) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute("DELETE FROM team WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // team_member
     // ═══════════════════════════════════════════════════════════════════
@@ -1519,6 +1540,53 @@ mod tests {
             )
             .unwrap();
         assert!(workspace.starts_with("{\"worktree\""), "{workspace}");
+    }
+
+    /// **删父行 = 删整队**：`team_member` / `team_task` / `team_event` 上的
+    /// `ON DELETE CASCADE` 必须真的生效。
+    ///
+    /// # 为什么这条必须由测试钒，而不是靠 DDL 里的那句话
+    ///
+    /// `PRAGMA foreign_keys` 是 **per-connection** 的，而池子是懒建连接的 —— 它挂在
+    /// `open_pool` / `open_memory_pool` 的 `with_init` 上（见 `common/db/pool.rs`）。
+    /// 也就是说：一条 `DELETE FROM team` 能不能级联，取决于**拿到的那条连接**有没有跑过
+    /// 那个 init，而不是表定义里写了什么。而本用例的夹具走的是与生产同一个 opener，
+    /// 所以它绿的唯一含义就是「生产也会级联」。
+    ///
+    /// 如果这条变红（孤儿行留在库里），症状是：删了队，而 `team_task` 里还有它的一堆行 ——
+    /// 没人看得见（`list_teams` 不再返回那个队），但库会一直长。
+    #[test]
+    fn deleting_a_team_cascades_to_members_tasks_and_events() {
+        let store = seeded_store();
+        store.upsert_member(&sample_member()).unwrap();
+        store.upsert_task(&sample_task()).unwrap();
+        store
+            .append_event(&TeamEventRecord {
+                id: None,
+                team_id: "tm_1".into(),
+                at: 10,
+                actor: "w1@tm_1".into(),
+                kind: "claim".into(),
+                subject: Some("t1".into()),
+                detail: None,
+            })
+            .unwrap();
+
+        store.delete_team("tm_1").unwrap();
+
+        assert_eq!(store.list_teams().unwrap().len(), 0);
+        let conn = store.conn().unwrap();
+        for (table, sql) in [
+            ("team_member", "SELECT count(*) FROM team_member"),
+            ("team_task", "SELECT count(*) FROM team_task"),
+            ("team_event", "SELECT count(*) FROM team_event"),
+        ] {
+            let left: i64 = conn.query_row(sql, [], |row| row.get(0)).unwrap();
+            assert_eq!(
+                left, 0,
+                "{table} 里的孤儿行必须被级联删掉（foreign_keys 生效）"
+            );
+        }
     }
 
     /// 审计日志只追加、按写入顺序读回 —— 它是「谁把任务判死了」的唯一证据。

@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 
-import type { TeamList, TeamSummary } from '@/shared/types/team';
+import type { TeamList, TeamRef } from '@/shared/types/team';
 
 import ErrorNotice from './ErrorNotice';
 import TeamListRow from './TeamListRow';
@@ -38,16 +38,38 @@ interface TeamListSectionProps {
   loading: boolean;
   /** `team_list` 的失败原文。 */
   error: string | null;
+  /**
+   * `team_delete` 的失败原文（「先关闭」/「已经不存在」）。
+   *
+   * 放在这里而不是面板顶部那条通栏：删除入口就在**行**上，失败原因贴着它才有意义。
+   * 与上面的 `error`（`team_list` 读失败）分开，因为两者的处置不同 —— 读失败能重试，
+   * 删失败要靠用户改主意（先关闭 / 换一个队）。
+   */
+  deleteError: string | null;
   /** 重拉一次（错误块里的「重试」与右上角的「刷新」是同一个动作）。 */
   onRetry: () => void;
   /** 打开 / 只读查看某个团队。 */
   onOpen: (teamId: string) => void;
   /** 请求关闭某个团队（二次确认由宿主弹）。 */
-  onRequestClose: (team: TeamSummary) => void;
+  onRequestClose: (team: TeamRef) => void;
+  /** 请求删除某个团队（同上；可删性由行的 `state` 决定）。 */
+  onRequestDelete: (team: TeamRef) => void;
+  /** 正在删哪个队（`null` = 没有删除在飞）；只有那一行的按钮置灰。 */
+  deletingTeamId: string | null;
 }
 
 const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
-  ({ list, loading, error, onRetry, onOpen, onRequestClose }) => {
+  ({
+    list,
+    loading,
+    error,
+    deleteError,
+    onRetry,
+    onOpen,
+    onRequestClose,
+    onRequestDelete,
+    deletingTeamId,
+  }) => {
     const retry = useCallback(() => onRetry(), [onRetry]);
 
     return (
@@ -79,7 +101,10 @@ const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
           </div>
         </header>
 
-        <ErrorNotice message={error} onRetry={retry} />
+        {/* 读失败：给重试（原文照抄）。 */}
+        <ErrorNotice message={error} onRetry={retry} className="flex shrink-0 flex-col gap-1" />
+        {/* 删失败：不给重试按钮 —— 重试的方式是先关闭那个队，不是再按一次删除。 */}
+        <ErrorNotice message={deleteError} className="flex shrink-0 flex-col gap-1" />
 
         {/* 只有**行区**滚动：标题与刷新按钮、错误块与截断提示留在原地。
             整块一起滚时，行多起来用户滚到底就看不到「还有多少行 / 刷新在哪」了。 */}
@@ -102,6 +127,8 @@ const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
                   team={team}
                   onOpen={onOpen}
                   onRequestClose={onRequestClose}
+                  onRequestDelete={onRequestDelete}
+                  deletingTeamId={deletingTeamId}
                 />
               ))}
             </ul>

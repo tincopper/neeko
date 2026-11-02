@@ -1,6 +1,6 @@
 //! 团队域的 `#[tauri::command]`（**极薄**，红线 6）。
 //!
-//! 七条命令：
+//! 九条命令：
 //!
 //! | 命令 | 方向 | 载荷 |
 //! | --- | --- | --- |
@@ -11,11 +11,19 @@
 //! | `team_member_detail` | 读 | 成员行 + 它的任务 + 待批队列 + 最近 50 条事件（点开才拉）|
 //! | `team_launchable_agents` | 读 | **这台机器上**每个可选 agent 一条 `{ agentId, refusal }`（面板置灰依据）|
 //! | `team_options` | 读 | **这个队**允许谁 / 还能加几个 / 缺省值（建队前 `team_id = None` → 全部可启动）|
+//! | `team_close` | 写 | 关进程 → 归档成员 → 作废凭证（失败停在 `closing`，可重试）|
+//! | `team_delete` | 写 | **永久删除**一个 `closed` 的队（`active` / `closing` 一律拒，返回 `()`）|
 //!
-//! 七条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，可选项面在
+//! 九条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，可选项面在
 //! [`crate::agent::team::options`]，建队/起进程在 `bootstrap` + `execution`，准入判定在
-//! [`crate::agent::team::admission`]（红线 6）。
+//! [`crate::agent::team::admission`]，删除的状态判据在 [`crate::agent::team::manager`]（红线 6）。
 //!
+//! # 两条写命令的不可逆程度不同
+//!
+//! `team_close` 是可**重试**的（有成员关不掉时整次 `Err`，团队停在 `closing`，再调一次就是
+//! 同一目标集重走一遍）；`team_delete` 是**永久**的（行 + 成员 + 任务 + 审计一起没，
+//! `team_list` 再也看不到它）。所以后者不是前者的一个布尔参数：那会让一次「重试关闭」的
+//! 调用多带一个能毁数据的开关，而它长得和关闭一模一样。
 //! # 两条读命令**不做 principal 校验**（不是漏了）
 //!
 //! 它们是**本地 Tauri 入口**，不是 MCP 工具：调用方是本机用户点开自己机器上的面板。授权矩阵
@@ -350,6 +358,40 @@ pub async fn team_close(
     ClosedReply::from_outcome(outcome)
 }
 
+/// **永久删除**一个已关闭的团队（面板列表行上的「删除」）。
+///
+/// # 为什么这是第八个入口，而不是 `team_close` 的一个参数
+///
+/// 两件事的**不可逆程度**不同：关闭是可重试的（有成员关不掉时团队停在 `closing`，再调一次
+/// 就是同一个目标集重走一遍）；删除把行连同成员 / 任务 / 审计一起抹掉，`team_list` 再也
+/// 看不到它。把后者做成前者的参数（`team_close(destroy=true)`），等于让一次「重试关闭」
+/// 的调用多带一个能毁数据的布尔 —— 而它长得和关闭一模一样。
+///
+/// # 为什么这里**不需要** `team_surface`
+///
+/// 关闭需要它（要 `credentials` 作废凭证、要 `executor` 关 PTY）。删除**一个已 `closed` 的
+/// 队**两者都不需要：成员已全部归档（`token_hash` 清空、`terminal_id` 清空），进程按关闭
+/// 协议已经不再被本域持有。所以端点没起来时「删一个已关的队」依然成立 —— 拒绝它只会让
+/// 用户在端点故障时连清理历史都做不到。
+///
+/// 状态判据不在本层：它落在 [`TeamManager::delete_team`]（域内唯一写入口，红线 6）。
+/// 这里只做「参数校验 + 进阻塞池」。
+///
+/// # 阻塞池（红线 3）
+///
+/// 删行是 SQLite 同步写（`TeamStore::delete_team`），且级联要删三张子表 —— 放进阻塞池。
+///
+/// 未知 `team_id` → `NotFound`；`active` / `closing` → `Conflict`（信息里点名状态与下一步）。
+#[tauri::command]
+pub async fn team_delete(
+    state: tauri::State<'_, AppStateWrapper>,
+    team_id: String,
+) -> Result<(), AppError> {
+    let team_id = require_id(team_id, "team_id")?;
+    let manager = Arc::clone(&state.team_manager);
+    run_blocking_result(move || manager.delete_team(&team_id)).await
+}
+
 /// 面板的**团队配置面**：这个队允许谁当成员 / 还能加几个 / 缺省值是什么。
 ///
 /// # 两个出口，一个函数
@@ -560,8 +602,8 @@ mod tests {
         let source = include_str!("commands.rs");
         let declared = tauri_command_names(source);
         assert!(
-            declared.len() >= 8,
-            "只抽到 {} 条 `#[tauri::command]`（{:?}）：解析规则漂了，早先 8 条",
+            declared.len() >= 9,
+            "只抽到 {} 条 `#[tauri::command]`（{:?}）：解析规则漂了，早先 9 条",
             declared.len(),
             declared
         );

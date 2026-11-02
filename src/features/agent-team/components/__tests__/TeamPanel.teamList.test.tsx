@@ -578,6 +578,175 @@ describe('TeamPanel — 关闭团队', () => {
     expect(useTeamStore.getState().snapshot).not.toBeNull();
   });
 });
+
+describe('TeamPanel — 删除团队（team_delete）', () => {
+  beforeEach(() => {
+    resetStores();
+    mockInvoke.mockReset();
+    setActiveProject();
+  });
+
+  const deleteLabel = (name: string): string => `删除团队 ${name}`;
+
+  /** 两个队：一个还在跑（`active`），一个已关闭（`closed`）。 */
+  const TWO_TEAMS = createTeamList({
+    teams: [
+      createTeamSummary({ teamId: 'tm_open', name: 'still-open' }),
+      createTeamSummary({ teamId: 'tm_closed', name: 'finished', state: 'closed' }),
+    ],
+  });
+
+  it('只有 closed 行有「删除」；active 行只有「关闭」（两者互斥）', async () => {
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return TWO_TEAMS;
+      return emptyLaunchSurface(cmd);
+    });
+
+    render(<TeamPanel />);
+    await screen.findByText('finished');
+
+    // closed 行：查看 + 删除
+    expect(
+      within(rowOf('tm_closed')).getByRole('button', { name: deleteLabel('finished') }),
+    ).toBeInTheDocument();
+    // closed 行**没有**「关闭」：没有可关的进程了
+    expect(
+      within(rowOf('tm_closed')).queryByRole('button', { name: closeLabel('finished') }),
+    ).not.toBeInTheDocument();
+
+    // active 行反证：有「关闭」、**没有**「删除」（后端会拒：还有成员在跑）
+    expect(
+      within(rowOf('tm_open')).getByRole('button', { name: closeLabel('still-open') }),
+    ).toBeInTheDocument();
+    expect(
+      within(rowOf('tm_open')).queryByRole('button', { name: deleteLabel('still-open') }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('二次确认后才调 team_delete；文案说清不可撤销，成功后重取列表', async () => {
+    let teams = TWO_TEAMS.teams;
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return createTeamList({ teams });
+      if (cmd === 'team_delete') {
+        teams = teams.filter((team) => team.teamId !== 'tm_closed');
+        return null;
+      }
+      return emptyLaunchSurface(cmd);
+    });
+
+    render(<TeamPanel />);
+    await screen.findByText('finished');
+    const listCallsBefore = countCalls('team_list');
+
+    fireEvent.click(screen.getByRole('button', { name: deleteLabel('finished') }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('删除团队「finished」？')).toBeInTheDocument();
+    // 后果在按下去之前就说清：不可撤销 / 级联删掉成员与审计 / worktree 保留
+    expect(within(dialog).getByText(/查不回来/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/级联删除/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/worktree 一个都不会删/)).toBeInTheDocument();
+    // 还没确认 ⇒ 一个删除请求都没发
+    expect(countCalls('team_delete')).toBe(0);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认删除' }));
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('team_delete', { teamId: 'tm_closed' }),
+    );
+    // 成功后重取列表：那一行真的消失了
+    await waitFor(() => expect(countCalls('team_list')).toBeGreaterThan(listCallsBefore));
+    await waitFor(() => expect(screen.queryByText('finished')).not.toBeInTheDocument());
+  });
+
+  it('删除失败：显示后端原文，且**不**清掉 store 里打开着的队', async () => {
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return TWO_TEAMS;
+      if (cmd === 'team_snapshot') return createTeamSnapshot();
+      if (cmd === 'team_delete')
+        throw 'Conflict: team `tm_closed` is active and still owns member processes';
+      return emptyLaunchSurface(cmd);
+    });
+
+    render(<TeamPanel />);
+    await screen.findByText('finished');
+
+    // 先打开另一个队（证明「删的不是当前队」时不该把面板清掉）
+    fireEvent.click(screen.getByRole('button', { name: openLabel('still-open') }));
+    await waitFor(() => expect(useTeamStore.getState().teamId).toBe('tm_open'));
+    fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+    await screen.findByText('finished');
+
+    fireEvent.click(screen.getByRole('button', { name: deleteLabel('finished') }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+
+    // 后端原文原样显示（它说的是「先关闭」，不是「操作失败」）
+    expect(await screen.findByRole('alert')).toHaveTextContent('still owns member processes');
+    // 删的不是当前打开的队 ⇒ store 不清（关闭侧的判据同一条）
+    expect(useTeamStore.getState().teamId).toBe('tm_open');
+  });
+
+  it('删 A 的时候 B 的删除按钮**仍然可用**（删除是按队的动作，不是全局 busy）', async () => {
+    // 用全局布尔时，删 A 会让列表上**所有**已关闭行的删除按钮一起置灰 —— 而 B 的删除
+    // 本来完全成立（后端按 `team_id` 定位，两行之间没有共享状态）。
+    const teams = [
+      createTeamSummary({ teamId: 'tm_a', name: 'alpha', state: 'closed' }),
+      createTeamSummary({ teamId: 'tm_b', name: 'beta', state: 'closed' }),
+    ];
+    let releaseDelete: (() => void) | null = null;
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return createTeamList({ teams });
+      if (cmd === 'team_delete')
+        return new Promise<void>((resolve) => {
+          releaseDelete = resolve;
+        });
+      return emptyLaunchSurface(cmd);
+    });
+
+    render(<TeamPanel />);
+    await screen.findByText('alpha');
+
+    fireEvent.click(screen.getByRole('button', { name: deleteLabel('alpha') }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+    await waitFor(() => expect(releaseDelete).not.toBeNull());
+
+    // 正在删 alpha ⇒ 只有 alpha 那行的按钮置灰；beta 不受影响
+    expect(
+      within(rowOf('tm_a')).getByRole('button', { name: deleteLabel('alpha') }),
+    ).toBeDisabled();
+    expect(within(rowOf('tm_b')).getByRole('button', { name: deleteLabel('beta') })).toBeEnabled();
+
+    await act(async () => {
+      releaseDelete?.();
+    });
+  });
+
+  it('删掉的正**是**当前打开的那个队 ⇒ 清 store（否则下一次脉冲会拉一个不存在的快照）', async () => {
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list')
+        return createTeamList({
+          teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor', state: 'closed' })],
+        });
+      if (cmd === 'team_snapshot')
+        return createTeamSnapshot({ team: createTeam({ id: 'tm_1', state: 'closed' }) });
+      if (cmd === 'team_delete') return null;
+      return emptyLaunchSurface(cmd);
+    });
+
+    render(<TeamPanel />);
+    await screen.findByText('refactor');
+    fireEvent.click(screen.getByRole('button', { name: viewLabel('refactor') }));
+    await waitFor(() => expect(useTeamStore.getState().teamId).toBe('tm_1'));
+
+    fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+    fireEvent.click(screen.getByRole('button', { name: deleteLabel('refactor') }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+
+    await waitFor(() => expect(useTeamStore.getState().teamId).toBeNull());
+    expect(useTeamStore.getState().snapshot).toBeNull();
+  });
+});
+
 describe('TeamPanel — 列表页的上下分栏（队长入口 | 已有团队）', () => {
   beforeEach(() => {
     resetStores();
@@ -643,3 +812,94 @@ describe('TeamPanel — 列表页的上下分栏（队长入口 | 已有团队�
  * 发起 —— 于是从列表行关闭失败时，后端逐个点名关不掉成员的那句话一个字都不显示，用户只看到
  * 徽标变成「正在关闭」，不知道原因，也不知道能重试。
  */
+describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
+  beforeEach(() => {
+    resetStores();
+    mockInvoke.mockReset();
+    setActiveProject();
+  });
+
+  const TEAM_LIST = createTeamList({
+    teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor' })],
+  });
+
+  it('从**列表行**关闭失败（从未打开该队）⇒ 后端原文必须看得见', async () => {
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return TEAM_LIST;
+      if (cmd === 'team_close') throw 'Conflict: `w1@tm_1`: the pty did not exit';
+      return emptyLaunchSurface(cmd);
+    });
+
+    render(<TeamPanel />);
+    await screen.findByText('refactor');
+
+    fireEvent.click(screen.getByRole('button', { name: closeLabel('refactor') }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认关闭' }));
+
+    // 用户全程没离开列表页（关闭的是列表行上那个队，不是当前打开的队）
+    await waitFor(() => expect(useTeamStore.getState().teamId).toBeNull());
+    expect(await screen.findByRole('alert')).toHaveTextContent('the pty did not exit');
+  });
+
+  it('删除失败的错误贴在列表区（不是面板顶部通栏），且不给「重试」按钮', async () => {
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list')
+        return createTeamList({
+          teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor', state: 'closed' })],
+        });
+      if (cmd === 'team_delete') throw 'Conflict: team `tm_1` is Active and still owns members';
+      return emptyLaunchSurface(cmd);
+    });
+
+    render(<TeamPanel />);
+    await screen.findByText('refactor');
+    fireEvent.click(screen.getByRole('button', { name: '删除团队 refactor' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+
+    // 错误在「已有团队」区域**内部**：删除入口就在那些行上
+    const alerted = await within(listRegion()).findByRole('alert');
+    expect(alerted).toHaveTextContent('still owns members');
+
+    // 不给重试按钮：重试的方式是先关闭那个队，不是再按一次删除。
+    // 反证：`team_list` 读失败时的 `ErrorNotice` **有**重试入口，两者的处置本来就不同。
+    expect(within(listRegion()).queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+  });
+
+  it('两条错误互不遮蔽：关闭错误在顶栏、删除错误在列表区，可同时在场', async () => {
+    // 两个队：一个还开着（可关闭，关闭会失败）、一个已关闭（可删除，删除会失败）。
+    // 同一行不可能是这两个动作的入口 —— 它们在行上互斥（见 `TeamListRow`）。
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list')
+        return createTeamList({
+          teams: [
+            createTeamSummary({ teamId: 'tm_open', name: 'still-open' }),
+            createTeamSummary({ teamId: 'tm_closed', name: 'finished', state: 'closed' }),
+          ],
+        });
+      if (cmd === 'team_close') throw 'Conflict: close failed for `w1@tm_open`';
+      if (cmd === 'team_delete') throw 'Conflict: delete refused';
+      return emptyLaunchSurface(cmd);
+    });
+
+    render(<TeamPanel />);
+    await screen.findByText('finished');
+
+    fireEvent.click(screen.getByRole('button', { name: '删除团队 finished' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+    await within(listRegion()).findByText(/delete refused/);
+
+    fireEvent.click(screen.getByRole('button', { name: closeLabel('still-open') }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认关闭' }));
+
+    // 等**两条**都落地（`findAllByRole` 在第一条出现时就解析，会读到中间态）。
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2));
+
+    // 两条都在：删除那条不会被关闭那条顶掉（这正是「按视图二选一」槽位的反例）。
+    const text = screen
+      .getAllByRole('alert')
+      .map((node) => node.textContent ?? '')
+      .join('\n');
+    expect(text).toContain('delete refused');
+    expect(text).toContain('close failed for');
+  });
+});

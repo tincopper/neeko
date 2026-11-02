@@ -171,6 +171,26 @@ export const useTeamStore = create<TeamStoreState>((set, get) => ({
 }));
 
 /**
+ * 某个团队**已经不存在**（关闭成功 / 删除成功）之后的面板归位：正盯着它就回空态。
+ *
+ * # 为什么这是一条具名不变量，而不是两个 hook 各写一遍 `if`
+ *
+ * 「关掉的/删掉的正好是当前打开的那个队 ⇒ 清 store」是个**领域规则**，不是某个动作的实现
+ * 细节：漏了它的后果与动作无关 —— 面板会继续盯一个不存在的队，下一次脉冲就去拉
+ * `team_snapshot` 一个已消失的 id，界面挂在一句 `NotFound` 上（「操作成功了，界面反而坏了」）。
+ *
+ * 两个动作（`useTeamClose` / `useTeamDelete`）都要它，所以它必须只有一个home：写两遍时
+ * 第三个人加第三个动作就会照抄其中一份，而两份里只要有一份先漂移，症状只在竞态下出现。
+ *
+ * **不是**「无条件清空」：关掉/删掉一个**别的**队时，用户正盯着的那个队不该被扔掉 ——
+ * 那会把一次无关的清理变成视角重置。
+ */
+export function forgetTeamIfShowing(teamId: string): void {
+  const store = useTeamStore.getState();
+  if (store.teamId === teamId) store.closeTeam();
+}
+
+/**
  * 确保团队事件有一个（且仅一个）监听者。
  *
  * 幂等：多个读面同时挂载时只有第一次真的去 `listen`。由 [`usePulseRefresh`] 在挂载时调 ——

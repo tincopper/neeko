@@ -31,7 +31,7 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `observe.rs` / `deliver.rs` | hook 事件的团队投影 / 投递入口（见 §6） | 新信号 |
 | `events.rs` | 前端事件：`TEAM_EVENT` 常量 + 失效脉冲载荷 + `TeamNotifier` 端口（见 §8） | 改事件名 / 载荷 |
 | `view.rs` | **视图构造的唯一落点**：`TeamStatusView`（MCP 读者）/ `TeamSnapshot` / `TaskCard` / `TaskDetail`（前端读者） | 加读字段 / 改列载荷（见 §8） |
-| `commands.rs` | 本地 Tauri 入口（七条：建队开场 / 快照 / 任务详情 / 可启动清单 / 团队配置面 / 团队清单 / 关闭），保持极薄（红线 6） | 新入口命令 |
+| `commands.rs` | 本地 Tauri 入口（九条：建队开场 / 快照 / 任务详情 / 可启动清单 / 团队配置面 / 团队清单 / 关闭 / **删除**），保持极薄（红线 6） | 新入口命令 |
 | `fixtures.rs` | `#[cfg(test)]` 夹具单一源（`Team` / `TeamMember` 全字段）；`store.rs` 的 round-trip 夹具是**刻意例外**（每列都要偏离默认值，否则"某列没写进库"会变绿） | 加字段时只改一处 |
 
 ## 0. 租约 = **活性**信号，不是时长上限
@@ -497,6 +497,49 @@ v16 期的裁决是「任务 id 的命名空间**就是 DB 全局单调**」，�
   `finish_member_close_archives_and_releases_without_touching_reclaim_count` /
   `closing_a_member_revokes_its_credential_before_the_gate_is_rebuilt` /
   `a_closing_team_refuses_writes_but_answers_reads`
+
+### 3.5.2 删除协议（`team_delete`）—— 与关闭的边界
+
+删除**不是**关闭的一个布尔参数。两件事的不可逆程度不同，所以判据也不同：
+
+| | `team_close` | `team_delete` |
+| --- | --- | --- |
+| 可逆面 | **可重试**（失败停在 `closing`，再调一次是同一目标集重走） | **不可逆**（行 + 成员 + 任务 + 审计一起没） |
+| 允许的状态 | `active` / `closing` | **只** `closed` |
+| 需要 `team_surface` | 是（要 `credentials` 作废凭证、要 `executor` 关 PTY） | **否**（成员已归档，本域不再持有进程） |
+| 失败后 | 停在 `closing`，可查询可重试 | 什么都没变 |
+| 载荷 | `ClosedReply`（关掉了谁 + 诚实面 `notes`） | `()` |
+
+**为什么只允许删 `closed`**：`active` / `closing` 背后是还在跑的进程。删掉那种队等于把
+「它还在跑」从唯一能看见它的界面抹掉，而后果是**不可撤销**的：`principals_from` 从**库**
+组装身份表，行没了表就空了 —— 那些进程的 token 全部失效，而进程还活着。这不是一个能回滚的
+状态。拒绝信息必须点名当前状态并指出下一步（「先关闭」），不是只说「不行」。状态词用本文件
+既有的 `{:?}` 口径（`Active` / `Closing`，与 `task {key} is {:?}` 一族一致）——**不要**为一句
+错误另造一个 enum→文本投影，那是第二份口径，而它只在那一句上生效。
+
+**为什么级联只写一条 `DELETE`**：`team_member` / `team_task` / `team_event` 都有
+`team_id … REFERENCES team(id) ON DELETE CASCADE`，而 `PRAGMA foreign_keys=ON` 挂在
+`common/db/pool.rs` 的 `with_init` 上（pragma 是 per-connection 的，池懒建连接 —— 只能挂
+在那里）。在 Rust 里手写四张表的删除顺序是第二份级联定义，两份漂移的症状是「删了队但板上
+还留着任务」（看不见的孤儿行）。
+
+**镜像必须与库同一步，而且四个容器一个都不能漏**：`store.delete_team` 成功之后立刻清
+`inner.teams` / `inner.members` / `inner.tasks` / **`inner.verification`**。只删库的话，
+`team_list`（读镜像）会继续列出一个已经不存在的队 —— 而那是面板的数据源。
+
+`verification` 以**成员 id** 为键（没有 `team_id` 列），所以要先收集该队的成员 id 再
+`retain`。它当前**读不到**（四个读入口都先查 `members`），但它是只增不减的，而 `Inner` 的
+契约是「与库在同一把锁内一起改」—— 留下无法回收的残留键就是那条约定的反例，且下一个人加
+字段时会照着这个不完整的形状再漏一次。判据 `only_a_closed_team_can_be_deleted` 会先认领
+一张任务，让 `verification` 里**有物可查**（否则那条断言是空转的；变异验证过：删掉那行
+`retain` 即变红）。
+
+**不幂等**：已不存在 ⇒ `NotFound`。合成 `Ok` 会让面板在竞态下（另一窗口已经删了）报一个假成功。
+
+判据：`only_a_closed_team_can_be_deleted`（状态判据 / 镜像与库同步 / `NotFound`）/
+`deleting_a_team_emits_exactly_one_pulse`（写路径恰好一次脉冲）/
+`deleting_a_team_cascades_to_members_tasks_and_events`（级联真的生效 —— `foreign_keys` 是
+per-connection 的，DDL 里写着不等于会级联）。
 
 ### 3.5.1 关闭的后置条件是**一条**不可分割的动作
 

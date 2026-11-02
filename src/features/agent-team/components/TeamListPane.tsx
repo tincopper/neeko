@@ -2,7 +2,7 @@ import React from 'react';
 import { useDefaultLayout } from 'react-resizable-panels';
 
 import { ISLAND_SPLIT_GROUP_CLASS } from '@/layout/islands';
-import type { TeamList, TeamSession, TeamSummary } from '@/shared/types/team';
+import type { TeamList, TeamRef, TeamSession } from '@/shared/types/team';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/ui/Resizable';
 
 import TeamLaunchPanel from './TeamLaunchPanel';
@@ -43,10 +43,21 @@ interface TeamListPaneProps {
   listLoading: boolean;
   /** `team_list` 的失败原文。 */
   listError: string | null;
+  /**
+   * `team_delete` 的失败原文。
+   *
+   * 它**属于这一屏**，不属于 `TeamPanel` 顶部那条通栏：删除入口只在列表行上（见
+   * [`TeamListRow`]），所以它的失败也该出现在行附近。关闭错误则相反 —— 列表行也能发起关闭，
+   * 所以那条留在宿主（两个视图都要看得见）。
+   */
+  deleteError: string | null;
   /** 重拉清单（错误块的「重试」与标题栏的「刷新」是同一个动作）。 */
   onRetryList: () => void;
   onOpenTeam: (teamId: string) => void;
-  onRequestClose: (team: TeamSummary) => void;
+  onRequestClose: (team: TeamRef) => void;
+  onRequestDelete: (team: TeamRef) => void;
+  /** 正在删哪个队（`null` = 没有删除在飞）。按队传，因为删除是按队的动作。 */
+  deletingTeamId: string | null;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
   onOpenLeaderTerminal?: (session: TeamSession, title: string) => void;
 }
@@ -83,9 +94,12 @@ const TeamListPane: React.FC<TeamListPaneProps> = React.memo(
     list,
     listLoading,
     listError,
+    deleteError,
     onRetryList,
     onOpenTeam,
     onRequestClose,
+    onRequestDelete,
+    deletingTeamId,
     onShowToast,
     onOpenLeaderTerminal,
   }) => {
@@ -116,9 +130,12 @@ const TeamListPane: React.FC<TeamListPaneProps> = React.memo(
             list={list}
             loading={listLoading}
             error={listError}
+            deleteError={deleteError}
             onRetry={onRetryList}
             onOpen={onOpenTeam}
             onRequestClose={onRequestClose}
+            onRequestDelete={onRequestDelete}
+            deletingTeamId={deletingTeamId}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

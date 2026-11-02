@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { describeTeamClose } from '../teamClose';
+import { describeTeamClose, describeTeamDelete } from '../teamPrompts';
 
 /**
  * 关闭团队的确认文案。
@@ -36,5 +36,40 @@ describe('describeTeamClose', () => {
 
   it('确认按钮是动词短语（不是「确定」这种没有对象的词）', () => {
     expect(prompt.confirmLabel).toBe('确认关闭');
+  });
+});
+
+/**
+ * 删除的确认文案（`team_delete`）。
+ *
+ * 与关闭分开测：两段文案说的事不一样（关闭说「可重试、进程还在」，删除说「不可撤销、
+ * 级联删掉」）。合并测试会让「删除文案被写成关闭的」这种错误变绿。
+ */
+describe('describeTeamDelete', () => {
+  const prompt = describeTeamDelete('refactor');
+
+  it('标题带团队名，且与关闭的标题**不同**（否则用户分不清按的是哪一个）', () => {
+    expect(prompt.title).toContain('refactor');
+    expect(prompt.title).toContain('删除');
+    expect(prompt.title).not.toBe(describeTeamClose('refactor').title);
+  });
+
+  it('说清不可撤销（没有恢复路径）', () => {
+    expect(prompt.lines.join('\n')).toContain('查不回来');
+  });
+
+  it('说清成员 / 任务 / 审计一起删（级联）', () => {
+    const text = prompt.lines.join('\n');
+    expect(text).toContain('级联删除');
+    expect(text).toContain('审计');
+  });
+
+  it('说清 worktree 仍然保留（与 close_notes 第 3 条同口径）', () => {
+    expect(prompt.lines.join('\n')).toContain('worktree 一个都不会删');
+  });
+
+  it('确认按钮是动词短语，且与关闭的按钮**不同**', () => {
+    expect(prompt.confirmLabel).toBe('确认删除');
+    expect(prompt.confirmLabel).not.toBe(describeTeamClose('refactor').confirmLabel);
   });
 });

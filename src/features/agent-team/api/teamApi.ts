@@ -30,6 +30,7 @@ import type {
  * | [`fetchTaskDetail`] | `team_task_detail` | 列视图 + 派活正文（**点开才拉**）|
  * | [`fetchMemberDetail`] | `team_member_detail` | 成员行 + 它的任务 + 待批队列 + 最近 50 条事件（**点开才拉**）|
  * | [`closeTeam`] | `team_close` | 本次真关掉了谁 + 诚实面 `notes` |
+ * | [`deleteTeam`] | `team_delete` | **无载荷**（只接受 `closed`；成功就是「行不在了」）|
  *
  * 两条快照不在同一条命令里：「顺手把 body 一起拉回来」会让每次脉冲刷新都搬一遍全部派活正文，
  * 而脉冲是高频的（一个动作可能连发多条）。
@@ -146,6 +147,25 @@ export function closeTeam(teamId: string, memberId?: string | null): Promise<Clo
 /** 拉一次团队快照（面板的唯一数据源；无 task body）。 */
 export function fetchTeamSnapshot(teamId: string): Promise<TeamSnapshot> {
   return invoke<TeamSnapshot>('team_snapshot', { teamId });
+}
+
+/**
+ * **永久删除**一个已关闭的团队（`team_delete`）。
+ *
+ * # 与 `closeTeam` 的区别不是「另一个动作」，而是**不可逆**
+ *
+ * 关闭是可重试的：有成员关不掉时后端整次 `Err`，团队停在 `closing`，再调一次就是同一目标集
+ * 重走一遍。删除把行连同成员 / 任务 / 审计一起抹掉，`team_list` 再也看不到它 —— 所以后端
+ * **只接受 `closed`**，`active` / `closing` 一律 `Conflict`（错误文本点名状态与下一步）。
+ *
+ * 前端的判据因此也只有一条：**列表行按 `state === 'closed'` 决定要不要渲染这个入口**
+ * （见 [`TeamListRow`](../../components/TeamListRow.tsx)）。不要在按钮点击处再判一次 ——
+ * 两处一旦漂移，症状是「按钮能点但后端永远拒」。
+ *
+ * 返回 `()`：删除成功时已经没有可返回的事实了（行不存在就是成功本身）。
+ */
+export function deleteTeam(teamId: string): Promise<void> {
+  return invoke<void>('team_delete', { teamId });
 }
 
 /**

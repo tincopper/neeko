@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import { invokeErrorMessage } from '@/shared/utils/invokeError';
 
 import { closeTeam as closeTeamCommand } from '../api/teamApi';
-import { useTeamStore } from '../store/teamStore';
+import { forgetTeamIfShowing, useTeamStore } from '../store/teamStore';
 
 /**
  * 关闭团队的**执行**部分：`team_close` → 清空 store（仅当关的就是当前打开的那个队）。
@@ -63,9 +63,8 @@ export function useTeamClose(options: CloseTeamOptions = {}): CloseTeamState {
       try {
         await closeTeamCommand(teamId);
         // 只有「关的就是当前打开的那个队」才清空面板；否则只更新列表。
-        if (useTeamStore.getState().teamId === teamId) {
-          useTeamStore.getState().closeTeam();
-        }
+        // 这条规则的单一定义在 store（`forgetTeamIfShowing`），不在这里判。
+        forgetTeamIfShowing(teamId);
         onShowToast?.(`团队「${name}」已关闭`, 'info');
         onSettled?.();
         return true;
