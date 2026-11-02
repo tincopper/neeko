@@ -77,20 +77,44 @@
 `agent_id` 与 `workspace` 都是**显式入参**（`create_terminal_session` 的 `agent_id`、
 `SessionHandle.workspace`），不从命令行字符串反推（同 `ChatLaunch::inprocess` 的教训）。
 
-#### 终端状态：活动判据（本仓唯一的「推断」，2026-10-31 修订）
+#### 终端状态：CLI 自报优先，字节静默兜底（2026-11-02 修订）
 
-PTY 只有一种可观测事实：**有没有字节出来**。进程存活不区分「在算」与「在等你」，CLI 的
-spinner 帧只改标题、不表达完成 —— 早先版本因此让终端永远停在 `Running`，用户看到的是
-「跑完了图标也不动」。现在的规则（`wiring::pty::OutputActivity`）：
+状态事实按质量分三级，**用强的那一级，弱的不许覆盖它**：
 
-- reader / SSH io 线程每写一块输出就 `stamp()`；
-- watcher（100ms）与 io 循环（250ms）调 `poll()`：有输出 ⇒ `TurnStarted`（`Running`），
-  静默 ≥ [`IDLE_AFTER`]（1.5s）⇒ `TurnFinished`（`Ready`）；
-- `poll` 经 `apply_activity` 写入，幂等：状态没变时返回 `false`，不 bump、不发事件
-  （tick 不会变成 IPC 风暴）。
-- **权威门**：CLI hook 报完成 / 审批后，PTY 输出产生的 `TurnStarted` / `TurnFinished`
-  一律忽略，直到用户真正提交输入。Codex 完成后再进入 CLI 的 TUI 重绘、光标刷新因此不会把
-  `Ready` 推回 `Running`。
+| 级别 | 来源 | 接线 |
+| --- | --- | --- |
+| 1 | **CLI 在输出流里自报**（`agent::cli_status`，OSC 声明表） | reader / SSH io 线程 `observe(bytes)` → `poll` 应用 |
+| 2 | CLI hook（`wiring::hooks`） | `report_authoritative`，见上文权威门 |
+| 3 | **字节静默推断**（`IDLE_AFTER` = 1.5s） | `poll` 里的兜底分支 |
+
+第 1 级的实测契约（Codex 0.166.0，`script` 起的真实 TUI，非 `exec`）：
+
+```text
+ESC ] 7501 ; state=working:app=codex ESC \     # 一轮开始
+ESC ] 7501 ; state=idle:app=codex    ESC \     # 一轮结束
+```
+
+为什么必须有第 1 级：**Codex 完成后仍会周期性重绘**（光标 / 状态行），静默永远攒不到 1.5s，
+于是「任务已结束」一直显示绿色运行中（2026-11-02 真机反馈）。同一轮排查还确认了 hook 为什么
+不可靠：Codex 0.166 的 TUI 只是 `app-server` daemon 的客户端，`notify` 由 **daemon** 拉起，
+`NEEKO_SESSION_ID` 不在它的 env 里 ⇒ 归因失败 ⇒ 权威门从未置位。
+
+规则（`wiring::pty::OutputActivity` + `wiring::status_mailbox::StatusMailbox`）：
+
+- reader / SSH io 线程每写一块输出就 `observe(bytes)`：打点 + 扫一遍自报通道；
+  扫描器只在**写侧**（一个写者，无竞争），扫描结果经原子信箱发布 ——
+  取的一方（`poll`）完全不持锁，`has_reported` 由同一份状态派生，不另存布尔量；
+  信箱在 `wiring/` 而不在 `agent::cli_status`：后者是**契约**层（数据表 + 解析器，零线程），
+  信箱是运行时编排，且只有终端活动探针消费它；
+- watcher（100ms）与 io 循环（250ms）调 `poll()`：先应用「CLI 自报的最后一档」
+  （走 `apply` 直接信号，不受权威门约束 —— 门是用来挡推断的）；**一旦出现过自报，
+  该会话彻底停用静默推断**，之后的字节重绘不再改状态；
+- 没有自报通道的 agent（除 Codex 外目前全部）行为不变：有输出 ⇒ `TurnStarted`（`Running`），
+  静默 ≥ `IDLE_AFTER` ⇒ `TurnFinished`（`Ready`）；`poll` 幂等，不 bump 不发事件；
+- **权威门**（级别 2 → 3）：CLI hook 报完成 / 审批后，`apply_activity` 的
+  `TurnStarted` / `TurnFinished` 一律忽略，直到用户真正提交输入。
+- 自报是**机会性升级**：CLI 版本不再发那个 OSC 时不会锁死状态（推断仍在跑），
+  数据表（`CHANNELS`）也只认声明过的 agent，别的 CLI 输出里偶然出现的同样字节不算状态。
 
 **必须诚实标注的代价**：模型长时间无输出的思考会被读成「就绪」，`sleep 30` 这类无输出命令同理。
 阈值取「大于命令之间的间隔、小于人愿意等的反馈延迟」，这是「完全没有信号」与「宁可粗略也要有
@@ -122,40 +146,200 @@ chat 侧同一条规则：先 `register` 再起事件泵。
 
 #### 通知只此一份
 
-「改状态 + 只有真变了才 `emit_changed`」的判据收在 `live_sessions::wiring` 的四个入口：
-`pty::LiveTerminal::register` / `pty::exit_and_notify` / `pty::unregister_and_notify` /
-`chat::register_and_notify`。分散到各调用点的话，第 N 个生产者忘写通知的表现是
+「改状态 + 只有真变了才 `emit_changed`」的判据收在 `live_sessions::wiring` 的五个入口：
+`pty::LiveTerminal::register` / `pty::exit_and_notify` / `pty::close_and_notify` /
+`pty::unregister_and_notify` / `chat::register_and_notify`。分散到各调用点的话，第 N 个生产者忘写通知的表现是
 「侧栏不刷新、无报错、无日志」—— 属于最难定位的一类。
 
-#### 终端的 `Failed` 目前在 UI 不可见（已知取舍）
+#### 关 tab ≠ 会话消失（`close_and_notify`）
 
-`wiring::pty::on_exit` 先 `apply(exit_signal)` 再立刻 `unregister`：条目在同一次调用里消失，
-于是非零退出的终端**不会**在侧栏留下红色失败点（chat 侧可见：`Error` 后条目保留到 bridge 结束）。
-保留失败条目（例如保留到 tab 关闭）是产品决策，不是缺陷修复；在做出该决策前，`Failed` 对
-terminal 路径只服务于未来的持久化 / 统计，不要在文档或 PRD 里写成「用户能看到崩溃的终端」。
+「关掉 tab」与「会话结束」是两件事，注册表必须分开表达：
 
-### 标题：单调升级，按字符截断，不进 UI 徽标
+| 触发 | 动作 | 侧栏 |
+| --- | --- | --- |
+| 用户关 tab（`TerminalRouter::close_session`） | `close_and_notify`：只 `apply(Stopped)`，**不注销** | 那一行留着，状态点变 stopped，点击可恢复 |
+| 进程自己退出（`exit_and_notify`） | `apply(exit_signal)` + `unregister` | 行消失 |
+| 销毁单元 / 清 tab 空间（`unregister_and_notify`） | 注销 | 行消失 |
 
-来源质量 `Placeholder < Prompt < Native < User`（就是 `TitleSource` 的 `Ord`，
-`title_source_order_encodes_quality` 钉住）：同级可覆盖（同一来源后到的那份可能更完整），
-**弱级永不覆盖强级**，`User` 一旦设置任何自动来源都改不动它
-（`set_title_upgrades_but_never_downgrades` / `user_title_survives_automatic_sources`）。
-截断按**字符**（`truncate_never_splits_a_character`：中文不切半个字，总长恒 ≤ 80）。
+`on_exit` 因此多一条前置判据：**条目已经是 `Stopped` 就说明这次退出是主动关闭的尾巴**，
+只确认状态、不注销。少了这条，关 tab 仍会少一行（`close_session` 先标状态，PTY 随后退出
+又把它摘掉）—— 正是用户看到的「关了 tab 会话就没了」。
 
-三个素材来源，都不新增捕获路径：
+恢复成功后由新会话**继承**那一行：`adopt_live_session(from, into)` 把旧条目的标题 /
+`has_user_input` / 原生 id 搬进新条目，旧条目退场。两半都不可省：
 
-- chat 注册时 `pick([(Native, topic), (Prompt, prompt)])`（都没有则留空）——
-  `topic` 是恢复会话时前端传入的 agent 原生标题
-  （`register_prefers_native_title_then_prompt_then_leaves_it_empty`）；
-- terminal 的**用户提交**：前端 `createUserInputActivityReporter` → 薄命令
-  `set_live_session_title(source = prompt)` → `report_user_input`。首次非空提交提供
-  `Prompt` 标题；后续提交只清权威门、进入 `Running`，不会反复改名。空回车也是一次提交
-  （审批界面可能只按 Enter），但不写空标题。**为什么是命令而不是事件**：前端→后端既有通道只有
-  `terminal-input-{id}`（载荷是 stdin 字节）与 agent chat（反向），复用要么污染语义、要么
-  新增事件名（红线 5）；
-- CLI hook 的会话主题：`HookEvent.topic()` → `report_authoritative(Native, signal)`；这是
-  原生标题的主路径（见下节），不是 OSC 状态栏；
-- 拿不到就停在 `Placeholder`，不猜（`blank_title_candidates_are_ignored`）。
+- **不继承** ⇒ 新条目是空的 `Placeholder` + `has_user_input = false`，`isListedSession`
+  不列它 ⇒ 用户看到「点了恢复，那一行反而消失了」（要等敲第一条输入才回来）；
+- **不退场** ⇒ 侧栏同时挂着「已停止」与「新会话」两行。
+
+`adopt` 只接受**终止态**的 `from`：把还活着的会话合并掉，等于让用户点一次就丢一条正在跑的
+会话。前端由 tab 上的 `resumeFromSessionId` 携带来源，`TerminalView` 在 PTY 创建成功后
+消费一次（幂等：`from` 已消失时是 no-op，所以不需要清理这个字段）。
+
+代价（诚实标注）：关 tab 的条目留到本次运行结束（注册表是内存态）。它是**恢复点**，不是
+垃圾；单元被删除时它也不会被回收，只是不再被渲染（没有单元行就没有子列表）。
+
+#### 三种关闭选择：后台运行 / 退出进程 / 取消
+
+会话**正在干活**时关 tab 不是「关 tab」，而是三条不同后果（`ready` 不算 —— 见下）：
+
+| 选择 | 后端 | 前端 | 侧栏 |
+| --- | --- | --- | --- |
+| 后台运行 | `detach_terminal_session(id, true)`：drain 转分离态 | 拆缓存但**不 closeSession** | 行留着，状态继续变（Running / AwaitingApproval …） |
+| 退出进程 | `close_terminal_session` → `close_and_notify`（标 `Stopped`） | 拆缓存 + 关会话 | 行留着（可点回来续写） |
+| 取消 | — | — | — |
+
+**分离态（detached）是这套东西的前提**，不是优化：分离后没有消费者，若照常背压，
+512KB 的 drain 很快写满 → PTY 写入被堵死 → 后台 agent 冻在那里。所以分离态的 drain
+**永远接收、丢最旧的字节、只留尾部**（`DETACHED_TAIL_CAPACITY = 256KB`），一次多丢一些
+避免每次 push 都做 O(n) 前移。
+
+接回时 `detach_terminal_session(id, false)` 做两件事：关掉分离态（恢复背压）、顺便当
+**存活探针**（drain 不存在 ⇒ 会话已结束 ⇒ 返回 `false`，前端改走新建）。drain 的存活
+**就是** PTY 的存活，所以不需要再加一条 `ping` 命令。尺寸也要补一次 `resize`：
+分离期间窗口可能被缩放过。
+
+判据落点：谁能弹这个框由 `closeTabWithConfirmation` 判（tab 是 terminal、有
+`ptySessionId`、注册表里那条会话 `isBusySession`）—— **三条关闭路径（TabBar X / 菜单 /
+Cmd+W）因此自动一致**，不需要各自实现一遍。
+
+**「进程活着」与「有活要丢」是两个问题**，故意是两个谓词：
+
+| 谓词 | 为真 | 用途 |
+| --- | --- | --- |
+| `isLiveSession` | `running` / `awaitingApproval` / **`ready`** | 点会话行时**接回**那条活着的 PTY |
+| `isBusySession` | `running` / `awaitingApproval` | 关 tab 时**要不要弹框** |
+
+`ready` 的会话进程还活着（接回是对的），但 agent 已经干完了 —— 那时关 tab 就是普通的关 tab，
+弹一个「它还在跑」的框是在说假话（2026-11-02 反馈）。用 `isLiveSession` 当弹框判据会让每个
+干完活的 tab 都问一次，用户学到的教训是「无脑点退出」。
+
+#### 终端的 `Failed` 在 UI 不可见（已知取舍）
+
+`on_exit` 对**自然退出**仍是 `apply(exit_signal)` + 立刻 `unregister`：条目在同一次调用里
+消失，于是非零退出的终端**不会**在侧栏留下红色失败点（chat 侧可见：`Error` 后条目保留到
+bridge 结束）。要让它可见，就得像关 tab 那样保留条目 —— 那是产品决策，不是缺陷修复。
+
+### 标题：准入 + 单调升级，唯一写路径
+
+标题系统只有**两个正交判据**（`title/` 模块：`judge` / `text` / `prompt` / `native`，一个文件一件事），
+缺一即失效：
+
+- `title::admit(source, raw, agent_id) -> Option<String>` —— **准入**：这条候选配不配当标题
+  （否定式，按来源分派）；
+- `title::should_upgrade(current, incoming)` —— **覆盖序**：来源质量
+  `Placeholder < Prompt < Native < User`（就是 `TitleSource` 的 `Ord`，
+  `title_source_order_encodes_quality` 钉住）。同级可覆盖（同一来源后到的那份可能更完整），
+  **弱级永不覆盖强级**，`User` 一旦设置任何自动来源都改不动它。
+
+**为什么准入必须在写入之前**：单调升级会把任何**已进入**注册表的噪声**粘住** —— 一条
+`Native` 噪声写入后，后续正确的 `Prompt` 再也改不回来。所以准入是唯一正确的拦截点。
+
+**唯一写路径**：`SessionEntry::new` **不接收标题**（恒为空的 `Placeholder`），标题只能经
+`Registry` 的 `upgrade_title` 写入。留一个 title 参数就是一条绕过准入的旁路 —— 而登记路径
+一旦绕过，`admit` 就必须有两份实现。所以 chat 的标题素材是**按质量升序依次上报**
+（`Prompt` 在前、`Native` 在后），由 `should_upgrade` 自己选强的；不再有 `pick`
+（「取最强候选」就是序关系在空条目上的特例）。
+
+| 来源 | 何时可得 | 素材 |
+| --- | --- | --- |
+| `User` | 用户改名 | tab 改名（本期不做入口，优先级先占位） |
+| `Native` | hook 主题 / 恢复会话 / OSC 0/2 | `HookEvent.topic()`；`StreamRequest.topic`；`term.onTitleChange` |
+| `Prompt` | chat 首轮 / 终端用户提交 | `StreamRequest.prompt`；`createUserInputActivityReporter` |
+| `Placeholder` | 创建即知 | **空串**（不编名字，见下节） |
+
+#### 准入判据（`title::admit`）
+
+| 来源 | 判据 | 判负的例子 |
+| --- | --- | --- |
+| `Placeholder` | 永远 `None` | `pi` / `Terminal 1` |
+| `User` | 非空白即可（不套任何清理） | 空白串 |
+| `Prompt` | 含字母/数字、非斜杠命令、剥掉客套包装后仍非空 | `/model`、`/mo`、`@`、`Can you please` |
+| `Native` | 剥装饰后非空、≥ 2 字符、含字母数字、非身份回显 / 状态词 / `Terminal N` / cwd | `π`、`✳ Claude ready`、`ready`、`Terminal 2`、`/Users/tomgs/repo`、`claude-code` |
+
+`Native` 的四条子判据按不确定性升序：剥装饰（`✳ ✦ ⏲ ◇ ✋ ▲` / braille / 四分圆 / `. ` `* `）
+→ 字符数 ≥ 2（`π` 是希腊字母，`is_alphanumeric` 挡不住它）→ 状态词 / `Terminal N` / cwd 形态
+→ 身份回显（与 `agent_id` 归一后比较，`claude-code` ≡ `Claude Code`；漏判只是降级成固定短串）。
+
+**CLI 差异落在数据**（`title/native.rs` 的常量表）：`BRAND_GLYPHS`（品牌装饰字形）、
+`SPINNER_RANGES`（braille / 四分圆）、`WORK_PREFIXES`（`. ` `* `）、`STATUS_WORDS` /
+`STATUS_PHRASES`、`ID_SUFFIXES`。新增一个 CLI 是**加一行数据**，判据函数不改 ——
+与 `cli_status::CHANNELS` 同一条原则（红线 15 的通用形态）。
+
+**身份判据的输入是 `agent_id` 而不是 `AgentConfig`**：`agent_id` 已在 `SessionEntry` 上，
+纯函数层不新增对 agents 域的依赖。
+
+#### 斜杠命令与纯符号**不是**标题（`admit` 的 `Prompt` 分支）
+
+`Prompt` 的素材是「用户原样敲的字」，但**不是所有敲的字都是这次会话的主题**。判据只有
+一处：`upgrade_title` 里的 `title::admit` → 拒绝命名（`has_user_input` 照样置位 ——
+用户确实提交了，活动态与状态门必须变）。
+
+实测事故（2026-10-31）：用户敲 `/model`，在 pi 的自动补全菜单里按回车 —— 我们捕获到的是
+**半截命令** `/mo`（补全展开发生在 CLI 内部，上游字节里没有完整行），侧栏与 tab 标题都变成
+这个既不是用户完整输入、也无从辨认的字符串。更根本的问题是：斜杠命令是**对工具的操作**，
+不是「这次会话要谈的事」，当标题毫无检索价值。
+
+判据取最保守的两条（`title/prompt.rs`，用例钉住）：
+
+| 输入 | 结论 | 理由 |
+| --- | --- | --- |
+| `/model`、`/mo`、`/model Hy3 · routing group`、`  /init` | 命令 | 行首 `/` + 单个命令词（字母开头，正文无内部 `/`），可带参数 |
+| `/Users/tomgs/repo`、`/usr/bin/env`、`//注释` | 内容 | 命令词里有内部 `/`，那是路径 |
+| `修复 /api 的 500`、`查看 /model 的实现` | 内容 | 不在行首 |
+| `@`、`>`、`?`、`。。。（纯符号）` | 拒绝 | 没有字母/数字（`char::is_alphanumeric`，中文算） |
+| `Can you please fix the parser` | 内容（剥成 `fix the parser`） | 祈使包装对检索零贡献 |
+
+只对 `Prompt` 生效：`Native`（CLI 自报主题）与 `User`（用户主动改名）即使以 `/` 开头也是
+用户的真实意图。被拒的素材**不占用**「首条命名」这一步 —— 之后第一条真正的消息才能命名
+（`report_user_input` 只在 `!has_real_title` 时写标题）。
+
+#### 点击会话行恢复：原生 id 只在后端
+
+侧栏会话行点下去可能**没有可用的 tab**（映射键丢失 / tab 已被回收）。此时按会话重建，
+terminal 优先**续写**而不是重开：
+
+```
+SessionEntry.native_session_id  ← 只由 wiring::hooks 从 HookEvent.agent_session_id 写入
+        │
+        ▼
+live_session_resume_command(session_id)   ← 前端点击时调一次
+        │  ConversationManager::resume_command_for_native(agent, native_id, cwd)
+        ▼
+["--resume", "<native id>"]  ⇒ 前端拼 `<agent.command> <agent.args…> <args…>` 成 taskCommand
+                                     （唯一实现：`shared/utils/agentCommand.ts` 的
+                                      `buildResumeTaskCommand`，逐 token 加引号）
+```
+
+四条判据都写死了，缺一条就退回「新建同 agent 终端」，不猜：
+
+1. **原生 id 只来自 hook**。neeko 自己的 `session_id` 对 CLI 毫无意义，拼不出 `--resume`；
+   没装 hook 的 agent 永远拿不到它 —— 这是能力的真实边界，不是缺陷。
+2. **不进 wire 契约**：`native_session_id` 是后端内部字段（视图不显示、不派生），
+   `record_native_session_id` 因此**不 bump 版本**（否则侧栏为一个看不见的字段重渲染）。
+3. **不经过 conversation 扫描缓存**（`resume_command_for_native`）：要求用户先去 Histor
+   打开一次才能恢复，是死入口。
+4. **`taskCommand` 是完整命令行**：一旦设置，`TerminalViewBase` 会跳过自动拉起 agent
+   直接执行它（`if (tabAgentId && !taskCommand)`）。
+
+#### OSC 标题来源：恢复，因为判据补上了
+
+`term.onTitleChange`（OSC 0/2）曾因 `π`（pi 的品牌字形）覆盖用户首条输入而**整条来源被删**。
+真正的成因是当时**没有准入判据**：`is_title_material` 是为 `Prompt` 写的，而状态栏形态恰好
+**含字母**（`π` 是希腊字母、`✳ Claude ready` 含单词），全部放行。删来源的代价被低估了 ——
+Claude Code / Codex 会把**任务标题**写进 OSC（`✳ Fix login bug`），那是 provider 自己做的
+语义浓缩，质量高于 `Prompt`（原始按键）。
+
+现在的分工是**判据 vs 传输优化**（判断标准：移除这一层，行为不变、只是变慢 ⇒ 优化）：
+
+| 层 | 职责 | 删掉的后果 |
+| --- | --- | --- |
+| `title::admit`（后端） | 判据 | **出错** |
+| 逐字去重（前端） | 同一串不发两次 | 变慢 |
+| 首次提交前不发（前端） | 少发启动期噪声（cwd / 品牌名） | 变慢 |
+
+前端**不做**任何过滤：`createUserInputActivityReporter` 原样上报每次提交，
+`onTitleChange` 原样上报每次标题 —— judgement 只在后端一处（双端各判一次就是两套判据）。
 
 **没有真标题时占位是空串**（不是 agent 名、也不是项目名）。理由（2026-10-31 两轮实测反馈）：
 
@@ -192,14 +376,15 @@ terminal 路径只服务于未来的持久化 / 统计，不要在文档或 PRD 
 | `report(title, engage)` | 一次加锁内（可选）升级标题 +（可选）置位；真变化才 bump | CLI 纯信息事件（当前 `engage = false`） |
 | `report_user_input(title)` | 首次无真标题时写入 `Prompt`；每次提交清权威门、置位并回 `Running` | 终端 / WSL / SSH 用户提交 |
 | `report_authoritative(title, signal)` | 合并标题、可见性、权威状态转移与输出推断门 | CLI hook |
-| `report_first(title)` | 未置位 ⇒ 置位 + 写标题；已置位但无真标题 ⇒ 只补标题；已有真标题 ⇒ 什么都不做 | chat 的首次 Engage（含 `Silent → Turn`） |
-| `set_title(source, text)` | 只升级标题，不碰可见性 | 领域内的纯标题更新原语（当前无生产调用；OSC 已退役） |
+| `report_first(titles)` | 未置位 ⇒ 置位 + 按**升序**写候选；已置位但无真标题 ⇒ 只补标题；已有真标题 ⇒ 什么都不做 | chat 的首次 Engage（含 `Silent → Turn`） |
+| `set_title(source, text)` | 只升级标题，不碰可见性 | `set_live_session_title`（OSC / 显式上报） |
 
-升级规则（`truncate` + `should_upgrade` + 同值不写）只有 `upgrade_title` 一份实现。
+准入（`admit`）+ 覆盖序（`should_upgrade`）+ 同值不写只有 `upgrade_title` 一份实现 ——
+它是标题的**唯一写路径**（`SessionEntry::new` 不接收标题）。
 
 `register_or_engage` 是 chat 的**唯一**登记入口，读两次 `kind`：
 
-1. **未登记** ⇒ `register_if_absent`（「首次出现」的判据与写入同一个临界区）；
+1. **未登记** ⇒ `register_if_absent` 之后按升序依次 `report` 候选（`Prompt` 再 `Native`）；
 2. **已登记** ⇒ `Silent` 什么都不做；`Turn` / `Resume` 走 `report_first` ——
    这是 `agent_chat_open` → `agent_stream` 续聊主链路的**唯一**可见性来源
    （那条分支命中 `manager.owns` 后提前返回，不进 `spawn_session_pipeline`）。

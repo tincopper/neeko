@@ -72,6 +72,8 @@
 ## P2 标题升级（AC8）
 - [x] 8.1 terminal：`term.onTitleChange` → `set_title(Native)`（xterm.js 已提供，当前未接）。
       走**薄命令**（`set_live_session_title`）而非新事件通道 —— 理由见「实施记录 · 8.1」。
+      **后续**：前端的上报后来因 `π` 污染被撤（`liveSessionsApi.ts` 注释），来源本身保留；
+      恢复条件与判据见 §25。
 - [x] 8.2 chat：会话落盘后由 conversation 扫描反查 `ConversationMeta.title` → `set_title(Native)`
       （按 `cwd` + `native id`；归属用 `UnitScope`，不做字符串前缀）。**不做（理由见实施记录）**。
 - [x] 8.3 用例：升级单调（`Prompt` 不被 `Placeholder` 覆盖）、`User` 永不被覆盖。
@@ -523,3 +525,536 @@ xterm 会把它**自己**对终端查询的应答从 `onData` 发出去：CLI �
   退化成 `shadow-[inset_2px_0_0_0_var(--accent-blue)]`。
 - 用例：`editorTabSelectors.test.ts` 5 个（终端 / chat / 未铸造 id / 文件 tab / 多单元排序），
   `SessionRow.test.tsx` 2 个（父行三态、图标方块无内联背景），`SessionList.test.tsx` 1 个。
+
+## 23. 斜杠命令不是标题
+
+实测（真机）：用户敲 `/model`，在 pi 的自动补全菜单里按回车 —— 侧栏与会话 tab 的标题都变成
+`/mo`。两个独立成因，一个共同判据：
+
+1. **捕获时机**：补全展开发生在 CLI 内部，上游字节里从没有过完整行；我们的捕获器在第一次
+   回车时结算到 `/mo`。这个「前缀」既不是用户完整输入，也无从辨认。
+2. **语义**：即使捕获到 `/model`，斜杠命令也是**对工具的操作**，不是「这次会话要谈的事」，
+   当标题没有检索价值。
+
+修复落在**后端唯一裁决点** `Registry::upgrade_title`：`source == Prompt &&
+!title::is_title_material(text)` → 拒绝命名，但 `has_user_input` 照置（用户确实提交了，
+活动态与权威状态门必须变）。于是 slash-command-only 的会话保持无名 → 侧栏不列（
+`isListedSession`）、tab 回落到占位（agent 名 / `Terminal N`）；之后第一条真正的消息才命名。
+
+`title::is_title_material` = 含至少一个字母/数字（`char::is_alphanumeric`，中文算）
+**且**不是命令。命令判据取最保守形状：行首 `/` + 单个命令词（字母开头、正文无内部 `/`），
+可带参数 —— 于是 `/model`、`/mo` 是命令，`/Users/tomgs/repo`、`修复 /api 的 500` 仍是内容。
+只对 `Prompt` 生效（`Native` / `User` 即使以 `/` 开头也是用户真实意图）。
+
+- 用例：`title.rs` 3 个（命令 / 路径与散文 / 纯符号）、`commands.rs` 1 个
+  （`slash_command_does_not_become_the_title`：不命名但活动态变，后续消息才命名）、
+  `inputTitle.test.ts` 1 个（前端**原样上报**，钉住「判据只在后端」）。
+- 文档：`.trellis/spec/backend/agent-chat-transports.md`「斜杠命令与纯符号不是标题」。
+
+## 24. Codex 状态：读 CLI 自报的 OSC 7501
+
+真机反馈：codex 的「Worked for 20s」已经结束，侧栏仍是绿色运行中；进入 tab 也不灭。
+
+### 排查（有证据，不是猜）
+
+1. `~/.codex/config.toml` 里 `notify` 指向我们的 shim，`~/.neeko/neeko.log` 里确有
+   `POST /hook/codex -> 204`，但**注册表没收到权威事件**：`hints.neeko_session_id` 为空。
+2. 用 `script` 起真实 codex TUI（临时 `CODEX_HOME`，不动用户配置）实测：TUI 会拉起
+   `app-server` **daemon**，`notify` 由 daemon 执行 —— daemon 的 env 里没有
+   `NEEKO_SESSION_ID`（`ps eww` 证明：`PWD=/`，无 NEEKO_*）。归因失败 ⇒ 权威门从未置位。
+3. 同一份抓包暴露了真正的第一级事实：TUI 在输出流里自报
+   `ESC ] 7501 ; state=working|idle:app=codex ST`。同时存在 `ESC ] 0 ; ⠋ codex` 标题
+   （仍不参与命名）与 OSC 10/11 查询。
+4. 因此静默推断永远等不到 1.5s 静默（codex 完成后仍周期性重绘）⇒ 一直 Running。
+
+### 修法
+
+- `agent/cli_status.rs`（新）：**数据表** `CHANNELS`（目前只有 codex：OSC 7501 /
+  `state=working` / `state=idle`）+ 流式 `StatusScanner`（跨 chunk、一块多次转换取最后一次、
+  未知值忽略、载荷上限 96 字节、ST/BEL 两种终止符）。解析器不认识任何具体 CLI。
+- `wiring/pty.rs`：`OutputActivity::new(channel)` / `observe(bytes)`；
+  `poll` 先应用自报（`apply` 直接信号），**自报出现过就停用静默推断**（`cli_seen`）；
+  没通道的 agent 行为完全不变。
+- `terminal/services.rs`（本地 / WSL）与 `terminal/remote.rs`（SSH）都改成
+  `OutputActivity::new(live.and_then(|l| l.status_channel()))` + `observe(bytes)` ——
+  远端同样生效，判据只有一份。
+- 用例 14 个：`cli_status` 9 个（真实字节形态、逐字节分块、BEL、多序列、干扰 OSC、未知值、
+  超长载荷、截断序列、无通道 agent）、`wiring::pty` 5 个（无通道时重绘仍读 Running（旧 bug 形态）、
+  自报覆盖推断、进入 tab 的重绘不改状态、poll 应用与幂等、非声明 agent 不吃裸字节）。
+
+## 25. 标题准入判据：先收敛写路径，再加判据（`design.md` §11）
+
+### 25.1 顺序不能反过来
+
+上一版把「加 `admit`」当第一步，结果是它必须同时挂在 `registry::upgrade_title` 和
+`title::pick` 上 —— 因为 `SessionEntry::new` 收的是 `pick` 的成品，是**唯一绕过
+`upgrade_title` 的写路径**（`registry.rs:86` 的 `register_if_absent`）。
+
+在一个已经有两份判据的系统里再造第三份，就是这次要修的病本身。所以顺序是：
+
+> **先消掉第二条写路径（25.2），再加唯一准入判据（25.3），其余顺带收敛（25.4 / 25.5）。**
+
+分类标准：**移除这一层，行为不变、只是变慢 ⇒ 优化；移除后出错 ⇒ 判据。**
+25.2–25.5 是判据，25.6 是优化（措辞修正，零代码）。
+
+### 25.2 D1 · 单写路径（第一个做，收益最大）
+
+- [x] 25.2.1 `SessionEntry::new` 去掉 `title: (TitleSource, String)` 参数，恒置
+      `(TitleSource::Placeholder, String::new())`（`entry.rs:110`）。
+- [x] 25.2.2 `ChatRegistration` 改成一个 `titles()` 返回**升序候选**（`Prompt` 在前、
+      `Native` 在后），`register_or_engage` 在 `register_if_absent` 之后依次
+      `registry.report(sid, Some((source, text)), false)`，让 `should_upgrade` 自己选强的。
+- [x] 25.2.3 删除 `title::pick` 与其 4 个用例；`entry.rs:117` 的文档注释、
+      `view.rs:160` 的注释同步改（提到 `pick` 的地方全部改为 `admit` / `should_upgrade`）。
+- [x] 25.2.4 **必须与 25.3 同一个 commit** —— 分开做会留下「`pick` 也学会了 `admit`」的中间态。
+
+### 25.3 D2 · `admit` 取代 `is_title_material`
+
+- [x] 25.3.1 `title.rs`：`is_title_material` → `admit(source, raw, agent_id) -> Option<String>`，
+      按 `TitleSource` **穷举 match**（新 variant 编译期强制处理）；`is_command_line` 降为私有。
+- [x] 25.3.2 `registry::upgrade_title`：`let Some(title) = title::admit(...) else { return false }`，
+      删掉 `if source == TitleSource::Prompt` 分支（`registry.rs:422`）。
+- [x] 25.3.3 `commands::apply_title` 的 `_ if title.trim().is_empty() => false` 分支删除
+      （空白已由 `admit` 判负）。
+- [x] 25.3.4 `Native` 四条子判据按**不确定性升序**实现：剥装饰 → 字符数 ≥ 2 → 状态词 /
+      `Terminal N` / cwd → 身份回显（最后做，见 `design.md` §11.4 末段）。
+
+### 25.4 D4 · `Placeholder ⟹ 空标题` 的连锁收敛
+
+- [x] 25.4.1 `registry::has_real_title`（`registry.rs:438`）退化为 `!entry.title.is_empty()`。
+- [x] 25.4.2 `liveSessionSelectors.ts:62` 的 `isNamedSession` 退化为 `title.trim().length > 0`；
+      `resolveTabTitle`（`tabTitle.ts`）改为复用 **`isListedSession`**（不是 `isNamedSession`）——
+      「什么时候用注册表标题」与「什么时候把会话列进侧栏」是同一条判据，复用更外层那个
+      才不会漏掉 `hasUserInput`。
+- [x] 25.4.3 删除 `SessionList.tsx:104` 的 `titleSource === 'placeholder'` 分支与其注释
+      （不可达：`isListedSession` 已挡住），`SessionList.tsx:19` 的说明同步改。
+- [x] 25.4.4 用例：`set_live_session_title(source = placeholder, title = "x")` ⇒ 不写入
+      （堵上「IPC 可控 source」这个当前敞着的洞）。
+
+### 25.5 D5 · 预算前缀合并进 `admit`
+
+- [x] 25.5.1 `truncate` 改为 `budgeted(text)` 零分配前缀切片后再折叠/截断
+      （`char_indices().nth(BUDGET)`，**不要** `chars().take().collect()`）。
+- [x] 25.5.2 `truncate` 降为私有（对外只剩 `admit` + `should_upgrade`）；
+      `view.rs:109` 若只是测试引用，改断言口径。
+
+### 25.6 D3 · 传输优化（不是判据，措辞修正，零代码）
+
+- [x] 25.6.1 前端恢复 `Native` 上报（`TerminalViewBase.tsx` 的 `term.onTitleChange`）：
+      只做两件**无语义**的事 —— 与上次原文逐字相同不发、首次 `reportUserInput` 之前不发。
+      不剥装饰、不过滤、不判负。
+- [x] 25.6.2 删掉 `liveSessionsApi.ts` 里「为什么不再回传 OSC 标题」那段注释（前提已不成立），
+      改写成「判据只在后端；前端只做传输去重」。
+- [x] 25.6.3 **回滚点**：25.6 整体独立于 25.2–25.5。真机再出噪声先摘 25.6（回到 §20.2 的行为），
+      后端准入判据保留 —— 它同时给 hook `topic` 与 `set_title` 服务。
+
+### 25.7 用例（AC10 / AC11）
+
+- `title.rs`：每个 `TitleSource` 一条 ——
+  - `Placeholder` 永远 `None`（含非空文本）；
+  - `User` 只要非空就通过，不套清理；
+  - `Prompt`：斜杠命令 / 纯符号 / 剥完为空的客套句 → `None`；真主题 → 通过；
+  - `Native`：`π`、`✳ Claude ready`、`ready`、`idle (2m)`、`Terminal 3`、`/Users/tomgs/repo`、
+    `claude-code`（身份回显）→ `None`；`✳ Fix login bug`、`修复登录竞态` → 通过；
+  - 扫描预算：`"a".repeat(BUDGET) + "尾部标记"` 的结果**不含**尾部标记。
+- `registry/tests.rs`：`Prompt` 命名后 `set_title(Native, "✳ Claude ready")` ⇒ `title` /
+  `title_source` **均不变**（证明准入在 `should_upgrade` 之前）。
+- `chat.rs`：登记候选升序 apply 后取到 `Native`（topic）而不是 `Prompt`；两条都判负时留空占位。
+- `commands.rs`：`set_live_session_title(source = native, "π")` 返回 `false` 且条目不写。
+
+### 25.8 验证 / 真机 / 触发条件
+
+- 静态：`cargo test --lib live_sessions` → 收尾 `pnpm check:quick`（只跑一次）。
+- 真机（并入 AC8）：开 pi 会话，首条输入后标题是**那条输入**而不是 `π`；开 Claude Code 会话，
+  确认 OSC 的 `✳ <任务>` 能成为标题、idle 的 `✳ Claude ready` 不会把标题改回去。
+- **升级触发条件**（`design.md` §11.9）：真机出现 ≥2 例 `admit` 漏判（标题被某个固定短串
+  占住且不恢复）⇒ 才考虑给 OSC 独立等级；1 例按 25.3.4 补一条子判据。
+
+### 25.9 实施记录（已完成 25.2–25.7）
+
+改动文件：`title.rs`（重写）、`entry.rs`、`registry.rs`、`wiring/{chat,pty,hooks}.rs`、
+`commands.rs`、`view.rs`、`cursor.rs`、`mod.rs`、`liveSessionSelectors.ts`、`tabTitle.ts`、
+`SessionList.tsx`、`TerminalViewBase.tsx`、`liveSessionsApi.ts`、新增
+`features/terminal/utils/sessionTitleReporter.ts`（+ 7 用例）。
+
+**落地时与原计划的偏差**（都不是口味问题，各有一条硬约束）：
+
+1. **上报闸门连 IPC 一起收进 `sessionTitleReporter.ts`**（原计划写在组件体内）。
+   两条理由：`check_component_size` 对 `TerminalViewBase.tsx` 的 ratchet 是 542 行、
+   只许缩小；而「OSC → 注册表」这条通道的所有者本来就该是同一个模块 —— 调用点各写一份
+   `.catch(console.warn)` 是同一事实的多份表达。组件侧只剩一行 `installSessionTitleReporting`。
+2. **`report_first` 签名改成 `&[(TitleSource, &str)]`**（原计划只改 `ChatRegistration`）。
+   否则「登记时按升序 apply」与「Engage 时取最强」会成为两套候选处理；升序 apply 在两条
+   路径上复用同一个 `for`，`pick` 才真的可以删掉。
+3. **`registry_with` 测试夹具改走 `set_title`**（原计划未提）。夹具直接塞字段能造出
+   `admit` 不会放行的状态，那样测的就不是生产路径了。
+4. **`terminal_entry` 夹具的 `Placeholder + "pi"` 被删**：它违反新不变量
+   （`Placeholder ⇒ 空标题`）。这正是 D4 要消灭的那类「生产不可能出现的状态」。
+5. **`native_title_never_overrides_a_user_title` 的 Native 值从 `"claude"` 改为
+   `"a cli topic"`**：`claude` 现在是 `claude-code` 的身份回显，会被**准入**拒掉 ——
+   用例会因错误的理由变绿，测不到它名字说的「覆盖序」。
+6. **前置门的实现是前端本地状态**（`markUserInput`），不读注册表：它是传输优化，
+   读注册表就等于把优化耦合到快照时序上。
+
+**测试口径**：`title.rs` 15 个（4 个来源穷举 + 覆盖序 + 预算前缀 + 多字节边界）、
+`registry/tests.rs` 与 `commands.rs` 各补「判负不改写」「`Placeholder` 经 IPC 也不写」，
+`sessionTitleReporter.test.ts` 7 个（闸门两件事 + IPC 接线 + dispose）。
+
+**已知遗留**：`cargo test --lib` 当前 84 个失败全部来自工作区里 `migrations.rs` 的
+`LATEST_VERSION: 13 → 17`（14–17 的迁移未登记），与本任务无关；`live_sessions` 112 个全绿。
+
+## 26. 点击会话行支持恢复（A：重建）
+
+真机反馈：侧栏里点某条会话**没反应**。
+
+### 26.1 根因：`!tab` 是一条静默死分支
+
+`useActivateSession` 原来的三步是 `sessionTab()` → `if (!tab) return` → `activateTab()`。
+第二步没有任何日志、也没有兜底 —— 映射键（terminal 的 `ptySessionId` / chat 的 `sessionId`）
+一旦缺失，点击就静默失效。而侧栏**照常列出**这条会话：分组只用 `workspaceKey`，
+不需要那个键。于是「列表里有、点了没反应」。
+
+### 26.2 三级降级（`utils/sessionActivationPlan.ts`，纯函数）
+
+| 情况 | 计划 | 动作 |
+| --- | --- | --- |
+| 映射键命中 | `activate` | 激活（绝大多数点击） |
+| 键丢了，且**唯一**一条同 agent 的孤儿 terminal tab | `bind` | 把会话 id 补写回那条 tab，再激活 |
+| 其余 | `recreate` | 按会话重建 tab |
+
+- **为什么 bind 先于 recreate**：不认领的话那条 tab 永远点不开，而且每次点击都会再建一条新的，
+  孤儿越积越多。`bind` 顺带把存量 tab 永久修好。
+- **为什么只在唯一命中时 bind**：多个候选说明无从判断哪条才是这条会话，猜错会把身份写到
+  别人的 tab 上（那个 tab 之后再也点不开自己）。宁可重建。
+- **只认 terminal**：chat 的空 `sessionId` 是「用户刚打开还没发消息」的正常形态，认领给一条
+  历史会话是真正的身份串线。
+
+### 26.3 重建（`recreate`）
+
+- terminal：新建 `data: { kind: 'terminal', agentId }` 的 tab，`TerminalViewBase` 会用
+  `agentId` 自动拉起该 agent；配额（`MAX_TERMINAL_TABS`）满则放弃。
+- chat：新建 `agent-chat` tab（只带 `agentId`，不带旧会话标题）。
+- 标题用中性占位（`Terminal N` / `Agent Chat`），**不贴旧会话名** —— 这是一条新 tab，
+  贴上旧名字会让人以为对话被接上了。真标题到手后由 `resolveTabTitle` 渲染期覆盖。
+
+### 26.4 用例
+
+`sessionActivationPlan.test.ts` 9 个：键命中 / 孤儿认领 / 多孤儿拒绝 / agent 不匹配拒绝 /
+已绑别的会话拒绝 / 无 tab 重建 / chat 不认领空 tab / chat 键命中 / terminal 不认领 chat tab。
+
+### 26.5 未覆盖：真正的「续写同一会话」
+
+重建出来的 terminal 是**新会话**，不是 resume。要复用 history 的 resume，需要
+`ResumeCursor` 之外的**agent 原生会话 id**：
+
+- 唯一现成来源是 hook 的 `HookEvent.agent_session_id`（`agent/hooks/ingest/event.rs:39`）；
+- 落点：`SessionEntry` 增 `native_session_id`，由 `wiring::hooks::project` 填充，
+  随 `SessionView` 下发；
+- 命令层新增 `live_session_resume_command(session_id)`：conversation id 由
+  `{agent_id}:{native_id}` 组成（`parse_conversation_id`），可直接复用
+  `ConversationManager::get_resume_command`；
+- 前端重建 terminal 时用 `resolveAgent(agentId).command` + 返回的 args 拼 `taskCommand`，
+  与 `ConversationsPanelWrapper.handleResumeConversation` 同形。
+
+代价是跨栈 6 处改动（wire 契约 + 前端类型 + 序列化用例），且只覆盖装了 hook 模板的 agent。
+**当前不做**，等「重建后想接着聊」被真实需要时再上。
+
+### 26.6 补：点不动是「只切了 tab，没切单元」
+
+§26.2 的三级降级解决的是「找不到 tab」，但真机第二次反馈**仍然点不动** —— 因为
+`useActivateSession` 只做了两件事：`setActiveWorkspace` + `activateTab`。
+
+而「切到某个单元」在三个侧栏里各有**一份正确的序列**：
+
+| 侧栏 | 序列 |
+| --- | --- |
+| worktree 行 | `handleOpenWorktreeTerminal`：跨项目 `setActiveProjectId` + 后端 `setActiveProject` → `activateWorkspace` → `markWorkspaceOpened` → `saveWorktreeState` → `setViewTerminal` |
+| local 行 | `onSelectProject`：`setActiveProjectId` + 后端 `setActiveProject` |
+| WSL/SSH | `handleOpenWorktreeTerminal`（同上） |
+
+`setActiveWorkspace` 只是上表**中间一步**。跨项目点击时 `activeProjectId` 没变 ⇒ 视图仍渲染
+旧项目的 tab 空间，`activateTab` 写进了用户没在看的地方 —— 表现就是「点了没反应」。
+而行本身仍然高亮（`activeSession` 是按**该单元自己的** `activeTabId` 算的），所以从截图看不出
+「你点的是一条不在前台的单元」。
+
+**修法：不在这里重写第三份序列，而是让调用方注入**（低耦合 + 零漂移）：
+
+- `WorktreeRowList.renderUnitSessions` 的签名变成 `(workspaceKey, revealUnit) => ReactNode`，
+  `revealUnit` 就是本行现成的 `onOpenWorktreeTerminal(wt.path, wt.branch)`；
+- `UnitSessionList` 增 `onRevealUnit?: () => void`，点击时**先 reveal 再 activate**
+  （反过来的话中间一帧是白屏：tab 已切、视图未切）；
+- `ProjectGitSection` / `ConnectionProjectCard` 的 local 行传 `onSelectProject(project.id)`。
+
+用例：`UnitSessionList.test.tsx` 增「先 onRevealUnit 再 activate」的顺序断言。
+
+### 26.7 补：重建要「续写」而不是「重开」
+
+§26.6 之后点击能开 tab 了，但开出来的是**新会话**。要复用 history 的 resume，缺的是
+**agent 原生会话 id** —— `ResumeCursor` 存的是 neeko 自己的 `session_id`，对 CLI 无意义。
+
+链路（跨栈，四层各一句）：
+
+| 层 | 改动 |
+| --- | --- |
+| `entry.rs` | `SessionEntry.native_session_id: Option<String>`（**不进 wire 契约**：视图不显示、不派生） |
+| `registry.rs` | `record_native_session_id`（只写一次、未知会话不建条目、**不 bump 版本**）+ `entry(id)` 快照读 |
+| `wiring/hooks.rs` | `project()` 里顺手记 `event.agent_session_id` —— 唯一来源 |
+| `conversation/manager.rs` | `resume_command_for_native(agent, native_id, cwd)`：**不经过扫描缓存**（否则「必须先去 Histor 打开一次才能恢复」是死入口） |
+| `live_sessions/commands.rs` | `live_session_resume_command(session_id) -> Option<Vec<String>>` |
+| 前端 | `useActivateSession` 重建 terminal 时 `taskCommand = <agent.command> <agent.args…> <resume args…>` |
+
+为什么 `taskCommand` 必须是**完整命令行**：`TerminalViewBase` 一旦看到它就跳过自动拉起
+agent 直接执行（`if (tabAgentId && !taskCommand)`）。
+
+**能力的真实边界**（三条都退回「新建同 agent 终端」，不猜）：
+会话没有 agent（纯 shell）、agent 没装 hook（拿不到 native id）、adapter 不支持原生恢复
+（`resume_command` 返回 `None`，例如需要 transcript 绝对路径的 Reasonix）。
+
+用例：`registry/tests.rs` 1 个（写一次 / trim / 未知会话 / 不 bump）、
+`conversation/manager.rs` 1 个（无扫描缓存也能取到 / 未注册 agent 返回 None）、
+`UnitSessionList.test.tsx` +2（有参数 ⇒ 带 `taskCommand`；无参数 ⇒ 不带）。
+
+## 27. 关 tab 不再摘掉侧栏那一行
+
+真机反馈：关掉 tab，侧栏里那条会话就没了 —— 于是「点击恢复」根本没有入口。
+
+### 27.1 「关 tab」与「会话结束」是两件事
+
+`TerminalRouter::close_session` 原来先 `unregister_and_notify` 再关 PTY，注释写的是
+「会话已不在，侧栏不得留幽灵行」。但它把两种语义压成了一种：
+
+| 触发 | 之前的动作 | 现在的动作 |
+| --- | --- | --- |
+| 用户关 tab | 注销 | `close_and_notify`：`apply(Stopped)`，**不注销** |
+| 进程自己退出 | `apply(exit_signal)` + 注销 | 不变 |
+| 销毁单元 / 清 tab 空间 | 注销 | 不变 |
+
+于是侧栏那一行留着（状态点变 stopped），点击就走 §26 的恢复链路。
+
+### 27.2 `on_exit` 必须认得「这次退出是主动关闭的尾巴」
+
+只改 `close_session` 不够：它先标 `Stopped`，PTY 随后退出又会走 `exit_and_notify` →
+`unregister`，行照样消失。所以 `on_exit` 加一条前置判据：
+
+> 条目已经是 `Stopped` ⇒ 这是主动关闭的尾巴，只确认状态、不注销。
+
+不需要新字段：`Stopped` 本身就是那个标记（`close_and_notify` 是唯一能在 PTY 还活着时把它
+写成 `Stopped` 的地方）。
+
+### 27.3 恢复成功后旧条目让位
+
+留着条目的直接后果：点回来之后，新会话是**另一条** id，侧栏会同时挂着「已停止」与「新会话」
+两行。所以重建成功后调 `forget_live_session(sessionId)` 摘掉旧条目。
+
+**只对终止态生效**：活着的会话被这条命令摘掉就是「侧栏少了正在跑的会话」，那不该由一次
+点击造成。
+
+### 27.4 用例
+
+- `wiring/pty.rs` +2：`closing_a_tab_keeps_the_session_as_stopped`（标 Stopped / 幂等）、
+  `exit_after_an_explicit_close_does_not_unregister`（**回归钉子**：尾巴不得摘条目）。
+- `UnitSessionList.test.tsx`：重建后断言 `forgetLiveSession('pty-1')` 被调用。
+
+### 27.5 已知代价
+
+关 tab 的条目留到本次运行结束（注册表是内存态）。它是**恢复点**而不是垃圾；单元被删除时
+也不会被回收，只是不再渲染（没有单元行就没有子列表）。要回收就得给 `close_terminal_session`
+加一个「销毁」标志，当前不值得 —— 条目是几十字节的内存对象。
+
+### 27.6 补：恢复后那一行不能消失
+
+§27.3 用 `forget_live_session` 让旧条目退场，结果真机反馈「点击恢复后列表消失了」。
+成因是**只做了退场，没做继承**：
+
+新 PTY 注册出来的是空条目（`title = ""`、`title_source = Placeholder`、
+`has_user_input = false`），而 `isListedSession` 要求 `hasUserInput && 有名字` ⇒
+**它不会被列出**。旧条目被摘掉、新条目又列不出来，中间就是一片空白 —— 要等用户敲进新终端
+的第一条输入才恢复。
+
+修法：把「退场」换成「**继承 + 退场**」，一条命令做完（`adopt_live_session`）：
+
+| 不继承 | 不退场 |
+| --- | --- |
+| 新条目列不出来 ⇒ 那一行消失 | 侧栏同时挂着「已停止」与「新会话」两行 |
+
+`Registry::adopt(from, into)` 三条判据：
+
+1. `from` 必须是**终止态** —— 把活着的会话合并掉，等于点一次丢一条正在跑的会话；
+2. 只搬 `into` **缺**的字段（标题 / `has_user_input` / `native_session_id`），不覆盖它
+   已经拿到的更新事实；
+3. `from == into` 直接拒绝。
+
+前端用 tab 上的 `resumeFromSessionId` 携带来源，`TerminalView.handleSessionCreated` 在
+PTY 创建成功后消费一次。**不清理这个字段**：`adopt` 对已消失的 `from` 是 no-op（幂等），
+而 `updateTab` 的 merge 把 `undefined` 读作「保持原值」，本来也清不掉。
+
+用例：`registry/tests.rs` +2（继承 + 退场 + 幂等；活着的 from 被拒）、
+`UnitSessionList.test.tsx` 改为断言 `resumeFromSessionId` 落在 tab 上。
+
+## 28. 关 tab 时「会话还在跑」：后台运行 / 退出 / 取消
+
+### 28.1 为什么不能直接关
+
+原来的关 tab 一律 `close_terminal_session`：正在干活的 agent 被顺手杀掉。三条关闭路径
+（TabBar X / 菜单 Close Tab / Cmd+W）都汇到 `closeTabWithConfirmation`，所以这件事只需要
+在**那一个**编排点做。
+
+### 28.2 后端：分离态是前提，不是优化
+
+关掉界面但进程继续跑，就没有消费者了。若照常背压，512KB 的 drain 写满 → PTY 写入被堵死
+→ 后台 agent 冻住。所以 `SessionDrain` 增 `detached`：
+
+- 分离态 `push` **永远接收**，超出 `DETACHED_TAIL_CAPACITY`（256KB）时丢**最旧**的字节；
+- 一次多丢一些（削到半容量）避免每次 push 做 O(n) 前移；
+- 接回界面时关掉分离态，恢复正常背压。
+
+命令 `detach_terminal_session(session_id, detached)` 兼任**存活探针**：drain 不存在
+⇒ 会话已结束 ⇒ 返回 `false`。drain 的存活就是 PTY 的存活，不必再加一条 `ping`。
+
+### 28.3 前端：三条关闭路径共用一个确认宿主
+
+`closeConfirmStore` 从「只服务未保存文件」扩成两种请求（`unsaved-file` / `running-terminal`），
+**共用同一个浮层 id、同一份 `hostMounted` 守卫、同一个 resolver 槽位** —— 各自再写一套的话，
+「无宿主时必须立即 cancel，否则调用方永久挂起」那条守卫会漏掉其中一套，表现为关闭静默失效。
+
+| 选择 | 动作 |
+| --- | --- |
+| 后台运行 | `detachTerminalSession(id, true)` → `closeEditorTab(..., { keepSession: true })` |
+| 退出进程 | `closeEditorTab(...)`（正常关会话） |
+| 取消 | 什么都不做 |
+
+`keepSession` 从 `closeEditorTab` → `cleanupTerminalsForTab` → `destroyTerminalsForTab`
+→ `destroyCache` 一路透传到 `closeSession` 那一行：**只拆界面，不结束进程**。
+
+### 28.4 接回：`attachSessionId`
+
+「后台运行」之后再点那一行，不能走 `--resume`（那会起一个**新**进程）。所以：
+
+- 会话还活着（`isLiveSession`）⇒ 新 tab 带 `attachSessionId: session.sessionId`；
+- `TerminalViewBase` 见到它就跳过 `createSession`，改走 `attachLiveSession`
+  （关分离态 + 补一次 `resize`），探不到就照常新建；
+- **接回时必须跳过 auto-launch**：否则会把 agent 再启动一次灌进正在跑的会话。
+
+为什么是 `attachSessionId` 而不是复用 `ptySessionId`：后者每次新建会话后都会变，
+放进 effect 依赖会让「会话一建好就整段重建一次」。
+
+### 28.5 用例
+
+- `drain.rs` +1：`detached_drain_never_backpressures_and_keeps_only_the_tail`（回归钉子）。
+- `closeConfirmStore.test.ts` 与三个既有用例：pending 形状改为带 `kind` 的判别联合。
+- `terminalCloseConfirm.test.ts` 新增 5 个：弹框 / 后台运行 / 退出 / 会话已结束不问 / 注册表
+  里没有这条会话。
+- `TerminalCloseConfirmDialog.test.tsx` 新增 2 个：三个选项都在且点名会话 / 每个按钮只回调
+  自己那一个动作。
+- `UnitSessionList.test.tsx`：新增「会话还活着 ⇒ 新 tab 带 `attachSessionId` 且不调 resume」；
+  其余重建用例改用 `state: 'stopped'` 的会话（活着的走接回）。
+
+### 28.6 修正：agent 干完了就不该弹框
+
+§28.2 用 `isLiveSession`（进程活着）当弹框判据，把 `ready` 也算进去了 —— 于是**每个干完活的
+tab 都问一次**，用户学到的教训是「无脑点退出」。
+
+「进程活着」与「有活要丢」是两个问题，拆成两个谓词：
+
+| 谓词 | 为真 | 用途 |
+| --- | --- | --- |
+| `isLiveSession` | `running` / `awaitingApproval` / **`ready`** | 点会话行时**接回**那条活着的 PTY |
+| `isBusySession` | `running` / `awaitingApproval` | 关 tab 时**要不要弹框** |
+
+- `ready` ⇒ 不弹框，直接走「退出进程」那条路（`closeEditorTab` 正常关会话）；
+- `awaitingApproval` ⇒ 仍然弹：那一轮还没完，丢掉就是丢未完成的工作。
+
+用例：`liveSessionSelectors.test.ts` +2（两个谓词对五种状态的取值）、
+`terminalCloseConfirm.test.ts` +2（`ready` 不弹框且不切分离态 / `awaitingApproval` 仍然弹）。
+
+---
+
+## 29. 修复轮（全量复审后按第一性原理收敛）
+
+复审结论：功能正确，但若不对下面几处做收敛，后续每加一个字段 / 一个 CLI / 一条关闭路径都要
+改三处，而漏改的表现全是**静默失效**。修复遵循「单一事实一个写入点 + 差异落数据 + 复用既有端口」。
+
+### 29.1 Block：DB 版本号被误带入
+
+`common/db/migrations.rs` 的 `LATEST_VERSION` 被改成 17，但 `migrate_step` 只处理 `0..=11`
+与 `12`，`_ => bail!`。后果是**任何**库（全新 / 已存在）在启动时迁移失败，`fresh_database_
+migrates_to_latest` 必红。与本期无关，回滚为 13。
+（教训：`check:quick` 不跑 `cargo test`，这条只能由 CI / 真机启动拦住。）
+
+### 29.2 标题判据拆模块 + CLI 差异落数据
+
+- `title.rs`（353 行、4 个来源的策略 + 文本工具）→ `title/{mod,judge,text,prompt,native}.rs`；
+  `mod.rs` 只有 `mod` + `pub use`（红线 9），每个文件一件事。
+- `native.rs` 的判据从 `matches!` 联合体 / 内联词表改为**常量表**：`BRAND_GLYPHS`、
+  `SPINNER_RANGES`、`WORK_PREFIXES`、`STATUS_WORDS`、`STATUS_PHRASES`、`ID_SUFFIXES`。
+  新增 CLI = 加一行数据，判据函数不改（与 `cli_status::CHANNELS` 同一条原则）。
+- 长度上界的对外暴露改为仅测试构建（生产代码经 `text` 直接取），避免 `unused_imports`。
+
+### 29.3 自报状态信箱：读侧去锁、状态去重
+
+`agent::cli_status::StatusMailbox` 承接「扫描 + 发布」：扫描器只在**写侧**（唯一写者），
+结果经 `AtomicU8` 发布；`poll` 侧 `take_pending` / `has_reported` 全为原子读。
+`OutputActivity` 回到「时间戳 + 可选信箱」的组装角色 —— 删掉 `CliProbe` 与 `cli_seen`
+（后者是前者的派生态，两份状态迟早漂移）。
+
+### 29.4 「关 tab 后台运行」只留一个 owner
+
+编排层不再自己 `detachTerminalSession`：一个 tab 可拆多 pane、各自一条 PTY，
+只有 `terminalCache.destroyCache(keepSession)` 能枚举**全部** session id。
+`store/closeTab.ts` 只负责决策，分离态由缓存层按 pane 切。
+
+### 29.5 tab 创建/关闭编排各归其位
+
+| 关注点 | 落点 |
+| --- | --- |
+| 「问用户」 | `editor/store/closeConfirmStore.ts`（zustand + resolver，泛型 `suspend<A>` 消灭两处 `as`） |
+| 「按答案做事」 | `editor/store/closeTab.ts`（无状态编排；`store/` 是 editor 域对其它域放行的直导路径） |
+| 终端 tab 的造法与配额 | `terminal/api/taskTerminal.ts::createTerminalTabIn`（显式收 `WorkspaceSession`，键从 tab 自身推导） |
+| 按会话重建 tab | `live-sessions/utils/sessionTabFactory.ts`（接回 / 续写 / 新建 chat 三分支） |
+
+`useActivateSession` 回到纯编排（判据 → 切视图 → 激活/补键/重建），不再手造 `Tab`、
+不再留第二份 `10`、不再自己拼 argv。
+
+### 29.6 argv 组装唯一实现
+
+`shared/utils/agentCommand.ts`：`quoteShellArg`（安全集不加引号）/ `quoteShellValue`
+（prompt 恒加引号，沿用既有契约）/ `shellJoin` / `buildResumeTaskCommand` / `buildAgentCommand`。
+Histor 面板与侧栏「点回来」共用 `buildResumeTaskCommand`；自动拉起 agent 的终端输入改用
+`buildAgentCommand`。参数含空白不再被拆成两个。
+
+### 29.7 去重键归一（spinner 帧不再逐帧 IPC）
+
+`sessionTitleReporter` 的去重从「逐字比较」改为「归一后比较」（去掉非字母数字、折叠空白）：
+CLI 每帧重绘只换字形（`⣋ fix bug` → `⣙ fix bug`）时不再发 IPC；文字真的变了仍然发。
+判据仍在后端 —— 归一**只喂去重槽位**。
+
+### 29.8 其它
+
+- `editorStore.mergeTabData` 的 terminal 分支改为字段表驱动（`Record<Exclude<keyof TerminalTabData,
+  'kind'>, true>`），**加字段忘登记 = 编译错误**（原来是静默 no-op）。
+- `adopt` 走 `upgrade_title` 继承标题：`entry.rs` 声明的「标题只在 upgrade_title 一处写入」
+  重新成立；活着的会话仍不得被合并。
+- `title::is_title_material` 的残留引用（`inputTitle.ts` / 测试）改为 `title::admit`。
+- 去掉挂在 `#[tauri::command]` 上无效的 `#[must_use]`（`detach_terminal_session` 的保留 ——
+  clippy 的 `must_use_candidate` 要求）。
+- `terminalTabCleanup.test.ts` 新增「每个 pane 都切分离态」用例；`closeTab.test.ts` 改为
+  决策矩阵（8 例）；`sessionTitleReporter.test.ts` 新增 spinner 帧去重用例。
+
+**验证**：`cargo test --lib` 2556 passed / `pnpm check:quick` 25 条护栏全绿（含 clippy -D warnings）。
+
+### 29.9 第二轮收敛（复审复核后的四类副本）
+
+| 副本 | 收成 |
+| --- | --- |
+| 终端配额 `10`（store 字面量 / terminal 端口常量 / `app/hooks` 本地副本） | `shared/utils/terminalTabTitle.ts::MAX_TERMINAL_TABS`，三处同源（store 不能依赖 features，所以常量必须在 shared） |
+| agent-chat tab 造法（侧栏 / Action Menu / 项目引导页 / Histor 恢复） | `agent-chat/api/openChatTab.ts::openAgentChatTab`（`api/` 是防火墙放行的直导面，且不引入 UI 依赖）+ 4 例直测 |
+| `mergeTabData` 的 `agent-chat` 逐字段 presence 合并 | 与 terminal 合并进 `mergeByFields` + `MergeRule`（`keep` / `clear`），字段表是唯一登记点（加字段忘登记 = 编译错误） |
+| 跨线程自报信箱（落在契约层 `agent::cli_status`） | `live_sessions/wiring/status_mailbox.rs`（契约层回到纯解析、零线程；探针本域持有移交件） |
+
+顺带收回无消费者的公开面：`shellJoin`（模块私有）、`createTerminalTabIn` / `MAX_TERMINAL_TABS` /
+`generateTerminalTabId`（从 terminal 门面移除，调用方直接取 api / shared）；
+`installSessionTitleReporting` / `installUserInputReporting` 合并为 `installTerminalReporting`
+（两条通道同装同卸，组件侧只持一个 `dispose`）。
+`title/mod.rs` 的测试期条件导出改为直接声明 `pub const MAX_TITLE_CHARS`（公开面在两种构建下一致）。
+
+**验证**：`cargo test --lib` 2556 passed；前端全量 `vitest run` 704 文件 / 6492 用例；`pnpm check:quick` 25/25。

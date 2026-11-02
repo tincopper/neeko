@@ -5,7 +5,7 @@
 | 问题 | 唯一合法答案 |
 | --- | --- |
 | 这个会话现在什么状态？ | 后端注册表的 `SessionState`。视图**不得**推断 |
-| 这个会话叫什么？ | 由 `title::pick` 从「来源候选」里取最强的一个；不落 tab state |
+| 这个会话叫什么？ | 由 `title::admit`（什么不配）+ `title::should_upgrade`（谁能覆盖谁）裁决，**唯一写路径** `upgrade_title`；不落 tab state |
 | 这个会话属于哪个单元？ | `WorkspaceSession` + `UnitScope`（最深根胜出），禁止字符串前缀 |
 | 侧栏凭什么存在没打开的会话？ | 注册表快照 —— 不是打开的 tab |
 
@@ -17,7 +17,7 @@
   ▼
 L1 注册表       live_sessions::Registry（内存唯一事实，写穿 SessionStore）
   │    ├─ state.rs   纯转移 reduce(state, Signal)
-  │    ├─ title.rs   纯优先级 pick/truncate/should_upgrade
+  │    ├─ title/     判据模块：judge（admit + 覆盖序）/ text / prompt / native
   │    └─ wiring/{chat,pty}.rs  原生信号 → Signal
   ▼
 L2 快照接口     list_live_sessions(workspace?) + wait_live_sessions(since, timeout)
@@ -75,7 +75,7 @@ Stopped | Exited | Closed`
 2. `Ready` 收到 `ApprovalRequested` 必须先走 `AwaitingApproval`；`ApprovalResolved` 在 `Ready` 下是
    噪声（用户误点/迟到），返回 `None`。
 
-## 4. 标题优先级（`title.rs`，纯函数）
+## 4. 标题优先级（`title/` 模块，纯函数）
 
 | 来源 | 何时可得 | 素材 |
 | --- | --- | --- |
@@ -181,3 +181,202 @@ Stopped | Exited | Closed`
 色值取自 `src/styles/themes/dark.css`（oklch），尺寸取自 `base/variables.css`
 （`--sidebar-width: 280px` / `--font-size: 12px`），因此**原型与真机同色同密度**。
 
+## 11. 标题准入判据（`admit`）：从「提取」改为「拒绝」
+
+> 对标：orca 的侧栏会话标题（`agent-row-conversation-name.ts`）走的是「候选 → 判负 → 回落」，
+> 不是「候选 → 提取」。本文只吸收**判据形状**，不吸收它的来源清单（orca 的 provider 标题扫描
+> 对应本任务 §8.2 已决定不做的部分）。
+
+### 11.1 第一性原理
+
+标题的**唯一职能**是「让用户在侧栏 / tab 栏认出这条会话」。四条公理：
+
+1. **价值 = 检索效率**，不是描述完整性 ⇒ 「短而准」优于「长而全」（`MAX_TITLE_CHARS = 80` 已落地）。
+2. **语义浓缩只能发生在源头**（provider 自己命名 / 用户自述），客户端只能**清理**不能**摘要** ——
+   这是本 PRD 既有原则，也是「不推断」的直接推论。
+3. 所有候选来源都是**别人产出的、带噪声的** ⇒ 客户端唯一能做的事是**拒绝**，不是**生成**。
+   于是标题系统的核心签名是 `admit(...) -> Option<T>`，而不是 `extract(...) -> String`。
+4. **拒绝必须发生在唯一写路径上。**
+
+第 4 条推到底，得到本节的第一条硬约束：
+
+> **只要还存在第二条写路径，`admit` 就必然有第二个调用点。**
+
+当前 `SessionEntry::new(title)` 正是那第二条路径：`registry.rs:86` 的 `register_if_absent`
+直接把 `title::pick` 的成品塞进条目，**完全绕过 `upgrade_title`**。所以**落地顺序不能反过来**：
+先收敛写路径（11.3），再加判据（11.4）。反过来做，结果是把「两份判据」变成「三份」——
+而那正是这次要修的病本身。
+
+**判据 vs 优化**（本节反复用到的一条分类）：
+
+> **移除这一层，行为不变、只是变慢 ⇒ 它是优化；移除后出错 ⇒ 它是判据。**
+
+11.3 / 11.4 / 11.5 / 11.6 是判据；11.7 是优化。混淆两者会让后来者以为删掉优化层会出错。
+
+### 11.2 为什么这正好治了实测的 `π` 事故
+
+§20.2 记着当时的处置：OSC 标题把 pi 的状态栏字形 `π` 当成了会话名，**因为是 `Native` 级别**
+而覆盖了用户首条输入，于是**整条 OSC 来源被删除**（`terminalTitle.ts` 与其 6 个用例一并删掉）。
+
+诊断错了：出问题的是**缺少准入判据**，不是来源本身。证据是当时唯一的判据
+`title::is_title_material` **是为 `Prompt` 设计的** —— 它拒绝斜杠命令与纯符号，而状态栏形态
+恰好**含字母**：`π` 是希腊字母（`char::is_alphanumeric` 为真）、`✳ Claude ready` 含单词 ——
+两者都能通过。拿它当 Native 判据等于没判。
+
+删来源的代价被低估了：Claude Code / Codex 会把**任务标题**写进 OSC（`✳ Fix login bug`），
+那是 provider 自己做的语义浓缩（公理 2 的「源头」），质量高于 `Prompt`（原始按键）。
+删掉等于永久放弃唯一的 `Native` 真实来源。补上准入后，`π` 与 `✳ Claude ready` 被拒，
+`✳ Fix login bug` 通过 —— 来源与判据各归其位。
+
+### 11.3 D1 · 先收敛写路径：`SessionEntry::new` 不再接收标题
+
+```rust
+// 现在（第二条写路径，绕过全部判据）
+SessionEntry::new(sid, kind, agent, workspace, cwd, (source, title))
+// 之后（恒为 (Placeholder, "")，标题只能经 upgrade_title 写入）
+SessionEntry::new(sid, kind, agent, workspace, cwd)
+```
+
+登记后按**质量升序**依次 apply 候选（`Prompt` 再 `Native`），让 `should_upgrade` 自己选强的。
+
+**为什么这不是重构偏好**：`title::pick` 就是 `should_upgrade` 在**空条目**上的特例 ——
+「取最强候选」已经由序关系表达了。两个函数编码同一条序 = 两份真相，而下一节要给这份真相
+加准入判据时，两份都得改。
+
+| 删除 | 量 |
+| --- | --- |
+| `title::pick` + 4 个用例 | ~30 行 + ~35 行 |
+| `ChatRegistration::title()` | 18 行 → ~6 行 |
+| `register_or_engage` 的 `.as_ref().map(\|(s,t)\| (*s, t.as_str()))` | 5 行 |
+
+**代价（已评估，可接受）**：登记时出现一个瞬时空标题条目 —— 与 `set_title` 在同一命令内完成，
+无观察者；`version` 会多 bump 1–2 次，而 `emit_changed` 仍只发一次（载荷只有版本号）。
+
+**必须与 11.4 同一个 commit**：分开做会留下「`pick` 也学会了 `admit`」的中间态。
+
+### 11.4 D2 · 判据表（`admit` 取代 `is_title_material`，不是新增一层）
+
+不是「加一个准入层」，是把**已有的 Prompt 准入泛化成 4 个来源**：函数总数不变，
+`registry.rs:422` 的 `if source == TitleSource::Prompt` 分支删除，`truncate` 降为私有细节。
+对外只剩两个函数：`admit` + `should_upgrade`。
+
+```rust
+pub fn admit(source: TitleSource, raw: &str, agent_id: Option<&str>) -> Option<String>
+```
+
+| 来源 | 判据 | 判负的例子 |
+| --- | --- | --- |
+| `Placeholder` | **永远 `None`** —— 占位不是标题 | `pi` / `Terminal 1` |
+| `User` | 非空即可（用户说了算，不套任何清理） | 空白串 |
+| `Prompt` | 含字母/数字 **且** 非斜杠命令 **且** 剥掉客套包装后仍非空 | `/model`、`/mo`、`@`、`Can you please` |
+| `Native` | 剥装饰后非空、**字符数 ≥ 2**、含字母数字、非身份回显、非纯状态词、非 `Terminal N`、非 cwd 形态 | `π`、`✳ Claude ready`、`ready`、`Terminal 2`、`/Users/tomgs/repo`、`claude-code` |
+
+`Native` 的四条子判据，每条对应一个已观测或可证伪的失效形态：
+
+| 子判据 | 失效形态 |
+| --- | --- |
+| 剥装饰（`✳ ✦ ⏲ ◇ ✋ ▲` / braille / 四分圆 / `. ` `* ` 前缀） | 装饰不进标题；剥完为空 ⇒ 判负（`✳` 单独出现） |
+| 字符数 ≥ 2 | `π` 单字符 —— **`is_alphanumeric` 挡不住**，这条是唯一挡板 |
+| 身份回显：`text == agent_id` 或其去 `-code` / `-cli` 形式，可后缀一个状态词 | `claude-code`、`pi`、`claude ready`、`cursor - action required` |
+| 纯状态词 / `Terminal N` / cwd 形态（`/` `~` `C:\` 开头，或单 token 内含分隔符） | `ready`、`idle (2m)`、`Terminal 3`、SSH 无 hook 时的 spinner+cwd |
+
+**身份判据的输入是 `agent_id`，不是 `AgentConfig`**：`agent_id` 已在 `SessionEntry` 上，
+纯函数层因此**不新增对 agents 域的依赖**。新增一个 agent 不需要改判据函数；
+slug 改名自动跟随。两侧都做「小写 + 非字母数字→空格 + 折叠」后比较（`claude-code` ≡ `Claude Code`）。
+
+**身份回显是本表里最不确定的一条**（启发式，靠观测到的几个 CLI 调出来）。它排在最后实现：
+即使漏判，后果是标题变成 `Claude Code` 这类固定短串 —— 用户仍能认出是哪个 agent 的会话，
+只是没有主题信息。属于**可接受的降级**，不是正确性缺陷。
+
+### 11.5 D4 · `Placeholder ⟹ 空标题` 这条不变量让两个谓词退化
+
+若 `admit(Placeholder, _) = None` 成立（11.4 的第一行），则
+`title_source == Placeholder ⟺ title.is_empty()`，于是：
+
+| 现在 | 之后 |
+| --- | --- |
+| `has_real_title`（`registry.rs:438`）= `!title.is_empty() && source != Placeholder` | `!title.is_empty()` |
+| `isNamedSession`（`liveSessionSelectors.ts:62`）= `source !== 'placeholder' && title.trim().length > 0` | `title.trim().length > 0` |
+| `SessionList.tsx:104` 的 `titleSource === 'placeholder'` 分支 | **删除**（`isListedSession` 已把它挡在列表外，分支不可达，注释自己写着「理论上已为空」） |
+
+收益不只是少几行：**`TitleSource` 真正退出 UI**（兑现 §10 的承诺），且堵上「IPC 传
+`source: placeholder` + 非空 title」这个当前敞着的洞（`set_live_session_title` 的
+`source` 是前端可控的 `Option<TitleSource>`，现在没有任何一层拦它）。
+
+### 11.6 D5 · 性能边界：扫描预算（红线 3 取向）
+
+现有 `title::truncate` 对**全量**输入做 `split_whitespace().collect::<Vec<_>>().join(" ")` ——
+一条 200KB 的粘贴 prompt 会在**事件泵线程**上分配一个 200KB `String` + 每 token 一个指针的 `Vec`，
+而它被 `pick` 与 `upgrade_title` 两个入口调用（11.3 之后只剩一个）。
+
+改为先按**字符预算**取零分配前缀切片，再折叠、再截断：
+
+```rust
+fn budgeted(text: &str) -> &str {
+    match text.char_indices().nth(TITLE_SCAN_BUDGET_CHARS) {
+        Some((byte_idx, _)) => &text[..byte_idx],
+        None => text,
+    }
+}
+```
+
+预算 `MAX_TITLE_CHARS * 8`：给 8 倍余量吸收缩进/换行（先按 80 字符硬切会把「80 个空格 + 正文」
+整条切掉）。判据只看前缀：命令与 cwd 都在行首，结论不变。
+
+### 11.7 D3 · 前置门是传输优化，不是判据（措辞修正）
+
+早先版本把「用户输入前不收集 Native」写成**前置门**并与准入判据并列。按 11.1 的分类重新判：
+
+- 如果 `admit` 正确，用户输入前的噪声**全部被拒**，`isListedSession` 也不会列它
+  ⇒ 前置门对**正确性零贡献**；
+- 它唯一的作用是**少发 IPC**（CLI 一启动就会反复刷 OSC）。
+
+所以它必须与「逐字去重」放在同一个桶里：**无语义的传输优化**。措辞不能叫「门」或「判据」，
+否则下一个人会以为删掉它会导致错误。真正的成本模型是：
+
+| 层 | 职责 | 删掉的后果 |
+| --- | --- | --- |
+| `admit`（后端） | 判据 | **出错** |
+| 逐字去重（前端） | 同一串不发两次 | 变慢 |
+| 未 Engage 前不发（前端） | 少发启动期噪声 | 变慢 |
+
+### 11.8 与既有决定的关系
+
+| 既有 | 本次 |
+| --- | --- |
+| §4 表格里 `Native` 写着「`term.onTitleChange`」，但 §20.2 已把实现删掉（漂移） | 恢复，且补上准入 —— 文档与实现重新一致 |
+| §23「斜杠命令不是标题」用 `source == Prompt` 分支 | 该分支移入 `admit` 的 `match`，`upgrade_title` 不再知道来源差异 |
+| R4.1 `should_upgrade` 单调升级 | **不动**。判据正交，改任一个都是错的 |
+| §20.2「OSC 不再是标题来源」 | 结论反转，但**理由被保留**：当时挡不住 `π`，现在挡得住 |
+| 第三轮修订「没有真标题就不显示名字」 | 加强：判负时**不写空串**，已有标题保持 |
+
+### 11.9 未根本解决的一处：OSC 通道的语义二义性（诚实标注）
+
+`OSC` 承载**两类语义**（provider 渲染给终端标题栏的字符串）：任务主题 `✳ Fix login bug`
+与状态 `✳ Claude ready`。hook topic 通道只承载一类（显式声明的会话主题）。当前两者都映射到
+`Native`，靠「同级覆盖 + 谁后到」决胜负。
+
+`admit` 之后这个问题**在已枚举形态上消失**（噪声帧被拒在门外，不参与覆盖竞争），但它是
+**启发式收敛，不是结构性区分**：某个 CLI 的 idle 帧形态没被枚举到时，仍会覆盖正确标题。
+表现是「标题变成一个固定短字符串」—— 可观测、可修。
+
+**评估过并否决的结构性备选**：给 OSC 独立等级（`Placeholder < Osc < Prompt < Native < User`）。
+
+- 序上 `Osc < Prompt` ⇒ Claude 的 `✳ Fix login bug` 会输给用户的「帮我看看登录」—— 语义更差
+  （后者是原始按键，前者是 provider 的语义浓缩，公理 2 说浓缩在源头）；
+- 序上 `Osc > Prompt` ⇒ 状态帧又压过用户原话；
+- 代价：`TitleSource` 加 variant ⇒ wire 契约变 ⇒ 前端类型 + 序列化 + `view.rs` 断言。
+
+**触发条件（写死，避免反复重开）**：真机出现 **≥2 例** `admit` 漏判（表现为标题被某个固定
+短串占住且不恢复），才升级为独立等级；1 例按 11.4 补一条子判据。
+
+### 11.10 明确不做（附理由，避免评审重开）
+
+1. **词边界截断**（orca 的 `truncateAtWordBoundary`）：中文没有词边界；英文回退到上一个空格
+   最多丢掉 45% 预算，换来的是「好看」而不是「可辨认」—— 公理 1 优先可辨认性。
+2. **自动命名的用户开关**（orca 的 `tabAutoGenerateTitle` 默认 `false`）：本任务的
+   「会话进侧栏的时机 = 有名字」直接绑在自动命名上，关掉等于侧栏不工作。开关会破坏已有
+   不变量，而收益（少数人想看到无标题会话）不成立 —— 无标题的会话本来就不该列。
+3. **provider 会话文件反查标题**（orca 的 `aiVaultTitle`）：§8.2 已定。但记下它的护栏：
+   一旦 neeko 支持 tab 内多 PTY，标题归属必须按 **sessionId** 而非 tabId，否则同 tab 的两个
+   pane 会互相抢名字（orca 用 `agent + sessionId` 双匹配才认）。当前单 PTY/tab 无此风险。

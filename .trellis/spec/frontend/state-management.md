@@ -752,17 +752,33 @@ const browserState = useProjectBrowserStore((s) =>
 ### 2. Signatures
 
 ```ts
-// src/features/editor/store/closeConfirmStore.ts（zustand store + 共享编排同文件）
+// src/features/editor/store/closeConfirmStore.ts —— **只做「问」**：待确认请求 + resolver 槽位
 useCloseConfirmStore.request(fileName: string): Promise<'save' | 'discard' | 'cancel'>;
-useCloseConfirmStore.resolve(action: 'save' | 'discard' | 'cancel'): void;
+useCloseConfirmStore.requestTerminalClose(title: string): Promise<'background' | 'exit' | 'cancel'>;
+useCloseConfirmStore.resolve(action): void;
+
+// src/features/editor/store/closeTab.ts —— **只做「做」**：无状态编排（三条关闭路径共用）
 closeTabWithConfirmation(tabKey: string, tabId: string, saveTab?: (tabId: string) => Promise<boolean>): Promise<boolean>;
 ```
+
+两个文件同目录、职责相反：state 与副作用分开，各自的测试方式与失败面才分得开
+（store 测「回传 / 并发排队 / overlay 幂等」，编排测「弹不弹、选完怎么关」）。
+两者都在 `store/` 下是因为 `store/` 是 editor 域对其它域唯一放行直导的非门面路径 ——
+app 层（Cmd+W / `AppModals`）必须能直接用到它，塞回门面会把 CodeMirror / LSP 整张
+依赖图拖进每个只想关 tab 的调用点。
 
 ### 3. Contracts
 
 - dirty 文件 tab（`isDirtyFileTab`）→ 经 store 弹三选确认框（全局唯一实例，渲染于 `AppModals`）。
 - `'cancel'` → 不关；`'discard'` → 直接关；`'save'` → `saveTab` 成功才关（失败含 Save As 取消 → 不关）。
 - 非 file tab / 非 dirty → 直关，不弹框。
+- **会话还在跑**（terminal tab 的 `ptySessionId` 命中注册表且 `isBusySession`：`running` /
+  `awaitingApproval`）→ 弹「后台运行 / 退出进程 / 取消」。`ready`（agent 干完、进程还在）
+  不问 —— 那时关 tab 就是普通的关 tab，弹「它还在跑」是在说假话。
+- `'background'` → `closeEditorTab(tabKey, tabId, { keepSession: true })`：只拆界面。
+  **drain 转分离态的唯一写入点在 `terminalCache.destroyCache(keepSession)`** —— 它按每个
+  pane 的缓存条目切（一个 tab 可拆多 pane、各自一条 PTY），编排层只看到 `tab.data.ptySessionId`
+  一个 id。不要在编排层再 detach 一次（同一事实两个 owner，且会漏掉其它 pane）。
 - 关闭一律经 `@/features/terminal` 门面 `closeEditorTab`（PTY 回收等清理不绕过）。
 - 保存动作显式注入（如 `useAppShellData` 把 `fileView.saveTabById` 传给 `closeActiveTabCommand` / `useTabManagement`），不设模块级注册器。
 
@@ -782,6 +798,10 @@ closeTabWithConfirmation(tabKey: string, tabId: string, saveTab?: (tabId: string
 
 - 每条关闭入口 4 分支：cancel 不关 / discard 关（不调 saveTab）/ save 成功关（调 saveTab）/ save 失败不关；外加非 file 与非 dirty 直关分支。断言点：`closeEditorTab` 门面调用参数 + `saveTab` 是否被调。
 - `closeConfirmStore.test.ts`：三选回传、并发排队（旧 Promise resolve 'cancel'）、overlay 计数幂等。
+- `store/__tests__/closeTab.test.ts`：运行中会话的决策矩阵（cancel 不关 / background 带
+  `keepSession` / exit 普通关 / `ready`·已结束·会话缺失不问）+ tab 已消失时不挂起。
+- `terminal/components/__tests__/terminalTabCleanup.test.ts`：`keepSession` ⇒ **每个 pane**
+  的 session 各切一次分离态，且不调用 `closeTerminalSession`。
 
 ### 7. Wrong vs Correct
 
@@ -1823,7 +1843,7 @@ const state = useStore((s) => s.getState(projectId));
 
 **问题**：关闭 tab 的入口有多条（X 按钮、菜单 `CLOSE_TAB_EVENT`、键盘快捷键）。若新增入口直调 `closeEditorTab` 而不经确认编排，dirty 文件 tab 会被静默关闭、内容丢失。历史事故（2026-09-04，任务 `09-04-cmdw-unsaved-confirm`）：`closeActiveTabCommand`（菜单 Cmd+W）与 `useTabManagement.handleCloseTab`（Ctrl+W 默认绑定）均绕过确认——untitled 新建文件输入内容后 Cmd+W 直接丢失，无任何提示。
 
-**正确模式**：一律经 `closeTabWithConfirmation`（`src/features/editor/store/closeConfirmStore.ts`），编排契约见「场景：Tab 关闭入口统一走未保存确认编排」。新增关闭入口时自问：这条路径 dirty 时会弹确认框吗？
+**正确模式**：一律经 `closeTabWithConfirmation`（`src/features/editor/store/closeTab.ts`），编排契约见「场景：Tab 关闭入口统一走未保存确认编排」。新增关闭入口时自问：这条路径 dirty 时会弹确认框吗？
 
 **涉及文件**：`src/app/hooks/closeActiveTabCommand.ts`、`src/features/editor/hooks/useTabManagement.ts`、`src/features/editor/hooks/usePaneActions.ts`、`src/app/AppModals.tsx`。
 
@@ -2089,7 +2109,8 @@ failed > ready > stopped`），**无会话返回 `null` 且不渲染状态点**�
 界面只表达结果。展示它等于把内部优先级暴露成用户概念，且会诱导前端复刻升级规则。
 
 **选中态只出现在最具体的一层**（`row-current`，`styles/base/tailwind.css` 的 `@utility`）：
-会话行用强调色 12% 淡底 + 左侧 2px 色条（双通道，色觉障碍下仍可读）；父级（单元行）在
+会话行用强调色 12% 淡底（单通道 —— 左侧 2px 色条已按 2026-11-02 反馈去掉：它和行内的
+agent 图标挤在同一段左内边距上，读起来像错位的装饰块）；父级（单元行）在
 **它里面有会话被选中时不再填充**，只保留文字语气，否则才用中性 `--bg-selected`。
 判据来源是 `selectActiveSessionRefs`（从稳定的 `tabs` / `editorLayout` 切片在 `useMemo`
 中派生前台会话的 `workspaceKey + kind + sessionId`）+ `unitsWithListedActiveSession`
@@ -2143,3 +2164,62 @@ failed > ready > stopped`），**无会话返回 `null` 且不渲染状态点**�
 （否则每次快照刷新都会把它重新弹开）。分页按 **10 条一页**：`SessionList` 只渲染
 `visibleCount` 条，「显示更多」每次再加一页（不是一次全放开）；条数增长时回到第一页 ——
 新会话在后端已按开始时间倒序排在最前，不重置会让用户看不到刚出现的那条。
+
+---
+
+## 场景：tab 制造端口与 tab data 字段表 2026-11-02
+
+### 1. Scope / Trigger
+
+新增或修改任何「创建 editor tab」的入口（侧栏会话行、Action Menu、项目引导页、
+Histor 恢复、终端 taskCommand）时触发。**禁止手造 `Tab`**：`id` 铸造、`scope` 构造、
+占位标题、配额与「创建即激活」都有唯一入口。
+
+### 2. Signatures
+
+```ts
+// 终端 tab（features/terminal/api/taskTerminal.ts）
+createTerminalTabIn(workspace: WorkspaceSession, opts: TaskTerminalOptions): boolean;
+createTaskTerminal(projectId: ProjectId, opts: { taskCommand: string } & TaskTerminalOptions): boolean;
+
+// agent-chat tab（features/agent-chat/api/openChatTab.ts）
+openAgentChatTab(workspace: WorkspaceSession, opts?: OpenChatTabOptions): string;
+
+// 配额上限（唯一数字，shared 里，因为 editorStore 也要用）
+// src/shared/utils/terminalTabTitle.ts
+export const MAX_TERMINAL_TABS = 10;
+```
+
+### 3. Contracts
+
+- **配额**：`editorStore.addTab` 是硬门；端口用同一个常量产出 `false` 给调用方决定是否提示。
+  数字只允许出现在 `shared/utils/terminalTabTitle.ts` —— 放在 features 里 store 取不到
+  （防火墙禁止 store → features），历史上的字面量副本就是这样长出来的。
+- **键从 tab 自身推导**：`addTab` 用 `tabSpaceKeyOf(tab.scope)` 落键，端口用
+  `workspace.key` 激活。**不要**把 `projectId` 当 tab 空间键传（活跃单元是 linked worktree 时
+  会激活到另一个空间，表现是「切了 tab 但视图不动」）。
+- **占位标题**：agent 名 → agentId → `Terminal N`；真标题由 `resolveTabTitle` 在渲染期覆盖，
+  不写回 store。
+- **端口只决定身份**：调用方传「哪个单元 / 接谁 / 跑什么」，不传 `kind`、不传 `id`。
+  `openAgentChatTab` 的 `data` 补丁里 `kind` 会被端口覆盖。
+
+### 4. tab data 合并（`editorStore.mergeTabData`）
+
+字段表是**唯一登记点**，类型是 `Record<Exclude<keyof X, 'kind'>, MergeRule>`：
+加字段不登记 = **编译错误**（此前是静默 no-op：`updateTab` 看起来成功、读回来还是旧值）。
+
+| 规则 | 语义 | 使用者 |
+| --- | --- | --- |
+| `keep` | `undefined` 读作「这次不更新」 | `terminal`（挂载键 / 恢复标记） |
+| `clear` | 显式 `undefined` 也是写入（清除） | `agent-chat`（切 agent 丢模型、恢复标记一次性消费） |
+
+`file` 混用两种规则（必填字段 keep、可选字段 clear），尚未纳入字段表 —— 改它要逐字段给 rule。
+
+### 5. Tests Required
+
+- 端口：`agent-chat/api/__tests__/openChatTab.test.ts`（id 唯一 / scope / 标题 / data 透传 /
+  `kind` 不可覆盖）；`terminal/api/__tests__/taskTerminal.test.ts`（配额）。
+- 合并语义两侧都要钉住：`editorStore.test.ts` 的「agent-chat 字段落盘（clear）」与
+  「terminal 字段（keep）」两组。
+- 端到端：`live-sessions/components/__tests__/UnitSessionList.test.tsx`（点击会话行 ⇒
+  接回 / 续写 / 重建）。
