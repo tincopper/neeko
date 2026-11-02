@@ -1166,3 +1166,23 @@ Turned the execution address into the single identity for agent-chat and session
 ### Next Steps
 
 - 剩余 2 条 Nit 未动（useUnitsWithActiveSession 在 per-project 组件各订阅一次；SessionList 的 maxRows 变化不重置 visibleCount），等有实测性能信号再改
+
+
+## Session 391: live-sessions 复审收敛：DB 版本回滚、通知收尾上提、删除编排入组合根、键盘拖拽声明与实现一致
+<!-- trellis-session: v=2 fp=855a963cd81cce5d -->
+
+**Date**: 2026-11-02
+**Task**: live-sessions 复审收敛：DB 版本回滚、通知收尾上提、删除编排入组合根、键盘拖拽声明与实现一致
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**

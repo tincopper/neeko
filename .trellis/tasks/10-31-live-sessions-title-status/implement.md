@@ -4,68 +4,69 @@
 > 每步都留可验证判据；**单测先红再绿**（TDD），跨栈常量最后统一。
 
 ## P0 纯层（无 IO，100% 直测）
-- [ ] 1.1 `live_sessions/{mod,entry}.rs`：`SessionKind` / `SessionState` / `TitleSource` / `SessionEntry`；
+- [x] 1.1 `live_sessions/{mod,entry}.rs`：`SessionKind` / `SessionState` / `TitleSource` / `SessionEntry`；
       `mod.rs` 只 `mod` + `pub use`（红线 9）。
-- [ ] 1.2 `live_sessions/state.rs`：`Signal` + `reduce` 表；用例覆盖全部 `(state, signal)`、
+- [x] 1.2 `live_sessions/state.rs`：`Signal` + `reduce` 表；用例覆盖全部 `(state, signal)`、
       「终止不复活」、「审批往返回 Ready」。
-- [ ] 1.3 `live_sessions/title.rs`：`pick` / `truncate` / `should_upgrade`；用例覆盖强弱、
+- [x] 1.3 `live_sessions/title.rs`：`pick` / `truncate` / `should_upgrade`；用例覆盖强弱、
       空白候选、中文截断、`User` 不被覆盖。
-- [ ] 验证：`cargo test --lib live_sessions::`
+- [x] 验证：`cargo test --lib live_sessions::`
 
 ## P0 注册表
-- [ ] 2.1 `live_sessions/registry.rs`：`register` / `apply` / `set_title` / `unregister` /
+- [x] 2.1 `live_sessions/registry.rs`：`register` / `apply` / `set_title` / `unregister` /
       `snapshot(Option<&UnitScope>)` / `version()`；锁内只做 map 与克隆，落盘在锁外。
-- [ ] 2.2 `ResumeCursor::from_entry`（单一投影）+ `SessionState → SessionStatus` 单向映射。
-- [ ] 2.3 用例：重复 id 只 warn、迟到信号丢弃、状态未变不 bump、`snapshot` 排序稳定。
-- [ ] 2.4 `AppStateWrapper` 挂 `live_sessions: Arc<Registry>`（复用既有 `SessionStore` 实例）。
+- [x] 2.2 `ResumeCursor::from_entry`（单一投影）+ `SessionState → SessionStatus` 单向映射。
+- [x] 2.3 用例：重复 id 只 warn、迟到信号丢弃、状态未变不 bump、`snapshot` 排序稳定。
+- [x] 2.4 `AppStateWrapper` 挂 `live_sessions: Arc<Registry>`（复用既有 `SessionStore` 实例）。
 
 ## P0 chat 生产者（AC4）
-- [ ] 3.1 `live_sessions/wiring/chat.rs`：`StreamEvent → Option<Signal>` 纯函数 + `observe(registry, sid, &[SequencedEvent])`。
-- [ ] 3.2 在 `spawn_session_pipeline`（`agent/chat/commands.rs`）接线：注册（标题 =
+- [x] 3.1 `live_sessions/wiring/chat.rs`：`StreamEvent → Option<Signal>` 纯函数 + `observe(registry, sid, &[SequencedEvent])`。
+- [x] 3.2 在 `spawn_session_pipeline`（`agent/chat/commands.rs`）接线：注册（标题 =
       `pick([(Native, req.topic), (Prompt, req.prompt)])`，都没有则留空）、
       批量 emit 处观察、结束处注销。**不新增事件通道**。
-- [ ] 3.3 用例：假 session 驱动（`for _ in 0..N` 有界读，勿用 `while let`）+ 断言状态序列、
+- [x] 3.3 用例：假 session 驱动（`for _ in 0..N` 有界读，勿用 `while let`）+ 断言状态序列、
       `Error` 后 `TurnEnd` 不改写失败态。
 
 ## P1 PTY 生产者（AC5）
-- [ ] 4.1 `create_terminal_session` 增 `agent_id: Option<String>`；PTY 创建成功后注册
+- [x] 4.1 `create_terminal_session` 增 `agent_id: Option<String>`；PTY 创建成功后注册
       （`workspace` 来自参数、`cwd` 用于校验归属）。
-- [ ] 4.2 `spawn_pty_pipeline` 的 child 退出 → `Exited` / `Failed` + 注销。
-- [ ] 4.3 用例：退出码 0 / 非 0 两态；真机各跑一次（`exit` / `false`）。
-- [ ] 4.4 前端 `TerminalTabData` 增 `ptySessionId?`，由终端策略创建后回写 tab data；
+- [x] 4.2 `spawn_pty_pipeline` 的 child 退出 → `Exited` / `Failed` + 注销。
+- [x] 4.3 用例：退出码 0 / 非 0 两态（`exit_code_maps_to_the_terminal_state`）；
+      真机两态仍待一次手动确认（`exit` / `false`）—— 见 §29 收尾清单。
+- [x] 4.4 前端 `TerminalTabData` 增 `ptySessionId?`，由终端策略创建后回写 tab data；
       删除 `status` 字段（视图不再持有状态副本）。
 
 ## P1 IPC（AC6）
-- [ ] 5.1 `live_sessions/events.rs`：`SESSIONS_EVENT`；`shared/events.ts` 同名常量。
-- [ ] 5.2 `live_sessions/commands.rs::list_live_sessions(workspace?)`：薄命令，
+- [x] 5.1 `live_sessions/events.rs`：`SESSIONS_EVENT`；`shared/events.ts` 同名常量。
+- [x] 5.2 `live_sessions/commands.rs::list_live_sessions(workspace?)`：薄命令，
       `state.resolve_unit_scope` 唯一分组入口（红线 6/12）。
-- [ ] 5.3 `wait_live_sessions(since, timeout_ms)`：版本未变挂起，超时返回 `changed: false`
+- [x] 5.3 `wait_live_sessions(since, timeout_ms)`：版本未变挂起，超时返回 `changed: false`
       （复用 `terminal_drain_wait` 的 credit-pull 结构与超时上限）。
-- [ ] 5.4 用例：两单元交叉过滤（只返回本单元）；超时不空转。
-- [ ] 5.5 注册命令到 `lib.rs` 的 `generate_handler!`。
+- [x] 5.4 用例：两单元交叉过滤（只返回本单元）；超时不空转。
+- [x] 5.5 注册命令到 `lib.rs` 的 `generate_handler!`。
 
 ## P1 前端 store + selector + 图标（AC7）
-- [ ] 6.1 `shared/store/liveSessionsStore.ts`：只做 hydrate / apply（丢弃乱序回包）；
+- [x] 6.1 `shared/store/liveSessionsStore.ts`：只做 hydrate / apply（丢弃乱序回包）；
       `useLiveSessionsBridge()` 挂在 AppShell 层（全局一次监听 + 长轮询）。
-- [ ] 6.2 `shared/selectors/liveSessionSelectors.ts`：`sessionsByUnit` / `dominantState` /
+- [x] 6.2 `shared/selectors/liveSessionSelectors.ts`：`sessionsByUnit` / `dominantState` /
       `tabSession`（chat 用 `data.sessionId`，terminal 用 `data.ptySessionId`）。
-- [ ] 6.3 `shared/components/SessionStatusIcon.tsx`：状态→视觉唯一表（穷举用例）。
-- [ ] 6.4 用例：三个 selector + 图标映射（每个状态都有确定输出、无会话不渲染）。
+- [x] 6.3 `shared/components/SessionStatusIcon.tsx`：状态→视觉唯一表（穷举用例）。
+- [x] 6.4 用例：三个 selector + 图标映射（每个状态都有确定输出、无会话不渲染）。
 
 ## P2 三个投影（AC8）
 
 > 视觉契约：[`prototype.html`](./prototype.html)。7.2 / 7.3 的成品要与它对齐
 > （状态→视觉一张表、单元角标取 dominantState、派生标题、无会话不画点）。
 
-- [ ] 7.1 tab 标题：`features/editor/utils/tabTitle.ts::resolveTabTitle`；`TabItem` 改用派生值。
-- [ ] 7.2 侧栏单元图标：`SessionRow` 增 `status?: SessionState`；`ProjectGitSection` /
+- [x] 7.1 tab 标题：`features/editor/utils/tabTitle.ts::resolveTabTitle`；`TabItem` 改用派生值。
+- [x] 7.2 侧栏单元图标：`SessionRow` 增 `status?: SessionState`；`ProjectGitSection` /
       `WorktreeRowList` 用 `dominantState(sessionsOfUnit(key))` 传入。
-- [ ] 7.3 侧栏单元子列表：`shared/components/SessionList.tsx`（**agent 图标** + 标题 + 状态 +
+- [x] 7.3 侧栏单元子列表：`shared/components/SessionList.tsx`（**agent 图标** + 标题 + 状态 +
       相对时间；点击激活对应 tab），单元行默认折叠、展开渲染（≤20 条 + 查看全部）。
       图标复用既有 `getAgentIconSrc` / `AgentIcon`（`DEFAULT_AGENT_ICON = cli.svg` 已是兜底）——
       **不要**为会话行另建 agent→图标 映射表（那是第二份真相）。
-- [ ] 7.4 用例：`resolveTabTitle` 优先级（注册表 > tab 兜底）、空会话不渲染状态点。
-- [ ] 7.5 与 `prototype.html` 逐项对齐（5 状态视觉 / 角标规则 / 派生标题），
+- [x] 7.4 用例：`resolveTabTitle` 优先级（注册表 > tab 兜底）、空会话不渲染状态点。
+- [x] 7.5 与 `prototype.html` 逐项对齐（5 状态视觉 / 角标规则 / 派生标题），
       差异要么改实现、要么改原型并在此记录理由 —— 不允许"实现与原型各说一套"。
       `TitleSource` **不渲染**任何徽标（原型已按评审去掉），只参与 `should_upgrade`。
 
@@ -85,10 +86,10 @@
 - [x] 9.1 跨栈常量用例：`SESSIONS_EVENT` 双端一致（照 `transports.test.ts` 的序列断言写法）。
       `shared/__tests__/sessionsEventConstant.test.ts`：取后端**声明值**与前端常量比相等
       （非子串断言）+ 声明恰好一条 + 不与 `AGENT_CHAT_EVENT` / `TRANSLATION_EVENT` 撞名。
-- [ ] 9.2 若加静态判据（`SessionState` 赋值只允许在 `live_sessions/`），同步护栏 + 台账。
+- [x] 9.2 若加静态判据（`SessionState` 赋值只允许在 `live_sessions/`），同步护栏 + 台账。
 - [x] 9.3 spec 同步：`agent-chat-transports.md`（新增「会话状态与标题的唯一来源」一节）、
       `frontend/state-management.md`（注册表快照 vs 视图派生）、`persistence-and-cache.md`（写穿策略）。
-- [ ] 9.4 收尾只跑一次 `pnpm check:quick`；AC1–AC9 勾验；`add_session.py`；**不主动提交**。
+- [x] 9.4 收尾只跑一次 `pnpm check:quick`；AC1–AC9 勾验；`add_session.py`；**不主动提交**。
 
 ## 实施记录（2026-10-31，8.1 / 9.1 / 9.3）
 
@@ -1058,3 +1059,118 @@ CLI 每帧重绘只换字形（`⣋ fix bug` → `⣙ fix bug`）时不再发 IP
 `title/mod.rs` 的测试期条件导出改为直接声明 `pub const MAX_TITLE_CHARS`（公开面在两种构建下一致）。
 
 **验证**：`cargo test --lib` 2556 passed；前端全量 `vitest run` 704 文件 / 6492 用例；`pnpm check:quick` 25/25。
+
+## 29. 完成度盘点（2026-11-02）
+
+### 29.1 代码与用例：全部落地
+
+| 层 | 证据 |
+| --- | --- |
+| 纯层 | `state::reduce` 穷举 5 状态 × 9 信号（`reduce_covers_every_state_signal_pair`）；`title::admit` 按来源穷举 |
+| 注册表 | `live_sessions::registry` 28 个用例（重复 id / 迟到信号 / 未变不 bump / 排序 / 长轮询） |
+| 两个生产者 | `wiring::{chat,pty,hooks}` 41 个用例 |
+| IPC | 5 条命令全部注册（`lib.rs:131-135`）+ 2 条终端命令（`:125-126`） |
+| 前端 | 79 个用例（selectors / SessionList / SessionStatusIcon / tabTitle / bridge / activation / close-confirm） |
+| 门禁 | `cargo test --lib` 2556 passed；`pnpm check:quick` 25/25 |
+
+### 29.2 本轮核对时发现并修掉的一处漂移
+
+`prototype.html` 的 `.session[aria-current="true"]` 还带着 `box-shadow: inset 2px 0 0` ——
+那是 §22 记录、后来按反馈从实现里删掉的左侧色条。按 §7.5 自己的规矩（「差异要么改实现、
+要么改原型并在此记录理由」）同步删掉，两边现在只有一个通道（强调色淡底）。
+
+### 29.3 仍未完成的项（都需要真人 + 真机）
+
+| 项 | 为什么不能由代码证明 |
+| --- | --- |
+| AC8 真机视觉 | 「图标随状态变化 / 会话行密度 / 五状态视觉」只能看，不能断言（jsdom 里没有真实布局） |
+| 4.3 退出码两态真机 | 单测覆盖了映射；真跑一次 `exit` 与 `false` 才算验收 |
+| 9.2 静态判据（`SessionState` 赋值只允许在 `live_sessions/`） | 判据本身没实现。**当前事实上成立**（只有注释提到它，没有赋值点），但守住它的是纪律而不是护栏 |
+
+§29.3 这三项不阻塞「功能可用」：前两项是验收动作，第三项是加固。
+
+## 30. 删除会话连 tab 一起关
+
+侧栏行尾菜单的「Delete」原来只做后端的事（结束进程 + 摘条目）：tab 还开着，里面是一个
+已经死掉的终端面板 —— 会话没了却留下它的视图，只是噪声。
+
+顺序在**前端**定，而且是唯一能避免告警的地方：
+
+1. `closeEditorTab(workspaceKey, tabId)` —— 走既有的关闭入口，进程正常结束；
+2. `delete_live_session(sessionId)` —— 此时 `owns_terminal_session` 已为假，只剩 `unregister`。
+
+反过来（先删条目）会怎样：tab 的关闭路径仍会去 `close_session` 一个已不存在的进程，
+后端只能记一条 `unknown session` 告警。
+
+`closeEditorTab` 在前端手上（`@/features/terminal` 门面），不需要为「删除」新开一条命令。
+没有关联 tab 的会话（后台运行中 / tab 已关）走同一条路径，只是第 1 步是 no-op。
+
+用例：`useSessionRowActions.test.ts` +3（有关联 tab ⇒ 关掉它再删 / 无 tab 只删 / 取消则
+两者都不动）。
+
+## 31. 复审收敛轮（按第一性原理重排归属）
+
+复审结论：功能可用，但四处「唯一入口」在实现里被绕开了 —— 每处都表现为「下一个调用方
+照抄一遍，然后静默失效」。本轮按「单一事实一个写入点 / 差异落数据 / 组合根只编排」重排。
+
+### 31.1 Block：DB 版本号（启动即坏）
+
+`LATEST_VERSION: 17` 而 `migrate_step` 只处理 `0..=11` 与 `12`，`_ => bail!`。实测
+`fresh_database_migrates_to_latest` 直接红：**任何**库启动迁移失败。回滚为 `13`，
+并删掉 `assert_eq!(v, 13)`（它与上一行的 `LATEST_VERSION` 自相矛盾，版本链一增长必红）。
+
+§29.1 早就写了「回滚为 13」—— 文档说修了、代码没修，是最坏的一种漂移。
+
+### 31.2 通知收尾上提：`notify_if_changed`
+
+「变了才通知」原来在 `pty` 里写了两遍、组合根又写了一遍。抽成
+`live_sessions::events::notify_if_changed(app, version, changed)`：`app` 为 `None`
+（退出清理 / 测试）时只做转移不发事件。五个入口（`pty::register` / `poll` /
+`exit_and_notify` / `chat::register_and_notify` / `lifecycle::*`）共用它。
+
+### 31.3 `close_*` / `unregister_*` 搬出 `wiring::pty`
+
+它们是「注册表 + 事件」的知识，与 PTY 无关。放在 `pty` 里时 chat 侧只能
+`use ...::wiring::pty::unregister_and_notify` —— 一个 chat 命令依赖终端模块。新落点
+`live_sessions::lifecycle`：只做转移（关 tab / 注销），一行进程控制都没有。
+
+`pty::exit_and_notify` 留在原地：进程**自己**退出要「落终止态 + 注销 + 认主动关闭的尾巴」，
+那是 PTY 退出路径的语义，不是外部要求它停。
+
+### 31.4 删除的编排落到组合根，探测与派发合成一步
+
+- `TerminalRouter::close_session` 改为返回 `bool`（是否由本路由处理）：探测（`take_owner`）
+  与派发在**同一个**临界区，`false` 是正常路径而不是「unknown session」告警。于是
+  `owns_terminal_session` + `close_session` 的 TOCTOU 窗口消失，也不再需要两次加锁。
+- 新模块 `app::session_lifecycle`：`delete_session(registry, router, chat, app, id)` 是唯一
+  编排点，命令 `delete_live_session` 只拆参数（红线 6）。依赖注入 → 3 个用例直测
+  （未知 id 只摘条目且幂等 / chat 走 Cancel+unregister / 终端走 router 关闭后摘条目）。
+- `app/mod.rs` 边界表补一行「删除会话：跨两个生产者的终止编排」，
+  `app/commands.rs` 文件头收窄为「进程自身的生命周期」—— 契约与内容对齐。
+
+### 31.5 前端：动作层与绑定层分家
+
+`utils/sessionRowActions.ts`（无 React，可直测）+ `hooks/useSessionRowActions.ts`（只
+`useCallback` 包一层）。「删除一条会话」的顺序不变量（先关 tab 再删条目）只有一处实现，
+未来的批量删除 / 命令面板不会各自再写一遍。失败上报改走 `reportFrontendError`
+（统一错误面），不再只落 `console.warn`。
+
+### 31.6 键盘拖拽：声明与实现一致
+
+`ProjectGroup` 收 `listeners` 却不收 `attributes`，而 `ProjectsPanel` 仍注册
+`KeyboardSensor` —— 传感器永远不触发（死配置），同时项目头的 Enter/Space 折叠与
+dnd-kit 的激活键是同一组键。结论：**项目列表只支持指针拖拽**，
+`KeyboardSensor` 同 diff 移除；`dragHandleProps` 收窄为 `DraggableSyntheticListeners`
+（`HTMLAttributes` 能塞 `children` / 任意 `on*`，一个误传就能覆写整行行为）。
+
+### 31.7 菜单项按能力渲染
+
+`hasToolbar = Boolean(onRename || onDelete)` 但两项都渲染 ⇒ 只传 `onDelete` 时「Rename」
+仍出现、点下去静默无反应。改为按项渲染（`SessionRowMenu` 的两个 prop 变可选），
+并补 3 个用例钉住。
+
+### 31.8 语义修正：会话行是 listitem
+
+行外壳带 `role="listitem"`、容器 `role="list"`。选中底色画在外壳上（工具栏是按钮的兄弟
+节点，只给按钮会让高亮在 `⋯` 前断掉），而屏幕阅读器把「标题 + 操作」读成一个列表项。
+顺带消掉 `data-testid="session-row"`（多行列表里 `getByTestId` 必然抛）。

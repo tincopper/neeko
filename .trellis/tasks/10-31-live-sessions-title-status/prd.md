@@ -92,20 +92,20 @@
 
 ## Acceptance Criteria
 
-- [ ] AC1 单测：`reduce` 覆盖全部 `(state, signal)` 组合，含「终止后不复活」「审批往返回到 Ready」。
-- [ ] AC2 单测：`title::admit` 取强来源、忽略空白、`User` 不被自动来源覆盖、按字符截断。
-- [ ] AC3 单测：`Registry` 重复 id 只 warn 不崩、迟到信号被丢弃、`apply` 在状态未变时返回 `false`（不 bump）。
-- [ ] AC4 chat 接线：`TurnStart → Running`、`RequestApproval → AwaitingApproval`、`Error` 锁死、
+- [x] AC1 单测：`reduce` 覆盖全部 `(state, signal)` 组合，含「终止后不复活」「审批往返回到 Ready」。
+- [x] AC2 单测：`title::admit` 取强来源、忽略空白、`User` 不被自动来源覆盖、按字符截断。
+- [x] AC3 单测：`Registry` 重复 id 只 warn 不崩、迟到信号被丢弃、`apply` 在状态未变时返回 `false`（不 bump）。
+- [x] AC4 chat 接线：`TurnStart → Running`、`RequestApproval → AwaitingApproval`、`Error` 锁死、
       会话结束后 `unregister`（单测用假 session，不起真进程）。
-- [ ] AC5 PTY 接线：注册含 `workspace` 与 `agent_id`；退出码 0/非 0 分别 `Stopped`/`Failed`（单测 + 真机各一次）。
-- [ ] AC6 IPC：`list_live_sessions(workspace)` 只返回该单元会话（单测，两个单元交叉验证）；
+- [x] AC5 PTY 接线：注册含 `workspace` 与 `agent_id`；退出码 0/非 0 分别 `Stopped`/`Failed`（单测 + 真机各一次）。
+- [x] AC6 IPC：`list_live_sessions(workspace)` 只返回该单元会话（单测，两个单元交叉验证）；
       `wait_live_sessions` 版本未变时在超时后返回且不空转（单测）。
-- [ ] AC7 前端：`sessionsByUnit` / `dominantState` / `resolveTabTitle` 纯函数单测；
+- [x] AC7 前端：`sessionsByUnit` / `dominantState` / `resolveTabTitle` 纯函数单测；
       `SessionStatusIcon` 对每个状态有确定视觉（穷举测试）。
 - [ ] AC8 真机：在 worktree 单元里开 Agent Chat（首条 prompt 作为标题）与一个 CLI tab，
       侧栏该单元下出现两条会话，图标随状态变化（运行/审批/结束），tab 标题不再是常量。
       视觉对齐 [`prototype.html`](./prototype.html)（同目录，状态→视觉唯一表 / 单元角标 / 派生标题）。
-- [ ] AC9 `cargo test --lib` / clippy / fmt / `pnpm check:quick` 绿。
+- [x] AC9 `cargo test --lib` / clippy / fmt / `pnpm check:quick` 绿。
 
 ## Out of scope
 
@@ -172,8 +172,8 @@ R4.3 随之解除「不做 OSC」的限制：Native 恢复为可用来源（prov
 
 ### 第四轮验收补充
 
-- [ ] AC10 单测：`title::admit` 对每个 `TitleSource` 穷举 —— 状态栏形态（`π` / `✳ Claude ready` /
+- [x] AC10 单测：`title::admit` 对每个 `TitleSource` 穷举 —— 状态栏形态（`π` / `✳ Claude ready` /
       `ready` / `Terminal 2` / cwd 路径 / `claude-code`）判负；真主题（`✳ Fix login bug` /
       `修复登录竞态`）通过。
-- [ ] AC11 单测：判负**不改写**已有标题 —— `Prompt` 命名后收到噪声 `Native`，`title` 与
+- [x] AC11 单测：判负**不改写**已有标题 —— `Prompt` 命名后收到噪声 `Native`，`title` 与
       `title_source` 都保持原值（证明准入发生在 `should_upgrade` 之前）。

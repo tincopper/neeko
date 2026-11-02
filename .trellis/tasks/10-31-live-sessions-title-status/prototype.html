@@ -594,9 +594,11 @@ h1 {
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .session:hover { background: var(--app-bg-hover); }
+/* 只有一个通道：强调色淡底。左侧 2px 色条已按 2026-11-02 反馈去掉 —— 它和行内的
+   agent 图标挤在同一段左内边距上，读起来像一个错位的装饰块（与
+   `styles/base/tailwind.css` 的 `@utility row-current` 逐字对齐）。 */
 .session[aria-current="true"] {
   background: color-mix(in srgb, var(--app-accent-blue) 13%, transparent);
-  box-shadow: inset 2px 0 0 var(--app-accent-blue);
 }
 .session:focus-visible { outline: 2px solid var(--app-accent-blue); outline-offset: -2px; border-radius: 5px; }
 
