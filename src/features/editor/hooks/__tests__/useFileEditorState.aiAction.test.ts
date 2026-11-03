@@ -29,7 +29,9 @@ vi.mock('@/shared/store/editorStore', () => ({
 const getAgent = vi.hoisted(() => vi.fn());
 vi.mock('@/features/agent/api/agentApi', () => ({ getAgent }));
 
-const createTaskTerminal = vi.hoisted(() => vi.fn(() => true));
+// 端口返回**新 tab 的 id**（`null` = 配额满），不再是 boolean：这里给一个 id，
+// 表示「终端开出来了」。（`useFileEditorState` 只判 `!== null`。）
+const createTaskTerminal = vi.hoisted(() => vi.fn(() => 'tab_1'));
 vi.mock('@/features/terminal/api/taskTerminal', () => ({ createTaskTerminal }));
 
 const sendToAgent = vi.fn(() => true);

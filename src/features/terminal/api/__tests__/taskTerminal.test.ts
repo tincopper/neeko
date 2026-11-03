@@ -19,16 +19,17 @@ describe('createTaskTerminal', () => {
   });
 
   it('创建 terminal tab 并携带 taskCommand，随即激活', () => {
-    const ok = createTaskTerminal(PROJECT_ID, {
+    const tabId = createTaskTerminal(PROJECT_ID, {
       agentId: 'opencode',
       agentName: 'OpenCode',
       taskCommand: "opencode --prompt 'fix it'",
     });
 
-    expect(ok).toBe(true);
     const projectTabs = useEditorStore.getState().tabs[SPACE];
     expect(projectTabs.tabs).toHaveLength(1);
     const tab = projectTabs.tabs[0];
+    // 返回值就是新 tab 的 id：`run-single` 靠它把执行记录指回这个终端。
+    expect(tabId).toBe(tab.id);
     expect(tab.data.kind).toBe('terminal');
     if (tab.data.kind === 'terminal') {
       expect(tab.data.agentId).toBe('opencode');
@@ -44,11 +45,13 @@ describe('createTaskTerminal', () => {
     expect(tab.title).toBe('claude');
   });
 
-  it('配额满（MAX_TERMINAL_TABS）时返回 false 且不再建 tab', () => {
+  it('配额满（MAX_TERMINAL_TABS）时返回 null 且不再建 tab', () => {
     for (let i = 0; i < MAX_TERMINAL_TABS; i++) {
-      expect(createTaskTerminal(PROJECT_ID, { agentId: 'a', taskCommand: `cmd ${i}` })).toBe(true);
+      expect(
+        createTaskTerminal(PROJECT_ID, { agentId: 'a', taskCommand: `cmd ${i}` }),
+      ).not.toBeNull();
     }
-    expect(createTaskTerminal(PROJECT_ID, { agentId: 'a', taskCommand: 'one more' })).toBe(false);
+    expect(createTaskTerminal(PROJECT_ID, { agentId: 'a', taskCommand: 'one more' })).toBeNull();
     expect(useEditorStore.getState().tabs[SPACE].tabs).toHaveLength(MAX_TERMINAL_TABS);
   });
 });
