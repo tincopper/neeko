@@ -1186,3 +1186,205 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 393: 侧栏项目头取消通栏 hover 底
+<!-- trellis-session: v=2 fp=f72e43a220b2e784 -->
+
+**Date**: 2026-11-03
+**Task**: 侧栏项目头取消通栏 hover 底
+**Branch**: `main`
+
+### Summary
+
+项目头的 hover:bg-bg-hover 通栏灰底删除：它只铺到滚动容器内容盒，右侧让出经典滚动条的 13px 占位，留下通高空白；hover 反馈交给下层 local/worktree/会话行，项目头改由动作槽浮现表达悬停。
+
+### Main Changes
+
+- src/shared/components/ProjectGroup.tsx：项目头去掉 hover:bg-bg-hover，注释记录定案与滚动条占位证据；动作槽新增 data-testid
+- ProjectGroup.test.tsx：新增『项目头不铺行背景 / 动作槽是唯一 hover 变化』断言
+- .trellis/spec/frontend/design-tokens.md：坑 4 补 2026-11-03 修订（分组不再靠背景块）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/shared/components/__tests__/ProjectGroup.test.tsx（13 passed）
+- [OK] pnpm check:quick（20 条护栏全通过）
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 394: 删除侧栏 CLI hook 提示条
+<!-- trellis-session: v=2 fp=e707cefaf2e7d052 -->
+
+**Date**: 2026-11-03
+**Task**: 删除侧栏 CLI hook 提示条
+**Branch**: `main`
+
+### Summary
+
+侧栏底部的「会话标题未跟随 CLI（hook 未生效）」提示条按用户要求整体删除：组件 / hook / 判据函数 / 测试一并移除，不留无人消费的抽象；hook 未生效的可见性回到设置页的安装状态列。
+
+### Main Changes
+
+- 删除 src/features/project/components/CliHookHint.tsx + 测试
+- 删除 src/features/project/hooks/useCliHookHealth.ts + 测试
+- ProjectsPanel 移除 import 与渲染
+- agentHookSources：删除失去消费者的 hookRowsNeedingAttention（+5 条测试），文档改为设置页单消费方
+- .trellis/spec/frontend/state-management.md：『hook 未生效必须可见』改写为『侧栏不再提示』并记录恢复路径
+- .trellis/tasks/10-31-live-sessions-title-status/implement.md §15 标注作废
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/shared/utils/__tests__/agentHookSources.test.ts（5 passed）
+- [OK] pnpm check:quick（21 条护栏全通过）
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 395: 按审核清单修复：回退 schema 17、删 isActive 死链、列表接占位补偿
+<!-- trellis-session: v=2 fp=af430e9116eb8d00 -->
+
+**Date**: 2026-11-03
+**Task**: 按审核清单修复：回退 schema 17、删 isActive 死链、列表接占位补偿
+**Branch**: `main`
+
+### Summary
+
+三件事各自有独立根因：(1) LATEST_VERSION 被无迁移地升到 17，13→17 无步骤导致 4 条迁移测试全红、启动即失败；(2) ProjectGroup 的 isActive 是无人消费的死 prop（配套的 'active' 类无 CSS）；(3) ProjectsPanel 的滚动容器没接占位补偿，经典滚动条让左右内缩量不等（项目头 0/13、会话行 6/19）。
+
+### Main Changes
+
+- migrations.rs：LATEST_VERSION 回退 13（user_version 单调，不能预占号；升级必须与建表 SQL 同一次提交）
+- ProjectGroup / ProjectItem / ConnectionProjectCard：删除 isActive prop 与空转的 'active' 类，修正 actions 上残留的 isLast 注释
+- ProjectGroup：补 focus-visible ring-inset 键盘焦点指示（复用状态栏列表行同一套约定）
+- ProjectsPanel：接 useScrollbarCompensation(scrollElRef,'center')，回调 ref 与滚动记忆合并（同 VirtualList）；容器加 data-testid
+- 新增 ProjectsPanel.test.tsx：补偿已接线 + 无滚动条回基线（已红验）
+- agentHookSources：文档改为按领域归属解释（跨栈配置键，不随 UI feature 搬家）
+- spec：component-guidelines 的 center 适用列与护栏句、design-tokens 的『两层分开修』
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test --lib common::db::migrations（6 passed，此前 4 failed）
+- [OK] vitest：ProjectGroup 15 / ProjectsPanel 2 / ProjectItem / ConnectionProjectCard / agentHookSources 共 32 passed
+- [OK] pnpm check:quick（13 条护栏全通过；后端已无改动）
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 396: 项目列表改为隐藏滚动条（保留滚动）
+<!-- trellis-session: v=2 fp=54b51a992e526238 -->
+
+**Date**: 2026-11-03
+**Task**: 项目列表改为隐藏滚动条（保留滚动）
+**Branch**: `main`
+
+### Summary
+
+用户定案：不接受 center 补偿把整个列表右移一个占位，改为整条隐藏滚动条、保留滚动能力。新增共享 @utility scrollbar-hidden（标准属性 + 旧 WebKit 伪元素两通道），ProjectsPanel 去掉 useScrollbarCompensation，spec 记录两种互斥选择与判据。
+
+### Main Changes
+
+- styles/base/tailwind.css：新增 @utility scrollbar-hidden（scrollbar-width:none + ::-webkit-scrollbar{display:none}），并说明与 reset.css『不用伪元素做动态显隐』的边界
+- ProjectsPanel：去掉 useScrollbarCompensation / scrollElRef / 合并回调 ref，容器加 scrollbar-hidden；注释写清二选一的理由
+- ProjectsPanel.test.tsx：断言改为『仍 overflow-y-auto + 带 scrollbar-hidden + 无补偿 inline 内边』
+- ProjectGroup 注释：容器侧对称性改由 scrollbar-hidden 负责
+- spec：component-guidelines 新增『另一种合法选择：隐藏滚动条』；design-tokens 修订段改为隐藏而非补偿；reset.css 占位说明补出口
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] vite build 产物核对：.scrollbar-hidden{scrollbar-width:none} + .scrollbar-hidden::-webkit-scrollbar{display:none} 均已生成
+- [OK] vitest ProjectsPanel + ProjectGroup（15 passed）
+- [OK] pnpm check:quick（23 条护栏全通过）
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 397: 复审：修三处不准确的注释/断言（滚动条 utility 语义、安慰剂断言、降噪判据数目）
+<!-- trellis-session: v=2 fp=6bf0fa45e39eb2bd -->
+
+**Date**: 2026-11-03
+**Task**: 复审：修三处不准确的注释/断言（滚动条 utility 语义、安慰剂断言、降噪判据数目）
+**Branch**: `main`
+
+### Summary
+
+第二轮 neeko-check 复审自查出的问题集中在「注释与事实不符」：scrollbar-hidden 的引擎分工、jsdom 里恒真的补偿断言、hookRowsNeedingAttention 只有三道过滤。
+
+### Main Changes
+
+- tailwind.css：scrollbar-hidden 注释改为按引擎说明（支持 scrollbar-width 时 UA 忽略伪元素）
+- ProjectsPanel.test.tsx：删掉 jsdom 里恒真的 not.toHaveStyle 补偿断言，改为文档说明为何不断言
+- state-management.md：降噪判据由「四道」改为「三道 + hook 里的 fail-soft」
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] vitest ProjectsPanel（1 passed）
+- [OK] pnpm check:quick（23 条护栏全通过）
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 398: 修复审核清单：回退 schema 17、抽 push/pull 编排、收敛滚动条隐藏
+<!-- trellis-session: v=2 fp=8f0e52a8e21ccd38 -->
+
+**Date**: 2026-11-03
+**Task**: 修复审核清单：回退 schema 17、抽 push/pull 编排、收敛滚动条隐藏
+**Branch**: `main`
+
+### Summary
+
+三件事：(1) LATEST_VERSION 回退 13，cargo test 转绿；(2) ProjectsPanel 里两段逐行相同的 push/pull handler 抽成 useGitConsoleActions（命令表 + 一条编排），面板 403→338 行；顺带把 AuthRequired 判据/文案收敛成 isAuthRequired + authRequiredMessage 三个入口共用；(3) .rich-composer 的自写滚动条隐藏收敛到 @utility scrollbar-hidden。
+
+### Main Changes
+
+- migrations.rs：LATEST_VERSION 17 → 13（user_version 单调，不能预占号）
+- gitConsoleRun.ts：新增 isAuthRequired（type guard）/ SSH_AUTH_FAILED_MESSAGE / authRequiredMessage(outcome, fixHint)
+- 新增 features/project/hooks/useGitConsoleActions.ts：REMOTE_GIT_OPS 命令表 + 一份编排（路径/Console/busy/取消/认证/刷新）+ 9 条测试
+- ProjectsPanel：删除 pushOutcomeMsg/handlePush/handlePull（-58 行），改调 hook
+- CommitDialog / useGitActions：改用共享判据与文案（并把两文件压回 ratchet 基线以下：324/326、437/438）
+- agent-chat：RichComposer 挂 scrollbar-hidden，删掉 agent-chat.css 里自写的 scrollbar-width:none + 伪元素两行
+- spec：git-domain 记录认证分支与文案单一来源 + 侧栏编排；component-guidelines 的 scrollbar-hidden 消费方更新
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test --lib common::db::migrations（6 passed）
+- [OK] vitest git+project+agent-chat（1340 passed）；新增 hook 9 条
+- [OK] pnpm check:quick（15 条护栏全通过，含 check_component_size ratchet）
+
+### Status
+
+[OK] **Completed**

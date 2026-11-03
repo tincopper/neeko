@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 391
-- **Last Active**: 2026-11-02
+- **Total Sessions**: 398
+- **Last Active**: 2026-11-03
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1188 | Active |
+| `journal-8.md` | ~1390 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,12 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 398 | 2026-11-03 | 修复审核清单：回退 schema 17、抽 push/pull 编排、收敛滚动条隐藏 | - | `main` |
+| 397 | 2026-11-03 | 复审：修三处不准确的注释/断言（滚动条 utility 语义、安慰剂断言、降噪判据数目） | - | `main` |
+| 396 | 2026-11-03 | 项目列表改为隐藏滚动条（保留滚动） | - | `main` |
+| 395 | 2026-11-03 | 按审核清单修复：回退 schema 17、删 isActive 死链、列表接占位补偿 | - | `main` |
+| 394 | 2026-11-03 | 删除侧栏 CLI hook 提示条 | - | `main` |
+| 393 | 2026-11-03 | 侧栏项目头取消通栏 hover 底 | - | `main` |
 | 391 | 2026-11-02 | live-sessions 复审收敛：DB 版本回滚、通知收尾上提、删除编排入组合根、键盘拖拽声明与实现一致 | - | `main` |
 | 390 | 2026-11-01 | live-sessions 审核问题修复：迁移版本回退、chat 续聊可见性、hook 扇出装配 | - | `main` |
 | 389 | 2026-10-31 | Workspace addressing: unit ownership rule, discriminated list scope, guard G | `88aba6d5`, `7ac7f134`, `cceafa5d`, `92ae3f1c`, `975ffa7d` | `main` |
