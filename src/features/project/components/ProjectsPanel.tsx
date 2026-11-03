@@ -15,6 +15,7 @@ import { CommitDialog } from '@/features/git';
 import ProjectItem from '@/features/project/components/ProjectItem';
 import { SectionHeader } from '@/features/project/components/SectionHeader';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
+import { useGitConsoleActions } from '@/features/project/hooks/useGitConsoleActions';
 import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import GitDialog, { DialogState } from '@/shared/components/GitDialog';
 import { useAppContext } from '@/shared/contexts/AppContext';
@@ -27,11 +28,8 @@ import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import { getDistroIcon } from '@/shared/utils/distros';
 import { buildScrollKey } from '@/shared/utils/scrollMemory';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
-import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import serverIcon from '../../../assets/server.svg';
-import { push, pull, type PushOutcome } from '../../git/api/gitApi';
-import { runGitConsoleOp, GIT_BUSY_MESSAGE } from '../../git/api/gitConsoleRun';
 import { groupProjects } from '../utils/groupProjects';
 
 /** 滚动视图身份：全局唯一 surface 常量（新增面板只在此处加值）。 */
@@ -123,78 +121,15 @@ const ProjectsPanel: React.FC = () => {
     setCommitProjectId(projectId);
   }, []);
 
-  /** Convert PushOutcome to error string if AuthRequired. */
-  function pushOutcomeMsg(outcome: PushOutcome): string | undefined {
-    if ('AuthRequired' in outcome) {
-      const { remote_url, ssh, username_hint } = outcome.AuthRequired;
-      if (ssh) {
-        return 'SSH authentication failed. Ensure ssh-agent is running and key is added via ssh-add.';
-      }
-      const hint = username_hint ? ` (user: ${username_hint})` : '';
-      return `Authentication required for ${remote_url}${hint}. Use the main commit panel or configure git credentials.`;
-    }
-    return undefined;
-  }
-
-  const handlePush = useCallback(
-    async (projectId: ProjectId) => {
-      const projectPath = projects.find((p) => p.id === projectId)?.path ?? '';
-      try {
-        const worktreePath = activeProjectId === projectId ? activeCheckoutPath : null;
-        const result = await runGitConsoleOp({
-          header: 'git push',
-          projectId,
-          projectPath,
-          run: (runId) => push(WorkspaceSession.of(projectId, worktreePath), false, runId),
-          isAuthRequired: (o) => 'AuthRequired' in o,
-        });
-        if (result.status === 'busy') {
-          showToast?.(GIT_BUSY_MESSAGE, 'error');
-          return;
-        }
-        if (result.status === 'stopped') return; // 用户取消
-        const msg = pushOutcomeMsg(result.value);
-        if (msg) {
-          showToast?.(msg, 'error');
-          return;
-        }
-        onRefreshGit(projectId);
-      } catch (e) {
-        showToast?.(String(e), 'error');
-      }
-    },
-    [projects, activeProjectId, activeCheckoutPath, onRefreshGit, showToast],
-  );
-
-  const handlePull = useCallback(
-    async (projectId: ProjectId) => {
-      const projectPath = projects.find((p) => p.id === projectId)?.path ?? '';
-      try {
-        const worktreePath = activeProjectId === projectId ? activeCheckoutPath : null;
-        const result = await runGitConsoleOp({
-          header: 'git pull',
-          projectId,
-          projectPath,
-          run: (runId) => pull(WorkspaceSession.of(projectId, worktreePath), runId),
-          isAuthRequired: (o) => 'AuthRequired' in o,
-        });
-        if (result.status === 'busy') {
-          showToast?.(GIT_BUSY_MESSAGE, 'error');
-          return;
-        }
-        if (result.status === 'stopped') return; // 用户取消
-        const msg = pushOutcomeMsg(result.value);
-        if (msg) {
-          showToast?.(msg, 'error');
-          return;
-        }
-        onRefreshGit(projectId);
-      } catch (e) {
-        showToast?.(String(e), 'error');
-      }
-    },
-    [projects, activeProjectId, activeCheckoutPath, onRefreshGit, showToast],
-  );
+  // push / pull 的编排（路径解析 / Console / busy / 取消 / 认证 / 刷新）在 hook 里只有一份：
+  // 两个入口逐行相同的代码留在面板里时，最典型的漂移是「只给 push 加了刷新」。
+  const { handlePush, handlePull } = useGitConsoleActions({
+    projects,
+    activeProjectId,
+    activeCheckoutPath,
+    onRefreshGit,
+    showToast,
+  });
 
   return (
     <>
