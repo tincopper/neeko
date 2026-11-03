@@ -73,6 +73,8 @@ pub mod task;
 pub mod terminal;
 /// Theme synchronization for agents and terminals.
 pub mod theme;
+/// 统一任务中心（Local Provider 工作项 + 执行记录）。
+pub mod work_items;
 
 pub use app::run;
 pub use app_state::AppStateWrapper;
@@ -227,6 +229,15 @@ macro_rules! neeko_invoke_handler {
             // ── agent CLI hooks（源 B：摄入与安装态）──────────────────────────
             $crate::agent::hooks::commands::agent_hooks_apply,
             $crate::agent::hooks::commands::agent_hooks_status,
+            // ── work items（统一任务中心：Local Provider CRUD + 执行记录）──────
+            $crate::work_items::commands::work_item_stage_plan,
+            $crate::work_items::commands::work_item_list,
+            $crate::work_items::commands::work_item_create,
+            $crate::work_items::commands::work_item_update,
+            $crate::work_items::commands::work_item_transition,
+            $crate::work_items::commands::work_item_delete,
+            $crate::work_items::commands::work_item_run_list,
+            $crate::work_items::commands::work_item_run_record,
             // ── search ────────────────────────────────────────────────────────
             $crate::search::commands::search_run,
             $crate::search::commands::search_stop,

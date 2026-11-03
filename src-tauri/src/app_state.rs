@@ -74,6 +74,24 @@ pub struct AppStateWrapper {
     /// 真实存在的团队报 `NotFound`）。机器判据是
     /// `a_restart_hydrates_the_team_domain_from_the_database`（本文件 `tests`）。
     pub team_manager: Arc<crate::agent::team::TeamManager>,
+    /// 工作项域管理器（Local Provider 工作项 + 执行记录的唯一写入口）。
+    ///
+    /// 与 `cache_store` / `team_manager` 同理**共享** `library_store` 的池：一个数据库一个池
+    /// （[`library::LibraryStore::with_pool`] 的注释已钉住这条），而且迁移链只在那个入口跑过
+    /// 一次。
+    ///
+    /// 因果链（换池之前先读完这条）：`app/boot.rs` 的 `open_pool` →
+    /// `LibraryStore::with_pool` → `common::db::run_migrations` → `migrate_step(17)` →
+    /// [`crate::work_items::store::v17_to_v18`]。
+    /// [`crate::work_items::WorkItemStore::with_pool`] **自己不起池、也不跑迁移**（它是
+    /// `const fn`），文档写明的唯一前置条件就是「调用方已在这个池上跑过迁移链」—— 换一个池
+    /// 的后果不是慢，而是每一条工作项查询都以 `no such table: work_item` 失败。
+    ///
+    /// # 构造不需要 hydrate（与 `team_manager` 的区别）
+    ///
+    /// 本域**没有内存镜像**：每次读都直接打库，库就是唯一真相源。所以这里用 `with_store`
+    /// 而不是 `load` —— 需要一个 `load` 只是「有第二份状态要同步」的信号。
+    pub work_item_manager: Arc<crate::work_items::WorkItemManager>,
     /// Language Server Protocol session manager.
     pub lsp_manager: Arc<crate::lsp::LspManager>,
     /// 应用级通知中心（业务无关裁决+投递；业务域单向依赖其门面，design.md T4/D6）。
@@ -570,6 +588,11 @@ impl AppStateWrapper {
                 ))
                 .expect("Failed to hydrate the team manager from the library pool"),
             ),
+            // 同上：池在 `library_store` 里已经跑过迁移链（含 v18 的工作项建表），
+            // 这里只借用同一个池（字段文档记着整条因果链）。
+            work_item_manager: Arc::new(crate::work_items::WorkItemManager::with_store(
+                crate::work_items::WorkItemStore::with_pool(library_store.pool().clone()),
+            )),
             library_store,
             lsp_manager,
             dap_manager,
@@ -664,6 +687,55 @@ mod tests {
             Some(MemberState::Spawned),
             "写入必须落到同一个管理器镜像里（否则第二份真相源）"
         );
+    }
+
+    /// 不变量：`isolated_state` 的池上**确实跑过** v18 的工作项建表，且 `work_item_manager`
+    /// 用的是**同一个池**（不是同一文件 / 同一 uuid 的第二个池）。
+    ///
+    /// [`crate::work_items::WorkItemStore::with_pool`] 同样是 `const fn`，不跑迁移 ——
+    /// 本用例是那条前置条件的机器判据：表不在共享池上时，第一次工作项写就会以
+    /// `no such table: work_item` 失败。“组合根借了池却没借到迁移后的池” 是这条的失败形态。
+    ///
+    /// # 为什么写完之后要去 `library_store` 的池读
+    ///
+    /// 「create 之后 list 得到 1 条」只证明 manager 自洽 —— 一个**自建池**的实现同样会绿
+    /// （建表迁移在自建池上重跑一遍即可）。真正的契约是「借池」，所以证据必须来自**另一个
+    /// 访问器**：`isolated_state` 的库是 `LibraryStore::open_in_memory()`，而
+    /// `SqliteConnectionManager::memory()` 每次调用生成一个独立 uuid（见 `common/db/pool.rs`），
+    /// 即「两个 in-memory 池 = 两个不同的数据库」。于是这条跨池读取只在共用池时成立
+    /// （同 `team_manager_shares_the_library_pool` 的判据）。
+    #[test]
+    fn work_item_manager_is_wired_on_a_v18_migrated_pool() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+        let item = state
+            .work_item_manager
+            .create(crate::work_items::CreateWorkItem {
+                project_id: "p1".to_owned(),
+                title: "下单".to_owned(),
+                body: None,
+                stage: None,
+                priority: None,
+                labels: None,
+                assignee: None,
+            })
+            .expect("create 必须成功：v18 表缺失时这里是 `no such table: work_item`");
+        assert_eq!(
+            state.work_item_manager.list("p1").expect("list").len(),
+            1,
+            "写入必须落在同一个池上（否则列表恒空）"
+        );
+
+        // 走 **library 自己的池** 读同一张表（不用 work_item_manager 的访问器）。
+        let conn = state.library_store.pool().get().expect("library pool conn");
+        let title: String = conn
+            .query_row(
+                "SELECT title FROM work_item WHERE id = ?1",
+                [&item.id],
+                |row| row.get(0),
+            )
+            .expect("work_item_manager 写入的行必须能被 library_store 的池读到（同一个池）");
+        assert_eq!(title, "下单");
     }
 
     /// 夹具：在**同一个库文件**上组一份 `AppStateWrapper`（= 模拟一次进程启动）。

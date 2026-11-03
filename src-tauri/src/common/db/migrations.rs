@@ -14,7 +14,7 @@ use rusqlite::{Connection, TransactionBehavior};
 
 /// Current schema version. Bump this in the same commit as the migration
 /// that creates the change.
-pub const LATEST_VERSION: u32 = 17;
+pub const LATEST_VERSION: u32 = 18;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &mut Connection) -> Result<()> {
@@ -54,6 +54,7 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
         14 => crate::agent::team::store::v14_to_v15(conn),
         15 => crate::agent::team::store::v15_to_v16(conn),
         16 => crate::agent::team::store::v16_to_v17(conn),
+        17 => crate::work_items::store::v17_to_v18(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -106,6 +107,8 @@ mod tests {
             "team_member",
             "team_task",
             "team_event",
+            "work_item",
+            "work_item_run",
         ] {
             assert!(
                 tables.contains(&needed.to_string()),
@@ -262,6 +265,17 @@ mod upgrade_tests {
             )
             .unwrap();
         assert_eq!(has_team, 1, "team_task must exist after the upgrade");
+
+        // v17→v18 走的是同一条升级链路：它必须也在「从旧库升上来」的路径上建好表，
+        // 而不是只在新库首建时跑一次。
+        let has_work_item: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name='work_item'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_work_item, 1, "work_item must exist after the upgrade");
 
         assert_eq!(
             snapshot_library_rows(&path),

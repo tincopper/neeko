@@ -1000,7 +1000,8 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
         assert_eq!(version, crate::common::db::LATEST_VERSION);
-        assert_eq!(version, 17);
+        // 不再写第二份版本字面量：它每次 bump 都会变成一条需要手工追的债
+        // （与 `common/db/migrations.rs` 的升级用例同一取舍）。
 
         let mut stmt = conn
             .prepare("SELECT name FROM sqlite_master WHERE type IN ('table','index')")
@@ -1060,7 +1061,8 @@ mod tests {
         );
     }
 
-    /// **v17 升级路径**：v16 的库里 `(tm_a, t1)` 存在 → 升级后行仍在、`user_version == 17`、
+    /// **v16 → 链尾的升级路径**：v16 的库里 `(tm_a, t1)` 存在 → 升级后行仍在、`user_version`
+    /// 等于 `LATEST_VERSION`（**不**写版本字面量：每 bump 一次它就变成一条要手工追的债）、
     /// **队 B 能插入 `t1`**（改前必然 `UNIQUE constraint failed`）。
     ///
     /// # 为什么要手工造 v16 形状
@@ -1143,7 +1145,11 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 17, "v16_to_v17 必须把版本推到 17");
+        assert_eq!(
+            version,
+            crate::common::db::LATEST_VERSION,
+            "升级必须把库推到链尾（`LATEST_VERSION` 是唯一事实源，不在此处重复写数字）"
+        );
         drop(conn);
 
         // 旧行原样还在（字段级往返，不只是「行数对」）。
@@ -1380,14 +1386,13 @@ mod tests {
         assert_eq!(team.name, "Old", "其余旧列原样保留");
         assert_eq!(team.state, TeamState::Active);
 
-        // 版本号真的进到最新（`v15 -> … -> v17` 全跑过，不是「新库正好长得一样」）。
+        // 版本号真的进到最新（`v15 -> … -> 链尾` 全跑过，不是「新库正好长得一样」）。
         {
             let conn = Connection::open(&db).unwrap();
             let version: u32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .unwrap();
             assert_eq!(version, crate::common::db::migrations::LATEST_VERSION);
-            assert_eq!(version, 17);
         }
     }
 
