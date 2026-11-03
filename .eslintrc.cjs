@@ -10,7 +10,7 @@ const FEATURE_DIRS = [
   'action-menu', 'agent', 'agent-chat', 'agent-team', 'browser', 'connection',
   'conversation', 'editor', 'file', 'git', 'library', 'lsp', 'notification',
   'project', 'quick-open', 'runner', 'search', 'session', 'settings', 'skill',
-  'status-bar', 'symbol-nav', 'task', 'terminal', 'theme',
+  'status-bar', 'symbol-nav', 'task', 'terminal', 'theme', 'work-items',
 ];
 // except 相对 from（feature 根）解析。store/types/api 兼容单文件与目录形态。
 const FIREWALL_EXCEPT = [
