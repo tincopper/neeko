@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Dock 注册表接线：`shared/dock/panelMeta.ts`（结构）↔ `app/dock/registry.ts`（UI 绑定）。
  *

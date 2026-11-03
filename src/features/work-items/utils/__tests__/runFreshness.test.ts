@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * `runFreshness`：执行快照的陈旧度判据（design §4.6）。
  *

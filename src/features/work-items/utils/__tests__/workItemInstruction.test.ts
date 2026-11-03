@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * `renderWorkItemInstruction`：工作项 → 指令前置的**纯函数**（仓库红线：纯函数 100%）。
  *

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * `workItemsApi` 是 Local provider 的唯一 IPC 入口。
  *
