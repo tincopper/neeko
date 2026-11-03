@@ -57,9 +57,16 @@ export const DOCK_PANEL_META: Record<string, DockPanelMeta> = {
     // search 因此后移一位 —— 不给两处同序，同序意味着顺序取决于对象字面量的键序。
     defaultOrder: 5,
   },
+  tasks: {
+    id: 'tasks',
+    defaultZone: 'right',
+    // 工作项是「今天要处理什么」的入口，排在看过的对话 / 团队之后、搜索之前。
+    // 与 search 同 zone 不同序：同序时顺序取决于对象字面量的键序（既有注释已钉住这条）。
+    defaultOrder: 6,
+  },
   search: {
     id: 'search',
     defaultZone: 'right',
-    defaultOrder: 6,
+    defaultOrder: 7,
   },
 };

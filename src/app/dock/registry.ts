@@ -5,6 +5,7 @@ import {
   GitPullRequest,
   Globe,
   Library,
+  ListChecks,
   MessagesSquare,
   Search,
   Users,
@@ -24,6 +25,7 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   GitBranch,
   Globe,
   Library,
+  ListChecks,
   MessagesSquare,
   Search,
   Users,
@@ -58,6 +60,8 @@ const LazyConversationsPanelWrapper = lazy(
 );
 
 const LazyTeamPanelWrapper = lazy(() => import('@/app/dock/wrappers/TeamPanelWrapper'));
+
+const LazyTasksPanelWrapper = lazy(() => import('@/app/dock/wrappers/TasksPanelWrapper'));
 
 const LazyPullRequestsPanelWrapper = lazy(
   () => import('@/app/dock/wrappers/PullRequestsPanelWrapper'),
@@ -140,6 +144,15 @@ const UI_BINDINGS: Record<string, UiBinding> = {
     >,
     // 花名册 + 任务板纵向堆叠，再窄就会把每一行的状态徽标挤掉。
     minPanelSize: 260,
+  },
+  tasks: {
+    title: 'Tasks',
+    icon: 'ListChecks',
+    component: LazyTasksPanelWrapper as React.LazyExoticComponent<
+      React.ComponentType<Record<string, unknown>>
+    >,
+    // 看板列固定 168px + 列间距：再窄就只剩半列，卡片标题全被截断。
+    minPanelSize: 280,
   },
 };
 
