@@ -19,7 +19,13 @@ import {
   getCommitLog,
   type PushOutcome,
 } from '../api/gitApi';
-import { beginGitConsoleRun, GIT_BUSY_MESSAGE, runGitConsoleOp } from '../api/gitConsoleRun';
+import {
+  beginGitConsoleRun,
+  GIT_BUSY_MESSAGE,
+  authRequiredMessage,
+  isAuthRequired,
+  runGitConsoleOp,
+} from '../api/gitConsoleRun';
 import { isConflictedEntry } from '../utils/gitStatusGroups';
 
 interface CommitDialogProps {
@@ -73,17 +79,9 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
       .catch((err) => reportFrontendError('git.commitLog', err));
   }, [amend, workspace]);
 
-  /** Convert a PushOutcome into an error message string if it's AuthRequired, or return undefined for Success. */
+  /** AuthRequired → 对话框错误行；事实部分（SSH / URL / 用户名）与侧栏共用 `authRequiredMessage`。 */
   function pushOutcomeMsg(outcome: PushOutcome): string | undefined {
-    if ('AuthRequired' in outcome) {
-      const { remote_url, ssh, username_hint } = outcome.AuthRequired;
-      if (ssh) {
-        return 'SSH authentication failed. Ensure ssh-agent is running and key is added via ssh-add.';
-      }
-      const hint = username_hint ? ` (user: ${username_hint})` : '';
-      return `Authentication required for ${remote_url}${hint}. Use the credentials dialog in the main panel, or configure git credentials via terminal.`;
-    }
-    return undefined;
+    return authRequiredMessage(outcome, 'Use the credentials dialog in the main panel.');
   }
 
   const handleCommit = useCallback(
@@ -110,7 +108,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
         if (consoleRun) {
           await commitFiles(workspace, filePaths, message.trim(), consoleRun.runId);
           const outcome = await push(workspace, false, consoleRun.runId);
-          if ('AuthRequired' in outcome) {
+          if (isAuthRequired(outcome)) {
             consoleRun.awaitAuth();
             setError(pushOutcomeMsg(outcome) ?? 'Authentication required.');
             return;
@@ -150,7 +148,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
         projectId,
         projectPath,
         run: (runId) => push(workspace, false, runId),
-        isAuthRequired: (o) => 'AuthRequired' in o,
+        isAuthRequired,
       });
       if (result.status === 'busy') {
         setError(GIT_BUSY_MESSAGE);
@@ -180,7 +178,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
         projectId,
         projectPath,
         run: (runId) => pull(workspace, runId),
-        isAuthRequired: (o) => 'AuthRequired' in o,
+        isAuthRequired,
       });
       if (result.status === 'busy') {
         setError(GIT_BUSY_MESSAGE);

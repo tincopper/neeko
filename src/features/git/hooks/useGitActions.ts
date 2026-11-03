@@ -5,7 +5,13 @@ import type { ProjectCommands } from '@/shared/types/activeProject';
 import { withTimeout } from '@/shared/utils/withTimeout';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
-import { beginGitConsoleRun, GIT_BUSY_MESSAGE, runGitConsoleOp } from '../api/gitConsoleRun';
+import {
+  beginGitConsoleRun,
+  GIT_BUSY_MESSAGE,
+  SSH_AUTH_FAILED_MESSAGE,
+  isAuthRequired,
+  runGitConsoleOp,
+} from '../api/gitConsoleRun';
 import { formatGitHost } from '../formatGitHost';
 import type { DiscardIntent } from '../utils/discardIntent';
 import { isConflictedEntry } from '../utils/gitStatusGroups';
@@ -92,24 +98,17 @@ export function useGitActions({
   /** Handle the result of push/pull/fetch. Returns true if caller should stop further processing. */
   const handlePushOutcome = useCallback(
     (outcome: PushOutcome, _opName: string, setUpstream = false): boolean => {
-      if ('AuthRequired' in outcome) {
-        const { remote_url, ssh, username_hint } = outcome.AuthRequired;
-        if (ssh) {
-          onShowToast?.(
-            'SSH authentication failed. Ensure ssh-agent is running and key is added via ssh-add.',
-            'error',
-          );
-        } else {
-          setCredentialDialog({
-            open: true,
-            host: formatGitHost(remote_url),
-            usernameHint: username_hint,
-            setUpstream,
-          });
-        }
-        return true; // caller should stop / not treat as success
-      }
-      return false; // Success
+      if (!isAuthRequired(outcome)) return false; // Success
+      const { remote_url, ssh, username_hint } = outcome.AuthRequired;
+      if (ssh) onShowToast?.(SSH_AUTH_FAILED_MESSAGE, 'error');
+      else
+        setCredentialDialog({
+          open: true,
+          host: formatGitHost(remote_url),
+          usernameHint: username_hint,
+          setUpstream,
+        });
+      return true; // caller should stop / not treat as success
     },
     [onShowToast],
   );
@@ -125,7 +124,7 @@ export function useGitActions({
           projectId,
           projectPath,
           run: (runId) => commands.pushWithCredentials(setUpstream, username, password, runId),
-          isAuthRequired: (o) => 'AuthRequired' in o,
+          isAuthRequired,
         });
         if (result.status === 'busy') {
           onShowToast?.(GIT_BUSY_MESSAGE, 'error');
@@ -170,7 +169,7 @@ export function useGitActions({
           projectId,
           projectPath,
           run: op,
-          isAuthRequired: (o) => 'AuthRequired' in o,
+          isAuthRequired,
         });
         if (result.status === 'busy') {
           onShowToast?.(GIT_BUSY_MESSAGE, 'error');
