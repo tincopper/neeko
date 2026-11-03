@@ -21,20 +21,25 @@ UI 只认 Work Item；平台差异通过 **Provider Capability** 暴露。
 | --- | --- | --- |
 | `features/task` | 可运行脚本 / Console 输出 | **不合并进 Work Item 列表**；产品 UI 定名 **Launch** |
 | `PullRequestsPanel` + `pr-detail` | GitHub PR 列表与详情 Tab | **迁移为 GitHub Provider** 的一种 kind=`pull_request` |
-| `conversation` / Agent tabs | AI 会话 | Work Item 可「Open in Agent」生成上下文 |
+| `conversation` / Agent tabs | AI 会话 | Work Item 可派 `single` 执行（Open in Agent + 上下文前置），见 §3.4 |
+| `agent/team/**`（**已实现**） | 队长 + 成员 + 共享任务板（SQLite + 租约） | **不合并**；Work Item 可派 `team` 执行，hub 只存指针（§3.4） |
 | Git branch/worktree | 代码线 | PR 类 Work Item 可关联 branch/checkout |
 
 ---
 
 ## 2.1 产品命名（已拍板）
 
-### 三元组
+### 四元组（2026-11-01：加入 Run）
 
 ```text
 Tasks   → 工作项 inbox（PR / Issue / Linear / Jira / …）
 Launch  → 启动配置（脚本、命令、可扩展启动项；原 Task Runner）
 Agent   → 执行者（会话 / 模型）
+Run     → 执行派生（WorkItemRun：single / team / flow）
 ```
+
+> `Run` 在这里是**名词**（一次执行记录），与 `Launch` 的进行时态 *Running…* 不是同一层：
+> Launch 是“拉起什么”，Run 是“这次干得怎么样”。两者只在按钮文案上可能相邻，**不得**合并为同一模块。
 
 | 场景 | 选用 | 不用 | 理由 |
 | --- | --- | --- | --- |
@@ -43,7 +48,10 @@ Agent   → 执行者（会话 / 模型）
 | 进行中按钮态 | Running… / Stop | Launching…（可短暂） | 进行时仍可用 run 语义，模块名保持 Launch |
 | 领域模型（工作项） | **`WorkItem`** | `Task` | 避免与 `TaskConfig` / `run_task` / store 撞名 |
 | 领域模型（启动配置） | 现 `TaskConfig`/`TaskRun`，分期 **`LaunchConfig`** | 继续叫 Task | 产品先改文案；代码 rename 不阻塞 MVP |
-| 中文 | 任务 / 启动（启动配置） | 运行任务（易混） | 任务=Tasks；启动=Launch |
+| 中文 | **工作项** / 启动（启动配置） | 运行任务（易混） | 工作项=Tasks；启动=Launch；**「任务」单用只指 TeamTask** |
+| 团队任务 | **团队任务**（`TeamTask`） | 任务、子任务 | 与 WorkItem 分属两个域：一个是一次执行，一个是人的工作项 |
+| 人侧进度轨 | **Stage / 阶段** | workflow、workflow stage | 与「执行流程 Flow」区分；两者都叫 workflow 就是第四处撞车 |
+| 执行流程 | **Flow / 流程** | Workflow、Pipeline | 人预先编排的静态图；Pipeline 易与 CI 管线混 |
 
 ### Tasks vs Work（决策记录）
 
@@ -82,7 +90,7 @@ Agent   → 执行者（会话 / 模型）
 
 ```ts
 type WorkItemKind =
-  | 'local_task'     // Neeko 本地任务（默认内置）
+  | 'local_task'     // Neeko 本地工作项（默认内置）
   | 'pull_request'   // GitHub/GitLab MR
   | 'issue'          // GitHub/GitLab Issue
   | 'ticket'         // Linear/Jira/Asana… 通用工作项
@@ -142,8 +150,8 @@ interface WorkItem {
     remoteUrl?: string;
   };
   links?: { type: string; id: string; title?: string }[]; // PR↔Issue, Jira↔PR
-  // 本地任务工作流：stage 轨道 + 可执行 transition
-  workflow?: {
+  // 本地工作项的阶段轨：stage + 可执行 transition（**不叫 workflow**，见 §2.1）
+  progress?: {
     stages: string[];           // e.g. ['Backlog','Ready','In Progress','Review','Done']
     currentIndex: number;       // 当前所处 stage 索引
     transitions: { from: string; to: string; label?: string }[];
@@ -199,9 +207,10 @@ Local Provider 是 Neeko 自带的 first-party provider，无需连接第三方�
 - **id**: `'local'`
 - **默认启用**：用户安装/打开 Tasks 面板时即存在
 - **能力**: `list`, `search`, `detail`, `comment`, `assign`, `transition`
-- **工作流**: 每个 Local WorkItem 可绑定 `workflow`（stage 定义 + 当前索引 + 可执行 transitions）
-- **存储**: 本地 JSON / SQLite（与 sessions/config 同级目录），不依赖外部 API
-- **与第三方 Provider 的关系**: Local 任务与 GitHub/Linear 等任务在同一列表混排，通过 `provider` 字段区分；第三方 Provider 需要用户在 Settings → Integrations 中主动添加/连接
+- **阶段轨**: 每个 Local WorkItem 可绑定 `progress`（stage 定义 + 当前索引 + 可执行 transitions）；
+  **不能**叫 `workflow`（与执行侧的 `flow` 撞车，见 §2.1）
+- **存储**: **SQLite**（复用 `common/db` 的 `user_version` 迁移链，见 §8.3），不依赖外部 API
+- **与第三方 Provider 的关系**: 本地工作项与 GitHub/Linear 等工作项在同一列表混排，通过 `provider` 字段区分；第三方 Provider 需要用户在 Settings → Integrations 中主动添加/连接
 
 ### 3.3 Query（统一筛选）
 
@@ -219,6 +228,118 @@ interface WorkItemQuery {
   cursor?: string;
 }
 ```
+
+### 3.4 WorkItemRun（执行派生与执行契约）
+
+**WorkItem 是意图，Run 是执行。** 一个 WorkItem 可派生 0..N 次执行，两者一对多、生命周期独立
+（外部平台把 WorkItem 关掉了，Run 可能还在跑；Run 失败不影响 WorkItem 存在）。
+
+```ts
+type ExecutionMode =
+  | 'single'   // 一个 agent 会话干完（默认，成本最低）
+  | 'team'     // 交给团队：队长经 MCP 拆活、成员认领（域已实现：agent/team/）
+  | 'flow';    // 用户预先编排的固定流程（人决定下一步；本期不实现引擎）
+
+interface WorkItemRun {
+  id: string;
+  workItemId: string;          // `${providerId}:${providerItemId}`
+  mode: ExecutionMode;
+  // 指针：真相源在执行域，本字段只用于跳转与反查。
+  // `single` 档的 `id` 是 **终端 tab id**（用户可见、可 `activateTab`、与 tab 同生共死），不是 PTY session id ——
+  // PTY session 在 tab 挂载时才生成、应用重启 / 终端重建后不复存在，拿它当锚点会让执行记录
+  // 指向一个不存在的会话（详见下方「`single` 档的指针为何是 tab id」）。
+  ref:
+    | { kind: 'session'; id: string /* terminal tab id（本期语义） */ }
+    | { kind: 'team'; id: string; sub?: string /* teamId + 队内 taskId */ }
+    | { kind: 'flow'; id: string; sub?: string /* flowId + runId */ };
+  // 只读快照：离线渲染与列表徽标用，**永远不参与判定**
+  snapshot: {
+    state: 'queued' | 'running' | 'awaiting' | 'done' | 'failed' | 'unknown';
+    label: string;             // 原域文案（如「空闲 ⚠ 未声明」），短文本 ≤ 120 字符
+    capturedAt: string;        // UI 拿它算陈旧度
+  };
+  createdAt: string;
+}
+```
+
+#### `single` 档的指针为何是终端 tab id（2026-11-02，`run-single` 落地）
+
+| 候选 | 问题 |
+| --- | --- |
+| PTY session id | 在 tab 挂载时才生成。应用重启 / 终端重建后它就不存在了 —— 执行记录会指向一个**已经没有的会话**，而用户看到的是「跳转按钮点了没反应」 |
+| **终端 tab id** ✅ | 由我们自己 mint（`generateTerminalTabId()`）、从建 tab 那刻就存在、`activateTab` 能据此定位。它是这条链路上唯一**可寻址**的定位点（关掉 tab 则失效，UI 如实置灰） |
+
+字段形状不变（仍是 `{ kind, id, sub }`），收窄的只是 `single` 档的 `id` 语义：**写入面**（`work_item_run_record`）只接受这一类指针，读面按 `ref.kind` 分流跳转。
+
+#### 决策：快照存 hub 侧，真相源在执行域（2026-11-01）
+
+| 方案 | 代价 | 裁决 |
+| --- | --- | --- |
+| hub 侧不存，每次现查 | 两个域都要活着才渲染；列表 N 次跳域查询 | ❌ |
+| hub 侧存全量镜像（含成员/任务明细） | 双写 + 必然漂移；任务明细过 IPC 顶红线 4 | ❌ |
+| **hub 侧只存指针 + 轻量快照 + `capturedAt`** | 需要刷新策略；快照会过期 | ✅ |
+
+`snapshot.state` 是**缓存**：列表徽标、离线渲染、跳转目标用得上；任何「做完了没有」的判定必须回域侧查
+—— 团队的完成权威是任务板显式声明（`10-30` R4 / 不变量 2），`snapshot` 不得参与判定。
+`unknown` 是合法状态：域侧已不存在（团队被删）时**不得**假装 `failed`。
+
+#### 三档阶梯（按「需要多少确定性」递增）
+
+| 档 | 谁决定下一步 | 完成判定 | 何时用 | 成本 |
+| --- | --- | --- | --- | --- |
+| `single` | 人（一次会话） | 会话结束 | 5 分钟的修复；探索 | 低 |
+| `team` | 队长 LLM（运行时拆活） | 任务板显式声明 | 多文件并行 / 需 worktree 隔离 / 长链路 | 高（建队 + 准入 + 租约） |
+| `flow` | 人（预先编排静态图） | 步退出码 / 门禁 | 反复执行的固定套路（实现→测试→lint→PR） | 中（一次性编排） |
+
+**不得把三档压成一个视图**：`flow` 的可观测面是 run graph，`team` 是板列 + 成员六态（含「未声明」）。
+压平就丢掉「未声明 ≠ 完成」这条不变量。
+
+#### 执行契约（面板 ↔ 执行域）
+
+```ts
+interface WorkItemExecutor {
+  mode: ExecutionMode;
+  // 面板只给意图，不给步骤
+  dispatch(input: WorkItemDispatch): Promise<WorkItemRun>;
+  // 只读：刷新快照
+  refresh(run: WorkItemRun): Promise<WorkItemRun['snapshot']>;
+}
+
+interface WorkItemDispatch {
+  workItem: WorkItem;         // 意图（标题/正文/仓库/分支）
+  projectId: string;          // 执行环境归属（项目 id，不是路径）
+  workspaceRoot: string;      // 既有派生点给出的工作区根，不自拼
+  agentId?: string;           // single / team 的队长 CLI
+  flowId?: string;            // flow 模式
+}
+```
+
+- 面板不认识 `TeamTask`、不认识 PTY —— 三个 executor 各自封装自己的域（`src/AGENTS.md` 导入防火墙）。
+- `flow` 引擎未实现期间不注册该 executor，入口**置灰 + 说明原因**，不做假按钮。
+
+#### 收敛：`flow` 的步骤执行器 = 团队的「一次性工人」（架构约束）
+
+`10-30` 的 worker primitive 已经是「spawn 一个 CLI → 等完成信号 → 收产物引用」
+（`team_spawn` + sentinel；准入只有 `admission.rs` 一处判据）。`flow` 的每一步**就是**这个 primitive：
+
+- `flow` = 把它按**静态图**串起来（人已定序）
+- `team` = 让**队长**动态排图（LLM 定序）
+
+⇒ **两个模式共享 worker primitive，但不共享完成判定**（team 的完成必须走板声明，flow 的完成是步退出码）。
+实现顺序上先抽 primitive 的下游复用点，再写 flow 引擎；**不要**为 flow 另写一套 spawn / 准入 / 完成判定
+（那就是红线 15 的地方版本：同一个能力两处判据）。
+
+补一句诚实话：`flow` 的确定性只在**控制流**上成立。步长是 agent 时，第 3 步输出什么仍然不可预测
+—— 所以 v1 只做线性 + fan-out/join + 重试/门禁，**不做条件分支与循环**。
+
+#### 回链方向：边存在 hub 侧（2026-11-01）
+
+`TeamTask` 今天**没有**外部引用字段（`types.rs:353-370` 只有 `artifacts: Path | Commit | PullRequest`），
+团队库又有 `user_version` 迁移链，所以：
+
+- **不**给 `TeamTask` 加 `source` / `workItemRef` 列；边写在 hub 的 `WorkItemRun.ref` 上
+- **不**把 `TeamTask` 注册成 WorkItem Provider（不合并模型）
+- 团队板卡片上的 source badge **二期**：那需要团队侧读到 WorkItem，代价是一次迁移；v1 回链只在 hub 详情「执行」区块（§4.6）
 
 ---
 
@@ -268,7 +389,7 @@ Provider 连接/断开在 **Settings → Integrations** 中管理，Tasks 面板
 ├──────────────────────────┬───────────────────────┤
 │ 列表（虚拟滚动）            │ 详情 / 空态            │
 │ · LO T-1  In Progress    │ 标题 / 状态 / 人       │
-│ · GH PR #128  draft      │ Stage rail（本地任务）  │
+│ · GH PR #128  draft      │ Stage rail（本地工作项）  │
 │ · LIN-42  In Progress    │ 描述 markdown         │
 │ · JIRA PROJ-9  To Do     │ 动作条（按 capability） │
 │ · GL !15  merged         │ 关联分支 / 检查 / 链接  │
@@ -309,7 +430,7 @@ Tasks 面板不展示 Source Strip 卡片（占空间、低频、与 Settings �
 
 | Kind | 常见动作 |
 | --- | --- |
-| local_task | Transition（按 workflow stages）、Assign、Comment、Agent: implement |
+| local_task | Transition（按 stages）、Assign、Comment、Run with agent |
 | pull_request | Open、Checkout、Open Diff、Merge、Request Review、Agent: review |
 | issue | Open、Create branch、Comment、Close、Agent: implement |
 | ticket | Open、Transition、Assign、Link PR、Agent: implement |
@@ -320,6 +441,10 @@ Tasks 面板不展示 Source Strip 卡片（占空间、低频、与 Settings �
 const actions = registry.resolveActions(item) // 按 capabilities ∩ kind
 ```
 
+**执行类动作**（`Run with agent` / `Dispatch to team` / `Run flow…`）不走 capability 表，统一由
+`WorkItemExecutor` 发起（§3.4）并写一条 `WorkItemRun`。它们对**任何** provider 的工作项都可用（工作项只提供意图），
+所以能力判据是「这档执行器在不在 + 项目环境行不行」，不是「这个 provider 支不支持」。
+
 ### 4.5 看板首页（Board View）设计
 
 **作为 Tasks 默认首页**，Board View 以卡片列式展示任务状态分布：
@@ -328,12 +453,59 @@ const actions = registry.resolveActions(item) // 按 capabilities ∩ kind
 | --- | --- |
 | **列 = Stage** | Backlog → Ready → In Progress → Review → Done；列头显示该阶段任务数 |
 | **卡片 = WorkItem** | 展示 kind icon、provider badge、标题、标签、优先级（P1/P2/P3）、指派人头像 |
-| **Local 任务** | 默认显示，可直接在看板中创建（每列底部 `+ Add task`） |
+| **本地工作项** | 默认显示，可直接在看板中创建（每列底部 `+ Add task`） |
 | **第三方任务** | 按 `status.category` 映射到对应 stage 列混排 |
 | **状态映射** | `open/draft` → Backlog/Ready；`in_progress/blocked` → In Progress；`done/merged` → Done |
 | **阻塞标记** | `blocked` 任务在卡片上显示红色 `⛔ BLOCKED` 标记，但仍位于 In Progress 列 |
-| **交互** | 点击卡片打开详情面板；未来支持拖拽改变 stage（transition） |
-| **视图切换** | Board / List 通过顶部 tab 切换；记忆用户上次选择 |
+| **交互** | 点击卡片打开详情面板；右键卡片 [Move to] 可流转 stage（已实现，§11.5 方式三）；**拖拽改变 stage 是未来支持**（§11.5 方式一） |
+| **视图切换** | Board / List 通过顶部 tab 切换；记忆用户上次选择（`localStorage` key = `neeko.work-items.view`，已实现） |
+| **执行态标记** | 卡片显示最近一次执行的 mode 徽标 + 状态 chip（数据来自 `WorkItemRun.snapshot`，不参与完成判定） |
+
+### 4.6 执行区（Detail → Executions）
+
+详情面板底部固定一块「执行」，与字段区分离 —— **字段是外部平台的真相，执行是本机的行为**：
+
+| 元素 | 说明 |
+| --- | --- |
+| 动作入口 | `Run with agent` / `Dispatch to team` / `Run flow…`；不可用时**置灰 + 一行原因**，不隐藏。2026-11-02：`Run with agent` 已可点，旁边给一个只列「有 `command` 的 agent」的原生下拉（缺省 = 项目 `selected_agents[0]`；列表拉不到时只用缺省值，**不禁用**按钮）；另两档置灰且**原因各占一行**（它们不可用的理由不同，共用一句话必定有一句是假的） |
+| 执行记录 | 按 `createdAt` 倒序；每行：mode 徽标 · 状态 chip · `capturedAt` **绝对时间**（`toLocaleString`，悬停给 ISO）· **跳转按钮（✅ 2026-11-02 随 `run-single` 落地，规则见下）** |
+| 陈旧标记 | `snapshot.capturedAt` 超阈（`RUN_STALE_THRESHOLD_MS` = 60s）显示「· 已过期」并给刷新按钮；**不自动轮询**。陈旧只是**渲染提示**，不参与任何完成判定 |
+| `unknown` | 域侧已不存在（团队被删）时显示「已不可查」+ 最后快照时间，不得显示失败 |
+| 空态 | 「还没有执行记录」+ 三个动作入口 |
+| 载荷 | 一行一条摘要，`label` ≤ 120 字符；不在此渲染成员 / 团队任务明细（红线 4） |
+
+**为什么时间用绝对值，不是「N 分钟前」**
+
+相对时间需要一个「现在」，而渲染期读时钟是非纯渲染（同一份 props 两次渲染会给两个字符串）；
+靠定时器刷相对时间又正是本节禁止的自动轮询。所以时间只呈现绝对值，陈旧度由一个**独立**的
+布尔标记表达（`utils/runFreshness.ts` 的 `isStale`），「现在」只在**打开详情与手动刷新**两个
+瞬间读一次。代价说清楚：敞着详情十几分钟不刷新时，徽标不会自己亮。
+
+**跳转按钮的落地形态（2026-11-02）**
+
+跳转目标按 `ref.kind` 分流：
+
+| `ref.kind` | 目标 | 今天的行为 |
+| --- | --- | --- |
+| `session` | 终端 tab（`ref.id` = tab id，见 §3.4） | 给 [Open] 按钮：`activateTab(activeWorkspaceSession(projectId).key, ref.id)`。tabKey **必须**走 `activeWorkspaceSession(projectId).key`，不自己拼 `projectId + worktreePath` |
+| `team` | 团队面板 | **不渲染按钮**（没有目标）。`run-team` 落地时补 |
+| `flow` | flow run 视图 | **不渲染按钮**（引擎未实现） |
+
+**已关闭的 tab 不当作可跳目标**：执行记录是历史，它指向的终端可能早已被关掉。渲染期用
+`useEditorStore` 判断 tab id 是否还在，不在则按钮 `disabled` + `title="该会话已关闭"`。
+不隐藏、不弹错：一条**看得见但置灰**的按钮与一句说明，比“点一下没反应”诚实。
+
+**重启后这一档全部变成「已关闭」**（如实记账，不是缺陷）：编辑器 tab 不跳重启持久化
+（`save_session` 只存 sidebar 宽度与 worktree 状态），所以应用重启后所有 `session` 记录都指向已不存在的 tab。
+这时它们是**历史**：mode 徽标、状态、摘要、时间照常渲染，只是不再可跳。要真正“重启后还能回到那个会话”，
+需要的是终端会话持久化（另一个域的能力），不是把 `ref.id` 换回 PTY session id。
+
+**`unknown` 不参与跳转判定**：`snapshot.state === 'unknown'` 只说明域侧已不可查（团队被删 / 会话丢了），
+按真实状态色渲染「已不可查」+ 保留最后快照时间；它不把按钮改成别的形态 —— 会话只要还在，历史记录就该跳得过去。
+
+`record_run` 已由 `work_item_run_record` 开放（**只接受 `mode = single`**，见
+`.trellis/spec/backend/work-items-domain.md` §5），所以这一排按钮不再是「永远点不到东西的假按钮」——
+US-RUN-3 的约束到今天才被满足。
 
 ---
 
@@ -360,9 +532,9 @@ const actions = registry.resolveActions(item) // 按 capabilities ∩ kind
 │                                                   │
 │ ┌─ Built-in Provider ───────────────────────────┐ │
 │ │  [Local]   Local Tasks                         │ │
-│ │            Always available. Stage workflows,   │ │
+│ │            Always available. Stage tracks,    │ │
 │ │            assign, transition.                  │ │
-│ │            [Configure workflow]                 │ │
+│ │            [Configure stages]                  │ │
 │ └────────────────────────────────────────────────┘ │
 │                                                   │
 │ ┌─ Third-party Providers ───────────────────────┐ │
@@ -495,16 +667,39 @@ features/work-items/
 
 ---
 
-## 8. MVP 范围建议
+## 8. MVP 范围（已裁决 2026-11-01）
 
-| 阶段 | 内容 |
+### 8.1 里程碑与 Provider 范围
+
+| 里程碑 | Provider | 新鉴权 | 后端要写的 | Exit 条件 |
+| --- | --- | --- | --- | --- |
+| **MVP** | **Local（内置）+ GitHub PR** | 无（复用 `gh auth`） | Local CRUD + stage/transition + `WorkItemRun`；GitHub 只做 **DTO 映射** | `workItems.githubProvider` 打开后 PR 体验不弱于现 `PullRequestsPanel`；Local CRUD 全通；Board/List/Detail 可用 |
+| **MVP+1** | GitHub Issue | 无 | `gh issue` 读取路径（PR 的 trait 不覆盖 issue） | Issue 与 PR 同列混排、筛选正确 |
+| **V1** | GitLab（MR + Issue） | `glab` CLI 或 token | 实现 `gitlab.rs`（现为 `Err` stub）+ 项目绑定映射 | 两套鉴权并存时列表组件仍无 `if (provider===…)` |
+| **V1.1** | Linear | OAuth/token | tickets + transition（写） | 状态机映射不丢原始 label |
+| **V1.2** | Jira Cloud | OAuth/token | tickets + transition（写） | 同上 |
+
+**为什么 MVP 是这两个**：`common/git/pr/dispatch.rs:20-30` 的 `PrProvider` factory 里 GitHub 已全实现
+（list/view/create/merge/files/commits/comments/reviews），GitLab/Gitee 是 `Err("not yet supported")` 的 stub
+—— GitHub 这一档的后端成本只剩 DTO 映射；而 Local 是自有源、零外部依赖。两个源刚好把 registry 的
+「能力过滤 / 状态映射 / 动作裁剪」验证一遍，不必凭原型想象第四个 provider。
+
+### 8.2 不进 MVP（也不做半成品）
+
+| 项 | 原因 |
 | --- | --- |
-| **MVP** | Shell UI + 模型 + Mock providers + **GitHub PR 迁入**（复用现有 gh） |
-| **MVP+** | GitHub Issues |
-| **V1** | GitLab MR/Issue |
-| **V1.1** | Linear |
-| **V1.2** | Jira Cloud |
-| 并行 | Settings Integrations；Mine 跨仓视图 |
+| Gitee | `GitProvider` 枚举里有 ≠ 要实现；无用户诉求 |
+| Review 详情子视图 | 现 `pr-detail` 已够用；迁入只做 WorkItem detail 的 PR tab |
+| 跨仓 Mine 视图 | 需多仓连接态聚合，属 UI 打磨期 |
+| 第三方写操作（comment / assign / merge / transition） | 一律后置到各自 provider 的里程碑内 |
+| Settings 里的 GitLab/Linear/Jira 卡片 | **连「未连接」都不显示** —— 契约未验证前摆空卡片就是承诺 |
+
+### 8.3 默认值与回滚
+
+- `workItems.githubProvider` **默认关闭**；开发期只在本地打开，验收后再翻默认。
+  迁完仍需**并联一轮**（旧 Pull Requests dock 项与 Tasks 并存），确认无回退才删旧入口。
+- Local 工作项存储：**SQLite（复用 `common/db` 的 `user_version` 迁移链）**，不自造 JSON 文件
+  —— `WorkItemRun` / stage / transition 都是关系型数据，JSON 单文件并发写无迁移。
 
 ---
 
@@ -517,6 +712,9 @@ features/work-items/
 | PR 详情已很重 | Detail 保留 Tab 扩展，不把 diff 塞进窄面板 |
 | Auth 碎片化 | Provider 自己管 auth UI；壳只显示 Connect banner |
 | 过度抽象 | MVP 先 2 个真实 provider，验证 registry，再铺开 |
+| **命名四撞车**（2026-11-01） | WorkItem=工作项 · `TeamTask`=团队任务 · 人侧 **Stage** · 执行侧 **Flow**；`workflow` 一词禁用 |
+| **执行态与团队板双真相** | hub 侧 `snapshot` 只是缓存（带 `capturedAt`）；完成判定只回执行域查（§3.4） |
+| **flow 另写一套 spawn/完成判定** | 硬约束：复用 `team_spawn` 的 worker primitive，完成判定各自分开（§3.4） |
 
 ---
 
@@ -527,6 +725,7 @@ features/work-items/
 3. GitHub PR 体验不弱于现有 PullRequestsPanel  
 4. 从任务可进入 Agent / Checkout / 浏览器  
 5. 命名上开发者不混淆 runner task 与 work item  
+6. 同一个工作项可走 single / team / flow 三种执行，三档在详情「执行」区块里可辨且互不冒充  
 
 ---
 
@@ -534,7 +733,7 @@ features/work-items/
 
 ### 11.1 总览
 
-Local Provider 是 Neeko 内置的默认任务提供者，无需连接外部服务。用户可在 Tasks 面板直接创建、编辑、删除本地任务，并通过 Board 视图的看板列进行 stage 流转。
+Local Provider 是 Neeko 内置的默认任务提供者，无需连接外部服务。用户可在 Tasks 面板直接创建、编辑、删除本地工作项，并通过 Board 视图的看板列进行 stage 流转。
 
 ### 11.2 创建任务（Add Task）
 
@@ -621,39 +820,56 @@ Detail 面板的操作栏包含：
 
 ### 11.4 删除任务（Delete Task）
 
+> **2026-11-02 修订**：本节原写「删除前弹确认对话框」，实现改成了**乐观删除 + 5 秒撤销窗口**。
+> 设计写的是 A，落地的是 B，且 B 更好 —— 所以把设计改成事实，而不是把代码改回去。
+
 ```
 用户操作                                 UI 响应
 ─────────────────────────────────────────────────────────────────
-1. 在 Detail 面板中点击 [···] → [Delete]
-   或右键卡片 → [Delete]
-                                        → 弹出确认对话框
-2. 确认对话框：
-   ┌─────────────────────────────────┐
-   │  ✕  Delete Task                 │
-   │                                 │
-   │  Are you sure you want to       │
-   │  delete "Refactor auth module"? │
-   │  This action cannot be undone.  │
-   │                                 │
-   │       [Cancel]  [Delete]        │
-   └─────────────────────────────────┘
-3. 点击 [Delete]                      → 卡片从 Board 移除
+1. 在 Detail 面板中点击 [Delete]
+   或选中一行按 Delete / Backspace
+   或右键卡片 → [Move to] 旁边的入口     → 不弹确认框
+                                        → 卡片从 Board 立即移除
                                         → 列表视图同步移除
                                         → Detail 面板关闭（如打开）
-                                        → toast "Task deleted"
-4. 点击 [Cancel] / Escape             → 关闭对话框，不删除
+                                        → 底部出现 Undo 条：「已删除「<标题>」」
+2. 5 秒内点 [撤销]                    → 该行放回**原位**（不是追加到末尾）
+                                        → 后端一次删除请求都没发过
+3. 5 秒过去                           → 真的提交 work_item_delete
+                                        → 失败：该行自己回到列表 + 顶部错误位给原因
 ```
+
+**为什么不是确认对话框**
+
+| 方案 | 防误点 | 救「误点之后的什么」 | 额外代价 |
+| --- | --- | --- | --- |
+| 确认对话框 | ✅ | ❌（确认了就没退路了） | 每次删除多一次点击；对话框写「This action cannot be undone」还会**反过来**降低信任 |
+| **乐观删除 + 5s 撤销** | ✅（窗口内一切可逆） | ✅（连点两下、删错行、删完才想起里面有分支名） | 一个 5 秒的延迟提交路径（见 `workItemsStore.ts` 的「延迟提交」文件头） |
+
+两条不变量跟着这条决定一起固化：
+
+1. **撤销窗口里那行仍然在后端**：本地只是先藏起来，5 秒后才真发删除。反过来做（立刻删、撤销时
+   `create` 回来）会得到新 `id` 与新 `createdAt`，那是**偷偷改数据** —— 执行记录（
+   `work_item_run.work_item_id` 外键）指向的行会直接消失，而用户以为自己只是按了「撤销」。
+2. **撤销条是面板内的，不是 shared toast**：`shared/hooks/useToast` 是 3 秒且无动作按钮，
+   与 5 秒窗口必然漂移；「还能不能撤销」只以 `undoDelete()` 的返回值为准（`false` = 窗口已过）。
+
+「Escape 关闭对话框、不删除」这条旧语义仍然成立 —— 但今天的 Escape 关的是**详情面板**
+（对话框的 Escape 归 Radix Dialog，一处所有），而不是一个不存在的确认框。
 
 ### 11.5 Stage 流转（Transition）
 
 ```
 用户操作                                 UI 响应
 ─────────────────────────────────────────────────────────────────
-方式一：拖拽卡片
+方式一：拖拽卡片（**未来支持 —— 本期不实现**）
 1. 在 Board 视图中拖拽卡片到另一列    → 卡片动画移动到目标列
                                         → 自动保存 stage 变更
                                         → toast "Moved to In Progress"
 
+> 本期不做拖拽：①§4.5 已把拖拽标为「未来支持」；②HTML5 `dataTransfer` 在 jsdom 里不可靠，
+> 为它写下的交互测试只会变成易碎品。本期落地的是方式二与方式三（Stage Rail + 右键 [Move to]），
+> 两条入口共用同一个 `transition` 与同一条可达性判据（`utils/stageRail.ts`）。
 方式二：Detail 面板 Stage Rail
 1. 在 Detail 面板中点击 Stage Rail     → 显示可用的 stage 节点
    （例如 Backlog → Ready → ●In Progress● → Review → Done）
@@ -661,8 +877,10 @@ Detail 面板的操作栏包含：
                                         → 卡片在 Board 中移动到对应列
                                         → toast "Moved to Review"
 
-方式三：右键菜单
-1. 右键卡片 → [Move to]               → 子菜单列出可流转 stage
+方式三：右键菜单（**已实现**：`ui/ContextMenu` + `StageMoveMenu`）
+1. 右键卡片 → [Move to]               → 菜单列出**可直接流转**的 stage
+                                        （current / locked 不出现：菜单是可执行命令清单，
+                                         不是阶段进度表；「为什么不能跳过去」归 Stage Rail）
    ├── Backlog
    ├── Ready
    ├── ● In Progress
@@ -692,13 +910,18 @@ Backlog  ───  Ready  ───  In Progress  ───  Review  ─── 
 
 ### 11.7 交互细节约定
 
+> 2026-11-02 与实现对齐（每一项后面标了落地的实现点；口语与代码不一致时以本表为准）。
+
 | 场景 | 行为 |
 | --- | --- |
 | 空状态（无任何任务） | 显示欢迎提示 + [Create your first task] 按钮 |
-| 空列（无任务但其他列有） | 列显示 "No tasks" 占位文字 |
-| 创建后 | 自动滚动到新卡片位置 |
-| 删除后 | 若 Detail 面板打开且被删除项是当前选中，关闭 Detail |
-| 拖拽冲突 | 乐观更新 + 后端失败时回滚并 toast 错误 |
-| 键盘快捷键 | `Cmd+N` 新建，`Delete` 删除选中，`Escape` 关闭对话框 |
-| 数据持久化 | 每次变更自动保存到本地 JSON（无手动保存按钮） |
-| 撤销 | 删除后显示 "Undo" toast（5 秒内可撤销） |
+| 空列（无任务但其他列有） | 列显示「暂无工作项」占位文字 |
+| 创建后 | 自动滚动到新卡片位置（`scrollIntoView({ block: 'nearest' })`）。**只对**本面板发起的 create 生效 —— 列表因别的原因多出一行（延迟提交的删除失败把行放回来）时**不滚**（`hooks/useRevealRow`） |
+| 删除前 | **不弹确认框**：乐观移除 + 5 秒撤销窗口（§11.4） |
+| 删除后 | 若 Detail 面板打开且被删除项是当前选中，关闭 Detail（由 `selectedId` 派生，不需要同步代码） |
+| 拖拽冲突 | 乐观更新 + 后端失败时回滚并 toast 错误（拖拽本身本期不做，见 §11.5 方式一） |
+| 键盘快捷键 | `Cmd/Ctrl+N` 新建；`Delete` / `Backspace` 删除选中；`Escape` 关闭详情（对话框的 Escape 归 Radix Dialog，一处所有）。**只在面板有焦点且焦点不在 input / textarea / contentEditable 里时生效**（判据：`utils/shortcuts.ts`；接线：`hooks/usePanelShortcuts.ts`） |
+| 视图记忆 | Board / List 上次选择持久化到 `localStorage`（key = `neeko.work-items.view`）；非法值 / 存储不可用时静默回落 Board（`utils/viewPreference.ts`） |
+| 数据持久化 | 每次变更自动保存到 **SQLite**（复用 `common/db` 迁移链；无手动保存按钮） |
+| 撤销 | 删除后显示面板内 **Undo 条**（`components/UndoBar.tsx`，5 秒内可撤销，**不是** shared toast） |
+| 快照陈旧 | `capturedAt` 超 60s 标「· 已过期」（`utils/runFreshness.ts`）；不自动轮询 |

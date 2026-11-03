@@ -1,1 +1,7 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "新增 work_item 命令必须走薄命令层 + manager 委派"}
+{"file": ".trellis/spec/backend/persistence-and-cache.md", "reason": "Local 工作项落 SQLite：迁移链、连接池与缓存约定"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新域 src-tauri/src/work_items/ 的文件切分与 mod.rs 极薄约束"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "features/work-items/api 的 invoke 封装与 DTO 映射约定"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "feature 目录切分、index.ts 门面与 store 直导规则"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "zustand store 分域与派生状态（WorkItemQuery 筛选）"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 侧 CRUD/迁移测试夹具与断言约定"}
