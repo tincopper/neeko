@@ -110,7 +110,8 @@ pnpm test
 | 10 run-single | ✅ 2026-11-02 | `work_item_run_record`（**只接受 `mode=single`**）+ `utils/workItemInstruction.ts` + `hooks/useRunSingleWorkItem.ts` + 执行区接线（Run with agent / agent 下拉 / 记录 [Open]）；`createTaskTerminal` 改为**返回新 tab id**（`string | null`）—— 原计划的「可选 `tabId` 入参 + 保持 boolean」被护栏 `check_terminal_foreground_arbitration` A3 禁止（terminal 域不得出现可选 `tabId`），理由写在该文件注释里 |
 | 11 run-team | ◻️ 未开始 | 依赖 `10-30` 收尾 + `start_team_session` 的 `initialPrompt` |
 | 12 run-flow | ◻️ 未开始 | |
-| 4 provider-github-pr | ◻️ 未开始 | MVP 的最后一块（复用 `PrProvider` + `gh`，只做 DTO 映射） |
+| 4 provider-github-pr | ✅ | 只读 provider：`viewModel.ts`（`TaskItem` 视图模型，**不污染 DTO**）、`providers/githubPr.ts`（`listPrs` → 视图模型）、`hooks/useGithubPrs.ts` + `usePrDetail.ts` + `useTaskFeed.ts`（本地项与 PR 合并）、`utils/providerPreference.ts`（默认 **关**）、`TaskSourceBadge` / `PrTaskSection`；旧 `Pull Requests` 面板一行未动（并联期） |
+| **MVP 完成度** | **3/3** | Local provider ✅ · `run-single` ✅ · GitHub PR（只读）✅ —— 写操作（merge / checkout / diff）与 Issue 仍属后续里程碑 |
 
 **测试账（2026-11-02 `run-single` 后）**：Rust `cargo test work_item` **59 条**（+7：single 落库 / `team`·`flow` 被拒 /
 未知 workItemId → `NotFound` / `single` 必须指 `session` 且 `ref_id` 非空 / 线上词汇转换 / 指针归一 / 命令已注册）；
