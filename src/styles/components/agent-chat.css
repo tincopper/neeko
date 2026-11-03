@@ -290,10 +290,11 @@
 
   /* Tiptap 富文本 composer（富文本 token 化任务）：视觉仍与输入区既有排版对齐，
      但它是真实渲染（非镜像），无需 text-fill-color / 组合期门控那套加固。
-     自动增高：编辑器随内容生长，外层 max-height + overflow 接管滚动（同现状 200px）。 */
+     自动增高：编辑器随内容生长，外层 max-height + overflow 接管滚动（同现状 200px）。
+    滚动条隐掉但不影响滚动：走共享 `@utility scrollbar-hidden`（调用方在 RichComposer.tsx
+    的 class 上），而不是在这里再写一份 `scrollbar-width:none` + 伪元素 —— 那份知识只该有一处。 */
   .rich-composer-root { position: relative; }
-  .rich-composer { min-height:60px; max-height:200px; overflow-y:auto; scrollbar-width:none; }
-  .rich-composer::-webkit-scrollbar { display:none; }
+  .rich-composer { min-height:60px; max-height:200px; overflow-y:auto; }
   .rich-composer .rich-composer-editor { min-height:60px; padding:14px 20px 8px; color:var(--text-primary); font-size:14px; font-family:inherit; line-height:1.55; outline:none; white-space:pre-wrap; overflow-wrap:break-word; }
   .rich-composer .rich-composer-editor p { margin:0; }
   .rich-composer .rich-composer-editor p.is-editor-empty:first-child::before { content:attr(data-placeholder); color:var(--text-muted); pointer-events:none; float:left; height:0; }

@@ -193,7 +193,8 @@ function RichComposer({
 
   return (
     <div className="rich-composer-root">
-      <div className="rich-composer">
+      {/* 滚动条由 `scrollbar-hidden` 隐掉（样式知识在 styles/base/tailwind.css，不在这里散写）。 */}
+      <div className="rich-composer scrollbar-hidden">
         <EditorContent editor={editor} />
       </div>
     </div>
