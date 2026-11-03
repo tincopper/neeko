@@ -351,6 +351,11 @@ CLI 实现且格式随意，后者是猜。而 `agent/hooks` 域**早就有**更
 
 ## 15. hook 未生效时的提示 + 重新安装
 
+> **2026-11-03 变更：本节已作废（用户定案）** —— 侧栏那条常驻提示被判定为噪声，
+> `CliHookHint` / `useCliHookHealth` / `hookRowsNeedingAttention` 与其测试已整体删除，
+> 「hook 未生效」的可见性回到设置页（`CliHooksSection` 的安装状态 + 重新安装）。
+> 判据契约的新落点见 `.trellis/spec/frontend/state-management.md`。下文保留为历史记录。
+
 标题走 hook 之后多了一条**静默失效**路径：hook 没装 / 装旧了 / CLI 侧还没确认信任，
 上报不来，用户只会看到「标题不跟随 CLI」，没有任何线索指向原因。
 

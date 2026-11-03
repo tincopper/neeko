@@ -738,6 +738,16 @@ macOS 上 Tauri 事件送达 = 每次 `evaluateJavaScript`，逐读块 `emit` �
 若不去重，第二个入口的失败收尾会把正在跑的第一个 run 误标 `failed`（旧 run 的 reject 回调
 也会误伤被接管的新 tab）。
 
+**认证分支与文案的单一来源（2026-11-03）**：`PushOutcome` 的 `AuthRequired` 判定与 SSH 文案收在
+`gitConsoleRun.ts` 的 `isAuthRequired`（type guard，可直接作 `isAuthRequired` 选项传入）/ 
+`SSH_AUTH_FAILED_MESSAGE` / `authRequiredMessage(outcome, fixHint)` —— 共享的是**事实**
+（SSH 分支 / 远端 URL / 用户名提示），随上下文变的是「去哪儿修」（提交对话框就在 Git 面板里、
+侧栏 toast 不在），由调用方传一句 `fixHint`。此前 `(o) => 'AuthRequired' in o` 散在 6 处、
+SSH 文案 2 份、`pushOutcomeMsg` 3 份：写错一次就是把认证失败当成功（Console 记 ok 还弹
+「Pushed successfully」）。侧栏的 push/pull 另抽了 `features/project/hooks/useGitConsoleActions`：
+两个入口原本是逐行相同的 handler，现在只差 `REMOTE_GIT_OPS` 表里的一行（加 `fetch` 即加一行），
+路径解析 / Console / busy / 取消 / 认证 / 刷新只留一份。
+
 **DRY（同一生命周期只留一份）**：命令层的「占槽 + 产 hooks」收敛到 `begin_git_run`
 （此前 7 处各写一段）；Local / WSL / SSH 的「spawn 包装器 → 流式采集 → 取消赛跑 →
 错误映射」收敛到 `transport::run_spawn_streaming` + `finish_git_output`（此前三份复制）。

@@ -409,7 +409,7 @@ async 作用域且永不收敛 ⇒ 后续渲染全部丢失（表现为「明明
 | mode | 行为 | 适用 |
 | --- | --- | --- |
 | `widen`（默认） | 右内边减掉实测占位 → 内容变宽、左边界不动 | 有右内边的容器：markdown 预览 / 图片 / agent-chat |
-| `center` | 左内边加上实测占位 | 右内边为 0、内容居中的容器：PDF 滚动区 / 会话列表（经 `VirtualList` 的 `scrollbarCompensation` prop） |
+| `center` | 左内边加上实测占位 | 右内边为 0 的容器：PDF 滚动区 / 会话列表（经 `VirtualList` 的 `scrollbarCompensation` prop） |
 | `none` | 不补偿 | 既有消费方保持原行为 |
 
 三条硬约束（第一性原理）：
@@ -427,13 +427,22 @@ async 作用域且永不收敛 ⇒ 后续渲染全部丢失（表现为「明明
 避免内容横向跳一下）。
 
 护栏：`scrollbarCompensation.test.ts`（10 条：占位钳零、幂等、无滚动条回基线、负内边保底
-`max(0, …)`、center 补左侧、dispose 清 inline）；四个容器各一条「类名不含算术 / 基线类保持」
-断言；PDF 另有一条 `Fit width` 按内容盒宽度计算的用例。
+`max(0, …)`、center 补左侧、dispose 清 inline）；每个消费容器各一条「补偿已接线 / 无滚动条
+回基线」断言（`MarkdownScrollContainer` / `ImageFileView` / `AgentChatTabView` /
+`ProjectsPanel` / `VirtualList`）—— 只接 hook 不写断言 = 接线断了没人知道；
+PDF 另有一条 `Fit width` 按内容盒宽度计算的用例。
 
 **例外：终端不要套这套补偿**。xterm 的滚动条是它**自绘的 overlay 元素**（贴在 xterm
 元素右边缘、**不占布局宽度**），`offsetWidth - clientWidth` 对它恒为 0 —— 交给 hook 是
 无害空转，所以 `TerminalViewBase` 壳层只需保持 `p-0 pl-2`：禁止加右内边（试过 `px-2`，
 会把滚动条一起从右边缘推进 8px），也禁止调 `useScrollbarCompensation`。
+
+**另一种合法选择：把滚动条整条隐藏**（`@utility scrollbar-hidden`，标准属性 + 旧 WebKit
+伪元素两条通道）。适用于「内缩已由行自己表达、又不想为对称再付一次补偿代价」的列表
+（消费方：侧栏项目列表 —— 补偿会把整个列表右移一个占位；富文本 composer 也是同类的
+「不需要滚动条」容器，原先在 `agent-chat.css` 里自写了一套同款声明，已收敛）。二者**互斥**：
+隐藏后占位恒为 0，再接 hook 就是空转 + 白改内边。判据：要留滚动条 → 补偿；
+不要滚动条视觉 → 隐藏，且断言改为「容器仍 `overflow-y-auto` 且带 `scrollbar-hidden`」。
 
 ### 终端右侧的 14px 幻影（`@xterm/addon-fit` 补丁）
 

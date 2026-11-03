@@ -2152,12 +2152,16 @@ agent 图标挤在同一段左内边距上，读起来像错位的装饰块）�
 不是断言子串出现过），且不得与 `AGENT_CHAT_EVENT` / `TRANSLATION_EVENT` 撞名 ——
 值相等挡不住「两端一起抄错」。
 
-**hook 未生效必须可见**：会话标题的权威来源是 CLI hook 上报，而 hook 未安装 / 过期 / 未受信时
-那一路**静默失效**。`shared/utils/agentHookSources.ts` 是与设置页共用的唯一判据
-（`hookRowsNeedingAttention`：可安装 && 本机检测到 && 用户没关掉 && 且未安装/过期/未信任），
-`features/project/components/CliHookHint` 在侧栏底部提示「会话标题未跟随 CLI」并给一个
-「重新安装」入口（`agent_hooks_apply` + 重新探测）。四道降噪缺一不可：自供源不提示、
-本机没装该 CLI（`path === ''`）不提示、用户主动关掉不提示、探测失败静默降级为不提示。
+**hook 未生效：侧栏不再提示（2026-11-03 定案）**：会话标题的权威来源是 CLI hook 上报，
+hook 未安装 / 过期 / 未受信时那一路**静默失效**。此前侧栏底部有 `CliHookHint`
+（「会话标题未跟随 CLI」+ 重新安装）与它背后的 `useCliHookHealth` / `hookRowsNeedingAttention`；
+用户判定那条常驻提示条本身就是噪声，已**整体删除**（组件 / hook / 判据函数 / 测试一并移除，
+不留无人消费的抽象）。可见性回到**设置页**：`settings/components/CliHooksSection` 的
+安装状态列 + 「重新安装」仍用 `shared/utils/agentHookSources.ts` 的同一套判据
+（`installableHookRows` / `readSourceOverrides` / `isHookSourceEnabled`）。
+要恢复侧栏提示时，从 git 历史取回两段：`hookRowsNeedingAttention`（三道过滤：自供源 /
+本机没装该 CLI / 用户主动关掉）+ 那个 hook 里的 fail-soft 探针（探测失败降级为不提示）。
+不要重写一份。
 
 **单元会话列表的展开与分页**：新会话出现（`childCount` 增长）时该单元**自动展开** ——
 基线取 0，所以面板重挂载时「本来就有会话」也算一次出现；条数不变则尊重用户的手动折叠
