@@ -901,3 +901,39 @@ omp 改用共享 content_blocks 层（思考/工具块不再丢）；pi+omp 补�
 ### Next Steps
 
 - provider-github-pr（MVP 最后一块）; 另需独立处理 test_fe 300s 预算
+
+
+## Session 399: Work items MVP complete: GitHub PR provider + test_env hygiene
+<!-- trellis-session: v=2 fp=79f28a4e3e8065b8 -->
+
+**Date**: 2026-11-03
+**Task**: Work items MVP complete: GitHub PR provider + test_env hygiene
+**Branch**: `multi-agent`
+
+### Summary
+
+GitHub PR 作为第二个（只读）provider 落地：TaskItem 视图模型不污染 DTO、PR 状态按语义映射到 Review/Done、开关默认关且 gh 不可用时给行内原因；8 个无 DOM 测试迁到 node 环境；maxWorkers 二次实测证明 6↔10 无收益并写回 spec。MVP 3/3 完成。
+
+### Main Changes
+
+- FE: features/work-items/{viewModel,providers,hooks,components,utils}/** + dock wrapper；spec: frontend-testing 记录 maxWorkers 实测；docs: implement.md 进度与剩余范围
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `47c4b8cf` | feat(work-items): surface GitHub pull requests as a read-only provider |
+| `9486b8e8` | test(work-items): run DOM-free tests in the node environment |
+| `28de1b18` | docs(work-items): record the provider milestone and what is left |
+
+### Testing
+
+- [OK] pnpm check 39/39 通过（test_fe 166.7s）；全量 vitest 728 文件 / 6689 测试绿；pnpm check:quick 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 剩余属后续里程碑：GitHub Issue、GitLab、Linear/Jira、Integrations 页、run-team/run-flow、PR 写操作；test_fe 预算（300s vs 实测 154-167s）待决策
