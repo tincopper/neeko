@@ -201,7 +201,9 @@ Neeko 的服务端是 axum HTTP（`server/`），但 MCP 客户端的现实是**
 
 - ❌ **Agent Chat 成员（含 Chat 队长）** —— 延后到独立阶段，理由见 §「为什么 CLI 先做」
 - ❌ 队长自动提升 / 团队嵌套（一个会话最多当一次队长，成员不能再建团队）
-- ❌ 无 LLM 的声明式 DAG 编排器（保留为将来兜底形态，本期不做）
+- ❌ 无 LLM 的声明式 DAG 编排器 —— **已迁出本任务**：它是 `07-26-unified-task-hub` 的 `flow` 执行方式
+  （该任务 design §3.4）。本任务只提供它要复用的 worker primitive（`team_spawn` + sentinel + `admission.rs` 准入），
+  不实现编排引擎；两边**共享 worker，不共享完成判定**（team 的完成是板声明，flow 的是步退出码）
 - ❌ 跨机器 / 跨厂商远端 agent 互操作（A2A 属于 ingress 适配器议题）
 - ❌ 引入外部多路复用运行时（见 design §「已否决方案」）
 - ❌ 并入 `07-26-unified-task-hub` 的 Tasks（WorkItem）看板
@@ -270,6 +272,8 @@ Neeko 的服务端是 axum HTTP（`server/`），但 MCP 客户端的现实是**
 | 5 | **sentinel 是否一期** | **是**。纯函数扫描器，成本低；且它是 C 档成员的唯一入口 |
 | 6 | **成员 token 怎么过鉴权门** | **D+E**：团队流量走**独立 listener** + 独立 `AuthGate`（多 token），**hooks 那道门一字不改**；身份在 handler 内按 **sha256 查表**解析，不新增恒定时间比较。理由：同端口共用会让成员 token 能伪造队友的 `turn_completed`（正是 §5.4 在防的同类事故） |
 | 7 | **CLI 成员的入站通道**（2026-10-31，裁决 A） | **一律 `Pty`**。MCP over HTTP 没有 server→client 推送、工具面里也没有收件箱 ⇒「有 MCP 面 ⇒ channel = Mcp」是一条**不存在的通道**（`team_send` 对每个成员都失败）。`Mcp` 留给将来接 Chat 成员（`SessionRequest` 是真的下行通道）；「能用工具」由 `has_mcp` 表达，与 `channel` 分开 |
+| 8 | **是否接受 hub 的「派给团队」入口**（2026-11-01） | **接受，但只走上下文前置**：不给 `TeamTask` 加工作项引用列、不新增 `team_dispatch` 命令；`start_team_session` 可增 `initialPrompt` 入参（可选，供 hub 的 `run-team` 消费）。团队面板**不**渲染 source badge（二期才考虑），回链边存在 hub 侧 `WorkItemRun.ref` |
+| 9 | **命名**（2026-11-01 补，对应裁决 1） | hub 侧中文改称「**工作项**」，**「任务」单用只指 `TeamTask`（团队任务）**；执行侧编排形态叫 **`flow`**，人侧进度轨叫 **`stage`**，`workflow` 一词禁用 |
 
 ## Research
 
