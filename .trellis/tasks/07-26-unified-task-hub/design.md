@@ -400,6 +400,76 @@ Provider 连接/断开在 **Settings → Integrations** 中管理，Tasks 面板
 
 
 **视图切换**：Board / List 通过顶部 tab 切换；Board 为默认首页，更适合直观查看状态分布。
+
+### 4.2b 岛屿布局（2026-11-03 修订，替换 §4.2 的表面分层）
+
+> 触发：用户反馈「Tasks 实现的太丑了，没有遵循项目的 UI 规范，应该使用岛屿的布局设计」。
+> 复盘结论不是「不够好看」，而是**表面层级整个倒过来了**：面板根节点用海面色（`bg-bg-primary`）
+> 被中心区 `<Island>`（浮岛 `bg-bg-secondary`）包着 —— 岛被填成海，中心区看起来像挖了个洞；
+> 看板列与卡片又各自手写外壳，没有一处走 `ISLAND_CLASS`。
+
+#### 层级契约（唯一来源 `src/ui/Island.tsx` + `src/layout/islands.ts`）
+
+| 层 | 谁负责 | 类名 | 禁止 |
+| --- | --- | --- | --- |
+| 海面 | 宿主（`AppCenter` 的透明包装） | `bg-bg-primary` | 面板自己再画一层海面 |
+| 岛屿 | 每块**独立可滚动/可聚焦的内容块** | `ISLAND_CLASS`（`flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary min-h-0`） | 手写 `rounded-md border border-border bg-bg-secondary` 冒充岛屿 |
+| 岛内控件面 | 岛内的列头 / 卡片 / 输入框 | `bg-bg-tertiary` | 岛内再用 `bg-bg-primary`（那是海面，会把岛挖穿） |
+| 岛间距 | 分栏宿主 | `ISLAND_SPLIT_GROUP_CLASS`（`gap-px`）+ 宿主 1px 内缩 | 各面板自定 `gap-2` / `p-2` |
+
+判据（三条，缺一条就是重犯）：
+
+1. **一座岛 = 一块自己滚动的内容**。看板每列、列表、详情各是一座岛；列内的卡片不是岛，是
+   岛内控件面。
+2. **岛屿外壳只有一处**：`ISLAND_CLASS` / `<Island>`。任何 `rounded-* border border-border bg-bg-secondary`
+   的自写组合都是第二套外壳，必须删。
+3. **岛间距只有一处**：`ISLAND_SPLIT_GROUP_CLASS`。看板列之间、列表与详情之间都是 `gap-px`
+   （配合宿主 1px 内缩 = 3px 海面），禁止 `gap-2` / `p-2`。
+
+#### 各视图的岛屿形状
+
+**Tasks 面板（裸挂进中心区，与 Library 同构）**
+
+```
+┌ 中心区（海面 bg-primary）──────────────────────────────────────┐
+│ ┌ 头部岛 ──────────────────────────────────────────────────┐ │
+│ │ [Board][List]  🔍搜索   [GitHub PRs]        [+ 新建] [↻] │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│ ┌ 内容岛（看板 = 每列一座岛 / 列表 = 列表岛│详情岛）────────┐ │
+│ │ ┌Backlog┐┌Ready┐┌In Prog┐┌Review┐┌Done┐                    │ │
+│ │ │ 卡片  ││ 卡片 ││  卡片  ││ 卡片 ││ 卡片 │                   │ │
+│ │ └───────┘└──────┘└───────┘└──────┘└─────┘                   │ │
+│ └──────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────┘
+```
+
+- **头部是一座岛**（不是 `border-b` 的裸横条）：标题 + 视图切换 + 搜索 + provider 开关 + 动作。
+- **Board**：列 = 岛（`ISLAND_CLASS` + `gap-px` 容器），列头在岛内用 `bg-bg-tertiary`；
+  卡片是岛内控件面（`bg-bg-tertiary` + `border-border`），不是第二座岛。
+- **List**：`ResizablePanelGroup`（`ISLAND_SPLIT_GROUP_CLASS`）= **列表岛 │ 详情岛**，
+  两侧各自滚动（禁止分栏外再包一层 `overflow-auto`）。
+- **详情不再是覆盖层**：`absolute inset-0 bg-bg-primary` 把整座岛换掉，用户丢掉看板与滚动位置。
+  改成**第二座岛**（Board 视图下同样占右侧一栏），看板始终可见。
+- **Board 视图的详情**：右侧第三栏（看板列被压窄但始终可见），与 List 同一条分栏契约。
+
+#### 与 §4.2 原文的差异（以本节为准）
+
+| 项 | §4.2 原文 | 本节（实现事实） |
+| --- | --- | --- |
+| 面板底色 | 未写 | 面板**裸挂**，不自带海面（海面由 `AppCenter` 的透明包装提供） |
+| 看板列 | 「五列卡片」 | 列是**岛**，列数仍来自 `plan.stages` |
+| 卡片表面 | 未写 | 岛内控件面 `bg-bg-tertiary`（不是 `bg-bg-primary`） |
+| 详情 | 「右侧详情面板」 | **第二座岛**（Board 与 List 共用），不是覆盖层 |
+| 列间距 | 未写 | `gap-px`（`ISLAND_SPLIT_GROUP_CLASS`），不是 `gap-2` |
+
+#### 分栏尺寸存哪（判据：谁拥有存储格式）
+
+列表｜详情的分栏比例**不是域数据**：它不落 SQLite、不过 IPC、不同步给别的窗口。
+`workItemsStore` 是「项目的工作项集合」且会随 `reset()` 清空（切项目时清），把布局比例塞进去
+会让「切项目后回到默认宽度」变成一条无解释的行为。所以走
+`useDefaultLayout({ id, panelIds, onlySaveAfterUserInteractions: true })`
+（`TeamListPane` 同款，理由见 `component-guidelines.md`「变体：面板没有 owning persisted store 时」）。
+
 ### 4.2a 连接提示与空态（Connect Banner）
 
 Tasks 面板不展示 Source Strip 卡片（占空间、低频、与 Settings 重复）。

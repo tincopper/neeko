@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 399
+- **Total Sessions**: 400
 - **Last Active**: 2026-11-03
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~939 | Active |
+| `journal-8.md` | ~961 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 400 | 2026-11-03 | Tasks 面板岛屿布局重构（design §4.2b） | `8b9f14ba` | `multi-agent` |
 | 399 | 2026-11-03 | Work items MVP complete: GitHub PR provider + test_env hygiene | `47c4b8cf`, `9486b8e8`, `28de1b18` | `multi-agent` |
 | 392 | 2026-11-03 | Work items MVP: Local provider, Tasks panel, run-single | `6ae67611`, `2fb4d532`, `7e7ca0ae`, `fae1ff01`, `c5492a14`, `752993cb`, `6122a2c1`, `08a888ff`, `5ceae855` | `multi-agent` |
 | 381 | 2026-10-30 | 会话正文按需加载：统计/搜索/剪贴板下沉到 Rust，三个适配器计数口径统一 | - | `main` |

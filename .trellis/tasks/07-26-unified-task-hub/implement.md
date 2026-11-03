@@ -99,6 +99,80 @@ pnpm test
 # 手动：flow 引擎未实现时 [Run flow…] 置灰且写明原因，不隐藏
 ```
 
+## 岛屿布局改造（2026-11-03，design §4.2b）
+
+> 用户反馈：「Tasks 实现的太丑了，没有遵循项目的 UI 规范，应该使用岛屿的布局设计」。
+> 改在**本任务**下（不新建任务）：它就是 Tasks 面板的 UI 落地。
+
+### 判据（四条，改完后逐条自查）
+
+1. 面板**裸挂**进中心区（与 Library 同构），自己不画海面；
+2. 所有岛屿外壳走 `ISLAND_CLASS` / `<Island>`，删除自写的 `rounded-md border border-border bg-bg-secondary`；
+3. 岛间距只有 `ISLAND_SPLIT_GROUP_CLASS`（`gap-px`），删除 `gap-2` / `p-2`；
+4. 岛内控件面用 `bg-bg-tertiary`，**禁止** `bg-bg-primary`（那是海面）。
+
+### 改动清单
+
+| # | 文件 | 动作 | 验收 |
+| --- | --- | --- | --- |
+| 1 | `src/app/components/AppCenter.tsx` | Tasks 从「套 `<Island>`」改为**裸挂**（与 Library 同形）；包装形状表补一行 | `AppCenter.test`：Tasks 的 DOM 父级不再有岛类 |
+| 2 | `src/features/work-items/components/TasksPanel.tsx` | 根节点 `bg-bg-primary` → 透明；头部与内容各自成岛 | 组件测试断言两座岛存在 |
+| 3 | `TasksPanelHeader.tsx` | 裸 `border-b` 横条 → `<Island>`（岛内 `bg-bg-tertiary` 头部语言） | `TasksPanelHeader` 无边框裸条残留 |
+| 4 | `BoardView.tsx` | 列 → `ISLAND_CLASS`；容器 `gap-2 p-2` → `gap-px`；列头/卡片 → `bg-bg-tertiary` | `BoardView.test`：列有岛类、容器 `gap-px` |
+| 5 | `WorkItemCard.tsx` | `bg-bg-primary` → `bg-bg-tertiary`（岛内控件面） | 断言不再有 `bg-bg-primary` |
+| 6 | `ListView.tsx` | 裸 `<ul>` → 列表岛；与详情岛分栏 | 新测试：列表岛 + 详情岛 + separator |
+| 7 | `WorkItemDetail.tsx` | `absolute inset-0 bg-bg-primary` 覆盖层 → **第二座岛**（Board 与 List 共用） | 详情不再是 `absolute inset-0` |
+| 8 | `TasksPanelBody.tsx` | 按视图给出「看板岛容器 / 列表+详情分栏」 | — |
+
+### 分栏尺寸
+
+列表｜详情（以及 Board｜详情）的分栏比例走
+`useDefaultLayout({ id, panelIds, onlySaveAfterUserInteractions: true })`：
+`workItemsStore` 会随 `reset()` 清空（切项目），把布局比例塞进去会让「切项目后回到默认宽度」
+变成一条无解释的行为。理由同 `TeamListPane`（`component-guidelines.md` 的变体节）。
+
+### 验证
+
+```bash
+pnpm vitest run src/features/work-items src/app/components/__tests__/AppCenter.test.tsx
+pnpm check:quick   # 收尾一次
+```
+
+## 进度（2026-11-03，岛屿布局改造）
+
+| # | 动作 | 落地 |
+| --- | --- | --- |
+| 1 | Tasks 中心区**裸挂** | `AppCenter.tsx`：`<Island>` → 透明包装（与 Library 同形）+ 两岛骨架 |
+| 2 | 岛屿间距新增唯一来源 | `layout/islands.ts` 新增 `ISLAND_GAP_CLASS`（6px，非分栏位置）；`ISLAND_SEA_PAD_CLASS` |
+| 3 | 看板列 = 岛 | `BoardView.tsx`：`ISLAND_CLASS` + `ISLAND_GAP_CLASS`；列头/`+Add` → `bg-bg-tertiary` |
+| 4 | 卡片 = 岛内控件面 | `WorkItemCard.tsx`：`bg-bg-primary` → `bg-bg-tertiary` |
+| 5 | 头部 = 岛 | `TasksPanelHeader.tsx`：裸 `border-b` 横条 → `<Island className="flex-row bg-bg-tertiary">` |
+| 6 | 列表 = 岛 | `ListView.tsx`：裸 `<ul>` → 岛壳 + 内部滚动 |
+| 7 | 详情 = **第二座岛** | `WorkItemsSplitView.tsx`（新）：`ResizablePanelGroup` + `useDefaultLayout`；`WorkItemDetail.tsx` 去 `absolute inset-0 bg-bg-primary` |
+| 8 | 面板根 = 海面 | `TasksPanel.tsx`：`bg-bg-primary` → 透明 + `ISLAND_GAP_CLASS p-1.5`；内容区去 `overflow-auto` |
+
+### 顺带拆出的文件（`check_component_size` 300 行红线）
+
+| 文件 | 职责 |
+| --- | --- |
+| `components/WorkItemsSplitView.tsx` | 「主内容岛 │ 详情岛」分栏（Board/List 共用） |
+| `components/WorkItemDetailPane.tsx` | 详情岛的接线（选中项 + 阶段轨 + 四动作） |
+| `hooks/useWorkItemDialogSubmit.ts` | 对话框开关 + 提交 + 错误回填（五个 state 同生同灭） |
+| `utils/filterWorkItems.ts` | 搜索命中判据（纯函数，边界可直测） |
+
+### 测试账（2026-11-03）
+
+`pnpm vitest run src/features/work-items src/app/components src/app/dock src/layout` → **301 条绿**（37 文件）。
+新增用例：BoardView 岛屿三条、TasksPanel 岛屿四条、AppCenter 包装形状三条、`filterWorkItems` 七条。
+`pnpm check:quick` → **13 条护栏全通过**。
+
+### 有意识改动的**存量**用例
+
+`TasksPanel.test.tsx` 的「焦点在搜索框里时 Backspace 只是输入」从 `user.click(input)` 改成
+`input.focus()` + `toHaveFocus()` 前置断言：`react-resizable-panels` 在 document 上挂
+`pointerdown`（capture），按指针到分隔条的距离判命中；jsdom 里 rect 全 0×0、坐标全 0 ⇒ 距离恒 0
+⇒ 任何点击都把焦点抢给分隔条。这是 jsdom 测量缺失，不是真实行为（坑已记入 spec）。
+
 ## 进度（2026-11-02）
 
 | 子任务 | 状态 | 落地 |

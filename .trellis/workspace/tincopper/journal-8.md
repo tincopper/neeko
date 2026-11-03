@@ -937,3 +937,25 @@ GitHub PR 作为第二个（只读）provider 落地：TaskItem 视图模型不�
 ### Next Steps
 
 - 剩余属后续里程碑：GitHub Issue、GitLab、Linear/Jira、Integrations 页、run-team/run-flow、PR 写操作；test_fe 预算（300s vs 实测 154-167s）待决策
+
+
+## Session 400: Tasks 面板岛屿布局重构（design §4.2b）
+<!-- trellis-session: v=2 fp=b9cb0b5dd103b055 -->
+
+**Date**: 2026-11-03
+**Task**: Tasks 面板岛屿布局重构（design §4.2b）
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8b9f14ba` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
