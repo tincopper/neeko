@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 
-import type { StagePlan, WorkItem } from '../types';
+import type { StagePlan } from '../types';
+import type { TaskItem } from '../viewModel';
 
 import WorkItemCard from './WorkItemCard';
 
@@ -31,7 +32,7 @@ interface BoardViewProps {
   /** 阶段轨是否还在拉（决定占位文案是「加载中」还是「不可用」）。 */
   planLoading: boolean;
   /** 已按 store 顺序排好的工作项（本组件不重排）。 */
-  items: WorkItem[];
+  items: TaskItem[];
   onOpen: (id: string) => void;
   /** 卡片右键菜单选中一个 stage（design §11.5 方式三）：宿主做 `transition` + 失败 toast。 */
   onMove: (id: string, stage: string) => void;
@@ -42,7 +43,7 @@ interface BoardViewProps {
 interface BoardColumnProps {
   stage: string;
   plan: StagePlan | null;
-  items: WorkItem[];
+  items: TaskItem[];
   onOpen: (id: string) => void;
   onMove: (id: string, stage: string) => void;
   onAdd: (stage: string) => void;
@@ -95,13 +96,13 @@ BoardColumn.displayName = 'BoardColumn';
 
 interface GroupedBoard {
   /** stage → 该列的工作项（顺序 = store 顺序）。 */
-  groups: Map<string, WorkItem[]>;
+  groups: Map<string, TaskItem[]>;
   /** 阶段不在 `plan.stages` 里的工作项条数（报告用，不猜位置）。 */
   orphans: number;
 }
 
-function groupByStage(plan: StagePlan, items: WorkItem[]): GroupedBoard {
-  const groups = new Map<string, WorkItem[]>();
+function groupByStage(plan: StagePlan, items: TaskItem[]): GroupedBoard {
+  const groups = new Map<string, TaskItem[]>();
   for (const stage of plan.stages) groups.set(stage, []);
   let orphans = 0;
   for (const item of items) {

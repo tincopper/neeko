@@ -15,6 +15,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { StagePlan, WorkItem } from '../../types';
+import { toLocalTask, type TaskItem } from '../../viewModel';
 import WorkItemCard from '../WorkItemCard';
 
 /** 相邻两两可流转（与后端 `StagePlan::default()` 同形），所以中间那条有两个可去目标。 */
@@ -30,8 +31,8 @@ const PLAN: StagePlan = {
   ],
 };
 
-function item(stage = 'Ready', overrides: Partial<WorkItem> = {}): WorkItem {
-  return {
+function item(stage = 'Ready', overrides: Partial<WorkItem> = {}): TaskItem {
+  return toLocalTask({
     id: 'wi_1',
     projectId: 'p1',
     title: '修复登录',
@@ -43,7 +44,7 @@ function item(stage = 'Ready', overrides: Partial<WorkItem> = {}): WorkItem {
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
-  };
+  });
 }
 
 /** 右键卡片 → 返回菜单容器（Radix 的 Content 有 `role="menu"`）。 */

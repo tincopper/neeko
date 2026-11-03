@@ -455,11 +455,32 @@ const actions = registry.resolveActions(item) // 按 capabilities ∩ kind
 | **卡片 = WorkItem** | 展示 kind icon、provider badge、标题、标签、优先级（P1/P2/P3）、指派人头像 |
 | **本地工作项** | 默认显示，可直接在看板中创建（每列底部 `+ Add task`） |
 | **第三方任务** | 按 `status.category` 映射到对应 stage 列混排 |
-| **状态映射** | `open/draft` → Backlog/Ready；`in_progress/blocked` → In Progress；`done/merged` → Done |
+| **状态映射** | `open/draft` → Backlog/Ready；`in_progress/blocked` → In Progress；`done/merged` → Done。**这是通用规则**（面向 issue / ticket：开了 = 还没人干）；具体 provider 的落点可以更精确，见下节的 PR |
 | **阻塞标记** | `blocked` 任务在卡片上显示红色 `⛔ BLOCKED` 标记，但仍位于 In Progress 列 |
 | **交互** | 点击卡片打开详情面板；右键卡片 [Move to] 可流转 stage（已实现，§11.5 方式三）；**拖拽改变 stage 是未来支持**（§11.5 方式一） |
 | **视图切换** | Board / List 通过顶部 tab 切换；记忆用户上次选择（`localStorage` key = `neeko.work-items.view`，已实现） |
 | **执行态标记** | 卡片显示最近一次执行的 mode 徽标 + 状态 chip（数据来自 `WorkItemRun.snapshot`，不参与完成判定） |
+
+#### GitHub PR 的落列（2026-11-02，`github-provider` 落地）
+
+上表那条 `open → Backlog/Ready` 是**通用**映射，对 issue/ticket 成立；PR 的语义不同，所以 PR
+按自己的状态机落列（判据唯一实现：`src/features/work-items/viewModel.ts::prStage`）：
+
+| PR state | 列 | 为什么 |
+| --- | --- | --- |
+| `OPEN` | **Review** | 开着的 PR 意味着「代码写完了，正在等 review」。放进 Backlog 会让「我这活干完了没有」反着说 —— 用户会以为自己还有一堆没开始的 PR |
+| `MERGED` / `CLOSED` | **Done** | 两种终态都不再需要人动手；`CLOSED`（未合并关闭）也算 Done，因为它在看板上的语义是「不用再看了」，不是「失败了」 |
+| 其它 / 未知 | **In Progress** | provider 将来新增状态（如 `DRAFT`）时卡片必须仍然出现在某一列：掉出看板的卡片在界面上与「不存在」无法区分 |
+
+配套约束：
+
+- **PR 卡片不可流转**：右键 [Move to] 只出现在本地工作项上（写了也是写本地库，PR 状态在 GitHub 上）；
+- **PR 详情是只读的**：没有阶段轨 / 编辑 / 删除 / 执行区，只有 base ← head、作者、原始 state、
+  正文与「在浏览器打开」（`url` 来自 `viewPr`，**详情才拉**，列表页不拉 N 次）；
+- **落列只在当前阶段轨里成立**：用户若把阶段集改成不含 `Review`，PR 会走看板已有的「阶段不在
+  阶段轨中」报告路径（不静默丢弃）；
+- **开关默认关**（§8.3）：`localStorage` key = `neeko.work-items.githubProvider`，面板头部勾选框；
+  `gh` 未装 / 未登录 / 探测失败时勾选框 `disabled` + 可见原因 + `title`，且**不发任何请求**。
 
 ### 4.6 执行区（Detail → Executions）
 
@@ -698,6 +719,10 @@ features/work-items/
 
 - `workItems.githubProvider` **默认关闭**；开发期只在本地打开，验收后再翻默认。
   迁完仍需**并联一轮**（旧 Pull Requests dock 项与 Tasks 并存），确认无回退才删旧入口。
+  2026-11-02 落地：偏好落 `localStorage`（key = `neeko.work-items.githubProvider`，实现
+  `features/work-items/utils/providerPreference.ts`），面板头部一个勾选框；`gh` 不可用时禁用
+  + 原因（不把探测失败当已登录）。并联期旧 `PullRequestsPanel` **一行不改**。
+  本期 GitHub 能力只到 **list / detail / open-in-browser**（merge / checkout / diff 按 §8.2 后置）。
 - Local 工作项存储：**SQLite（复用 `common/db` 的 `user_version` 迁移链）**，不自造 JSON 文件
   —— `WorkItemRun` / stage / transition 都是关系型数据，JSON 单文件并发写无迁移。
 

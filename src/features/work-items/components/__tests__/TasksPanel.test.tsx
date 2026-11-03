@@ -1,9 +1,10 @@
 /**
  * `TasksPanel`：视图切换、搜索、快捷键、以及四条**跨层**链路。
  *
- * 只 mock **api 层**（`../../api/workItemsApi`），让 store 真实跑 —— 这样乐观流转、失败回滚、
- * 删除的撤销窗口在用例里都是真行为，而不是被 mock 掉的假设（`workItemsStore.test.ts` 钉的是
- * store 的状态迁移，这里钉的是「用户点下去会看到什么」）。
+ * 只 mock **api 层**（`../../api/workItemsApi` 与 `../../../git/api/gitApi`），让 store 与
+ * provider hook 真实跑 —— 这样乐观流转、失败回滚、删除的撤销窗口、PR 开关的去重在用例里都是
+ * 真行为，而不是被 mock 掉的假设（`workItemsStore.test.ts` 钉的是 store 的状态迁移、
+ * `useGithubPrs.test.tsx` 钉的是开关的因果链，这里钉的是「用户点下去会看到什么」）。
  *
  * 覆盖：
  * 1. 默认 Board；切 List 行数一致；视图选择**活过卸载**（design §4.5）；
@@ -13,7 +14,7 @@
  * 5. 快捷键：按键 → 对应的动作被调（判据本身由 `utils/__tests__/shortcuts.test.ts` 钉）；
  * 6. 滚动只对本面板发起的 create 生效（延迟提交失败的回魂不算新建）。
  */
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,25 +32,51 @@ const api = vi.hoisted(() => ({
 /** agent 列表：详情里的执行区会拉它来填下拉（本文件不测下拉行为，只求不打真 IPC）。 */
 const agentApi = vi.hoisted(() => ({ listAgents: vi.fn(), getAgent: vi.fn() }));
 
+/**
+ * GitHub PR provider 走 `features/git/api/gitApi`（既有 api 层）：按红线只 mock 这一层，
+ * 不去 mock `invoke`。默认「gh 已装且已登录、没有 PR」，各用例按需覆盖。
+ */
+const gitApi = vi.hoisted(() => ({
+  isGhInstalled: vi.fn(),
+  isGhAuthenticated: vi.fn(),
+  listPrs: vi.fn(),
+  viewPr: vi.fn(),
+}));
+
+/**
+ * 「在浏览器打开」走 `features/browser/api/browserApi`（既有 api 层）：真调会 `invoke`，
+ * 所以按红线在这一层替换，并断言**交给系统浏览器的那个 URL 就是 viewPr 给的那个**
+ * （自己拼 `github.com/<owner>/<repo>/pull/n` 是企业版 / fork 场景下 404 的根因）。
+ */
+const browserApi = vi.hoisted(() => ({ openInDefaultBrowser: vi.fn() }));
+
 vi.mock('../../api/workItemsApi', () => api);
 vi.mock('../../../agent/api/agentApi', () => agentApi);
+vi.mock('../../../git/api/gitApi', () => gitApi);
+vi.mock('@/features/browser/api/browserApi', () => browserApi);
+
+import type { PRListItem } from '@/shared/types/git';
 
 import { useWorkItemsStore } from '../../store/workItemsStore';
-import type { CreateWorkItemParams, StagePlan, WorkItem } from '../../types';
+import type { CreateWorkItemParams, StagePlan } from '../../types';
+import { toLocalTask, type TaskItem } from '../../viewModel';
 import TasksPanel from '../TasksPanel';
 
+/** 含 Review / Done：PR 的落列判据就在这两列上（`prStage`）。 */
 const PLAN: StagePlan = {
-  stages: ['Backlog', 'Ready', 'In Progress'],
+  stages: ['Backlog', 'Ready', 'In Progress', 'Review', 'Done'],
   transitions: [
     { from: 'Backlog', to: 'Ready' },
     { from: 'Ready', to: 'Backlog' },
     { from: 'Ready', to: 'In Progress' },
     { from: 'In Progress', to: 'Ready' },
+    { from: 'In Progress', to: 'Review' },
+    { from: 'Review', to: 'Done' },
   ],
 };
 
-function item(id: string, stage: string, title: string): WorkItem {
-  return {
+function item(id: string, stage: string, title: string): TaskItem {
+  return toLocalTask({
     id,
     projectId: 'p1',
     title,
@@ -60,6 +87,24 @@ function item(id: string, stage: string, title: string): WorkItem {
     assignee: null,
     createdAt: 1,
     updatedAt: 1,
+  });
+}
+
+/** 一条开着等 review 的 PR（`state: 'OPEN'` ⇒ 必须落在 Review 列）。 */
+function pr(overrides: Partial<PRListItem> = {}): PRListItem {
+  return {
+    number: 128,
+    title: '统一任务中心：PR provider',
+    state: 'OPEN',
+    author: 'tincopper',
+    headRefName: 'feat/pr-provider',
+    baseRefName: 'main',
+    createdAt: '2026-11-02T10:00:00Z',
+    isCrossRepository: false,
+    headRepositoryOwner: 'tincopper',
+    labels: [{ name: 'enhancement', color: 'a2eeef' }],
+    assignees: [{ login: 'tincopper' }],
+    ...overrides,
   };
 }
 
@@ -89,6 +134,15 @@ beforeEach(() => {
   api.listWorkItems.mockResolvedValue([]);
   api.deleteWorkItem.mockResolvedValue(undefined);
   api.listWorkItemRuns.mockResolvedValue([]);
+  gitApi.isGhInstalled.mockReset();
+  gitApi.isGhAuthenticated.mockReset();
+  gitApi.listPrs.mockReset();
+  gitApi.viewPr.mockReset();
+  gitApi.isGhInstalled.mockResolvedValue(true);
+  gitApi.isGhAuthenticated.mockResolvedValue(true);
+  gitApi.listPrs.mockResolvedValue([]);
+  browserApi.openInDefaultBrowser.mockReset();
+  browserApi.openInDefaultBrowser.mockResolvedValue(undefined);
 });
 
 describe('TasksPanel — 视图', () => {
@@ -378,5 +432,109 @@ describe('TasksPanel — 创建后滚动到新卡片（design §11.7）', () => 
 
     await screen.findByRole('button', { name: '打开工作项 回魂的行' });
     expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+});
+
+describe('TasksPanel — GitHub PR provider（design §8.3）', () => {
+  it('勾上 GitHub PRs：PR 卡片出现在 Review 列；取消勾选后消失且不重拉', async () => {
+    const user = userEvent.setup();
+    // 至少一条本地工作项：没有数据时面板渲染的是空态，而不是看板列。
+    api.listWorkItems.mockResolvedValue([item('wi_1', 'Backlog', '修复登录')]);
+    gitApi.listPrs.mockResolvedValue([pr()]);
+    render(<TasksPanel projectId="p1" />);
+    await screen.findByRole('region', { name: 'Backlog 列' });
+
+    const toggle = screen.getByRole('checkbox', { name: 'GitHub PRs' });
+    expect(toggle).not.toBeChecked();
+    expect(gitApi.listPrs).not.toHaveBeenCalled();
+
+    await user.click(toggle);
+
+    // OPEN ⇒ Review 列（不是 In Progress：开着的 PR 是「等 review」，不是「还没开始」）。
+    expect(
+      await within(column('Review')).findByRole('button', {
+        name: '打开工作项 统一任务中心：PR provider',
+      }),
+    ).toBeInTheDocument();
+    expect(gitApi.listPrs).toHaveBeenCalledTimes(1);
+
+    await user.click(toggle);
+
+    expect(
+      screen.queryByRole('button', { name: '打开工作项 统一任务中心：PR provider' }),
+    ).not.toBeInTheDocument();
+    // 关掉再开不重拉（同一 workspace 只拉一次），所以这里仍然只有第一次那一声。
+    expect(gitApi.listPrs).toHaveBeenCalledTimes(1);
+  });
+
+  it('gh 不可用：勾选框 disabled、原因可见且有 title，且不发任何 PR 请求', async () => {
+    api.listWorkItems.mockResolvedValue([item('wi_1', 'Backlog', '修复登录')]);
+    gitApi.isGhInstalled.mockResolvedValue(false);
+    render(<TasksPanel projectId="p1" />);
+    await screen.findByRole('region', { name: 'Backlog 列' });
+
+    const toggle = screen.getByRole('checkbox', { name: 'GitHub PRs' });
+    await waitFor(() => expect(toggle).toBeDisabled());
+    expect(toggle).toHaveAttribute('title', '未安装 GitHub CLI（gh）');
+    // 原因必须**可见**：disabled 控件连 hover 都可能不触发，只挂 title 等于没说。
+    expect(screen.getByText('未安装 GitHub CLI（gh）')).toBeInTheDocument();
+    expect(gitApi.listPrs).not.toHaveBeenCalled();
+  });
+});
+
+describe('TasksPanel — PR 详情（只读）', () => {
+  async function openPrDetail() {
+    const user = userEvent.setup();
+    api.listWorkItems.mockResolvedValue([item('wi_1', 'Backlog', '修复登录')]);
+    gitApi.listPrs.mockResolvedValue([pr()]);
+    gitApi.viewPr.mockResolvedValue({
+      number: 128,
+      title: '统一任务中心：PR provider',
+      state: 'OPEN',
+      body: 'PR 正文',
+      author: 'tincopper',
+      headRefName: 'feat/pr-provider',
+      baseRefName: 'main',
+      url: 'https://github.com/tincopper/neeko/pull/128',
+      createdAt: '2026-11-02T10:00:00Z',
+      mergeable: 'MERGEABLE',
+      mergeStateStatus: 'CLEAN',
+      isDraft: false,
+      isCrossRepository: false,
+      statusCheckRollup: null,
+    });
+    render(<TasksPanel projectId="p1" repoLabel="neeko" />);
+    await screen.findByRole('region', { name: 'Backlog 列' });
+
+    await user.click(screen.getByRole('checkbox', { name: 'GitHub PRs' }));
+    await user.click(
+      await within(column('Review')).findByRole('button', {
+        name: '打开工作项 统一任务中心：PR provider',
+      }),
+    );
+    return user;
+  }
+
+  it('显示 base ← head、作者与 #编号，且没有编辑 / 删除（PR 是只读的）', async () => {
+    await openPrDetail();
+
+    const detail = screen.getByRole('region', { name: '工作项详情' });
+    expect(detail).toHaveTextContent('main ← feat/pr-provider');
+    expect(detail).toHaveTextContent('tincopper');
+    expect(detail).toHaveTextContent('neeko#128');
+    expect(within(detail).queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
+    expect(within(detail).queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+  });
+
+  it('「在浏览器打开」用的是 viewPr 给的 url（不是自己拼的）', async () => {
+    const user = await openPrDetail();
+
+    const open = screen.getByRole('button', { name: '在浏览器打开' });
+    await waitFor(() => expect(open).toBeEnabled());
+    await user.click(open);
+
+    expect(browserApi.openInDefaultBrowser).toHaveBeenCalledWith(
+      'https://github.com/tincopper/neeko/pull/128',
+    );
   });
 });

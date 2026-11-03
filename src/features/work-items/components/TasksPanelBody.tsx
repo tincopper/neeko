@@ -2,7 +2,8 @@ import React from 'react';
 
 import { Button } from '@/ui/Button';
 
-import type { StagePlan, WorkItem } from '../types';
+import type { StagePlan } from '../types';
+import type { TaskItem } from '../viewModel';
 
 import BoardView from './BoardView';
 import ListView from './ListView';
@@ -20,7 +21,7 @@ import type { TaskView } from './TasksPanelHeader';
  * | 读失败且从未成功 | `error !== null && items.length === 0` | 什么都不画（横幅已解释） | 补一句「还没有工作项」= 谎报数据 |
  * | 真的没有 / 被搜索过滤光 | `items.length === 0` / `visible.length === 0` | 欢迎提示 / 「没有匹配的工作项」 | 用户分不清「没数据」与「搜不到」|
  *
- * `loading` 已经把「还没加载过」算进来（`useWorkItems` 的注释），所以这里不能用
+ * `loading` 已经把「还没加载过」与「PR 正在拉」都算进来（`useTaskFeed` 的注释），所以这里不能用
  * `items.length === 0` 去猜；`items` 与 `visible`（过滤后）也是两件事：一个决定「有没有数据」，
  * 一个决定「搜索命不命中」。
  *
@@ -36,9 +37,9 @@ interface TasksPanelBodyProps {
   /** store 的读路径错误（`load` / 延迟提交的删除）。 */
   error: string | null;
   /** 本项目全部工作项（`updatedAt DESC`，不重排）。 */
-  items: WorkItem[];
+  items: TaskItem[];
   /** 搜索过滤后的结果（顺序同 `items`）。 */
-  visible: WorkItem[];
+  visible: TaskItem[];
   view: TaskView;
   plan: StagePlan | null;
   planLoading: boolean;

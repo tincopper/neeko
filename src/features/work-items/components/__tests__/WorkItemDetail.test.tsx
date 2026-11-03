@@ -31,6 +31,7 @@ vi.mock('../../api/workItemsApi', () => api);
 vi.mock('../../../agent/api/agentApi', () => agentApi);
 
 import type { StagePlan, WorkItem, WorkItemRun } from '../../types';
+import { toLocalTask, type TaskItem } from '../../viewModel';
 import WorkItemDetail from '../WorkItemDetail';
 
 const PLAN: StagePlan = {
@@ -43,8 +44,8 @@ const PLAN: StagePlan = {
   ],
 };
 
-function item(overrides: Partial<WorkItem> = {}): WorkItem {
-  return {
+function item(overrides: Partial<WorkItem> = {}): TaskItem {
+  return toLocalTask({
     id: 'wi_1',
     projectId: 'p1',
     title: '修复登录态过期',
@@ -56,7 +57,7 @@ function item(overrides: Partial<WorkItem> = {}): WorkItem {
     createdAt: 1,
     updatedAt: 2,
     ...overrides,
-  };
+  });
 }
 
 function run(overrides: Partial<WorkItemRun> = {}): WorkItemRun {

@@ -6,8 +6,9 @@ import { invokeErrorMessage } from '@/shared/utils/invokeError';
 import { usePanelShortcuts } from '../hooks/usePanelShortcuts';
 import { useRevealRow } from '../hooks/useRevealRow';
 import { useStagePlan } from '../hooks/useStagePlan';
-import { useWorkItems } from '../hooks/useWorkItems';
-import { useWorkItemsStore } from '../store/workItemsStore';
+import { useTaskFeed } from '../hooks/useTaskFeed';
+import { useWorkItemDelete } from '../hooks/useWorkItemDelete';
+import { GITHUB_PR_PROVIDER_LABEL } from '../providers/githubPr';
 import type { UpdateWorkItemParams } from '../types';
 import {
   localStorageOrNull,
@@ -24,54 +25,51 @@ import WorkItemDialog from './WorkItemDialog';
 import type { WorkItemCreateDraft, WorkItemDialogIntent } from './WorkItemForm';
 
 /**
- * Tasks 面板（Local provider，design §4.2）：Board / List 双视图 + 详情 + 新建/编辑 + 撤销条。
+ * Tasks 面板（design §4.2）：Board / List 双视图 + 详情 + 新建/编辑 + 撤销条。
  *
- * # 失败通道分两处，不能合并
+ * # 本文件只做「编排」
  *
- * | 来源 | 谁渲染 |
+ * | 规则 | 住在哪里 |
  * | --- | --- |
- * | 读路径（`load` / 5 秒后延迟提交的删除）→ `store.errors` | 顶部错误横幅 + 重试 |
- * | 动作（`create` / `update` / `transition`）→ Promise 抛出 | 对话框内联 / toast |
+ * | 三条错误通道的分工（本地读 / provider 读 / 动作） | `components/TasksPanelStatus` |
+ * | 两档来源合并成一份 `items`（不跨 provider 重排、不重排我自己的顺序） | `hooks/useTaskFeed` |
+ * | 5 秒撤销窗口（以 `undoDelete()` 的返回值为准，不拿条子的计时器当判据） | `hooks/useWorkItemDelete` |
+ * | 视图 / provider 开关的持久化与容错 | `utils/viewPreference` / `utils/providerPreference` |
  *
- * `transition` 的失败**不写** `errors`（见 `store/workItemsStore.ts` 的通道表），所以必须在
- * 调用点 catch 并 toast；不 catch 就是「卡片悄悄弹回原列，一个字都不说」。
+ * 留下的是「这次挂载」的状态（搜索 / 选中 / 对话框）与把动作接到对应 hook 的胶水。选中项由
+ * `selectedId` **派生**：被删的行从列表消失时详情自然关掉，不需要任何同步代码。
  *
- * # 撤销只有一条通道
+ * # `transition` 的失败必须在这里 catch
  *
- * 删除后的 5 秒窗口由 [`UndoBar`] 独占（shared toast 是 3 秒且无动作按钮，两套计时器必然漂移）。
- * 撤销以 `undoDelete()` 的**返回值**结算：`false` = 窗口已过 → 直接收起，**不**提示成功。
+ * store 对 `transition` 做乐观更新 + 失败回滚，但它**不写** `errors`（没有调用方可以替它提示），
+ * 所以提示落在调用点。不 catch 就是「卡片悄悄弹回原列，一个字都不说」。
  *
- * 「撤的是该项目最近一次删除」是已知取舍：同时删两行时后进覆盖先前的窗口（store 的 Map 保插入序），
- * 但先删的那行仍会在 5 秒后正常提交删除 —— 这里只展示一个窗口，不为它改契约。
+ * # 视图是唯一不留在挂载期的状态
  *
- * # 顺序不动、不做入场动画
- *
- * `items` 的顺序是 `updatedAt DESC`（store 与后端同一契约）：本面板不排序、不插入动画。
- * 唯一会滚动的情况是**本面板发起的 create**（`useRevealRow`）—— 延迟提交失败的删除会让那一行
- * **自己回到列表**，把回魂当新建滚动过去就是谎报事实。
- *
- * # 状态的归属
- *
- * 搜索 / 选中 / 对话框 / 撤销条都是**这一次挂载**的导航与呈现状态，留在本组件的
- * `useState` 里；数据面（列表 / 阶段轨）来自 store 与 hook。选中项由 `selectedId` 派生，所以
- * 「删掉的那条正好是打开着的」不需要任何同步代码：它从列表消失，详情自然关掉。
- *
- * **视图是例外**：`board` / `list` 是这台机器的呈现偏好，挂载期状态会让每次重开面板都回到
- * Board（design §4.5 要求「记忆用户上次选择」），所以它经 `utils/viewPreference` 落到
- * `localStorage`。
+ * `board` / `list` 与 `githubProvider` 是这台机器的偏好：挂载期状态会让每次重开面板都回到
+ * Board / 关掉 PR（design §4.5、§8.3），所以它们各有一份 localStorage 落点。
  */
 interface TasksPanelProps {
   /** 宿主注入的激活项目（`null` = 没有激活项目，面板显示空态且不发 IPC）。 */
   projectId: string | null;
+  /**
+   * PR 的仓库展示标签（`owner/name`；拿不到时留空）。
+   *
+   * 由宿主注入而不是面板自己查：`PRListItem` 里只有 `headRepositoryOwner`（fork 时是别人的
+   * owner），仓库名不在任何一条现有 IPC 的返回里 —— 不为了一个展示标签新增一次请求。
+   */
+  repoLabel?: string;
 }
 
-/** 撤销条的内容：被删标题（文案要点名，5 秒窗口里这是唯一的核对依据）。 */
-interface PendingUndo {
-  title: string;
-}
-
-const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId }) => {
-  const { items, loading, error, actions } = useWorkItems(projectId);
+const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId, repoLabel = '' }) => {
+  const {
+    items,
+    loading,
+    error,
+    actions,
+    refresh: refreshFeed,
+    github,
+  } = useTaskFeed(projectId, repoLabel);
   const { plan, loading: planLoading } = useStagePlan();
   const { toast, showToast } = useToast();
 
@@ -82,7 +80,13 @@ const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId }) => {
   const [intent, setIntent] = useState<WorkItemDialogIntent | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
-  const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(null);
+  /** 删除 + 撤销窗口（规则见 `useWorkItemDelete` 的文件头）。 */
+  const {
+    pendingTitle,
+    remove: removeItem,
+    undo: undoDelete,
+    dismiss: dismissUndo,
+  } = useWorkItemDelete(actions, showToast);
 
   /** 卡片 / 行的容器："创建后滚到新卡片" 在这棵子树里找目标（见 `useRevealRow`）。 */
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -104,12 +108,6 @@ const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId }) => {
         (item.assignee ?? '').toLowerCase().includes(query),
     );
   }, [items, search]);
-
-  const handleRefresh = useCallback(() => {
-    if (projectId === null) return;
-    // 手动刷新走 store 的 `load`（同项目在飞会被复用，连点不会打两次 IPC）。
-    void useWorkItemsStore.getState().load(projectId);
-  }, [projectId]);
 
   const handleNew = useCallback(() => {
     setDialogError(null);
@@ -193,21 +191,10 @@ const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId }) => {
   const handleDelete = useCallback(() => {
     const item = selected;
     if (item === null) return;
+    // 先收起详情：删掉的那条从列表消失时详情自然关掉，不做第二次同步。
     setSelectedId(null);
-    actions.remove(item.id).then(
-      () => setPendingUndo({ title: item.title }),
-      (err: unknown) => showToast(invokeErrorMessage(err, '删除工作项失败'), 'error'),
-    );
-  }, [actions, selected, showToast]);
-
-  const handleUndo = useCallback(() => {
-    // 以返回值为准：`false` = 窗口已过（那次删除已经真的提交了）→ 收起，且**不**提示成功。
-    const restored = actions.undo();
-    setPendingUndo(null);
-    if (restored) showToast('已恢复工作项');
-  }, [actions, showToast]);
-
-  const handleUndoExpire = useCallback(() => setPendingUndo(null), []);
+    removeItem(item.id, item.title);
+  }, [removeItem, selected]);
 
   const handleDetailMove = useCallback(
     (stage: string) => {
@@ -241,11 +228,24 @@ const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId }) => {
         onSelectView={handleSelectView}
         search={search}
         onSearchChange={setSearch}
-        onRefresh={handleRefresh}
+        onRefresh={refreshFeed}
         onNew={handleNew}
+        githubEnabled={github.enabled}
+        githubAvailability={github.availability}
+        githubBlockedReason={github.blockedReason}
+        onToggleGithub={github.setEnabled}
       />
 
-      <TasksPanelStatus error={error} onRetry={handleRefresh} toast={toast} />
+      {/* provider 的错误自己带名字：横幅只有一句话，不点名就不知道是谁坏了。 */}
+      <TasksPanelStatus
+        error={error}
+        onRetry={refreshFeed}
+        providerError={
+          github.error === null ? null : `${GITHUB_PR_PROVIDER_LABEL} PR：${github.error}`
+        }
+        onRetryProvider={github.refresh}
+        toast={toast}
+      />
 
       <div ref={bodyRef} className="min-h-0 flex-1 overflow-auto">
         <TasksPanelBody
@@ -264,8 +264,8 @@ const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId }) => {
         />
       </div>
 
-      {pendingUndo === null ? null : (
-        <UndoBar title={pendingUndo.title} onUndo={handleUndo} onExpire={handleUndoExpire} />
+      {pendingTitle === null ? null : (
+        <UndoBar title={pendingTitle} onUndo={undoDelete} onExpire={dismissUndo} />
       )}
 
       {selected === null ? null : (

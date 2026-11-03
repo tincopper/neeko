@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
 
-import type { WorkItem } from '../types';
+import type { TaskItem } from '../viewModel';
 
+import TaskSourceBadge from './TaskSourceBadge';
 import { LabelChips, PriorityChip, StageChip } from './WorkItemChips';
 
 /**
@@ -29,12 +30,12 @@ import { LabelChips, PriorityChip, StageChip } from './WorkItemChips';
  * 而详情本来就有完整的 Stage Rail —— 再加一份菜单就是同一件事的第三条入口。
  */
 interface ListViewProps {
-  items: WorkItem[];
+  items: TaskItem[];
   onOpen: (id: string) => void;
 }
 
 interface ListRowProps {
-  item: WorkItem;
+  item: TaskItem;
   onOpen: (id: string) => void;
 }
 
@@ -51,6 +52,7 @@ const ListRow: React.FC<ListRowProps> = React.memo(({ item, onOpen }) => {
         className="flex w-full flex-col gap-0.5 px-2 py-1.5 text-left transition-colors hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
       >
         <span className="flex min-w-0 items-center gap-1.5">
+          <TaskSourceBadge source={item.source} />
           <StageChip stage={item.stage} />
           <PriorityChip priority={item.priority} />
           <span className="min-w-0 flex-1 truncate text-meta text-text-primary">{item.title}</span>

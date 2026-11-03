@@ -7,6 +7,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { StagePlan, WorkItem } from '../../types';
+import { toLocalTask, type TaskItem } from '../../viewModel';
 import BoardView from '../BoardView';
 
 /** 自定义 3 阶段：列必须跟着 plan 变（写死 Backlog…Done 会让卡片凭空消失）。 */
@@ -20,8 +21,8 @@ const PLAN: StagePlan = {
   ],
 };
 
-function item(id: string, stage: string, overrides: Partial<WorkItem> = {}): WorkItem {
-  return {
+function item(id: string, stage: string, overrides: Partial<WorkItem> = {}): TaskItem {
+  return toLocalTask({
     id,
     projectId: 'p1',
     title: `工作项 ${id}`,
@@ -33,14 +34,14 @@ function item(id: string, stage: string, overrides: Partial<WorkItem> = {}): Wor
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
-  };
+  });
 }
 
 /**
  * store 给的顺序（`updatedAt DESC`）：`wi_3` 最新，其次 `wi_2`、`wi_1`。
  * 渲染层不得重排，所以列内顺序必须与这个数组一致。
  */
-const ITEMS: WorkItem[] = [item('wi_3', 'Todo'), item('wi_2', 'Doing'), item('wi_1', 'Todo')];
+const ITEMS: TaskItem[] = [item('wi_3', 'Todo'), item('wi_2', 'Doing'), item('wi_1', 'Todo')];
 
 describe('BoardView — 列来自 plan', () => {
   it('按 plan.stages 画列，而不是写死五列', () => {

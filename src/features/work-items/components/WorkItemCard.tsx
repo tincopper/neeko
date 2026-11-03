@@ -2,10 +2,12 @@ import React, { useCallback, useMemo } from 'react';
 
 import { ContextMenu, ContextMenuTrigger } from '@/ui/ContextMenu';
 
-import type { StagePlan, WorkItem } from '../types';
+import type { StagePlan } from '../types';
 import { stageNodes } from '../utils/stageRail';
+import type { TaskItem } from '../viewModel';
 
 import StageMoveMenu from './StageMoveMenu';
+import TaskSourceBadge from './TaskSourceBadge';
 import { LabelChips, PriorityChip } from './WorkItemChips';
 
 /**
@@ -16,6 +18,12 @@ import { LabelChips, PriorityChip } from './WorkItemChips';
  * 卡片所在的列**就是**它的 stage（列头已写明）。在卡片上再贴一枚 stage chip，等于同一事实
  * 有两个表示点，而它们会漂移 —— 乐观流转的那一帧里，列已经换了、卡片上的 chip 还在旧值。
  * 列表行没有列，所以由 [`ListView`](./ListView.tsx) 自己补 stage chip。
+ *
+ * # 只有本地工作项有右键 [Move to]
+ *
+ * 流转写的是**本地库**的 stage；GitHub PR 的状态在 GitHub 上，这一版只读（design §8.2），
+ * 对 PR 右键弹一个「没有可流转的阶段」的菜单是在承诺一个不存在的操作。所以 PR 卡片根本不接
+ * 菜单 —— 右键不接管，浏览器/系统的默认菜单照旧（那才是它该有的行为）。
  *
  * # 右键的「可去哪些 stage」复用 `stageNodes`，不另写判据
  *
@@ -32,7 +40,7 @@ import { LabelChips, PriorityChip } from './WorkItemChips';
  * 那条路径由 `TasksPanel` 的 `revealId` 显式驱动，与本组件无关。
  */
 interface WorkItemCardProps {
-  item: WorkItem;
+  item: TaskItem;
   /** `null` = 阶段轨还没拿到：右键菜单里没有可去目标（不猜一条假轨道）。 */
   plan: StagePlan | null;
   onOpen: (id: string) => void;
@@ -48,41 +56,50 @@ const WorkItemCard: React.FC<WorkItemCardProps> = React.memo(({ item, plan, onOp
   // 卡片与菜单的 `memo` 才站得住。
   const moveTargets = useMemo(
     () =>
-      plan === null
+      plan === null || item.source !== 'local'
         ? []
         : stageNodes(plan, item.stage)
             .filter((node) => node.status === 'reachable')
             .map((node) => node.stage),
-    [plan, item.stage],
+    [plan, item.stage, item.source],
+  );
+
+  const card = (
+    <button
+      type="button"
+      data-work-item-id={item.id}
+      aria-label={`打开工作项 ${item.title}`}
+      onClick={handleOpen}
+      className="w-full rounded-md border border-border bg-bg-primary px-2 py-1.5 text-left transition-colors hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+    >
+      <span className="flex min-w-0 items-start gap-1">
+        <TaskSourceBadge source={item.source} />
+        <span className="min-w-0 flex-1 text-meta font-medium break-words text-text-primary">
+          {item.title}
+        </span>
+      </span>
+      {item.priority === null && item.labels.length === 0 && item.assignee === null ? null : (
+        <span className="mt-1 flex flex-wrap items-center gap-1">
+          <PriorityChip priority={item.priority} />
+          <LabelChips labels={item.labels} />
+          {item.assignee === null ? null : (
+            <span className="text-micro text-text-muted">@{item.assignee}</span>
+          )}
+        </span>
+      )}
+    </button>
   );
 
   return (
     <li>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <button
-            type="button"
-            data-work-item-id={item.id}
-            aria-label={`打开工作项 ${item.title}`}
-            onClick={handleOpen}
-            className="w-full rounded-md border border-border bg-bg-primary px-2 py-1.5 text-left transition-colors hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
-          >
-            <span className="block text-meta font-medium break-words text-text-primary">
-              {item.title}
-            </span>
-            {item.priority === null && item.labels.length === 0 && item.assignee === null ? null : (
-              <span className="mt-1 flex flex-wrap items-center gap-1">
-                <PriorityChip priority={item.priority} />
-                <LabelChips labels={item.labels} />
-                {item.assignee === null ? null : (
-                  <span className="text-micro text-text-muted">@{item.assignee}</span>
-                )}
-              </span>
-            )}
-          </button>
-        </ContextMenuTrigger>
-        <StageMoveMenu stages={moveTargets} onMove={handleMove} />
-      </ContextMenu>
+      {item.source === 'local' ? (
+        <ContextMenu>
+          <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
+          <StageMoveMenu stages={moveTargets} onMove={handleMove} />
+        </ContextMenu>
+      ) : (
+        card
+      )}
     </li>
   );
 });

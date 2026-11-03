@@ -3,9 +3,12 @@ import React from 'react';
 import { Button } from '@/ui/Button';
 
 import type { ShowToast } from '../hooks/useRunSingleWorkItem';
-import type { StagePlan, WorkItem } from '../types';
+import type { StagePlan } from '../types';
+import type { TaskItem } from '../viewModel';
 
+import PrTaskSection from './PrTaskSection';
 import StageRail from './StageRail';
+import TaskSourceBadge from './TaskSourceBadge';
 import { LabelChips, PriorityChip } from './WorkItemChips';
 import WorkItemRunsSection from './WorkItemRunsSection';
 
@@ -16,6 +19,19 @@ import WorkItemRunsSection from './WorkItemRunsSection';
  *
  * 两块的归属不同，所以执行区（[`WorkItemRunsSection`](./WorkItemRunsSection.tsx)）自带数据副作用，
  * 本组件只管布局：字段读的是 `item`，执行记录不属于它，也不该让它去拉。
+ *
+ * # 两档来源，两套字段（不是一套挡板）
+ *
+ * | 块 | local | github |
+ * | --- | --- | --- |
+ * | 阶段轨 | ✅（可流转） | ❌ —— PR 的状态在 GitHub 上，我们改不了 |
+ * | 编辑 / 删除 | ✅ | ❌ —— 写的是本地库 |
+ * | 执行区 | ✅ | ❌ —— 执行要在本机起终端，PR 只读 |
+ * | PR 摘要 | ❌ | ✅（[`PrTaskSection`](./PrTaskSection.tsx)：分支 / 作者 / 浏览器打开） |
+ *
+ * 把不适用的块**置灰**而不是隐藏，只对「同一能力暂时不可用」成立（如 team/flow 执行档）。
+ * 这里不同：PR 根本没有那个字段/那个写路径，摆一个灰按钮等于承诺「以后能改 GitHub」。
+ * 所以 PR 详情只保留事实 + 一个出口，动作条整块不渲染。
  *
  * # 覆盖面板而不是把看板卸载掉
  *
@@ -30,7 +46,7 @@ import WorkItemRunsSection from './WorkItemRunsSection';
  * 焦点位于面板内部时生效，本组件不需要再捕获一次（两处都监听就是同一次按键两个所有者）。
  */
 interface WorkItemDetailProps {
-  item: WorkItem;
+  item: TaskItem;
   /** `null` = 阶段轨还没拿到（轨道整块不渲染，不画假轨道）。 */
   plan: StagePlan | null;
   /** 宿主注入的激活项目（执行区要靠它开终端 / 定位 tab，`null` = 没绑定）。 */
@@ -50,79 +66,93 @@ interface WorkItemDetailProps {
 }
 
 const WorkItemDetail: React.FC<WorkItemDetailProps> = React.memo(
-  ({ item, plan, projectId, showToast, onMove, onEdit, onDelete, onClose }) => (
-    <section
-      aria-label="工作项详情"
-      data-work-item-detail={item.id}
-      className="absolute inset-0 z-10 flex min-h-0 flex-col bg-bg-primary"
-    >
-      <header className="flex items-start gap-2 border-b border-border px-2 py-1.5">
-        <h3 className="min-w-0 flex-1 text-meta font-semibold break-words text-text-primary">
-          {item.title}
-        </h3>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="关闭工作项详情"
-          className="shrink-0 rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
-        >
-          关闭
-        </button>
-      </header>
+  ({ item, plan, projectId, showToast, onMove, onEdit, onDelete, onClose }) => {
+    const isLocal = item.source === 'local';
 
-      <div className="min-h-0 flex-1 overflow-auto px-2 py-1.5">
-        <StageRail plan={plan} current={item.stage} onMove={onMove} />
+    return (
+      <section
+        aria-label="工作项详情"
+        data-work-item-detail={item.id}
+        data-task-source={item.source}
+        className="absolute inset-0 z-10 flex min-h-0 flex-col bg-bg-primary"
+      >
+        <header className="flex items-start gap-2 border-b border-border px-2 py-1.5">
+          <TaskSourceBadge source={item.source} />
+          <h3 className="min-w-0 flex-1 text-meta font-semibold break-words text-text-primary">
+            {item.title}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="关闭工作项详情"
+            className="shrink-0 rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+          >
+            关闭
+          </button>
+        </header>
 
-        <dl className="mt-2 grid grid-cols-[auto_1fr] items-start gap-x-2 gap-y-1 text-meta">
-          <dt className="text-text-muted">优先级</dt>
-          <dd className="min-w-0">
-            {item.priority === null ? (
-              <span className="text-text-muted">未设置</span>
-            ) : (
-              <PriorityChip priority={item.priority} />
-            )}
-          </dd>
-          <dt className="text-text-muted">负责人</dt>
-          <dd className="min-w-0 break-words text-text-primary">
-            {item.assignee === null ? (
-              <span className="text-text-muted">未指派</span>
-            ) : (
-              item.assignee
-            )}
-          </dd>
-          <dt className="text-text-muted">标签</dt>
-          <dd className="flex min-w-0 flex-wrap gap-1">
-            {item.labels.length === 0 ? (
-              <span className="text-text-muted">无</span>
-            ) : (
-              <LabelChips labels={item.labels} />
-            )}
-          </dd>
-        </dl>
+        <div className="min-h-0 flex-1 overflow-auto px-2 py-1.5">
+          {isLocal ? (
+            <>
+              <StageRail plan={plan} current={item.stage} onMove={onMove} />
 
-        <h4 className="mt-3 text-micro font-semibold text-text-secondary">描述</h4>
-        {/* 纯文本按行渲染（`pre-wrap`）：不引 markdown 库，也不把用户的正文魔法成 HTML。 */}
-        <p className="mt-0.5 text-meta break-words whitespace-pre-wrap text-text-primary">
-          {item.body.trim() === '' ? (
-            <span className="text-text-muted">（无描述）</span>
+              <dl className="mt-2 grid grid-cols-[auto_1fr] items-start gap-x-2 gap-y-1 text-meta">
+                <dt className="text-text-muted">优先级</dt>
+                <dd className="min-w-0">
+                  {item.priority === null ? (
+                    <span className="text-text-muted">未设置</span>
+                  ) : (
+                    <PriorityChip priority={item.priority} />
+                  )}
+                </dd>
+                <dt className="text-text-muted">负责人</dt>
+                <dd className="min-w-0 break-words text-text-primary">
+                  {item.assignee === null ? (
+                    <span className="text-text-muted">未指派</span>
+                  ) : (
+                    item.assignee
+                  )}
+                </dd>
+                <dt className="text-text-muted">标签</dt>
+                <dd className="flex min-w-0 flex-wrap gap-1">
+                  {item.labels.length === 0 ? (
+                    <span className="text-text-muted">无</span>
+                  ) : (
+                    <LabelChips labels={item.labels} />
+                  )}
+                </dd>
+              </dl>
+
+              <h4 className="mt-3 text-micro font-semibold text-text-secondary">描述</h4>
+              {/* 纯文本按行渲染（`pre-wrap`）：不引 markdown 库，也不把用户的正文魔法成 HTML。 */}
+              <p className="mt-0.5 text-meta break-words whitespace-pre-wrap text-text-primary">
+                {item.body.trim() === '' ? (
+                  <span className="text-text-muted">（无描述）</span>
+                ) : (
+                  item.body
+                )}
+              </p>
+
+              <WorkItemRunsSection item={item} projectId={projectId} showToast={showToast} />
+            </>
           ) : (
-            item.body
+            <PrTaskSection item={item} projectId={projectId} showToast={showToast} />
           )}
-        </p>
+        </div>
 
-        <WorkItemRunsSection item={item} projectId={projectId} showToast={showToast} />
-      </div>
-
-      <footer className="flex shrink-0 items-center gap-1 border-t border-border px-2 py-1.5">
-        <Button variant="secondary" size="sm" onClick={onEdit}>
-          编辑
-        </Button>
-        <Button variant="destructive" size="sm" onClick={onDelete}>
-          删除
-        </Button>
-      </footer>
-    </section>
-  ),
+        {isLocal ? (
+          <footer className="flex shrink-0 items-center gap-1 border-t border-border px-2 py-1.5">
+            <Button variant="secondary" size="sm" onClick={onEdit}>
+              编辑
+            </Button>
+            <Button variant="destructive" size="sm" onClick={onDelete}>
+              删除
+            </Button>
+          </footer>
+        ) : null}
+      </section>
+    );
+  },
 );
 WorkItemDetail.displayName = 'WorkItemDetail';
 
