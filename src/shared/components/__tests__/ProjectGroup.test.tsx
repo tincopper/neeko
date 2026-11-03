@@ -28,6 +28,27 @@ describe('ProjectGroup header', () => {
     expect(screen.getByText('N')).toBeInTheDocument();
   });
 
+  /**
+   * 2026-11-03 用户定案：项目头**不铺行背景**。
+   *
+   * 通栏灰底（`hover:bg-bg-hover`）只能铺到滚动容器的内容盒，而经典滚动条占布局宽度 ——
+   * 右侧会留下一条通高空白（直抵面板圆角）。hover 反馈已由下面 local / worktree /
+   * 会话行承担，项目头只在 hover 时浮现动作槽。
+   */
+  it('项目头不铺行背景，hover 的唯一视觉变化是动作槽浮现', () => {
+    setup();
+    expect(screen.getByTestId('project-group-header')).not.toHaveClass('hover:bg-bg-hover');
+    // 可交互仍成立：动作槽靠 group-hover/proj 浮现。
+    expect(screen.getByTestId('project-group-actions')).toHaveClass('group-hover/proj:opacity-100');
+  });
+
+  it('键盘聚焦仍有可见指示（鼠标 hover 底删掉后的替代）', () => {
+    setup();
+    // 与状态栏列表行同一套约定：ring-inset 不会外扩到 Island 的 overflow-hidden 外。
+    expect(screen.getByTestId('project-group-header')).toHaveClass('focus-visible:ring-2');
+    expect(screen.getByTestId('project-group-header')).toHaveClass('focus-visible:ring-inset');
+  });
+
   it('点击 header 主体触发 onToggle', () => {
     const { onToggle } = setup();
     fireEvent.click(screen.getByTestId('project-group-header'));

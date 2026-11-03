@@ -174,7 +174,6 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
         style={style}
         className={cn(
           'relative mb-0.5 rounded-md overflow-visible',
-          isActive && 'active',
           isDragging && 'opacity-50 scale-[1.02] shadow-lg shadow-black/20 z-50',
           !isDragging && 'cursor-grab',
         )}
@@ -186,7 +185,6 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
           avatarColor={project.avatar_color}
           sessionCount={sessionCount}
           expanded={!collapsed}
-          isActive={isActive}
           ideIconSrc={ideIconSrc}
           actions={{
             onToggle: () => setCollapsed((v) => !v),

@@ -119,7 +119,6 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
       style={style}
       className={cn(
         'relative mb-0.5 rounded-md overflow-visible',
-        isActive && 'active',
         isDragging && 'opacity-50 scale-[1.02] shadow-lg shadow-black/20 z-50',
         !isDragging && 'cursor-grab',
       )}
@@ -129,7 +128,6 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
         avatarColor={project.avatar_color}
         sessionCount={sessionCount}
         expanded={!projectCollapsed}
-        isActive={isActive}
         ideIconSrc={ideIconSrc}
         forceShowActions={gitMenuOpen}
         dragHandleRef={setActivatorNodeRef}

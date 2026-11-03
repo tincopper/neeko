@@ -32,9 +32,7 @@ interface ProjectGroupProps {
   sessionCount: number;
   /** 是否展开 */
   expanded: boolean;
-  /** 是否 active 项目（影响 header bg + hover 槽位常驻可见） */
-  isActive?: boolean;
-  /** 是否最后一个项目卡（决定要不要画 hairline 分隔） */
+  /** 项目头与子行的交互回调（折叠 / 右键 / hover 动作槽） */
   actions: ProjectGroupActions;
   /** 自定义 IDE 图标（src）。caller 通常通过 getIdeIconByCommand 提供 */
   ideIconSrc?: string;
@@ -121,11 +119,21 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
 
   return (
     // 项目之间不画分割线（2026-10-27 用户定案）：项目头本身已经是视觉单元
-    // （avatar + 粗体名称 + 计数），且 hover 时整行有 bg-bg-hover 背景块 ——
-    // 背景块已经承担了「分组」职责，再加一条横杠是三重分隔，反而显脏。
+    // （avatar + 粗体名称 + 计数），再加一条横杠是重复分隔，反而显脏。
     // 原实现：`!isLast && 'border-b border-white/[0.04]'`（4% 白，亮色主题下还完全不可见）。
     // 连带删除了 isLast 这条数据链（groupProjects → ProjectsPanel → ProjectItem →
     // ConnectionProjectCard → ProjectGroup）—— 它唯一的消费者就是这条线。
+    //
+    // 项目头**也不铺行背景**（2026-11-03 用户定案；此前是 `hover:bg-bg-hover`）：
+    // 1. hover 反馈已由下面 local / worktree / 会话行承担（各自 `mx-1.5` 圆角块），
+    //    项目头再铺一层 = 同一件事强调两次，语义上也不该并排（父级容器 vs 子级单元）。
+    // 2. 这一层是**通栏**的：`reset.css` 的 `scrollbar-width: thin` 是经典滚动条
+    //    （占布局宽度、只占右侧），底只能铺到滚动容器的内容盒 —— 右侧会留下一条通高
+    //    竖条（本机 macOS 实测 ≈13px，宽度随平台 / 缩放变，别照抄这个数值）。
+    //    注：容器侧的对称性由 `ProjectsPanel` 的 `scrollbar-hidden` 负责（整条隐藏滚动条、
+    //    保留滚动），两者互不替代：前者答「要不要画底」，后者答「两边留白差多少」。
+    // 悬停仍然表达「可交互」：动作槽（IDE / Git / Trash / + / Chevron）在 hover 时浮现；
+    // 键盘聚焦另有指示（`ring-inset`：外扩的环会被 Island 的 overflow-hidden 裁掉）。
     <div className="group/proj">
       <div
         ref={dragHandleRef}
@@ -134,9 +142,7 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
         // 拖拽把手只在**项目头**（不是整张卡）：整卡可拖时，点会话行 / 工作树行时手一抖
         // 就变成「拖动了整个项目」，卡片会被抬起并跟手 —— 用户看到的是「项目块自己飘了」。
         {...dragHandleProps}
-        className={cn(
-          'flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-bg-hover relative',
-        )}
+        className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue"
         onClick={actions.onToggle}
         onKeyDown={(e) => {
           // 折叠是本节点**唯一**的键盘语义：Enter/Space 展开/收起。
@@ -173,6 +179,7 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
         {/* 按钮 overlay：hover 时出现，不消耗 flex 空间 */}
         <div
           role="presentation"
+          data-testid="project-group-actions"
           className={cn(
             'absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-opacity',
             forceShowActions
