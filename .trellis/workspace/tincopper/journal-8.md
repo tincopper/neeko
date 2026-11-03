@@ -859,3 +859,45 @@ omp 改用共享 content_blocks 层（思考/工具块不再丢）；pi+omp 补�
 ### Next Steps
 
 - useChatRestore 仍按整段会话恢复聊天（分页组装，单次载荷已受约束）；真实 home 目录类测试存在一次不可复现 flake
+
+
+## Session 392: Work items MVP: Local provider, Tasks panel, run-single
+<!-- trellis-session: v=2 fp=a92dbfb43aa70f05 -->
+
+**Date**: 2026-11-03
+**Task**: Work items MVP: Local provider, Tasks panel, run-single
+**Branch**: `multi-agent`
+
+### Summary
+
+统一任务中心的 MVP 前半：后端 work_items 域（v18 建表 + 8 条薄命令）、前端 store/hooks/面板（Board/List/详情/快捷键/右键移动/撤销/执行区）、run-single 链路，以及跨栈契约进 spec。
+
+### Main Changes
+
+- Rust: src-tauri/src/work_items/**, 迁移 v17→v18, lib.rs/app_state.rs 接线; FE: features/work-items/**, dock 接线, terminal port 返回 tab id; spec: work-items-domain.md + state-management 异步纪律
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6ae67611` | refactor(terminal): return the created tab id from createTaskTerminal |
+| `2fb4d532` | feat(work-items): add the work item store and IPC layer |
+| `7e7ca0ae` | feat(work-items): add the Tasks panel with board, list and detail views |
+| `fae1ff01` | feat(work-items): expose the Tasks panel in the dock |
+| `c5492a14` | chore(lint): register work-items in the import firewall |
+| `752993cb` | test(work-items): pin coverage floors for the new modules |
+| `6122a2c1` | docs(work-items): settle the MVP scope and the execution ladder |
+| `08a888ff` | docs(agent-team): hand the declarative flow executor over to work items |
+| `5ceae855` | docs(spec): capture the work items domain and store contracts |
+
+### Testing
+
+- [OK] cargo test 全绿（59 work_item）; vitest 全量 6643 passed / 723 files; pnpm check 38/39（test_fe 撞 300s 预算，实测 381s，预算问题非代码问题）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- provider-github-pr（MVP 最后一块）; 另需独立处理 test_fe 300s 预算
