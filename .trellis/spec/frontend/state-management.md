@@ -2035,3 +2035,116 @@ import 会成环（`import/no-cycle`）。解法是**注入**：`agentApi` 在�
 `useAgentStore.getState().setLoader(listAgents)`，依赖方向单向（features → shared）。
 
 `shared/` 也不能直接 `invoke`（`no-restricted-imports` 禁止绕过 API 层）。
+
+---
+
+## 场景：工作项 store 的异步纪律（2026-11-02）
+
+### 1. Scope / Trigger
+
+- Trigger：Tasks 面板的 Local 工作项是「乐观写入 + 可撤销删除 + 可切换项目」的列表，
+  这三件事各自会在**异步返回时**与本地状态打架。
+- Scope：`src/features/work-items/store/workItemsStore.ts`、`hooks/useWorkItems.ts`、
+  `hooks/useStagePlan.ts`。后端契约见 [../backend/work-items-domain.md](../backend/work-items-domain.md)。
+
+### 2. Signatures
+
+```ts
+// store（feature 域状态，跨域直导走 @/features/work-items/store/workItemsStore）
+interface WorkItemsState {
+  itemsByProject: Record<string, WorkItem[] | undefined>;  // undefined = 还没加载过
+  plan: StagePlan | null;
+  loading: Record<string, boolean>;
+  errors: Record<string, string | null>;
+  load / loadPlan / create / update
+  transition(id, to, projectId): Promise<void>
+  deleteWithUndo(id, projectId): Promise<void>
+  undoDelete(projectId): boolean
+  reset(): void
+}
+
+// hooks
+useWorkItems(projectId: string | null): { items; loading; error; actions }   // actions 引用稳定
+useStagePlan(): { plan; loading }
+```
+
+### 3. Contracts
+
+1. **乐观流转用「本地快照」回滚，不重拉列表**。`transition` 先改 stage + 把 `updatedAt`
+   提到现在（卡片立刻换列并置顶），失败时把**保存下来的原始项按原索引插回**。
+   重拉列表在失败路径上是错的：一次拖拽失败会顺带丢掉期间的所有本地变更，而且慢一个往返。
+2. **删除的撤销是「延迟提交」，不是「重新创建」**。`deleteWithUndo` 立刻移出列表，
+   5000ms 后才真正 `deleteWorkItem`；窗口内 `undoDelete` 取消定时器并**按原索引放回**。
+   重新 `create` 会得到新 id / 新 `createdAt`（偷偷改数据，且后端没有 restore 命令）。
+3. **同一项目的 `load` 去重**：`inFlight: Map<projectId, Promise>` 复用而非并发发两次 IPC。
+   `loadPlan` 同理（全局一份 plan）。
+4. **`reset()` 递增 generation，迟到响应据此丢弃**。切项目后旧的列表响应写进新槽位 =
+   同一项目看见另一个项目的任务（与 `file/store` 的 owner 同一纪律）。
+5. **错误位只给「没有调用方可以 catch」的失败**：`load` 与 5 秒后的延迟提交写
+   `errors[projectId]`；`create/update/transition` 一律 `throw` 给 UI。
+   两者都做 = 一次失败报两遍，且常驻横幅会把一次拖拽失败说成"这个项目坏了"。
+   `deleteWithUndo` **不在** throw 名单里：它自己不发 IPC（见第 2 条），失败发生在 5 秒后的
+   `commitDelete` 里，那时已经没有调用方能 catch。它的 Promise 只会因「没有绑定项目」这类
+   **编程错误**而 reject（同 `useWorkItems` 的 `noProject()`）。
+6. **`loading` 把"还没问过"也算加载中**：`loading[x] || (itemsByProject[x] === undefined &&
+   errors[x] == null)`。只信 `loading[x]` 会让首帧同时满足「空 + 不加载 + 无错误」→ 空态闪一下
+   （同 `useTeamList` 的三态纪律）。失败过的空槽位不算，否则错误态永远转圈。
+7. **两个计时器会漂移**：`shared/hooks/useToast` 是 3s 且无动作按钮，撤销窗口是 5s。
+   所以「还能不能撤销」只以 `undoDelete()` 的返回值为准（`false` = 窗口已过），
+   不看 toast/UndoBar 是否还在屏幕上。
+   **但 `UndoBar` 自己的计时器必须按被删项重起**：宿主只渲染一个条子（`title` 变、组件不卸载），
+   若 effect 不把 `title` 放在依赖里，第二条会继承第一条的起点 —— 它在 t=5s 收起，而 store 里第二条
+   的窗口到 t=6s 才关，中间那一秒删除仍可撤销、界面上已经没有入口（同 `useToast` 换消息时
+   `clearTimeout` 再排钟）。
+8. **延迟提交失败 → 行自己回来**。列表必须容错「突然多一行」，不要当新建卡片做入场动画
+   或自动滚动（那是新建的语义）。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 期望 | 风险 |
+| --- | --- | --- |
+| `load` 失败 | 保留旧列表 + 写 `errors` | 清空列表 = 一次网络抖动变成"数据没了" |
+| 同项目并发 `load` | 共用同一个 Promise | 两次写槽位，后到的可能是旧数据 |
+| `transition` 失败 | 回滚到原项原索引并 `throw` | 只回滚 stage 不回滚位置 → 卡片乱序 |
+| 窗口内 `undoDelete` | 恢复原索引、`deleteWorkItem` **一次都不调用** | 先删后建 = 数据被悄悄改写 |
+| 窗口外 `undoDelete` | 返回 `false`，不改状态 | 返回 `true` 会让 UI 谎报撤销成功 |
+| 连点同一行删除 | 不提交两次（同 key 覆盖） | 两次 IPC + 第二次 404 |
+| `plan === null` | 不画阶段轨（全灰/占位） | 回退写死五列 = 自定义轨永远不生效 |
+| 列表顺序 | 渲染期不重排，信 `updatedAt DESC` | 组件内排序与 store 的乐观置顶打架 |
+
+### 5. Good/Base/Bad Cases
+
+- Good：点 stage rail → 卡片立刻换列 → IPC 失败 → 卡片回原位 + toast 报错。
+- Base：删除 → 卡片消失 → 5s 后静默落库（用户不操作也就生效了）。
+- Bad：删除后「撤销」通过再 `create` 一条实现（新 id、新时间、可能重复）；或 `transition`
+  失败后 `load()` 全量重拉。
+
+### 6. Tests Required
+
+store 层（`store/__tests__/workItemsStore.test.ts`，mock **api 层**而非 `invoke`）：
+乐观置顶 / 失败回滚原索引 / 并发 load 只发一次 / 删除窗口内撤销零提交 / 窗口外返回 false /
+延迟提交失败回位并写错误位 / `reset` 清全部定时器 / **`reset` 后迟到的响应被丢弃**（列表 /
+阶段轨 / 在飞的删除失败 —— 三条各持一个 `mine !== generation` 分支，它们是同一条纪律的三条腿）/
+**窗口内刷新后再次删除只提交一次**（后端在窗口内仍有那一行，刷新会让它复活）。
+
+组件层：`components/__tests__/UndoBar.test.tsx` —— 5 秒到点收起 + **换一条被删项时计时器重起**
+（宿主只渲染一个条子，继承上一条的起点会让第二条的入口早于它的窗口消失）。
+
+hooks 层：`projectId = null` 不发请求且 `items` 引用稳定 / 首帧加载中 / `actions` 跨渲染同引用。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+```ts
+catch (err) {
+  await get().load(projectId);   // 回滚 = 全量重拉（丢本地变更 + 慢一个往返）
+  throw err;
+}
+```
+#### Correct
+```ts
+catch (err) {
+  set((s) => patchProject(s, projectId, (list) => insertAt(list, original, index)));
+  throw err;                     // 由 UI 决定提示形态
+}
+```
