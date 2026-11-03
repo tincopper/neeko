@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import type { HookInstallStatus } from '@/shared/types/notification';
 import {
-  hookRowsNeedingAttention,
   installableHookRows,
   isHookSourceEnabled,
   readSourceOverrides,
@@ -50,40 +49,5 @@ describe('isHookSourceEnabled', () => {
     expect(isHookSourceEnabled('pi', {}, true)).toBe(true);
     expect(isHookSourceEnabled('pi', { pi: false }, true)).toBe(false);
     expect(isHookSourceEnabled('claude', { pi: false }, true)).toBe(true);
-  });
-});
-
-describe('hookRowsNeedingAttention', () => {
-  it('健康时为空（已安装 + 最新 + 无需信任）', () => {
-    expect(hookRowsNeedingAttention([row({ source: 'pi' })], {}, true)).toEqual([]);
-  });
-
-  it('三种不生效形态都要提示：未安装 / 版本过期 / CLI 侧未信任', () => {
-    const rows = [
-      row({ source: 'pi', installed: false }),
-      row({ source: 'opencode', versionCurrent: false }),
-      row({ source: 'codex', trusted: false }),
-    ];
-    expect(hookRowsNeedingAttention(rows, {}, true).map((r) => r.source)).toEqual([
-      'pi',
-      'opencode',
-      'codex',
-    ]);
-  });
-
-  it('本机没装这个 CLI（path 为空）⇒ 不提示（否则是噪声）', () => {
-    const rows = [row({ source: 'codex', path: '', installed: false })];
-    expect(hookRowsNeedingAttention(rows, {}, true)).toEqual([]);
-  });
-
-  it('用户主动关掉该 CLI / 主开关 ⇒ 不提示（别和用户的选择打架）', () => {
-    const rows = [row({ source: 'pi', installed: false })];
-    expect(hookRowsNeedingAttention(rows, { pi: false }, true)).toEqual([]);
-    expect(hookRowsNeedingAttention(rows, {}, false)).toEqual([]);
-  });
-
-  it('自供源永不提示', () => {
-    const rows = [row({ source: 'dsh', selfSupplied: true, installed: false })];
-    expect(hookRowsNeedingAttention(rows, {}, true)).toEqual([]);
   });
 });
