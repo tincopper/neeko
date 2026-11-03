@@ -114,3 +114,29 @@
 @utility row-current {
   background: rgba(var(--accent-blue-rgb), 0.12);
 }
+
+/* 完全隐藏滚动条但 **保留滚动能力**（滚轮 / 触控板 / 键盘 / scrollIntoView 全不受影响）。
+ *
+ * 用在哪里：滚动条占位让左右留白不等的列表（侧栏项目列表 —— 那里的内缩由行自己用
+ * `px-3` / `mx-1.5` 表达，再叠一个只占右侧的占位就变成 0/13 或 6/19）；
+ * 以及「表单控件里不需要滚动条」的编辑器（富文本 composer，原先在 `agent-chat.css`
+ * 里自己写了一套同款声明，已收敛到这里）。不值当为它做占位补偿的容器用它；
+ * 需要保留滚动条的面板照旧走 `useScrollbarCompensation`（`reset.css` 的占位说明仍对那边生效）。
+ *
+ * 两条通道同时写，但**真正生效的那一条由引擎决定**：
+ * - 支持 `scrollbar-width` 的引擎（Chromium / Gecko / Safari 18.2+ / WebKitGTK 2.46+）：
+ *   由 `scrollbar-width: none` 隐藏；按 CSS Scrollbars 规范，声明了标准属性后 UA 会**忽略**
+ *   `::-webkit-scrollbar` 伪元素样式 —— 伪元素在这里是死代码，但不会反噪。
+ * - 不支持它的旧 WebKit：标准属性被忽略 → 伪元素才是唯一通道（`display: none` 不受
+ *   `scrollbar-color` 影响，所以那边也能彻底隐掉）。
+ *
+ * 与 `reset.css` 里「不用 ::-webkit-scrollbar 控制显隐」不矛盾：那条约束针对的是
+ * **动态 class 切换**（WebKit 对伪元素样式的 class 变化不重绘）。这里是**静态**声明，
+ * 从不切换 ⇒ 旧内核那边可靠；动态显隐仍然只走 `scrollbar-color`。 */
+@utility scrollbar-hidden {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

@@ -48,7 +48,9 @@
      占位补偿由内容滚动容器各自落地 —— `useScrollbarCompensation()` 逐元素实测
      `offsetWidth - clientWidth` 并调整内边（见 shared/utils/scrollbarCompensation.ts）。
      不用全局常量：没有滚动条的容器不该被补偿。也不用 `scrollbar-gutter: both-edges`：
-     WebKit 把保留区加在滚动条外侧，反而把滚动条推进内容区（实测后放弃）。 */
+     WebKit 把保留区加在滚动条外侧，反而把滚动条推进内容区（实测后放弃）。
+     不想付这个占位的容器可以整条隐掉滚动条（`@utility scrollbar-hidden`，如侧栏项目列表：
+     那里面缩已由行自己表达，补偿反而把整个列表右移一个占位），滚动能力不受影响。 */
   * {
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
