@@ -1464,3 +1464,44 @@ Session summary was not supplied.
 
 - 用户在应用里实测：选中项目 → 点右栏 Terminal → 引导页应保留
 - 工作树里 src-tauri/src/common/db/migrations.rs（LATEST_VERSION 13→18）属别的在途改动，未纳入本次修复
+
+
+## Session 407: dock-placement P5: zone visibility derived from content (empty tab host takes no space)
+<!-- trellis-session: v=2 fp=ccb47406020d5696 -->
+
+**Date**: 2026-11-04
+**Task**: dock-placement P5: zone visibility derived from content (empty tab host takes no space)
+**Branch**: `main`
+
+### Summary
+
+按第一性原理重构：右侧不再显示 No docked tabs 空态文案。zone 占位 = 展开 ∧ 前台视图有内容可渲染；空宿主不占位，D7 的写 intent 分支与全部空态文案退役。
+
+### Main Changes
+
+- 新增 shared/dock/zone.ts：zoneHostedViews / zoneFrontView / isZoneRenderable（前台与可见性的单一派生点，DockZone + DockLayout 共用）
+- editorTabSelectors 抽 hasLiveTabIds + 新增 hasDockedTabs（与 hasCenterTabs 同一存活口径）
+- 新增 app/hooks/useDockTabHostContent（内容事实注入端口）+ AppShell 注入 DockLayout.tabHostHasTabs
+- DockLayout 左右同一规则改用 isZoneRenderable（panel defaultSize / handle disabled / 尺寸入库 / useZoneExpandCollapse 一并跟随）
+- DockTabHost 删空态常量与 N→0 写 intent 分支，空即 return null；保留 0→N 揭示
+- DockZone 渲染列表改 zoneHostedViews —— Library 不再被当作左栏面板隐藏挂载
+- 文档：prd D5/D7/验收项、design I4 + 新增 I5、spec state-management Contract 8 + 新增第 9 条、layout-architecture.html ③④⑤⑥
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] zone.test 100% 覆盖；变异验证两轮（去掉 hostHasTabs 分支 / 去掉 host!=='none' 过滤）各必红，恢复即绿
+- [OK] pnpm vitest run src/shared/dock src/shared/store/__tests__/editorTabSelectors.test.ts src/features/dock-tabs src/layout src/app/hooks/__tests__ src/app/shell src/app/dock → 32 files / 271 tests
+- [OK] pnpm check:quick → 21 条护栏 + lint_fe + lint_rust_all_targets 全通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 待用户拍板：docksNewTabs 自动停靠路径在槽 intent 收起时不展开宿主（既有缺陷，最小修法：registerNewTabDockPolicy 补 activateView）
+- 既有缺陷提醒：src-tauri/src/common/db/migrations.rs 的 LATEST_VERSION 18 但 migrate_step 只到 12 → 任何迁移都会 bail，cargo test 必红（非本任务改动）

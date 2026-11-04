@@ -34,7 +34,19 @@
 
 `dockStore` 全局持久化 vs `editorLayout[tabKey]` 按 workspace 分槽。两者混存 = 切项目串会话。
 
-**派生规则**：宿主渲染时以「当前激活 workspace 的 `tabKey`」取 `editorLayout[tabKey].docked[slot]`；无内容 → 空态。不能把「某项目的 tab 清单」写进 dockStore。
+**派生规则**：宿主渲染时以「当前激活 workspace 的 `tabKey`」取 `editorLayout[tabKey].docked[slot]`；无内容 → **不占位**（宿主是内容的投影，见 §I5）。不能把「某项目的 tab 清单」写进 dockStore。
+
+### I5 zone 可见性从内容派生（P5，2026-11-03）
+
+**判据**：`zone 渲染 = 展开 ∧ 前台视图有内容可渲染`（`shared/dock/zone.ts` 的 `isZoneRenderable`）。
+
+- 无状态面板（projects / files / gitControl / pullRequests / browser / conversations / search）内容随时可重建 ⇒ 「有内容」恒真（**既有行为一字不变**）；
+- 槽位宿主（`host: 'tabHost'`）的内容是按 workspace 投影的 tab 集合且不持久化 ⇒ 「有内容」= `hasDockedTabs(state, tabKey, slot)`（id 必须存活，与 `hasCenterTabs` 同一口径）；
+- 前台是谁的唯一派生点是 `zoneFrontView`（含「`activeView` 指向 `host: 'none'` 时回落槽内首个可渲染视图」）。`DockZone` / `DockLayout` 的自算 fallback 已删。
+
+**为什么必须派生而不是写 intent**：宿主不是「用户可开合的面板」，而是内容的投影。用 `setSlotExpanded(false)` 在 N→0 时「保留」一个可以被用户重新点开的收起态，就是让**容器比内容活得久**（持久化的 `zones.expanded` 会比不持久化的 tab 活得更久）。派生后两条边界自动成立：切项目/重启 → 空宿主不占位；关光 tab → 槽让出宽度。
+
+**内容事实的注入端口**：`layout/` 不得 import tab 域 ⇒ `AppShell` 经 `useDockTabHostContent()` 把 `Record<DockSlot, boolean>` 作为 `tabHostHasTabs` 传给 `DockLayout`（与 `onMoveView` 同一规矩，缺省 fail-closed = 无内容）。
 
 ## 2. 物理约束（决定方案形状）
 
@@ -202,8 +214,8 @@ export interface MoveViewRequest { view: ViewKey; to: DockSlot; index?: number }
 
 /**
  * 移动视图并在同一个返回值里修复两槽 activeView。
- * 为什么修复必须在这里：activeView 悬挂会让 DockZone 渲染空态 + zone 仍占宽度
- * （「图标在右、面板空白」），一半修一半不修的状态在构造上不该存在。
+ * 为什么修复必须在这里：activeView 悬挂会让 zone 前台落空（回落前的形态 = 空岛 / 面板空白）
+ * 而 zone 仍占宽度（「图标在右、面板空白」），一半修一半不修的状态在构造上不该存在。
  * 能力校验（movable/host）不在此处 —— 本模块不依赖 meta（见 dockStore action）。
  */
 export function applyMove(state: DockLayoutState, req: MoveViewRequest): DockLayoutState;
@@ -264,7 +276,7 @@ DockBarDnd.onDragEnd(activeId=viewKey, overId='bar:right'|'bar:right:<viewKey>')
 ```
 workspaceStore.activeWorkspace 变化
   → 宿主 tabKey 变化 → editorLayout[新 tabKey].docked.right 通常为空
-  → 宿主渲染空态（不是空白死区）
+  → 该槽不占位（空宿主不留空岛；不需要空态文案解释）
   → placements 不变（布局是全局的）
 ```
 

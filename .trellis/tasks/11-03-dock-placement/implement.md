@@ -74,6 +74,7 @@
 - [x] `pnpm check:quick`（**只在收尾跑一次**）。
 - [x] 手工冒烟：双向换边 + 点图标开面板已真机通过；刷新/重启保持与坏 localStorage 由单测覆盖（`sanitize` / persist 水合），真机未逐项走。
 - [x] `docs/layout-architecture.html`：③ 三层体系、④ 状态源、⑥ 扩展指南三节同步（`zones[].panels` 与 `barItems` 不再存在）。
+      （④ 的 editorStore 行补 zone 级判据 / 左右 zone 卡片改「空宿主不占位」，⑤ 的注入规则补 `tabHostHasTabs`。）
 - [x] spec 增补：`interaction-patterns.md` 加「跨两栏移动共用单一 DndContext」的偏差与理由（design §11）。
 
 **回滚点 R-P0**：`dockStore` 版本号回 5 + revert 提交。P0 不触碰 tab，回滚无数据损失（v6 快照会被 v5 `merge` 忽略 → 用户需重设一次图标布局，可接受）。
@@ -125,6 +126,7 @@
 - [x] 冒烟：dock → 关 tab（dirty 确认）→ 切项目空态 → dock 回中心。
 - [x] 回归既有 pin-then-open 路径（history: pin tab → 开侧面板 → handle 失效）。**这是 C2 的直接防线，必须手测。**
 - [x] `docs/layout-architecture.html` ④ 增 `docked` 组说明。
+      （④ 的 editorStore 行补 zone 级判据 / 左右 zone 卡片改「空宿主不占位」，⑤ 的注入规则补 `tabHostHasTabs`。）
 
 **回滚点 R-P1**：`docked` 组默认空 → 宿主渲染空态；单独 revert P1 提交不影响 P0（P2 未上线时无入口指向它）。
 
@@ -228,6 +230,92 @@
 **校验**：`pnpm vitest run src/shared/store/__tests__/editorTabSelectors.test.ts src/app/components/__tests__/ProjectView.center.test.tsx`
 
 **回滚点 R-P4**：单点判据替换 + 一个选择器，revert 即回到「停靠即清空中心」的旧行为。
+
+---
+
+## P5 · 第一性原理重构：可见性从内容派生（空宿主不占位）
+
+**用户实测**：右侧默认显示 `No docked tabs — right-click a tab and choose "Move to Left/Right Dock"`。
+
+**三条判据（可判定，不是口号）**
+
+- **P1 内容先于容器**：容器可见性是内容的函数，容器不能比内容活得久。
+- **P2 路径无关**：同一事实（宿主持有 0 条 tab）必须得到同一布局结果，与「怎么变空的」无关。
+- **P3 可表示状态必有用户意图**：无意图的状态应不可表示，而不是配文案解释。
+
+> 项目自己的原则（spec「错误不可表示才是根治」）在这里原本是反着做的：把不该存在的状态做成
+> 可表示，再补一句解释。
+
+**根因**：宿主被当成「用户可开合的面板」管可见性，而它其实是**内容的投影**。dock 里另外 6 个
+视图是无状态视图（内容随时可重建 ⇒ 持久化 intent 合法），只有 tabHost 的内容按 workspace 投影且
+不持久化 —— 这个差异从未被表达，于是它继承了同一条可见性规则。两处补丁都在遮这个错位：
+
+| 破的判据 | 现状 | 证据 |
+| --- | --- | --- |
+| P1 | 破 —— `partialize` 落盘 `zones`（含宿主 `expanded`/`activeView`），停靠 tab 不落盘 | `dockStore.ts` persist 段 |
+| P2 | 破 —— 关光 tab → 收起（D7）；重启/切项目 → 展开并显示文案 | `DockTabHost` 的 N→0 分支 + I4 |
+| P3 | 破 —— D10 删掉宿主图标后，「点图标展开空宿主」已不可达，D7 的例外理由已死 | `panelMeta.ts`（host 无 `defaultOnBar`） |
+
+**重构**：`zone 渲染 = 展开 ∧ 前台视图有内容可渲染`；无状态视图「有内容」恒真 ⇒ 既有行为不变；
+宿主 = 该 workspace 在这槽内有存活 docked tab。**删三样，不增一样**：
+
+- D7 的 N→0 收起 effect 整条退役（不再写 intent）
+- 两句空态文案 + `DockTabEmptyState`
+- `partialize` 里不需要任何宿主特例（持久化残留自动不占位）
+
+### P5-1 判据与纯函数（TDD）
+
+- [x] **先写** `src/shared/dock/__tests__/zone.test.ts`：`zoneFrontView` / `isZoneRenderable` ——
+      前台是宿主且 `hostHasTabs=false` → false；`hostHasTabs=true` → true；前台是无状态面板 → true
+      （宿主有无 tab 无关）；未展开 → false；前台是 `host:'none'`（library 落位在同槽）→ 回落到
+      槽内首个宿主视图；槽内无可渲染视图 → null / false。
+- [x] 新增 `src/shared/dock/zone.ts`：`zoneFrontView(state, slot)` + `isZoneRenderable(state, slot, hostHasTabs)`。
+      `zoneFrontView` 是「前台是谁」的**单一派生点**（`DockZone` 现在的 `views.includes(activeView) ? … : views[0]`
+      兜底并入这里，禁止第三份拷贝）。放新文件而不是 `placement.ts`：后者刻意不依赖声明表。
+- [x] `src/shared/dock/index.ts` 导出这两个函数。
+      （另导出 `zoneHostedViews`：`DockZone` 的渲染列表与前台派生必须共用同一个「有 zone 内容」过滤器，
+      否则「registry 里有没有 component」会漏掉 Library —— 它有组件，只是渲染在中心区。）
+
+### P5-2 选择器 + app 注入端口
+
+- [x] **先写** `editorTabSelectors.test.ts` 新用例：`hasDockedTabs(state, tabKey, slot)` —— 只认该槽的组、
+      id 必须存活、`tabKey` 为 null → false（与 `hasCenterTabs` 共用「存活 id」判定，不复制判据）。
+- [x] `src/app/hooks/useDockTabHostContent.ts`（新）：`Record<DockSlot, boolean>`，key = `useActiveWorkspaceKey`
+      （**不要**抄 ProjectView 的 `tabSpaceKeyOf({kind:'app'})` 兜底：app 空间没有可停靠 tab，抄了就是第三份公式）。
+      对象用 `useMemo` 稳定（避免击穿下游 memo）。
+- [x] `src/app/shell/AppShell.tsx`：调该 hook，作为 `tabHostHasTabs` 注入 `<DockLayout/>`（组合根注入，
+      layout 层不 import tab 域 —— 与 `onMoveView` 同一条规矩）。
+
+### P5-3 消费侧
+
+- [x] `src/layout/dock-layout/DockLayout.tsx`：`leftVisible` / `rightVisible` 改用 `isZoneRenderable`
+      （左/右同一规则，不特判）；`useZoneExpandCollapse` 与新 prop 接线；`handleLayoutChanged` 的右区宽度
+      持久化沿用 `rightVisible`。
+      **左区的 `defaultSize` / handle `disabled` / 宽度持久化也必须跟随 `leftVisible`** —— 只改
+      `useZoneExpandCollapse` 的话，左槽空宿主首帧仍按 `leftSlotSize` 占位（该 effect 首渲染早退）。
+      右区尺寸与 `resize` 效果的前台改取 `zoneFrontView`（`activeView` 指向 host:none 时宽度记忆不该记在它名下）。
+- [x] `src/layout/dock-layout/DockZone.tsx`：前台视图改从 `zoneFrontView` 取（删掉本地 fallback）。
+      渲染列表改 `zoneHostedViews`（声明表口径）；新增 `DockZone.test.tsx` 钉住这两条（Library 不进 zone / 前台回落）。
+- [x] `src/features/dock-tabs/components/DockTabHost.tsx`：删两句文案 + `DockTabEmptyState` + N→0 收起分支；
+      空态与 `tabKey === null` 一律 `return null`；保留 0→N 的「内容到达即前置」揭示。注释改成「宿主是内容的
+      投影，空即不占位；不在这里解释为什么是空的」。
+- [x] `DockTabHost.test.tsx`：4 条空态文案断言 → 改为断言渲染为空；删「本来就空不收起」（行为已由派生可见性
+      取代）；补一条「关光后不写 intent」（`zones.right.expanded` 保持原值，与 P5 的「不再写 intent」对齐）。
+
+**校验**：`pnpm vitest run src/shared/dock src/shared/store/__tests__/editorTabSelectors.test.ts src/features/dock-tabs src/layout`
+
+### P5-4 文档同步（同一 diff）
+
+- [x] `prd.md`：验收项「切到另一个项目 → 显示空态，不是空白死区」改为「→ 该槽不占位（不留空岛）」；
+      D5/D7 两行同步（D7 退役，理由改为「派生可见性已覆盖，不需要写 intent」）。
+- [x] `design.md`：I4 与 §7.4 的「宿主渲染空态」改述为「空宿主不占位」；补一条可见性派生规则。
+- [x] `.trellis/spec/frontend/state-management.md` Contract 8：形态判据扩到 zone 级（`isZoneRenderable` +
+      `hasCenterTabs` 同一口径）。
+- [x] `docs/layout-architecture.html` ④/⑤：若有「空态」表述同步。
+      （④ 的 editorStore 行补 zone 级判据 / 左右 zone 卡片改「空宿主不占位」，⑤ 的注入规则补 `tabHostHasTabs`。）
+
+**回滚点 R-P5**：`isZoneRenderable` 一个判据 + 注入端口 + 删掉的文案/分支；revert 即回到
+「空宿主占位 + 文案解释」的旧行为。
 
 ---
 
