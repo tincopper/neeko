@@ -22,7 +22,7 @@ import { useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
  */
 const DockTabHostSlot: React.FC<{ slot: DockSlot }> = ({ slot }) => {
   const project = useProjectStore((s) => s.activeProject);
-  // 无激活项目 → tabKey = null → 宿主空态（不是空白死区）
+  // 无激活项目 → tabKey = null → 宿主渲染为空（空宿主不占位，见 isZoneRenderable）
   const tabKey = useActiveWorkspaceKey(project?.id ?? null);
   const { remoteAuthStore, activeRemoteCheckoutPath, setRemoteOpenSessions, setPendingAuthEntry } =
     useConnectionProjectContext();

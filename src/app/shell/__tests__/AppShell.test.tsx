@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // mock 全部骨架子件：AppShell 只做组合，本测试断言「装配与透传」而非子件行为。
 // DockLayout mock 透传 slot 内容，验证 toolbarFooterLeft / buttons / children 注入路径。
@@ -12,13 +12,19 @@ vi.mock('@/layout', () => ({
     toolbarFooterLeft,
     leftBarItems,
     rightBarItems,
+    tabHostTabCounts,
   }: {
     children?: ReactNode;
     toolbarFooterLeft?: ReactNode;
     leftBarItems?: { view: string; node: ReactNode }[];
     rightBarItems?: { view: string; node: ReactNode }[];
+    tabHostTabCounts?: { left: number; right: number };
   }) => (
-    <div data-testid="dock-layout">
+    <div
+      data-testid="dock-layout"
+      data-left-host-tabs={String(tabHostTabCounts?.left)}
+      data-right-host-tabs={String(tabHostTabCounts?.right)}
+    >
       <div data-testid="dock-toolbar-footer">{toolbarFooterLeft}</div>
       <div data-testid="dock-left-buttons">{leftBarItems?.map((item) => item.node)}</div>
       <div data-testid="dock-right-buttons">{rightBarItems?.map((item) => item.node)}</div>
@@ -46,6 +52,13 @@ vi.mock('../../panels/PanelHost', () => ({
   default: () => <div data-testid="panel-host-bottom" />,
 }));
 
+import { useEditorStore } from '@/shared/store/editorStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
+import type { Tab } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
+import { createProject } from '@/testing/factories';
+
 import AppShell from '../AppShell';
 
 function makeEntry(tag: string): { view: string; node: ReactNode } {
@@ -70,6 +83,12 @@ function renderShell() {
 }
 
 describe('AppShell 骨架装配', () => {
+  // 注入端口的用例会写 store：每个用例从空状态开始（测试必须独立，不依赖执行顺序）
+  afterEach(() => {
+    useEditorStore.setState({ tabs: {}, editorLayout: {} });
+    useWorkspaceStore.setState({ byProject: {} });
+    useProjectStore.setState({ activeProjectId: null, activeProject: null });
+  });
   it('渲染完整骨架：TitleBar(actions) + DockLayout(ToolbarFooter slot) + PanelHost(bottom) + 浮层 + StatusBar', () => {
     renderShell();
     expect(screen.getByTestId('titlebar-actions')).toBeInTheDocument();
@@ -93,5 +112,29 @@ describe('AppShell 骨架装配', () => {
     renderShell();
     const layout = screen.getByTestId('dock-layout');
     expect(layout.contains(screen.getByTestId('panel-host-bottom'))).toBe(false);
+  });
+
+  it('把「各槽宿主有几条停靠 tab」注入 DockLayout（计数：1 → 2 必须可观测）', () => {
+    const session = WorkspaceSession.of('p1', null);
+    useProjectStore.setState({
+      activeProjectId: 'p1',
+      activeProject: createProject({ id: 'p1' }),
+    });
+    useWorkspaceStore.setState({ byProject: {} });
+    useEditorStore.setState({ tabs: {}, editorLayout: {} });
+    const tab: Tab = {
+      id: 't1',
+      scope: { kind: 'workspace', session },
+      title: 'zsh',
+      data: { kind: 'terminal', agentId: null },
+    };
+    useEditorStore.getState().addTab(tab);
+    useEditorStore.getState().dockTab(session.key, tab.id, 'right');
+
+    renderShell();
+
+    const layout = screen.getByTestId('dock-layout');
+    expect(layout).toHaveAttribute('data-right-host-tabs', '1');
+    expect(layout).toHaveAttribute('data-left-host-tabs', '0');
   });
 });

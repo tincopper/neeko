@@ -30,4 +30,6 @@ export {
   slotViews,
 } from './placement';
 
+export { isZoneRenderable, zoneFrontView, zoneHostedViews } from './zone';
+
 export { DEFAULT_ZONE_SIZE_PERCENT, DOCK_VIEW_META, MIN_ZONE_SIZE_PERCENT } from './panelMeta';

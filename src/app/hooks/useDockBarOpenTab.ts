@@ -204,8 +204,8 @@ export function useDockBarOpenTab(): OpenTabHandler {
           const reclaimed = sessionTab(latestSession, after.tabs[tabKey]?.tabs ?? []);
           if (reclaimed) moveTabToSlot(tabKey, reclaimed.id, targetSlot);
         }
-        // 异步恢复（终端续写要等一次 IPC）此刻还没有 tab —— 由 `DockTabHost` 的空→非空
-        // 揭示接住，两条路都不必在这里等 Promise。
+        // 异步恢复（终端续写要等一次 IPC）此刻还没有 tab —— 由 app 层的「内容到达即前置」
+        // （`useDockTabHostReveal`）接住，两条路都不必在这里等 Promise。
         return;
       }
 

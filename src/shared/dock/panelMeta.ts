@@ -54,7 +54,8 @@ export const DOCK_VIEW_META: Record<string, DockViewMeta> = Object.fromEntries([
   }),
   // 槽位宿主（左/右）：**容器不上工具栏**（D10）—— 工具栏那一列是「功能入口」，
   // 而宿主不是功能，它只是「被移进侧区的 tab 住的地方」。没有图标并不丢可达性：
-  // 新建/接回/移动都会经 `activateView` 把该区域展开（见 `DockTabHost` 的空→非空揭示）。
+  // 新建/接回/移动都会经 `activateView` 把该区域展开；自动停靠（不经这三条路径）由
+  // app 层 `useDockTabHostReveal` 的「内容到达即前置」接住（shared 不认识 tab 域，故不点名）。
   row(tabHostView('left'), {
     host: 'tabHost',
     activation: { kind: 'toggleZone' },

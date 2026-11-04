@@ -6,7 +6,8 @@ import type { DockLayoutState, DockPlacement, DockSlot, DockZoneRuntime, ViewKey
  *
  * 本模块**刻意不依赖** `DOCK_VIEW_META`：能力校验（movable / host）属于 store 的 action 层。
  * 这里只管「把某个已知视图搬到某个已知槽的某个下标」，并保证搬完之后布局自身仍然自洽
- * —— 尤其是 `activeView` 永不悬挂（悬挂会让 DockZone 渲染空态而 zone 仍占宽度）。
+ * —— 尤其是 `activeView` 永不悬挂（悬挂不会报错，只会让前台悄悄回落到槽内别的视图：用户
+ * 看到的面板与他刚拖动的图标对不上）。
  */
 
 function comparePlacements(a: DockPlacement, b: DockPlacement): number {
@@ -75,9 +76,9 @@ function clampIndex(requested: number | undefined, length: number): number {
 /**
  * 移动视图，并在**同一个返回值**里修复两个槽的 `activeView`。
  *
- * 为什么修复必须在这里：`activeView` 悬挂会让 DockZone 渲染空态而 zone 仍占宽度
- * （「图标在右、面板空白」）。一半修一半不修的状态在构造上不该存在，所以调用方
- * 永远不需要（也不允许）自己兜底。
+ * 为什么修复必须在这里：`activeView` 悬挂是**静默**的 —— `zoneFrontView` 只会回落到槽内
+ * 首个可渲染视图，用户看到的面板就与他刚拖动的图标分叉（「图标在右、面板却是别的」）。
+ * 一半修一半不修的状态在构造上不该存在，所以调用方永远不需要（也不允许）自己兜底。
  */
 export function applyMove(state: DockLayoutState, req: MoveViewRequest): DockLayoutState {
   const placement = state.placements[req.view];

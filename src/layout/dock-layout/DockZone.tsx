@@ -1,7 +1,7 @@
 import React, { Suspense, useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
-import { placementsInSlot, type DockSlot } from '@/shared/dock';
+import { zoneFrontView, zoneHostedViews, type DockSlot } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
 import { Island } from '@/ui/Island';
 
@@ -15,17 +15,15 @@ interface DockZoneProps {
 const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
   const dockViewRegistry = useDockRegistry();
   const placements = useDockStore((s) => s.placements);
-  const zone = useDockStore((s) => s.zones[zoneId]);
+  const zones = useDockStore((s) => s.zones);
+  const zone = zones[zoneId];
 
-  // `host: 'none'` 的视图（只上 bar 的中心视图入口，如 Library）有落位但不占 zone：
-  // 「图标在哪栏」与「面板渲染在哪」是两件事。
-  const views = useMemo(
-    () =>
-      placementsInSlot(placements, zoneId)
-        .map((placement) => placement.view)
-        .filter((view) => dockViewRegistry[view]?.component),
-    [placements, zoneId, dockViewRegistry],
-  );
+  // 渲染列表 = **有 zone 内容**的视图（声明表口径的唯一过滤器 `zoneHostedViews`）。
+  // `host: 'none'` 的视图（Library / 种类级入口）有落位但不占 zone：图标在哪栏与面板
+  // 渲染在哪是两件事 —— 用「registry 里有没有 component」过滤会漏掉 Library（它有组件，
+  // 只是渲染在中心区），把 LibraryPanel 当成左栏面板挂载。
+  const layoutState = useMemo(() => ({ placements, zones }), [placements, zones]);
+  const views = useMemo(() => zoneHostedViews(layoutState, zoneId), [layoutState, zoneId]);
 
   if (!zone) {
     return (
@@ -40,10 +38,9 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
     return null;
   }
 
-  // activeView 指向 host:'none' 的视图时落到首个宿主视图 —— 它在槽内（不是悬挂），
-  // 只是没有 zone 内容。悬挂（不在槽内）由 applyMove/sanitize 就地修好，不在这里兜底。
-  const activeView =
-    zone.activeView && views.includes(zone.activeView) ? zone.activeView : views[0];
+  // 前台 = 布局事实的唯一派生点（`zoneFrontView`：含「activeView 指向 host:'none' /
+  // 悬挂 → 回落首个可渲染视图」）。消费侧禁止再写一份 `views.includes(...) ? … : views[0]`。
+  const activeView = zoneFrontView(layoutState, zoneId);
 
   // 渲染该槽全部视图，非活跃的用 CSS hidden 隐藏。
   // 避免切换时卸载/挂载组件导致 useState 重置、useEffect 重触发、React.lazy chunk 加载。

@@ -4,7 +4,9 @@ import { usePanelRef, type Layout, type LayoutChangedMeta } from 'react-resizabl
 import {
   DEFAULT_ZONE_SIZE_PERCENT,
   MIN_ZONE_SIZE_PERCENT,
-  placementsInSlot,
+  isZoneRenderable,
+  zoneFrontView,
+  type DockSlot,
   type ViewKey,
 } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
@@ -20,6 +22,9 @@ import { useZoneExpandCollapse } from './useZoneExpandCollapse';
 /** 没有条目时不要每次渲染新建数组（DnD 的 memo / 依赖数组以它为输入）。 */
 const NO_ENTRIES: DockBarEntry[] = [];
 
+/** 未注入内容事实时的缺省：宿主没有可渲染 tab（fail-closed —— 不凭空占位）。 */
+const NO_TAB_HOST_CONTENT: Record<DockSlot, number> = { left: 0, right: 0 };
+
 interface DockLayoutProps {
   children: React.ReactNode;
   /** Left toolbar footer slot for app-level actions */
@@ -29,6 +34,15 @@ interface DockLayoutProps {
   rightBarItems?: DockBarEntry[];
   /** 图标跨栏 / 排序的唯一入口（app 注入；本层只把 dnd 落点翻译成 (view, slot, index)） */
   onMoveView?: MoveViewHandler;
+  /**
+   * 各槽的槽位宿主里**可渲染 tab 的条数**（app 注入，见 `useDockTabHostContent`）。
+   *
+   * zone 可见性 = **内容**的函数（展开 ∧ 前台有内容）：本层不掌握 tab 域，所以「宿主有多少
+   * 内容」由 app 算好交进来 —— 与 `onMoveView` 同一规矩（layout 不得 import app / feature）。
+   * 「非空」（`> 0`）只在 `isZoneRenderable` 内部决定一处，本层不做布尔映射。
+   * 缺省 = 没有内容（fail-closed）。
+   */
+  tabHostTabCounts?: Record<DockSlot, number>;
 }
 
 /**
@@ -57,6 +71,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   leftBarItems = NO_ENTRIES,
   rightBarItems = NO_ENTRIES,
   onMoveView,
+  tabHostTabCounts = NO_TAB_HOST_CONTENT,
 }) => {
   const placements = useDockStore((s) => s.placements);
   const zones = useDockStore((s) => s.zones);
@@ -67,24 +82,25 @@ const DockLayout: React.FC<DockLayoutProps> = ({
 
   const dockViewRegistry = useDockRegistry();
 
-  const leftExpanded = zones.left?.expanded ?? true;
-  const rightExpanded = zones.right?.expanded ?? false;
-  const rightActiveView = zones.right?.activeView ?? null;
-
-  // 只有「有 zone 内容的视图」才让 right 区可见：host:'none' 的视图（Library 入口）
-  // 可以有落位在右栏，但它没有可渲染的面板 —— 否则会得到一座空岛。
-  const rightHostedViews = useMemo(
-    () =>
-      placementsInSlot(placements, 'right')
-        .map((placement) => placement.view)
-        .filter((view) => dockViewRegistry[view]?.component),
-    [placements, dockViewRegistry],
+  // 可见性 = 展开 ∧ 前台视图有内容可渲染（`isZoneRenderable` 是唯一判据）。
+  // 左右同一规则、不特判：左栏之所以通常可见，是因为它前台通常是 `projects`（无状态面板），
+  // 不是因为它是左侧。空宿主因此**不占位**（既不用空岛、也不用文案解释为什么是空的）。
+  const layoutState = useMemo(() => ({ placements, zones }), [placements, zones]);
+  // 解构而不是两个独立 const：保持合并计算（两槽共享 `layoutState`）。
+  const { left: leftVisible, right: rightVisible } = useMemo(
+    () => ({
+      left: isZoneRenderable(layoutState, 'left', tabHostTabCounts.left),
+      right: isZoneRenderable(layoutState, 'right', tabHostTabCounts.right),
+    }),
+    [layoutState, tabHostTabCounts.left, tabHostTabCounts.right],
   );
+
+  // 前台 = 布局事实的唯一派生点（含「activeView 指向 host:'none' 时回落」），
+  // 尺寸记忆与 resize 效果都以它为准 —— 不要在消费侧再算一遍 `activeView`。
+  const rightFrontView = zoneFrontView(layoutState, 'right');
 
   // 持久化策略见下方 handleLayoutChanged：拖动期间零 store 写入，defaultSize
   // 可直接绑定 store 值（无需「150ms 去抖 + defaultSize 快照」断负反馈 hack）。
-
-  const rightVisible = rightHostedViews.length > 0 && rightExpanded;
 
   /** Resolve target zone width for a given view: store value → meta default → global default.
    *  Always returns at least MIN_ZONE_SIZE_PERCENT to match the panel's minSize constraint,
@@ -103,31 +119,31 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   // -- Panel imperative refs for collapse/expand --
   const leftZonePanelRef = usePanelRef();
   const rightPanelRef = usePanelRef();
-  const prevRightActiveViewRef = useRef<ViewKey | null>(rightActiveView);
+  const prevRightFrontViewRef = useRef<ViewKey | null>(rightFrontView);
 
   // -- Left panel: collapse/expand imperatively instead of key-based remount --
   // 确定性恢复：显式 resize 到 store 记忆尺寸，不依赖库内部「最近展开尺寸」记忆 ——
   // defaultSize 直绑 store 后，拖动持久化触发的约束重排会污染该内部记忆，导致
   // 重展开回退到初始默认宽度（双 rAF 时序见 useZoneExpandCollapse）。
-  useZoneExpandCollapse(leftZonePanelRef, leftExpanded, leftSlotSize);
+  useZoneExpandCollapse(leftZonePanelRef, leftVisible, leftSlotSize);
 
   // -- Right panel: collapse/expand imperatively instead of key-based remount --
-  useZoneExpandCollapse(rightPanelRef, rightVisible, getRightViewSize(rightActiveView));
+  useZoneExpandCollapse(rightPanelRef, rightVisible, getRightViewSize(rightFrontView));
 
   // Resize right zone to target size when the active view changes (instant, no CSS transition)
   useEffect(() => {
-    const prev = prevRightActiveViewRef.current;
-    prevRightActiveViewRef.current = rightActiveView;
+    const prev = prevRightFrontViewRef.current;
+    prevRightFrontViewRef.current = rightFrontView;
 
-    if (prev === rightActiveView) return;
+    if (prev === rightFrontView) return;
     if (!rightVisible) return;
 
     const panel = rightPanelRef.current;
     if (!panel) return;
 
-    const targetSize = getRightViewSize(rightActiveView);
+    const targetSize = getRightViewSize(rightFrontView);
     panel.resize(`${targetSize}%`);
-  }, [rightActiveView, rightVisible, getRightViewSize, rightPanelRef]);
+  }, [rightFrontView, rightVisible, getRightViewSize, rightPanelRef]);
 
   // ── Layout persistence（Group 级 onLayoutChanged：pointer-up 语义）─────
   // 拖动只在松手时触发一次（键盘 resize 立即触发）；meta.isUserInteraction
@@ -138,25 +154,25 @@ const DockLayout: React.FC<DockLayoutProps> = ({
     (_layout: Layout, meta: LayoutChangedMeta) => {
       if (!meta.isUserInteraction) return;
 
-      // 左 zone：折叠态（0%）不入库。回调触发时尺寸已 settle，直接从
+      // 左 zone：折叠态（0%）/ 无内容（不占位）不入库。回调触发时尺寸已 settle，直接从
       // imperative handle 读最终值（比 flexGrow 换算百分比更可靠）。
       const left = leftZonePanelRef.current?.getSize();
-      if (leftExpanded && left && left.asPercentage > 0) {
+      if (leftVisible && left && left.asPercentage > 0) {
         setLeftSlotSize(left.asPercentage);
       }
 
       // 右 zone：只持久化 ≥ minSize 的值，防止折叠/过渡尺寸污染存储。
       const right = rightPanelRef.current?.getSize();
-      if (rightVisible && rightActiveView && right && right.asPercentage >= MIN_ZONE_SIZE_PERCENT) {
-        setViewSize(rightActiveView, right.asPercentage);
+      if (rightVisible && rightFrontView && right && right.asPercentage >= MIN_ZONE_SIZE_PERCENT) {
+        setViewSize(rightFrontView, right.asPercentage);
       }
     },
     [
       leftZonePanelRef,
       rightPanelRef,
-      leftExpanded,
+      leftVisible,
       rightVisible,
-      rightActiveView,
+      rightFrontView,
       setLeftSlotSize,
       setViewSize,
     ],
@@ -192,7 +208,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
               defaultSize 直接绑定 store（拖动期间无写入，见 handleLayoutChanged 注释） */}
           <ResizablePanel
             id="left-zone"
-            defaultSize={leftExpanded ? `${leftSlotSize}%` : '0%'}
+            defaultSize={leftVisible ? `${leftSlotSize}%` : '0%'}
             collapsible
             collapsedSize="0%"
             minSize={`${MIN_ZONE_SIZE_PERCENT}%`}
@@ -206,8 +222,8 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           <ResizableHandle
             id="handle-left-center"
             withHandle
-            disabled={!leftExpanded}
-            className={leftExpanded ? undefined : '!w-0 !cursor-default'}
+            disabled={!leftVisible}
+            className={leftVisible ? undefined : '!w-0 !cursor-default'}
           />
 
           {/* Center area: editor content (island) */}
@@ -224,7 +240,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           />
           <ResizablePanel
             id="right-zone"
-            defaultSize={rightVisible ? `${getRightViewSize(rightActiveView)}%` : '0%'}
+            defaultSize={rightVisible ? `${getRightViewSize(rightFrontView)}%` : '0%'}
             collapsible
             collapsedSize="0%"
             minSize={`${MIN_ZONE_SIZE_PERCENT}%`}

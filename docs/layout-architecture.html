@@ -329,7 +329,7 @@
       <tr>
         <td><code>editorStore.editorLayout</code></td>
         <td>tab 的空间布局：中心组（left/right）+ pinned + <b>docked 组</b>（left/right 两个槽位 tab 宿主）</td>
-        <td>不持久化；<b>docked 组是 tab「在哪个 surface」的唯一表示</b>（不给 <code>Tab</code> 加 surface 字段）；移动只经 <code>dockTab</code> 原子迁移（单次 set 内先全域移除再插入 ⇒ 一条 tab 只在一个组，双 PTY 不可表示）；停靠的实例按当前 workspace 的 tabKey 投影，实例级停靠不持久化</td>
+        <td>不持久化；<b>docked 组是 tab「在哪个 surface」的唯一表示</b>（不给 <code>Tab</code> 加 surface 字段）；移动只经 <code>dockTab</code> 原子迁移（单次 set 内先全域移除再插入 ⇒ 一条 tab 只在一个组，双 PTY 不可表示）；停靠的实例按当前 workspace 的 tabKey 投影，实例级停靠不持久化；<b>形态判据也只读组</b>：中心区 <code>hasCenterTabs</code>（left ∪ right ∪ pinned 且 id 仍在注册表，<b>不数注册表</b>）、zone 级 <code>isZoneRenderable</code>（展开 ∧ 前台有内容；宿主的内容事实 = <code>countDockedTabs</code> 的<b>条数</b>，由 app 经 <code>useDockTabHostContent</code> 注入）—— 两条共用同一个「存活 id」判定（空岛顶掉引导页 / 空宿主占位不会发生）</td>
       </tr>
       <tr>
         <td><code>appViewStore</code></td>
@@ -353,7 +353,7 @@
   <h2>⑤ 依赖方向（编译期强制）</h2>
   <div class="dep">
     <b>ui</b> ← <b>layout</b> ← <b>app</b> ← <b>features</b> → <b>shared</b>
-    <span class="rule">layout/ 禁止 import features/* 与 app/*（ESLint import/no-restricted-paths）；app 通过 DockRegistryProvider 注入 registry —— 骨架与业务只经 context 相遇</span>
+    <span class="rule">layout/ 禁止 import features/* 与 app/*（ESLint import/no-restricted-paths）；app 通过 DockRegistryProvider 注入 registry、经 AppShell 注入 <code>onMoveView</code> / <code>tabHostTabCounts</code>（宿主里可渲染 tab 的条数 = tab 域事实；「非空」只在 <code>isZoneRenderable</code> 内部判 <code>&gt; 0</code>）—— 骨架与业务只经 context / props 相遇</span>
   </div>
 
   <!-- ═══ 6. 扩展指南 ═══ -->
@@ -391,6 +391,7 @@
       <ul>
         <li>DockLayout 顶层加垂直嵌套 Group，bottom 槽入布局</li>
         <li><code>DockSlot</code> 联合加 <code>'bottom'</code>，并补一条 <code>DOCK_SLOTS</code>；<code>placements</code>/<code>zones</code> 的派生逻辑全部遍历该数组，不需要逐处加分支</li>
+        <li>zone 可见性判据（<code>isZoneRenderable</code> / <code>zoneFrontView</code>）与新槽无关；只需补内容事实端口：<code>useDockTabHostContent</code> 的 <code>Record&lt;DockSlot, number&gt;</code> 会因缺键编译报错（刻意用显式对象而不是遍历，新槽必须被看见）</li>
         <li>dockStore 的槽状态按 <code>Record&lt;DockSlot, …&gt;</code> 扩展；复用 <code>useZoneExpandCollapse</code></li>
         <li>触发条件：unified-task-hub 面板进底部，或底部需要拖拽/收起</li>
       </ul>
@@ -425,8 +426,9 @@
       name: 'left-zone（左停靠区）', path: 'src/layout/dock-layout/DockZone.tsx + DockLayout.tsx',
       points: [
         'ResizablePanel：默认 18%（dockStore.leftSlotSize），min 12%（MIN_ZONE_SIZE_PERCENT 单源）max 35%，可折叠',
-        'DockZone 渲染该槽落位里<b>全部有组件的视图</b>，非活跃用 CSS hidden —— 切换不卸载，state / lazy chunk 不丢',
+        'DockZone 渲染该槽落位里<b>有 zone 内容</b>的视图（<code>zoneHostedViews</code>：host:none 的落位不算），非活跃用 CSS hidden —— 切换不卸载，state / lazy chunk 不丢',
         '展开/收起走 <code>useZoneExpandCollapse</code>：expand → 双 rAF → resize(记忆宽度)；rAF 随 effect 清理取消',
+        '可见性 = <code>isZoneRenderable</code>（展开 ∧ 前台有内容），左右同一规则；空宿主<b>不占位</b>（宽度 0%）',
         '默认落位：projects + library 入口（后者 host:none，只上 bar 不进 zone）',
       ],
       tags: [['宽度记忆', 'b-blue'], ['状态保持', 'b-green']],
@@ -445,7 +447,8 @@
       name: 'right-zone（右停靠区）', path: 'src/layout/dock-layout/DockZone.tsx + dockStore.placements/viewSizes',
       points: [
         '默认收起；视图级宽度记忆（viewSizes，键=ViewKey，browser 默认 50%），min 12% max 80%',
-        '可见性 = 「该槽有带组件的落位」与 expanded；host:none 的入口即使落在右栏也不会开出一座空岛',
+        '可见性 = <code>isZoneRenderable</code>（<b>展开 ∧ 前台视图有内容可渲染</b>）；无状态面板恒为「有内容」，槽位宿主则由 <code>countDockedTabs</code>（条数，判据内部 <code>&gt; 0</code>）决定 —— 空宿主不占位；同一个计数还驱动「到达 = 条数增加」的揭示',
+        '前台 = <code>zoneFrontView</code>（唯一派生点，含 host:none / 悬挂 → 回落首个可渲染视图）；host:none 的入口即使落在右栏也不会开出一座空岛',
         '拖动只在 pointer-up 持久化（Group onLayoutChanged + isUserInteraction 过滤），拖动期间零 store 写入 —— 无去抖、无负反馈',
         '前台切换时立即 resize 到目标宽度；默认落位：files / gitControl / pullRequests / browser / conversations / search',
       ],

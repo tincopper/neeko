@@ -108,7 +108,7 @@ describe('DockTabHostWrapper — slot 由注册表传入（不由 activeView 反
     }
   });
 
-  it('无激活项目 → tabKey = null（宿主渲染空态，不是空白死区）', () => {
+  it('无激活项目 → tabKey = null（宿主渲染为空，不凭空占位）', () => {
     useProjectStore.setState({ projects: [], activeProjectId: null, activeProject: null });
 
     renderWrapper(<DockTabHostRightWrapper />);

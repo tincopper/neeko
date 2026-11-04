@@ -4,9 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * 槽位 tab 宿主（P1）的渲染契约。
  *
- * 判据选在「用户能看到什么」上：有停靠 tab 就渲染出 tab 条；没有/没有 workspace 就渲染
- * 空态文案（不是空白死区，I4）；`chrome="dock"` 下**不出现**分屏控件与 Action Menu 入口
- * （R8：停靠区不是中心编辑器，露出那些入口会误导向无效操作）。
+ * 判据选在「用户能看到什么」上：有停靠 tab 就渲染出 tab 条；没有 tab / 没有 workspace
+ * 就**渲染为空**（宿主是内容的投影 —— 空宿主既不占位，也不用文案解释自己为什么空）；
+ * `chrome="dock"` 下**不出现**分屏控件与 Action Menu 入口（R8：停靠区不是中心编辑器，
+ * 露出那些入口会误导向无效操作）。
  *
  * 对照组（`paneId="left"` + 默认 chrome）证明这些断言有判别力 —— 同样的 tab 在中心
  * 编辑器里确实会渲染分屏控件。
@@ -34,7 +35,7 @@ import DockTabHost from '@/features/dock-tabs/components/DockTabHost';
 import { EditorGroupPane, FileActionsProvider } from '@/features/editor';
 import type { EditorContextValue } from '@/shared/contexts';
 import { AppProvider, EditorProvider } from '@/shared/contexts';
-import { panelView, tabHostView } from '@/shared/dock';
+import { tabHostView } from '@/shared/dock';
 import { createDefaultDockState, useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { AgentConfig, Tab } from '@/shared/types';
@@ -104,13 +105,7 @@ function seedDockedRightTab(): void {
   useEditorStore.getState().dockTab(SPACE, TERMINAL_TAB.id, 'right');
 }
 
-/** 往已存在的空间里再加一条停靠 tab（不重置 store，用于「已非空」类跃迁）。 */
-function addDockedRightTab(tab: Tab): void {
-  useEditorStore.getState().addTab(tab);
-  useEditorStore.getState().dockTab(SPACE, tab.id, 'right');
-}
-
-describe('DockTabHost — 渲染与空态', () => {
+describe('DockTabHost — 空宿主不占位（可见性从内容派生）', () => {
   beforeEach(() => {
     mockCheckAgentsInstalled.mockResolvedValue({});
     useEditorStore.setState({ tabs: {}, editorLayout: {} });
@@ -124,37 +119,42 @@ describe('DockTabHost — 渲染与空态', () => {
     expect(screen.getByText('zsh')).toBeInTheDocument();
   });
 
-  it('槽内没有停靠 tab → 空态文案（不是空白死区）', () => {
-    render(wrap(<DockTabHost slot="right" tabKey={SPACE} buildLayoutId={() => 'l1'} />));
+  it('槽内没有停靠 tab → 渲染为空（不解释为什么是空的）', () => {
+    const { container } = render(
+      wrap(<DockTabHost slot="right" tabKey={SPACE} buildLayoutId={() => 'l1'} />),
+    );
 
-    expect(screen.getByText(/No docked tabs/)).toBeInTheDocument();
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it('无 tabKey（没有激活 workspace）→ 空态文案', () => {
-    render(wrap(<DockTabHost slot="right" tabKey={null} buildLayoutId={() => 'l1'} />));
+  it('无 tabKey（没有激活 workspace）→ 渲染为空', () => {
+    const { container } = render(
+      wrap(<DockTabHost slot="right" tabKey={null} buildLayoutId={() => 'l1'} />),
+    );
 
-    expect(screen.getByText(/Open a project to dock tabs here/)).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it('左/右宿主只投影自己那一组（同一 tabKey 的另一槽为空）', () => {
+  it('左/右宿主只投影自己那一组（另一槽为空 → 空渲染）', () => {
     seedDockedRightTab();
-    render(wrap(<DockTabHost slot="left" tabKey={SPACE} buildLayoutId={() => 'l1'} />));
+    const { container } = render(
+      wrap(<DockTabHost slot="left" tabKey={SPACE} buildLayoutId={() => 'l1'} />),
+    );
 
-    expect(screen.getByText(/No docked tabs/)).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 });
 
-describe('DockTabHost — 关掉最后一条停靠 tab 时收起该槽（不留空岛）', () => {
+describe('DockTabHost — 关光最后一条 ≠ 写布局 intent（P5 退役了 N→0 收起）', () => {
   beforeEach(() => {
     mockCheckAgentsInstalled.mockResolvedValue({});
     useEditorStore.setState({ tabs: {}, editorLayout: {} });
     useDockStore.setState(createDefaultDockState());
-    // 宿主要可见才谈得上「关掉最后一条 → 收起」：这等价于用户点图标把宿主展开
+    // 宿主要可见才谈得上「关光」：这等价于用户点图标 / 拖 tab 把宿主展开
     useDockStore.getState().activateView(tabHostView('right'));
   });
 
-  it('非空 → 空：该槽自动收起（用户看到的是「页面关掉了」，不是一座空岛）', () => {
+  it('关光最后一条：expanded / activeView 一字不动（空宿主是否占位由派生判据回答）', () => {
     seedDockedRightTab();
     render(wrap(<DockTabHost slot="right" tabKey={SPACE} buildLayoutId={() => 'l1'} />));
 
@@ -162,27 +162,21 @@ describe('DockTabHost — 关掉最后一条停靠 tab 时收起该槽（不留�
       useEditorStore.getState().closeTab(SPACE, TERMINAL_TAB.id);
     });
 
-    expect(useDockStore.getState().zones.right.expanded).toBe(false);
-  });
-
-  it('本来就空（首次展开的引导态）→ 不被立刻收起（否则那个图标永远打不开）', () => {
-    render(wrap(<DockTabHost slot="right" tabKey={SPACE} buildLayoutId={() => 'l1'} />));
-
-    expect(screen.getByText(/No docked tabs/)).toBeInTheDocument();
-    expect(useDockStore.getState().zones.right.expanded).toBe(true);
-  });
-
-  it('宿主不是该槽前台视图 → 不动布局（别的面板在用时不得被连带收起）', () => {
-    useDockStore.getState().activateView(panelView('files'));
-    seedDockedRightTab();
-    render(wrap(<DockTabHost slot="right" tabKey={SPACE} buildLayoutId={() => 'l1'} />));
-
-    act(() => {
-      useEditorStore.getState().closeTab(SPACE, TERMINAL_TAB.id);
+    // 旧行为：这里会被改成 expanded=false（写 intent 掩盖「容器比内容活得久」）。
+    // 现在容器可见性从内容派生，所以关闭动作不需要也不能替布局做决定。
+    expect(useDockStore.getState().zones.right).toEqual({
+      expanded: true,
+      activeView: tabHostView('right'),
     });
+  });
 
+  it('本来就空：不写 intent（首次展开的引导态不存在了 —— 空宿主不占位）', () => {
+    const { container } = render(
+      wrap(<DockTabHost slot="right" tabKey={SPACE} buildLayoutId={() => 'l1'} />),
+    );
+
+    expect(container).toBeEmptyDOMElement();
     expect(useDockStore.getState().zones.right.expanded).toBe(true);
-    expect(useDockStore.getState().zones.right.activeView).toBe(panelView('files'));
   });
 });
 
@@ -219,51 +213,5 @@ describe('DockTabHost — chrome="dock" 不露出中心编辑器入口（R8）',
 
     expect(screen.getByTitle('Split Horizontal')).toBeInTheDocument();
     expect(screen.getByLabelText('New action')).toBeInTheDocument();
-  });
-});
-
-describe('DockTabHost — 空 → 非空时揭示宿主（新内容进宿主就该被看见）', () => {
-  const SECOND_TAB: Tab = {
-    ...TERMINAL_TAB,
-    id: 'tab-term-2',
-    title: 'bash',
-  };
-
-  beforeEach(() => {
-    mockCheckAgentsInstalled.mockResolvedValue({});
-    useEditorStore.setState({ tabs: {}, editorLayout: {} });
-    useDockStore.setState(createDefaultDockState());
-  });
-
-  it('0 → 1 条停靠 tab：该槽被激活展开（否则新 tab 停在收起的槽里，等于点图标没反应）', () => {
-    render(wrap(<DockTabHost slot="right" tabKey={SPACE} buildLayoutId={() => 'l1'} />));
-    // 右槽默认收起：此时宿主渲染的是引导态
-    expect(useDockStore.getState().zones.right.expanded).toBe(false);
-
-    act(() => {
-      seedDockedRightTab();
-    });
-
-    expect(useDockStore.getState().zones.right).toEqual({
-      expanded: true,
-      activeView: tabHostView('right'),
-    });
-    expect(screen.getByText('zsh')).toBeInTheDocument();
-  });
-
-  it('已非空时再加一条：不改布局（用户手动收起后不得被这条路径重新展开）', () => {
-    seedDockedRightTab();
-    render(wrap(<DockTabHost slot="right" tabKey={SPACE} buildLayoutId={() => 'l1'} />));
-    // 用户手动收起宿主（D6：再点一次图标 = 先藏起来）
-    act(() => {
-      useDockStore.getState().setSlotExpanded('right', false);
-    });
-
-    act(() => {
-      addDockedRightTab(SECOND_TAB);
-    });
-
-    expect(useDockStore.getState().zones.right.expanded).toBe(false);
-    expect(screen.getByText('bash')).toBeInTheDocument();
   });
 });

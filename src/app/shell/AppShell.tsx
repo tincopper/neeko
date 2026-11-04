@@ -10,6 +10,8 @@ import AppModals from '../AppModals';
 import AppCenter from '../components/AppCenter';
 import ToolbarFooter from '../components/ToolbarFooter';
 import type { ToolbarFooterProps } from '../components/ToolbarFooter';
+import { useDockTabHostContent } from '../hooks/useDockTabHostContent';
+import { useDockTabHostReveal } from '../hooks/useDockTabHostReveal';
 import PanelHost from '../panels/PanelHost';
 import TitleBarActions from '../panels/TitleBarActions';
 
@@ -31,6 +33,12 @@ interface AppShellProps {
  * AppCenter），对面板清单零感知（固定面板经 PanelHost 消费 registry，dock 面板经
  * DockLayout + DockRegistryProvider 注入的 registry）。岛屿视觉（海 + 浮岛）由
  * 各区域样式提供，本层只定义骨架分区。
+ *
+ * **内容事实的注入端口**：zone 可见性从内容派生（空宿主不占位），而「宿主里有多少内容」
+ * 属于 tab 域 —— 由本层算好交给布局层（`tabHostTabCounts`，计数而非布尔：布局层内部做
+ * `> 0`，本层不做映射），与 `onMoveView` 同一规矩：`layout/` 不得 import tab 域。同一个
+ * 计数也驱动「内容到达即前置」的揭示（`useDockTabHostReveal`，P6 —— 到达 = 条数增加）——
+ * 写在骨架层而不是宿主组件里，因为收起的槽不会挂载宿主。
  */
 function AppShell({
   toolbarProps,
@@ -39,6 +47,10 @@ function AppShell({
   rightBarItems,
   onMoveView,
 }: AppShellProps) {
+  const tabHostCounts = useDockTabHostContent();
+  // 揭示与可见性共用同一个内容事实（同一个计数驱动两件事 ⇒ 不会漂移）
+  useDockTabHostReveal(tabHostCounts);
+
   return (
     <div
       className="w-screen h-screen flex flex-col"
@@ -56,6 +68,7 @@ function AppShell({
           leftBarItems={leftBarItems}
           rightBarItems={rightBarItems}
           onMoveView={onMoveView}
+          tabHostTabCounts={tabHostCounts}
         >
           <AppCenter />
         </DockLayout>

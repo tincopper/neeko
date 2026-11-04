@@ -165,8 +165,9 @@ await saveSession(session);
 
 **槽位宿主不上工具栏**（D10）：`host: 'tabHost'` 的视图 `onBar` 恒为 false —— `sanitize`
 强制、`setViewOnBar` 对它是 no-op。工具栏那一列只放功能入口；宿主的可达性由「新建/接回/
-移动都会 `activateView`」+「空 → 非空自动展开」承担。配套限制：**只有带功能入口的种类
-（`canDockTabKind`）允许停靠**，否则会造出「藏进侧区、再也点不到」的 tab。
+移动都会 `activateView`」+「内容到达即前置自动展开」（`useDockTabHostReveal`，见 Contract 9）
+承担。配套限制：**只有带功能入口的种类（`canDockTabKind`）允许停靠**，否则会造出「藏进侧区、
+再也点不到」的 tab。
 
 `openTab` **刻意不进 store**：store 不持有 tab 空间，在那里做「找已有 / 新建 / 移动」会把顺序知识
 散到两个模块 —— 所以 `toggleView` 对该分支直接 `return`。落地语义两条：已有该 kind 的 tab 就
@@ -1559,10 +1560,12 @@ export interface EditorTabSpaceState {
   tabs: Record<string, ProjectTabs>;
   editorLayout: Record<string, EditorSplitLayout>;
 }
-export function selectOrderedTabIds(state, tabKey: string): string[];   // left → right → pinned
+export function selectOrderedTabIds(state, tabKey: string): string[];   // left → right → pinned → docked.left → docked.right
 export function selectOrderedTabs(state, tabKey: string): Tab[];         // 跳过已失效 id
 export function selectActiveTabId(state, tabKey: string): string | null;  // 激活组的 activeTabId
 export function selectActiveTab(state, tabKey: string): Tab | null;       // 前台 Tab 对象
+export function hasCenterTabs(state, tabKey: string): boolean;           // 中心画面是否有可渲染 tab（不看 docked）
+export function countDockedTabs(state, tabKey: string | null, slot: DockSlot): number;  // 某槽宿主里**可渲染 tab 的条数**（zone 可见性 + 揭示的唯一内容事实；tabKey=null → 0）
 
 // shared/store/editorStore.ts —— 命令式薄封装（内部即 selectActiveTabId）
 export function activeTabIdOf(tabKey: string): string | null;
@@ -1571,21 +1574,71 @@ export function activeTabIdOf(tabKey: string): string | null;
 
 ### 3. Contracts
 
-1. **布局是唯一真源**：顺序 = `editorLayout[tabKey].groups[*].tabIds`（左 → 右 → pinned）；
-   前台 = `editorLayout[tabKey].groups[activeGroupId].activeTabId`。**不得再存第二份表示**。
+1. **布局是唯一真源**：顺序 = `editorLayout[tabKey].groups[*].tabIds`（左 → 右 → pinned →
+   docked.left → docked.right）；前台 = `editorLayout[tabKey].groups[activeGroupId].activeTabId`。
+   **不得再存第二份表示**。
 2. **唯一派生点**：所有前台/顺序读取必须经 `editorTabSelectors.ts`（React 用同名 selector，
    命令式用 `activeTabIdOf`）。禁止任何消费侧自读 `tabIds` 拼顺序、或另存「当前 tab」。
 3. **pinned 与「前台」正交**（有意保留）：`selectActiveTabId` **只反映编辑器组**，不含
    `pinnedActiveTabId`。`activateTab(pinnedTab)` 只置 `pinnedActiveTabId`；pinned tab 不可关、
    Cmd+W 从不命中它（与今日行为一致）。
-4. **不变量 I1**：有 tab 的空间必有 layout，且 `left.tabIds ∪ right.tabIds ∪ pinnedTabIds` 恰好
-   枚举该空间的 tab。`addTab` 是唯一 tab 创建入口 → 由构造满足。`useEditorGroupLayout` 与
-   `editorStore` 的缺-layout 分支是纯防御（生产中不可达），缺 layout 时前台降级为 `null`（不抛）。
+4. **不变量 I1**：有 tab 的空间必有 layout，且 `left.tabIds ∪ right.tabIds ∪ pinnedTabIds ∪
+   docked.left ∪ docked.right` 恰好枚举该空间的 tab。`addTab` 是唯一 tab 创建入口 → 由构造满足。
+   `useEditorGroupLayout` 与 `editorStore` 的缺-layout 分支是纯防御（生产中不可达），缺 layout 时
+   前台降级为 `null`（不抛）。
 5. **顺序语义变更（有意）**：仲裁按**视觉顺序**取首个，而非创建序 —— 拖拽重排后插入落点随之改变。
 6. **顺序不需要 `sort`**：顺序直接来自布局数据，消费方**不得**再写 `sort((a,b) => a.order - b.order)`
    （护栏 A1 在 terminal/browser/status-bar 域内拦）。
 7. **错误不可表示才是根治**：删字段后，`existing.activeTabId = ...` 编译不过 —— 这是选择
    「删字段」而非「加同步 helper」的唯一理由。
+8. **形态判据也从布局派生**：某个 surface「有没有东西可渲染」（`ProjectView` 的编辑器 / 引导页、
+   `DockTabHost` 的宿主）= **该 surface 的组里还有存活 id**（布局给归属与顺序，注册表裁定存活）。
+   禁止用注册表数量当判据（`tabs[tabKey].tabs.length`）：停靠后注册表非空而中心组为空，表现是
+   空 panes 顶掉引导页（2026-11 P4 实测）；同理，布局残留已关闭 tab 的 id 也不算可渲染。
+   判据实现：`hasCenterTabs`（中心）/ `countDockedTabs`（槽位宿主，返回**条数**）—— 两者共用
+   `liveIdsOf` + `liveIdCount`（`editorTabSelectors.ts` 内的唯一实现）；宿主读取面 `useDockedPane`
+   按同一口径（布局给顺序、注册表裁定存活）跳过幽灵 id。
+   返回条数而不是布尔是**同一事实的更细形式**（不是第二个判据）：可见性只需 `> 0`（由
+   `isZoneRenderable` 内部决定一处），揭示还需要 `1 → 2` 可观测（见第 9 条）。
+
+9. **zone 级形态判据（P5，2026-11-03）：容器可见性从内容派生**。`zone 渲染 = 展开 ∧ 前台视图
+   有内容可渲染`，唯一实现是 `shared/dock/zone.ts` 的 `isZoneRenderable`（前台是谁的唯一派生点是
+   同文件的 `zoneFrontView`）：
+   - 无状态面板「有内容」恒真 ⇒ 既有行为不变；槽位宿主 = `countDockedTabs(state, tabKey, slot) > 0`
+     （该判断**只在 `isZoneRenderable` 内部**出现一次；内容事实由 `AppShell` 经
+     `useDockTabHostContent` 注入 `tabHostTabCounts`，layout 层不 import tab 域、也不做布尔映射）；
+   - **禁止把「宿主空不空」写回 store**（`setSlotExpanded(false)` 等）：持久化的 `zones.expanded`
+     会比不持久化的 tab 活得更久，正是「空岛 + 解释文案」的成因（D7 已退役）；
+   - `host: 'none'` 的视图（Library / 种类级入口）只有落位没有 zone 内容 ⇒ `DockZone` 的渲染列表
+     与前台回落一律走 `zoneHostedViews` / `zoneFrontView`，**不得**再用「registry 里有没有 component」
+     当过滤器（Library 有组件但不是 zone 面板）或自写 `views.includes(activeView) ? … : views[0]`。
+   - 规格与场景：「空宿主不占位」的验收面是 `shared/dock/__tests__/zone.test.ts`（纯函数）、
+     `layout/dock-layout/__tests__/DockLayout.test.tsx`（接线：zone 宽度 = 0%）与
+     `DockTabHost.test.tsx`（空即渲染为空、关光不写 intent）。
+   - **内容到达即前置（P6，2026-11-03）：揭示也由 app 层承担，宿主零布局写入**。「某槽宿主的
+      可渲染 tab **条数增加**」时，该槽要被激活并展开 —— 否则自动停靠（Action Menu / 侧栏点会话 /
+      history 恢复，只经 `addTab` 问种类策略 `docksNewTabs`）会把 tab 建在**收起的槽**里，tab 存在
+      但看不见。
+      - **唯一实现**：`app/hooks/useDockTabHostReveal`（`AppShell` 装配），入参就是上面那个内容事实
+        `useDockTabHostContent()`；只在 **`counts[slot] > prev[slot]`**（到达 = 条数增加）上
+        `activateView(tabHostView(slot))`，初值取当前值（挂载时不触发），两槽同一规则（遍历 `DOCK_SLOTS`）。
+        不变 / 减少一律不动 —— 关 tab 不得把用户收起的槽重新打开。
+      - **判据是条数而不是布尔**（P6-2b 转正）：布尔只有「假 → 真」一次跃迁，漏掉最常见的一击 ——
+        槽已折叠且已非空（1 条）时再自动停靠一条（2 条），没有跃迁可观测，那次点击静默无反应。
+        计数与可见性判据读的是**同一个事实**（`countDockedTabs`），不要同时维护布尔与计数两份。
+      - 两条**已拍板**的伴随行为（有意保留，不得在本 hook 里加特判）：
+        1. **切工作区构成到达**：计数按当前单元重算（键是 `useActiveWorkspaceKey`），新单元条数高于
+           旧单元 ⇒ 揭示把该槽前置（该单元的内容刚刚变得可渲染）；
+        2. **揭示会退出 Library**：`dockStore.activateView` 的既有语义（打开任何 dock 面板即退出全宽
+           中心视图）不变。要改就改 `activateView` 的语义，不得在这条路径上加分支。
+      - **为什么不在宿主组件里**：`DockTabHost` 只在「槽展开 ∧ 自己是前台」时挂载（`DockZone` 对收起的
+        槽 `return null`）—— 写在宿主 effect 里的揭示在槽收起时永远不执行。宿主因此只读布局、渲染内容，
+        **不写任何布局**。
+      - **禁止**在 `registerTabSurfacePolicy` / `registerNewTabDockPolicy` 的 updater 内写 `dockStore`：
+        那段回调跑在 `editorStore.addTab` 的 `set((state) => …)` updater 内部，在纯推导里写另一个 store
+        是副作用（updater 重跑会重复触发），也是跨域耦合。
+      - 验收面：`app/hooks/__tests__/useDockTabHostReveal.test.ts`（0→1 揭示 / **1→2 仍揭示** /
+        2→1 与关光不动 / 挂载不揭示 / 真实缺陷路径 —— 槽收起时 `addTab` 自动停靠仍揭示 / 左槽同规则）。
 
 ### 4. Validation & Error Matrix
 
@@ -1608,8 +1661,9 @@ export function activeTabIdOf(tabKey: string): string | null;
 
 ### 6. Tests Required
 
-- `shared/store/__tests__/editorTabSelectors.test.ts`：顺序（left→right→pinned、跳过失效 id）、
-  前台（组内 / 换组 / 缺 layout → null）、**pinned 不影响组前台**。
+- `shared/store/__tests__/editorTabSelectors.test.ts`：顺序（left→right→pinned→docked、跳过失效 id）、
+  前台（组内 / 换组 / 缺 layout → null）、**pinned 不影响组前台**、形态判据 `hasCenterTabs`（仅
+  docked → false；中心任一组的活 id → true；布局残留已关闭 tab 的 id → false）。
 - `shared/store/__tests__/editorStore.test.ts`：AC1（分屏后前台）/ AC2（pin→unpin 后前台）/ AC4
   （`reorderTab` 后 `selectOrderedTabIds` 反映新顺序）。
 - `app/hooks/__tests__/closeActiveTabCommand.test.ts`：AC3（分屏后 Cmd+W 关当前 pane 的 tab）。
