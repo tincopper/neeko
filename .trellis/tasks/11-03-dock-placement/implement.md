@@ -340,6 +340,7 @@
 - [x] 移植 `DockTabHost.test.tsx` 的「空 → 非空揭示」用例到新 hook 的测试；补一条「槽已收起时自动停靠仍揭示」
   （直接调 `editorStore.addTab`，不走 `moveTabToSlot`，即真实缺陷路径）+ 一条「挂载时不重复揭示」。
 - [x] 注释里记录残差：**已折叠且已非空**时再自动停靠不会揭示（跃迁语义），需要时把它改成计数比较。
+      （已由 P6-2b 改为计数判据，该残差关闭。）
 
 ### P6-2 审计问题清理
 
@@ -356,11 +357,34 @@
 - **[决策仍待定]** 左槽前台是空宿主 ⇒ 整条左栏 0 宽（与旧 D7 的 in-session 行为一致）。要「左栏永不消失」
   需引入槽级兜底前台声明，属产品决策。
 
+### P6-2b 揭示判据：布尔跃迁 → 到达计数（用户已拍板）
+
+**要关掉的残差**：`hasTabs` 是布尔时，**已折叠且已非空**的槽再自动停靠一条 tab 不会揭示（1→2 没有假→真跃迁）
+→ 「侧栏点第二个会话，右栏收起且已有一条 chat」仍然是一下无反应的点击。
+
+**修法**：内容事实从布尔换成**条数**（同一事实的更细形式，不是第二个判据）：
+
+- [x] `editorTabSelectors.ts`：`hasDockedTabs(state, tabKey, slot): boolean` → `countDockedTabs(state, tabKey, slot): number`
+      （活 id 条数；与 `hasCenterTabs` 共用 `liveIdsOf` + `liveIdCount` 存活口径）。
+- [x] `useDockTabHostContent` 返回 `Record<DockSlot, number>`；`useDockTabHostReveal` 改为 `counts[slot] > prev[slot]` 才揭示
+      （增加 = 到达；不变 / 减少不动：关 tab 仍不重开）。
+- [x] `isZoneRenderable(state, slot, hostTabCount: number)`：判据内部做 `> 0`（**「非空」只在一处决定**，消费侧不再映射布尔）。
+      `DockLayout` 的 prop 改名 `tabHostTabCounts?: Record<DockSlot, number>`，缺省 `{ left: 0, right: 0 }`（fail-closed）。
+
+**用例变化**：`真→真`（1→2）从「不改布局」改为「揭示」（残差转正）；新增 `2→1`（关一条）不改布局；
+其余（初值不触发 / 假→真 / 真实缺陷路径 / 与 `moveTabToSlot` 不重复写入）保持。
+
+**两条行为拍板（写进 spec，不再是「待定」）**：
+
+1. **切工作区构成到达**：新单元条数高于旧单元 ⇒ 揭示把该槽前置（内容刚刚变得可渲染）。有意保留。
+2. **揭示会退出 Library**：`dockStore.activateView` 的既有语义（打开任何 dock 面板即退出全宽中心视图）不变。有意保留。
+
 ### P6-3 文档同步
 
 - [x] `design.md` I5：补「揭示由 app 层统一承担（宿主零布局写入）」；
 - [x] `.trellis/spec/frontend/state-management.md` Contract 9：补「到达即前置」一条（唯一实现 `useDockTabHostReveal`，
       禁止在 `registerTabSurfacePolicy` 的 updater 内写 dockStore）。
+- [x] 上述两条行为拍板 + 「判据是计数而非布尔」补进 `design.md` I5 与 Contract 9。
 
 **校验**：`pnpm vitest run src/app/hooks/__tests__ src/app/shell src/features/dock-tabs src/shared/dock src/layout`
 

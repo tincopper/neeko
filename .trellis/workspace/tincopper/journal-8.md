@@ -1544,3 +1544,41 @@ Session summary was not supplied.
 
 - 待拍板：①切工作区构成假→真跃迁会前置宿主 ②揭示路径会退出 Library（既有 activateView 语义）③「已折叠且已非空」时再自动停靠不揭示（残差，修法=计数比较）
 - 审计余下 Nit：ProjectView 295/300 行、layout-architecture.html 不在 fmt 覆盖（均未越线，另开任务）
+
+
+## Session 409: dock-placement P6-2b: reveal judges on tab count increase, not boolean flip
+<!-- trellis-session: v=2 fp=663af29cefbcd742 -->
+
+**Date**: 2026-11-04
+**Task**: dock-placement P6-2b: reveal judges on tab count increase, not boolean flip
+**Branch**: `main`
+
+### Summary
+
+关掉 P6 残差：已折叠且已非空的槽再自动停靠一条 tab 时看不见（1→2 没有假→真跃迁）。内容事实从布尔换成条数（同一事实的更细形式），揭示判据 = 条数增加。
+
+### Main Changes
+
+- editorTabSelectors: hasDockedTabs → countDockedTabs（活 id 条数）；抽出 liveIdsOf/liveIdCount 与 hasCenterTabs 共用口径
+- useDockTabHostContent 返回 Record<DockSlot, number>；useDockTabHostReveal 判据改 counts[slot] > prev[slot]
+- isZoneRenderable 收 hostTabCount: number，内部做 > 0（「非空」只在一处决定）；DockLayout prop 改名 tabHostTabCounts
+- 两条行为拍板写进 design I5 + spec Contract 9：切工作区构成到达（有意）/ 揭示退出 Library（activateView 既有语义，要改就改 activateView）
+- docs/layout-architecture.html 同步 4 处失效符号名（hasDockedTabs / tabHostHasTabs / Record<DockSlot, boolean>）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 1→2 与「已有一条 chat 再自动停靠」两条用例先红（旧布尔判据下 expected expanded:false）后绿；变异：改回布尔语义→恰 2 红，任何变化都揭示→关光/关一条 2 红
+- [OK] src/shared/store/__tests__/editorTabSelectors.test.ts + hooks + shell + shared/dock + layout + dock-tabs → 29 files / 261 tests
+- [OK] pnpm check:quick → 13 条护栏 + lint_fe 全通过（首轮 eslint cache 命中旧内容报格式错，重跑即绿）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 待用户实机验证：右栏收起且有 1 条 chat 时，从侧栏点第二个会话应直接浮出右栏

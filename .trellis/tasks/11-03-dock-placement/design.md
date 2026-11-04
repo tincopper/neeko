@@ -41,18 +41,25 @@
 **判据**：`zone 渲染 = 展开 ∧ 前台视图有内容可渲染`（`shared/dock/zone.ts` 的 `isZoneRenderable`）。
 
 - 无状态面板（projects / files / gitControl / pullRequests / browser / conversations / search）内容随时可重建 ⇒ 「有内容」恒真（**既有行为一字不变**）；
-- 槽位宿主（`host: 'tabHost'`）的内容是按 workspace 投影的 tab 集合且不持久化 ⇒ 「有内容」= `hasDockedTabs(state, tabKey, slot)`（id 必须存活，与 `hasCenterTabs` 同一口径）；
+- 槽位宿主（`host: 'tabHost'`）的内容是按 workspace 投影的 tab 集合且不持久化 ⇒ 「有内容」= `countDockedTabs(state, tabKey, slot) > 0`（id 必须存活，与 `hasCenterTabs` 共用 `liveIdsOf` + `liveIdCount` 口径）；`> 0` 只在 `isZoneRenderable` 内部判断，消费侧不传布尔、也不自己映射。
 - 前台是谁的唯一派生点是 `zoneFrontView`（含「`activeView` 指向 `host: 'none'` 时回落槽内首个可渲染视图」）。`DockZone` / `DockLayout` 的自算 fallback 已删。
 
 **为什么必须派生而不是写 intent**：宿主不是「用户可开合的面板」，而是内容的投影。用 `setSlotExpanded(false)` 在 N→0 时「保留」一个可以被用户重新点开的收起态，就是让**容器比内容活得久**（持久化的 `zones.expanded` 会比不持久化的 tab 活得更久）。派生后两条边界自动成立：切项目/重启 → 空宿主不占位；关光 tab → 槽让出宽度。
 
-**内容事实的注入端口**：`layout/` 不得 import tab 域 ⇒ `AppShell` 经 `useDockTabHostContent()` 把 `Record<DockSlot, boolean>` 作为 `tabHostHasTabs` 传给 `DockLayout`（与 `onMoveView` 同一规矩，缺省 fail-closed = 无内容）。
+**内容事实的注入端口**：`layout/` 不得 import tab 域 ⇒ `AppShell` 经 `useDockTabHostContent()` 把 `Record<DockSlot, number>`（每槽宿主里**可渲染 tab 的条数**）作为 `tabHostTabCounts` 传给 `DockLayout`（与 `onMoveView` 同一规矩，缺省 `{ left: 0, right: 0 }` = fail-closed）。
 
-**内容到达即前置：揭示由 app 层统一承担（P6，宿主零布局写入）**。同一个内容事实还驱动「内容到达 ⇒ 该槽前置」：`AppShell` 把 `useDockTabHostContent()` 的返回值交给 `useDockTabHostReveal`，后者只在**假 → 真**跃迁上 `activateView(tabHostView(slot))`（初值取当前值 ⇒ 挂载时不触发；两槽同一规则）。
+**为什么是计数而不是布尔**：这是同一事实的更细形式，不是第二个判据。同一个数必须回答两个问题 ——「有没有内容」（`> 0`，只由 `isZoneRenderable` 决定一处）与「是不是刚刚到来」（条数增加）。布尔只够回答前者（见下文的到达判据）。
 
-为什么必须在 app 层：宿主（`DockTabHost`）只在「槽展开 ∧ 自己是前台」时挂载（`DockZone` 对收起的槽 `return null`），所以写在宿主 effect 里的揭示在**槽收起**时永远不执行 —— 自动停靠（Action Menu / 侧栏点会话 / history 恢复，它们只经 `addTab` 问 `docksNewTabs`，不经过 `moveTabToSlot`）会得到「tab 建好但看不见」。揭示与可见性共用同一个布尔 ⇒ 两者不会漂移；宿主从此**零布局写入**，四条入口（图标 / 菜单 / 自动停靠 / 切单元）行为一致。**禁止**在 `registerTabSurfacePolicy` 的 updater 内写 `dockStore`（那是纯推导里夹副作用）。
+**内容到达即前置：揭示由 app 层统一承担（P6，宿主零布局写入）**。同一个内容事实还驱动「内容到达 ⇒ 该槽前置」：`AppShell` 把 `useDockTabHostContent()` 的返回值交给 `useDockTabHostReveal`，后者只在 **`counts[slot] > prev[slot]`**（到达 = **条数增加**）上 `activateView(tabHostView(slot))`（初值取当前值 ⇒ 挂载时不触发；两槽同一规则；不变 / 减少一律不动 —— 关 tab 不得重开用户收起的槽）。
 
-残差（已知、可接受）：**已折叠且已非空**时再自动停靠不会揭示（跃迁语义 —— 没有跃迁可观测）。要覆盖它只能改成计数比较，不要引入第二个判据。
+为什么必须在 app 层：宿主（`DockTabHost`）只在「槽展开 ∧ 自己是前台」时挂载（`DockZone` 对收起的槽 `return null`），所以写在宿主 effect 里的揭示在**槽收起**时永远不执行 —— 自动停靠（Action Menu / 侧栏点会话 / history 恢复，它们只经 `addTab` 问 `docksNewTabs`，不经过 `moveTabToSlot`）会得到「tab 建好但看不见」。揭示与可见性共用**同一个计数**（`countDockedTabs`）⇒ 两者不会漂移；宿主从此**零布局写入**，四条入口（图标 / 菜单 / 自动停靠 / 切单元）行为一致。**禁止**在 `registerTabSurfacePolicy` 的 updater 内写 `dockStore`（那是纯推导里夹副作用）。
+
+**判据从布尔跃迁改为到达计数（P6-2b，用户已拍板）**：布尔只有「假 → 真」一次跃迁，漏掉最常见的一击 —— 槽已折叠且已非空（1 条）时再自动停靠一条（2 条），没有跃迁可观测，那次点击静默无反应。计数比较覆盖它，且不需要引入第二个判据。
+
+两条**已拍板**的伴随行为（有意保留，不得在本 hook 里加特判）：
+
+1. **切工作区构成到达**：计数按当前单元重算（键是 `useActiveWorkspaceKey`），新单元条数高于旧单元 ⇒ 揭示把该槽前置（该单元的内容刚刚变得可渲染）。
+2. **揭示会退出 Library**：`dockStore.activateView` 的既有语义（打开任何 dock 面板即退出全宽中心视图，中心视图互斥）不变。要改就改 `activateView` 的语义，不得在这条路径上加分支。
 
 ## 2. 物理约束（决定方案形状）
 
