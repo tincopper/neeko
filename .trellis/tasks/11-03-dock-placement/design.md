@@ -106,7 +106,7 @@ export interface DockLayoutState {
 | 族 | host | 进 zone | 上 bar | 例子 | 点击行为 |
 | --- | --- | --- | --- | --- | --- |
 | 单例工具面板 | `singleton` | ✅ | ✅ | `panel:files`、`panel:projects` | `toggleZone`：切前台/收起 |
-| 槽位 tab 宿主 | `tabHost` | ✅（固定槽） | ✅（可关图标） | `tabHost:left`、`tabHost:right` | `toggleZone`：显示该槽 tab 区 |
+| 槽位 tab 宿主 | `tabHost` | ✅（固定槽） | ❌（容器不上栏，D10） | `tabHost:left`、`tabHost:right` | `toggleZone`：显示该槽 tab 区 |
 | 种类级入口 | `none` | ❌ | ✅ | `tabKind:agent-chat`、`tabKind:terminal` | `openTab`：开/激活该 kind 的 tab，落到其 `defaultSlot` 宿主 |
 | （既有特例）中心视图 | `none` | ❌ | ✅ | `appView:library` | `appView`：切 `appViewStore` |
 
@@ -241,8 +241,7 @@ DockBarDnd.onDragEnd(activeId=viewKey, overId='bar:right'|'bar:right:<viewKey>')
 用户操作（P1：右键菜单 / 命令 "Move tab to right dock"；P3：拖拽）
   → moveTabToSlot(tabKey, tabId, 'right')        // app/utils/tabSurface.ts 唯一入口
       1. editorStore.dockTab(tabKey, tabId, 'right')   // 原子：先从全域移除，再插入目标组
-      2. dockStore.setViewOnBar(tabHostView('right'), true)  // 保证有回程入口
-      3. dockStore.activateView(tabHostView('right'))        // 展开 + 前台
+      2. dockStore.activateView(tabHostView('right'))        // 展开 + 前台（容器不上栏，D10）
   → layout.docked.right.tabIds 变化 → DockTabHost 渲染
   → 中间区 groups 已剔除该 id → 无第二实例（I3）
 ```
@@ -252,8 +251,8 @@ DockBarDnd.onDragEnd(activeId=viewKey, overId='bar:right'|'bar:right:<viewKey>')
 ### 7.3 重启后快速打开（需求 C）
 
 ```
-启动 → dockStore 从 localStorage 恢复 placements（tabHost:right onBar=true 被保留）
-     → 右栏渲染 tabHost:right 图标
+启动 → dockStore 从 localStorage 恢复 placements（tabHost:* 的 onBar 被 sanitize 强制为 false）
+     → 右栏只渲染**功能入口**图标（Agent Chat / Agent Terminal）
 点击图标 → activation.kind === 'openTab'
      → 找当前 tabKey 的该 kind tab：有则 activate；无则新建（openAgentChatTab / handleAgentClick）
      → 新 tab 的默认 surface = DOCK_VIEW_META[tabKindView(kind)].defaultSlot（D3 选项②）

@@ -29,6 +29,8 @@ interface EditorGroupLayoutProps {
   buildLayoutId: (groupId: string, tabId: string | null) => string;
   /** tab → 槽位（app 注入 `moveTabToSlot`：唯一跨 store 编排点，见 design §7.2）。 */
   onMoveTabToSlot?: (tabId: string, target: 'center' | DockSlot) => void;
+  /** 该 tab 能否停靠（app 注入；缺省 = 菜单不提供这项） */
+  canDockTab?: (tabId: string) => boolean;
 }
 
 function EditorGroupLayout({
@@ -37,6 +39,7 @@ function EditorGroupLayout({
   remoteProject,
   buildLayoutId,
   onMoveTabToSlot,
+  canDockTab,
 }: EditorGroupLayoutProps) {
   const {
     layout,
@@ -163,6 +166,7 @@ function EditorGroupLayout({
         onFocusGroup={() => setActiveGroup('left')}
         layoutId={leftLayoutId}
         onMoveTabToSlot={onMoveTabToSlot}
+        canDockTab={canDockTab}
       />
     );
   } else if (hasPinned && !isSplit && leftTabs.length === 0) {
@@ -177,6 +181,7 @@ function EditorGroupLayout({
         onFocusGroup={() => {}}
         layoutId={pinnedLayoutId}
         onMoveTabToSlot={onMoveTabToSlot}
+        canDockTab={canDockTab}
       />
     );
   } else {
@@ -203,6 +208,7 @@ function EditorGroupLayout({
                   onFocusGroup={() => {}}
                   layoutId={pinnedLayoutId}
                   onMoveTabToSlot={onMoveTabToSlot}
+                  canDockTab={canDockTab}
                 />
               </Island>
             </ResizablePanel>
@@ -225,6 +231,7 @@ function EditorGroupLayout({
               onFocusGroup={() => setActiveGroup('left')}
               layoutId={leftLayoutId}
               onMoveTabToSlot={onMoveTabToSlot}
+              canDockTab={canDockTab}
             />
           </Island>
         </ResizablePanel>
@@ -243,6 +250,7 @@ function EditorGroupLayout({
                   onFocusGroup={() => setActiveGroup('right')}
                   layoutId={rightLayoutId}
                   onMoveTabToSlot={onMoveTabToSlot}
+                  canDockTab={canDockTab}
                 />
               </Island>
             </ResizablePanel>

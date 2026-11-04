@@ -1,23 +1,29 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { useAppContext } from '@/shared/contexts';
 import type { DockSlot } from '@/shared/dock';
+import { useEditorStore } from '@/shared/store/editorStore';
 
-import { moveTabToSlot } from '../utils/tabSurface';
+import { canDockTabKind, moveTabToSlot } from '../utils/tabSurface';
+
+export interface MoveTabToSlotPort {
+  /** 移动 tab 到某个 surface（右键菜单 / 命令面板共用）。 */
+  move: (tabId: string, target: 'center' | DockSlot) => void;
+  /** 该 tab 能否停靠 —— 菜单据此决定**出不出现**（而不是出现后点不动）。 */
+  canDock: (tabId: string) => boolean;
+}
 
 /**
- * tab → surface 的用户入口适配层（右键菜单 / 未来命令面板共用）。
+ * tab → surface 的用户入口适配层。
  *
- * 编排本身只有一处（`app/utils/tabSurface.moveTabToSlot`）；本 hook 只负责把 `false`
- * 翻译成用户可见的提示。**为什么不静默**：失败里包含 R9 的 pinned 拒绝 —— 静默会让
- * 用户以为移动成功（或以为菜单坏了）。
+ * 编排本身只有一处（`app/utils/tabSurface.moveTabToSlot`）；本 hook 只负责两件事：
+ * 把 `false` 翻译成用户可见的提示（失败里包含 R9 的 pinned 拒绝 —— 静默会让用户以为
+ * 移动成功），以及把 `canDockTabKind` 这条种类策略接到菜单上。
  */
-export function useMoveTabToSlot(
-  tabKey: string | null,
-): (tabId: string, target: 'center' | DockSlot) => void {
+export function useMoveTabToSlot(tabKey: string | null): MoveTabToSlotPort {
   const { showToast } = useAppContext();
 
-  return useCallback(
+  const move = useCallback(
     (tabId: string, target: 'center' | DockSlot) => {
       if (!tabKey) return;
       if (moveTabToSlot(tabKey, tabId, target)) return;
@@ -25,4 +31,15 @@ export function useMoveTabToSlot(
     },
     [showToast, tabKey],
   );
+
+  const canDock = useCallback(
+    (tabId: string) => {
+      if (!tabKey) return false;
+      const tab = useEditorStore.getState().tabs[tabKey]?.tabs.find((t) => t.id === tabId);
+      return tab ? canDockTabKind(tab.data.kind) : false;
+    },
+    [tabKey],
+  );
+
+  return useMemo(() => ({ move, canDock }), [move, canDock]);
 }

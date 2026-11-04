@@ -13,15 +13,28 @@ import { moveTabToSlot } from '../tabSurface';
  * `moveTabToSlot` 是 tab 停靠的**唯一跨 store 编排点**（design §7.2）。
  *
  * 这些用例守两件事：
- * 1. 三步顺序（`dockTab` → `setViewOnBar` → `activateView`）—— 顺序错了会出现
- *    「宿主开了但 tab 还在中间」（双挂载）或「tab 停靠了但侧区没开」（看不见）；
+ * 1. 两步顺序（`dockTab` → `activateView`）—— 顺序错了会出现「宿主开了但 tab 还在中间」
+ *    （双挂载）或「tab 停靠了但侧区没开」（看不见）；
  * 2. 前置校验失败时**状态一字不动**（半完成态是不可表示状态，不允许存在）。
+ *
+ * 停靠只对**有功能入口的种类**开放（`canDockTabKind`）：宿主没有工具栏图标（D10），
+ * 没有入口的 tab 一旦藏进侧区就再也点不到。所以成功路径的夹具一律用 `agent-chat`。
  */
 
 const SPACE = WorkspaceSession.of('p1', null).key;
 const TAB_HOST_RIGHT = tabHostView('right');
 
 function makeTab(id: string): Tab {
+  return {
+    id,
+    scope: { kind: 'workspace', session: WorkspaceSession.of('p1', null) },
+    title: id,
+    data: { kind: 'agent-chat' },
+  };
+}
+
+/** 无功能入口的 kind（文件）：停靠必须被拒（否则会变成「藏着点不到」的 tab）。 */
+function makeFileTab(id: string): Tab {
   return {
     id,
     scope: { kind: 'workspace', session: WorkspaceSession.of('p1', null) },
@@ -48,7 +61,7 @@ describe('moveTabToSlot — 停靠效果（真实 store）', () => {
   // 每次 set 时被 `Object.assign` 复制，对 action 直接 `vi.spyOn` 会被复制进后续 state，
   // 调用记录就此跨用例泄漏（实测：spy 永久留在 store 上）。本文件只断言真实结果。
 
-  it('停靠后 tab 在 docked.right，且宿主图标已钉住并展开为前台', () => {
+  it('停靠后 tab 在 docked.right，宿主展开为前台（**不**钉工具栏图标，D10）', () => {
     seedCenter(['A', 'B']);
 
     expect(moveTabToSlot(SPACE, 'B', 'right')).toBe(true);
@@ -58,7 +71,8 @@ describe('moveTabToSlot — 停靠效果（真实 store）', () => {
     expect(layout.docked.right).toEqual({ tabIds: ['B'], activeTabId: 'B' });
 
     const dock = useDockStore.getState();
-    expect(dock.placements[TAB_HOST_RIGHT].onBar).toBe(true);
+    // 容器不上工具栏：那里只放功能入口（D10）。sanitize 亦强制为 false。
+    expect(dock.placements[TAB_HOST_RIGHT].onBar).toBe(false);
     expect(dock.zones[dock.placements[TAB_HOST_RIGHT].slot]).toEqual({
       expanded: true,
       activeView: TAB_HOST_RIGHT,
@@ -98,6 +112,18 @@ describe('moveTabToSlot — 前置校验失败 ⇒ false 且状态一字不动',
     expect(moveTabToSlot(SPACE, 'A', 'right')).toBe(false);
     expect(useDockStore.getState().zones).toBe(dockBefore.zones);
     expect(useEditorStore.getState().editorLayout[SPACE]!.pinnedTabIds).toEqual(['A']);
+  });
+
+  it('无功能入口的种类（file）⇒ false（否则会藏进侧区、再也点不到）', () => {
+    useEditorStore.setState({ tabs: {}, editorLayout: {} });
+    useEditorStore.getState().addTab(makeFileTab('F'));
+    const layoutBefore = useEditorStore.getState().editorLayout[SPACE];
+    const dockBefore = useDockStore.getState();
+
+    expect(moveTabToSlot(SPACE, 'F', 'right')).toBe(false);
+    expect(useEditorStore.getState().editorLayout[SPACE]).toBe(layoutBefore);
+    expect(useDockStore.getState().zones).toBe(dockBefore.zones);
+    expect(useDockStore.getState().placements).toBe(dockBefore.placements);
   });
 
   it('目标宿主未在声明表登记 ⇒ false（移进去也没有渲染点）', () => {

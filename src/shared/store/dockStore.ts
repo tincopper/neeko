@@ -71,6 +71,11 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+/** 快照里的 `onBar`：真值优先，缺省取声明表默认（`defaultOnBar` 缺省 true）。 */
+function onBarOf(raw: Record<string, unknown>, meta: { defaultOnBar?: boolean }): boolean {
+  return typeof raw.onBar === 'boolean' ? raw.onBar : meta.defaultOnBar !== false;
+}
+
 /** order 是**槽内**相对序：每次改动后必须补齐 0..n-1（就地写，调用方持的是副本）。 */
 function normalizeOrders(placements: Record<string, DockPlacement>): void {
   for (const slot of DOCK_SLOTS) {
@@ -101,7 +106,10 @@ export function sanitize(persisted: unknown): DockSnapshot {
       view: meta.view,
       slot,
       order: finiteNumber(raw.order) ?? meta.defaultOrder,
-      onBar: typeof raw.onBar === 'boolean' ? raw.onBar : meta.defaultOnBar !== false,
+      // 容器（槽位宿主）**永不上工具栏**（D10）：工具栏是功能入口列，宿主不是功能。
+      // 在 sanitize 里强制而不是靠 `defaultOnBar` —— 后者只是初始值，旧快照里可能存着
+      // true（P1 曾默认可见），不覆盖就会出现「删了图标又自己回来」。
+      onBar: meta.host === 'tabHost' ? false : onBarOf(raw, meta),
     };
   }
   normalizeOrders(placements);
@@ -280,6 +288,8 @@ export const useDockStore = create<DockStore>()(
       },
 
       setViewOnBar: (view: ViewKey, onBar: boolean) => {
+        // 容器不上工具栏（同上）：能力校验留在 action 层，reducer 保持纯数据
+        if (DOCK_VIEW_META[view]?.host === 'tabHost') return;
         const state = get();
         const next = applyOnBar(state, view, onBar);
         if (next === state) return;

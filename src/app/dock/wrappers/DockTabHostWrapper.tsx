@@ -34,7 +34,7 @@ const DockTabHostSlot: React.FC<{ slot: DockSlot }> = ({ slot }) => {
     setRemoteOpenSessions,
     setPendingAuthEntry,
   });
-  const onMoveTabToSlot = useMoveTabToSlot(tabKey);
+  const { move: onMoveTabToSlot, canDock: canDockTab } = useMoveTabToSlot(tabKey);
 
   const buildHostLayoutId = useCallback(
     (paneId: string, tabId: string | null) => buildLayoutId(project, paneId, tabId),
@@ -48,6 +48,7 @@ const DockTabHostSlot: React.FC<{ slot: DockSlot }> = ({ slot }) => {
       remoteProject={remoteProjectProp}
       buildLayoutId={buildHostLayoutId}
       onMoveTabToSlot={onMoveTabToSlot}
+      canDockTab={canDockTab}
     />
   );
 };

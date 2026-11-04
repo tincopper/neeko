@@ -173,6 +173,7 @@ describe('usePaneContextMenu — tab 停靠入口（P1）', () => {
       onPinTab: vi.fn(),
       pinnedTabs: [],
       onFocusGroup: vi.fn(),
+      canDockTab: () => true,
       onMoveTabToSlot: vi.fn(),
       ...extra,
     };
@@ -220,6 +221,12 @@ describe('usePaneContextMenu — tab 停靠入口（P1）', () => {
     expect(labels).toContain('Unpin Tab');
   });
 
+  it('种类不可停靠（canDockTab 为 false）→ 不出现 dock 项（出现后点不动更糟）', () => {
+    const labels = labelsFor('left', { canDockTab: () => false });
+    expect(labels).not.toContain('Move to Left Dock');
+    expect(labels).not.toContain('Move to Right Dock');
+  });
+
   it('未接线（无 onMoveTabToSlot）→ 不出现 dock 项', () => {
     const labels = labelsFor('left', { onMoveTabToSlot: undefined });
     expect(labels).not.toContain('Move to Left Dock');
@@ -233,6 +240,7 @@ describe('usePaneContextMenu — tab 停靠入口（P1）', () => {
       onCloseTab: vi.fn(),
       pinnedTabs: [],
       onFocusGroup: vi.fn(),
+      canDockTab: () => true,
       onMoveTabToSlot,
     };
     const { result } = renderHook(() => usePaneContextMenu(params));

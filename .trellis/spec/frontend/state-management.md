@@ -163,6 +163,11 @@ await saveSession(session);
 | `appView` | 中心全宽视图（Library） | `dockStore.toggleView` → `appViewStore`（与左栏互斥） |
 | `openTab` | 种类级入口（`tabKind:agent-chat` / `tabKind:terminal`） | **app 层** `useDockBarOpenTab`（`useDockBarButtons` 注入给按钮） |
 
+**槽位宿主不上工具栏**（D10）：`host: 'tabHost'` 的视图 `onBar` 恒为 false —— `sanitize`
+强制、`setViewOnBar` 对它是 no-op。工具栏那一列只放功能入口；宿主的可达性由「新建/接回/
+移动都会 `activateView`」+「空 → 非空自动展开」承担。配套限制：**只有带功能入口的种类
+（`canDockTabKind`）允许停靠**，否则会造出「藏进侧区、再也点不到」的 tab。
+
 `openTab` **刻意不进 store**：store 不持有 tab 空间，在那里做「找已有 / 新建 / 移动」会把顺序知识
 散到两个模块 —— 所以 `toggleView` 对该分支直接 `return`。落地语义两条：已有该 kind 的 tab 就
 **激活**（在停靠宿主里同时展开宿主），否则新建并**停靠到图标当前所在的槽**（`placements` 读，

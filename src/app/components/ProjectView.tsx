@@ -131,7 +131,9 @@ function ProjectView() {
   // tab → 槽位 / 回中心：编排只有一处（app/utils/tabSurface），这里只把 false 翻成提示。
   // 没有激活项目时 tabKey 是 App 空间键 —— 槽位宿主只投影 workspace 的 tab（I4），
   // 移到那里不会有渲染点，因此这种情况不提供入口（undefined = 菜单不出现在 dock 项）。
-  const handleMoveTabToSlot = useMoveTabToSlot(currentProjectId ? tabKey : null);
+  const { move: handleMoveTabToSlot, canDock: canDockTab } = useMoveTabToSlot(
+    currentProjectId ? tabKey : null,
+  );
   const moveTabToSlotAction = currentProjectId ? handleMoveTabToSlot : undefined;
 
   // ── Action Palette ──
@@ -267,6 +269,7 @@ function ProjectView() {
           remoteProject={remoteProjectProp}
           buildLayoutId={handleBuildLayoutId}
           onMoveTabToSlot={moveTabToSlotAction}
+          canDockTab={canDockTab}
         />
       ) : hasActiveProject && activeProject ? (
         <ProjectGuidePage

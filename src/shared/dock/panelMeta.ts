@@ -47,13 +47,14 @@ export const DOCK_VIEW_META: Record<string, DockViewMeta> = Object.fromEntries([
     defaultSlot: 'left',
     defaultOrder: 0,
   }),
-  // 左槽宿主：同一套机制（D4 不做非对称特例），但默认不给图标（D1：可发现性入口在右侧）
+  // 槽位宿主（左/右）：**容器不上工具栏**（D10）—— 工具栏那一列是「功能入口」，
+  // 而宿主不是功能，它只是「被移进侧区的 tab 住的地方」。没有图标并不丢可达性：
+  // 新建/接回/移动都会经 `activateView` 把该区域展开（见 `DockTabHost` 的空→非空揭示）。
   row(tabHostView('left'), {
     host: 'tabHost',
     activation: { kind: 'toggleZone' },
     defaultSlot: 'left',
     defaultOrder: 1,
-    defaultOnBar: false,
     movable: false,
     defaultSlotSize: 28,
   }),
@@ -94,7 +95,7 @@ export const DOCK_VIEW_META: Record<string, DockViewMeta> = Object.fromEntries([
     defaultSlot: 'right',
     defaultOrder: 5,
   }),
-  // 右槽宿主：D1 默认可见（重启后仍有回程入口）；宽度 28% —— 18% 对 chat 太窄
+  // 宽度 28% —— 18% 对 chat 太窄；无图标（理由见左槽宿主那条注释）
   row(tabHostView('right'), {
     host: 'tabHost',
     activation: { kind: 'toggleZone' },

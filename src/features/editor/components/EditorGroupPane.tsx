@@ -41,10 +41,7 @@ export interface EditorGroupPaneProps {
    * 同一套组语义（组即顺序与归属），因此 tab 渲染管线零分叉。
    */
   paneId: EditorPaneId;
-  /**
-   * 工具栏变体：`full` = 中心编辑器（Action Menu / Agent Bar / 分屏控件全开）；
-   * `dock` = 停靠宿主（只留 tab 条 —— 停靠区不提供新建 / 分屏 / Agent Bar）。
-   */
+  /** 工具栏变体：`full` = 中心编辑器；`dock` = 停靠宿主（只留 tab 条，不给新建/分屏）。 */
   chrome?: 'full' | 'dock';
   /** Composite tab key — used by the pane to lookup layout & store state */
   tabKey: string;
@@ -68,8 +65,9 @@ export interface EditorGroupPaneProps {
    * 中心 pane 缺省按激活组推导；dock 宿主由宿主按「槽位展开 + 本宿主为前台」传入。
    */
   isActivePane?: boolean;
-  /** dock 入口（app 注入的唯一跨 store 编排点 `moveTabToSlot`；缺省则不提供菜单项）。 */
+  /** dock 入口（app 注入；缺省则菜单不提供该项）与其种类能力校验。 */
   onMoveTabToSlot?: (tabId: string, target: 'center' | DockSlot) => void;
+  canDockTab?: (tabId: string) => boolean;
 }
 
 function EditorGroupPane({
@@ -82,6 +80,7 @@ function EditorGroupPane({
   layoutId,
   isActivePane,
   onMoveTabToSlot,
+  canDockTab,
 }: EditorGroupPaneProps) {
   const globalEditorCtx = useEditorContext();
   const { agents, compactMode, showAgentBar, hiddenAgentIds, onAgentClick } = globalEditorCtx;
@@ -177,6 +176,7 @@ function EditorGroupPane({
     usePaneContextMenu({
       paneId,
       onMoveTabToSlot,
+      canDockTab,
       onCloseTab: handleCloseTab,
       onCloseOtherTabs,
       onCloseAllTabs,

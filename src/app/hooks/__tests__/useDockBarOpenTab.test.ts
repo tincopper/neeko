@@ -232,9 +232,9 @@ describe('useDockBarOpenTab — 当前空间没有该 kind 的 tab', () => {
     expect(layout.docked.left.tabIds).toHaveLength(1);
     expect(layout.groups.left.tabIds).toHaveLength(0);
     expect(layout.groups.right.tabIds).toHaveLength(0);
-    // 宿主图标被钉住并展开：用户始终有回程入口
+    // 宿主展开为前台；容器**不**上工具栏（D10：回程入口由种类图标承担）
     const dock = useDockStore.getState();
-    expect(dock.placements[tabHostView('left')].onBar).toBe(true);
+    expect(dock.placements[tabHostView('left')].onBar).toBe(false);
     expect(dock.zones.left).toEqual({ expanded: true, activeView: tabHostView('left') });
     expect(notifications()).toHaveLength(0);
   });

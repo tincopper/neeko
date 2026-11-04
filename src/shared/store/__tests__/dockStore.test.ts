@@ -7,6 +7,7 @@ import {
   appViewKey,
   panelView,
   slotViews,
+  tabHostView,
 } from '../../dock';
 import { isAppView, useAppViewStore } from '../appViewStore';
 import { createDefaultDockState, migrateFromV5, sanitize, useDockStore } from '../dockStore';
@@ -268,6 +269,36 @@ describe('dockStore.moveView — 能力校验在 action 层（G5）', () => {
     const leftViews = slotViews(after, 'left');
     expect(leftViews).not.toContain(LIBRARY);
     expect(after.zones.left.activeView).toBe(leftViews[0]);
+  });
+});
+
+describe('dockStore — 容器不上工具栏（D10）', () => {
+  it('默认态：两个槽位宿主的 onBar 都是 false（工具栏那列只放功能入口）', () => {
+    const { placements } = useDockStore.getState();
+    for (const view of [tabHostView('left'), tabHostView('right')]) {
+      expect(placements[view].onBar).toBe(false);
+    }
+  });
+
+  it('sanitize：快照里写成 true 也强制丢弃（否则删掉的图标会自己回来）', () => {
+    const saved = createDefaultDockState();
+    const dirty = {
+      ...saved,
+      placements: {
+        ...saved.placements,
+        [tabHostView('right')]: { ...saved.placements[tabHostView('right')], onBar: true },
+      },
+    };
+
+    expect(sanitize(dirty).placements[tabHostView('right')].onBar).toBe(false);
+  });
+
+  it('setViewOnBar 对容器是 no-op（能力校验在 action 层）', () => {
+    const before = useDockStore.getState().placements;
+
+    useDockStore.getState().setViewOnBar(tabHostView('right'), true);
+
+    expect(useDockStore.getState().placements).toBe(before);
   });
 });
 

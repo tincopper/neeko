@@ -22,6 +22,8 @@ export interface DockTabHostProps {
   buildLayoutId: (paneId: string, tabId: string | null) => string;
   /** tab → 其它 surface（app 注入 `moveTabToSlot`）。 */
   onMoveTabToSlot?: (tabId: string, target: 'center' | DockSlot) => void;
+  /** 该 tab 能否停靠（app 注入；缺省 = 菜单不提供这项） */
+  canDockTab?: (tabId: string) => boolean;
 }
 
 const DockTabEmptyState: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -46,6 +48,7 @@ const DockTabHost: React.FC<DockTabHostProps> = ({
   remoteProject,
   buildLayoutId,
   onMoveTabToSlot,
+  canDockTab,
 }) => {
   const paneId = DOCK_PANE_ID[slot];
   const { tabs, activeTabId } = useDockedPane(tabKey, slot);
@@ -92,6 +95,7 @@ const DockTabHost: React.FC<DockTabHostProps> = ({
         layoutId={buildLayoutId(paneId, activeTabId)}
         isActivePane={isActivePane}
         onMoveTabToSlot={onMoveTabToSlot}
+        canDockTab={canDockTab}
       />
     </div>
   );

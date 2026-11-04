@@ -82,6 +82,7 @@
 | # | 决策点 | 决议 | 理由 |
 | --- | --- | --- | --- |
 | D8 | 点种类图标时「接回哪条会话」 | 该 workspace 里**最近一条 `isListedSession` 的同类会话**（`startedAt` 最大）；命中就交给 `useActivateSession`（与侧栏点会话行**同一条**链），无命中才新建 | 判据只能与侧栏一致（`isListedSession` = 用户真的发过输入），否则会出现「侧栏有、图标点不到」；恢复链已有三级降级（activate / bind / recreate+attach / resume），重写一遍必然漂移 |
+| D10 | 槽位宿主（Docked Tabs）要不要有工具栏图标 | **不要**（覆盖 D1 的「右槽默认可见」）。工具栏那一列是**功能入口**，宿主只是「被移进侧区的 tab 住的地方」；`sanitize` 强制 `onBar=false`，`setViewOnBar` 对它是 no-op。代价是要堵住「无入口种类停进去就点不到」：只有 `canDockTabKind` 为真的种类（agent-chat / terminal）才允许停靠 | 用户直接判定「这一列都是功能菜单」；可达性由种类图标 + 宿主自动展开承担（空→非空揭示） |
 | D9 | 新建 tab 是否默认进 dock | 只有 `DOCK_VIEW_META[*].docksNewTabs === true` 的种类（当前仅 `agent-chat`），且槽位取**图标当前所在槽**；显式 `targetGroup` 优先 | 普通 shell / 任务终端不该被搬进右区；「图标在哪栏」是唯一的落点事实（禁止第二条 kind→slot 策略） |
 
 ## Non-goals（本阶段与整体不做）

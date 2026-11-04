@@ -15,6 +15,11 @@ interface UsePaneContextMenuParams {
    * 缺省 = 不提供「移到 dock/中心」菜单项（组件级测试与未接线的宿主）。
    */
   onMoveTabToSlot?: (tabId: string, target: 'center' | DockSlot) => void;
+  /**
+   * 该 tab 能不能停靠（app 注入，按种类判定：只有带功能入口的种类允许）。
+   * 缺省 false —— 菜单**不出现**这一项，而不是出现了点不动。
+   */
+  canDockTab?: (tabId: string) => boolean;
   onCloseTab: (tabId: string) => void;
   onCloseOtherTabs?: (tabId: string) => void;
   onCloseAllTabs?: () => void;
@@ -33,6 +38,7 @@ interface UsePaneContextMenuParams {
 export function usePaneContextMenu({
   paneId,
   onMoveTabToSlot,
+  canDockTab,
   onCloseTab,
   onCloseOtherTabs,
   onCloseAllTabs,
@@ -118,7 +124,7 @@ export function usePaneContextMenu({
 
     // tab → 槽位（P1）：只在合法时出现。pinned tab 一律不出现（R9：拒绝而非静默 unpin）；
     // 「已经在的地方」不出现（拖/移到当前 surface 是 no-op，列出来只会让菜单变吵）。
-    if (onMoveTabToSlot && !isPinnedTab) {
+    if (onMoveTabToSlot && !isPinnedTab && canDockTab?.(tabId) === true) {
       const dockTargets: { label: string; target: 'center' | DockSlot }[] = [];
       if (paneId !== 'dockLeft') dockTargets.push({ label: 'Move to Left Dock', target: 'left' });
       if (paneId !== 'dockRight')
@@ -150,6 +156,7 @@ export function usePaneContextMenu({
     onMoveToRight,
     onMoveToLeft,
     onMoveTabToSlot,
+    canDockTab,
     resolveContextMenuExtras,
   ]);
 
