@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { useShallow } from 'zustand/shallow';
 
 import { useMoveTabToSlot } from '@/app/hooks/useMoveTabToSlot';
 import { useProjectAgents } from '@/app/hooks/useProjectAgents';
@@ -25,6 +24,7 @@ import { useEditorContext, useAppContext, useTerminalInsert } from '@/shared/con
 import { panelView } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { hasCenterTabs } from '@/shared/store/editorTabSelectors';
 import { useProjectStore } from '@/shared/store/projectStore';
 import {
   activeWorkspaceSession,
@@ -52,15 +52,10 @@ function ProjectView() {
   const tabKey = currentProjectId
     ? (activeWorkspaceKey ?? tabSpaceKeyOf({ kind: 'app' }))
     : tabSpaceKeyOf({ kind: 'app' });
-  // Get unified tabs from store
-  const projectTabs = useEditorStore(
-    useShallow((state) => {
-      if (!tabKey) return null;
-      return state.tabs[tabKey] ?? null;
-    }),
-  );
-
-  const tabs = projectTabs?.tabs ?? [];
+  // 中心区形态：只看 `editorLayout` 的组（left ∪ right ∪ pinned，且 id 仍在注册表里）。注册表里
+  // 可能有停靠在 dock 槽位的 tab —— 那些由宿主自己渲染，不参与中心区判据（否则点右栏 Terminal
+  // 图标会让中心组全空的布局顶掉引导页 = 空白岛）。判据唯一实现在 `editorTabSelectors`。
+  const centerHasTabs = useEditorStore((s) => hasCenterTabs(s, tabKey));
   const hasActiveProject = !!activeProject;
 
   // Wire up file drag-to-agent: on dragend, paste the stored file path into
@@ -262,7 +257,7 @@ function ProjectView() {
             </Button>
           </div>
         </div>
-      ) : tabs.length > 0 ? (
+      ) : centerHasTabs ? (
         <EditorGroupLayout
           tabKey={tabKey}
           onAddTerminalTab={handleAddTerminalTab}

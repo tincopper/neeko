@@ -1,3 +1,4 @@
+import type { DockSlot } from '@/shared/dock';
 import type { EditorSplitLayout, ProjectTabs, Tab } from '@/shared/types';
 import type { SessionRef } from '@/shared/types/liveSessions';
 
@@ -72,6 +73,89 @@ export function selectActiveTabId(state: EditorTabSpaceState, tabKey: string): s
   const layout = state.editorLayout[tabKey];
   if (!layout) return null;
   return layout.groups[layout.activeGroupId].activeTabId;
+}
+
+/** 该 tab 空间的存活 tab id 集合（注册表口径）；空间无注册表 → `null`（什么都渲染不出）。 */
+function liveIdsOf(state: EditorTabSpaceState, tabKey: string): Set<string> | null {
+  const liveTabs = state.tabs[tabKey]?.tabs;
+  if (!liveTabs) return null;
+  return new Set(liveTabs.map((tab) => tab.id));
+}
+
+/**
+ * 一组 `tabIds` 里还有多少条**存活** id（布局给归属与顺序、注册表裁定存活）。
+ *
+ * 这是形态判据的唯一实现，`hasCenterTabs` / `countDockedTabs` 共用 —— 各写一份就会漂移：
+ * 只数 `tabIds.length` 会把布局残留的幽灵 id 算成可渲染（空岛顶掉引导页 / 空宿主占位）。
+ *
+ * 返回**条数而不是布尔**：布尔只是 `> 0` 的投影，而「到达 = 条数增加」的揭示还需看见
+ * 1 → 2 这种变化（布尔会把它抹平成「不变」）。「非空」只在消费侧（`isZoneRenderable`）
+ * 与揭示（`counts[slot] > prev[slot]`）各决定一次，不在这里丢信息。
+ */
+function liveIdCount(liveIds: Set<string> | null, tabIds: readonly string[]): number {
+  if (!liveIds || tabIds.length === 0) return 0;
+  let count = 0;
+  for (const id of tabIds) {
+    if (liveIds.has(id)) count += 1;
+  }
+  return count;
+}
+
+/**
+ * 中心画面是否有东西可渲染（`ProjectView` 在「编辑器 / 引导页」之间的唯一判据）。
+ *
+ * **为什么不是「注册表里有没有 tab」**：`tabs[tabKey]` 是整个 tab 空间的注册表，包含住在 dock
+ * 槽位里的 tab。停靠（`docksNewTabs` / 右键 Move to Dock）只改变归属，**不改变中心区形态** ——
+ * 那些 tab 由 dock 宿主（`DockTabHost`）自己渲染。用注册表总数当判据的表现是：点右栏 Terminal
+ * 图标后新 tab 落 `docked.right`，中心区被判为「有 tab」→ 渲染一个中心组全空的
+ * `EditorGroupLayout`（视觉空白岛），引导页被条件分支挤掉。
+ *
+ * 因此归属只由 `editorLayout` 的组表达：中心画面 = `groups.left` ∪ `groups.right` ∪
+ * `pinnedTabIds`（pinned 面板与编辑器组同属中心区）。`docked.*` 刻意不参与。
+ *
+ * id 还必须仍在注册表里：布局会残留已移除 tab 的 id（见 `selectOrderedTabs` / `healEditorLayout`），
+ * 而那些 id 渲染不出任何东西 —— 只数 `tabIds.length` 会把「幽灵 id」又算成可渲染，症状同样是空岛。
+ * 「布局给顺序与归属、注册表裁定存活」与 `selectOrderedTabs` / `useDockedPane` 同一口径。
+ *
+ * 返回布尔原始值：这是给 zustand selector 直接消费的判据，返回数组/对象会让每次快照比较都判不等。
+ * layout 缺失 → `false`（与 `selectOrderedTabIds` 同语义的优雅降级；此时 ProjectView 落到引导页 /
+ * 欢迎页，正是期望）。
+ */
+export function hasCenterTabs(state: EditorTabSpaceState, tabKey: string): boolean {
+  const layout = state.editorLayout[tabKey];
+  if (!layout) return false;
+  const liveIds = liveIdsOf(state, tabKey);
+  const { left, right } = layout.groups;
+  return (
+    liveIdCount(liveIds, left.tabIds) +
+      liveIdCount(liveIds, right.tabIds) +
+      liveIdCount(liveIds, layout.pinnedTabIds) >
+    0
+  );
+}
+
+/**
+ * 某槽的**槽位宿主**里可渲染 tab 的条数（zone 可见性与揭示的唯一内容事实，P5/P6）。
+ *
+ * 宿主是内容的投影，这个数同时驱动两件事：
+ * - **可见性**：`isZoneRenderable` 在「前台是宿主」时做 `> 0` 判断 —— 空宿主不占位
+ *   （不留一座空岛，也不用文案解释为什么是空的）；
+ * - **揭示**：「到达 = 条数增加」（`useDockTabHostReveal` 的 `counts[slot] > prev[slot]`）。
+ *   布尔在这里不够用：已折叠且已非空的槽再来一条（1 → 2）没有假 → 真跃迁，那次点击
+ *   就会静默无反应。计数是该事实的**更细形式**，不是第二个判据。
+ *
+ * 存活口径与 `hasCenterTabs` 同一实现（`liveIdCount`）：布局可能残留已关闭 tab 的 id，
+ * 那些 id 渲染不出任何 tab。`tabKey === null`（没有激活 workspace）→ `0`。
+ */
+export function countDockedTabs(
+  state: EditorTabSpaceState,
+  tabKey: string | null,
+  slot: DockSlot,
+): number {
+  if (!tabKey) return 0;
+  const layout = state.editorLayout[tabKey];
+  if (!layout) return 0;
+  return liveIdCount(liveIdsOf(state, tabKey), layout.docked[slot].tabIds);
 }
 
 /** `selectActiveTabId` 的 `Tab` 形态（前台 tab 对象；无前台 / 已失效 → `null`）。 */
