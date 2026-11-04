@@ -48,6 +48,12 @@
 
 **内容事实的注入端口**：`layout/` 不得 import tab 域 ⇒ `AppShell` 经 `useDockTabHostContent()` 把 `Record<DockSlot, boolean>` 作为 `tabHostHasTabs` 传给 `DockLayout`（与 `onMoveView` 同一规矩，缺省 fail-closed = 无内容）。
 
+**内容到达即前置：揭示由 app 层统一承担（P6，宿主零布局写入）**。同一个内容事实还驱动「内容到达 ⇒ 该槽前置」：`AppShell` 把 `useDockTabHostContent()` 的返回值交给 `useDockTabHostReveal`，后者只在**假 → 真**跃迁上 `activateView(tabHostView(slot))`（初值取当前值 ⇒ 挂载时不触发；两槽同一规则）。
+
+为什么必须在 app 层：宿主（`DockTabHost`）只在「槽展开 ∧ 自己是前台」时挂载（`DockZone` 对收起的槽 `return null`），所以写在宿主 effect 里的揭示在**槽收起**时永远不执行 —— 自动停靠（Action Menu / 侧栏点会话 / history 恢复，它们只经 `addTab` 问 `docksNewTabs`，不经过 `moveTabToSlot`）会得到「tab 建好但看不见」。揭示与可见性共用同一个布尔 ⇒ 两者不会漂移；宿主从此**零布局写入**，四条入口（图标 / 菜单 / 自动停靠 / 切单元）行为一致。**禁止**在 `registerTabSurfacePolicy` 的 updater 内写 `dockStore`（那是纯推导里夹副作用）。
+
+残差（已知、可接受）：**已折叠且已非空**时再自动停靠不会揭示（跃迁语义 —— 没有跃迁可观测）。要覆盖它只能改成计数比较，不要引入第二个判据。
+
 ## 2. 物理约束（决定方案形状）
 
 | # | 约束 | 出处 | 对设计的要求 |

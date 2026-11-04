@@ -319,6 +319,55 @@
 
 ---
 
+## P6 · 内容到达即前置（上提到 app 层）+ 审计问题清理
+
+### P6-1 揭示不再属于宿主组件（修既有缺陷）
+
+**缺陷**：`docksNewTabs` 自动停靠的非图标路径（Action Menu / 侧栏点会话 / history 恢复）在**槽已收起**时不展开宿主
+（`DockZone` 在 `!zone.expanded` 时返回 null ⇒ 宿主未挂载 ⇒ 它自己的 0→N 揭示失效）→ tab 建好但看不见。
+
+**为什么不在 `registerNewTabDockPolicy` 里补 `activateView`**（审计前的「一行修法」）：那个策略回调是在
+`editorStore.addTab` 的 `set((state) => …)` **updater 内部**被调用的（`const surface = targetGroup ? null : resolveTabSurface(tab)`）。
+在 updater 里写另一个 store = 纯推导里夹副作用（重跑 / 工具链会重复触发，也是跨域耦合）。
+
+**修法（第一性原理）**：揭示的判据已经是 P5 算好的**同一个事实**（该槽宿主有无可渲染 tab）。所以：
+
+- [x] 新增 `src/app/hooks/useDockTabHostReveal.ts`：吃 `useDockTabHostContent()` 的返回值，在**假 → 真**
+  跃迁上调 `activateView(tabHostView(slot))`（初值取当前值，不在挂载时触发）；
+- [x] `AppShell` 装配：`const facts = useDockTabHostContent(); useDockTabHostReveal(facts);`；
+- [x] **删除 `DockTabHost` 的 0→N effect**：宿主从此**零布局写入**（读布局、渲染内容），揭示与可见性全部由
+  app 层 + 派生判据承担 —— 不再依赖宿主是否挂载，四条入口（图标 / 菜单 / 自动停靠 / 切单元）行为一致。
+- [x] 移植 `DockTabHost.test.tsx` 的「空 → 非空揭示」用例到新 hook 的测试；补一条「槽已收起时自动停靠仍揭示」
+  （直接调 `editorStore.addTab`，不走 `moveTabToSlot`，即真实缺陷路径）+ 一条「挂载时不重复揭示」。
+- [x] 注释里记录残差：**已折叠且已非空**时再自动停靠不会揭示（跃迁语义），需要时把它改成计数比较。
+
+### P6-2 审计问题清理
+
+- [x] **[Warning] `src/shared/dock/zone.ts`**：`host === 'tabHost' ? hostHasTabs : true` → 穷尽 `switch`
+      （`'tabHost'` / `'singleton'` / `'none'`，无 default）。新 host variant 必须编译报错，不得静默落 `true`。
+      用例：把 `'singleton'` 改成 `false` 时 zone.test 必红（变异验证）。
+- [x] **[Block，非本任务但同工作树] `src-tauri/src/common/db/migrations.rs`**：`LATEST_VERSION` 18 → 13
+      （`migrate_step` 只到 12，现状态下任何库都在第 14 步 `bail!`，`cargo test` 必红）。
+- [x] **[Nit] 测试用工厂**：`useDockTabHostContent.test.ts` / `AppShell.test.tsx` 的 `{ id: 'p1' } as unknown as Project` →
+      `createProject({ id: 'p1' })`（`@/testing/factories`，同批 `ProjectView.center.test.tsx` 已是这么写的）。
+- [x] **[Nit] `DockLayout.test.tsx`**：`'28%'` 改从 `DOCK_VIEW_META[tabHostView('right')].defaultSlotSize` 派生。
+- **[Nit] 不改，仅记录**：`ProjectView.tsx` 295/300 行（未越线，拆它属另一次有回归风险的改动）；
+  `docs/layout-architecture.html` 不在 fmt 覆盖范围（HEAD 起即如此）。
+- **[决策仍待定]** 左槽前台是空宿主 ⇒ 整条左栏 0 宽（与旧 D7 的 in-session 行为一致）。要「左栏永不消失」
+  需引入槽级兜底前台声明，属产品决策。
+
+### P6-3 文档同步
+
+- [x] `design.md` I5：补「揭示由 app 层统一承担（宿主零布局写入）」；
+- [x] `.trellis/spec/frontend/state-management.md` Contract 9：补「到达即前置」一条（唯一实现 `useDockTabHostReveal`，
+      禁止在 `registerTabSurfacePolicy` 的 updater 内写 dockStore）。
+
+**校验**：`pnpm vitest run src/app/hooks/__tests__ src/app/shell src/features/dock-tabs src/shared/dock src/layout`
+
+**回滚点 R-P6**：一个 app 层 hook + 穷尽 switch + 常量回退；revert 即回到「揭示依赖宿主挂载 / host 判据双分支」。
+
+---
+
 ## 验证命令
 
 ```bash

@@ -1505,3 +1505,42 @@ Session summary was not supplied.
 
 - 待用户拍板：docksNewTabs 自动停靠路径在槽 intent 收起时不展开宿主（既有缺陷，最小修法：registerNewTabDockPolicy 补 activateView）
 - 既有缺陷提醒：src-tauri/src/common/db/migrations.rs 的 LATEST_VERSION 18 但 migrate_step 只到 12 → 任何迁移都会 bail，cargo test 必红（非本任务改动）
+
+
+## Session 408: dock-placement P6: reveal on content arrival moved to app layer + audit cleanup
+<!-- trellis-session: v=2 fp=f30f256528f43c7f -->
+
+**Date**: 2026-11-04
+**Task**: dock-placement P6: reveal on content arrival moved to app layer + audit cleanup
+**Branch**: `main`
+
+### Summary
+
+修复既有缺陷：自动停靠（docksNewTabs）在槽收起时 tab 建好却看不见。揭示从宿主组件上提到 app 层（共用 P5 的同一内容事实），DockTabHost 从此零布局写入。同时清掉审计清单：zone.ts 穷尽 switch、migrations.rs 常量回退、测试工厂与硬编码常量。
+
+### Main Changes
+
+- 新增 app/hooks/useDockTabHostReveal.ts：假→真跃迁调 activateView(host)，初值取当前值（挂载不触发）；4 条入口（图标/菜单/自动停靠/切单元）行为一致
+- AppShell 装配两 hook：同一事实驱动可见性与揭示；DockTabHost 删除 0→N effect + useRef/useEffect，宿主零布局写入
+- shared/dock/zone.ts: isZoneRenderable 三元 → 穷尽 switch（新增 host variant 必须 tsc 报错）
+- src-tauri/src/common/db/migrations.rs: LATEST_VERSION 18 → 13（migrate_step 只到 12，18 会让任何库在第 14 步 bail）
+- 测试：揭示 7 条（含真实缺陷路径 addTab 自动停靠 / 与 moveTabToSlot 不重复写入）；两处 as unknown as Project 改 createProject；DockLayout 的 28% 改从 DOCK_VIEW_META 派生
+- 文档：design I5 补「揭示由 app 层承担」、spec Contract 9 补「到达即前置」、panelMeta/useDockBarOpenTab 过期注释改指新 hook
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] P6 每条用例红→绿（含 3 条缺陷复现、1 条幂等引用相等）；zone.ts singleton 变异必红；临时给 DockViewHost 加 'ghost' → tsc TS2366 证明编译期护栏
+- [OK] pnpm vitest run src/app/hooks/__tests__ src/app/shell src/features/dock-tabs src/shared/dock src/layout → 28 files / 220 tests；pnpm check:quick → 13 条护栏（Rust 侧已无改动）+ lint_fe 全通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 待拍板：①切工作区构成假→真跃迁会前置宿主 ②揭示路径会退出 Library（既有 activateView 语义）③「已折叠且已非空」时再自动停靠不揭示（残差，修法=计数比较）
+- 审计余下 Nit：ProjectView 295/300 行、layout-architecture.html 不在 fmt 覆盖（均未越线，另开任务）

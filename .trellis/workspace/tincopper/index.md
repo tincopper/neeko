@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 407
+- **Total Sessions**: 408
 - **Last Active**: 2026-11-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1507 | Active |
+| `journal-8.md` | ~1546 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 408 | 2026-11-04 | dock-placement P6: reveal on content arrival moved to app layer + audit cleanup | - | `main` |
 | 407 | 2026-11-04 | dock-placement P5: zone visibility derived from content (empty tab host takes no space) | - | `main` |
 | 406 | 2026-11-04 | dock-placement P4: center pane shape from layout, not tab registry | - | `main` |
 | 401 | 2026-11-04 | Dock 落位单一真源 + tab 停靠（P0–P3a + C 组缺口） | `40580c7b`, `0664000e`, `70988860`, `3d1edad3` | `main` |
