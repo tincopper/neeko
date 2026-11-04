@@ -200,6 +200,37 @@
 
 ---
 
+## P4 · 回归修复：中心区形态被右侧停靠影响（用户实测，2026-11）
+
+**现象**：选中项目后中心区显示引导页 → 点右栏 Terminal 图标（或引导页上的「打开终端」）→
+中心区变空白，引导页被卸载。用户预期：点右栏图标只影响右侧宿主，中心区维持原状。
+
+**根因**：`ProjectView` 用「tab 空间的 tab 总数」判定中心区渲染谁（`tabs.length > 0 ?
+<EditorGroupLayout/> : <ProjectGuidePage/>`）。P1/P2 让 tab 可以住在 dock 槽里，但仍登记在同一个
+`tabs[tabKey]` 注册表；`terminal` 的 `docksNewTabs: true` 使新 tab 直接落 `layout.docked.right`，
+中区组一个 tab 都没有 ⇒ 走 `EditorGroupLayout` 渲染空 pane（视觉空白），引导页被条件分支挤掉。
+**判据错误**是「注册表里有 tab」冒充「中心画面有东西可渲染」——归属只由 `editorLayout` 的组表达。
+
+### P4-1 中心区判据（TDD）
+
+- [x] **先写** `src/shared/store/__tests__/editorTabSelectors.test.ts` 新用例：`hasCenterTabs` ——
+      只有 `docked.*` → `false`；`groups.left`/`groups.right`/`pinnedTabIds` 任一非空 → `true`；缺 layout → `false`。
+  - 红：`pnpm vitest run src/shared/store/__tests__/editorTabSelectors.test.ts`
+- [x] `src/shared/store/editorTabSelectors.ts`：新增 `hasCenterTabs(state, tabKey): boolean`
+      （中心画面 = left ∪ right ∪ pinned；dock 宿主的 tab 由宿主渲染，不参与）。
+- [x] `src/app/components/ProjectView.tsx`：`tabs.length > 0` → `hasCenterTabs(...)`，删掉只为计数
+      存在的 `useShallow` 全量 tabs 订阅。
+- [x] 组件级回归用例（`src/app/components/__tests__/ProjectView.center.test.tsx`）：tab 全部停靠在
+      right 槽时仍渲染引导页（`ProjectGuidePage`），不渲染 `EditorGroupLayout`。
+- [x] 复核补强（变异确认）：判据还要求 id 仍在注册表里 —— 布局残留已关闭 tab 的 id 时，只数
+      `tabIds.length` 会把「渲染不出任何 tab」判成可渲染，症状与本次缺陷相同（空岛顶掉引导页）。
+
+**校验**：`pnpm vitest run src/shared/store/__tests__/editorTabSelectors.test.ts src/app/components/__tests__/ProjectView.center.test.tsx`
+
+**回滚点 R-P4**：单点判据替换 + 一个选择器，revert 即回到「停靠即清空中心」的旧行为。
+
+---
+
 ## 验证命令
 
 ```bash

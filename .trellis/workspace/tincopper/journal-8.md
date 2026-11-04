@@ -1425,3 +1425,42 @@ Session summary was not supplied.
 ### Next Steps
 
 - 真机回归：① dock 一条 agent-chat 前后 PTY 计数不变 ② 栏内排序重启后保持 ③ pin tab → 开侧面板 → 拖 handle；三条过后 archive 本任务
+
+
+## Session 406: dock-placement P4: center pane shape from layout, not tab registry
+<!-- trellis-session: v=2 fp=4f0125ab97b35139 -->
+
+**Date**: 2026-11-04
+**Task**: dock-placement P4: center pane shape from layout, not tab registry
+**Branch**: `main`
+
+### Summary
+
+修复用户实测回归：点右栏 Terminal 图标后中心区变空白、项目引导页被卸载。判据从 tabs.length 改为 hasCenterTabs（left ∪ right ∪ pinned 的活 id）。
+
+### Main Changes
+
+- 新增 shared/store/editorTabSelectors.ts::hasCenterTabs（中心画面 = 组内存活 id；docked 刻意不参与，布局残留 id 不算可渲染）
+- ProjectView 中心区形态改用该判据，删掉只为计数存在的 useShallow 全量 tabs 订阅
+- 新增 ProjectView.center.test.tsx（docked-only → 引导页 / 中心组有 tab → 编辑器布局 / 两者都有 → 编辑器布局）
+- spec: state-management.md 补 Contract 8（形态判据也从布局派生）、I1 补 docked 组、Tests Required 补 hasCenterTabs
+- docs/layout-architecture.html ④ editorLayout 行同步「中心区形态只读组」
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/shared/store/__tests__/editorTabSelectors.test.ts src/app/components/__tests__/ProjectView.center.test.tsx → 30 passed
+- [OK] 变异验证：ProjectView 换回 tabs.length > 0 / hasCenterTabs 去掉存活检查，各自必红，恢复即绿
+- [OK] pnpm check:quick → 20 条护栏通过 / lint_fe + lint_rust_all_targets 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 用户在应用里实测：选中项目 → 点右栏 Terminal → 引导页应保留
+- 工作树里 src-tauri/src/common/db/migrations.rs（LATEST_VERSION 13→18）属别的在途改动，未纳入本次修复
