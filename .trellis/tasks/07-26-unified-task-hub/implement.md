@@ -293,6 +293,31 @@ pnpm check:quick   # 收尾一次
 - 「面板根是海面」：`island.parentElement` 必须带 `bg-bg-primary`。
 - 三条空态用例改为断言「住在**主岛**内 + 分区是 `bg-tertiary`」。
 
+## 进度（2026-11-03g，主题适配：表面阶梯走到最内层）
+
+> 用户反馈：「但是UI还是需要根据应用的主题进行适配，当前的UI和整个应用主题不适配」。
+
+**根因**：上一轮修「看得出岛」时把卡片也写成 `bg-bg-tertiary`，于是卡片与列**同色**——
+五个主题下对比度恒为 1.00。**教训**：上一轮只查了「列 vs 岛」，在阶梯中间停了一层。
+
+| 层 | 错 | 对 | 依据 |
+| --- | --- | --- | --- |
+| 分区内卡片 | `bg-bg-tertiary`（= 列同色） | `bg-bg-primary` | `ui/Card` / `PromptCard` / `TaskCardRow` / `MemberApprovalQueue` 全用 primary |
+| 岛内 header / footer | `bg-bg-tertiary` 满宽横条 | 只写 `border-b` / `border-t` | `LibraryToolbar` / `GitControlPanel` / `PaneTabBar` / `McpProjectContent` 全不自刷 |
+| 空态 | `px-2 py-3 text-micro`（贴左上 10px） | 居中 + `text-meta` | `PromptListSection` / `PullRequestsPanelWrapper` |
+| 列内 / 列表内局部占位 | `text-micro` | `text-meta` | `text-micro` 是 hint 专用字阶 |
+
+### 测试账（2026-11-03g）
+
+`pnpm vitest run src/features src/app` → **5363 条绿**（607 文件）。
+
+三层判据（数值 / DOM-token / DOM-不自刷）：
+- 新增 `surfaceContrast.test.ts`：五个主题下相邻两层对比 ≥ 1.05 + 「同色 = 1.00」反证；
+- 改写 `BoardView.test.tsx`「岛内控件面用三级表面」→「卡片与所在列是**不同表面**」
+  （上一版断言「卡片用 tertiary 不是 primary」**写反了**，正是本次事故的成因）；
+- 新增 `TasksPanel.test.tsx`「岛内 header 只靠 border 划界」+「四档空态居中不用 hint 字阶」；
+- 新增 `UndoBar.test.tsx` / `WorkItemDetail.test.tsx` 的「不自刷表面」。
+
 ## 进度（2026-11-03f，中心视图框架统一）
 
 > 用户反馈：「高度和宽度没有和其他中间内容区域对齐……中间这块应该是应用的一个统一组件，
