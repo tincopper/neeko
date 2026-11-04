@@ -280,10 +280,11 @@ describe('useDockBarOpenTab — Terminal 图标 = 纯 shell（不默认拉起 ag
     expect(notifications()).toHaveLength(0);
   });
 
-  it('已有纯 shell 终端 tab → 只激活，不再新建（点两次不会开出第二条）', () => {
+  it('右栏已停靠一条纯 shell（宿主收起）→ 点图标展开它，不新建', () => {
     seedProject('p-term-existing', ['a1']);
     const space = spaceOf('p-term-existing');
-    const plainId = addTerminalTab('p-term-existing', null);
+    const dockedId = addTerminalTab('p-term-existing', null);
+    useEditorStore.getState().dockTab(space, dockedId, 'right');
 
     const { open } = renderOpenTab();
     act(() => {
@@ -291,8 +292,11 @@ describe('useDockBarOpenTab — Terminal 图标 = 纯 shell（不默认拉起 ag
     });
 
     expect(tabCount('p-term-existing')).toBe(1);
-    const layout = useEditorStore.getState().editorLayout[space]!;
-    expect(layout.groups[layout.activeGroupId].activeTabId).toBe(plainId);
+    expect(useDockStore.getState().zones.right).toEqual({
+      expanded: true,
+      activeView: tabHostView('right'),
+    });
+    expect(useEditorStore.getState().editorLayout[space]!.docked.right.activeTabId).toBe(dockedId);
   });
 
   it('只有 **agent** 终端 tab（项目已选 agent）→ 不认领它，另开一条纯 shell', () => {
@@ -311,6 +315,44 @@ describe('useDockBarOpenTab — Terminal 图标 = 纯 shell（不默认拉起 ag
     expect(tabs.filter((t) => t.data.kind === 'terminal' && t.data.agentId === null)).toHaveLength(
       1,
     );
+  });
+
+  it('中间区已有纯 shell 时，点右侧 Terminal **仍然新建**一条落在右栏（两者并存）', () => {
+    // 用户报的真实缺陷：入口按「任意 surface」找同类 tab，找到中间那条 → 只做一次
+    // 「激活中间 tab」的无效操作。Terminal 是「这一栏的草稿」，必须按槽找。
+    seedProject('p-term-both', ['a1']);
+    const space = spaceOf('p-term-both');
+    const centerId = addTerminalTab('p-term-both', null);
+
+    const { open } = renderOpenTab();
+    act(() => {
+      open(TERMINAL_VIEW, 'right');
+    });
+
+    const layout = useEditorStore.getState().editorLayout[space]!;
+    expect(tabCount('p-term-both')).toBe(2);
+    // 中间那条原样不动
+    expect(layout.groups[layout.activeGroupId].tabIds).toContain(centerId);
+    // 新的一条落在右栏宿主里
+    expect(layout.docked.right.tabIds).toHaveLength(1);
+    expect(layout.docked.right.tabIds[0]).not.toBe(centerId);
+  });
+
+  it('右栏已有一条停靠终端时，再点只激活（不新建第二条）', () => {
+    seedProject('p-term-docked', ['a1']);
+    const space = spaceOf('p-term-docked');
+    const dockedId = addTerminalTab('p-term-docked', null);
+    useEditorStore.getState().dockTab(space, dockedId, 'right');
+    useDockStore.getState().activateView(tabHostView('right'));
+
+    const { open } = renderOpenTab();
+    act(() => {
+      open(TERMINAL_VIEW, 'right');
+    });
+
+    expect(tabCount('p-term-docked')).toBe(1);
+    expect(useDockStore.getState().zones.right.expanded).toBe(false); // 第二次点击 = 收起
+    expect(useEditorStore.getState().editorLayout[space]!.docked.right.tabIds).toEqual([dockedId]);
   });
 
   it('配额满 → 提示（addTab 的配额门是静默 return，必须解释「点了没反应」）', () => {
@@ -405,6 +447,27 @@ describe('useDockBarOpenTab — 会话命中：交给 live-sessions 的恢复链
     const tabs = useEditorStore.getState().tabs[spaceOf('p-resume-term-agent')]!.tabs;
     expect(tabs).toHaveLength(1);
     expect(tabs[0].data).toMatchObject({ kind: 'terminal', agentId: null });
+  });
+
+  it('terminal：会话已被**中间那条** tab 承载 → 不交给恢复链（那只会激活中间的），改新建落本栏', () => {
+    seedProject('p-resume-bound', ['a1']);
+    const space = spaceOf('p-resume-bound');
+    const centerId = addTerminalTab('p-resume-bound', null);
+    // 把这条 tab 与会话绑定（映射键 = 会话 id），模拟「中间已经开着这个 shell」
+    useEditorStore.getState().updateTab(space, centerId, { ptySessionId: 'pty-bound' } as never);
+    seedSessions([
+      listedSession('p-resume-bound', { kind: 'terminal', sessionId: 'pty-bound', agentId: null }),
+    ]);
+
+    const { open } = renderOpenTab();
+    act(() => {
+      open(TERMINAL_VIEW, 'right');
+    });
+
+    expect(liveSessions.activateSession).not.toHaveBeenCalled();
+    const layout = useEditorStore.getState().editorLayout[space]!;
+    expect(layout.docked.right.tabIds).toHaveLength(1);
+    expect(layout.docked.right.tabIds[0]).not.toBe(centerId);
   });
 
   it('注册表为空 → 回落原新建分支（行为与今天一致）', () => {

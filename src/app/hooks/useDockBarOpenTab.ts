@@ -11,7 +11,7 @@ import {
   type DockSlot,
   type ViewKey,
 } from '@/shared/dock';
-import { selectLatestSessionForUnit } from '@/shared/selectors/liveSessionSelectors';
+import { selectLatestSessionForUnit, sessionTab } from '@/shared/selectors/liveSessionSelectors';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -27,10 +27,12 @@ import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   SESSION_KIND_OF_TAB_KIND,
+  findTabInSlot,
   findTabOfKind,
   isOpenableTabKind,
   matchOfOpenableKind,
   type OpenableTabKind,
+  type TabKindTarget,
 } from '../utils/tabKind';
 import { moveTabToSlot } from '../utils/tabSurface';
 import { createPlainTerminalTab } from '../utils/terminalTab';
@@ -111,6 +113,8 @@ export function useDockBarOpenTab(): OpenTabHandler {
         notify(`Unknown tab kind: ${activation.tabKind}`, 'error');
         return;
       }
+      // 收窄后存成局部常量：属性访问的收窄不进闭包（`findExisting` 里会退化成 string）
+      const kind: OpenableTabKind = activation.tabKind;
 
       const projectId = useProjectStore.getState().activeProjectId;
       const tabKey = projectId
@@ -126,8 +130,17 @@ export function useDockBarOpenTab(): OpenTabHandler {
 
       const editorState = useEditorStore.getState();
       const layout = editorState.editorLayout[tabKey];
-      const match = matchOfOpenableKind(activation.tabKind);
-      const existing = findTabOfKind(editorState.tabs[tabKey], layout, activation.tabKind, match);
+      const tabs = editorState.tabs[tabKey];
+      const match = matchOfOpenableKind(kind);
+      // 入口作用域（声明表 `dockEntryScope`）：`slot` 只认**本栏**的实例 —— 中间那条
+      // terminal 不该拦下右栏图标的点击（否则点击被解释成「激活中间那条」= 看起来无效）。
+      const scope = meta.dockEntryScope ?? 'anywhere';
+      const findExisting = (): TabKindTarget | null =>
+        scope === 'slot'
+          ? findTabInSlot(tabs, layout, targetSlot, kind, match)
+          : findTabOfKind(tabs, layout, kind, match);
+
+      const existing = findExisting();
       if (existing) {
         // **再点一次 = 收起**（toggle 语义）：宿主正可见、且前台就是这条 tab → 收起该槽。
         // 注意收的是宿主（zone）而**不是** tab：种类入口背后是长跑会话（chat / PTY），
@@ -147,37 +160,56 @@ export function useDockBarOpenTab(): OpenTabHandler {
       }
 
       // 新建**之前**：该单元还有用户真的用过的同类会话 → 走 live-sessions 的唯一恢复链
-      // （接回存活 PTY / 续写已结束会话），不新建一条空会话。命中后语义与侧栏点会话行
-      // 完全一致 —— 两边共用同一个 hook，不在这里重写「会话活没活」的判据。
-      // terminal 只认**纯 shell** 会话（`agentId === null`）：否则点 Terminal 会接回一条
-      // agent 的 PTY —— 那正是这个入口明确不要的行为。
-      const sessions =
-        activation.tabKind === 'terminal'
-          ? useLiveSessionsStore.getState().sessions.filter((s) => s.agentId === null)
-          : useLiveSessionsStore.getState().sessions;
+      // （接回存活 PTY / 续写已结束会话），不新建一条空会话。
+      //
+      // `slot` 作用域还要排除「已经被某条 tab 承载」的会话：恢复链对它们的处置是**激活那条
+      // tab**（可能在别的 surface）—— 这次点击又会变成无效操作。正解是新建一条落到本栏。
+      const allSessions = useLiveSessionsStore.getState().sessions;
+      const kindSessions =
+        kind === 'terminal'
+          ? allSessions.filter((candidate) => candidate.agentId === null)
+          : allSessions;
+      const openTabs = tabs?.tabs ?? [];
+      const candidateSessions =
+        scope === 'slot'
+          ? kindSessions.filter((candidate) => sessionTab(candidate, openTabs) === null)
+          : kindSessions;
       const latestSession = selectLatestSessionForUnit(
-        sessions,
+        candidateSessions,
         tabKey,
-        SESSION_KIND_OF_TAB_KIND[activation.tabKind],
+        SESSION_KIND_OF_TAB_KIND[kind],
       );
       if (latestSession) {
         activateSession(latestSession);
-        // 恢复链可能**同步**建出一条 tab（chat 重建 / 接回存活终端）：它若落在收起的
-        // 宿主里，这次点击就什么都看不见。复用「已有 tab」那条 reveal（激活 + 展开宿主）。
-        // 异步恢复（终端续写要等一次 IPC）此刻还没有 tab，由 `DockTabHost` 的
-        // 空 → 非空揭示接住 —— 两条路都不必在这里等 Promise。
         const after = useEditorStore.getState();
-        const revived = findTabOfKind(
-          after.tabs[tabKey],
-          after.editorLayout[tabKey],
-          activation.tabKind,
-          match,
-        );
+        const revived =
+          scope === 'slot'
+            ? findTabInSlot(
+                after.tabs[tabKey],
+                after.editorLayout[tabKey],
+                targetSlot,
+                activation.tabKind,
+                match,
+              )
+            : findTabOfKind(
+                after.tabs[tabKey],
+                after.editorLayout[tabKey],
+                activation.tabKind,
+                match,
+              );
         if (revived) revealTab(tabKey, revived.tabId, revived.dockSlot);
+        else if (scope === 'slot') {
+          // 恢复链建出的 tab 落在别的 surface（如 terminal 默认落中心）→ 搬到本栏：
+          // 这个入口的语义就是「在这一栏打开」。
+          const reclaimed = sessionTab(latestSession, after.tabs[tabKey]?.tabs ?? []);
+          if (reclaimed) moveTabToSlot(tabKey, reclaimed.id, targetSlot);
+        }
+        // 异步恢复（终端续写要等一次 IPC）此刻还没有 tab —— 由 `DockTabHost` 的空→非空
+        // 揭示接住，两条路都不必在这里等 Promise。
         return;
       }
 
-      const tabId = createTab(activation.tabKind, { projectId, tabKey });
+      const tabId = createTab(kind, { projectId, tabKey });
       if (!tabId) return; // 创建端口已提示
       // 新 tab 落到图标所在槽的宿主（D3：种类级策略，实例本身不持久化）
       if (!moveTabToSlot(tabKey, tabId, targetSlot)) {

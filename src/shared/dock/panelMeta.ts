@@ -135,6 +135,8 @@ export const DOCK_VIEW_META: Record<string, DockViewMeta> = Object.fromEntries([
   // 终端都经 `addTab` 创建，把它们一起搬进侧区是另一个功能（会改变所有人的终端习惯）。
   // 只有「点图标新建」这一条路径显式调 `moveTabToSlot` 落到图标所在槽。
   row(tabKindView('terminal'), {
+    // 终端是「这一栏的草稿」，不是唯一文档：中间与右侧各一条应当并存
+    dockEntryScope: 'slot',
     host: 'none',
     activation: { kind: 'openTab', tabKind: 'terminal' },
     defaultSlot: 'right',

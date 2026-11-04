@@ -61,6 +61,29 @@ export function matchOfOpenableKind(kind: OpenableTabKind): (tab: Tab) => boolea
     : () => true;
 }
 
+/**
+ * 只在**指定槽**里找该种类的 tab（`dockEntryScope: 'slot'` 用）。
+ *
+ * 与 `findTabOfKind` 的差别是范围而不是判据：判据（`match`）必须两边一致，否则
+ * 「什么算同一条」会出现第二个定义。
+ */
+export function findTabInSlot(
+  tabs: ProjectTabs | undefined,
+  layout: EditorSplitLayout | undefined,
+  slot: DockSlot,
+  kind: TabKind,
+  match: (tab: Tab) => boolean = () => true,
+): TabKindTarget | null {
+  const group = layout?.docked[slot];
+  if (!group) return null;
+  const byId = new Map((tabs?.tabs ?? []).map((tab) => [tab.id, tab]));
+  for (const id of group.tabIds) {
+    const tab = byId.get(id);
+    if (tab && tab.data.kind === kind && match(tab)) return { tabId: tab.id, dockSlot: slot };
+  }
+  return null;
+}
+
 /** 目标 tab 与它所在的 surface：`dockSlot` 非空 = 停靠宿主，`null` = 中心区（含 pinned）。 */
 export interface TabKindTarget {
   tabId: string;

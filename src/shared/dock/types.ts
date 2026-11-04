@@ -56,6 +56,16 @@ export interface DockViewMeta {
   /** 该视图激活时的默认槽宽百分比。 */
   defaultSlotSize?: number;
   /**
+   * 种类入口（`activation.kind === 'openTab'`）的**查找范围**：
+   *
+   * - `anywhere`（缺省）：找**任意 surface** 上该种类的 tab —— 「回到我正在用的那条」。
+   *   适合**文档型**会话（agent chat：你只有一个正在聊的对话）。
+   * - `slot`：只找**图标所在槽**里的 tab —— 「这一栏的实例」。适合**草稿型**实例
+   *   （terminal：中间一条、右边一条并存；按任意 surface 找会把点击变成「激活中间那条」
+   *   的无效操作）。同时排除「已被别的 tab 承载」的会话，理由同上。
+   */
+  dockEntryScope?: 'anywhere' | 'slot';
+  /**
    * 该种类**新建的 tab** 是否默认停靠到宿主槽（缺省 `false` = 落中心区）。
    *
    * 显式能力位而不是从 `activation.kind` 推断：种类入口（`openTab`）与「新 tab 的落点」
