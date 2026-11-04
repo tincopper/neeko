@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "收尾门禁与禁止模式清单：check:quick 的覆盖面与延迟预算、依赖缓存坑"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "联合类型穷尽性、branded 类型（ViewKey）与运行时校验分工"}
+{"file": ".trellis/spec/unit-test/mutation-verification.md", "reason": "评审门 G-e：不变量测试必须能红（漏移除源组 / 不修 activeView 时失败）"}
+{"file": ".trellis/spec/unit-test/real-source-determinism.md", "reason": "测试不得依赖真实 localStorage / 真实 PTY；持久化迁移用真实快照字符串"}
+{"file": "AGENTS.md", "reason": "跨栈架构原则、TDD 与红线条目索引（红线 3 / 12 / 14 与本任务的边界）"}
+{"file": "src/AGENTS.md", "reason": "前端红线：导入防火墙、状态管理单一派生点、React 性能约定"}

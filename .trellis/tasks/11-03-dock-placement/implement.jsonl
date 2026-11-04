@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "单一真源与派生点：placements 替换 zones[].panels + barItems 双表示的判据；activeView 单源与「禁止消费侧兜底」"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "@dnd-kit 约定：每个排序区域一个 DndContext、onDragEnd 只提取 id 交给域 hook；两栏共用单 context 的偏差需显式记录"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "React.memo / useShallow / props 契约；DockBarDnd、DockTabHost、DockBarButton 的组件形态"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "域 hook 职责边界：useDockBarMove / useDockedPane 的返回形状与依赖注入"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "组件级 mock invoke 策略、测试层级；placement 纯函数 100% 覆盖的写法"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "dockStore 测试的 setState 基线重建模式、panelMeta mock 负例的写法"}
+{"file": "docs/layout-architecture.html", "reason": "既有布局架构单一图解：双 registry 三层体系、状态源表、扩展指南与 Step 3 bottom 风险；改完需同步 ③④⑥"}
+{"file": "docs/domain-model.md", "reason": "单一 mint 点与地址 codec 的项目惯例（WorkspaceSession.key / terminalAddress），ViewKey 需同构"}
