@@ -219,6 +219,47 @@ pnpm check:quick   # 收尾一次
 新增用例 3 条：空项目 / 未绑定项目 / 搜索无匹配 —— 三条都断言「文字住在岛里」（`islandOf` 向上找
 `rounded-lg` 祖先）且 `tasks-content-island` 存在。
 
+## 进度（2026-11-03d，面板层级修正：一座主岛）
+
+> 用户反馈（附 Library 截图）：「中间应该像这样有一层岛屿作为内容的承载，而不是直接内容在海里面」。
+
+**根因**：上一轮把「每列一座岛」当成了岛屿化 —— 看板变成**一排浮岛漂在海面上**。
+而 Library 的正确形态是「**一座主岛**，岛内是 toolbar + content」。判据不是「它自己滚不滚」，
+而是「它是不是一块独立的 UI 单元」。
+
+### 修正后的层级
+
+```
+海面（中心区透明包装）
+└ 主岛（tasks-main-island：头部 + 内容都在岛内）
+  ├ 岛内 header（bg-tertiary + border-b，**不**套 <Island>）
+  └ 分栏（gap-px）
+    ├ 主格：看板列 / 列表（**分区** bg-tertiary，无圆角无阴影）
+    └ 详情岛（**第二座岛**）
+```
+
+| # | 动作 | 文件 |
+| --- | --- | --- |
+| 1 | 头部 + 内容包进**一座主岛** | `TasksPanel.tsx`（`<Island data-testid="tasks-main-island">`） |
+| 2 | 头部去掉自带岛壳（否则岛中岛） | `TasksPanelHeader.tsx`：`<Island>` → `<header>` + `bg-bg-tertiary border-b` |
+| 3 | 看板列降为**岛内分区** | `BoardView.tsx`：`ISLAND_CLASS` → `bg-bg-tertiary`；容器 `ISLAND_GAP_CLASS` → `ISLAND_SPLIT_GROUP_CLASS` |
+| 4 | 列表降为**岛内分区** | `ListView.tsx`：去 `ISLAND_CLASS` |
+| 5 | 分栏注释对齐新层级 | `WorkItemsSplitView.tsx` |
+
+### 测试账（2026-11-03d）
+
+`pnpm vitest run src/features/work-items src/app` → **404 条绿**（59 文件）。
+
+改写存量用例（3 条，都是上一轮把「列是岛」钉住的那几条）：
+
+| 用例 | 原断言 | 现断言 |
+| --- | --- | --- |
+| `BoardView`「每列是一座岛」 | 列有 `rounded-lg`/`shadow-sm`/`bg-bg-secondary` | 列是 `bg-bg-tertiary` 分区，**无**圆角/阴影 |
+| `BoardView`「列间距 = 6px 海面」 | 容器 `gap-1.5` | 容器 `gap-px`（岛内分隔） |
+| `TasksPanel`「头部与列各自是岛」 | 各自非 null 岛 | 两者都 `islandOf(...) === tasks-main-island` |
+
+新增用例 2 条：「整块面板是主岛|详情岛双岛」+「头部与内容都在同一座主岛里」。
+
 ## 进度（2026-11-02）
 
 | 子任务 | 状态 | 落地 |
