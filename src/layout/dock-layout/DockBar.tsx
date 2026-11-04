@@ -16,6 +16,13 @@ import { barDropId } from './DockBarDnd';
 export interface DockBarEntry {
   view: ViewKey;
   node: React.ReactNode;
+  /**
+   * 拖拽时 `DragOverlay` 里的跟手预览（由 app 注入）。
+   *
+   * 内容由 app 构造、layout 只负责渲染：图标映射只在 app registry 里，而
+   * `layout/` 不得 import app。缺省 ⇒ 拖拽没有浮层（不是错误，只是少了反馈）。
+   */
+  preview?: React.ReactNode;
 }
 
 interface DockBarProps {

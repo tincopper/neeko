@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
 import DockBarButton from '@/app/components/DockBarButton';
+import DockBarDragPreview from '@/app/components/DockBarDragPreview';
 import type { DockBarEntry } from '@/layout/dock-layout/DockBar';
 import { placementsInSlot, type DockSlot, type ViewKey } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
@@ -56,6 +57,8 @@ export function useDockBarButtons(
               isTabKindVisible={isTabKindVisible}
             />
           ),
+          // 拖拽浮层内容：图标映射在 app registry，layout 收不到它，只能由这里注入
+          preview: <DockBarDragPreview view={placement.view} />,
         })),
     [isTabKindVisible, onMove, onOpenTab, placements, side],
   );

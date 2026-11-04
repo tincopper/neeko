@@ -75,6 +75,22 @@
 （`DockBarButton`）：`KeyboardSensor` 的激活键是 Space/Enter，与按钮自身的激活语义
 叠在同一节点上就说不清该发生哪一件事（同 §4 上方「只接指针」的理由）。
 
+#### 拖拽浮层与键盘焦点（2026-11-03 `11-03-dock-placement` P3a）
+
+- **浮层内容由 app 构造，layout 只渲染注入的节点**：`DockBarEntry.preview`
+  （`app/components/DockBarDragPreview`，图标来自 `app/dock/registry` 的 `dockPanelIcons`）。
+  图标映射只存在于 app registry，而 `layout/` 禁止 import app（eslint 防火墙）——
+  在 layout 里 import registry 会把「两栏共用 DndContext」的偏差变成一次分层破口。
+  浮层状态（dragStart → 有内容；dragEnd / dragCancel → **无条件**清空，`over` 为 null 也清）
+  在 `useDockBarDnd`，与 `useEditorDnd` 同构：jsdom 无法复现指针拖拽（无 rect / 无 pointer
+  capture），只能直测 hook，内容本体另测。
+- **键盘换边必须交接焦点**：换边后图标在**另一条栏**重新挂载，原 `<button>` 连同焦点一起被
+  卸载 → 焦点掉到 `body`，连按两次方向键就再也对不上目标。交接是模块级**单次消费**
+  （`app/hooks/dockBarFocusHandoff.ts` 的 `setPendingFocus` / `consumePendingFocus`，手法同
+  `useFileDrop` 的 `pendingDrag`），**只由键盘端口写入**（`useDockBarMove().moveViewByKeyboard`）
+  ——鼠标拖拽抢焦点会把用户位置塞到别处。`Alt+←/→` 的判据与 `aria-keyshortcuts` 文案同出
+  一张表 `DOCK_BAR_MOVE_BINDINGS`，不得手写第二份。
+
 ### 5. 可排序卡片组件契约
 
 ```tsx

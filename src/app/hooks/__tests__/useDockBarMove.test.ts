@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { consumePendingFocus } from '@/app/hooks/dockBarFocusHandoff';
 import { appViewKey, panelView, slotViews } from '@/shared/dock';
 import { createDefaultDockState, useDockStore } from '@/shared/store/dockStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
@@ -51,7 +52,7 @@ describe('useDockBarMove — 拖拽与键盘共用的落位入口', () => {
   it('跨栏移动：落位真的变了，且不报提示', () => {
     const move = renderMove();
 
-    act(() => move.current(PROJECTS, 'right', 0));
+    act(() => move.current.moveView(PROJECTS, 'right', 0));
 
     expect(slotViews(useDockStore.getState(), 'right')).toContain(PROJECTS);
     expect(messages()).toEqual([]);
@@ -60,7 +61,7 @@ describe('useDockBarMove — 拖拽与键盘共用的落位入口', () => {
   it('栏内重排：下标生效', () => {
     const move = renderMove();
 
-    act(() => move.current(FILES, 'right', 3));
+    act(() => move.current.moveView(FILES, 'right', 3));
 
     const right = slotViews(useDockStore.getState(), 'right');
     expect(right.indexOf(FILES)).toBe(3);
@@ -70,7 +71,7 @@ describe('useDockBarMove — 拖拽与键盘共用的落位入口', () => {
     const move = renderMove();
     const before = useDockStore.getState().placements;
 
-    act(() => move.current(TAB_HOST, 'left'));
+    act(() => move.current.moveView(TAB_HOST, 'left'));
 
     expect(useDockStore.getState().placements).toBe(before);
     expect(messages()).toEqual(['This view is pinned to its side']);
@@ -79,7 +80,7 @@ describe('useDockBarMove — 拖拽与键盘共用的落位入口', () => {
   it('同位置（幂等 no-op）不报提示：没移动 ≠ 不能移动', () => {
     const move = renderMove();
 
-    act(() => move.current(FILES, 'right', 0));
+    act(() => move.current.moveView(FILES, 'right', 0));
 
     expect(messages()).toEqual([]);
   });
@@ -88,7 +89,7 @@ describe('useDockBarMove — 拖拽与键盘共用的落位入口', () => {
     const move = renderMove();
     const before = useDockStore.getState().placements;
 
-    act(() => move.current(FILES, 'top' as never));
+    act(() => move.current.moveView(FILES, 'top' as never));
 
     expect(useDockStore.getState().placements).toBe(before);
     expect(messages()).toEqual([]);
@@ -97,8 +98,46 @@ describe('useDockBarMove — 拖拽与键盘共用的落位入口', () => {
   it('appView 入口（Library）也能换栏：落位是布局，不是选中态', () => {
     const move = renderMove();
 
-    act(() => move.current(appViewKey('library'), 'right'));
+    act(() => move.current.moveView(appViewKey('library'), 'right'));
 
     expect(useDockStore.getState().placements[appViewKey('library')].slot).toBe('right');
+  });
+});
+
+describe('useDockBarMove — 焦点交接只属于键盘路径', () => {
+  it('键盘换边成功 → 登记交接（单次消费，消费即清零）', () => {
+    const move = renderMove();
+
+    act(() => move.current.moveViewByKeyboard(PROJECTS, 'right'));
+
+    expect(slotViews(useDockStore.getState(), 'right')).toContain(PROJECTS);
+    expect(consumePendingFocus(PROJECTS)).toBe(true);
+    expect(consumePendingFocus(PROJECTS)).toBe(false);
+  });
+
+  it('鼠标拖拽 → **不**登记交接（拖完不抢用户的焦点）', () => {
+    const move = renderMove();
+
+    act(() => move.current.moveView(PROJECTS, 'right'));
+
+    expect(consumePendingFocus(PROJECTS)).toBe(false);
+  });
+
+  it('被拒的键盘移动不登记：没有可跟随的目标', () => {
+    const move = renderMove();
+
+    act(() => move.current.moveViewByKeyboard(TAB_HOST, 'left'));
+
+    expect(consumePendingFocus(TAB_HOST)).toBe(false);
+    expect(messages()).toEqual(['This view is pinned to its side']);
+  });
+
+  it('两个端口共享同一份落位实现：键盘移动同样落位并推导目标栏', () => {
+    const move = renderMove();
+
+    act(() => move.current.moveViewByKeyboard(FILES, 'left'));
+
+    expect(slotViews(useDockStore.getState(), 'left')).toContain(FILES);
+    expect(messages()).toEqual([]);
   });
 });

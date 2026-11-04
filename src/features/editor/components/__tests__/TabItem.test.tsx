@@ -15,7 +15,11 @@ function mkSession(projectId: string) {
   return WorkspaceSession.of(projectId, null);
 }
 
-function renderTabItem(tab: Tab, agents: AgentConfig[] = []) {
+function renderTabItem(
+  tab: Tab,
+  agents: AgentConfig[] = [],
+  handlers: { onContextMenu?: (tabId: string, e: unknown) => void } = {},
+) {
   return render(
     <DndContext>
       <SortableContext items={[tab.id]} strategy={horizontalListSortingStrategy}>
@@ -25,6 +29,7 @@ function renderTabItem(tab: Tab, agents: AgentConfig[] = []) {
           renderLeading={(t) => renderEditorTabLeading(t, agents)}
           onActivate={vi.fn()}
           onClose={vi.fn()}
+          onContextMenu={handlers.onContextMenu}
         />
       </SortableContext>
     </DndContext>,
@@ -102,6 +107,29 @@ describe('TabItem browser favicon', () => {
     renderTabItem(browserTab);
 
     expect(screen.queryByTestId('browser-favicon')).not.toBeInTheDocument();
+  });
+});
+
+describe('TabItem 右键菜单的键盘可达性', () => {
+  const terminalTab: Tab = {
+    id: 'tab-ctx',
+    title: 'ctx',
+    data: { kind: 'terminal', agentId: 'custom-agent' },
+  };
+
+  it('焦点态 tab 的 tabIndex === 0（否则 Shift+F10 无从落到它上面）', () => {
+    renderTabItem(terminalTab);
+
+    expect(screen.getByRole('tab')).toHaveAttribute('tabindex', '0');
+  });
+
+  it('contextmenu 已接线：Shift+F10 在浏览器里派发的就是它', () => {
+    const onContextMenu = vi.fn();
+    renderTabItem(terminalTab, [], { onContextMenu });
+
+    fireEvent.contextMenu(screen.getByRole('tab'));
+
+    expect(onContextMenu).toHaveBeenCalledWith('tab-ctx', expect.anything());
   });
 });
 

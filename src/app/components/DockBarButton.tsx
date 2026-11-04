@@ -1,12 +1,28 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 
 import { dockPanelIcons, dockPanelRegistry } from '@/app/dock/registry';
+import { consumePendingFocus } from '@/app/hooks/dockBarFocusHandoff';
 import { cn } from '@/lib/utils';
 import { isViewVisible, type DockSlot, type ViewKey } from '@/shared/dock';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { Badge } from '@/ui/Badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/Tooltip';
+
+/**
+ * `Alt` + 方向键换边的**唯一**键位来源。
+ *
+ * `keydown` 的判据（`key` / 目标槽）与 `aria-keyshortcuts` 的文案（`shortcut`）都从这张表
+ * 派生 —— 手写两处会出现「读屏宣布 Alt+→、实际只认 Alt+←」的静默漂移，而这正好是
+ * 键盘用户唯一能用的换边方式。
+ */
+export const DOCK_BAR_MOVE_BINDINGS = [
+  { key: 'ArrowLeft', slot: 'left', shortcut: 'Alt+ArrowLeft' },
+  { key: 'ArrowRight', slot: 'right', shortcut: 'Alt+ArrowRight' },
+] as const satisfies readonly { key: string; slot: DockSlot; shortcut: string }[];
+
+/** WAI-ARIA：多个快捷键以空格分隔。 */
+export const DOCK_BAR_MOVE_SHORTCUTS = DOCK_BAR_MOVE_BINDINGS.map((b) => b.shortcut).join(' ');
 
 interface DockBarButtonProps {
   view: ViewKey;
@@ -56,6 +72,16 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({
 
   const toggleView = useDockStore((s) => s.toggleView);
 
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // 键盘换边的焦点交接（模块级单次消费）。换边后本按钮在**另一条栏**重新挂载，原 DOM
+  // 连同焦点一起被卸载 —— 不交接的话连按两次方向键就再也对不上目标。只有键盘路径会
+  // 登记（拖拽不抢焦点，见 useDockBarMove）。
+  useEffect(() => {
+    if (!consumePendingFocus(view)) return;
+    buttonRef.current?.focus();
+  }, [view]);
+
   const handleClick = useCallback(() => {
     // openTab 不能走 store 的 toggleView：打开 tab 是 app 层的端口（store 不持有 tab 空间）
     if (activation?.kind === 'openTab') {
@@ -69,12 +95,11 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (!e.altKey || !onMove) return;
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      const target: DockSlot = e.key === 'ArrowLeft' ? 'left' : 'right';
+      const binding = DOCK_BAR_MOVE_BINDINGS.find((b) => b.key === e.key);
       // 已在目标栏：方向键是 no-op（否则「移到同槽且不带下标」会被解释成追加到末尾）
-      if (target === side) return;
+      if (!binding || binding.slot === side) return;
       e.preventDefault();
-      onMove(view, target);
+      onMove(view, binding.slot);
     },
     [onMove, side, view],
   );
@@ -94,6 +119,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({
     <Tooltip>
       <TooltipTrigger asChild>
         <button
+          ref={buttonRef}
           onClick={handleClick}
           onKeyDown={handleKeyDown}
           className={cn(
@@ -102,7 +128,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue',
           )}
           aria-label={ariaLabel}
-          aria-keyshortcuts={movable ? 'Alt+ArrowLeft Alt+ArrowRight' : undefined}
+          aria-keyshortcuts={movable ? DOCK_BAR_MOVE_SHORTCUTS : undefined}
         >
           <span
             className={cn(

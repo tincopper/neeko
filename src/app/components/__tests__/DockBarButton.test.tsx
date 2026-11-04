@@ -7,7 +7,7 @@ import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { TooltipProvider } from '@/ui/Tooltip';
 
-import DockBarButton from '../DockBarButton';
+import DockBarButton, { DOCK_BAR_MOVE_BINDINGS, DOCK_BAR_MOVE_SHORTCUTS } from '../DockBarButton';
 
 const LIBRARY = appViewKey('library');
 const FILES = panelView('files');
@@ -150,6 +150,39 @@ describe('DockBarButton — 键盘等价操作（Alt+←/→ 换边）', () => {
 
     expect(button).toHaveAttribute('aria-keyshortcuts', 'Alt+ArrowLeft Alt+ArrowRight');
     expect(button).toHaveAttribute('aria-label', expect.stringContaining('draggable'));
+  });
+});
+
+describe('DockBarButton — 键位只有一处来源（aria 与 keydown 同源）', () => {
+  it('aria-keyshortcuts 由绑定表派生，不许手写第二份', () => {
+    renderButton(FILES, 'right');
+
+    expect(DOCK_BAR_MOVE_SHORTCUTS).toBe('Alt+ArrowLeft Alt+ArrowRight');
+    expect(screen.getByRole('button', { name: /^Files/ })).toHaveAttribute(
+      'aria-keyshortcuts',
+      DOCK_BAR_MOVE_SHORTCUTS,
+    );
+  });
+
+  it('绑定表的每一行都能真的触发移动，并落到表里声明的槽', () => {
+    for (const binding of DOCK_BAR_MOVE_BINDINGS) {
+      // 按钮必须在**另一侧**，否则「已在目标栏」是 no-op
+      const side: DockSlot = binding.slot === 'left' ? 'right' : 'left';
+      const onMove = vi.fn();
+      const { unmount } = render(
+        <TooltipProvider>
+          <DockBarButton view={FILES} side={side} onMove={onMove} />
+        </TooltipProvider>,
+      );
+
+      fireEvent.keyDown(screen.getByRole('button', { name: /^Files/ }), {
+        key: binding.key,
+        altKey: true,
+      });
+
+      expect(onMove).toHaveBeenCalledWith(FILES, binding.slot);
+      unmount();
+    }
   });
 });
 

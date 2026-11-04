@@ -96,6 +96,17 @@ describe('useDockBarButtons', () => {
     expect(typeof entry.node.props.isTabKindVisible).toBe('function');
   });
 
+  it('每条图标都注入拖拽浮层内容（否则拖拽只剩下源图标 dim，看不出正在拖什么）', () => {
+    const { result } = renderHook(() => useDockBarButtons('right'));
+
+    const entry = result.current[0] as unknown as {
+      view: ViewKey;
+      preview: { props: { view: ViewKey } };
+    };
+    // 浮层内容与条目同身份：拖动时 DragOverlay 用的就是这一条
+    expect(entry.preview.props.view).toBe(entry.view);
+  });
+
   it('种类入口默认在右栏（defaultOnBar: true 是需求本身：图标默认可见）', () => {
     const { result } = renderHook(() => useDockBarButtons('right'));
 
