@@ -39,6 +39,23 @@ export function useAppShell() {
 
 > **注意**：`useWslProjects` / `useRemoteProjects` 已废弃，统一入口请使用 `useConnectionProjects`（见 `features/project/hooks/`）。
 
+#### 组合根在 Provider **之外**：`App.tsx` 里装配的 hook 不得依赖 Context
+
+`App.tsx` 是「先算 header、后渲染 `<AppProviders>`」的形状 —— 在函数体里调用的 hook
+**运行在 Provider 树之上**，任何 `useAppContext()` / `useEditorContext()` 都会在首帧抛错
+（整棵应用进 ErrorBoundary）。所以组合根只允许装配两类东西：
+
+| 允许 | 例子 |
+| --- | --- |
+| 域 store（直接导入） | `useProjectStore` / `useDockStore` |
+| 从 `useAppShell` 取到的**值**（含回调）当参数注入 | `useDockBarOpenTab({ agents, onAgentClick })` |
+
+命令式提示走 store 侧 `notify()`（`shared/store/notificationStore.ts`，`showToast` 与它同一映射），
+**不要**为此抓 `useAppContext`。事故形态（2026-11-03 `11-03-dock-placement` P0→P2）：
+`useDockBarMove` 在组合根用 `useAppContext()` 取 `showToast`，`tsc` 与单测（包了 Provider）全绿，
+真机首帧崩 —— 该类缺陷**只能靠「不包 Provider 渲染」的用例**拦住，见
+`app/hooks/__tests__/useDockBarMove.test.ts` 顶部的注释与写法；新增组合根 hook 必须照抄该用例形态。
+
 ### 2. Context 分发层
 
 用于消除 prop drilling，按职责拆分为细粒度 Context：
@@ -118,19 +135,39 @@ await saveSession(session);
 - `library`：`openLibraryAt`（`src/features/library/store/libraryNavigation.ts`，唯一入口；先置选择态再开 tab，免 deferred 定时器）
 - `normal`：上述视图退出后的兜底
 
-注意：`dockStore` 持久化、`appViewStore` 不持久化。tab-mode 面板与左栏互斥：打开 Library
-即收起左栏（含 Projects）、关闭即恢复原展开态（`openTabView` / `restoreLeftZone`，transient
-不持久化）。禁止在 App.tsx / 业务组件里直接用 `dockStore.zones.*.activePanelId` 判断中心视图。
+注意：`dockStore` 持久化、`appViewStore` 不持久化。中心视图入口与左栏互斥：打开 Library
+即收起左栏（含 Projects）、关闭即恢复原展开态（`enterCenterView` / `exitCenterView`，transient
+不持久化）。禁止在 App.tsx / 业务组件里直接用 `dockStore.zones.*.activeView` 判断中心视图
+（Library 在 `dockStore` 里只是一个 `host:'none'` 的**图标落位**，进不进 zone 由声明表决定）。
 
-### 9. Dock 面板 toggle/activate 框架契约（`dockStore.togglePanel`）
+### 9. Dock 面板 toggle/activate 框架契约（`dockStore.toggleView`）
+
+**落位（placement）是唯一真源**：`placements[ViewKey] = { slot, order, onBar }`，工具栏与 zone
+都是它的派生投影 —— `zones[].panels` 与 `barItems[]` 已删除，所以「图标在 A 侧、面板开在 B 侧」
+不可表示。槽位维度（`slot`/`order`/`onBar`）只经 `moveView` / `setViewOnBar` 修改，能力校验
+（`movable`）在 store 的 action 层。
 
 所有面板切换（dock 栏按钮、快捷键）统一走此契约，禁止各面板自研开关语义：
 
-- **toggle-off 仅当面板当前可见**：同 zone 内已激活且已展开 → 收起；其余一律按**激活**处理
-> （切到该面板并展开）。
+- **toggle-off 仅当该视图当前可见**：它所在槽的前台就是它且已展开 → 收起；其余一律按**激活**处理
+> （切到该视图并展开其所在槽）。
 - **从 tab 视图退出时的本次点击强制激活**：tab 覆盖期间 zone 可见态是过期/被收起的，
 > 此时若走 toggle 会反直觉地关掉用户刚点的面板（如 Library 中点 Projects 反而收起列表）。
 - 快捷键（`toggleDockProjects` 等）复用同一入口，自动获得该语义，无需分支处理。
+
+**三个视图族由 `activation.kind` 显式分支**（不再靠一个 `openAs` 字符串推断）：
+
+| `activation.kind` | 族 | 点击落地 |
+| --- | --- | --- |
+| `toggleZone` | 单例面板 / 槽位 tab 宿主 | `dockStore.toggleView`（上一条契约） |
+| `appView` | 中心全宽视图（Library） | `dockStore.toggleView` → `appViewStore`（与左栏互斥） |
+| `openTab` | 种类级入口（`tabKind:agent-chat` / `tabKind:terminal`） | **app 层** `useDockBarOpenTab`（`useDockBarButtons` 注入给按钮） |
+
+`openTab` **刻意不进 store**：store 不持有 tab 空间，在那里做「找已有 / 新建 / 移动」会把顺序知识
+散到两个模块 —— 所以 `toggleView` 对该分支直接 `return`。落地语义两条：已有该 kind 的 tab 就
+**激活**（在停靠宿主里同时展开宿主），否则新建并**停靠到图标当前所在的槽**（`placements` 读，
+`meta.defaultSlot` 只是兜底 —— 禁止再造一条 `kind → slot` 策略）。无项目 / 拿不到 agent 必须提示，
+静默 no-op 不可接受（`DockBarButton` 只调用注入的 handler，不 import 任何 feature 域）。
 
 ---
 
@@ -710,7 +747,7 @@ serde_json::json!({ "label": &label, "url": &url_str })
 | 切换项目（目标已开浏览器） | isCreated=true | dock 激活 browser 面板 + webview 可见 + bounds 恢复 |
 | 切换项目（目标未开浏览器） | isCreated=false | 右侧 dock 切到 zone 内第一个非 browser 面板；只剩 browser 则收起 |
 | 右侧 dock 收起 | expanded=false | 不打扰布局（decision 返回 none） |
-| 浏览器面板不在右侧 | panels 不含 browser | add-and-activate（togglePanel 重新加入） |
+| 浏览器被用户移到别的槽 | 右槽 views 不含 browser | none（布局是用户决定，切项目不搬动它；`add-and-activate` 已随后位模型删除） |
 
 ### 5. Good/Base/Bad Cases
 

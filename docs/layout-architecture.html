@@ -264,7 +264,7 @@
       ├─ 工作区
       │  └─ &lt;DockLayout&gt;                         <span style="color:var(--muted)">src/layout/dock-layout/ — 纯骨架，禁 import features/app</span>
       │     ├─ toolbarFooterLeft = &lt;ToolbarFooter/&gt; <span style="color:var(--muted)">app/components/ — app 层业务经 slot 注入</span>
-      │        ├─ 左 DockBar（buttons 由 app 注入 slot）
+      │        ├─ 左 DockBar（items 由 app 注入 slot；两栏共用 DockBarDnd 的 DndContext）
       │        ├─ ResizablePanelGroup "neeko-main"（水平）
       │        │   ├─ left-zone  → &lt;DockZone zoneId="left"/&gt;
       │        │   ├─ center-area → {children = &lt;AppCenter/&gt;}
@@ -276,13 +276,13 @@
   </div>
 
   <!-- ═══ 3. Registry 数据流 ═══ -->
-  <h2>③ 双 registry 三层体系（面板如何被找到）</h2>
+  <h2>③ 双 registry + 落位真源（面板如何被找到 / 如何被摆放）</h2>
   <div class="grid">
     <div class="card layer">
-      <h3>Dock 面板（左右区）</h3>
-      <div class="lrow"><b>shared/dock/panelMeta.ts</b><span>纯数据：defaultZone / order / defaultZoneSize + MIN_ZONE_SIZE_PERCENT</span></div>
+      <h3>Dock 视图（左右区）</h3>
+      <div class="lrow"><b>shared/dock/panelMeta.ts</b><span>纯数据：DOCK_VIEW_META —— view / host / activation / defaultSlot / defaultOrder / defaultOnBar / movable + MIN_ZONE_SIZE_PERCENT</span></div>
       <div class="arrow">↓ <b>纯 meta，store 直接依赖</b></div>
-      <div class="lrow"><b>app/dock/registry.ts</b><span>title / icon / lazy 组件 / wrappers 胶水</span></div>
+      <div class="lrow"><b>app/dock/registry.ts</b><span>title / icon / lazy 组件 / wrappers 胶水（按 ViewKey 索引；host≠none 缺 component 即抛）</span></div>
       <div class="arrow">↓ <b>DockRegistryProvider 注入 context</b></div>
       <div class="lrow"><b>layout/DockRegistryContext.tsx</b><span>useDockRegistry() 消费 —— layout 对面板清单零感知</span></div>
       <div class="tagrow">
@@ -302,6 +302,18 @@
         <span class="badge b-amber">mock registry 单测护栏</span>
       </div>
     </div>
+    <div class="card layer">
+      <h3>落位（placement）：谁在哪个槽</h3>
+      <div class="lrow"><b>shared/dock/viewKey.ts</b><span>ViewKey 唯一铸造点（panel: / tabHost: / tabKind: / appView: 前缀）</span></div>
+      <div class="arrow">↓ <b>查表裁定真伪（不解析前缀）</b></div>
+      <div class="lrow"><b>dockStore.placements</b><span>Record&lt;ViewKey, { slot, order, onBar }&gt; —— <b>唯一真源</b></span></div>
+      <div class="arrow">↓ <b>两个派生投影，读同一份数据</b></div>
+      <div class="lrow"><b>DockBar（按 slot + order + onBar）</b><span>与 <b>DockZone（按 slot + activeView）</b></span></div>
+      <div class="tagrow">
+        <span class="badge b-green">「图标在 A / 面板在 B」不可表示</span>
+        <span class="badge b-blue">shared/dock/placement.ts 纯 reducer</span>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ 4. 状态源 ═══ -->
@@ -311,13 +323,18 @@
     <tbody>
       <tr>
         <td><code>dockStore</code></td>
-        <td>左右 zone：面板清单 / 激活 / 展开 / 宽度记忆</td>
-        <td>zustand persist；merge 从 registry 重建面板清单，<b>activePanelId 仍有效才恢复</b>（防悬挂引用），左区展开态重启强制 true</td>
+        <td>左右槽的<b>全部布局事实</b>：落位（谁是哪个槽 / 槽内序 / 有无图标）、槽展开与前台、视图宽度记忆</td>
+        <td>zustand persist v6；<b>placements 是唯一真源</b>，bar 与 zone 都是它的派生投影；merge 每次跑 sanitize（未知视图丢弃 / 非法槽位回默认 / order 归一化 / activeView 悬挂回落首个），左槽展开态重启强制 true</td>
+      </tr>
+      <tr>
+        <td><code>editorStore.editorLayout</code></td>
+        <td>tab 的空间布局：中心组（left/right）+ pinned + <b>docked 组</b>（left/right 两个槽位 tab 宿主）</td>
+        <td>不持久化；<b>docked 组是 tab「在哪个 surface」的唯一表示</b>（不给 <code>Tab</code> 加 surface 字段）；移动只经 <code>dockTab</code> 原子迁移（单次 set 内先全域移除再插入 ⇒ 一条 tab 只在一个组，双 PTY 不可表示）；停靠的实例按当前 workspace 的 tabKey 投影，实例级停靠不持久化</td>
       </tr>
       <tr>
         <td><code>appViewStore</code></td>
-        <td>中心视图路由（normal/skills/settings/library）</td>
-        <td>不持久化；启动时由 useAppShell 把左区 skills 激活态同步回 appView —— <b>单一中心路由源</b></td>
+        <td>中心视图路由（normal/settings/library）</td>
+        <td>不持久化；<code>appView:library</code> 在 dockStore 里只占一个图标落位（host:none，不进 zone），两者经 <code>toggleView</code> 协同 —— <b>单一中心路由源</b></td>
       </tr>
       <tr>
         <td><code>taskStore / debugStore</code></td>
@@ -345,11 +362,11 @@
     <div class="card">
       <h3>新增 Dock 面板（进左右区）</h3>
       <ul>
-        <li><code>shared/dock/panelMeta.ts</code> — 加 meta（zone/order）</li>
-        <li><code>app/dock/registry.ts</code> — 加 title/icon/lazy 绑定</li>
+        <li><code>shared/dock/panelMeta.ts</code> — 加一行 <code>row(panelView('x'), { host, activation, defaultSlot, defaultOrder })</code></li>
+        <li><code>app/dock/registry.ts</code> — 按同一个 ViewKey 加 title / icon / lazy 绑定</li>
         <li>需要 props 胶水时：<code>app/dock/wrappers/</code> 每面板一文件</li>
       </ul>
-      <details><summary>为什么这样</summary>registry 建表缺失绑定会抛错（buildDockPanelRegistry fail-fast）；layout 与 dockStore 完全不动。</details>
+      <details><summary>为什么这样</summary>registry 建表缺失绑定 / host≠none 缺 component 都会抛（buildDockPanelRegistry fail-fast）；layout 与 dockStore 完全不动，图标落位与 zone 渲染自动多一项。</details>
     </div>
     <div class="card">
       <h3>新增底部固定面板</h3>
@@ -361,13 +378,23 @@
       <details><summary>护栏</summary>PanelHost 过滤逻辑有 mock registry 单测；registry.test 守护 id 唯一 / placement 合法 / Component 存在。</details>
     </div>
     <div class="card">
+      <h3>新增一个可停靠 tab 种类（种类级入口）</h3>
+      <ul>
+        <li><code>shared/dock/panelMeta.ts</code> — 加一行 <code>row(tabKindView('x'), { host:'none', activation:{kind:'openTab', tabKind:'x'}, defaultSlot:'right', defaultOrder, defaultOnBar:true })</code></li>
+        <li><code>app/dock/registry.ts</code> — 加 title / icon（<code>host:'none'</code> ⇒ 不需要 component）</li>
+        <li><code>app/hooks/useDockBarOpenTab.ts</code> — 补一条创建分支（<code>OPENABLE_TAB_KINDS</code> 加成员后 switch 穷尽性会报错）</li>
+      </ul>
+      <details><summary>为什么这样</summary>落地槽不写第三条策略：<b>新 tab 落在图标当前所在的槽</b>（<code>placements</code> 读，图标在哪栏就是答案），<code>meta.defaultSlot</code> 只作兜底。已有同类 tab 就只激活（含展开其宿主），所以“点两次开出两条”在构造上不发生。创建端口在 app 层（<code>openTab</code> 分支不直接写在 store 里：store 不持有 tab 空间）。</details>
+    </div>
+    <div class="card">
       <h3>未来 Step 3：bottom 进布局</h3>
       <ul>
-        <li>DockLayout 顶层加垂直嵌套 Group，bottom-zone 入布局</li>
-        <li>dockStore 加 bottom zone 独立状态；复用 <code>useZoneExpandCollapse</code></li>
+        <li>DockLayout 顶层加垂直嵌套 Group，bottom 槽入布局</li>
+        <li><code>DockSlot</code> 联合加 <code>'bottom'</code>，并补一条 <code>DOCK_SLOTS</code>；<code>placements</code>/<code>zones</code> 的派生逻辑全部遍历该数组，不需要逐处加分支</li>
+        <li>dockStore 的槽状态按 <code>Record&lt;DockSlot, …&gt;</code> 扩展；复用 <code>useZoneExpandCollapse</code></li>
         <li>触发条件：unified-task-hub 面板进底部，或底部需要拖拽/收起</li>
       </ul>
-      <details><summary>已知风险</summary>react-resizable-panels 嵌套 Group 有历史 bug（pin tab → handle 失效）；实施时必须回归 pin-then-open 路径。ZoneId 联合类型已就绪（'left' | 'right'，届时扩展 'bottom'）。</details>
+      <details><summary>已知风险</summary>react-resizable-panels 嵌套 Group 有历史 bug（pin tab → handle 失效）；实施时必须回归 pin-then-open 路径。sanitize 的「左槽强制展开」目前是特例，bottom 落地时需同时定义它的重启默认态。</details>
     </div>
   </div>
 
@@ -385,21 +412,22 @@
       tags: [['layout 纯骨架', 'b-green'], ['slot 注入', 'b-blue']],
     },
     dockbar: {
-      name: 'DockBar（左 / 右）', path: 'src/layout/dock-layout/DockBar.tsx',
+      name: 'DockBar（左 / 右）', path: 'src/layout/dock-layout/DockBar.tsx + DockBarDnd.tsx',
       points: [
-        'w-11 工具条，role="toolbar"；buttons 是 ReactNode[] prop',
-        '按钮装配在 <code>app/hooks/UseDockBarButtons</code>（读 feature store），经 AppShell slot 传入',
-        '按钮点击 → dockStore.togglePanel —— 骨架不认识任何具体面板',
+        'w-11 工具条，role="toolbar"；条目是 { view, node }[]（拖动与排序需要视图身份，不只是 DOM）',
+        '按钮装配在 <code>app/hooks/UseDockBarButtons</code>（只读 placements），经 AppShell slot 传入',
+        '两栏<b>共用</b>一个 DndContext（DockBarDnd）：跨栏移动使它们属于同一个排序区域；栏容器本身也是 droppable（空栏可落）',
+        '按钮点击 → <code>dockStore.toggleView</code>（按 activation.kind 分发）；Alt+←/→ 换边 —— 骨架不认识任何具体面板',
       ],
-      tags: [['slot 注入', 'b-blue'], ['OCP', 'b-green']],
+      tags: [['slot 注入', 'b-blue'], ['OCP', 'b-green'], ['@dnd-kit', 'b-purple']],
     },
     leftzone: {
       name: 'left-zone（左停靠区）', path: 'src/layout/dock-layout/DockZone.tsx + DockLayout.tsx',
       points: [
-        'ResizablePanel：默认 18%（dockStore.leftPanelSize），min 12%（MIN_ZONE_SIZE_PERCENT 单源）max 35%，可折叠',
-        'DockZone 渲染该区<b>全部</b>面板，非活跃用 CSS hidden —— 切换不卸载，state / lazy chunk 不丢',
+        'ResizablePanel：默认 18%（dockStore.leftSlotSize），min 12%（MIN_ZONE_SIZE_PERCENT 单源）max 35%，可折叠',
+        'DockZone 渲染该槽落位里<b>全部有组件的视图</b>，非活跃用 CSS hidden —— 切换不卸载，state / lazy chunk 不丢',
         '展开/收起走 <code>useZoneExpandCollapse</code>：expand → 双 rAF → resize(记忆宽度)；rAF 随 effect 清理取消',
-        '默认面板：projects（激活）+ skills；library 是 tab-mode 不入 zone',
+        '默认落位：projects + library 入口（后者 host:none，只上 bar 不进 zone）',
       ],
       tags: [['宽度记忆', 'b-blue'], ['状态保持', 'b-green']],
     },
@@ -407,18 +435,19 @@
       name: 'center-area（中心工作区）', path: 'src/app/components/AppCenter.tsx',
       points: [
         '只读 <code>appViewStore.appView</code> 决定渲染 —— 单一中心路由源',
-        'normal → ProjectView（终端/编辑器/Agent）；skills 激活挂载；settings/library 条件渲染',
-        '写入方受控：toolbar / dockStore 耦合面板（skills）/ tab-mode（library），禁止业务组件直读 zone 状态判断视图',
+        'normal → ProjectView（终端/编辑器/Agent）；settings/library 条件渲染',
+        '写入方受控：toolbar / dockStore 的 appView 类落位（library），禁止业务组件直读 zone 状态判断视图',
         'min 20%，永不折叠',
       ],
       tags: [['单一数据源', 'b-green'], ['路由', 'b-blue']],
     },
     rightzone: {
-      name: 'right-zone（右停靠区）', path: 'src/layout/dock-layout/DockZone.tsx + dockStore.rightPanelSizes',
+      name: 'right-zone（右停靠区）', path: 'src/layout/dock-layout/DockZone.tsx + dockStore.placements/viewSizes',
       points: [
-        '默认收起；面板级宽度记忆（rightPanelSizes，browser 默认 50%），min 12% max 80%',
+        '默认收起；视图级宽度记忆（viewSizes，键=ViewKey，browser 默认 50%），min 12% max 80%',
+        '可见性 = 「该槽有带组件的落位」与 expanded；host:none 的入口即使落在右栏也不会开出一座空岛',
         '拖动只在 pointer-up 持久化（Group onLayoutChanged + isUserInteraction 过滤），拖动期间零 store 写入 —— 无去抖、无负反馈',
-        '激活面板切换时立即 resize 到目标宽度；默认面板：files / gitControl / pullRequests / browser / conversations / search',
+        '前台切换时立即 resize 到目标宽度；默认落位：files / gitControl / pullRequests / browser / conversations / search',
       ],
       tags: [['宽度记忆', 'b-blue'], ['pointer-up 持久化', 'b-purple']],
     },

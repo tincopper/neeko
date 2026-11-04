@@ -53,8 +53,27 @@
 | Local 项目 | `ProjectsPanel.tsx` | `useLocalProjects.handleDragEnd(draggedId, targetId)` |
 | WSL entry 内 | `RemoteItems.tsx > WSLItem` | `useWslProjects.handleWslDragEnd(entryId, draggedId, targetId)` |
 | Remote entry 内 | `RemoteItems.tsx > RemoteItem` | `useRemoteProjects.handleRemoteDragEnd(entryId, draggedId, targetId)` |
+| 左右 DockBar（**共用同一个**） | `DockBarDnd.tsx`（DockLayout 顶层） | `onMoveView(view, slot, index)` → `dockStore.moveView` |
 
 跨 entry 拖拽不支持（每个 entry 独立的 DndContext 天然隔离）。
+
+#### 偏差：左右两条 DockBar 必须共用**一个** DndContext
+
+上表最后一行是本节的**有意例外**（2026-11-03 `11-03-dock-placement` P0）：
+
+- 需求是「图标可从左栏拖到右栏」，而 **dnd-kit 不支持跨 `DndContext` 拖拽**。拆成两个 context
+  的话，跨栏移动在构造上不可能 —— 不是难写，是库层面没有事件通路。
+- 因此「一个排序区域」的判据不是「一块 DOM」，而是「一次排序操作能触及的 id 集合」：
+  跨栏移动使左右两栏构成**同一个**排序语义区域。
+- 落点解析保持纯粹：`resolveDropTarget(overId, slotViews)` 只把 id 翻译成 `(slot, index)`
+  （栏容器 marker → 追加；某条图标 → 它所在栏 + 槽内下标）。**id 里不编码槽位** ——
+  那样槽位就有了第二份表示，图标换边后还可能读到过期值。
+- 不得再拆的理由反过来也成立：两个 context 各自只能看见自己那一栏的 droppable，
+  `over` 永远是本栏元素（含本栏容器），于是「拖出去」只能被解释成「拖回本栏末尾」。
+
+键盘等价操作不走 dnd 的 `KeyboardSensor`，而是在按钮上直接给 `Alt+←/→`
+（`DockBarButton`）：`KeyboardSensor` 的激活键是 Space/Enter，与按钮自身的激活语义
+叠在同一节点上就说不清该发生哪一件事（同 §4 上方「只接指针」的理由）。
 
 ### 5. 可排序卡片组件契约
 

@@ -87,7 +87,7 @@ export function useAgentActions(params: {
 // src/shared/hooks/useKeyboardShortcuts.ts（真实用法，节选）
 const projectId = useProjectStore.getState().activeProjectId;
 const worktreePath = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
-useDockStore.getState().togglePanel('projects');
+useDockStore.getState().toggleView(panelView('projects'));
 ```
 
 该模式用于跨域读取场景。领域状态直接由各自的域 store 持有。把「视图状态 + 动作引用」回写到

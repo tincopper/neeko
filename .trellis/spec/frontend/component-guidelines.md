@@ -334,7 +334,7 @@ async 作用域且永不收敛 ⇒ 后续渲染全部丢失（表现为「明明
 ### 状态规约
 
 1. **Panel 自身不持有宽度**：`defaultSize` 绑定 owning store 的百分比值（如 dock 的
-> `leftPanelSize`、Library 的 `navSize`，默认 18 与应用侧栏比例一致）。
+> `leftSlotSize`、Library 的 `navSize`，默认 18 与应用侧栏比例一致）。
 2. **Group 级 `onLayoutChanged` 提交**：pointer-up 语义 + `meta.isUserInteraction` 过滤
 > 程序性变化（挂载/imperative resize），回调内经 `panelRef.current?.getSize().asPercentage`
 > 读最终值写入 store——写入天然不与拖动并发，无需去抖（见 `DockLayout.handleLayoutChanged`）。
@@ -347,7 +347,7 @@ async 作用域且永不收敛 ⇒ 后续渲染全部丢失（表现为「明明
 
 | 层级 | Group 归属 | 尺寸存哪 | 示例 |
 |---|---|---|---|
-| 窗口级三分栏 | `DockLayout`（`neeko-main`） | `dockStore`（`leftPanelSize`/`rightPanelSizes`） | Projects 所在左 zone |
+| 窗口级三分栏 | `DockLayout`（`neeko-main`） | `dockStore`（`leftSlotSize`/`viewSizes`，键=ViewKey） | Projects 所在左 zone |
 | 面板内两栏 | 面板自身（如 `LibraryPanel#library-split`） | 面板域 store（如 `libraryStore.navSize`） | Library 导航列/详情列 |
 
 ### 海面几何（唯一来源 `src/layout/islands.ts`）

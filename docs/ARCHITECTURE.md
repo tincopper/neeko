@@ -581,11 +581,11 @@ skillStore (Zustand, no persist)
   ├── activeSkillView: SkillView
   └── searchQuery / selectedSkillId / activeTagGroupId
 
-dockStore (Zustand + persist: localStorage)
-  ├── zones: Record<string, DockZoneState>
-  ├── barItems: DockBarItem[]
-  ├── rightPanelSizes: Record<string, number>
-  └── leftPanelSize: number
+dockStore (Zustand + persist: localStorage, version 6)
+  ├── placements: Record<ViewKey, DockPlacement>   ← 「谁在哪个槽 / 槽内序 / 有无图标」唯一真源
+  ├── zones: Record<DockSlot, { expanded, activeView }>
+  ├── viewSizes: Record<ViewKey, number>
+  └── leftSlotSize: number
 
 appViewStore (Zustand)
   └── appView: "normal" | "skills" | "settings"
