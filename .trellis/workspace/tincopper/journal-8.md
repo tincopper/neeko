@@ -1582,3 +1582,36 @@ Session summary was not supplied.
 ### Next Steps
 
 - 待用户实机验证：右栏收起且有 1 条 chat 时，从侧栏点第二个会话应直接浮出右栏
+
+
+## Session 410: dock-placement P4-P6: user-verified in the app
+<!-- trellis-session: v=2 fp=3d0fd0ad3b7ca8fe -->
+
+**Date**: 2026-11-04
+**Task**: dock-placement P4-P6: user-verified in the app
+**Branch**: `main`
+
+### Summary
+
+用户实机确认三处行为均正常：①右栏 Terminal 图标不再顶掉项目引导页 ②右侧无停靠 tab 时不留空岛/不显示操作说明 ③右栏收起且已有 chat 时点第二个会话会浮出。
+
+### Main Changes
+
+- 本次未改代码；仅记录验证结果与待办交接（代码仍未提交）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 验证结论来源：用户在 neeko 里手动走 引导页 / Terminal 图标 / 侧栏会话三条路径
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 待提交：28 个文件（P4 中心区判据 / P5 zone 可见性从内容派生 / P6 到达即前置 + 审计清理）；建议按 P4/P5+P6 两次提交
+- 待决定：11-03-dock-placement 任务是否 finish-work 归档；src-tauri/src/common/db/migrations.rs 的 LATEST_VERSION 18 是用户在途改动（migrate_step 尚无 13..=17 分支，cargo test 会红）

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 409
+- **Total Sessions**: 410
 - **Last Active**: 2026-11-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1584 | Active |
+| `journal-8.md` | ~1617 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 410 | 2026-11-04 | dock-placement P4-P6: user-verified in the app | - | `main` |
 | 409 | 2026-11-04 | dock-placement P6-2b: reveal judges on tab count increase, not boolean flip | - | `main` |
 | 408 | 2026-11-04 | dock-placement P6: reveal on content arrival moved to app layer + audit cleanup | - | `main` |
 | 407 | 2026-11-04 | dock-placement P5: zone visibility derived from content (empty tab host takes no space) | - | `main` |
