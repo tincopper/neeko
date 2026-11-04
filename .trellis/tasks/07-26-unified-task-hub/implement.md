@@ -200,6 +200,25 @@ pnpm check:quick   # 收尾一次
 | `dockStore.test` 的「Library 中点 Tasks → 左栏保持收起」 | 删除 | — | 与新行为直接冲突；已由「要把左栏放回来」取代 |
 | `DockBarButton.test` 的「打开 tasks 收起左栏」 | `expanded === false` | `expanded === true` | 同上 |
 
+## 进度（2026-11-03c，内容岛承接所有状态）
+
+> 用户反馈（附截图）：「中间弄一个面板承接内容，像 tab 内容显示一样」。
+
+**根因**：`TasksPanelBody` 的空态 / 加载中 / 无匹配 / 未绑定项目四档都返回裸 `<p>` / 裸 `<div>`，
+直接画在面板根的海面上 —— 看起来不像「面板的内容」，而像「面板没渲染完」。
+
+| 改动 | 文件 | 说明 |
+| --- | --- | --- |
+| 四档「无行」状态统一包进内容岛 | `TasksPanelBody.tsx` | `<Island data-testid="tasks-content-island" className="flex-1">`；判据 = **状态不改变表面层级** |
+| 有数据时**不**包岛 | 同上 | 看板 / 列表自带分栏与岛屿，再包一层就是岛中岛 |
+| 读失败且从未成功仍返回 `null` | 同上 | 顶部横幅已解释原因；摆空岛会让人以为「加载成功只是没数据」 |
+
+### 测试账（2026-11-03c）
+
+`pnpm vitest run src/features/work-items src/app` → **403 条绿**（59 文件）。
+新增用例 3 条：空项目 / 未绑定项目 / 搜索无匹配 —— 三条都断言「文字住在岛里」（`islandOf` 向上找
+`rounded-lg` 祖先）且 `tasks-content-island` 存在。
+
 ## 进度（2026-11-02）
 
 | 子任务 | 状态 | 落地 |
