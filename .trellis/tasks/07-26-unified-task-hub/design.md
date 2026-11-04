@@ -470,6 +470,50 @@ Provider 连接/断开在 **Settings → Integrations** 中管理，Tasks 面板
 `useDefaultLayout({ id, panelIds, onlySaveAfterUserInteractions: true })`
 （`TeamListPane` 同款，理由见 `component-guidelines.md`「变体：面板没有 owning persisted store 时」）。
 
+### 4.2c 中心视图的左栏策略与项目级入口（2026-11-03 修订）
+
+> 触发：用户反馈「Tasks 应该显示在中间区域，不要占用整个平面，左侧的 projects 需要支持打开关联的」。
+> 事实：`openAs: 'tab'` 的视图一律收起左栏（`dockStore.openTabView`），于是 Tasks 一打开
+> Projects 就消失 —— 而 Tasks 的内容（看板列）本来就不需要整幅宽度来「独占」。
+
+#### 左栏策略必须是**每个 tab 视图自己的属性**
+
+`DockPanelMeta` 新增 `collapseLeftZone?: boolean`（缺省 `true` = 收起左栏）：
+
+| 视图 | `collapseLeftZone` | 理由 |
+| --- | --- | --- |
+| Library | 缺省（`true`） | 两栏 master-detail，导航列已在面板内部；再摆一个 Projects 就是三层导航 |
+| Tasks | **`false`** | 它只需要**中间区**。左栏 Projects 是「切项目」的入口，关掉它等于把上下文藏起来 |
+
+实现（`openTabView`）：
+
+```
+记着展开态（只在「从 normal 进来」时记）
+→ 左栏 expanded = (collapseLeftZone === false)
+```
+
+为什么不是「Tasks 不收左栏」一个特例：特例会漂移（新增第三个中心视图时没人记得它）。
+属性写在 `DOCK_PANEL_META` 里，新增视图时**必须回答**这个问题。
+
+#### 项目级入口（左侧 Projects → 本项目的 Tasks）
+
+入口落在**项目卡片**上（`ProjectItem`）：
+
+| 入口 | 位置 | 语义 |
+| --- | --- | --- |
+| 悬停图标按钮 | `ProjectGroup` header 的 hover 槽位（Git 菜单旁） | 一次点击 |
+| 右键菜单项 | 项目右键菜单 | 与其它项目级动作同列 |
+
+两个入口共用**一个**动作：`onOpenTasks(projectId)`，语义是「先选中这个项目，再进 Tasks」——
+不是「进 Tasks 然后自己找项目」。后者会让 Tasks 面板的 `projectId` 与激活项目分叉（
+工作项是按项目存的，看错项目就是看错数据）。
+
+**单一真相**：`onOpenTasks` 由 app 层组合（`useAppShellData` 的 cross actions），
+内部只做两件事 —— `selectProject(projectId)` + `setAppView('tasks')`。
+项目卡不自己拼 store，也不自己算「当前该看谁」。
+
+---
+
 ### 4.2a 连接提示与空态（Connect Banner）
 
 Tasks 面板不展示 Source Strip 卡片（占空间、低频、与 Settings 重复）。

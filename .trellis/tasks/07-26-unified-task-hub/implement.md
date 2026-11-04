@@ -173,6 +173,33 @@ pnpm check:quick   # 收尾一次
 `pointerdown`（capture），按指针到分隔条的距离判命中；jsdom 里 rect 全 0×0、坐标全 0 ⇒ 距离恒 0
 ⇒ 任何点击都把焦点抢给分隔条。这是 jsdom 测量缺失，不是真实行为（坑已记入 spec）。
 
+## 进度（2026-11-03b，左栏策略 + 项目级入口）
+
+> 用户反馈：「Tasks 应该显示在中间区域，不要占用整个平面，左侧的 projects 需要支持打开关联的」。
+
+| # | 动作 | 落地 |
+| --- | --- | --- |
+| 1 | 左栏策略成为**每视图属性** | `shared/dock/types.ts` 新增 `collapseLeftZone?`；`panelMeta.ts` 的 tasks 设 `false` |
+| 2 | `openTabView` 按属性决定展开态 | `dockStore.ts`：`expanded = !collapseLeftZone`（不再一律收起） |
+| 3 | 项目级入口 | `useProjectItemMenu`（右键菜单项）+ `ProjectGroup.onOpenTasks`（悬停图标）+ `ProjectItem` 接线 |
+| 4 | 动作组合 | `app/hooks/useOpenProjectTasks.ts`（新）：`selectProject` → `setAppView('tasks')`；经 `ProjectActionsContext.onOpenTasks` 注入 |
+| 5 | 图标别名 | `shared/components/icons`：`ListChecksIcon` |
+
+### 测试账（2026-11-03b）
+
+`pnpm vitest run src/app src/features/project src/shared src/features/work-items` → **1833 条绿**（190 文件）。
+新增用例：`dockStore` 两条（Tasks 不收左栏 / Library→Tasks 要把左栏放回来）、`ProjectItem` 三条
+（右键项 / 悬停按钮 / 未注入时不渲染）、`useOpenProjectTasks` 三条（顺序、非开关、跨视图）、
+`buildAppShellValues` 一条（`onOpenTasks` 穿透）。
+
+### 有意识改动的存量用例（本轮）
+
+| 用例 | 原断言 | 现断言 | 理由 |
+| --- | --- | --- | --- |
+| `dockStore.test` 的「点 Tasks → 左栏收起」 | `expanded === false` | `expanded === true` | Tasks 改为不收左栏 |
+| `dockStore.test` 的「Library 中点 Tasks → 左栏保持收起」 | 删除 | — | 与新行为直接冲突；已由「要把左栏放回来」取代 |
+| `DockBarButton.test` 的「打开 tasks 收起左栏」 | `expanded === false` | `expanded === true` | 同上 |
+
 ## 进度（2026-11-02）
 
 | 子任务 | 状态 | 落地 |
