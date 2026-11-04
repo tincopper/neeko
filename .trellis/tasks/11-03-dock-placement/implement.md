@@ -10,7 +10,8 @@
 | P0 | 图标落位可编辑 + 持久化 | `shared/dock`、`shared/store/dockStore`、`layout/dock-layout`、`app/dock`、`app/components` | 低（不碰 tab） | ✅ |
 | P1 | 槽位 tab 宿主 + tab 停靠（菜单入口） | `shared/types/editorGroup`、`shared/store/editorStore+selectors`、`features/editor`、`features/dock-tabs`、`app/utils` | 中（编辑布局不变量） | ✅ |
 | P2 | 种类级入口 + 快速打开 | `shared/dock/panelMeta`、`app/dock/registry`、`app/hooks`、`features/live-sessions`（只读复用） | 低（装配） | ✅ |
-| P3 | 拖拽贯通 + a11y 收尾 | `features/editor`（DndContext 上提）、`layout` | 高（DndContext 提升） | ✅ |
+| P3a | 拖拽浮层 + 键盘焦点保持 + a11y 护栏 | `layout/dock-layout`、`app/components`、`app/hooks` | 低 | ✅ |
+| ~~P3b~~ | ~~把 tab 拖到工具栏（需上提 `DndContext`）~~ | — | — | **取消**（收益<风险，理由见 P3 段） |
 
 ---
 
@@ -146,18 +147,56 @@
 
 ---
 
-## P3 · 拖拽贯通 + a11y 收尾
+## P3 · 反馈与键盘可访问性（P3b 已取消）
 
-> 高风险段：`DndContext` 提升会触及现有 tab 拖拽（含 pin）。必须先补回归测试再动。
+> **P3b（把 tab 拖到工具栏）不做**，判断依据见下方「取消理由」。本节只交付 P3a。
 
-- [ ] **先补** 回归测试：`TabItem.test.tsx` / `EditorDndShell` 相关（拖拽到另一组、拖到 pin zone、拖拽后 handle 可用）。
-- [ ] 把 `EditorDndShell` 的 `DndContext` 上提到工作区层（包住 `DockLayout` + center），`DockBarDnd` 从独立 context 改为消费者。
-- [ ] tab → 工具栏：`over` 命中 `bar:<slot>` → `moveTabToSlot(tabKey, tabId, slot)`。
-- [ ] 工具栏 → tab 区：图标拖到 center/doc host → `moveView` 回退（仅 `singleton` 有意义，`none` 族拒绝）。
-- [ ] a11y：拖拽的全键盘替代（`Alt+←/→` 移图标、`Alt+Shift+←/→` 移 tab）；`aria-describedby` 说明快捷键；焦点环不丢。
-- [ ] 手测 pin-then-open 全链路（C2 第二次防线）。
+### P3a（本次交付）
 
-**回滚点 R-P3**：DndContext 提升单独一个提交，revert 即回到 P2 行为（菜单入口仍在）。
+- [x] 工具栏图标拖拽的跟手预览：`useDockBarDnd`（可单测的 hook，与 `useEditorDnd` 同构）+ `DragOverlay`；
+      浮层内容由 app 注入（`DockBarEntry.preview`），`layout/` 仍不 import `app/dock/registry`。
+- [x] 键盘换边的焦点保持：`Alt+←/→` 后图标在另一条栏重新挂载，原 DOM 连同焦点被卸载 —— 用模块级
+      单次交接（`dockBarFocusHandoff`，与 `useFileDrop` 的 `pendingDrag` 同构）把焦点交给新按钮；
+      **只有键盘路径登记**（拖拽不抢焦点）。
+- [x] 回归护栏：tab 右键菜单的键盘到达（`role="tab"` / 焦点态 `tabIndex` / `contextmenu` 接线）、
+      `aria-keyshortcuts` 与 keydown 判据同源于 `DOCK_BAR_MOVE_BINDINGS`。
+
+### P3c · PRD C 组缺口补齐（2026-11-03 追加）
+
+三条是 PRD 里**功能未实现**、不是没验的项，交付如下：
+
+- [x] **C4 新 tab 默认进 dock**：`DockViewMeta.docksNewTabs`（能力位，仅 `agent-chat` 为 true）+
+      `shared/store/tabSurfacePolicy`（**单槽**注册表，仿 `registerTabCleanup`）+
+      `app/dock/registerNewTabDockPolicy`（由 `bootstrap()` 注册，槽位读 `placements` 里图标当前所在槽）+
+      `editorStore.addTab` 在**无显式 targetGroup** 时问一次策略。于是 4 个入口（图标 / 侧栏会话行 /
+      Action Menu / 项目引导页）共用同一落点，不需要各改一遍。
+- [x] **C2/C3 图标接回会话**：`selectLatestSessionForUnit`（纯选择器：unit + kind + `isListedSession`，
+      取 `startedAt` 最大，**不依赖数组顺序**）+ `SESSION_KIND_OF_TAB_KIND`（唯一映射）→
+      `useDockBarOpenTab` 在新建**之前**委派 `useActivateSession`（与侧栏点会话行同一条链，含
+      attach / resume）。无命中才新建。
+- [x] **DockTabHost 空 → 非空揭示**：与已实现的「非空 → 空则收起」对称，同一 `prevCountRef` 跃迁判断
+      （每次渲染都跑会把用户手动收起的宿主立刻重新展开）。
+
+红证据（三处同时禁用后）：8 条用例失败，恢复后全绿。
+
+### P3b 取消理由（不再作为待办）
+
+计划的收益是「把 tab 拖到工具栏图标上」，代价是把 `EditorDndShell` 的 `DndContext` 上提到
+`DockLayout` 之上：
+
+1. **一个 context 会同时承载两个 id 空间**（`ViewKey` 与 `tabId`），`onDragEnd` 必须先判断
+   「这是图标还是 tab」—— 正是本任务用三轮消除掉的「一份状态两种命名」。
+2. **tab 列表要在编辑器之上二次派生**（`useEditorDnd` 需要 `leftTabs/rightTabs/pinnedTabs`），
+   与「单一派生点」直接冲突。
+3. **收益已被替代品覆盖**：右键菜单已有 Move to Left/Right Dock / Move to Center，且
+   `TabItem` 可键盘到达（`role="tab"` + Enter/Space + `contextmenu`）。
+4. 该拖拽系统已有三次事故记录（pin→handle 失效、关闭按钮 pointer 泄漏、动态 `PinDropZone` 的
+   `MeasuringStrategy.Always`），为一个重复手势承担回归风险不划算。
+
+重新开启的判据（届时再评估，而不是「计划里写了就做」）：有用户实际反馈「在拖 tab 找落点」，
+或侧栏会话行需要拖到 zone。
+
+**回滚点 R-P3a**：浮层与焦点交接都是纯增量（新增文件 + 两个端口），revert 即回到纯指针拖拽 + 焦点丢失的旧行为。
 
 ---
 
@@ -195,6 +234,6 @@ pnpm check:quick
 2. `dock-bar-dnd`（P0-4 ~ P0-6）
 3. `dock-tab-host`（P1-1 ~ P1-3）
 4. `dock-tab-entry`（P1-4 + P2）
-5. `dock-dnd-unify`（P3）
+5. ~~`dock-dnd-unify`~~（P3b 已取消）
 
 顺序即依赖顺序；2 可与 1 并行到"接口冻结"（`applyMove` 签名 + `onMoveView` 契约）。

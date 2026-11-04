@@ -321,7 +321,7 @@ merge: (persisted, current) => ({ ...current, ...sanitize(persisted), viewSizes:
 | 把 tab surface 存进 `Tab` | 与 `editorLayout` 形成第二份表示（分叉风险），且 `Tab` 不持久化使差异无收益 |
 | 把 tab surface 存进 `dockStore` | 违反 I4（跨项目污染） |
 | 用 HTML5 Drag API 拖图标 | 项目已明令禁止（`interaction-patterns.md` §8：Windows/Tauri 冲突） |
-| 让 tab 拖拽直接跨 `DndContext` | dnd-kit 不支持；强行提升 context 有 pin/handle 回归风险 → 推迟 P3 |
+| 让 tab 拖拽直接跨 `DndContext`（P3b） | **取消**：一个 context 同时承载 `ViewKey` 与 `tabId` 两个 id 空间，`onDragEnd` 必须先判断来源；且 tab 列表要在编辑器之上二次派生。收益（另一个手势）已由右键菜单 + 键盘可达覆盖，而该系统有 pin/handle 等三次事故史 |
 | 与 spec 偏差：两栏共用**一个** `DndContext` | spec §4 要求「每个独立排序区域一个 DndContext」。本需求**跨两栏移动**使两栏成为同一排序语义区域；若拆成两个 context，跨栏拖动不可能（R6）。偏差需在实现 PR 描述与 spec 增补中显式记录 |
 
 ## 12. 与既有规范的对照
