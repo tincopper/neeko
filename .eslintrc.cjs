@@ -8,7 +8,8 @@
 // **本清单必须在同一 diff 内追加一行**，否则护栏红。
 const FEATURE_DIRS = [
   'action-menu', 'agent', 'agent-chat', 'browser', 'connection', 'conversation',
-  'editor', 'file', 'git', 'library', 'live-sessions', 'lsp', 'notification', 'project',
+  'dock-tabs', 'editor', 'file', 'git', 'library', 'live-sessions', 'lsp',
+  'notification', 'project',
   'quick-open', 'runner', 'search', 'session', 'settings', 'skill', 'status-bar',
   'symbol-nav', 'task', 'terminal', 'theme',
 ];

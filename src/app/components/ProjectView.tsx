@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/shallow';
 
+import { useMoveTabToSlot } from '@/app/hooks/useMoveTabToSlot';
 import { useProjectAgents } from '@/app/hooks/useProjectAgents';
 import { useRemoteProjectSession } from '@/app/hooks/useRemoteProjectSession';
 import { useTerminalTabs } from '@/app/hooks/useTerminalTabs';
@@ -21,6 +22,7 @@ import { useRecentFilesStore } from '@/features/quick-open/store/recentFilesStor
 import { insertToSessionTerminal } from '@/features/terminal';
 import { KeyRound } from '@/shared/components/icons';
 import { useEditorContext, useAppContext, useTerminalInsert } from '@/shared/contexts';
+import { panelView } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -126,6 +128,12 @@ function ProjectView() {
     [activeProject],
   );
 
+  // tab → 槽位 / 回中心：编排只有一处（app/utils/tabSurface），这里只把 false 翻成提示。
+  // 没有激活项目时 tabKey 是 App 空间键 —— 槽位宿主只投影 workspace 的 tab（I4），
+  // 移到那里不会有渲染点，因此这种情况不提供入口（undefined = 菜单不出现在 dock 项）。
+  const handleMoveTabToSlot = useMoveTabToSlot(currentProjectId ? tabKey : null);
+  const moveTabToSlotAction = currentProjectId ? handleMoveTabToSlot : undefined;
+
   // ── Action Palette ──
   const handlePaletteExecute = useCallback(
     (item: ActionRegistryItem) => {
@@ -146,7 +154,7 @@ function ProjectView() {
           break;
         }
         case 'open-side-terminal':
-          useDockStore.getState().togglePanel('projects');
+          useDockStore.getState().toggleView(panelView('projects'));
           break;
         case 'open-in-ide': {
           if (activeProject) {
@@ -258,6 +266,7 @@ function ProjectView() {
           onAddTerminalTab={handleAddTerminalTab}
           remoteProject={remoteProjectProp}
           buildLayoutId={handleBuildLayoutId}
+          onMoveTabToSlot={moveTabToSlotAction}
         />
       ) : hasActiveProject && activeProject ? (
         <ProjectGuidePage

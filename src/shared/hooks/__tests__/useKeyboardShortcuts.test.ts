@@ -161,6 +161,10 @@ function seedTwoTabEditor() {
         pinnedTabIds: [],
         pinnedActiveTabId: null,
         pinnedPanelRatio: 0.35,
+        docked: {
+          left: { tabIds: [], activeTabId: null },
+          right: { tabIds: [], activeTabId: null },
+        },
         groups: {
           left: { tabIds: ['t0', 't1'], activeTabId: 't1' },
           right: { tabIds: [], activeTabId: null },

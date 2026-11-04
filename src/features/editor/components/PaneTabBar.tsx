@@ -3,23 +3,27 @@ import React from 'react';
 import { ActionMenuDropdown, getActionMenuItems } from '@/features/action-menu';
 import type { ActionContext } from '@/features/action-menu/types/actionMenu';
 import type { SplitStateInfo } from '@/features/terminal';
-import type { AgentConfig, EditorGroupId } from '@/shared/types';
+import type { AgentConfig } from '@/shared/types';
 import type { Tab } from '@/shared/types/tab';
 
 import AgentBar from './AgentBar';
 import TabBar from './TabBar';
 
 interface PaneTabBarProps {
-  groupId: EditorGroupId | 'pinned';
+  /**
+   * `full` = 中心编辑器 pane（完整工具栏：Action Menu / Agent Bar / 分屏控件）；
+   * `dock` = 槽位 tab 宿主（只留 tab 条：停靠区不提供新建 / 分屏 / Agent Bar）。
+   */
+  chrome?: 'full' | 'dock';
   tabs: Tab[];
   activeTabId: string | null;
   pinnedTabIds: string[];
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
-  onAddTerminalTab?: (targetGroup?: EditorGroupId | 'pinned') => void;
+  onAddTerminalTab?: () => void;
   onNewFileTab: () => void;
   onTabContextMenu: (tabId: string, e: React.MouseEvent) => void;
-  onActionMenuOpen: (rect: DOMRect) => void;
+  onActionMenuOpen?: (rect: DOMRect) => void;
   agents: AgentConfig[];
   renderTabLeading: (tab: Tab) => React.ReactNode;
   // Action menu
@@ -46,7 +50,7 @@ interface PaneTabBarProps {
  * 编辑器面板头部：TabBar、ActionMenu 下拉、Agent 快捷栏与分栏控制按钮。
  */
 function PaneTabBar({
-  groupId,
+  chrome = 'full',
   tabs,
   activeTabId,
   pinnedTabIds,
@@ -84,18 +88,19 @@ function PaneTabBar({
             pinnedTabIds={pinnedTabIds}
             onActivateTab={onActivateTab}
             onCloseTab={onCloseTab}
-            onAddTerminalTab={() => onAddTerminalTab?.(groupId)}
-            onActionMenuOpen={onActionMenuOpen}
+            onAddTerminalTab={chrome === 'full' ? onAddTerminalTab : undefined}
+            onActionMenuOpen={chrome === 'full' ? onActionMenuOpen : undefined}
             onContextMenu={onTabContextMenu}
-            onNewFileTab={onNewFileTab}
+            onNewFileTab={chrome === 'full' ? onNewFileTab : undefined}
             // pinned 面板同样可发起拖拽（拖出 = unpin 移动）；pinned 内部
             // 排序由 resolveDropAction 判 none 拒绝，视觉上弹回原位。
-            reorderable
+            // dock 宿主不参与中心 DndContext（P1 无跨 surface 拖拽）⇒ 不可排序。
+            reorderable={chrome === 'full'}
             agents={agents}
             renderTabLeading={renderTabLeading}
           />
         </div>
-        {actionMenuRect && (
+        {chrome === 'full' && actionMenuRect && (
           <ActionMenuDropdown
             items={actionMenuItems}
             ctx={actionMenuCtx}
@@ -107,7 +112,7 @@ function PaneTabBar({
         )}
       </div>
 
-      {showAgentBarRow && (
+      {chrome === 'full' && showAgentBarRow && (
         <div className="px-2 py-1 flex flex-wrap items-center gap-1">
           {showAgentBarContent && (
             <AgentBar

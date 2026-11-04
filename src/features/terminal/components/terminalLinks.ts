@@ -1,6 +1,7 @@
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { Terminal } from '@xterm/xterm';
 
+import { panelView } from '@/shared/dock';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -10,6 +11,9 @@ import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { revealInFileManager, readFileContent } from '../../file/api/fileApi';
+
+/** 浏览器视图身份（ViewKey 只允许由 `shared/dock/viewKey` 铸造）。 */
+const BROWSER_VIEW = panelView('browser');
 
 interface FilePathLinkOptions {
   projectPath: string;
@@ -24,7 +28,7 @@ interface FilePathLinkOptions {
 }
 
 function openInEmbeddedBrowser(url: string): void {
-  useDockStore.getState().activatePanel('right', 'browser');
+  useDockStore.getState().activateView(BROWSER_VIEW);
   useBrowserStore.getState().navigateTo(url);
 }
 

@@ -943,3 +943,170 @@ describe('editorStore — AC1/AC2/AC4（布局是唯一前台/顺序权威）', 
     expect(selectOrderedTabIds(useEditorStore.getState(), SPACE)).toEqual(['B', 'A']);
   });
 });
+
+/**
+ * P1：tab 停靠（`dockTab` 是唯一移动入口，见 design §7.2 / I3）。
+ *
+ * 断言面 = 布局本身（四组 tabIds / 各组前台）+ `selectOrderedTabIds`（G2 覆盖全量）。
+ * **G1 单值 surface**（同一 tab 不同时出现在两组）是防「双 PTY 双 stream」的那条线，
+ * 因此每个迁移用例都断言「源组已剔除」而不只断言「目标组已包含」。
+ */
+describe('editorStore.dockTab — 原子停靠（G1 单值 surface）', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ tabs: {}, editorLayout: {} });
+  });
+
+  function seedThree(): void {
+    useEditorStore.getState().addTab(makeTab('A'));
+    useEditorStore.getState().addTab(makeTab('B'));
+    useEditorStore.getState().addTab(makeTab('C'));
+    useEditorStore.getState().activateTab(SPACE, 'B');
+  }
+
+  /** G1：中心三组（left/right/pinned）与 docked 两组两两不相交。 */
+  function expectSingleSurface(tabKey: string): void {
+    const layout = useEditorStore.getState().editorLayout[tabKey]!;
+    const buckets = [
+      layout.groups.left.tabIds,
+      layout.groups.right.tabIds,
+      layout.pinnedTabIds,
+      layout.docked.left.tabIds,
+      layout.docked.right.tabIds,
+    ];
+    const seen = new Set<string>();
+    for (const ids of buckets) {
+      for (const id of ids) {
+        expect(seen.has(id)).toBe(false);
+        seen.add(id);
+      }
+    }
+  }
+
+  it('center → right dock：源组剔除、目标组追加并激活、G1 成立', () => {
+    seedThree();
+    const moved = useEditorStore.getState().dockTab(SPACE, 'B', 'right');
+
+    expect(moved).toBe(true);
+    const layout = useEditorStore.getState().editorLayout[SPACE]!;
+    expect(layout.groups.left.tabIds).toEqual(['A', 'C']);
+    expect(layout.docked.right).toEqual({ tabIds: ['B'], activeTabId: 'B' });
+    expect(layout.docked.left).toEqual({ tabIds: [], activeTabId: null });
+    expectSingleSurface(SPACE);
+  });
+
+  it('被移走的是源组前台 → 源组前台回退到左邻（与 closeTab 同向，不留悬挂 activeTabId）', () => {
+    seedThree();
+    // left = [A, B, C]，前台 = B（addTab 激活最后一个，seedThree 再切 B）
+    useEditorStore.getState().dockTab(SPACE, 'B', 'right');
+    const layout = useEditorStore.getState().editorLayout[SPACE]!;
+    expect(layout.groups.left.activeTabId).toBe('A');
+  });
+
+  it('dock → center：落到激活组并激活（不留在 docked 组）', () => {
+    seedThree();
+    useEditorStore.getState().dockTab(SPACE, 'B', 'right');
+
+    expect(useEditorStore.getState().dockTab(SPACE, 'B', 'center')).toBe(true);
+    const layout = useEditorStore.getState().editorLayout[SPACE]!;
+    expect(layout.groups[layout.activeGroupId].tabIds).toContain('B');
+    expect(layout.groups[layout.activeGroupId].activeTabId).toBe('B');
+    expect(layout.docked.right).toEqual({ tabIds: [], activeTabId: null });
+    expectSingleSurface(SPACE);
+  });
+
+  it('dock → 另一个 dock：跨槽迁移只留一份', () => {
+    seedThree();
+    useEditorStore.getState().dockTab(SPACE, 'B', 'right');
+
+    expect(useEditorStore.getState().dockTab(SPACE, 'B', 'left')).toBe(true);
+    const layout = useEditorStore.getState().editorLayout[SPACE]!;
+    expect(layout.docked.right.tabIds).toEqual([]);
+    expect(layout.docked.left).toEqual({ tabIds: ['B'], activeTabId: 'B' });
+    expectSingleSurface(SPACE);
+  });
+
+  it('R9：pinned tab 被拒（返回 false 且布局一字不动，不静默 unpin）', () => {
+    seedThree();
+    useEditorStore.getState().pinTab(SPACE, 'B');
+    const before = useEditorStore.getState().editorLayout[SPACE];
+
+    expect(useEditorStore.getState().dockTab(SPACE, 'B', 'right')).toBe(false);
+    expect(useEditorStore.getState().editorLayout[SPACE]).toBe(before);
+  });
+
+  it('未知 tabKey / 未知 tabId → false 且不改状态', () => {
+    seedThree();
+    const before = useEditorStore.getState().editorLayout[SPACE];
+
+    expect(useEditorStore.getState().dockTab('no-such-space', 'A', 'right')).toBe(false);
+    expect(useEditorStore.getState().dockTab(SPACE, 'ghost', 'right')).toBe(false);
+    expect(useEditorStore.getState().editorLayout[SPACE]).toBe(before);
+  });
+
+  it('幂等：已在目标组且已是该组前台 → false（不写、不触发订阅）', () => {
+    seedThree();
+    useEditorStore.getState().dockTab(SPACE, 'B', 'right');
+    const before = useEditorStore.getState().editorLayout[SPACE];
+
+    expect(useEditorStore.getState().dockTab(SPACE, 'B', 'right')).toBe(false);
+    expect(useEditorStore.getState().editorLayout[SPACE]).toBe(before);
+  });
+
+  it('G2：停靠后仲裁顺序仍覆盖全部 tab（长度相等、无重复）', () => {
+    seedThree();
+    useEditorStore.getState().dockTab(SPACE, 'B', 'right');
+
+    const ordered = selectOrderedTabIds(useEditorStore.getState(), SPACE);
+    expect(ordered).toHaveLength(3);
+    expect(new Set(ordered).size).toBe(3);
+    expect(ordered).toEqual(expect.arrayContaining(['A', 'B', 'C']));
+  });
+
+  it('closeTab：关闭停靠的 tab 从 docked 组剔除并修复该组前台', () => {
+    seedThree();
+    useEditorStore.getState().dockTab(SPACE, 'B', 'right');
+    useEditorStore.getState().dockTab(SPACE, 'C', 'right');
+    expect(useEditorStore.getState().editorLayout[SPACE]!.docked.right.activeTabId).toBe('C');
+
+    useEditorStore.getState().closeTab(SPACE, 'C');
+
+    const layout = useEditorStore.getState().editorLayout[SPACE]!;
+    expect(layout.docked.right).toEqual({ tabIds: ['B'], activeTabId: 'B' });
+    expect(useEditorStore.getState().tabs[SPACE]!.tabs.map((t) => t.id)).toEqual(['A', 'B']);
+  });
+
+  it('activateTab：激活停靠的 tab 只改它那一组的前台（中心组前台不变）', () => {
+    seedThree();
+    useEditorStore.getState().dockTab(SPACE, 'B', 'right');
+    useEditorStore.getState().dockTab(SPACE, 'C', 'right');
+    expect(useEditorStore.getState().editorLayout[SPACE]!.docked.right.activeTabId).toBe('C');
+
+    useEditorStore.getState().activateTab(SPACE, 'B');
+
+    const layout = useEditorStore.getState().editorLayout[SPACE]!;
+    expect(layout.docked.right.activeTabId).toBe('B');
+    expect(layout.groups.left.activeTabId).toBe('A');
+  });
+
+  it('renameTab：停靠 tab 改 id 时 docked 组与前台同步迁移', () => {
+    seedThree();
+    useEditorStore.getState().dockTab(SPACE, 'B', 'right');
+
+    useEditorStore.getState().renameTab(SPACE, 'B', 'B2');
+
+    const layout = useEditorStore.getState().editorLayout[SPACE]!;
+    expect(layout.docked.right).toEqual({ tabIds: ['B2'], activeTabId: 'B2' });
+  });
+
+  it('pinTab：停靠 tab 被 pin 时先从 docked 组剔除（不改 G1 单值 surface）', () => {
+    seedThree();
+    useEditorStore.getState().dockTab(SPACE, 'B', 'right');
+
+    useEditorStore.getState().pinTab(SPACE, 'B');
+
+    const layout = useEditorStore.getState().editorLayout[SPACE]!;
+    expect(layout.docked.right).toEqual({ tabIds: [], activeTabId: null });
+    expect(layout.pinnedTabIds).toEqual(['B']);
+    expectSingleSurface(SPACE);
+  });
+});

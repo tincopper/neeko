@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
+import type { DockSlot } from '@/shared/dock';
 import type { AuthMethod } from '@/shared/types';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Island } from '@/ui/Island';
@@ -26,6 +27,8 @@ interface EditorGroupLayoutProps {
     onSessionReady?: (pid: string) => void;
   } | null;
   buildLayoutId: (groupId: string, tabId: string | null) => string;
+  /** tab → 槽位（app 注入 `moveTabToSlot`：唯一跨 store 编排点，见 design §7.2）。 */
+  onMoveTabToSlot?: (tabId: string, target: 'center' | DockSlot) => void;
 }
 
 function EditorGroupLayout({
@@ -33,6 +36,7 @@ function EditorGroupLayout({
   onAddTerminalTab,
   remoteProject,
   buildLayoutId,
+  onMoveTabToSlot,
 }: EditorGroupLayoutProps) {
   const {
     layout,
@@ -155,9 +159,10 @@ function EditorGroupLayout({
         tabKey={tabKey}
         onAddTerminalTab={onAddTerminalTab}
         remoteProject={remoteProject}
-        groupId="left"
+        paneId="left"
         onFocusGroup={() => setActiveGroup('left')}
         layoutId={leftLayoutId}
+        onMoveTabToSlot={onMoveTabToSlot}
       />
     );
   } else if (hasPinned && !isSplit && leftTabs.length === 0) {
@@ -168,9 +173,10 @@ function EditorGroupLayout({
         tabKey={tabKey}
         onAddTerminalTab={onAddTerminalTab}
         remoteProject={remoteProject}
-        groupId="pinned"
+        paneId="pinned"
         onFocusGroup={() => {}}
         layoutId={pinnedLayoutId}
+        onMoveTabToSlot={onMoveTabToSlot}
       />
     );
   } else {
@@ -193,9 +199,10 @@ function EditorGroupLayout({
                   tabKey={tabKey}
                   onAddTerminalTab={onAddTerminalTab}
                   remoteProject={remoteProject}
-                  groupId="pinned"
+                  paneId="pinned"
                   onFocusGroup={() => {}}
                   layoutId={pinnedLayoutId}
+                  onMoveTabToSlot={onMoveTabToSlot}
                 />
               </Island>
             </ResizablePanel>
@@ -214,9 +221,10 @@ function EditorGroupLayout({
               tabKey={tabKey}
               onAddTerminalTab={onAddTerminalTab}
               remoteProject={remoteProject}
-              groupId="left"
+              paneId="left"
               onFocusGroup={() => setActiveGroup('left')}
               layoutId={leftLayoutId}
+              onMoveTabToSlot={onMoveTabToSlot}
             />
           </Island>
         </ResizablePanel>
@@ -231,9 +239,10 @@ function EditorGroupLayout({
                   tabKey={tabKey}
                   onAddTerminalTab={onAddTerminalTab}
                   remoteProject={remoteProject}
-                  groupId="right"
+                  paneId="right"
                   onFocusGroup={() => setActiveGroup('right')}
                   layoutId={rightLayoutId}
+                  onMoveTabToSlot={onMoveTabToSlot}
                 />
               </Island>
             </ResizablePanel>

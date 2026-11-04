@@ -58,3 +58,20 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
     set({ notifications: [], unreadCount: 0 });
   },
 }));
+
+/**
+ * 命令式 in-app 提示出口（= `useAppContext().showToast` 的同一事实，不依赖 Provider）。
+ *
+ * 存在的理由：`showToast` 经 Context 分发，而**应用级 handler**（组合根 `App.tsx`
+ * 在 Provider 之外装配的 dock 栏入口）拿不到 Context。store 侧直写是同一实现，
+ * 不是第二份表示 —— 因此 `useAppShellData` 的 `showToast` 也委托到这里（单一映射）。
+ *
+ * 标题映射：error → `Error`，其余 → `Info`。
+ */
+export function notify(message: string, type: 'info' | 'error' = 'info'): void {
+  useNotificationStore.getState().addNotification({
+    type: type === 'error' ? 'error' : 'info',
+    title: type === 'error' ? 'Error' : 'Info',
+    message,
+  });
+}

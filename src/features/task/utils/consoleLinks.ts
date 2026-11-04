@@ -12,6 +12,7 @@
  */
 import type { ILinkProvider, Terminal } from '@xterm/xterm';
 
+import { panelView } from '@/shared/dock';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -22,6 +23,9 @@ import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { revealInFileManager, readFileContent } from '../../file/api/fileApi';
+
+/** 浏览器视图身份（ViewKey 只允许由 `shared/dock/viewKey` 铸造）。 */
+const BROWSER_VIEW = panelView('browser');
 
 interface ConsoleLinkOptions {
   projectPath: string;
@@ -41,7 +45,7 @@ const FILE_PATH_REGEX =
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
 
 function openInEmbeddedBrowser(url: string): void {
-  useDockStore.getState().activatePanel('right', 'browser');
+  useDockStore.getState().activateView(BROWSER_VIEW);
   useBrowserStore.getState().navigateTo(url);
 }
 

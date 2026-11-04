@@ -3,12 +3,16 @@ import React, { useCallback, useMemo } from 'react';
 import { PullRequestsPanel } from '@/features/git';
 import { useActiveProject } from '@/features/project';
 import { useAppContext } from '@/shared/contexts';
+import { isViewVisible, panelView } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
 import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
+
+/** 视图身份（ViewKey 只允许由 `shared/dock/viewKey` 铸造，模块级以便 selector 引用稳定）。 */
+const PULL_REQUESTS_VIEW = panelView('pullRequests');
 
 /**
  * Pull Requests dock 面板适配层：仅本地项目渲染（canManagePRs capability）。
@@ -19,12 +23,7 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
   const { project, commands, capabilities, worktreePath } = useActiveProject();
 
   // Only load PR data when the panel is active — avoids gh CLI call on project switch.
-  const isActive = useDockStore((s) => {
-    for (const zone of Object.values(s.zones)) {
-      if (zone.activePanelId === 'pullRequests' && zone.expanded) return true;
-    }
-    return false;
-  });
+  const isActive = useDockStore((s) => isViewVisible(s, PULL_REQUESTS_VIEW));
 
   const tabKey = useMemo(() => {
     if (!project) return '';

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 
+import { placementsInSlot } from '@/shared/dock';
 import { useProjectBrowserStore, type BrowserPanelState } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -7,7 +8,7 @@ import { reportFrontendError } from '@/shared/utils/errorReporting';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { browserClose, browserSetVisible } from '../api/browserApi';
-import { BROWSER_PANEL_ID, decideProjectSwitchDock } from '../utils/projectSwitchDock';
+import { BROWSER_VIEW, decideProjectSwitchDock } from '../utils/projectSwitchDock';
 
 import { getProjectBrowserLabel } from './useBrowserConstants';
 
@@ -59,12 +60,12 @@ export function useBrowserPanelSession({
       if (!nextProjectId) return;
 
       const nextState = useProjectBrowserStore.getState().getPanelState(nextProjectId);
-      const right = useDockStore.getState().zones.right;
+      const dock = useDockStore.getState();
       const action = decideProjectSwitchDock(
         {
-          panels: right?.panels ?? [],
-          activePanelId: right?.activePanelId ?? null,
-          expanded: right?.expanded ?? false,
+          views: placementsInSlot(dock.placements, 'right').map((placement) => placement.view),
+          activeView: dock.zones.right?.activeView ?? null,
+          expanded: dock.zones.right?.expanded ?? false,
         },
         nextState.isCreated,
       );
@@ -73,13 +74,10 @@ export function useBrowserPanelSession({
         case 'none':
           break;
         case 'activate':
-          useDockStore.getState().activatePanel('right', action.panelId);
-          break;
-        case 'add-and-activate':
-          useDockStore.getState().togglePanel(action.panelId);
+          useDockStore.getState().activateView(action.view);
           break;
         case 'collapse':
-          useDockStore.getState().togglePanel(BROWSER_PANEL_ID);
+          useDockStore.getState().setSlotExpanded('right', false);
           break;
       }
 
@@ -101,7 +99,7 @@ export function useBrowserPanelSession({
   useEffect(() => {
     const unsubscribe = useDockStore.subscribe((state) => {
       const zone = state.zones.right;
-      const isVisible = zone?.expanded === true && zone?.activePanelId === 'browser';
+      const isVisible = zone?.expanded === true && zone?.activeView === BROWSER_VIEW;
       setVisible(isVisible);
     });
     return () => unsubscribe();
@@ -115,7 +113,7 @@ export function useBrowserPanelSession({
       isCreatedRef.current = true;
       const dockState = useDockStore.getState();
       const zone = dockState.zones.right;
-      const shouldBeVisible = zone?.expanded === true && zone?.activePanelId === 'browser';
+      const shouldBeVisible = zone?.expanded === true && zone?.activeView === BROWSER_VIEW;
       setVisible(shouldBeVisible);
       if (shouldBeVisible) {
         // 延迟到下一帧布局完成后采样,避免 mount 时 flex layout 未稳定

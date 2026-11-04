@@ -1,4 +1,4 @@
-import type { EditorGroupId } from '@/shared/types/editorGroup';
+import type { EditorGroupId, EditorPaneId } from '@/shared/types/editorGroup';
 
 /** 前缀用于标识 pinned 面板区域的 droppable id。完整 id 形如 `pinned-drop:{tabKey}`。 */
 export const PINNED_DROP_PREFIX = 'pinned-drop';
@@ -112,19 +112,20 @@ export function resolveDragTab<T extends { id: string }>(
  * - 非 pinned 组永不出现 drop 高亮（其 droppable 本身 disabled，此为双保险）。
  */
 export function editorPaneRegionClass({
-  groupId,
+  paneId,
   activeGroupId,
   isOverDropTarget,
 }: {
-  groupId: EditorGroupId | 'pinned';
+  paneId: EditorPaneId;
   activeGroupId?: string | null;
   isOverDropTarget: boolean;
 }): string {
   const base = 'flex-1 flex flex-col overflow-hidden min-h-0';
-  if (groupId === 'pinned' && isOverDropTarget) {
+  if (paneId === 'pinned' && isOverDropTarget) {
     return `${base} ring-2 ring-accent/70 bg-accent/5`;
   }
-  const focusRing = activeGroupId === groupId ? ' ring-1 ring-[var(--border-color)]/30' : '';
+  // 焦点环只属于中心的激活组：dock 宿主不在 `activeGroupId` 的取值域里，因此永不命中
+  const focusRing = activeGroupId === paneId ? ' ring-1 ring-[var(--border-color)]/30' : '';
   return `${base}${focusRing}`;
 }
 

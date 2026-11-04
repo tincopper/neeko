@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 
-import type { EditorGroupId, EditorSplitLayout, ProjectTabs, Tab, TabData } from '@/shared/types';
-import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
+import type { DockSlot } from '@/shared/dock/types';
+import type {
+  EditorGroupId,
+  EditorGroupState,
+  EditorSplitLayout,
+  ProjectTabs,
+  Tab,
+  TabData,
+} from '@/shared/types';
+import { createDefaultEditorLayout, emptyEditorGroup } from '@/shared/types/editorGroup';
 import type { FileContent } from '@/shared/types/file';
 import type { DiffSource, ViewMode } from '@/shared/types/git';
 import type {
@@ -283,7 +291,44 @@ function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
             : layout.groups.right.activeTabId,
       },
     },
+    // 停靠在槽位宿主的 tab 被 pin 时必须先从 docked 组剔除 —— 否则同一 tab 同时在
+    // pinned 与 docked 两组里（G1 单值 surface 破裂 = 双 PTY）。
+    docked: {
+      left: removeTabFromGroup(layout.docked.left, tabId),
+      right: removeTabFromGroup(layout.docked.right, tabId),
+    },
   };
+}
+
+/**
+ * 从单个组移除 tab 并修复该组前台（与 closeTab 同向：优先左邻，其次右邻，再末项，空组 null）。
+ *
+ * **只修本组**：跨组的 `activeGroupId` / `isSplit` 收敛属于调用方的语义，不在此处猜。
+ */
+function removeTabFromGroup(group: EditorGroupState, tabId: string): EditorGroupState {
+  const idx = group.tabIds.indexOf(tabId);
+  if (idx === -1) return group;
+  const tabIds = group.tabIds.filter((id) => id !== tabId);
+  if (group.activeTabId !== tabId) return { tabIds, activeTabId: group.activeTabId };
+  const next = tabIds[idx - 1] ?? tabIds[idx] ?? tabIds[tabIds.length - 1] ?? null;
+  return { tabIds, activeTabId: next };
+}
+
+/** 源组被移空后收拢中心分屏（与 closeTab 的收拢语义一致：不留两片空 pane）。 */
+function collapseEmptySplit(layout: EditorSplitLayout): EditorSplitLayout {
+  if (!layout.isSplit) return layout;
+  if (layout.groups.right.tabIds.length === 0) {
+    return { ...layout, isSplit: false, activeGroupId: 'left' };
+  }
+  if (layout.groups.left.tabIds.length === 0) {
+    return {
+      ...layout,
+      isSplit: false,
+      activeGroupId: 'left',
+      groups: { left: layout.groups.right, right: emptyEditorGroup() },
+    };
+  }
+  return layout;
 }
 
 /**
@@ -366,6 +411,16 @@ interface EditorStoreState {
   splitRight: (tabKey: string, tabId: string) => void;
   moveToRight: (tabKey: string, tabId: string) => void;
   moveToLeft: (tabKey: string, tabId: string) => void;
+  /**
+   * 把 tab **原子地**移入某个 surface（`'center'` = 当前激活组，或某个 dock 槽）。
+   *
+   * 唯一的 tab surface 移动入口（G-b）：单次 `set` 内先从左/右/pinned/docked.* **全部**
+   * 移除，再插入目标组 —— 分两步写会有一帧双挂载（双 PTY / 双 agent stream）。
+   *
+   * 返回 true 表示布局变了。返回 false 的三种情况：pinned tab（R9：拒绝，不静默 unpin）、
+   * tab / layout 不存在（no-op）、已在目标组且已是该组前台（幂等，不触发订阅）。
+   */
+  dockTab: (tabKey: string, tabId: string, target: 'center' | DockSlot) => boolean;
   unsplit: (tabKey: string) => void;
   setActiveGroup: (tabKey: string, groupId: EditorGroupId) => void;
   setSplitRatio: (tabKey: string, ratio: number) => void;
@@ -636,6 +691,22 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
           }
         }
 
+        // 停靠在槽位宿主的 tab：同样从所在 docked 组剔除并修复该组前台（G1 单值 surface）
+        const dockedSlot: DockSlot | null = layout.docked.left.tabIds.includes(tabId)
+          ? 'left'
+          : layout.docked.right.tabIds.includes(tabId)
+            ? 'right'
+            : null;
+        if (dockedSlot) {
+          newLayout = {
+            ...newLayout,
+            docked: {
+              ...newLayout.docked,
+              [dockedSlot]: removeTabFromGroup(newLayout.docked[dockedSlot], tabId),
+            },
+          };
+        }
+
         newEditorLayout = { ...state.editorLayout, [projectId]: newLayout };
       } else if (remaining.length > 0) {
         // 不变量 I1（有 tab 的空间必有 layout）成立后本分支不可达，保留作防御：
@@ -680,6 +751,35 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
               pinnedActiveTabId: tabId,
             },
           };
+        } else if (layout.docked.left.tabIds.includes(tabId)) {
+          // 停靠 tab：只改它所在宿主组的前台（不动中心 activeGroupId —— 两个 surface 正交）
+          newEditorLayout =
+            layout.docked.left.activeTabId === tabId
+              ? state.editorLayout
+              : {
+                  ...state.editorLayout,
+                  [projectId]: {
+                    ...layout,
+                    docked: {
+                      ...layout.docked,
+                      left: { ...layout.docked.left, activeTabId: tabId },
+                    },
+                  },
+                };
+        } else if (layout.docked.right.tabIds.includes(tabId)) {
+          newEditorLayout =
+            layout.docked.right.activeTabId === tabId
+              ? state.editorLayout
+              : {
+                  ...state.editorLayout,
+                  [projectId]: {
+                    ...layout,
+                    docked: {
+                      ...layout.docked,
+                      right: { ...layout.docked.right, activeTabId: tabId },
+                    },
+                  },
+                };
         } else {
           let groupId: EditorGroupId = layout.activeGroupId;
           if (layout.groups.right.tabIds.includes(tabId)) groupId = 'right';
@@ -783,6 +883,23 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
                     layout.groups.right.activeTabId === oldTabId
                       ? newTabId
                       : layout.groups.right.activeTabId,
+                },
+              },
+              // 停靠组同样要迁：id 是布局里的身份，漏一处就会留下幽灵 id（G1/G2）
+              docked: {
+                left: {
+                  tabIds: layout.docked.left.tabIds.map((id) => (id === oldTabId ? newTabId : id)),
+                  activeTabId:
+                    layout.docked.left.activeTabId === oldTabId
+                      ? newTabId
+                      : layout.docked.left.activeTabId,
+                },
+                right: {
+                  tabIds: layout.docked.right.tabIds.map((id) => (id === oldTabId ? newTabId : id)),
+                  activeTabId:
+                    layout.docked.right.activeTabId === oldTabId
+                      ? newTabId
+                      : layout.docked.right.activeTabId,
                 },
               },
             },
@@ -950,6 +1067,56 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         editorLayout: { ...state.editorLayout, [tabKey]: newLayout },
       };
     }),
+
+  dockTab: (tabKey, tabId, target) => {
+    let changed = false;
+    set((state) => {
+      const existing = state.tabs[tabKey];
+      if (!existing?.tabs.some((t) => t.id === tabId)) return state;
+      const layout = state.editorLayout[tabKey];
+      if (!layout) return state;
+      // R9：pinned tab 拒绝停靠（不静默 unpin —— 调用方提示，不强行改变用户钉住意图）
+      if (layout.pinnedTabIds.includes(tabId)) return state;
+
+      const centerGroupId = layout.activeGroupId;
+      const targetGroup =
+        target === 'center' ? layout.groups[centerGroupId] : layout.docked[target];
+      // 幂等：已在目标组且已是该组前台 ⇒ 无需移动，也不写 store（不触发订阅）
+      if (targetGroup.tabIds.includes(tabId) && targetGroup.activeTabId === tabId) return state;
+
+      // 先全域移除（四组都剔一遍），再插入目标组：单帧双挂载在构造上不可能（I3）
+      const groups = {
+        left: removeTabFromGroup(layout.groups.left, tabId),
+        right: removeTabFromGroup(layout.groups.right, tabId),
+      };
+      const docked = {
+        left: removeTabFromGroup(layout.docked.left, tabId),
+        right: removeTabFromGroup(layout.docked.right, tabId),
+      };
+
+      let next: EditorSplitLayout;
+      if (target === 'center') {
+        groups[centerGroupId] = {
+          tabIds: [...groups[centerGroupId].tabIds, tabId],
+          // 从 dock 回中心：落到激活组并激活（用户意图 = 回到中间区看它）
+          activeTabId: tabId,
+        };
+        next = { ...layout, activeGroupId: centerGroupId, groups, docked };
+      } else {
+        docked[target] = {
+          tabIds: [...docked[target].tabIds, tabId],
+          // 移进去就该看见它
+          activeTabId: tabId,
+        };
+        next = { ...layout, groups, docked };
+      }
+      next = collapseEmptySplit(next);
+
+      changed = true;
+      return { editorLayout: { ...state.editorLayout, [tabKey]: next } };
+    });
+    return changed;
+  },
 
   unsplit: (tabKey) =>
     set((state) => {

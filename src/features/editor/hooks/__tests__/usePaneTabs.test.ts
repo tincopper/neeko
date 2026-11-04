@@ -2,6 +2,7 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Tab } from '@/shared/types';
+import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import type { EditorGroupLayoutResult } from '../useEditorGroupLayout';
@@ -28,16 +29,13 @@ function makeLayout(overrides: Partial<EditorGroupLayoutResult> = {}): EditorGro
   const pinnedTabs = [fileTab('pin1')];
   return {
     layout: {
-      isSplit: false,
-      ratio: 0.5,
-      activeGroupId: 'left',
+      ...createDefaultEditorLayout(),
       groups: {
         left: { tabIds: ['l1'], activeTabId: 'l1' },
         right: { tabIds: [], activeTabId: null },
       },
       pinnedTabIds: ['pin1'],
       pinnedActiveTabId: 'pin1',
-      pinnedPanelRatio: 0.35,
     },
     isSplit: false,
     leftTabs,
@@ -62,6 +60,8 @@ function makeLayout(overrides: Partial<EditorGroupLayoutResult> = {}): EditorGro
     setPinnedPanelRatio: vi.fn(),
     closeOtherTabs: vi.fn(),
     closeAllTabs: vi.fn(),
+    dockedTabs: { left: [fileTab('dl1')], right: [fileTab('dr1')] },
+    dockedActiveTabIds: { left: 'dl1', right: 'dr1' },
     ...overrides,
   };
 }
@@ -86,6 +86,16 @@ describe('usePaneTabs', () => {
     expect(result.current.tabs.map((t) => t.id)).toEqual(['pin1']);
     expect(result.current.activeTabId).toBe('pin1');
     expect(result.current.activeTab?.id).toBe('pin1');
+  });
+
+  it('dockLeft / dockRight：取槽位宿主的 tabs 与前台', () => {
+    const left = renderHook(() => usePaneTabs('dockLeft', makeLayout(), null));
+    expect(left.result.current.tabs.map((t) => t.id)).toEqual(['dl1']);
+    expect(left.result.current.activeTabId).toBe('dl1');
+
+    const right = renderHook(() => usePaneTabs('dockRight', makeLayout(), null));
+    expect(right.result.current.tabs.map((t) => t.id)).toEqual(['dr1']);
+    expect(right.result.current.activeTabId).toBe('dr1');
   });
 
   it('remoteProjectId 优先于 active tab 的 projectId', () => {

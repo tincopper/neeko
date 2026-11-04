@@ -61,6 +61,24 @@ export default defineConfig({
           functions: 100,
           branches: 100,
         },
+        // 落位 reducer（dock placement）：纯函数 100%，分支留 10pt 余量 ——
+        // 剩余未覆盖分支是「state 缺 zone 切片」的防御性 `?.`（store 恒有两个槽，
+        // 只在往 store 里塞半截 state 的测试里才会走到）。
+        '**/shared/dock/placement.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 90,
+        },
+        // 迁移 / 清洗（v5 → v6、坏 localStorage）：行覆盖 100%，分支留余量 ——
+        // `isRecord` 的各层真值组合穷举不完，行为面由「未知 key / 非法槽位 / NaN order /
+        // 悬挂 activeView / 缺字段」五类用例钉死。
+        '**/shared/store/dockStore.ts': {
+          lines: 100,
+          statements: 98,
+          functions: 100,
+          branches: 90,
+        },
         '**/runner/stackFrames.ts': {
           lines: 100,
           statements: 100,

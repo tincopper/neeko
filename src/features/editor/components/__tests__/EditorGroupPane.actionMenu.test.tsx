@@ -91,7 +91,7 @@ function renderPane(editorCtx: Partial<EditorContextValue> = {}) {
     <AppProvider value={appValue}>
       <EditorProvider value={{ ...editorValue, ...editorCtx }}>
         <FileActionsProvider value={fileActionsValue}>
-          <EditorGroupPane groupId="left" tabKey={SPACE} onFocusGroup={vi.fn()} layoutId="l1" />
+          <EditorGroupPane paneId="left" tabKey={SPACE} onFocusGroup={vi.fn()} layoutId="l1" />
         </FileActionsProvider>
       </EditorProvider>
     </AppProvider>,

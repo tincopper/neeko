@@ -9,7 +9,7 @@ import type { SessionRef } from '@/shared/types/liveSessions';
  * 都在它里面。`tabs[tabKey]` 只是 `Tab` 的注册表（id → Tab 查询）。
  *
  * 因此「顺序」与「前台」不存储第二份，一律在此派生：
- * - `selectOrderedTabIds` / `selectOrderedTabs`：视觉顺序即仲裁顺序（左 → 右 → pinned）；
+ * - `selectOrderedTabIds` / `selectOrderedTabs`：视觉顺序即仲裁顺序（左 → 右 → pinned → docked）；
  * - `selectActiveTabId`：前台 = 激活编辑器组的激活 tab（**不含** pinned 面板激活态，
  *   见下方说明）。
  *
@@ -23,16 +23,26 @@ export interface EditorTabSpaceState {
 }
 
 /**
- * 顺序：left 组 → right 组 → pinned（视觉顺序即仲裁顺序）。
+ * 顺序：left 组 → right 组 → pinned → docked.left → docked.right（视觉顺序即仲裁顺序）。
  *
- * 不变量 I1（有 tab 的空间必有 layout，且三组 tabIds 恰好枚举该空间的 tab）成立时
+ * 不变量 G2：本函数必须覆盖该空间的**全部** tab（长度相等、无重复）—— 新增 surface
+ * 时忘记追加的表现是「停靠的 tab 不再参与仲裁 / 事件路由」，所以护栏测试直接
+ * 用它和 `tabs[tabKey].tabs` 做集合比较。
+ *
+ * 不变量 I1（有 tab 的空间必有 layout，且各组 tabIds 恰好枚举该空间的 tab）成立时
  * 这就是全量；layout 缺失时返回 `[]`（优雅降级，生产中不可达 —— `addTab` 是唯一创建
  * 入口且总会 `ensureLayout`，tab 不持久化、无 session-restore 写入路径）。
  */
 export function selectOrderedTabIds(state: EditorTabSpaceState, tabKey: string): string[] {
   const layout = state.editorLayout[tabKey];
   if (!layout) return [];
-  return [...layout.groups.left.tabIds, ...layout.groups.right.tabIds, ...layout.pinnedTabIds];
+  return [
+    ...layout.groups.left.tabIds,
+    ...layout.groups.right.tabIds,
+    ...layout.pinnedTabIds,
+    ...layout.docked.left.tabIds,
+    ...layout.docked.right.tabIds,
+  ];
 }
 
 /**
@@ -81,13 +91,25 @@ export function selectActiveTab(state: EditorTabSpaceState, tabKey: string): Tab
 export function selectActiveSessionRefs(state: EditorTabSpaceState): readonly SessionRef[] {
   const refs: SessionRef[] = [];
   for (const tabKey of Object.keys(state.tabs)) {
-    const tab = selectActiveTab(state, tabKey);
-    if (!tab) continue;
-    const data = tab.data;
-    if (data.kind === 'agent-chat' && data.sessionId) {
-      refs.push({ workspaceKey: tabKey, kind: 'chat', sessionId: data.sessionId });
-    } else if (data.kind === 'terminal' && data.ptySessionId) {
-      refs.push({ workspaceKey: tabKey, kind: 'terminal', sessionId: data.ptySessionId });
+    // 中心前台 + 每个 dock 宿主的前台：两者都是「正在展示的会话」，父行高亮不得因为
+    // 把 tab 停靠到侧区而熄灭（停靠不改「当前会话」这一事实）。
+    const candidates: (Tab | null)[] = [selectActiveTab(state, tabKey)];
+    const layout = state.editorLayout[tabKey];
+    if (layout) {
+      const byId = new Map((state.tabs[tabKey]?.tabs ?? []).map((tab) => [tab.id, tab]));
+      for (const slot of ['left', 'right'] as const) {
+        const activeId = layout.docked[slot].activeTabId;
+        candidates.push(activeId ? (byId.get(activeId) ?? null) : null);
+      }
+    }
+    for (const tab of candidates) {
+      if (!tab) continue;
+      const data = tab.data;
+      if (data.kind === 'agent-chat' && data.sessionId) {
+        refs.push({ workspaceKey: tabKey, kind: 'chat', sessionId: data.sessionId });
+      } else if (data.kind === 'terminal' && data.ptySessionId) {
+        refs.push({ workspaceKey: tabKey, kind: 'terminal', sessionId: data.ptySessionId });
+      }
     }
   }
   return refs.sort((a, b) => a.workspaceKey.localeCompare(b.workspaceKey));

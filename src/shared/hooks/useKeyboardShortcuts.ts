@@ -19,6 +19,7 @@ import { refreshTerminalForSession } from '@/features/terminal/components/termin
 // eslint-disable-next-line import/no-restricted-paths -- needs the single foreground arbitration
 import { foregroundTerminalTab } from '@/features/terminal/components/terminalRouting';
 // eslint-disable-next-line import/no-restricted-paths
+import { panelView, appViewKey } from '@/shared/dock';
 import {
   cycleTab,
   resolveActiveTabKey,
@@ -246,7 +247,7 @@ export function useKeyboardShortcuts({
 
           case 'toggleDockProjects': {
             e.preventDefault();
-            useDockStore.getState().togglePanel('projects');
+            useDockStore.getState().toggleView(panelView('projects'));
             break;
           }
 
@@ -257,7 +258,7 @@ export function useKeyboardShortcuts({
               useAppViewStore.getState().appView === 'library' &&
               useLibraryStore.getState().activeKind === 'skill'
             ) {
-              useDockStore.getState().togglePanel('library');
+              useDockStore.getState().toggleView(appViewKey('library'));
             } else {
               openLibraryAt({ kind: 'skill' });
             }
@@ -266,13 +267,13 @@ export function useKeyboardShortcuts({
 
           case 'toggleDockLibrary': {
             e.preventDefault();
-            useDockStore.getState().togglePanel('library');
+            useDockStore.getState().toggleView(appViewKey('library'));
             break;
           }
 
           case 'toggleDockSearch': {
             e.preventDefault();
-            useDockStore.getState().togglePanel('search');
+            useDockStore.getState().toggleView(panelView('search'));
             break;
           }
 

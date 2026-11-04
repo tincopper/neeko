@@ -1,4 +1,5 @@
 import { useSkillStore } from '@/features/skill/store';
+import { appViewKey } from '@/shared/dock';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import type { SkillView } from '@/shared/types';
@@ -36,6 +37,6 @@ export function openLibraryAt(opts: OpenLibraryOptions = {}): void {
   }
   useLibraryStore.getState().setActiveKind(kind);
   if (useAppViewStore.getState().appView !== 'library') {
-    useDockStore.getState().togglePanel('library');
+    useDockStore.getState().toggleView(appViewKey('library'));
   }
 }

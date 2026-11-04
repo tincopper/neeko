@@ -21,7 +21,7 @@ import { useAgentPreload, useAppConfig } from '@/features/settings';
 import { useApplyProjectSkills } from '@/features/skill';
 import { CLOSE_TAB_EVENT } from '@/shared/events';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
-import { useNotificationStore } from '@/shared/store/notificationStore';
+import { notify } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
@@ -54,12 +54,9 @@ export function useAppShellData(): UseAppShellDataResult {
   const { config, saveConfig, customThemes } = useAppConfig();
   // agent 配置缓存的启动期预热（终端在未命中时不启动 agent，见 agentStore）。
   useAgentPreload();
+  // 与命令式 handler（app 层在 Provider 之外装配的入口）共用同一个映射 —— 不是第二份实现
   const showToast = useCallback((message: string, type: 'info' | 'error' = 'info') => {
-    useNotificationStore.getState().addNotification({
-      type: type === 'error' ? 'error' : 'info',
-      title: type === 'error' ? 'Error' : 'Info',
-      message,
-    });
+    notify(message, type);
   }, []);
   const local = useLocalProjects();
   const session = useSessionPersistence();

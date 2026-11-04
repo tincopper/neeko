@@ -46,8 +46,7 @@ function makeFileTab(id: string, overrides: Partial<FileTabData> = {}): Tab {
 describe('usePaneActions', () => {
   const defaultParams = {
     tabKey: SPACE,
-    groupId: 'left' as const,
-    tabs: [makeFileTab('tab1'), makeFileTab('tab2')],
+    paneId: 'left' as const,
     projectIdForCheck: 'p1',
     agents: [{ id: 'opencode', name: 'OpenCode', enabled: true, command: 'opencode' }] as [],
     onAddTerminalTab: vi.fn(),
@@ -66,6 +65,9 @@ describe('usePaneActions', () => {
   });
 
   /** dirty 判断走共享 helper 的 store 查找：把 params.tabs 同步种进 editorStore。 */
+  // 种进 store 的夹具（不再经 hook 入参：`tabs` 不是 hook 的输入，dirty 判断走 store）
+  const SEED_TABS = [makeFileTab('tab1'), makeFileTab('tab2')];
+
   function seedTabs(tabs: Tab[]) {
     for (const tab of tabs) useEditorStore.getState().addTab(tab);
   }
@@ -86,7 +88,7 @@ describe('usePaneActions', () => {
     expect(activeTabIdOf(SPACE)).toBe('tab1');
   });
   it('handleCloseTab calls closeEditorTab for non-dirty tabs without confirmation', async () => {
-    seedTabs(defaultParams.tabs);
+    seedTabs(SEED_TABS);
     const { result } = renderHook(() => usePaneActions(defaultParams));
 
     await act(async () => {
@@ -98,8 +100,8 @@ describe('usePaneActions', () => {
   });
 
   it('handleCloseTab skips confirmation for pinned group', async () => {
-    const params = { ...defaultParams, groupId: 'pinned' as const };
-    seedTabs(params.tabs);
+    const params = { ...defaultParams, paneId: 'pinned' as const };
+    seedTabs(SEED_TABS);
     const { result } = renderHook(() => usePaneActions(params));
 
     await act(async () => {
@@ -299,12 +301,11 @@ describe('usePaneActions', () => {
 });
 
 describe('usePaneActions — pinned pane 内创建跟随落组', () => {
-  function setup(groupId: 'pinned') {
+  function setup(paneId: 'pinned') {
     const onAddTerminalTab = vi.fn();
     const params = {
       tabKey: SPACE,
-      groupId,
-      tabs: [makeFileTab('tab1')],
+      paneId,
       projectIdForCheck: 'p1',
       agents: [
         { id: 'opencode', name: 'OpenCode', enabled: true, command: 'opencode' },

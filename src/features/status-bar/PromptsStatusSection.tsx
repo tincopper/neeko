@@ -31,8 +31,8 @@ function sortPrompts(prompts: PromptResource[]): PromptResource[] {
  * 插入成功后把终端推到前台。
  *
  * dock 注册表（app/dock/registry.ts + shared/dock/panelMeta.ts）没有终端面板 ——
- * 终端是中央编辑器区的 `terminal` kind tab —— 因此不走 dockStore.togglePanel /
- * activatePanel（无明确 panelId 可查，硬编码猜测只会静默 no-op），而是直接激活 tab 组里的
+ * 终端是中央编辑器区的 `terminal` kind tab —— 因此不走 dockStore.toggleView /
+ * activateView（无明确 view 可查，硬编码猜测只会静默 no-op），而是直接激活 tab 组里的
  * 那个 tab。已在它上面时静默跳过（写入已成功，不打扰用户）。
  *
  * 落点由**唯一仲裁器** `foregroundTerminalTab` 给出（决议 R1/Q2）：这里不再自己拼

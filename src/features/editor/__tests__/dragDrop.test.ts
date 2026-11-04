@@ -131,7 +131,7 @@ describe('resolveDragTab — DragOverlay 内容解析', () => {
 describe('editorPaneRegionClass — pane 根容器样式', () => {
   it('基础 class 恒在（布局骨架不因状态丢失）', () => {
     const cls = editorPaneRegionClass({
-      groupId: 'left',
+      paneId: 'left',
       activeGroupId: null,
       isOverDropTarget: false,
     });
@@ -141,7 +141,7 @@ describe('editorPaneRegionClass — pane 根容器样式', () => {
 
   it('激活组带默认 focus ring', () => {
     const cls = editorPaneRegionClass({
-      groupId: 'left',
+      paneId: 'left',
       activeGroupId: 'left',
       isOverDropTarget: false,
     });
@@ -150,7 +150,7 @@ describe('editorPaneRegionClass — pane 根容器样式', () => {
 
   it('pinned 区域 over → drop 高亮（accent ring-2），替换默认 focus ring', () => {
     const cls = editorPaneRegionClass({
-      groupId: 'pinned',
+      paneId: 'pinned',
       activeGroupId: 'pinned',
       isOverDropTarget: true,
     });
@@ -161,7 +161,7 @@ describe('editorPaneRegionClass — pane 根容器样式', () => {
 
   it('非 pinned 组 over → 无 drop 高亮（只有基础/激活样式）', () => {
     const cls = editorPaneRegionClass({
-      groupId: 'left',
+      paneId: 'left',
       activeGroupId: 'left',
       isOverDropTarget: true,
     });

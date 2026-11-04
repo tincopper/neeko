@@ -1,10 +1,13 @@
 import { useCallback, useMemo } from 'react';
 
 import { closeAllEditorTabs, closeEditorTab } from '@/features/terminal';
+import type { DockSlot } from '@/shared/dock';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { EditorGroupId, EditorSplitLayout, Tab } from '@/shared/types';
-import { createDefaultEditorLayout, findGroupIdForTab } from '@/shared/types/editorGroup';
+import { findGroupIdForTab } from '@/shared/types/editorGroup';
 import { getTabDisplayName, isDirtyFileTab } from '@/shared/utils/fileTree';
+
+import { fallbackEditorLayout, healEditorLayout } from '../utils/healEditorLayout';
 
 export interface EditorGroupLayoutResult {
   layout: EditorSplitLayout;
@@ -32,6 +35,9 @@ export interface EditorGroupLayoutResult {
   setPinnedPanelRatio: (ratio: number) => void;
   closeOtherTabs: (keepTabId: string) => void;
   closeAllTabs: () => void;
+  // ── 槽位宿主（dock）投影：与中心三组同构的派生读取面 ──
+  dockedTabs: Record<DockSlot, Tab[]>;
+  dockedActiveTabIds: Record<DockSlot, string | null>;
 }
 
 /**
@@ -62,76 +68,11 @@ export function useEditorGroupLayout(
   const storeUnpinTab = useEditorStore((s) => s.unpinTab);
   const storeSetPinnedPanelRatio = useEditorStore((s) => s.setPinnedPanelRatio);
 
-  // Live tab id lookup set — O(1) membership checks for healing stale layouts
-  // (avoids O(n×m) `allTabs.some(...)` scans inside the heal callback).
-  const liveTabIdSet = useMemo(() => {
-    const set = new Set<string>();
-    for (const t of allTabs) set.add(t.id);
-    return set;
-  }, [allTabs]);
-
-  // Repair a group whose activeTabId is null or points at a tab that is no
-  // longer in the group. The layout can go stale through paths that write tabs
-  // without a layout (session restore) or through split juggling — and when it
-  // does, EditorGroupPane's `activeTab` lookup misses and the content area
-  // renders blank while the tab bar still shows the tabs.
-  // NOTE: the layout's own `tabIds` may itself list removed tabs (leftTabs
-  // filters them out), so only tabs that still exist in the store are
-  // candidates for the healed active id.
-  const healGroupActiveTabId = useCallback(
-    (tabIds: string[], currentActiveTabId: string | null): string | null => {
-      const liveTabIds = tabIds.filter((id) => liveTabIdSet.has(id));
-      if (currentActiveTabId && liveTabIds.includes(currentActiveTabId)) return currentActiveTabId;
-      if (liveTabIds.length === 0) return null;
-      // 布局即唯一权威：本组的激活位失效时取最后一个存活 tab（不再参考空间级投影 ——
-      // 那个投影已随「单一真源」删除；它本就恒等于激活组的激活位，不携带额外信息）。
-      return liveTabIds[liveTabIds.length - 1];
-    },
-    [liveTabIdSet],
+  // 布局自愈（纯函数，见 utils/healEditorLayout）：读侧修正幽灵激活位，不写回 store
+  const layout: EditorSplitLayout = useMemo(
+    () => (rawLayout ? healEditorLayout(rawLayout, allTabs) : fallbackEditorLayout(allTabs)),
+    [rawLayout, allTabs],
   );
-
-  const layout: EditorSplitLayout = useMemo(() => {
-    if (rawLayout) {
-      // A stored layout may reference tabs that were removed (blank content
-      // area bug). Heal each group without mutating the stored layout.
-      const leftActive = healGroupActiveTabId(
-        rawLayout.groups.left.tabIds,
-        rawLayout.groups.left.activeTabId,
-      );
-      const rightActive = healGroupActiveTabId(
-        rawLayout.groups.right.tabIds,
-        rawLayout.groups.right.activeTabId,
-      );
-      const livePinnedIds = rawLayout.pinnedTabIds.filter((id) => liveTabIdSet.has(id));
-      const pinnedActive =
-        rawLayout.pinnedActiveTabId && livePinnedIds.includes(rawLayout.pinnedActiveTabId)
-          ? rawLayout.pinnedActiveTabId
-          : livePinnedIds.length > 0
-            ? livePinnedIds[livePinnedIds.length - 1]
-            : null;
-      if (
-        rawLayout.groups.left.activeTabId === leftActive &&
-        rawLayout.groups.right.activeTabId === rightActive &&
-        rawLayout.pinnedActiveTabId === pinnedActive
-      ) {
-        return rawLayout;
-      }
-      return {
-        ...rawLayout,
-        groups: {
-          left: { ...rawLayout.groups.left, activeTabId: leftActive },
-          right: { ...rawLayout.groups.right, activeTabId: rightActive },
-        },
-        pinnedActiveTabId: pinnedActive,
-      };
-    }
-    const l = createDefaultEditorLayout();
-    l.groups.left.tabIds = allTabs.map((t) => t.id);
-    // 不变量 I1（有 tab 的空间必有 layout）成立后本分支不可达，保留作防御：
-    // 缺失 layout 时取最后一个 tab（不再参考已删除的空间级投影）。
-    l.groups.left.activeTabId = allTabs.length > 0 ? allTabs[allTabs.length - 1].id : null;
-    return l;
-  }, [rawLayout, allTabs, healGroupActiveTabId, liveTabIdSet]);
 
   const tabsById = useMemo(() => {
     const map = new Map<string, Tab>();
@@ -147,6 +88,26 @@ export function useEditorGroupLayout(
   const rightTabs = useMemo(
     () => layout.groups.right.tabIds.map((id) => tabsById.get(id)).filter(Boolean) as Tab[],
     [layout.groups.right.tabIds, tabsById],
+  );
+
+  const dockedLeftTabs = useMemo(
+    () => layout.docked.left.tabIds.map((id) => tabsById.get(id)).filter(Boolean) as Tab[],
+    [layout.docked.left.tabIds, tabsById],
+  );
+
+  const dockedRightTabs = useMemo(
+    () => layout.docked.right.tabIds.map((id) => tabsById.get(id)).filter(Boolean) as Tab[],
+    [layout.docked.right.tabIds, tabsById],
+  );
+
+  const dockedTabs = useMemo(
+    () => ({ left: dockedLeftTabs, right: dockedRightTabs }),
+    [dockedLeftTabs, dockedRightTabs],
+  );
+
+  const dockedActiveTabIds = useMemo(
+    () => ({ left: layout.docked.left.activeTabId, right: layout.docked.right.activeTabId }),
+    [layout.docked.left.activeTabId, layout.docked.right.activeTabId],
   );
 
   const splitRight = useCallback(
@@ -267,5 +228,7 @@ export function useEditorGroupLayout(
     setPinnedPanelRatio,
     closeOtherTabs,
     closeAllTabs,
+    dockedTabs,
+    dockedActiveTabIds,
   };
 }

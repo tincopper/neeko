@@ -3,6 +3,7 @@ import { Facet, type Extension, type Text } from '@codemirror/state';
 import type { Tooltip, TooltipView } from '@codemirror/view';
 import { EditorView, closeHoverTooltips, hoverTooltip } from '@codemirror/view';
 
+import { panelView } from '@/shared/dock';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { isJdtUri } from '@/shared/utils/jdt';
@@ -11,6 +12,9 @@ import { lspPositionToOffset } from '@/shared/utils/lspPosition';
 import { isModKeyHeld } from '../modKeyState';
 import { LatestRequestTracker } from '../requestTracker';
 import { normalizeHoverContents } from '../utils/hoverContent';
+
+/** 浏览器视图身份（ViewKey 只允许由 `shared/dock/viewKey` 铸造）。 */
+const BROWSER_VIEW = panelView('browser');
 
 interface LspHoverRange {
   start: { line: number; character: number };
@@ -207,7 +211,7 @@ function lspTooltipSource(view: EditorView, pos: number, _side: -1 | 1): Promise
               return;
             }
             useBrowserStore.getState().navigateTo(route.href);
-            useDockStore.getState().activatePanel('right', 'browser');
+            useDockStore.getState().activateView(BROWSER_VIEW);
           });
 
           return { dom: el };

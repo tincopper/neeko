@@ -9,6 +9,11 @@ export interface CycleTabLayoutSlice {
     left?: { tabIds?: string[]; activeTabId?: string | null };
     right?: { tabIds?: string[]; activeTabId?: string | null };
   };
+  /** 倒栏宿主组：它们的 tab 不属于中心轮转（但不该被当成「未分配」追加进来）。 */
+  docked?: {
+    left?: { tabIds?: string[]; activeTabId?: string | null };
+    right?: { tabIds?: string[]; activeTabId?: string | null };
+  };
 }
 
 export function resolveNextTabId(opts: {
@@ -34,6 +39,8 @@ export function resolveNextTabId(opts: {
       ...(layout.groups.left?.tabIds ?? []),
       ...(layout.groups.right?.tabIds ?? []),
       ...(layout.pinnedTabIds ?? []),
+      ...(layout.docked?.left?.tabIds ?? []),
+      ...(layout.docked?.right?.tabIds ?? []),
     ]);
     for (const id of tabIds) {
       if (!assigned.has(id) && !orderedIds.includes(id)) {

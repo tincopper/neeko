@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 
+import { panelView } from '@/shared/dock';
 import { useAgentStore } from '@/shared/store/agentStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import type { AppConfig, AgentConfig } from '@/shared/types';
@@ -287,7 +288,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
       }
       if (mode === 'browser') {
         // Activate Browser dock panel
-        useDockStore.getState().togglePanel('browser');
+        useDockStore.getState().toggleView(panelView('browser'));
         setIsAddMenuOpen(false);
         return;
       }

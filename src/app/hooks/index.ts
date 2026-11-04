@@ -1,9 +1,13 @@
 export { useAppShell } from './useAppShell';
 export { useDockBarButtons } from './UseDockBarButtons';
+export { useDockBarMove } from './useDockBarMove';
+export { useDockBarOpenTab } from './useDockBarOpenTab';
+export { useVisibleTabKinds } from './useVisibleTabKinds';
 export { useAppGlobalEffects } from './useAppGlobalEffects';
 export { useAppStoreSync } from './useAppStoreSync';
 export { useAppEntryAddRefresh } from './useAppEntryAddRefresh';
 export { useAppInitialGitRefresh } from './useAppInitialGitRefresh';
 export { useProjectAgents } from './useProjectAgents';
 export { useTerminalTabs } from './useTerminalTabs';
+export { useMoveTabToSlot } from './useMoveTabToSlot';
 export { useRemoteProjectSession } from './useRemoteProjectSession';

@@ -11,6 +11,7 @@ import { Terminal } from '@xterm/xterm';
 import React, { useEffect, useRef } from 'react';
 
 import { useAppContext } from '@/shared/contexts/AppContext';
+import { panelView } from '@/shared/dock';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { observeContainerSize } from '@/shared/utils/containerObserver';
@@ -23,6 +24,9 @@ import type { TaskRun } from '../types';
 import { setupConsoleLinks } from '../utils/consoleLinks';
 
 import '@xterm/xterm/css/xterm.css';
+
+/** 浏览器视图身份（ViewKey 只允许由 `shared/dock/viewKey` 铸造）。 */
+const BROWSER_VIEW = panelView('browser');
 
 interface Props {
   run: TaskRun;
@@ -70,7 +74,7 @@ function TaskConsoleOutput({ run, active }: Props) {
 
     // Enable URL detection and file path links (must be after term.open)
     const webLinksAddon = new WebLinksAddon((_event, uri) => {
-      useDockStore.getState().activatePanel('right', 'browser');
+      useDockStore.getState().activateView(BROWSER_VIEW);
       useBrowserStore.getState().navigateTo(uri);
     });
     term.loadAddon(webLinksAddon);

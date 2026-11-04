@@ -26,7 +26,14 @@ function mkTab(id: string): Tab {
 
 function stateWith(
   tabIds: string[],
-  groups: { left: string[]; right: string[]; pinned: string[]; active: 'left' | 'right' },
+  groups: {
+    left: string[];
+    right: string[];
+    pinned: string[];
+    active: 'left' | 'right';
+    dockedLeft?: string[];
+    dockedRight?: string[];
+  },
 ): EditorTabSpaceState {
   const layout = createDefaultEditorLayout();
   layout.activeGroupId = groups.active;
@@ -35,6 +42,14 @@ function stateWith(
   layout.groups.right = { tabIds: groups.right, activeTabId: groups.right[0] ?? null };
   layout.pinnedTabIds = groups.pinned;
   layout.pinnedActiveTabId = groups.pinned[0] ?? null;
+  layout.docked.left = {
+    tabIds: groups.dockedLeft ?? [],
+    activeTabId: groups.dockedLeft?.[0] ?? null,
+  };
+  layout.docked.right = {
+    tabIds: groups.dockedRight ?? [],
+    activeTabId: groups.dockedRight?.[0] ?? null,
+  };
   const projectTabs: ProjectTabs = { tabs: tabIds.map(mkTab) };
   return { tabs: { [SPACE]: projectTabs }, editorLayout: { [SPACE]: layout } };
 }
@@ -48,6 +63,34 @@ describe('selectOrderedTabIds / selectOrderedTabs', () => {
       active: 'right',
     });
     expect(selectOrderedTabIds(state, SPACE)).toEqual(['A', 'B', 'C', 'D', 'P']);
+  });
+
+  it('顺序追加 docked.left → docked.right（停靠的 tab 仍在仲裁集里）', () => {
+    const state = stateWith(['A', 'B', 'P', 'DL', 'DR'], {
+      left: ['A'],
+      right: ['B'],
+      pinned: ['P'],
+      dockedLeft: ['DL'],
+      dockedRight: ['DR'],
+      active: 'left',
+    });
+    expect(selectOrderedTabIds(state, SPACE)).toEqual(['A', 'B', 'P', 'DL', 'DR']);
+  });
+
+  it('G2：仲裁顺序覆盖全部 tab（长度相等、无重复、集合相等）', () => {
+    const state = stateWith(['A', 'B', 'P', 'DL1', 'DL2', 'DR'], {
+      left: ['A'],
+      right: ['B'],
+      pinned: ['P'],
+      dockedLeft: ['DL1', 'DL2'],
+      dockedRight: ['DR'],
+      active: 'left',
+    });
+    const ordered = selectOrderedTabIds(state, SPACE);
+    const all = state.tabs[SPACE]!.tabs.map((t) => t.id);
+    expect(ordered).toHaveLength(all.length);
+    expect(new Set(ordered).size).toBe(ordered.length);
+    expect([...ordered].sort()).toEqual([...all].sort());
   });
 
   it('selectOrderedTabs 投影成 Tab 并保持顺序', () => {
@@ -176,6 +219,26 @@ describe('selectActiveSessionRefs', () => {
 
   it('前台是文件 tab ⇒ 不计入（父行保留自己的选中底色）', () => {
     expect(selectActiveSessionRefs(stateWithActive(mkTab('f').data))).toEqual([]);
+  });
+
+  it('停靠在 dock 宿主前台的会话仍计入（停靠不改「当前会话」这一事实）', () => {
+    const layout = createDefaultEditorLayout();
+    const center: Tab = { id: 'file-1', scope: { kind: 'app' }, title: 'f', data: mkTab('f').data };
+    const docked: Tab = {
+      id: 'chat-1',
+      scope: { kind: 'app' },
+      title: 'c',
+      data: { kind: 'agent-chat', sessionId: 'chat-1' },
+    };
+    layout.groups.left = { tabIds: [center.id], activeTabId: center.id };
+    layout.docked.right = { tabIds: [docked.id], activeTabId: docked.id };
+    const state: EditorTabSpaceState = {
+      tabs: { [SPACE]: { tabs: [center, docked] } },
+      editorLayout: { [SPACE]: layout },
+    };
+    expect(selectActiveSessionRefs(state)).toEqual([
+      { workspaceKey: SPACE, kind: 'chat', sessionId: 'chat-1' },
+    ]);
   });
 
   it('多个单元时按 key 排序，供稳定快照比较', () => {

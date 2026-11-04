@@ -1,5 +1,5 @@
 import { SplashScreen } from '@/app/components/SplashScreen';
-import { useAppShell, useDockBarButtons } from '@/app/hooks';
+import { useAppShell, useDockBarButtons, useDockBarMove, useDockBarOpenTab } from '@/app/hooks';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
@@ -26,8 +26,15 @@ installDebugBridge({
 function App() {
   const { initializing, appProvidersProps, toolbarProps, appModalsProps } = useAppShell();
 
-  const leftButtons = useDockBarButtons('left');
-  const rightButtons = useDockBarButtons('right');
+  // 图标落位的唯一写入口：拖拽（DockLayout 的 DndContext）与键盘（DockBarButton）共用
+  const onMoveView = useDockBarMove();
+  // 种类级入口（openTab）的落地端口：依赖从组合根传入（此时仍在 Provider 之外）
+  const onOpenTab = useDockBarOpenTab({
+    agents: appProvidersProps.appValue.agents,
+    onAgentClick: appProvidersProps.editorValue.onAgentClick,
+  });
+  const leftBarItems = useDockBarButtons('left', { onMove: onMoveView, onOpenTab });
+  const rightBarItems = useDockBarButtons('right', { onMove: onMoveView, onOpenTab });
 
   if (initializing) {
     return <SplashScreen />;
@@ -38,8 +45,9 @@ function App() {
       <AppShell
         toolbarProps={toolbarProps}
         appModalsProps={appModalsProps}
-        leftButtons={leftButtons}
-        rightButtons={rightButtons}
+        leftBarItems={leftBarItems}
+        rightBarItems={rightBarItems}
+        onMoveView={onMoveView}
       />
     </AppProviders>
   );

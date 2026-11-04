@@ -1,11 +1,13 @@
 import { useDroppable } from '@dnd-kit/core';
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 
 import { getActionMenuItems } from '@/features/action-menu';
 import { ContextMenu } from '@/features/project';
 import { useEditorContext, EditorProvider } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
-import type { AuthMethod, EditorGroupId } from '@/shared/types';
+import type { DockSlot } from '@/shared/dock';
+import type { AuthMethod, EditorGroupId, EditorPaneId } from '@/shared/types';
+import { centerDropTargetOf } from '@/shared/types/editorGroup';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { PINNED_DROP_PREFIX, editorPaneRegionClass } from '../dragDrop';
@@ -33,9 +35,17 @@ function handlePaneKeyDown(e: React.KeyboardEvent<HTMLDivElement>, onFocusGroup:
   }
 }
 
-interface EditorGroupPaneProps {
-  /** "left" | "right" for normal groups; "pinned" for the fixed pin panel */
-  groupId: EditorGroupId | 'pinned';
+export interface EditorGroupPaneProps {
+  /**
+   * Pane 身份：中心两组（left/right）、pinned 面板，或槽位 tab 宿主（dockLeft/dockRight）。
+   * 同一套组语义（组即顺序与归属），因此 tab 渲染管线零分叉。
+   */
+  paneId: EditorPaneId;
+  /**
+   * 工具栏变体：`full` = 中心编辑器（Action Menu / Agent Bar / 分屏控件全开）；
+   * `dock` = 停靠宿主（只留 tab 条 —— 停靠区不提供新建 / 分屏 / Agent Bar）。
+   */
+  chrome?: 'full' | 'dock';
   /** Composite tab key — used by the pane to lookup layout & store state */
   tabKey: string;
   onAddTerminalTab?: (targetGroup?: EditorGroupId | 'pinned') => void;
@@ -53,15 +63,25 @@ interface EditorGroupPaneProps {
     onSessionReady?: (pid: string) => void;
   } | null;
   layoutId: string;
+  /**
+   * 本 pane 是否为当前可见 surface（浏览器 tab 的 sub-webview 依赖它开关）。
+   * 中心 pane 缺省按激活组推导；dock 宿主由宿主按「槽位展开 + 本宿主为前台」传入。
+   */
+  isActivePane?: boolean;
+  /** dock 入口（app 注入的唯一跨 store 编排点 `moveTabToSlot`；缺省则不提供菜单项）。 */
+  onMoveTabToSlot?: (tabId: string, target: 'center' | DockSlot) => void;
 }
 
 function EditorGroupPane({
-  groupId,
+  paneId,
+  chrome = 'full',
   tabKey,
   onAddTerminalTab,
   onFocusGroup,
   remoteProject,
   layoutId,
+  isActivePane,
+  onMoveTabToSlot,
 }: EditorGroupPaneProps) {
   const globalEditorCtx = useEditorContext();
   const { agents, compactMode, showAgentBar, hiddenAgentIds, onAgentClick } = globalEditorCtx;
@@ -88,16 +108,16 @@ function EditorGroupPane({
     unpinTab,
   } = layoutState;
 
-  // pinned 面板作为跨面板拖拽的 drop target：droppable id 按 groupId 唯一，
+  // pinned 面板作为跨面板拖拽的 drop target：droppable id 按 paneId 唯一，
   // 避免 left/right 的 disabled 注册覆盖 pinned 的启用注册。
   const { setNodeRef: setPinnedPanelDropRef, isOver: isOverPinnedDrop } = useDroppable({
-    id: `${PINNED_DROP_PREFIX}:${tabKey}:${groupId}`,
-    disabled: groupId !== 'pinned',
+    id: `${PINNED_DROP_PREFIX}:${tabKey}:${paneId}`,
+    disabled: paneId !== 'pinned',
   });
 
-  // Derive tabs / activeTabId / projectId from layout based on this pane's groupId
+  // Derive tabs / activeTabId / projectId from layout based on this pane's identity
   const { tabs, activeTabId, activeTab, projectIdForCheck } = usePaneTabs(
-    groupId,
+    paneId,
     layoutState,
     remoteProject?.projectId ?? null,
   );
@@ -124,8 +144,7 @@ function EditorGroupPane({
     actionMenuCtx,
   } = usePaneActions({
     tabKey,
-    groupId,
-    tabs,
+    paneId,
     projectIdForCheck,
     agents: installedEnabledAgents,
     onAddTerminalTab,
@@ -156,7 +175,8 @@ function EditorGroupPane({
   // ── Tab context menu ──
   const { contextMenu, closeContextMenu, contextMenuItems, handleTabContextMenu } =
     usePaneContextMenu({
-      groupId,
+      paneId,
+      onMoveTabToSlot,
       onCloseTab: handleCloseTab,
       onCloseOtherTabs,
       onCloseAllTabs,
@@ -168,6 +188,15 @@ function EditorGroupPane({
       pinnedTabs,
       onFocusGroup,
     });
+
+  // 新建终端 tab 的落组：dock 宿主不是落组（新建跟随中心激活组），且 dock chrome 不给入口
+  const addTerminalTarget = centerDropTargetOf(paneId);
+  const handleAddTerminalTab = useCallback(() => {
+    onAddTerminalTab?.(addTerminalTarget ?? undefined);
+  }, [addTerminalTarget, onAddTerminalTab]);
+
+  // dock chrome 的可见性由宿主给出（槽位展开 + 本宿主为前台）；中心 pane 按激活组推导
+  const paneIsActive = isActivePane ?? (paneId === 'pinned' || activeGroupId === paneId);
 
   const localEditorCtx = usePaneEditorContext(
     globalEditorCtx,
@@ -183,9 +212,9 @@ function EditorGroupPane({
       <div
         role="region"
         tabIndex={-1}
-        ref={groupId === 'pinned' ? setPinnedPanelDropRef : undefined}
+        ref={paneId === 'pinned' ? setPinnedPanelDropRef : undefined}
         className={editorPaneRegionClass({
-          groupId,
+          paneId,
           activeGroupId,
           isOverDropTarget: isOverPinnedDrop,
         })}
@@ -195,16 +224,16 @@ function EditorGroupPane({
         {/* Tab Bar */}
         {tabs.length > 0 && (
           <PaneTabBar
-            groupId={groupId}
+            chrome={chrome}
             tabs={tabs}
             activeTabId={activeTabId}
             pinnedTabIds={pinnedTabs.map((t) => t.id)}
             onActivateTab={handleActivateTab}
             onCloseTab={handleCloseTab}
-            onAddTerminalTab={onAddTerminalTab}
+            onAddTerminalTab={addTerminalTarget ? handleAddTerminalTab : undefined}
             onNewFileTab={handleNewFileTab}
             onTabContextMenu={handleTabContextMenu}
-            onActionMenuOpen={openActionMenu}
+            onActionMenuOpen={chrome === 'full' ? openActionMenu : undefined}
             onActionMenuClose={closeActionMenu}
             actionMenuRect={actionMenuRect}
             actionMenuCtx={actionMenuCtx}
@@ -233,8 +262,8 @@ function EditorGroupPane({
             agents={enabledAgents}
             diffMode={config.diffMode}
             layoutId={layoutId}
-            // pinned 面板只要渲染即视为激活组；left/right 需为当前激活组。
-            isActiveGroup={groupId === 'pinned' || activeGroupId === groupId}
+            // pinned 面板只要渲染即视为激活组；left/right 需为当前激活组；dock 由宿主给出。
+            isActiveGroup={paneIsActive}
             remoteProject={remoteProject}
             onCloseTab={handleCloseTab}
             showToast={showToast}

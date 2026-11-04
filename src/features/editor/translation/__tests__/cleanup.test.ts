@@ -109,6 +109,10 @@ describe('editorStore 注册 — closeTab 触发文件清理', () => {
             left: { tabIds: ['file:README.md'], activeTabId: 'file:README.md' },
             right: { tabIds: [], activeTabId: null },
           },
+          docked: {
+            left: { tabIds: [], activeTabId: null },
+            right: { tabIds: [], activeTabId: null },
+          },
           pinnedTabIds: [],
           pinnedActiveTabId: null,
         },

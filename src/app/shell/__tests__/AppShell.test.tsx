@@ -10,18 +10,18 @@ vi.mock('@/layout', () => ({
   DockLayout: ({
     children,
     toolbarFooterLeft,
-    leftButtons,
-    rightButtons,
+    leftBarItems,
+    rightBarItems,
   }: {
     children?: ReactNode;
     toolbarFooterLeft?: ReactNode;
-    leftButtons?: ReactNode[];
-    rightButtons?: ReactNode[];
+    leftBarItems?: { view: string; node: ReactNode }[];
+    rightBarItems?: { view: string; node: ReactNode }[];
   }) => (
     <div data-testid="dock-layout">
       <div data-testid="dock-toolbar-footer">{toolbarFooterLeft}</div>
-      <div data-testid="dock-left-buttons">{leftButtons}</div>
-      <div data-testid="dock-right-buttons">{rightButtons}</div>
+      <div data-testid="dock-left-buttons">{leftBarItems?.map((item) => item.node)}</div>
+      <div data-testid="dock-right-buttons">{rightBarItems?.map((item) => item.node)}</div>
       {children}
     </div>
   ),
@@ -48,8 +48,8 @@ vi.mock('../../panels/PanelHost', () => ({
 
 import AppShell from '../AppShell';
 
-function makeButton(tag: string): ReactNode {
-  return <span data-testid={tag} />;
+function makeEntry(tag: string): { view: string; node: ReactNode } {
+  return { view: `panel:${tag}`, node: <span data-testid={tag} /> };
 }
 
 function renderShell() {
@@ -62,8 +62,9 @@ function renderShell() {
         onOpenSettings: vi.fn(),
       }}
       appModalsProps={{} as never}
-      leftButtons={[makeButton('left-btn')]}
-      rightButtons={[makeButton('right-btn')]}
+      leftBarItems={[makeEntry('left-btn')]}
+      rightBarItems={[makeEntry('right-btn')]}
+      onMoveView={vi.fn()}
     />,
   );
 }

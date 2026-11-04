@@ -3,11 +3,15 @@ import React, { useCallback, useMemo } from 'react';
 import { GitControlPanel, useRefreshGitInfo } from '@/features/git';
 import { useActiveProject } from '@/features/project';
 import { useAppContext } from '@/shared/contexts';
+import { isViewVisible, panelView } from '@/shared/dock';
 import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore, selectBranch, selectEntries } from '@/shared/store/projectStore';
 import { useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
+
+/** 视图身份（ViewKey 只允许由 `shared/dock/viewKey` 铸造，模块级以便 selector 引用稳定）。 */
+const GIT_CONTROL_VIEW = panelView('gitControl');
 
 /**
  * Git Control dock 面板适配层（薄容器）：只做 dock/上下文适配 —— 面板可见性门控、
@@ -29,12 +33,7 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
   } = useActiveProject();
 
   // 面板在 dock 中可见（任一 zone 激活且展开）才加载数据
-  const isPanelActive = useDockStore((s) => {
-    for (const zone of Object.values(s.zones)) {
-      if (zone.activePanelId === 'gitControl' && zone.expanded) return true;
-    }
-    return false;
-  });
+  const isPanelActive = useDockStore((s) => isViewVisible(s, GIT_CONTROL_VIEW));
 
   const refreshGit = useRefreshGitInfo(project, commands);
 

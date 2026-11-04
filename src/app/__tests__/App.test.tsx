@@ -40,6 +40,9 @@ vi.mock('@/app/hooks', () => ({
     appModalsProps: {} as never,
   }),
   useDockBarButtons: () => [],
+  useDockBarMove: () => () => {},
+  // openTab 端口只透传依赖，返回一个稳定 handler（App 组合层用例不关心它）
+  useDockBarOpenTab: () => () => {},
 }));
 vi.mock('@/layout', () => ({
   TitleBar: () => null,

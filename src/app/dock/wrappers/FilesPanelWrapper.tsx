@@ -13,11 +13,15 @@ import {
 import { refreshWorkspaceStatus } from '@/features/git/utils/gitStatus';
 import { useActiveProject } from '@/features/project';
 import { useAppContext } from '@/shared/contexts';
+import { isViewVisible, panelView } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore, selectEntries } from '@/shared/store/projectStore';
 import { activeWorkspaceSession, useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 import { filePathToFileUrl, openHtmlInBrowserPanel } from '@/shared/utils/browserUtils';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
+
+/** 视图身份（ViewKey 只允许由 `shared/dock/viewKey` 铸造，模块级以便 selector 引用稳定）。 */
+const FILES_VIEW = panelView('files');
 
 /**
  * Files dock 面板适配层：读取 file context + store 并透传给 FilesPanel。
@@ -46,12 +50,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const { canLocateFile, filePath: locateTargetPath } = useLocateFileInTree(tabKey, fileRootPath);
 
   // 面板在 dock 中激活（任一 zone 激活且展开）才发起首次加载
-  const isActive = useDockStore((s) => {
-    for (const zone of Object.values(s.zones)) {
-      if (zone.activePanelId === 'files' && zone.expanded) return true;
-    }
-    return false;
-  });
+  const isActive = useDockStore((s) => isViewVisible(s, FILES_VIEW));
 
   // 目录加载 / file-tree-changed 事件刷新 / 手动刷新 / 懒加载展开（feature hook）
   // treeProjectId 同时是本面板的项目身份（拖拽 / CRUD 寻址）与树的寻求地址 ——

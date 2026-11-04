@@ -15,6 +15,7 @@ import { deleteConversation } from '@/features/conversation/api/conversationApi'
 import { useActiveProject } from '@/features/project';
 import { createTaskTerminal } from '@/features/terminal';
 import { useAppContext } from '@/shared/contexts';
+import { isViewVisible, panelView } from '@/shared/dock';
 import { confirmAction } from '@/shared/store/confirmStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -23,6 +24,9 @@ import { activeWorkspaceSession, useActiveWorkspaceKey } from '@/shared/store/wo
 import type { Tab } from '@/shared/types';
 import { buildResumeTaskCommand } from '@/shared/utils/agentCommand';
 import { logFrontendError } from '@/shared/utils/errorReporting';
+
+/** 视图身份（ViewKey 只允许由 `shared/dock/viewKey` 铸造，模块级以便 selector 引用稳定）。 */
+const CONVERSATIONS_VIEW = panelView('conversations');
 
 /**
  * Conversations dock 面板适配层：读取 project context + agent 列表透传
@@ -45,12 +49,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
   );
 
   const projectPath = worktreePath ?? project?.path ?? null;
-  const isActive = useDockStore((s) => {
-    for (const zone of Object.values(s.zones)) {
-      if (zone.activePanelId === 'conversations' && zone.expanded) return true;
-    }
-    return false;
-  });
+  const isActive = useDockStore((s) => isViewVisible(s, CONVERSATIONS_VIEW));
 
   // Determine project ID and tab key for opening conversation tabs
   const currentProjectId = useProjectStore((s) => s.activeProjectId);

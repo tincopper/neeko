@@ -1,24 +1,25 @@
 import React, { createContext, useContext } from 'react';
 
-import type { DockPanelMeta } from '@/shared/dock';
+import type { DockViewMeta } from '@/shared/dock';
 
 /**
- * UI-facing dock panel definition injected by app.
+ * UI-facing dock view definition injected by app.
  * layout consumes this via context and never imports features/app registries.
  */
-export interface DockPanelViewDef extends DockPanelMeta {
+export interface DockViewDef extends DockViewMeta {
   title: string;
   icon: string;
+  /** `host !== 'none'` 的视图必填（buildDockPanelRegistry 的 fail-fast 校验）。 */
   component?: React.LazyExoticComponent<React.ComponentType<Record<string, unknown>>>;
   minPanelSize?: number;
 }
 
-export type DockPanelRegistry = Record<string, DockPanelViewDef>;
+export type DockViewRegistry = Record<string, DockViewDef>;
 
-const DockRegistryContext = createContext<DockPanelRegistry | null>(null);
+const DockRegistryContext = createContext<DockViewRegistry | null>(null);
 
 export interface DockRegistryProviderProps {
-  registry: DockPanelRegistry;
+  registry: DockViewRegistry;
   children?: React.ReactNode;
 }
 
@@ -26,7 +27,7 @@ export function DockRegistryProvider({ registry, children }: DockRegistryProvide
   return <DockRegistryContext.Provider value={registry}>{children}</DockRegistryContext.Provider>;
 }
 
-export function useDockRegistry(): DockPanelRegistry {
+export function useDockRegistry(): DockViewRegistry {
   const registry = useContext(DockRegistryContext);
   if (!registry) {
     throw new Error('useDockRegistry must be used within DockRegistryProvider');

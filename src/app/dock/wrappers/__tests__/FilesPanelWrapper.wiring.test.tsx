@@ -33,6 +33,7 @@ vi.mock('@/features/file/hooks/useFileDrop', () => ({
 import { FilesPanelWrapper } from '@/app/dock/wrappers/FilesPanelWrapper';
 import { FileActionsProvider } from '@/features/editor/FileActionsContext';
 import { useFileStore } from '@/features/file/store';
+import { panelView } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -152,12 +153,11 @@ beforeEach(() => {
   useEditorStore.setState({ tabs: {}, editorLayout: {} });
   useProjectStore.setState({ activeProject: PROJECT, activeProjectId: 'p1' as never, entries: {} });
   useWorkspaceStore.setState({ byProject: {} });
-  useDockStore.setState({
-    zones: {
-      left: { activePanelId: 'files', expanded: true, panels: ['files'] },
-      right: { activePanelId: null, expanded: false, panels: [] },
-    } as never,
-  });
+  // 面板可见性门控 = isViewVisible（槽前台 + 展开）：把 files 拎到左槽前台
+  // （FilesPanelWrapper 本身不关心视图在哪个槽，只要「可见」）
+  useDockStore.getState().moveView(panelView('files'), 'left', 0);
+  useDockStore.getState().activateView(panelView('files'));
+  useDockStore.getState().setSlotExpanded('left', true);
 });
 
 describe('FilesPanel 生产接线：激活文件来自 tab 空间（Block-1 护栏）', () => {

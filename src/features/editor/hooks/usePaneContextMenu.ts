@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { ContextMenuItem } from '@/features/project';
+import type { DockSlot } from '@/shared/dock';
 import { useOverlayStore } from '@/shared/store/overlayStore';
-import type { EditorGroupId } from '@/shared/types';
+import type { EditorPaneId } from '@/shared/types';
 
 /** tab 右键菜单浮层 id（z-order 专项）。 */
 const CONTEXT_MENU_OVERLAY_ID = 'tab-context-menu';
 
 interface UsePaneContextMenuParams {
-  groupId: EditorGroupId | 'pinned';
+  paneId: EditorPaneId;
+  /**
+   * tab → 槽位（唯一跨 store 编排点由 app 注入：`app/utils/tabSurface.moveTabToSlot`）。
+   * 缺省 = 不提供「移到 dock/中心」菜单项（组件级测试与未接线的宿主）。
+   */
+  onMoveTabToSlot?: (tabId: string, target: 'center' | DockSlot) => void;
   onCloseTab: (tabId: string) => void;
   onCloseOtherTabs?: (tabId: string) => void;
   onCloseAllTabs?: () => void;
@@ -25,7 +31,8 @@ interface UsePaneContextMenuParams {
  * EditorGroupPane 的 tab 右键菜单：状态、菜单项构建与关闭。
  */
 export function usePaneContextMenu({
-  groupId,
+  paneId,
+  onMoveTabToSlot,
   onCloseTab,
   onCloseOtherTabs,
   onCloseAllTabs,
@@ -55,7 +62,7 @@ export function usePaneContextMenu({
   // Build context menu extras inline based on groupId
   const resolveContextMenuExtras = useCallback(
     (tabId: string): ContextMenuItem[] => {
-      if (groupId === 'pinned') {
+      if (paneId === 'pinned') {
         return [{ label: 'Unpin Tab', action: () => onUnpinTab?.(tabId) }];
       }
       const isPinnedTab = pinnedTabs.some((t) => t.id === tabId);
@@ -64,7 +71,7 @@ export function usePaneContextMenu({
       }
       return [{ label: 'Pin Tab', action: () => onPinTab?.(tabId) }];
     },
-    [groupId, pinnedTabs, onUnpinTab, onPinTab],
+    [paneId, pinnedTabs, onUnpinTab, onPinTab],
   );
 
   const handleTabContextMenu = useCallback(
@@ -82,8 +89,10 @@ export function usePaneContextMenu({
     if (!contextMenu) return [];
     const { tabId } = contextMenu;
 
-    const isInRight = groupId === 'right';
-    const isPinnedGroup = groupId === 'pinned';
+    const isInRight = paneId === 'right';
+    const isPinnedGroup = paneId === 'pinned';
+    const isDocked = paneId === 'dockLeft' || paneId === 'dockRight';
+    const isPinnedTab = pinnedTabs.some((t) => t.id === tabId);
 
     // Pin panel: delegate entirely to extras (Layout provides Unpin)
     if (isPinnedGroup) {
@@ -97,13 +106,32 @@ export function usePaneContextMenu({
     if (onCloseAllTabs) {
       items.push({ label: 'Close All', action: () => onCloseAllTabs() });
     }
-    items.push({ separator: true } as ContextMenuItem);
-    if (!isInRight) {
-      items.push({ label: 'Split Right', action: () => onSplitRight?.(tabId) });
-      items.push({ label: 'Move to Right', action: () => onMoveToRight?.(tabId) });
-    } else {
-      items.push({ label: 'Move to Left', action: () => onMoveToLeft?.(tabId) });
+    if (!isDocked) {
+      items.push({ separator: true } as ContextMenuItem);
+      if (!isInRight) {
+        items.push({ label: 'Split Right', action: () => onSplitRight?.(tabId) });
+        items.push({ label: 'Move to Right', action: () => onMoveToRight?.(tabId) });
+      } else {
+        items.push({ label: 'Move to Left', action: () => onMoveToLeft?.(tabId) });
+      }
     }
+
+    // tab → 槽位（P1）：只在合法时出现。pinned tab 一律不出现（R9：拒绝而非静默 unpin）；
+    // 「已经在的地方」不出现（拖/移到当前 surface 是 no-op，列出来只会让菜单变吵）。
+    if (onMoveTabToSlot && !isPinnedTab) {
+      const dockTargets: { label: string; target: 'center' | DockSlot }[] = [];
+      if (paneId !== 'dockLeft') dockTargets.push({ label: 'Move to Left Dock', target: 'left' });
+      if (paneId !== 'dockRight')
+        dockTargets.push({ label: 'Move to Right Dock', target: 'right' });
+      if (isDocked) dockTargets.push({ label: 'Move to Center', target: 'center' });
+      if (dockTargets.length > 0) {
+        items.push({ separator: true } as ContextMenuItem);
+        for (const item of dockTargets) {
+          items.push({ label: item.label, action: () => onMoveTabToSlot(tabId, item.target) });
+        }
+      }
+    }
+
     // Layout-injected extras (e.g. Pin Tab)
     const extras = resolveContextMenuExtras(tabId);
     if (extras && extras.length > 0) {
@@ -113,13 +141,15 @@ export function usePaneContextMenu({
     return items;
   }, [
     contextMenu,
-    groupId,
+    paneId,
+    pinnedTabs,
     onCloseTab,
     onCloseOtherTabs,
     onCloseAllTabs,
     onSplitRight,
     onMoveToRight,
     onMoveToLeft,
+    onMoveTabToSlot,
     resolveContextMenuExtras,
   ]);
 

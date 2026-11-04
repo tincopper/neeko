@@ -4,6 +4,7 @@ import { QuickOpenPalette } from '@/features/quick-open';
 import { StatusBar } from '@/features/status-bar';
 import { ReferencesPeekDialog, SymbolNavPalette } from '@/features/symbol-nav';
 import { DockLayout, TitleBar } from '@/layout';
+import type { DockBarEntry, MoveViewHandler } from '@/layout';
 
 import AppModals from '../AppModals';
 import AppCenter from '../components/AppCenter';
@@ -16,8 +17,10 @@ interface AppShellProps {
   /** 左 DockBar 底部按钮簇回调（Add Project / Settings，useToolbarFooterProps 装配）。 */
   toolbarProps: ToolbarFooterProps;
   appModalsProps: React.ComponentProps<typeof AppModals>;
-  leftButtons?: React.ReactNode[];
-  rightButtons?: React.ReactNode[];
+  leftBarItems?: DockBarEntry[];
+  rightBarItems?: DockBarEntry[];
+  /** 图标跨栏 / 排序入口（拖拽与键盘等价共用，app 层注入） */
+  onMoveView?: MoveViewHandler;
 }
 
 /**
@@ -29,7 +32,13 @@ interface AppShellProps {
  * DockLayout + DockRegistryProvider 注入的 registry）。岛屿视觉（海 + 浮岛）由
  * 各区域样式提供，本层只定义骨架分区。
  */
-function AppShell({ toolbarProps, appModalsProps, leftButtons, rightButtons }: AppShellProps) {
+function AppShell({
+  toolbarProps,
+  appModalsProps,
+  leftBarItems,
+  rightBarItems,
+  onMoveView,
+}: AppShellProps) {
   return (
     <div
       className="w-screen h-screen flex flex-col"
@@ -44,8 +53,9 @@ function AppShell({ toolbarProps, appModalsProps, leftButtons, rightButtons }: A
       <div className="flex-1 flex flex-col min-h-0 bg-bg-primary">
         <DockLayout
           toolbarFooterLeft={<ToolbarFooter {...toolbarProps} />}
-          leftButtons={leftButtons}
-          rightButtons={rightButtons}
+          leftBarItems={leftBarItems}
+          rightBarItems={rightBarItems}
+          onMoveView={onMoveView}
         >
           <AppCenter />
         </DockLayout>

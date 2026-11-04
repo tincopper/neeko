@@ -6,6 +6,7 @@
  * 本文件只保留「浏览器语义」的两个入口：本机路径 → 地址栏 URL（收路径字符串），以及地址 →
  * 本地路径的**适配器**。消费侧要拼根/剥根时直接用 `fileRef`，不要再在此处加第二个实现。
  */
+import { panelView } from '@/shared/dock';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { canonicalFsPath, fileRefFromLspUri, fileUriOfPath } from '@/shared/utils/fileRef';
@@ -45,6 +46,9 @@ export function fileUrlToFilePath(fileUrl: string): string | null {
   return ref.path;
 }
 
+/** 浏览器视图身份（ViewKey 只允许由 `shared/dock/viewKey` 铸造）。 */
+const BROWSER_VIEW = panelView('browser');
+
 /**
  * 在内嵌 Browser Panel 中打开本地 HTML 文件
  * 激活右侧 Browser dock panel 并导航到 file:// URL
@@ -52,10 +56,10 @@ export function fileUrlToFilePath(fileUrl: string): string | null {
 export function openHtmlInBrowserPanel(filePath: string): void {
   const fileUrl = filePathToFileUrl(filePath);
   // navigateTo first so the store has url+isLoading=true before BrowserPanel
-  // mounts. activatePanel triggers a React re-render that mounts the panel;
-  // if we called activatePanel first the mount effect would read an empty store.
+  // mounts. activateView triggers a React re-render that mounts the panel;
+  // if we called activateView first the mount effect would read an empty store.
   useBrowserStore.getState().navigateTo(fileUrl);
-  useDockStore.getState().activatePanel('right', 'browser');
+  useDockStore.getState().activateView(BROWSER_VIEW);
 }
 
 /**
