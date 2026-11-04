@@ -1388,3 +1388,40 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 401: Dock 落位单一真源 + tab 停靠（P0–P3a + C 组缺口）
+<!-- trellis-session: v=2 fp=037c69a898de2e95 -->
+
+**Date**: 2026-11-04
+**Task**: Dock 落位单一真源 + tab 停靠（P0–P3a + C 组缺口）
+**Branch**: `main`
+
+### Summary
+
+把「谁在哪个槽位」从 zones[].panels + barItems[] 双表示收敛为 placements 单一真源；tab 按种类停靠进 editorLayout.docked 组（单值 surface，无第二实例）；种类图标可接回/续写会话，新建 agent-chat 默认落图标所在槽。
+
+### Main Changes
+
+- shared/dock（types/viewKey/placement/panelMeta 能力位）+ dockStore v6（migrate/sanitize）+ DockBarDnd 两栏单 DndContext + editorStore.dockTab 原子迁移 + features/dock-tabs 宿主复用 EditorGroupPane(chrome=dock) + app 层 tabSurfacePolicy 单槽注册表 + useDockBarOpenTab 委派 useActivateSession
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `40580c7b` | feat(layout): make dock placement the single source of truth |
+| `0664000e` | feat(layout): show a drag preview and keep keyboard focus on the icon |
+| `70988860` | feat(dock): dock new agent chats and resume sessions from the icons |
+| `3d1edad3` | docs(dock-placement): record the session rule and close the plan |
+
+### Testing
+
+- [OK] pnpm check:quick 全绿（pre-commit 13/12 条栏杆）；聚焦用例 8 文件 157 例；三处修复的红证据各已复现（禁用即失败）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真机回归：① dock 一条 agent-chat 前后 PTY 计数不变 ② 栏内排序重启后保持 ③ pin tab → 开侧面板 → 拖 handle；三条过后 archive 本任务
