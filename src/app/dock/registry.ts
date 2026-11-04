@@ -180,7 +180,7 @@ const UI_BINDINGS: Record<string, UiBinding> = {
     icon: 'Bot',
   },
   [tabKindView('terminal')]: {
-    title: 'Agent Terminal',
+    title: 'Terminal',
     icon: 'Terminal',
   },
 };

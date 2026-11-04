@@ -29,11 +29,9 @@ function App() {
   // 图标落位的唯一写入口：拖拽（DockLayout 的 DndContext）与键盘（DockBarButton）共用同一份
   // 落位实现，只是键盘路径额外接手焦点（换边后按钮在另一条栏重新挂载）
   const { moveView, moveViewByKeyboard } = useDockBarMove();
-  // 种类级入口（openTab）的落地端口：依赖从组合根传入（此时仍在 Provider 之外）
-  const onOpenTab = useDockBarOpenTab({
-    agents: appProvidersProps.appValue.agents,
-    onAgentClick: appProvidersProps.editorValue.onAgentClick,
-  });
+  // 种类级入口（openTab）的落地端口：只读域 store + 既有创建端口，无需注入依赖
+  // （Terminal 图标是纯 shell，不再经 agent 端口 —— 见 `useDockBarOpenTab`）
+  const onOpenTab = useDockBarOpenTab();
   const leftBarItems = useDockBarButtons('left', { onMove: moveViewByKeyboard, onOpenTab });
   const rightBarItems = useDockBarButtons('right', { onMove: moveViewByKeyboard, onOpenTab });
 

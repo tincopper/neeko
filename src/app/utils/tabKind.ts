@@ -6,7 +6,7 @@ import {
   type DockSlot,
 } from '@/shared/dock';
 import type { AppView } from '@/shared/store/appViewStore';
-import type { EditorSplitLayout, ProjectTabs, TabKind } from '@/shared/types';
+import type { EditorSplitLayout, ProjectTabs, Tab, TabKind } from '@/shared/types';
 import type { SessionKind } from '@/shared/types/liveSessions';
 
 /**
@@ -48,6 +48,19 @@ export const SESSION_KIND_OF_TAB_KIND = {
   terminal: 'terminal',
 } satisfies Record<OpenableTabKind, SessionKind>;
 
+/**
+ * 种类入口认哪条**实例**：`terminal` 只认**纯 shell**（`agentId === null`）。
+ *
+ * Terminal 图标不是「打开 Agent」的入口 —— 项目选了 agent 之后，若按种类匹配到一条
+ * agent 终端并把它激活，用户点 Terminal 却得到一个 agent 会话，语义就串了。
+ * chat 不做区分（每条 chat tab 都是用户显式开的会话）。
+ */
+export function matchOfOpenableKind(kind: OpenableTabKind): (tab: Tab) => boolean {
+  return kind === 'terminal'
+    ? (tab) => tab.data.kind === 'terminal' && tab.data.agentId == null
+    : () => true;
+}
+
 /** 目标 tab 与它所在的 surface：`dockSlot` 非空 = 停靠宿主，`null` = 中心区（含 pinned）。 */
 export interface TabKindTarget {
   tabId: string;
@@ -65,8 +78,10 @@ export function findTabOfKind(
   tabs: ProjectTabs | undefined,
   layout: EditorSplitLayout | undefined,
   kind: TabKind,
+  /** 种类内的进一步筛选（如 `terminal` 只认纯 shell —— Terminal 图标不是 Agent 入口）。 */
+  match: (tab: Tab) => boolean = () => true,
 ): TabKindTarget | null {
-  const matches = (tabs?.tabs ?? []).filter((tab) => tab.data.kind === kind);
+  const matches = (tabs?.tabs ?? []).filter((tab) => tab.data.kind === kind && match(tab));
   if (matches.length === 0) return null;
   if (!layout) return { tabId: matches[0].id, dockSlot: null };
 

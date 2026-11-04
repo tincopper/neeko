@@ -10,11 +10,12 @@ import { useLiveSessionsStore } from '@/shared/store/liveSessionsStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
-import type { AgentConfig, Project, Tab } from '@/shared/types';
+import type { Project, Tab } from '@/shared/types';
 import type { SessionView } from '@/shared/types/liveSessions';
+import { MAX_TERMINAL_TABS } from '@/shared/utils/terminalTabTitle';
 import { WorkspaceSession, type WorkspaceSession as Workspace } from '@/shared/utils/workspaceRef';
 
-import { useDockBarOpenTab, type DockBarOpenTabDeps } from '../useDockBarOpenTab';
+import { useDockBarOpenTab } from '../useDockBarOpenTab';
 
 /**
  * 种类级入口（`tabKind:*`）的点击落地。
@@ -22,7 +23,8 @@ import { useDockBarOpenTab, type DockBarOpenTabDeps } from '../useDockBarOpenTab
  * 这些用例守三件事：
  * 1. 「已有该 kind → 激活，不新建」—— 否则每点一次就多一条 chat / terminal（需求变成噪音源）；
  * 2. 「落地槽 = 图标当前所在槽」—— 图标换栏后新 tab 必须跟过去，不能落回 meta 的默认槽；
- * 3. 「无项目 / 拿不到 agent → 提示」—— 静默 no-op 是这条需求明确不接受的行为。
+ * 3. 「无项目 / 拿不到端口 → 提示」—— 静默 no-op 是这条需求明确不接受的行为。
+ * 4. **Terminal 图标 = 纯 shell**（agentId === null）：选了 agent 也不拉 agent 会话。
  */
 
 // 真实实现建 tab（store 行为要真），只包一层计数：`not.toHaveBeenCalled` 是需求本身。
@@ -45,7 +47,6 @@ vi.mock('@/features/live-sessions', () => ({
   useActivateSession: () => liveSessions.activateSession,
 }));
 
-const AGENT = { id: 'a1', name: 'Agent One', command: 'agent-one', enabled: true } as AgentConfig;
 const CHAT_VIEW = tabKindView('agent-chat');
 const TERMINAL_VIEW = tabKindView('terminal');
 
@@ -86,17 +87,9 @@ function addTerminalTab(projectId: string, agentId: string | null): string {
   return tab.id;
 }
 
-function renderOpenTab(overrides: Partial<DockBarOpenTabDeps> = {}) {
-  // 注入的 agent 端口 = `EditorContext.onAgentClick`（真实实现建终端 tab）：fake 也要真的建，
-  // 否则「新建后落到宿主」这条路径在测试里根本走不到。
-  const onAgentClick = vi.fn((agent: AgentConfig) => {
-    const projectId = useProjectStore.getState().activeProjectId;
-    if (projectId) addTerminalTab(projectId, agent.id);
-  });
-  const { result } = renderHook(() =>
-    useDockBarOpenTab({ agents: [AGENT], onAgentClick, ...overrides }),
-  );
-  return { open: result.current, onAgentClick };
+function renderOpenTab() {
+  const { result } = renderHook(() => useDockBarOpenTab());
+  return { open: result.current };
 }
 
 beforeEach(() => {
@@ -268,50 +261,70 @@ describe('useDockBarOpenTab — 无项目 / 无 tab 空间', () => {
   });
 });
 
-describe('useDockBarOpenTab — agent 终端（复用既有 agent 打开路径）', () => {
-  it('没有该 kind 的 tab → 调注入的 onAgentClick，新 tab 落到图标所在槽', () => {
-    seedProject('p-agent', ['a1']);
-    const space = spaceOf('p-agent');
+describe('useDockBarOpenTab — Terminal 图标 = 纯 shell（不默认拉起 agent）', () => {
+  it('没有终端 tab → 新建一条纯 shell（agentId === null），落到图标所在槽', () => {
+    seedProject('p-term', ['a1']);
+    const space = spaceOf('p-term');
 
-    const { open, onAgentClick } = renderOpenTab();
+    const { open } = renderOpenTab();
     act(() => {
       open(TERMINAL_VIEW, 'right');
     });
 
-    expect(onAgentClick).toHaveBeenCalledWith(AGENT);
-    const layout = useEditorStore.getState().editorLayout[space]!;
-    expect(layout.docked.right.tabIds).toHaveLength(1);
+    const tabs = useEditorStore.getState().tabs[space]!.tabs;
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0].data).toMatchObject({ kind: 'terminal', agentId: null });
+    expect(useEditorStore.getState().editorLayout[space]!.docked.right.tabIds).toEqual([
+      tabs[0].id,
+    ]);
     expect(notifications()).toHaveLength(0);
   });
 
-  it('已有终端 tab → 只激活，不再调 onAgentClick（点两次不会开出第二条）', () => {
-    seedProject('p-agent-existing', ['a1']);
-    const space = spaceOf('p-agent-existing');
-    const terminalId = addTerminalTab('p-agent-existing', 'a1');
+  it('已有纯 shell 终端 tab → 只激活，不再新建（点两次不会开出第二条）', () => {
+    seedProject('p-term-existing', ['a1']);
+    const space = spaceOf('p-term-existing');
+    const plainId = addTerminalTab('p-term-existing', null);
 
-    const { open, onAgentClick } = renderOpenTab();
+    const { open } = renderOpenTab();
     act(() => {
       open(TERMINAL_VIEW, 'right');
     });
 
-    expect(onAgentClick).not.toHaveBeenCalled();
+    expect(tabCount('p-term-existing')).toBe(1);
     const layout = useEditorStore.getState().editorLayout[space]!;
-    expect(layout.groups[layout.activeGroupId].activeTabId).toBe(terminalId);
+    expect(layout.groups[layout.activeGroupId].activeTabId).toBe(plainId);
   });
 
-  it('项目没选 agent → 提示，且不走创建路径（不调 onAgentClick、不开 tab）', () => {
-    seedProject('p-agent-none', []);
+  it('只有 **agent** 终端 tab（项目已选 agent）→ 不认领它，另开一条纯 shell', () => {
+    seedProject('p-term-agent', ['a1']);
+    const space = spaceOf('p-term-agent');
+    addTerminalTab('p-term-agent', 'a1');
 
-    const { open, onAgentClick } = renderOpenTab();
+    const { open } = renderOpenTab();
     act(() => {
       open(TERMINAL_VIEW, 'right');
     });
 
-    expect(onAgentClick).not.toHaveBeenCalled();
-    expect(tabCount('p-agent-none')).toBe(0);
-    expect(notifications().map((n) => n.message)).toEqual([
-      'Select an agent for this project to open an agent terminal',
-    ]);
+    const tabs = useEditorStore.getState().tabs[space]!.tabs;
+    expect(tabs).toHaveLength(2);
+    // 新建的那条必须是纯 shell —— 点到 agent 终端等于「默认打开 Agent」，语义就串了
+    expect(tabs.filter((t) => t.data.kind === 'terminal' && t.data.agentId === null)).toHaveLength(
+      1,
+    );
+  });
+
+  it('配额满 → 提示（addTab 的配额门是静默 return，必须解释「点了没反应」）', () => {
+    seedProject('p-term-quota', ['a1']);
+    // 用 **agent** 终端把配额占满：这样既没有纯 shell 可激活，又确实建不出新的
+    for (let i = 0; i < MAX_TERMINAL_TABS; i += 1) addTerminalTab('p-term-quota', 'a1');
+
+    const { open } = renderOpenTab();
+    act(() => {
+      open(TERMINAL_VIEW, 'right');
+    });
+
+    expect(tabCount('p-term-quota')).toBe(MAX_TERMINAL_TABS);
+    expect(notifications().map((n) => n.message)).toEqual(['Cannot open another terminal tab']);
   });
 });
 
@@ -362,18 +375,36 @@ describe('useDockBarOpenTab — 会话命中：交给 live-sessions 的恢复链
     expect(tabCount('p-resume')).toBe(0);
   });
 
-  it('terminal：有 listed 会话 → 不调 onAgentClick（不新造 agent 终端 tab）', () => {
+  it('terminal：有 listed **纯 shell** 会话 → 交给恢复链（接回那条 shell）', () => {
     seedProject('p-resume-term', ['a1']);
-    seedSessions([listedSession('p-resume-term', { kind: 'terminal', sessionId: 'pty-1' })]);
+    seedSessions([
+      listedSession('p-resume-term', { kind: 'terminal', sessionId: 'pty-1', agentId: null }),
+    ]);
 
-    const { open, onAgentClick } = renderOpenTab();
+    const { open } = renderOpenTab();
     act(() => {
       open(TERMINAL_VIEW, 'right');
     });
 
-    expect(onAgentClick).not.toHaveBeenCalled();
     expect(liveSessions.activateSession).toHaveBeenCalledTimes(1);
     expect(tabCount('p-resume-term')).toBe(0);
+  });
+
+  it('terminal：只有 **agent** 会话 → 不交给恢复链（Terminal 不是 Agent 入口），改开纯 shell', () => {
+    seedProject('p-resume-term-agent', ['a1']);
+    seedSessions([
+      listedSession('p-resume-term-agent', { kind: 'terminal', sessionId: 'pty-2', agentId: 'a1' }),
+    ]);
+
+    const { open } = renderOpenTab();
+    act(() => {
+      open(TERMINAL_VIEW, 'right');
+    });
+
+    expect(liveSessions.activateSession).not.toHaveBeenCalled();
+    const tabs = useEditorStore.getState().tabs[spaceOf('p-resume-term-agent')]!.tabs;
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0].data).toMatchObject({ kind: 'terminal', agentId: null });
   });
 
   it('注册表为空 → 回落原新建分支（行为与今天一致）', () => {

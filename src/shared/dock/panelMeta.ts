@@ -39,6 +39,11 @@ function row(view: ViewKey, rest: Omit<DockViewMeta, 'view'>): [string, DockView
  * **图标当前所在的槽**，所以没有单独的「kind → slot」策略字段 —— 图标在哪栏就是答案）。
  * `defaultOnBar: true` 是需求本身（「入口图标固定在右侧工具栏」）；`movable: true`
  * 让用户能把图标挪到左栏，落点跟着走。
+ *
+ * **D11：`tabKind:terminal` 的语义是「纯 shell」** —— 图标叫 `Terminal`（不是 Agent Terminal），
+ * 点它建 `agentId: null` 的终端，绝不因为项目选了 agent 就拉起 agent 会话；会话恢复那一步
+ * 也只认 `agentId === null` 的会话（`matchOfOpenableKind`）。「开 agent 终端」仍走 agent 自己的
+ * 入口（Agent Bar / Action Menu），不在工具栏重复一遍。
  */
 export const DOCK_VIEW_META: Record<string, DockViewMeta> = Object.fromEntries([
   row(panelView('projects'), {

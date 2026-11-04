@@ -23,18 +23,17 @@ import {
   selectActiveWorkspaceKey,
   useWorkspaceStore,
 } from '@/shared/store/workspaceStore';
-import type { AgentConfig } from '@/shared/types';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import {
   SESSION_KIND_OF_TAB_KIND,
   findTabOfKind,
   isOpenableTabKind,
+  matchOfOpenableKind,
   type OpenableTabKind,
 } from '../utils/tabKind';
 import { moveTabToSlot } from '../utils/tabSurface';
-
-import { useProjectAgents } from './useProjectAgents';
+import { createPlainTerminalTab } from '../utils/terminalTab';
 
 /**
  * 种类级入口（`tabKind:*` 图标）的点击落地 —— `activation.kind === 'openTab'` 的唯一实现。
@@ -55,13 +54,6 @@ import { useProjectAgents } from './useProjectAgents';
  * 依赖注入而不是 `useAppContext()`：本 hook 由组合根 `App.tsx` 在 Provider **之外**
  * 装配（与 `useDockBarMove` 同层），Context 在那里不存在。
  */
-export interface DockBarOpenTabDeps {
-  /** 项目可用的 agent 配置（组合根传 `appValue.agents`）。 */
-  agents: AgentConfig[];
-  /** agent 终端打开端口（`EditorContext.onAgentClick`，经 `useAgentClickHandler` 建终端 tab）。 */
-  onAgentClick: (agent: AgentConfig) => void;
-}
-
 export type OpenTabHandler = (view: ViewKey, slot: DockSlot) => void;
 
 /**
@@ -84,49 +76,14 @@ function revealTab(tabKey: string, tabId: string, dockSlot: DockSlot | null): vo
   useEditorStore.getState().activateTab(tabKey, tabId);
 }
 
-/** 空间里某种类 tab 的 id 集合 —— 用来识别「新建的那条」（创建端口不回传 id）。 */
-function tabIdsOfKind(tabKey: string, kind: OpenableTabKind): string[] {
-  const tabs = useEditorStore.getState().tabs[tabKey]?.tabs ?? [];
-  return tabs.filter((tab) => tab.data.kind === kind).map((tab) => tab.id);
+/** 纯 shell 终端（与 tab 栏「+」同一个构造点）；配额满返回 null 并已提示。 */
+function openPlainTerminalTab(tabKey: string, projectId: ProjectId): string | null {
+  const tabId = createPlainTerminalTab(tabKey, projectId);
+  if (!tabId) notify('Cannot open another terminal tab', 'error');
+  return tabId;
 }
 
-/**
- * agent 终端 = 复用既有 agent 打开路径（`useProjectAgents` 的安装态门 + `onAgentClick`），
- * 不新建 PTY 命令。返回新建的 tab id，拿不到就返回 null（配额满 / agent 不可用）。
- */
-function openAgentTerminalTab(
-  ctx: { tabKey: string; agents: AgentConfig[] },
-  handleAgentClick: (agent: AgentConfig) => boolean,
-): string | null {
-  const agentId = useProjectStore.getState().activeProject?.selected_agents?.[0] ?? null;
-  const agent = agentId ? (ctx.agents.find((candidate) => candidate.id === agentId) ?? null) : null;
-  if (!agent) {
-    notify('Select an agent for this project to open an agent terminal', 'info');
-    return null;
-  }
-
-  const before = tabIdsOfKind(ctx.tabKey, 'terminal');
-  // false = 未安装（`useProjectAgents` 已给出提示）或已禁用（与侧栏 agent 按钮同约定：静默拒绝）
-  if (!handleAgentClick(agent)) return null;
-
-  const created = tabIdsOfKind(ctx.tabKey, 'terminal').filter((id) => !before.includes(id));
-  // `addTab` 的终端配额门是静默 return —— 走到这里说明用户点了却什么都不会发生，必须解释
-  if (created.length === 0) {
-    notify('Cannot open another terminal tab', 'error');
-    return null;
-  }
-  return created[created.length - 1];
-}
-
-export function useDockBarOpenTab(deps: DockBarOpenTabDeps): OpenTabHandler {
-  const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  // 安装态门与「建 tab + 记住项目 agent」都复用既有路径（不自造会话创建 / 安装检查）。
-  const { handleAgentClick } = useProjectAgents({
-    agents: deps.agents,
-    projectId: activeProjectId,
-    showToast: notify,
-    onAgentClick: deps.onAgentClick,
-  });
+export function useDockBarOpenTab(): OpenTabHandler {
   // 会话恢复的唯一链路（activate / bind / recreate+attach / resume 三级降级）。本 hook
   // 只负责「什么时候该用它」，判据与落地都在 live-sessions（不新造恢复路径）。
   const activateSession = useActivateSession();
@@ -138,13 +95,11 @@ export function useDockBarOpenTab(deps: DockBarOpenTabDeps): OpenTabHandler {
         case 'agent-chat':
           return openAgentChatTab(activeWorkspaceSession(ctx.projectId));
         case 'terminal':
-          return openAgentTerminalTab(
-            { tabKey: ctx.tabKey, agents: deps.agents },
-            handleAgentClick,
-          );
+          // Terminal 图标 = **纯 shell**，绝不默认拉起 agent（选了 agent 也不用）
+          return openPlainTerminalTab(ctx.tabKey, ctx.projectId);
       }
     },
-    [deps.agents, handleAgentClick],
+    [],
   );
 
   return useCallback(
@@ -171,7 +126,8 @@ export function useDockBarOpenTab(deps: DockBarOpenTabDeps): OpenTabHandler {
 
       const editorState = useEditorStore.getState();
       const layout = editorState.editorLayout[tabKey];
-      const existing = findTabOfKind(editorState.tabs[tabKey], layout, activation.tabKind);
+      const match = matchOfOpenableKind(activation.tabKind);
+      const existing = findTabOfKind(editorState.tabs[tabKey], layout, activation.tabKind, match);
       if (existing) {
         // **再点一次 = 收起**（toggle 语义）：宿主正可见、且前台就是这条 tab → 收起该槽。
         // 注意收的是宿主（zone）而**不是** tab：种类入口背后是长跑会话（chat / PTY），
@@ -193,8 +149,14 @@ export function useDockBarOpenTab(deps: DockBarOpenTabDeps): OpenTabHandler {
       // 新建**之前**：该单元还有用户真的用过的同类会话 → 走 live-sessions 的唯一恢复链
       // （接回存活 PTY / 续写已结束会话），不新建一条空会话。命中后语义与侧栏点会话行
       // 完全一致 —— 两边共用同一个 hook，不在这里重写「会话活没活」的判据。
+      // terminal 只认**纯 shell** 会话（`agentId === null`）：否则点 Terminal 会接回一条
+      // agent 的 PTY —— 那正是这个入口明确不要的行为。
+      const sessions =
+        activation.tabKind === 'terminal'
+          ? useLiveSessionsStore.getState().sessions.filter((s) => s.agentId === null)
+          : useLiveSessionsStore.getState().sessions;
       const latestSession = selectLatestSessionForUnit(
-        useLiveSessionsStore.getState().sessions,
+        sessions,
         tabKey,
         SESSION_KIND_OF_TAB_KIND[activation.tabKind],
       );
@@ -209,6 +171,7 @@ export function useDockBarOpenTab(deps: DockBarOpenTabDeps): OpenTabHandler {
           after.tabs[tabKey],
           after.editorLayout[tabKey],
           activation.tabKind,
+          match,
         );
         if (revived) revealTab(tabKey, revived.tabId, revived.dockSlot);
         return;
