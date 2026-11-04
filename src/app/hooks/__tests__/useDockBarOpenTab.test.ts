@@ -6,10 +6,12 @@ import { appViewKey, tabHostView, tabKindView } from '@/shared/dock';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { createDefaultDockState, useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { useLiveSessionsStore } from '@/shared/store/liveSessionsStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { AgentConfig, Project, Tab } from '@/shared/types';
+import type { SessionView } from '@/shared/types/liveSessions';
 import { WorkspaceSession, type WorkspaceSession as Workspace } from '@/shared/utils/workspaceRef';
 
 import { useDockBarOpenTab, type DockBarOpenTabDeps } from '../useDockBarOpenTab';
@@ -34,6 +36,14 @@ vi.mock('@/features/agent/api/agentApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/agent/api/agentApi')>();
   return { ...actual, checkAgentsInstalled: vi.fn(() => Promise.resolve({})) };
 });
+
+// 会话恢复链（activate / bind / recreate+attach / resume）只断言「有没有被它接管」，
+// 不在这里重测它内部的三级降级 —— 那是 `sessionActivationPlan` / `useActivateSession`
+// 自己的用例。本文件关心的是**判据**（何时应该交给它）。
+const liveSessions = vi.hoisted(() => ({ activateSession: vi.fn() }));
+vi.mock('@/features/live-sessions', () => ({
+  useActivateSession: () => liveSessions.activateSession,
+}));
 
 const AGENT = { id: 'a1', name: 'Agent One', command: 'agent-one', enabled: true } as AgentConfig;
 const CHAT_VIEW = tabKindView('agent-chat');
@@ -92,6 +102,8 @@ function renderOpenTab(overrides: Partial<DockBarOpenTabDeps> = {}) {
 beforeEach(() => {
   localStorage.clear();
   vi.mocked(openAgentChatTab).mockClear();
+  liveSessions.activateSession.mockReset();
+  useLiveSessionsStore.setState({ version: 0, sessions: [], hydratedAt: null });
   useNotificationStore.setState({ notifications: [], unreadCount: 0 });
   useAppViewStore.setState({ appView: 'normal' });
   useDockStore.setState({ ...createDefaultDockState(), leftZoneExpandedBeforeLibrary: null });
@@ -300,5 +312,120 @@ describe('useDockBarOpenTab — agent 终端（复用既有 agent 打开路径�
     expect(notifications().map((n) => n.message)).toEqual([
       'Select an agent for this project to open an agent terminal',
     ]);
+  });
+});
+
+/** 该 unit 里一条「用户真的用过」的会话（= 侧栏会列出来的那种，`isListedSession`）。 */
+function listedSession(projectId: string, overrides: Partial<SessionView> = {}): SessionView {
+  return {
+    sessionId: `sess-${projectId}`,
+    kind: 'chat',
+    agentId: 'a1',
+    workspaceKey: spaceOf(projectId),
+    title: 'fix the parser',
+    titleSource: 'prompt',
+    state: 'running',
+    startedAt: '2026-11-02T10:00:00.000Z',
+    updatedAt: '2026-11-02T10:00:00.000Z',
+    turnCount: 2,
+    hasUserInput: true,
+    ...overrides,
+  };
+}
+
+function seedSessions(sessions: SessionView[]): void {
+  useLiveSessionsStore.setState({ version: 1, sessions, hydratedAt: Date.now() });
+}
+
+/**
+ * C2 / C3：点种类图标时若该 unit 还有**用户用过**的会话，就走 live-sessions 的唯一
+ * 恢复链（接回存活 PTY / 续写已结束会话 / 补写映射键），而不是新建一条空会话。
+ *
+ * 判据测三层：命中（不新建）、未命中（回落新建）、命中后的可见性（宿主展开）。
+ * 恢复链**内部**的三级降级不在这里重测 —— 那是 `sessionActivationPlan` 与
+ * `useActivateSession` 自己的用例，本文件只断言「什么时候交给它」。
+ */
+describe('useDockBarOpenTab — 会话命中：交给 live-sessions 的恢复链', () => {
+  it('该 unit 有 listed chat 会话 → 不新建空 tab，交给 useActivateSession', () => {
+    seedProject('p-resume');
+    const session = listedSession('p-resume');
+    seedSessions([session]);
+
+    const { open } = renderOpenTab();
+    act(() => {
+      open(CHAT_VIEW, 'right');
+    });
+
+    expect(liveSessions.activateSession).toHaveBeenCalledTimes(1);
+    expect(liveSessions.activateSession).toHaveBeenCalledWith(session);
+    expect(openAgentChatTab).not.toHaveBeenCalled();
+    expect(tabCount('p-resume')).toBe(0);
+  });
+
+  it('terminal：有 listed 会话 → 不调 onAgentClick（不新造 agent 终端 tab）', () => {
+    seedProject('p-resume-term', ['a1']);
+    seedSessions([listedSession('p-resume-term', { kind: 'terminal', sessionId: 'pty-1' })]);
+
+    const { open, onAgentClick } = renderOpenTab();
+    act(() => {
+      open(TERMINAL_VIEW, 'right');
+    });
+
+    expect(onAgentClick).not.toHaveBeenCalled();
+    expect(liveSessions.activateSession).toHaveBeenCalledTimes(1);
+    expect(tabCount('p-resume-term')).toBe(0);
+  });
+
+  it('注册表为空 → 回落原新建分支（行为与今天一致）', () => {
+    seedProject('p-no-session');
+    seedSessions([]);
+
+    const { open } = renderOpenTab();
+    act(() => {
+      open(CHAT_VIEW, 'right');
+    });
+
+    expect(liveSessions.activateSession).not.toHaveBeenCalled();
+    expect(openAgentChatTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('只有「没发过输入」的会话 → 等同没有（否则第一次点图标就接回一个空会话）', () => {
+    seedProject('p-silent');
+    seedSessions([listedSession('p-silent', { hasUserInput: false })]);
+
+    const { open } = renderOpenTab();
+    act(() => {
+      open(CHAT_VIEW, 'right');
+    });
+
+    expect(liveSessions.activateSession).not.toHaveBeenCalled();
+    expect(openAgentChatTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('恢复链同步建出的 tab 停在收起的宿主里 → 展开宿主（否则这次点击什么都看不见）', () => {
+    seedProject('p-reveal');
+    seedSessions([listedSession('p-reveal')]);
+    useDockStore.getState().setSlotExpanded('right', false);
+    // 模拟真实恢复链里「重建一条 chat tab」的那一半（口径不重要，落点与揭示才重要）
+    liveSessions.activateSession.mockImplementation(() => {
+      const revived: Tab = {
+        id: 'revived-chat',
+        scope: { kind: 'workspace', session: sessionOf('p-reveal') },
+        title: 'Agent Chat',
+        data: { kind: 'agent-chat' },
+      };
+      useEditorStore.getState().addTab(revived);
+      useEditorStore.getState().dockTab(spaceOf('p-reveal'), revived.id, 'right');
+    });
+
+    const { open } = renderOpenTab();
+    act(() => {
+      open(CHAT_VIEW, 'right');
+    });
+
+    expect(useDockStore.getState().zones.right).toEqual({
+      expanded: true,
+      activeView: tabHostView('right'),
+    });
   });
 });

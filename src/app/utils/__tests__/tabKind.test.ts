@@ -6,7 +6,12 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
-import { findTabOfKind, isOpenableTabKind, selectVisibleTabKinds } from '../tabKind';
+import {
+  findTabOfKind,
+  isOpenableTabKind,
+  SESSION_KIND_OF_TAB_KIND,
+  selectVisibleTabKinds,
+} from '../tabKind';
 
 /**
  * 种类入口的两个派生面（激活哪条 / 图标该不该高亮）都是纯函数 —— 这里直测输入输出，
@@ -56,6 +61,15 @@ describe('isOpenableTabKind', () => {
     expect(isOpenableTabKind('terminal')).toBe(true);
     expect(isOpenableTabKind('file')).toBe(false);
     expect(isOpenableTabKind('')).toBe(false);
+  });
+});
+
+describe('SESSION_KIND_OF_TAB_KIND', () => {
+  it('可打开种类逐一映射到会话种类（唯一映射点，不靠名字碰巧相同）', () => {
+    expect(SESSION_KIND_OF_TAB_KIND['agent-chat']).toBe('chat');
+    expect(SESSION_KIND_OF_TAB_KIND.terminal).toBe('terminal');
+    // 穷尽性：键集必须等于可打开种类集（漏一种 = 点图标时查不到会话，静默新建空会话）
+    expect(Object.keys(SESSION_KIND_OF_TAB_KIND).sort()).toEqual(['agent-chat', 'terminal']);
   });
 });
 

@@ -1,6 +1,7 @@
 import { preloadRendererAddons } from '@/shared/utils/terminal';
 import { installWebKitInputGuard } from '@/shared/utils/webkitInputGuard';
 
+import { registerNewTabDockPolicy } from './dock/registerNewTabDockPolicy';
 import { registerGlobalErrorHandlers } from './registerGlobalErrorHandlers';
 
 /**
@@ -19,4 +20,7 @@ export function bootstrap(): void {
   registerGlobalErrorHandlers();
   installWebKitInputGuard(document);
   preloadRendererAddons();
+  // 新建 tab 的 surface 策略（种类声明表的能力位 → 图标当前所在槽）：必须在任何 tab
+  // 被创建之前注册，否则启动期间创建的 tab（session 恢复等）会落中心区。
+  registerNewTabDockPolicy();
 }

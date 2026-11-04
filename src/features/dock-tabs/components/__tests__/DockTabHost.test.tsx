@@ -104,6 +104,12 @@ function seedDockedRightTab(): void {
   useEditorStore.getState().dockTab(SPACE, TERMINAL_TAB.id, 'right');
 }
 
+/** 往已存在的空间里再加一条停靠 tab（不重置 store，用于「已非空」类跃迁）。 */
+function addDockedRightTab(tab: Tab): void {
+  useEditorStore.getState().addTab(tab);
+  useEditorStore.getState().dockTab(SPACE, tab.id, 'right');
+}
+
 describe('DockTabHost — 渲染与空态', () => {
   beforeEach(() => {
     mockCheckAgentsInstalled.mockResolvedValue({});
@@ -213,5 +219,51 @@ describe('DockTabHost — chrome="dock" 不露出中心编辑器入口（R8）',
 
     expect(screen.getByTitle('Split Horizontal')).toBeInTheDocument();
     expect(screen.getByLabelText('New action')).toBeInTheDocument();
+  });
+});
+
+describe('DockTabHost — 空 → 非空时揭示宿主（新内容进宿主就该被看见）', () => {
+  const SECOND_TAB: Tab = {
+    ...TERMINAL_TAB,
+    id: 'tab-term-2',
+    title: 'bash',
+  };
+
+  beforeEach(() => {
+    mockCheckAgentsInstalled.mockResolvedValue({});
+    useEditorStore.setState({ tabs: {}, editorLayout: {} });
+    useDockStore.setState(createDefaultDockState());
+  });
+
+  it('0 → 1 条停靠 tab：该槽被激活展开（否则新 tab 停在收起的槽里，等于点图标没反应）', () => {
+    render(wrap(<DockTabHost slot="right" tabKey={SPACE} buildLayoutId={() => 'l1'} />));
+    // 右槽默认收起：此时宿主渲染的是引导态
+    expect(useDockStore.getState().zones.right.expanded).toBe(false);
+
+    act(() => {
+      seedDockedRightTab();
+    });
+
+    expect(useDockStore.getState().zones.right).toEqual({
+      expanded: true,
+      activeView: tabHostView('right'),
+    });
+    expect(screen.getByText('zsh')).toBeInTheDocument();
+  });
+
+  it('已非空时再加一条：不改布局（用户手动收起后不得被这条路径重新展开）', () => {
+    seedDockedRightTab();
+    render(wrap(<DockTabHost slot="right" tabKey={SPACE} buildLayoutId={() => 'l1'} />));
+    // 用户手动收起宿主（D6：再点一次图标 = 先藏起来）
+    act(() => {
+      useDockStore.getState().setSlotExpanded('right', false);
+    });
+
+    act(() => {
+      addDockedRightTab(SECOND_TAB);
+    });
+
+    expect(useDockStore.getState().zones.right.expanded).toBe(false);
+    expect(screen.getByText('bash')).toBeInTheDocument();
   });
 });

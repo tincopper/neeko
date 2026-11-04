@@ -28,6 +28,7 @@ import { MAX_TERMINAL_TABS } from '@/shared/utils/terminalTabTitle';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
 import { selectActiveTabId } from './editorTabSelectors';
+import { resolveTabSurface } from './tabSurfacePolicy';
 
 /**
  * Tab 关闭清理注册表（feature 解耦的按 kind 分发）。
@@ -389,7 +390,8 @@ interface EditorStoreState {
   /**
    * 新增 tab（构造律 P3）：store 键由 `tab.scope` 内部推导（`tabSpaceKeyOf`），调用方
    * 无权指定键 —— 「键 A、tab 身份 B」的 bug 类别在构造上不存在。`targetGroup` 指定
-   * 落组：'pinned' 落 pinned 列表并激活；'left'/'right' 落对应组；缺省落当前激活组。
+   * 落组：'pinned' 落 pinned 列表并激活；'left'/'right' 落对应组；缺省落当前激活组
+   * **或**种类策略给出的 dock 槽（`tabSurfacePolicy`，未注册即回落激活组）。
    */
   addTab: (tab: Tab, targetGroup?: EditorGroupId | 'pinned') => void;
   // 注意：此处的 `projectId` 形参实为 **tab 空间键**（`WorkspaceKey | '__app__'`），非项目身份。
@@ -532,20 +534,47 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
           },
         };
       } else {
+        // 新建 tab 的 surface 策略：调用方没指定落组时问一次（唯一策略点，见
+        // `tabSurfacePolicy`；实现由 app 层注册）。显式 targetGroup 优先 —— 那是调用方
+        // 的落组意图（`'pinned'` 更是用户的钉住意图），不该被种类策略覆盖。
+        const surface = targetGroup ? null : resolveTabSurface(tab);
+        // 双重守卫：策略是 app 层注册的，返回不存在的槽时不得把 tab 弄丢（静默丢 tab
+        // 比落错区更难查），回落中心组。
+        const dockedGroup = surface ? layout.docked[surface] : undefined;
         const activeGroupId = targetGroup ?? layout.activeGroupId;
-        newLayout = {
-          ...layout,
-          groups: {
-            ...layout.groups,
-            [activeGroupId]: {
-              ...layout.groups[activeGroupId],
-              tabIds: layout.groups[activeGroupId].tabIds.includes(tab.id)
-                ? layout.groups[activeGroupId].tabIds
-                : [...layout.groups[activeGroupId].tabIds, tab.id],
-              activeTabId: tab.id,
-            },
-          },
-        };
+        newLayout =
+          surface && dockedGroup
+            ? {
+                ...layout,
+                // `ensureLayout` 在 layout 缺失时会把新 tab 先塞进 left 组：必须剔除，
+                // 否则一条 tab 同时属于中心与宿主（双挂载 = 双 PTY / 双 agent stream，I3）。
+                groups: {
+                  left: removeTabFromGroup(layout.groups.left, tab.id),
+                  right: removeTabFromGroup(layout.groups.right, tab.id),
+                },
+                docked: {
+                  ...layout.docked,
+                  [surface]: {
+                    tabIds: dockedGroup.tabIds.includes(tab.id)
+                      ? dockedGroup.tabIds
+                      : [...dockedGroup.tabIds, tab.id],
+                    activeTabId: tab.id,
+                  },
+                },
+              }
+            : {
+                ...layout,
+                groups: {
+                  ...layout.groups,
+                  [activeGroupId]: {
+                    ...layout.groups[activeGroupId],
+                    tabIds: layout.groups[activeGroupId].tabIds.includes(tab.id)
+                      ? layout.groups[activeGroupId].tabIds
+                      : [...layout.groups[activeGroupId].tabIds, tab.id],
+                    activeTabId: tab.id,
+                  },
+                },
+              };
       }
 
       queueMicrotask(() => {

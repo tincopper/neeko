@@ -154,6 +154,38 @@ export function sessionsByUnit(sessions: readonly SessionView[]): Map<string, Se
   return byUnit;
 }
 
+/**
+ * 该单元里某种类**最近开始**的一条会话（只认用户真的用过的：`isListedSession`）。
+ *
+ * 唯一用途：点种类入口图标时，「接回 / 续写上一次那一条」而不是新建一条空会话。
+ * 没有它的话同一个图标会有两种语义（有 tab 时回到 tab，没 tab 时开空会话），而用户刚
+ * 关掉的那条会话在注册表里还活着。
+ *
+ * 三条判据都不能少：
+ * - `workspaceKey` 相等 —— 单元隔离（切项目不得接回别的单元的会话）；
+ * - `kind` 相等 —— chat 与 terminal 的 id 空间互不相干（见 `isSameSession`）；
+ * - `isListedSession` —— 与侧栏同一个「用户在用它」的判据：打开 tab 就会建静默会话，
+ *   把那些当成「上次那一条」会让第一次点图标就接回一个空会话。
+ *
+ * 取 `startedAt` **最大值**而不是数组末位：快照顺序是**后端**的事（store 明确写了
+ * 「前端不重排」），依赖顺序等于把「哪条更新」寄托在两份实现恰好同向。
+ */
+export function selectLatestSessionForUnit(
+  sessions: readonly SessionView[],
+  workspaceKey: string,
+  kind: SessionKind,
+): SessionView | null {
+  let latest: SessionView | null = null;
+  for (const session of sessions) {
+    if (session.workspaceKey !== workspaceKey) continue;
+    if (session.kind !== kind) continue;
+    if (!isListedSession(session)) continue;
+    // ISO8601 字符串可直接字典序比较（后端统一 UTC `to_rfc3339` 形态）
+    if (latest === null || session.startedAt > latest.startedAt) latest = session;
+  }
+  return latest;
+}
+
 /** 单元角标状态：多会话取最高优先级；**空列表返回 `null`**（无会话不画点）。 */
 export function dominantState(sessions: readonly SessionView[]): SessionState | null {
   let best: SessionState | null = null;

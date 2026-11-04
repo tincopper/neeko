@@ -54,13 +54,19 @@ const DockTabHost: React.FC<DockTabHostProps> = ({
   const isActivePane = useDockStore((s) => isViewVisible(s, tabHostView(slot)));
   const isActiveView = useDockStore((s) => s.zones[slot]?.activeView === tabHostView(slot));
 
-  // 「关掉最后一条停靠 tab」= 宿主没东西可渲染 → 收起该槽，不留一座空岛。
-  // 只在 **非空 → 空** 的跃迁上做：首次点图标展开一个空宿主是在给用户看引导文案，
-  // 若也收起，那个图标就永远打不开了。
+  // 宿主的两次**跃迁**（只在跃迁上触发 —— 每次渲染都跑会把用户手动收起的宿主立刻
+  // 重新展开）：
+  // - 空 → 非空：新内容进了宿主就该被看见（新建 / 接回 / 续写都可能落在收起的槽里）；
+  // - 非空 → 空：不留一座空岛（仅当本宿主是该槽前台时才收起）。
+  // 「本来就空」不得收起 —— 那是首次点图标的引导态。
   const prevCountRef = useRef(tabs.length);
   useEffect(() => {
     const prev = prevCountRef.current;
     prevCountRef.current = tabs.length;
+    if (prev === 0 && tabs.length > 0) {
+      useDockStore.getState().activateView(tabHostView(slot));
+      return;
+    }
     if (prev > 0 && tabs.length === 0 && isActiveView) {
       useDockStore.getState().setSlotExpanded(slot, false);
     }

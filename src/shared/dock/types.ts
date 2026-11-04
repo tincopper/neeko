@@ -55,6 +55,18 @@ export interface DockViewMeta {
   movable?: boolean;
   /** 该视图激活时的默认槽宽百分比。 */
   defaultSlotSize?: number;
+  /**
+   * 该种类**新建的 tab** 是否默认停靠到宿主槽（缺省 `false` = 落中心区）。
+   *
+   * 显式能力位而不是从 `activation.kind` 推断：种类入口（`openTab`）与「新 tab 的落点」
+   * 是两个互相独立的事实 —— 两者恰好都要给 `agent-chat` 开，而 `terminal` 只要前者
+   * （普通 shell / 任务终端不该被搬进侧区）。推断写法的失败形态是「加了一个入口就顺带
+   * 改变了所有该种类 tab 的落点」，且改不动其中之一。
+   *
+   * 消费点只有一个：`app/dock/registerNewTabDockPolicy`（经 `editorStore.addTab` 问
+   * `shared/store/tabSurfacePolicy`）。
+   */
+  docksNewTabs?: boolean;
 }
 
 export interface DockPlacement {

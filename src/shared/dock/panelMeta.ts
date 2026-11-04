@@ -121,7 +121,13 @@ export const DOCK_VIEW_META: Record<string, DockViewMeta> = Object.fromEntries([
     // 显式写 true（不靠缺省）：这条需求就是「图标默认在右栏」，缺省值将来一改
     // 就会静默地让功能不可见。
     defaultOnBar: true,
+    // 新开的 agent-chat **默认落侧区宿主**（D3 选项②：否则「从右侧打开会话」只在
+    // 点图标那一条路径成立，侧栏 / Action Menu / Histor 恢复出来的 chat 全在中间）。
+    docksNewTabs: true,
   }),
+  // `docksNewTabs` 在这里**刻意缺省（false）**：普通 shell / 任务终端 / 文件拖拽出来的
+  // 终端都经 `addTab` 创建，把它们一起搬进侧区是另一个功能（会改变所有人的终端习惯）。
+  // 只有「点图标新建」这一条路径显式调 `moveTabToSlot` 落到图标所在槽。
   row(tabKindView('terminal'), {
     host: 'none',
     activation: { kind: 'openTab', tabKind: 'terminal' },

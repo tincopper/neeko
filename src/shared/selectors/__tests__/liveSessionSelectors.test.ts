@@ -8,6 +8,7 @@ import {
   isNamedSession,
   isSameSession,
   sessionTab,
+  selectLatestSessionForUnit,
   sessionsByUnit,
   tabSession,
   unitsWithListedActiveSession,
@@ -262,5 +263,54 @@ describe('isLiveSession / isBusySession —— 两个不同的问题', () => {
     for (const state of ['ready', 'stopped', 'failed'] as const) {
       expect(isBusySession(session({ sessionId: 'a', state }))).toBe(false);
     }
+  });
+});
+
+describe('selectLatestSessionForUnit —— 点图标时该接回哪一条', () => {
+  const early = '2026-10-31T10:00:00.000Z';
+  const late = '2026-11-02T08:30:00.000Z';
+  const middle = '2026-11-01T12:00:00.000Z';
+
+  it('按 startedAt 取最新（乱序输入也要对 —— 不依赖数组顺序）', () => {
+    const sessions = [
+      session({ sessionId: 'late', startedAt: late }),
+      session({ sessionId: 'early', startedAt: early }),
+      session({ sessionId: 'middle', startedAt: middle }),
+    ];
+    expect(selectLatestSessionForUnit(sessions, MAIN_KEY, 'terminal')?.sessionId).toBe('late');
+
+    // 反序输入 → 同一答案（把「哪条更新」寄托在顺序上就会在这里分叉）
+    const reversed = [...sessions].reverse();
+    expect(selectLatestSessionForUnit(reversed, MAIN_KEY, 'terminal')?.sessionId).toBe('late');
+  });
+
+  it('kind 隔离：chat 不被 terminal 的会话命中', () => {
+    const sessions = [session({ sessionId: 'term-new', kind: 'terminal', startedAt: late })];
+    expect(selectLatestSessionForUnit(sessions, MAIN_KEY, 'chat')).toBeNull();
+    expect(selectLatestSessionForUnit(sessions, MAIN_KEY, 'terminal')?.sessionId).toBe('term-new');
+  });
+
+  it('unit 隔离：worktree 的会话不会被主仓命中（反之亦然）', () => {
+    const sessions = [session({ sessionId: 'wt', workspaceKey: WT_KEY })];
+    expect(selectLatestSessionForUnit(sessions, MAIN_KEY, 'terminal')).toBeNull();
+    expect(selectLatestSessionForUnit(sessions, WT_KEY, 'terminal')?.sessionId).toBe('wt');
+  });
+
+  it('未 listed（用户没发过输入 / 没名字）的会话不参与 —— 否则第一次点图标就接回一个空会话', () => {
+    const sessions = [
+      session({ sessionId: 'silent', startedAt: late, hasUserInput: false }),
+      session({ sessionId: 'unnamed', startedAt: late, title: '', titleSource: 'placeholder' }),
+    ];
+    expect(selectLatestSessionForUnit(sessions, MAIN_KEY, 'terminal')).toBeNull();
+
+    // 去掉噪声后，真正用过的那条才被选中
+    const listed = session({ sessionId: 'listed', startedAt: early });
+    expect(selectLatestSessionForUnit([...sessions, listed], MAIN_KEY, 'terminal')?.sessionId).toBe(
+      'listed',
+    );
+  });
+
+  it('无命中返回 null（注册表为空）', () => {
+    expect(selectLatestSessionForUnit([], MAIN_KEY, 'chat')).toBeNull();
   });
 });

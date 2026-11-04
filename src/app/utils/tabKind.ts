@@ -7,6 +7,7 @@ import {
 } from '@/shared/dock';
 import type { AppView } from '@/shared/store/appViewStore';
 import type { EditorSplitLayout, ProjectTabs, TabKind } from '@/shared/types';
+import type { SessionKind } from '@/shared/types/liveSessions';
 
 /**
  * 「种类级入口」（`tabKind:*`）的两个读取面 —— 都是纯函数，不碰 store。
@@ -33,6 +34,19 @@ export type OpenableTabKind = (typeof OPENABLE_TAB_KINDS)[number];
 export function isOpenableTabKind(value: string): value is OpenableTabKind {
   return (OPENABLE_TAB_KINDS as readonly string[]).includes(value);
 }
+
+/**
+ * 可打开种类 → live-sessions 的会话种类（**唯一**映射）。
+ *
+ * 两者不是同一个联合：tab 种类是「界面上的一条 tab 长什么样」，会话种类是「后端注册表
+ * 里一行是什么」。同名只是巧合（两边都会长出新成员），所以各自是独立联合 + 显式映射。
+ * `satisfies Record<OpenableTabKind, SessionKind>` 让「新增可打开种类忘了配会话种类」
+ * 在编译期报错，而不是运行期查不到会话（表现为静默新建一条空会话）。
+ */
+export const SESSION_KIND_OF_TAB_KIND = {
+  'agent-chat': 'chat',
+  terminal: 'terminal',
+} satisfies Record<OpenableTabKind, SessionKind>;
 
 /** 目标 tab 与它所在的 surface：`dockSlot` 非空 = 停靠宿主，`null` = 中心区（含 pinned）。 */
 export interface TabKindTarget {
