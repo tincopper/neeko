@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "effect 依赖与去重（常见错误 5：依赖对象身份会饿死防抖）"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Workspace 分槽 + 激活态单源"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "invoke wrapper 与事件监听规范"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "§12 契约（set_active_workspace 删除、reconcile 语义）"}

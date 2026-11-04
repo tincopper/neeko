@@ -40,6 +40,45 @@ UI 契约是「任何 workspace 都能显示」，后端能力是「1 个」。�
 └──────────────────────────────────────────────────────────┘
 ```
 
+### 1.0 谁需要 push：**实时 ≠ 新鲜**（2026-11-04 决议）
+
+原始方案假设「可见集合里的每个单元都要实时」。这个假设值得拆开看，因为它决定了成本阶数：
+
+| 概念 | 含义 | 成本 | 非激活单元是否需要 |
+| --- | --- | --- | --- |
+| **实时**（push） | 磁盘一变就推到前端 | 每单元 watcher + worker + 每次事件一轮 `git status` | ❌ **不需要** |
+| **新鲜**（read-time truth） | 要看的那一瞬读到的是真的 | 一次 `git status`（普通仓 10–30ms） | ✅ **必需** |
+
+**现场核对（2026-11-04，`rg` 判据）**：侧栏**不显示**任何单元的变更数 ——
+`SessionRow` / `WorktreeRowList` / `ProjectGitSection` 对 `selectEntries` / `changed_files` 零命中；
+侧栏的 git 显示只有两项：分支名（来自 `project.git_info`，不是 status 快照）与 ↑N 徽标
+（`ahead={isActive ? … : undefined}` —— **按设计只在该行是当前视图时显示**）。
+
+⇒ 「非激活项目 git 状态无法显示」的真实含义是「**切过去时**那个项目的 Changes 面板没数据」，
+成因是两个已修的缺陷叠加：互踢（C2）与未挂载单元无权威数据（C1）。它**不是**侧栏缺数据。
+
+因此分三层，但**温层当前没有消费者**（是产品可选，不是缺口）：
+
+| 层 | 范围 | 机制 | 目标实时性 | 状态 |
+| --- | --- | --- | --- | --- |
+| **热** | 同屏**内容**可见的 workspace（典型 1 个；多停靠面板时可能 2 个） | 挂载 watcher + worker，push | <200ms（真 push） | C2 提供能力，C4 提供发送端 |
+| **温** | 侧栏可见的其它单元 | **渲染即读**（`get_workspace_status`）+ `dirty`/`STALE_AFTER`；**不挂载** | 「看到时是新的」 | **无消费者** —— 只有将来要在侧栏显示每单元变更数时才需要 |
+| **冷** | 其余 | 不读、**不挂载** | — | **C4 补齐**（见下） |
+
+**C2 遗留的缺口：挂载集合无界。** C2 把「挂载即释放其它」删掉后，`ensure_mounted` 只做
+「确保」，**从不释放** ⇒ 本次会话访问过的每个 workspace 永久占一套 watcher + worker。
+正确的形态是**声明式 reconcile**：`set_visible_workspaces(hotSet)` = 「挂载 hotSet，释放不在
+hotSet 里的单元」。这**不是**回到互斥 —— 集合是声明式真值（同一次调用内完成），
+而不是「挂一个就踢一个」的竞争。归属：C4（它拥有发送端，且这是同一函数的一处语义收紧）。
+
+**为什么热层仍保留「集合」形状**：典型取值退化为 1，但不能退回单槽 —— 停靠面板可以同屏展示
+两个不同 Workspace 的内容（例如左侧 A 项目的 Changes + 底部 B 项目的 Changes），那时两者都该实时。
+形状选对、典型值很小，不是 YAGNI；若产品确认「永远只有一处在屏」则应删回单元素（见 C4 prd 的开放问题）。
+
+这条决议直接缩小 C3/C4 的目标：C3 的成本治理只需要服务「热层 + （将来可能的）温层首次读」，
+不需要为「N 个常驻实时」设计调度器；C4 从「发送全可见集合」降级为「发送热集合（通常 1 个）
++ 声明式 reconcile（离热即释放）」，**侧栏渲染即读降级为可选**（当前无消费者）。
+
 ### 1.1 StatusStore（唯一事实）
 
 ```rust
@@ -125,12 +164,12 @@ struct WatchHub {
 
 | 面 | 现在 | 目标 |
 | --- | --- | --- |
-| 命令 | `set_active_workspace(workspace) -> WorkspaceActivation` | `set_visible_workspaces(workspaces: Vec<WorkspaceSession>) -> Vec<WorkspaceActivation>` |
+| 命令 | `set_active_workspace(workspace) -> WorkspaceActivation` | `set_visible_workspaces(workspaces: Vec<WorkspaceSession>) -> Vec<WorkspaceActivationEntry>`（参数是**热集合** = 同屏内容可见的单元，典型 1 个；不是「侧栏能看到的所有单元」—— 见 §1.0） |
 | 命令 | `get_workspace_status(workspace)`：挂载中→快照 / 未挂载→现算 | **签名不变**，语义改为「dirty 则重算，否则返回」 |
 | 事件 | `git-status-snapshot`（不变） | 不变（红线 5：不新增事件名） |
 | 事件 | `git-changed` | 不变（提示语义保持不变） |
 | 后端 | `WatcherManager{watchers, snapshots, version_floors, mount_tickets, ticket_serial, mount_lock}` | `{StatusStore, RecomputeScheduler, WatchHub}` |
-| 前端 | `useActiveWorkspaceSync`（reconciliation + retry + 影子记账） | `useVisibleWorkspaces`（只做「集合 → 命令」的一个 effect，无重试、无记账） |
+| 前端 | `useActiveWorkspaceSync`（reconciliation + retry + 影子记账） | `useVisibleWorkspaces`（只做「热集合 → 命令」的一个 effect，无重试、无记账） + 侧栏**渲染即读**（温层，`refreshWorkspaceStatus`） |
 
 `WorkspaceActivation` 保留（`ready` / `pending`）语义：`pending` 仍然表示「该单元首次重算在途」，
 但现在**不影响其它单元**，因此前端不再需要重试环（`get_workspace_status` 对未就绪单元也
