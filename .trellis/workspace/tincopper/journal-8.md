@@ -1615,3 +1615,39 @@ Session summary was not supplied.
 
 - 待提交：28 个文件（P4 中心区判据 / P5 zone 可见性从内容派生 / P6 到达即前置 + 审计清理）；建议按 P4/P5+P6 两次提交
 - 待决定：11-03-dock-placement 任务是否 finish-work 归档；src-tauri/src/common/db/migrations.rs 的 LATEST_VERSION 18 是用户在途改动（migrate_step 尚无 13..=17 分支，cargo test 会红）
+
+
+## Session 411: dock: center pane shape and zone visibility derived from content
+<!-- trellis-session: v=2 fp=b09e8de48b28b722 -->
+
+**Date**: 2026-11-04
+**Task**: dock: center pane shape and zone visibility derived from content
+**Branch**: `main`
+
+### Summary
+
+P4–P6 以两个英文提交落地：中心区形态不再数 tab 注册表；dock zone 可见性与「到达即前置」由内容派生。
+
+### Main Changes
+
+- fix(dock): keep the guide page when a tab docks right（hasCenterTabs + ProjectView）
+- fix(dock): derive dock zone visibility from content（zone.ts 单一派生点 / 布局按内容收起 / 宿主零布局写入 / 揭示走 app 层计数）
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6a4d7f20` | fix(dock): keep the guide page when a tab docks right |
+| `eca747ec` | fix(dock): derive dock zone visibility from content |
+
+### Testing
+
+- [OK] 每条提交的 pre-commit 门禁绿（护栏 + tsc + commitlint）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- src-tauri/src/common/db/migrations.rs（LATEST_VERSION 18）仍是用户自测改动，未纳入这两次提交
