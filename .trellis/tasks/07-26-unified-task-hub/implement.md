@@ -293,6 +293,39 @@ pnpm check:quick   # 收尾一次
 - 「面板根是海面」：`island.parentElement` 必须带 `bg-bg-primary`。
 - 三条空态用例改为断言「住在**主岛**内 + 分区是 `bg-tertiary`」。
 
+## 进度（2026-11-03f，中心视图框架统一）
+
+> 用户反馈：「高度和宽度没有和其他中间内容区域对齐……中间这块应该是应用的一个统一组件，
+> 而不是每创建一个功能其中间的大小需要重新实现，内容只是在这个框架里实现」。
+
+**根因**：外圈内缩**有两个所有者**。布局框架里它本该唯一（`DockLayout` 的 `center-area`
+给 `py-0.5 px-px`），但四个中心视图各自又写了一遍外壳，几何三种：
+
+| 视图 | 原外壳 | 结果 |
+| --- | --- | --- |
+| ProjectView | `<Island className="flex-1 h-full">` | 满格 |
+| Library | 根 `bg-bg-primary` | 满格 |
+| Tasks | 根 `rounded-lg bg-bg-primary p-1.5` | **四周多缩 6px + 双层圆角** |
+| Settings | `<Island className="flex-1">` | 满格 |
+
+| # | 动作 | 文件 |
+| --- | --- | --- |
+| 1 | 新建中心区唯一框架 | `app/components/CenterViewFrame.tsx`（海面 + 尺寸链 + 裁切；**不加** padding/圆角） |
+| 2 | AppCenter 恰好一层框架，视图作子节点 | `AppCenter.tsx` |
+| 3 | Tasks 去掉自写几何 | `TasksPanel.tsx`：根去掉 `rounded-lg bg-bg-primary p-1.5` |
+| 4 | Library 去掉自写几何 | `LibraryPanel.tsx`：根去掉 `bg-bg-primary h-full` |
+| 5 | Tasks 骨架对齐新形状（一座岛） | `AppCenter.tsx` 的 `TasksSkeleton` |
+
+### 测试账（2026-11-03f）
+
+`pnpm vitest run src/app src/features` → **5358 条绿**（606 文件）。
+
+新增护栏：
+- `CenterViewFrame.test.tsx`：框架提供海面/尺寸链/裁切，且**不含** `p-*`/`m-*`/`rounded-*`；
+- `CenterViewAlignment.test.tsx`：四个视图框架类串**集合相等** + 恰好一层；
+- `AppCenter.test.tsx`「四个视图用同一个框架」；
+- `TasksPanel.test.tsx`「本面板不自写几何」（替代原来「根是海面」那条 —— 海面已归框架）。
+
 ## 进度（2026-11-02）
 
 | 子任务 | 状态 | 落地 |

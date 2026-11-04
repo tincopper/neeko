@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 405
+- **Total Sessions**: 412
 - **Last Active**: 2026-11-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1049 | Active |
+| `journal-8.md` | ~1071 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 412 | 2026-11-04 | 中心视图几何统一到 CenterViewFrame | `d273c146` | `multi-agent` |
 | 405 | 2026-11-04 | Tasks 岛屿可见性根因：缺海面 + 同色叠同色 | `b112a524` | `multi-agent` |
 | 404 | 2026-11-04 | Tasks 面板层级修正：一座主岛承载 header+content | `fb11b5a5` | `multi-agent` |
 | 403 | 2026-11-04 | Tasks 内容区改为一座内容岛承接所有状态 | `6517174c` | `multi-agent` |
