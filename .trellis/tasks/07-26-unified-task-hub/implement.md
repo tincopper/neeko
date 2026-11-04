@@ -260,6 +260,39 @@ pnpm check:quick   # 收尾一次
 
 新增用例 2 条：「整块面板是主岛|详情岛双岛」+「头部与内容都在同一座主岛里」。
 
+## 进度（2026-11-03e，真正的根因：缺海面 + 同色叠同色）
+
+> 用户反馈：「还是一样呀，没有岛呀」。连续第三轮。
+
+**根因（两条，都在表面 token 上，不在结构上）**：
+
+1. **没有海就没有岛** —— 中心区 `center-area` 面板只有 `py-0.5 px-px`（**无底色**），
+   `AppCenter` 的 Tasks 包装也是透明的。所以主岛的 `bg-secondary + rounded-lg + shadow-sm`
+   直接压在**窗口渐变**上，没有对比物 ⇒ 圆角阴影几乎看不见。
+   参照：`LibraryPanel` 根 `bg-bg-primary`、`EditorGroupLayout` 根
+   `rounded-lg overflow-hidden bg-bg-primary` —— 都是**容器给海、内层给岛**。
+2. **岛与分区同色** —— 空态/加载中/无匹配容器套了 `<Island>`（`bg-secondary`），
+   而它们住在主岛里（也是 `bg-secondary`）⇒ 同色叠同色，仍是一片白。
+
+**教训：判据一直写错**。前两轮我都断言「有 `Island` 元素」，而它能抓的只有结构；
+真正要抓的是「**三个表面 token 是否不同**」。
+
+| # | 动作 | 文件 |
+| --- | --- | --- |
+| 1 | 面板根补海面 | `TasksPanel.tsx`：`+ bg-bg-primary overflow-hidden rounded-lg` |
+| 2 | 空态容器从「同色岛」改为「岛内分区」 | `TasksPanelBody.tsx`：`<Island>` → `bg-bg-tertiary` 分区（`tasks-content-region`） |
+
+### 测试账（2026-11-03e）
+
+`pnpm vitest run src/features/work-items src/app` → **406 条绿**（59 文件）。
+
+新增/改写的护栏（这是本轮唯一有长期价值的产物）：
+
+- **「海 / 岛 / 岛内分区是三个不同表面」**：同时断言 `root.bg-primary` /
+  `island.bg-secondary` / `column.bg-tertiary`。只断言其中一个 = 没断言。
+- 「面板根是海面」：`island.parentElement` 必须带 `bg-bg-primary`。
+- 三条空态用例改为断言「住在**主岛**内 + 分区是 `bg-tertiary`」。
+
 ## 进度（2026-11-02）
 
 | 子任务 | 状态 | 落地 |
