@@ -2,6 +2,7 @@
 //!
 //! 命令层（`git/commands/query.rs`）只做参数校验 + 委派（红线 6），本模块承担编排：
 //! 快照优先、冷启动有界等待、未挂载单元退化为一次 pull 计算并登记同一张表。
+//! 激活是**可见集合**语义（C2）：批量确保挂载、逐单元给结局，挂载一个不释放任何别的单元。
 //!
 //! **单一形态**：无论生产者是 push（挂载中的 watcher worker）还是 pull（本文件的
 //! `compute_and_record`），读出来的都是同一个 `GitStatusSnapshot` —— 同一个 `version`
@@ -10,14 +11,16 @@
 //! 时刻的 push 快照（= 串数据）。
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use serde::Serialize;
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::file::watcher::{WatcherEventSink, WatcherManager};
+use crate::common::file::watcher::{DirtyMask, WatcherEventSink, WatcherManager};
 use crate::common::git::status_worker::{GitStatusSnapshot, RECALC_WAIT_TIMEOUT};
 use crate::common::git::transport::GitTransport;
 use crate::common::git::WorkspaceRef;
+use crate::common::git::WorkspaceSession;
 use crate::common::runtime::run_blocking;
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -29,11 +32,25 @@ use crate::AppStateWrapper;
 /// 刷新才更新」的根因）。契约主键本次随身份一起从 project 升为 `WorkspaceRef`。
 pub async fn wait_status_fresh(state: &AppStateWrapper, repo: &WorkspaceRef) {
     let manager = state.watcher_manager.clone();
-    let repo = repo.clone();
+    let poke_manager = manager.clone();
+    let poke_repo = repo.clone();
     // Condvar 等待是阻塞原语 → run_blocking 隔离（红线 3）。join 失败仅发生于运行时关停，
     // 超时与否都不影响命令成败：由 `git-status-snapshot` 事件推送最终收敛。
-    let _ =
-        run_blocking(move || manager.poke_status_worker_and_wait(&repo, RECALC_WAIT_TIMEOUT)).await;
+    let poked = run_blocking(move || {
+        poke_manager.poke_status_worker_and_wait(&poke_repo, RECALC_WAIT_TIMEOUT)
+    })
+    .await
+    .unwrap_or(false);
+
+    // **写后打脏**（C1）：poke 只对**挂载中**的单元有效（它有 push 生产者）；未挂载单元
+    // 没有 worker 可戳，写入后登记表里的那份数据就停留在写前 —— 只靠 `STALE_AFTER` 兜底
+    // 会让「刚写完就去看」读到旧值。标记为失效后，读路径立刻重算。
+    //
+    // 对挂载单元同样安全：worker 的下一轮推送会清掉脏位（`upsert_push`），而在这之间的读
+    // 至多多算一轮 —— 那是「写后立刻读」的罕见窗口，用一次 git status 换正确性划算。
+    if !poked {
+        manager.mark_status_dirty(repo, DirtyMask::all());
+    }
 }
 
 /// 主仓单元的写后收口：命令**只接受 `project_id`** 时，被写入的单元必然是主仓单元。
@@ -60,41 +77,60 @@ pub async fn wait_main_status_fresh(state: &AppStateWrapper, project_id: &str) {
 /// 后端** —— 不能把不变量寄托在调用方记得改状态上。`unwatch` 同时做掉释放与作废。
 ///
 /// **阻塞语义**：drop notify watcher（递归反注册 inotify/FSEvents 句柄）可能短暂阻塞 →
-/// 经 `run_blocking` 隔离（红线 3），与挂载侧 `mount_only` 对称。
+/// 经 `run_blocking` 隔离（红线 3），与挂载侧 `ensure_mounted` 对称。
 pub async fn release_workspace(state: &AppStateWrapper, repo: &WorkspaceRef) {
     let manager = state.watcher_manager.clone();
     let repo = repo.clone();
     let _ = run_blocking(move || manager.unwatch(&repo)).await;
 }
 
-/// 读取某Workspace的权威 status。**先看有没有生产者，再看缓存**：
+/// 读取某Workspace的权威 status。
 ///
-/// 1. 挂载中且已有快照 → 直接返回（与 `git-status-snapshot` 事件同源同版本，新鲜度由
-///    worker 负责）；
-/// 2. 挂载中但首个快照未到（冷启动）→ 有界等待一轮重算后重读；仍拿不到就报错，让前端
-///    渲染「未知」；
-/// 3. **未挂载 ⇒ 一律现算**（WSL / SSH 单元，以及侧栏要为每个 worktree 取计数的那些）。
+/// **单一语义（C1 起）**：`needs_recompute` 为真（无条目 / 有脏位 / 超陈旧窗口）⇒ 现算一次
+/// 并登记；否则直接返回登记表里的快照。**不再按「是否挂载」分支** —— 那是把资源状态当成
+/// 数据新鲜度的代理（旧实现的三分支及其注释自白见任务 `11-04-status-freshness-model` 的 PRD），
+/// 后果是未挂载单元的 pull 结果永不可信（每次读都现算）而挂载单元在冷窗口里只能报错。
 ///
-/// 顺序不能反过来（先查缓存再看挂载）：未挂载的单元没有任何生产者会让槽位变新，
-/// 那份 pull 结果一旦被当成权威返回，`refreshWorkspaceStatus` 就成了空操作 —— 第一次 pull
-/// 的数据会永远显示成"最新"，正是 I1-b 禁止的「旧数据伪装成事实」。
+/// 并发：同一单元的重算经 [`RecomputeGate`] 单飞 —— 后到者**排队**（不拒绝），拿到许可后
+/// 重新判 `needs_recompute`（等到的这一轮可能已把数据算新）。
+///
+/// 失败语义：**不清空也不覆盖**已有登记，脏位并回去（失败 ≠ 数据新鲜）；错误只留给调用方
+/// 需要知道的那一层（解析失败 / 非 git 库 / 命令失败）。
 pub async fn read_workspace_status(
     state: &AppStateWrapper,
     repo: &WorkspaceRef,
 ) -> Result<GitStatusSnapshot, AppError> {
     let manager = state.watcher_manager.clone();
-    if manager.is_watched(repo) {
-        if let Some(snap) = read_mounted_snapshot(&manager, repo).await {
+
+    // 快路径：登记表里已是新鲜数据（无脏位且未过陈旧窗口）
+    if !manager.status_needs_recompute(repo) {
+        if let Some(snap) = manager.snapshot(repo) {
             return Ok(Arc::unwrap_or_clone(snap));
         }
-        return Err(AppError::NotFound(format!(
-            "status for workspace {} is not available yet",
-            repo.key()
-        )));
     }
-    // 情形 3：没有 push 生产者，缓存不可信 ⇒ 每次读都经 transport 现算
+
+    // 单飞：同一单元只允许一轮重算在飞
+    let gate = manager.recompute_gate();
+    let _permit = gate.acquire(&repo.key()).await;
+
+    // 双检：等锁期间别人可能已经把数据算新了
+    if !manager.status_needs_recompute(repo) {
+        if let Some(snap) = manager.snapshot(repo) {
+            return Ok(Arc::unwrap_or_clone(snap));
+        }
+    }
+
     let (target, _) = state.resolve_project(repo.project_id())?;
-    compute_and_record(state, repo, &target).await
+    let mask = manager.begin_status_recompute(repo);
+    let computed_from = Instant::now();
+    match compute_and_record(state, repo, &target, mask, computed_from).await {
+        Ok(snapshot) => Ok(snapshot),
+        Err(error) => {
+            // 脏位并回去：失败不是「数据已新鲜」的证据，下一读会再试。
+            manager.abort_status_recompute(repo, mask);
+            Err(error)
+        }
+    }
 }
 
 /// 读取**挂载中**单元的权威快照：冷窗口内有界等待一轮重算落地后重读。
@@ -120,42 +156,83 @@ async fn read_mounted_snapshot(
     manager.snapshot(repo)
 }
 
-/// 现算一次并登记（pull 生产者）。WSL / SSH / 未挂载单元专用。
+/// 现算一次并登记（pull 生产者）。
 ///
-/// transport 由调用方给出（生产 = 项目的 `ExecTarget`，测试可换本地 transport 驱动同一条
-/// 分支） —— 这是「远端 pull 分支可被 `cargo test` 跑到」的唯一缝。
+/// `mask` 描述本轮要重算的**维度**（见 `DirtyMask`）：`workdir` 未失效时复用旧条目的
+/// entries/branch（不跑 porcelain），`refs` 未失效时复用旧 ahead/behind（不跑 rev-list）。
+/// 两个维度都未失效（只因陈旧或首次读而重算）且已有条目时，用旧值即可 —— 产物仍是**完整
+/// 快照**（`git-domain.md §14` 的单快照/单 version/单通道契约不变），只是不白跑命令。
+///
+/// `computed_from` = 本轮计算的**开始**时刻，交给登记表做「晚到旧结果不得覆盖更新登记」的
+/// 栅栏。若被取代，返回登记表里那份更新的快照（而不是自己的旧结果）。
 async fn compute_and_record(
     state: &AppStateWrapper,
     repo: &WorkspaceRef,
     transport: &dyn GitTransport,
+    mask: DirtyMask,
+    computed_from: Instant,
 ) -> Result<GitStatusSnapshot, AppError> {
-    let (entries, branch) =
-        crate::common::git::operations::status_porcelain(transport, repo.root())
-            .await
-            .map_err(AppError::from)?;
+    let manager = state.watcher_manager.clone();
+    let previous = manager.snapshot(repo);
+    // 两个维度都不需要重算且已有数据 ⇒ 等锁期间别的一轮已经把它算新了：直接复用它。
+    // 不设这一条的话，这次「空重算」会白白推进一次 version，让前端做一次无意义的重渲染。
+    if mask.is_clean() {
+        if let Some(prev) = previous {
+            return Ok(Arc::unwrap_or_clone(prev));
+        }
+    }
+    // 没有旧条目时两个维度都必须算（没有可复用的输入）。
+    let need_workdir = previous.is_none() || mask.workdir;
+    let need_refs = previous.is_none() || mask.refs;
+
+    let mut snapshot = GitStatusSnapshot::for_unit(repo, 0);
+    if let Some(prev) = previous.as_deref() {
+        snapshot.entries.clone_from(&prev.entries);
+        snapshot.truncated = prev.truncated;
+        snapshot.branch.clone_from(&prev.branch);
+        snapshot.ahead = prev.ahead;
+        snapshot.behind = prev.behind;
+    }
+
+    if need_workdir {
+        let (entries, branch) =
+            crate::common::git::operations::status_porcelain(transport, repo.root())
+                .await
+                .map_err(AppError::from)?;
+        snapshot.entries = entries;
+        snapshot.branch = branch;
+    }
+
     // ahead/behind 是 status 的第四类输入（refs），与 entries/branch 由**同一个生产者**
     // 在同一份快照里产出（git-domain §12）。无 upstream / detached / 命令失败 → (0,0)，
     // 不是错误（R3.1）—— 不得因此把已有徽标打回 0 之外的东西（它本就是 0）。
-    let (ahead, behind) =
-        match crate::common::git::operations::get_ahead_behind(transport, repo.root()).await {
-            Ok(ab) => (ab.ahead, ab.behind),
-            Err(e) => {
-                log::debug!(
-                    "[GitStatus] ahead/behind unavailable for {}: {e}",
-                    repo.root()
-                );
-                (0, 0)
-            }
-        };
+    if need_refs {
+        (snapshot.ahead, snapshot.behind) =
+            match crate::common::git::operations::get_ahead_behind(transport, repo.root()).await {
+                Ok(ab) => (ab.ahead, ab.behind),
+                Err(e) => {
+                    log::debug!(
+                        "[GitStatus] ahead/behind unavailable for {}: {e}",
+                        repo.root()
+                    );
+                    (0, 0)
+                }
+            };
+    }
+
     // 生产者交出的是一份**完整快照**（与 push 生产者同形）：条目上限由
-    // `record_computed` 内部的 `enforce_entry_cap` 单点施加（GitStatusSnapshot 拥有该不变量）。
-    let mut snapshot = GitStatusSnapshot::for_unit(repo, 0);
-    snapshot.entries = entries;
-    snapshot.branch = branch;
-    snapshot.ahead = ahead;
-    snapshot.behind = behind;
-    let snap = state.watcher_manager.record_computed(snapshot);
-    Ok(Arc::unwrap_or_clone(snap))
+    // `record_pull` 内部的 `enforce_entry_cap` 单点施加（GitStatusSnapshot 拥有该不变量）。
+    match manager.record_pull(snapshot, computed_from) {
+        Some(snap) => Ok(Arc::unwrap_or_clone(snap)),
+        // 本轮结果被更新的登记取代：读接口应当返回那份更新的（它是权威）。
+        None => match manager.snapshot(repo) {
+            Some(snap) => Ok(Arc::unwrap_or_clone(snap)),
+            None => Err(AppError::NotFound(format!(
+                "status for workspace {} was superseded and is unavailable",
+                repo.key()
+            ))),
+        },
+    }
 }
 
 /// 该连接形态能否拥有 push 生产者（worker + 文件 watcher + git-meta watcher 一套）。
@@ -168,13 +245,16 @@ pub const fn supports_push_producer(target: &ExecTarget) -> bool {
     matches!(target, ExecTarget::Local)
 }
 
-/// Workspace 激活命令的结果：**「未就绪」是一等状态，不是错误**。
+/// Workspace 激活命令的结果（**单元素**载荷）：**「未就绪」是一等状态，不是错误**。
 ///
 /// 冷启动窗口（挂载已成立、worker 首轮重算尚未落地）在慢环境（CI 冷 FS / Windows
 /// Defender）上必然超过任何固定预算 —— 把超时当错误，正确性就依赖环境延迟
 /// （2026-10 CI 事故：`activate_*` 在 windows-latest 上超时 panic）。
-/// `Pending` 的收敛通道有两条且都已存在：前端 reconciliation 环重试 + `git-status-snapshot`
-/// 推送事件。错误空间只留：项目解析失败、非 git 库、任务 join 失败。
+/// `Pending` 的收敛通道有两条且都已存在：`git-status-snapshot` 推送事件 + 前端
+/// `useActiveWorkspaceSync` 的重试环。错误空间只留：单元解析失败、非 git 库、pull 失败。
+///
+/// **C2 起只是单元素投影**：语义与批量入口（[`WorkspaceActivationEntry`]）完全一致，差别只在
+/// 「一个单元的失败会不会影响别的」—— 那是批量才有的问题，所以只有批量把它表达成数据。
 #[derive(Debug, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum WorkspaceActivation {
@@ -188,6 +268,59 @@ pub enum WorkspaceActivation {
         /// 被激活单元的 key（供调用方核对迟到的 Pending 属于哪次激活）。
         workspace_key: String,
     },
+}
+
+/// 批量激活的**逐单元**结局（`set_visible_workspaces` 的载荷）。
+///
+/// 与 [`WorkspaceActivation`] **刻意分开**：批量入口把「单元级失败」也表达成数据（`failed`），
+/// 因为整批 `Err` 会让一个坏项目拖死全部单元（前端只能整体渲染一次错误）。单元素入口保持原有
+/// 错误空间，前端 `useActivateWorkspace` 的失败分支因此零改动。
+///
+/// `workspace_key` 在三态里都带上：调用方按单元匹配结局（`ready` 的 `snapshot` 里也有同一个
+/// key，但让「哪个单元」成为**条目**的字段，匹配规则就不依赖载荷形状）。
+#[derive(Debug, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum WorkspaceActivationEntry {
+    /// 权威快照已就绪。
+    Ready {
+        /// 被激活单元的 key（与 `snapshot.workspace_key` 同值，便于按条目匹配）。
+        workspace_key: String,
+        /// 权威快照（与 `git-status-snapshot` 事件同源同版本）。
+        snapshot: GitStatusSnapshot,
+    },
+    /// 挂载已成立，首个快照尚未算出（冷窗口）。
+    Pending {
+        /// 被激活单元的 key。
+        workspace_key: String,
+    },
+    /// 该单元**自己**失败（解析失败 / 非 git 库 / pull 出错）—— 不影响同批其它单元。
+    Failed {
+        /// 失败单元的 key。
+        workspace_key: String,
+        /// 人类可读的失败原因（整体渲染该单元的未知态 + 诊断）。
+        error: String,
+    },
+}
+
+impl WorkspaceActivationEntry {
+    /// `(key, 单元级结局)` → wire 载荷。
+    ///
+    /// **失败落数据、不落整批 `Err`**：批量入口的契约是「逐单元给结局」，一个坏项目拖死全部
+    /// 会让其余单元的 UI 停在未知态。
+    #[must_use]
+    pub fn of(key: &str, outcome: Result<WorkspaceActivation, AppError>) -> Self {
+        match outcome {
+            Ok(WorkspaceActivation::Ready { snapshot }) => Self::Ready {
+                workspace_key: key.to_string(),
+                snapshot,
+            },
+            Ok(WorkspaceActivation::Pending { workspace_key }) => Self::Pending { workspace_key },
+            Err(error) => Self::Failed {
+                workspace_key: key.to_string(),
+                error: error.to_string(),
+            },
+        }
+    }
 }
 
 /// 冷窗口裁决（纯映射，便于直测）：预算内等不到首份快照是**合法结局** —— 挂载已成立、
@@ -206,88 +339,159 @@ fn first_snapshot_outcome(
     }
 }
 
-/// 激活一个Workspace：释放其它单元的挂载 → 挂载本单元 → 取首个快照。
+/// 逐单元的落点分类（「解析 + 前置校验」阶段的产物）。
+enum UnitPlan {
+    /// 本地单元：加入本轮的批量挂载。
+    Mount {
+        repo: WorkspaceRef,
+        target: ExecTarget,
+    },
+    /// 无 push 生产者的单元（WSL / SSH）：不挂载，直接 pull。
+    Pull {
+        repo: WorkspaceRef,
+        target: ExecTarget,
+    },
+    /// 单元级失败：不进入任何批量动作，只影响自己这一项。
+    Failed { key: String, error: AppError },
+}
+
+/// 激活一批**可见**Workspace：逐个单元给结局，**挂载一个不释放任何别的单元**（C2）。
 ///
-/// **为什么由前端显式驱动**：决策 D-B 是「只挂当前视图所在的那个单元」，每项目常驻
-/// 至多一套资源。挂载/释放因此必须有一个唯一入口 —— 否则「谁在看」又会散落到各处，
-/// 与本次要删除的那些「读全局镜像猜身份」的路径同构。
+/// 三段式（`11-04-git-status-observability/design.md` §1 的 C2 落地）：
+/// 1. **解析 + 校验**：逐单元解析 [`WorkspaceRef`] 与 transport；非 git 库直接记 `Failed`；
+/// 2. **批量挂载**：本地单元汇总交 [`WatcherManager::ensure_mounted`] —— 一次临界区、一条日志，
+///    已挂载者不重建（R1.1 / R1.2 / R4.2）。**没有释放步骤**：互斥槽位已删除，A/B 互踢
+///    因此结构性不可能；
+/// 3. **逐单元落点**：本地取首快照（冷窗口 ⇒ `pending`），远端 pull 一次（恒 `ready`）。
 ///
-/// 副作用说明：挂载后立刻作废该单元此前可能残留的快照（见 `WatcherManager::watch`），
-/// 因此结果必然是**挂载后重算**的，不是切走前的旧数据。
+/// **单元级隔离**：解析失败 / 非 git 库 / pull 失败只影响**该项**，其余照常 —— 整批失败会让
+/// 一个坏项目拖死全部（见 [`WorkspaceActivationEntry`]）。返回顺序与入参一致。
+pub async fn activate_many(
+    state: &AppStateWrapper,
+    sink: Arc<dyn WatcherEventSink>,
+    workspaces: &[WorkspaceSession],
+) -> Vec<(String, Result<WorkspaceActivation, AppError>)> {
+    let mut plan: Vec<UnitPlan> = Vec::with_capacity(workspaces.len());
+    let mut mount_batch: Vec<(WorkspaceRef, Arc<dyn WatcherEventSink>)> = Vec::new();
+
+    for workspace in workspaces {
+        let (target, repo) = match state.resolve_workspace_target(workspace).await {
+            Ok(resolved) => resolved,
+            // 地址解析失败也是**单元级**失败：key 由地址自身给出（前端算的是同一个 key）。
+            Err(error) => {
+                plan.push(UnitPlan::Failed {
+                    key: workspace.key(),
+                    error,
+                });
+                continue;
+            }
+        };
+        // 仓库存在性由 transport 判定（本地 fs 判定会误杀 WSL / SSH 单元）。
+        if !target.is_git_repo(repo.root()).await {
+            plan.push(UnitPlan::Failed {
+                key: repo.key(),
+                error: AppError::NotFound(format!(
+                    "workspace {} is not a git repository",
+                    repo.key()
+                )),
+            });
+            continue;
+        }
+        if supports_push_producer(&target) {
+            mount_batch.push((repo.clone(), Arc::clone(&sink)));
+            plan.push(UnitPlan::Mount { repo, target });
+        } else {
+            plan.push(UnitPlan::Pull { repo, target });
+        }
+    }
+
+    // 批量挂载：一次临界区、一条日志（R4.2），且**不释放**任何已有挂载 —— 这是「互踢」的
+    // 结构性消失点：没有互斥槽位可抢，就没有「谁被顶掉」。
+    // notify 的递归注册在 Linux 上会同步遍历整树 ⇒ 必须离开 IPC/async 线程（红线 3）。
+    if !mount_batch.is_empty() {
+        let manager = state.watcher_manager.clone();
+        if let Err(error) = run_blocking(move || manager.ensure_mounted(mount_batch)).await {
+            // 批量挂载整体没跑完（运行时关停 / 阻塞池 panic）：下面的 `is_watched` 判据会把这批
+            // 单元退化为一次 pull —— 至少给出数据，错误只落在真正算不出来的单元上。
+            log::warn!("[GitStatus] batch mount task failed: {error}");
+        }
+    }
+
+    let mut outcomes = Vec::with_capacity(plan.len());
+    for unit in plan {
+        match unit {
+            UnitPlan::Failed { key, error } => outcomes.push((key, Err(error))),
+            UnitPlan::Pull { repo, target } => {
+                let outcome = pull_outcome(state, &repo, &target).await;
+                outcomes.push((repo.key(), outcome));
+            }
+            UnitPlan::Mount { repo, target } => {
+                let outcome = mounted_outcome(state, &repo, &target).await;
+                outcomes.push((repo.key(), outcome));
+            }
+        }
+    }
+    outcomes
+}
+
+/// 单个Workspace的激活入口 —— **单元素集合**语义，与批量入口共用同一套编排。
 ///
-/// 远端（WSL / SSH）不挂载，但仍然收口（释放上一个本地项目的挂载）后立刻 pull 一次，
-/// 恒返回 [`WorkspaceActivation::Ready`]。
+/// C2 起它不再是「只允许挂这一个」：挂载本单元**不影响**任何已挂载单元（排他已删除）。语义上
+/// 等价于 `activate_many(&[workspace])`，唯一差别是结局映射：单元级失败回到 `Err` 错误空间 ——
+/// 前端 `useActivateWorkspace` 的失败分支依赖它（零改动契约）。
 ///
-/// **依赖倒置**：挂载所需的事件出口以端口 [`WatcherEventSink`] 注入，本函数不再接收
+/// **依赖倒置**：挂载所需的事件出口以端口 [`WatcherEventSink`] 注入，本函数不接收
 /// `tauri::AppHandle`、也不自己 `new AppHandleSink` —— 交付适配器的构造属于命令边界
 /// （`git/commands/query.rs`）。这样服务层可用测试替身（`CollectingSink`）驱动，
 /// 且模块结构上不再依赖 Tauri（另有护栏 `check_service_no_delivery_dep` 钉住）。
 pub async fn activate(
     state: &AppStateWrapper,
     sink: Arc<dyn WatcherEventSink>,
-    repo: &WorkspaceRef,
+    workspace: &WorkspaceSession,
 ) -> Result<WorkspaceActivation, AppError> {
-    let (target, _) = state.resolve_project(repo.project_id())?;
-    activate_with(state, sink, repo, &target, supports_push_producer(&target)).await
+    let mut outcomes = activate_many(state, sink, std::slice::from_ref(workspace)).await;
+    match outcomes.pop() {
+        Some((_key, outcome)) => outcome,
+        // `activate_many` 的契约是「逐元素一进一出」；走到这里说明契约被破坏。
+        None => Err(AppError::Unknown(format!(
+            "workspace {} produced no activation outcome",
+            workspace.key()
+        ))),
+    }
 }
 
-/// `activate` 的编排核心：transport 与「有没有 push 生产者」都从参数来。
+/// 落点 A：挂载**已确保**的本地单元 —— 取首个快照，冷窗口 ⇒ [`WorkspaceActivation::Pending`]。
 ///
-/// 存在的理由是最小化可测性缝：把 `ExecTarget` 换成**本地 transport**、`has_push_producer=false`，
-/// 就能在 `cargo test` 里驱动原来只有真机才能跑的「远端 pull 分支」（收口 + 现算 + 不挂载），
-/// 而无需任何假 transport。生产入口 [`activate`] 恒传 `&target` + `supports_push_producer(&target)`。
-async fn activate_with(
+/// 挂载未成立（`ensure_mounted` 内部的 setup 失败已记录告警、没有 push 生产者）⇒ 退化为一次性
+/// pull：与旧读路径同语义 —— 至少给出数据，槽位有权威值可渲染。
+async fn mounted_outcome(
     state: &AppStateWrapper,
-    sink: Arc<dyn WatcherEventSink>,
     repo: &WorkspaceRef,
     transport: &dyn GitTransport,
-    has_push_producer: bool,
 ) -> Result<WorkspaceActivation, AppError> {
-    // 仓库存在性由 transport 判定（本地 fs 判定会误杀 WSL / SSH 单元）
-    if !transport.is_git_repo(repo.root()).await {
-        return Err(AppError::NotFound(format!(
-            "workspace {} is not a git repository",
-            repo.key()
-        )));
-    }
-    if !has_push_producer {
-        // WSL / SSH：工作树在别的机器上，本地 notify 监听不到、git 子进程也拿不到 ⇒
-        // 这类单元没有 push 生产者，激活 = 立刻 pull 一次（HEAD 之前也是这么工作的：
-        // 远端 status 由 transport 现算）。
-        // 仍然要收口：切到远端项目时，上一个本地项目的挂载必须被释放（D-B 全局一套）。
-        let manager = state.watcher_manager.clone();
-        let keep = repo.key();
-        let _ = run_blocking(move || manager.release_except(&keep)).await;
-        let snapshot = compute_and_record(state, repo, transport).await?;
-        return Ok(WorkspaceActivation::Ready { snapshot });
-    }
-    let manager = state.watcher_manager.clone();
-    let watch_repo = repo.clone();
-    // notify 的递归 watch 在 Linux 上会同步遍历整树 → 必须离开 IPC/async 线程（红线 3）。
-    // `mount_only` 而非「release_except + watch」两连调：D-B 的不变量（至多一套挂载）必须
-    // 由资源所有者在**同一个临界区**内保证 —— 两步分开时，并发的 activate 会交错出两套挂载。
-    let released: Vec<String> = run_blocking(move || manager.mount_only(watch_repo, sink))
-        .await
-        .map_err(|e| AppError::Unknown(format!("activate task join error: {e}")))?;
-    if !released.is_empty() {
-        log::debug!(
-            "[GitStatus] activating {} released {released:?}",
-            repo.key()
-        );
-    }
-
-    // 挂载未成立（`mount_only` 内部的 setup 失败已记录告警、没有 push 生产者）⇒ 退化为
-    // 一次性 pull：与旧读路径同语义 —— 至少给出数据，槽位有权威值可渲染。
     if !state.watcher_manager.is_watched(repo) {
-        let snapshot = compute_and_record(state, repo, transport).await?;
-        return Ok(WorkspaceActivation::Ready { snapshot });
+        return pull_outcome(state, repo, transport).await;
     }
-    // 挂载已成立：取首份快照。预算内未就绪（冷窗口）⇒ `Pending`：挂载已成立、数据在途，
-    // 由推送事件与前端重试环收敛 —— 这里**绝不返回 Err**（见 `WorkspaceActivation` 的说明）。
+    // 预算内未就绪（冷窗口）⇒ `Pending`：挂载已成立、数据在途，由推送事件与前端重试环收敛
+    // —— 这里**绝不返回 Err**（见 [`WorkspaceActivation`]）。
     Ok(first_snapshot_outcome(
         read_mounted_snapshot(&state.watcher_manager, repo).await,
         &repo.key(),
     ))
+}
+
+/// 落点 B：无 push 生产者的单元（WSL / SSH，或本地挂载 setup 失败的退化路径）—— 现算一次。
+///
+/// 恒 [`WorkspaceActivation::Ready`]：pull 是同步现算，不存在冷窗口（`Pending` 只属于 push
+/// 生产者）。**不挂载、不释放**：远端单元的工作树在别的机器上，本地 notify 监听不到。
+async fn pull_outcome(
+    state: &AppStateWrapper,
+    repo: &WorkspaceRef,
+    transport: &dyn GitTransport,
+) -> Result<WorkspaceActivation, AppError> {
+    let snapshot =
+        compute_and_record(state, repo, transport, DirtyMask::all(), Instant::now()).await?;
+    Ok(WorkspaceActivation::Ready { snapshot })
 }
 
 #[cfg(test)]
@@ -296,11 +500,12 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
-        activate, activate_with, first_snapshot_outcome, read_workspace_status,
+        activate, activate_many, first_snapshot_outcome, pull_outcome, read_workspace_status,
         supports_push_producer, WorkspaceActivation,
     };
     use crate::common::executor::factory::ExecTarget;
     use crate::common::file::watcher::CollectingSink;
+    use crate::common::git::WorkspaceSession;
     use crate::common::testing::{init_git_repo, plain_project_state};
 
     /// 首份快照事件的宽容上限（git 项目要等 worker 起 git 子进程；慢机兜底）。
@@ -371,6 +576,18 @@ mod tests {
             .id
     }
 
+    /// 注册一个**非 git** 的 Local 项目（批量入口的「单元级失败」夹具）。
+    fn add_plain_project(state: &crate::AppStateWrapper, dir: &Path) -> String {
+        std::fs::create_dir_all(dir).expect("create project dir");
+        state
+            .project_manager
+            .lock()
+            .expect("project_manager")
+            .add_project(dir.to_path_buf(), None, None, None)
+            .expect("add project")
+            .id
+    }
+
     /// 服务层编排可被**注入端口**驱动（旧签名收 `&AppHandle` ⇒ 本用例根本无法编译）。
     /// 这条同时钉住：Local 单元走挂载、首份快照**最终**经注入的 sink 投递（`≥` 断言）、
     /// 冷窗口不进入错误空间（2026-10 CI 事故的回归契约）。
@@ -385,9 +602,13 @@ mod tests {
             .await
             .expect("resolve repo");
         let sink = CollectingSink::new();
-        let outcome = activate(&state, sink.clone(), &repo)
-            .await
-            .expect("冷窗口必须是合法结局（Ready/Pending），不得是错误");
+        let outcome = activate(
+            &state,
+            sink.clone(),
+            &WorkspaceSession::of(project_id, None),
+        )
+        .await
+        .expect("冷窗口必须是合法结局（Ready/Pending），不得是错误");
 
         assert!(state.watcher_manager.is_watched(&repo));
         // 收敛走**事件通道**（冷窗口语义下事件是唯一保证）：
@@ -402,10 +623,13 @@ mod tests {
         }
     }
 
-    /// D-B「至多一套挂载」在**编排层**成立：激活新单元必须释放旧单元。
-    /// 此前该不变量只在 `WatcherManager::mount_only` 层被测，服务层组合无人验证。
+    /// **AC1 的服务层判据**：激活新单元**不得**释放旧单元。
+    ///
+    /// 改写自 `activate_releases_the_previous_unit`（旧 D-B 不变量的正方向断言，
+    /// 见 prd R2.2：反向测试必须翻转为正向断言，不得简单删除）。旧版本断言
+    /// `!is_watched(A)` —— 那正是互踢；现在它必须失败。
     #[tokio::test]
-    async fn activate_releases_the_previous_unit() {
+    async fn activate_keeps_previous_unit_mounted() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let (state, project_a) = plain_project_state(&tmp);
         init_git_repo(&tmp.path().join("proj"));
@@ -420,27 +644,151 @@ mod tests {
             .await
             .expect("repo b");
 
-        activate(&state, CollectingSink::new(), &repo_a)
-            .await
-            .expect("activate a（冷窗口不得为错误）");
+        let sink_a = CollectingSink::new();
+        activate(
+            &state,
+            sink_a.clone(),
+            &WorkspaceSession::of(project_a, None),
+        )
+        .await
+        .expect("activate a（冷窗口不得为错误）");
         assert!(state.watcher_manager.is_watched(&repo_a));
+        // 夹具前提：A 的权威快照已落地（事件是冷窗口语义下唯一的收敛保证）。
+        assert!(
+            wait_for_sink_event(&sink_a, FIRST_EVENT_TIMEOUT).await,
+            "A 的首份快照必须经注入端口投递"
+        );
+        let before = state
+            .watcher_manager
+            .snapshot(&repo_a)
+            .expect("A 的快照已落地");
 
-        activate(&state, CollectingSink::new(), &repo_b)
-            .await
-            .expect("activate b（冷窗口不得为错误）");
+        activate(
+            &state,
+            CollectingSink::new(),
+            &WorkspaceSession::of(project_b, None),
+        )
+        .await
+        .expect("activate b（冷窗口不得为错误）");
+
         assert!(state.watcher_manager.is_watched(&repo_b));
         assert!(
-            !state.watcher_manager.is_watched(&repo_a),
-            "激活新单元必须释放旧单元（D-B：全局至多一套挂载）"
+            state.watcher_manager.is_watched(&repo_a),
+            "激活新单元不得释放旧单元（C2 已删除排他挂载：互斥槽位不存在）"
+        );
+        let after = state
+            .watcher_manager
+            .snapshot(&repo_a)
+            .expect("A 的槽位不得被清空（挂载释放才作废资源，数据只由淘汰/forget 回收）");
+        assert_eq!(
+            after.workspace_key, before.workspace_key,
+            "A 的槽位必须仍属于 A"
+        );
+        assert!(
+            after.version >= before.version,
+            "A 的槽位不得回退：{} < {}",
+            after.version,
+            before.version
         );
     }
 
-    /// **AC13 的代码层闭合**：远端（WSL / SSH）分支 = 收口 + 现算，**绝不挂载**。
+    /// **AC2（批量命令）**：一次 `activate_many([A, 坏项目, C])` ⇒ 三个单元各自给结局 ——
+    /// 坏项目只让自己那项失败，其余两个照常挂载（不得整批失败，也不得互相串味）。
     ///
-    /// 用 `&ExecTarget::Local`（本地真仓）+ `has_push_producer=false` 驱动同一条分支，
-    /// 无需真机也无需假 transport —— 这正是 `activate_with` 这个缝要买到的东西。
+    /// 冷窗口的隔离由 `mounted_outcome` 的**逐单元**归宿保证（`Ready | Pending`，绝不 `Err`）；
+    /// 本用例钉住的是同一批里的失败隔离与顺序契约。
     #[tokio::test]
-    async fn remote_branch_pulls_without_mounting_and_releases_the_previous_unit() {
+    async fn batch_activation_mounts_every_unit_and_isolates_failures() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_a) = plain_project_state(&tmp);
+        init_git_repo(&tmp.path().join("proj"));
+        let project_b = add_git_project(&state, &tmp.path().join("proj-b"));
+        let project_bad = add_plain_project(&state, &tmp.path().join("not-a-repo"));
+
+        let (_ta, repo_a) = state
+            .resolve_workspace(&project_a, None)
+            .await
+            .expect("repo a");
+        let (_tb, repo_b) = state
+            .resolve_workspace(&project_b, None)
+            .await
+            .expect("repo b");
+        let (_tbad, repo_bad) = state
+            .resolve_workspace(&project_bad, None)
+            .await
+            .expect("repo bad");
+
+        let sessions = [
+            WorkspaceSession::of(project_a, None),
+            WorkspaceSession::of(project_bad, None),
+            WorkspaceSession::of(project_b, None),
+        ];
+        let sink = CollectingSink::new();
+        let outcomes = activate_many(&state, sink.clone(), &sessions).await;
+
+        assert_eq!(outcomes.len(), 3, "逐单元一进一出");
+        // 顺序契约：返回顺序与入参一致（调用方按位置或 key 匹配都不会错位）。
+        assert_eq!(outcomes[0].0, repo_a.key());
+        assert_eq!(outcomes[1].0, repo_bad.key());
+        assert_eq!(outcomes[2].0, repo_b.key());
+
+        // 坏项目：只失败自己那一项，且**绝不挂载**（无 push 生产者可言）
+        match &outcomes[1].1 {
+            Err(error) => assert!(
+                error.to_string().contains("not a git repository"),
+                "非 git 库的错误必须说明原因，实际：{error}"
+            ),
+            Ok(activation) => panic!("非 git 库不得被当成可挂载单元：{activation:?}"),
+        }
+        assert!(
+            !state.watcher_manager.is_watched(&repo_bad),
+            "失败单元不得留下挂载资源"
+        );
+
+        // 其余两个：照常挂载，结局必须是 Ready | Pending（冷窗口合法），不得因同批的坏项目变 Err
+        for (key, outcome) in [&outcomes[0], &outcomes[2]] {
+            assert!(
+                outcome.is_ok(),
+                "{key} 的成功不得被同批的坏项目拖垮：{outcome:?}"
+            );
+        }
+        assert!(state.watcher_manager.is_watched(&repo_a));
+        assert!(state.watcher_manager.is_watched(&repo_b));
+        assert_eq!(
+            state.watcher_manager.watched_units().len(),
+            2,
+            "挂载集合必须恰好是两个 git 单元，实际 {:?}",
+            state.watcher_manager.watched_units()
+        );
+    }
+
+    /// 单元素入口把**单元级失败**保留在错误空间（批量入口才把它转成 `failed` 数据）。
+    ///
+    /// 前端的 `useActivateWorkspace` 依赖这条（`catch` → 槽位置空 + 一次诊断），是 AC7
+    /// 「前端零改动」的判据：命令契约没变，变了的是「不再释放别人」。
+    #[tokio::test]
+    async fn single_unit_entry_surfaces_unit_level_failure_as_error() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, _project_id) = plain_project_state(&tmp);
+        let outcome = activate(
+            &state,
+            CollectingSink::new(),
+            &WorkspaceSession::of("missing-project", None),
+        )
+        .await;
+        assert!(
+            outcome.is_err(),
+            "未知项目必须回到错误空间（不是 pending / failed 数据）"
+        );
+    }
+
+    /// **AC13 的代码层闭合**：无 push 生产者的单元（WSL / SSH）= 现算一次、**绝不挂载**。
+    ///
+    /// 用 `&ExecTarget::Local`（本地真仓）驱动**同一条 pull 编排**（`pull_outcome`），无需真机
+    /// 也无需假 transport；分类判据由 `only_local_targets_get_a_push_producer` 单独钉住 ——
+    /// 两条合起来覆盖整条远端分支。C2 起它**不再释放**其它单元的挂载（排他已删除）。
+    #[tokio::test]
+    async fn pull_branch_computes_without_mounting_or_releasing_other_units() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let (state, project_a) = plain_project_state(&tmp);
         init_git_repo(&tmp.path().join("proj"));
@@ -456,14 +804,18 @@ mod tests {
             .expect("repo b");
 
         // A 按 Local 正常挂载（有 push 生产者）
-        activate(&state, CollectingSink::new(), &repo_a)
-            .await
-            .expect("mount a（冷窗口不得为错误）");
+        activate(
+            &state,
+            CollectingSink::new(),
+            &WorkspaceSession::of(project_a, None),
+        )
+        .await
+        .expect("mount a（冷窗口不得为错误）");
         assert!(state.watcher_manager.is_watched(&repo_a));
 
-        // B 走「远端形态」：本地 transport + 无 push 生产者
+        // B 走「远端形态」：同一条 pull 编排（本地 transport + 无 push 生产者）
         let sink = CollectingSink::new();
-        let outcome = activate_with(&state, sink.clone(), &repo_b, &ExecTarget::Local, false)
+        let outcome = pull_outcome(&state, &repo_b, &ExecTarget::Local)
             .await
             .expect("pull b");
         // pull 分支是**同步现算**：不存在冷窗口，必返 Ready（Pending 只属于 push 生产者）。
@@ -480,12 +832,16 @@ mod tests {
             "远端单元绝不挂载（无 push 生产者）"
         );
         assert!(
-            !state.watcher_manager.is_watched(&repo_a),
-            "切到远端项目必须释放上一个本地挂载（D-B 全局一套）"
+            state.watcher_manager.is_watched(&repo_a),
+            "pull 分支不得释放已有挂载（C2 删除排他：切换远端项目不再顶掉本地单元）"
         );
         assert!(
             sink.event_names().is_empty(),
             "pull 分支不产生 watcher 事件（没有 worker）"
+        );
+        assert!(
+            state.watcher_manager.snapshot(&repo_b).is_some(),
+            "pull 结果必须登记进同一张快照表"
         );
     }
 

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "§12 生产者单源（D-B 反转落点）+ §14 派生值新鲜度契约（不得破坏）"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "调度器/单飞/锁序；阻塞 I/O 隔离（红线 3）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "domain 分层落点与新模块边界"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "前端唯一发起点与 effect 收敛形态"}

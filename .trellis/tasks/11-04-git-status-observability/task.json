@@ -1,0 +1,31 @@
+{
+  "id": "git-status-observability",
+  "name": "git-status-observability",
+  "title": "git status 可观测性重构：把资源稀缺性从数据契约中移除",
+  "description": "多项目同时打开时 git 状态不刷新/不显示（主仓与 worktree 永久互踢）。以第一性原理重构 status 子系统：可观测集合与资源预算解耦，读路径永权威，删除排他挂载机制。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-11-04",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-04-status-freshness-model",
+    "11-04-drop-exclusive-mount",
+    "11-04-watch-hub-single-stream",
+    "11-04-frontend-single-writer"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

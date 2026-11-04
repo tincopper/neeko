@@ -125,7 +125,7 @@ pub async fn set_active_project(
     };
 
     // 释放旧激活项目的挂载：drop notify watcher（递归反注册）可能短暂阻塞 → run_blocking
-    // 隔离（红线 3），与挂载侧 mount_only 对称。（remove_project / change_project_path 是
+    // 隔离（红线 3），与挂载侧 ensure_mounted 对称。（remove_project / change_project_path 是
     // 同步命令，不跑在 Tokio worker 上，其直调是合法的。）
     if let Some(old_id) = current.as_deref() {
         let manager = state.watcher_manager.clone();

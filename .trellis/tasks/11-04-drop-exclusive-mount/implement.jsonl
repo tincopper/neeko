@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "§12 生产者单源（本任务反转 D-B）+ §14 单通道契约不变"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "后台线程资源所有权 / 挂载临界区契约（watch_lock 的理由）"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "新命令注册 + 极薄命令层（红线 6）"}

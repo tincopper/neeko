@@ -19,8 +19,9 @@
    `workspaceRef.ts` 产出（别处手拼即第二处 key 实现，必然与后端 `WorkspaceRef::key()` 漂移）。
    ahead/behind 的键就是该 `WorkspaceKey` 本身 —— 带 `{source}:{connectionId}` 前缀的
    `aheadBehindKey` 已退役（读侧拼不出写侧的键，徽标时有时无）。
-4. **挂载唯一入口**：生产代码里 `WatcherManager::watch` 只允许出现在 `git/services/status.rs`
-   的 `activate()`。R2.1 的「挂载入口唯一」以前只是注释里的约定，实测就被 `app.rs` 启动恢复
+4. **挂载唯一入口**：生产代码里 `WatcherManager::watch` 只允许出现在管理器自身
+   （`ensure_mounted`）与 `git/services/status.rs` 的编排层（服务层只经 `ensure_mounted` 批量入口）。
+   R2.1 的「挂载入口唯一」以前只是注释里的约定，实测就被 `app.rs` 启动恢复
    与 `set_active_project` 两处「按项目预挂主仓单元」破掉（每次启动都出现两个发起点，日志报
    `already watched`）；把它写成判据，下一个想「顺手先挂一下」的改动会直接被挡下。
 5. **写后收口接线**：`git/commands/` 下任何调用「改变该单元 `f(HEAD, index, workdir)`」的
@@ -381,7 +382,7 @@ NO_STATUS_IMPACT_OPERATIONS = {
     "stash_drop": "删 stash 条目不触碰当前工作树（apply / pop 会，故它们不在此列）",
 }
 # 挂载唯一入口：生产代码里 `WatcherManager::watch` 的合法调用文件（管理器自身实现与测试除外）。
-MOUNT_ALLOWLIST = ("src-tauri/src/git/services/status.rs",)
+MOUNT_ALLOWLIST = ("src-tauri/src/git/services/status.rs",)  # C2 起服务层改走 `ensure_mounted`
 # 任意接收者的 `.watch(` 都算候选（不硬编码变量名 —— 改名即绕过的判据等于没有判据）；
 # notify 内部的 `watcher.watch(path, mode)` 位于 `common/file/watcher/`；W2 起 notify
 # `Watcher::watch` 适配只落在 `platform/watch_backend/platform_watcher.rs`（生产门面）与
@@ -395,7 +396,7 @@ MOUNT_CALL_RE = re.compile(r"\w+\s*\.\s*watch\s*\(")
 
 
 def scan_mount_singularity(ctx: Context) -> tuple:
-    """`WatcherManager::watch` 的调用点必须只有一个（`activate()`）。"""
+    """`WatcherManager::watch` 的调用点必须只有一个（`ensure_mounted` / 服务层编排）。"""
     findings: list[Finding] = []
     paths = list(ctx.glob(BE_SCOPE))
     for path in paths:
@@ -406,7 +407,8 @@ def scan_mount_singularity(ctx: Context) -> tuple:
             if MOUNT_CALL_RE.search(line):
                 findings.append(
                     Finding(
-                        "挂载唯一入口是 `git/services/status.rs::activate`；此处直接 `watch()` "
+                        "挂载唯一入口是 `WatcherManager::ensure_mounted`（服务层经 "
+                        "`git/services/status.rs::activate_many`）；此处直接 `watch()` "
                         "等于加第二个「谁在看」的发起点（实测破过一次：启动时先挂主仓、随后被前端改挂 worktree）",
                         rel,
                         number,

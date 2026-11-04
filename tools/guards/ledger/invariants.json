@@ -46,13 +46,13 @@
     },
     {
       "id": "mount-entry-singularity",
-      "title": "Workspace挂载只有一个入口（git/services/status.rs::activate）",
+      "title": "Workspace挂载只有一个入口（WatcherManager::ensure_mounted）",
       "tier": "structure",
       "enforcement": [
         {
           "kind": "guard",
           "ref": "check_workspace_identity",
-          "note": "生产代码里 WatcherManager::watch 调用点唯一；structure 指「挂载资源所有权集中在 activate」"
+          "note": "生产代码里 WatcherManager::watch 调用点唯一；structure 指「挂载资源所有权集中在 ensure_mounted，服务层经 git/services/status.rs::activate_many 调用」。C2 起该入口是批量的「确保挂载」（不释放任何其它单元）—— 唯一性说的是入口，不是「全局只能有一套挂载」"
         },
         {
           "kind": "test",
@@ -193,7 +193,7 @@
         {
           "kind": "test",
           "ref": "src-tauri/src/git/services/status.rs",
-          "note": "编排层用例内联在该源文件的 #[cfg(test)] 模块（挂载 / 释放 / 远端 pull 分支）"
+          "note": "编排层用例内联在该源文件的 #[cfg(test)] 模块（批量挂载 / 挂新单元不释放旧单元 / 远端 pull 分支 / 逐单元失败隔离）"
         }
       ],
       "red_line": null
@@ -336,7 +336,7 @@
         {
           "kind": "type",
           "ref": "src-tauri/src/git/services/status.rs",
-          "note": "范围 = 激活命令（set_active_workspace）：WorkspaceActivation{Ready|Pending}（serde tag=state）+ first_snapshot_outcome 无错误分支；有界等待（RECALC_WAIT_TIMEOUT）只是延迟优化，正确性归 git-status-snapshot 推送。读命令（get_workspace_status）冷窗口仍返回 Err(NotFound) —— 消费方按「未知」收敛（catch→null），如需同化另行评估"
+          "note": "范围 = 单元素激活命令（set_active_workspace）：WorkspaceActivation{Ready|Pending}（serde tag=state）+ first_snapshot_outcome 无错误分支（批量命令 set_visible_workspaces 另用 WorkspaceActivationEntry，把**单元级**失败表达成数据而不是整批 Err —— 一个坏项目不得拖死其余单元）；有界等待（RECALC_WAIT_TIMEOUT）只是延迟优化，正确性归 git-status-snapshot 推送。读命令（get_workspace_status）冷窗口仍返回 Err(NotFound) —— 消费方按「未知」收敛（catch→null），如需同化另行评估"
         },
         {
           "kind": "test",

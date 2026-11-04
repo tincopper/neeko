@@ -5,9 +5,16 @@
 //! HEAD / index / workdir 全都独立），只以 project_id 为身份时，worktree 视图既没有权威
 //! 生产者（列表不更新）、又与主仓共用一个槽（串 main 内容）。
 //!
-//! 生命周期（决策 D-B）：**只挂载当前视图所在的那个单元** —— 激活即挂、离开即释放，
-//! 每项目常驻至多一套资源。代价是冷启动窗口与非激活单元不实时，由「未挂载 = 未知」
-//! 的显式空态承担（见 `snapshot` 返回 `None` 的语义与前端 `statuses[key] === undefined`）。
+//! **C1 起：资源生命周期不再决定数据可见性。** 登记表（[`super::store::StatusStore`]）
+//! 保存每单元的快照 + `computed_at` + `dirty`，读路径只问登记表（脏/陈旧/缺失 ⇒ 重算，
+//! 否则返回），**不问是否挂载** —— 「未挂载」不再是「无权威数据」的同义词。
+//! 挂载语义因此退化为「谁有 push 生产者」，它只影响新鲜度的延迟，不影响可观测性。
+//!
+//! **C2 起：可见集合里的每个单元都可以同时挂载**（用户决策 D-B 已反转 —— 见
+//! `git-domain.md §12` 的反转记录）。挂载一个单元**不释放**任何其它单元，因此「A/B 互踢」
+//! 在结构上不可能：没有互斥槽位可抢。稀缺性只允许落在**调度顺序**上（先算谁、算多勤，
+//! C3 的调度器），不得落在「能不能被观测」上（红线 16）。释放只由**单元消失**触发
+//! （[`WatcherManager::unwatch`] / [`WatcherManager::unwatch_project`]）。
 
 use super::super::debounce::{DebounceSender, ThrottleScheduler, TreeChangeDebounceSender};
 #[cfg(test)]
@@ -21,8 +28,9 @@ use super::callbacks::build_notify_callback;
 #[cfg(test)]
 use super::callbacks::GitMetaCallbacks;
 use super::handle::WatcherHandle;
+use super::store::{DirtyMask, StatusStore};
 use crate::common::git::local::is_git_repo;
-use crate::common::git::status_worker::{GitStatusSnapshot, GitStatusWorker};
+use crate::common::git::status_worker::{GitStatusSnapshot, GitStatusWorker, RecomputeGate};
 use crate::common::git::WorkspaceRef;
 #[cfg(test)]
 use crate::platform::watch_backend::PlatformWatcher;
@@ -39,7 +47,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 /// 测试模式下的回调投喂口类型（`no_real_fs` 用）。
@@ -118,21 +126,23 @@ pub type WatcherExcludesProvider = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
 pub struct WatcherManager {
     /// Map of `WorkspaceRef::key()` to active watcher handles.
     watchers: Arc<Mutex<HashMap<String, WatcherHandle>>>,
-    /// G2 单一权威化：每单元最新 versioned 快照（push 生产者 = worker 写入；
-    /// pull 生产者 = [`Self::record_computed`] 写入。同一张表、同一套 version 语义）。
-    snapshots: Arc<Mutex<HashMap<String, Arc<GitStatusSnapshot>>>>,
-    /// 每单元**已用到的最高 version**（号段水位）。与 `snapshots` 分开存，因为两者的
-    /// 生命周期不同：快照随挂载释放作废（I1-b 要求「未挂载 = 无权威数据」），号段必须
-    /// 活得更久 —— 从 1 重新起号会让「切走再切回」的第一份新快照被前端闸门
-    /// （`version <= prev`）静默丢弃，界面继续显示离开时的旧数据（2026-09-29 真 app
-    /// 手测日志：13 次推送全是 v1）。仅在**项目本身被移除**时回收（[`Self::unwatch_project`]），
-    /// 规模因此以「项目 × 该项目的单元数」为界。
-    version_floors: Arc<Mutex<HashMap<String, u64>>>,
+    /// G2 单一权威化 + C1 新鲜度：每单元的**权威快照 + `computed_at` + `dirty` + 号段**。
+    ///
+    /// 三张表合成一个临界区（见 [`super::store`]）：push 生产者（挂载中的 worker）与
+    /// pull 生产者（按需现算）写同一张表、共用同一套 version 单调语义。
+    ///
+    /// **这里的条目不再随挂载释放而作废** —— 「未挂载」只是「没有 push 生产者」，不是
+    /// 「没有权威数据」。旧实现把两者等同（`释放 ⇒ 删槽位`），于是读路径只能拿「是否挂载」
+    /// 当新鲜度代理，非激活单元永远读不到可信数据。
+    status_store: Arc<Mutex<StatusStore>>,
+    /// 每单元的重算单飞闸门（同一单元同时只有一轮重算在飞）。见 [`RecomputeGate`]。
+    recompute_gate: Arc<RecomputeGate>,
     /// 挂载票号登记表（类型化写入凭证 [`MountTicket`] 的在册记录）：单元 key → 当前有效票号。
     ///
-    /// 为什么需要：push 生产者（worker 线程）的生命周期比挂载长半拍 —— 释放后仍在飞的
-    /// 回调若无人校验，会把已作废的槽位重新填上「权威数据」（2026-10 CI 竞态：macOS
-    /// `activate_style_release_except_keeps_only_the_target_unit`）。写权的载体由此从
+    /// 为什么需要（C2 已复核，**保留**：父任务删除台账 D3 的前提是「释放不再存在」，但
+    /// [`Self::unwatch`] 仍在）：push 生产者（worker 线程）的生命周期比挂载长半拍 —— 释放后
+    /// 仍在飞的回调若无人校验，会把已作废的槽位重新填上「权威数据」（2026-10 CI 竞态的
+    /// 确定性回归：`push_after_release_with_stale_ticket_is_rejected`）。写权的载体由此从
     /// 隐式（持有 `Arc` 克隆就能写 = 进程级有效）收紧为显式（持有效票 = 挂载级有效）：
     /// `watch()` 在创建 worker **之前**签发，`release_one` / 挂载中止使其失效，
     /// [`store_push_snapshot`] 在写入临界区内校验。Pull（未挂载单元的现算）不经此闸门
@@ -140,9 +150,15 @@ pub struct WatcherManager {
     mount_tickets: Arc<Mutex<HashMap<String, u64>>>,
     /// 票号发号器（全局单调递增）：票号只需唯一，校验按单元 key 查登记表比对。
     ticket_serial: Arc<AtomicU64>,
-    /// 挂载临界区（D-B 不变量）：`release_except` 与 `watch` 必须成对原子发生，
-    /// 否则并发 `activate` 能交错出两套挂载（见 [`Self::mount_only`] 的说明）。
-    mount_lock: Arc<Mutex<()>>,
+    /// [`Self::watch`] 的 **check-then-insert 原子性**（唯一职责，C2 起）。
+    ///
+    /// 旧实现里它还负责「释放除目标外的全部挂载 + 挂载目标」成对原子的保证，那件事随排他
+    /// 挂载一起被删除（挂载别人不再释放任何人）。保留它是为了**同单元并发挂载**：`watch()`
+    /// 的「已注册则告警返回」与末尾的 `insert` 不在同一个临界区，两个并发调用会各建一套监听
+    /// （事件翻倍 + 线程泄漏，`concurrency-guidelines.md` 契约 3）。
+    ///
+    /// 把这把锁一并删掉会重新打开那个竞态 —— 所以它**不是**排他挂载的残留。
+    watch_lock: Arc<Mutex<()>>,
     /// 用户级 watcher 排除模式提供者（D2）；默认空 = 只 gitignore + 硬噪声。
     watcher_excludes_provider: WatcherExcludesProvider,
     /// 测试开关：为真时不建真实 OS 流，改用 `PlatformWatcher::Noop`。
@@ -179,11 +195,11 @@ impl WatcherManager {
     pub fn new() -> Self {
         Self {
             watchers: Arc::new(Mutex::new(HashMap::new())),
-            snapshots: Arc::new(Mutex::new(HashMap::new())),
-            version_floors: Arc::new(Mutex::new(HashMap::new())),
+            status_store: Arc::new(Mutex::new(StatusStore::new())),
+            recompute_gate: Arc::new(RecomputeGate::new()),
             mount_tickets: Arc::new(Mutex::new(HashMap::new())),
             ticket_serial: Arc::new(AtomicU64::default()),
-            mount_lock: Arc::new(Mutex::new(())),
+            watch_lock: Arc::new(Mutex::new(())),
             watcher_excludes_provider: Arc::new(Vec::new),
             #[cfg(test)]
             no_real_fs: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -272,8 +288,7 @@ impl WatcherManager {
     ) -> Option<Arc<GitStatusSnapshot>> {
         deliver_push(
             &sink,
-            &self.snapshots,
-            &self.version_floors,
+            &self.status_store,
             &self.mount_tickets,
             ticket,
             snapshot,
@@ -326,39 +341,95 @@ impl WatcherManager {
         handle.check_and_wait(timeout)
     }
 
-    /// 最新权威 status 快照（G2 D2 读接口数据源）。
-    /// `None` = 该单元当前没有权威生产者（未挂载 / 非 git 单元 / 启动初期首快照未到）。
+    /// 该单元的权威 status 快照（读接口数据源，**同时更新 LRU 访问时刻**）。
+    /// `None` = 登记表里没有该单元（从未算过 / 已被容量淘汰 / 刚被 `forget`）。
+    ///
+    /// **语义收紧（C1）**：`None` 与「是否挂载」无关。未挂载单元同样可以有权威快照 ——
+    /// 是否值得相信由 `computed_at` / `dirty` 决定（见 [`Self::status_needs_recompute`]），
+    /// 不再由资源状态推断。
     ///
     /// **调用方不得把 `None` 当作「无变更」** —— 那是「未知」，渲染成空列表等于伪造事实。
     #[must_use]
     pub fn snapshot(&self, repo: &WorkspaceRef) -> Option<Arc<GitStatusSnapshot>> {
-        self.snapshots.lock().ok()?.get(&repo.key()).cloned()
+        self.status_store
+            .lock()
+            .ok()?
+            .read_snapshot(&repo.key(), Instant::now())
     }
 
-    /// 登记一次 **pull 生产者**算出的快照（WSL / SSH 等无法挂载 watcher 的单元）。
+    /// 该单元此刻是否**值得重算**（读路径的唯一判据，与是否挂载无关）。
     ///
-    /// 与 worker 产出的是同一种东西、进同一张表、共用同一套 version 单调语义 —— 读接口
-    /// 因此只有一种形态（旧现实：worktree / 远程返回 `version: 0`，前端只能「恒放行」，
-    /// 于是任何一次 pull 都能覆盖任何时刻的 push 快照）。
-    /// 生产者的差别（push vs pull）只影响**新鲜度**，不再影响**寻址与竞态**。
-    ///
-    /// **例外：挂载中且 worker 已产出过快照 ⇒ 本次 pull 必然更旧**（pull 期间 worker 随时
-    /// 可能推送更新的数据），此时回读槽位、不写入。该裁决在 [`store_pull_snapshot`] 的**同一
-    /// 临界区内**完成 —— 守卫若留在锁外就是 check-then-act：pull 的 git 子进程耗时以百毫秒
-    /// 计，worker 完全可能在守卫通过后、写入前推完一整轮，晚到的 pull 拿着注册表盖的更大
-    /// 号覆盖更新的 push（前端 version 闸门对这份旧数据只能放行）。
-    /// 挂载中但尚无快照（冷启动窗口）仍然登记：那正是 pull 存在的意义，且 worker 首个推送
-    /// 会拿到更大的号自然接管。
+    /// 三条任一成立：无条目 / 有脏位 / 超过 [`STALE_AFTER`]。
     #[must_use]
-    pub fn record_computed(&self, mut snapshot: GitStatusSnapshot) -> Arc<GitStatusSnapshot> {
+    pub fn status_needs_recompute(&self, repo: &WorkspaceRef) -> bool {
+        self.status_store.lock().map_or(true, |store| {
+            store.needs_recompute(&repo.key(), Instant::now())
+        })
+    }
+
+    /// 该单元的重算许可（同一单元同时只有一轮重算在飞，后到者排队）。
+    ///
+    /// 拿到许可后调用方**必须**重新判 [`Self::status_needs_recompute`] —— 等到的这一轮
+    /// 可能已把数据算新，此时再算一次纯属浪费。
+    #[must_use]
+    pub fn recompute_gate(&self) -> Arc<RecomputeGate> {
+        Arc::clone(&self.recompute_gate)
+    }
+
+    /// 标记失效（事件 / 写后 / 重算失败的回滚用）。
+    pub fn mark_status_dirty(&self, repo: &WorkspaceRef, mask: DirtyMask) {
+        if let Ok(mut store) = self.status_store.lock() {
+            store.mark_dirty(&repo.key(), mask);
+        }
+    }
+
+    /// 取走脏位（重算开始）。返回值描述本轮要重算的维度，失败时交回
+    /// [`Self::abort_status_recompute`]。
+    #[must_use]
+    pub fn begin_status_recompute(&self, repo: &WorkspaceRef) -> DirtyMask {
+        self.status_store.lock().map_or_else(
+            |_| DirtyMask::all(),
+            |mut store| store.begin_recompute(&repo.key(), Instant::now()),
+        )
+    }
+
+    /// 重算失败：把脏位并回去（失败 ≠ 数据新鲜），已有条目**不清空**。
+    pub fn abort_status_recompute(&self, repo: &WorkspaceRef, mask: DirtyMask) {
+        if let Ok(mut store) = self.status_store.lock() {
+            store.abort_recompute(&repo.key(), mask);
+        }
+    }
+
+    /// 作废某单元的**数据**（保留号段水位）。只在「该单元确实不再存在」时调用
+    /// （项目移除 / worktree 删除）—— 单纯切走视图**不得**调用。
+    pub fn forget_status(&self, repo: &WorkspaceRef) {
+        let key = repo.key();
+        if let Ok(mut store) = self.status_store.lock() {
+            store.forget(&key);
+        }
+        self.recompute_gate.forget(&key);
+    }
+
+    /// 登记一份 **pull 生产者**算出的快照（按需现算）。
+    ///
+    /// `computed_from` = 本轮计算**开始**的时刻。"晚到的旧结果不得覆盖更新的登记"这条
+    /// 栅栏由它实现（取代旧实现里「按是否挂载」的守卫）：若算期间已有更新的快照落地，
+    /// 本次结果作废并返回 `None`。
+    ///
+    /// 返回 `Some(已盖章快照)` = 已写入；`None` = 被更新的登记取代。
+    #[must_use]
+    pub fn record_pull(
+        &self,
+        mut snapshot: GitStatusSnapshot,
+        computed_from: Instant,
+    ) -> Option<Arc<GitStatusSnapshot>> {
         // 上限的唯一实现（与 worker 共用，禁止各写一份）。
         snapshot.enforce_entry_cap();
-        store_pull_snapshot(
-            &self.snapshots,
-            &self.version_floors,
-            &self.watchers,
-            snapshot,
-        )
+        let mut store = self
+            .status_store
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        store.upsert_if_not_superseded(snapshot, computed_from, Instant::now())
     }
 
     /// Start watching one repository workspace for file changes and maintain its snapshot.
@@ -381,11 +452,9 @@ impl WatcherManager {
 
         let sink_for_diff = Arc::clone(&sink);
 
-        // 该单元先前若存在快照（切走过），必须先作废**再**发起首轮重算：未挂载期间没有任何
-        // 生产者，残留快照会被当成权威数据渲染（= 本次要根治的症状形态）。
-        // 顺序不能颠倒 —— worker 在下面的 `check()` 里就可能在**本函数返回前**插入新快照，
-        // 那句 drop 若留在尾部会把刚产出的首个快照一起删掉（表现为「已挂载却读不到权威数据」）。
-        drop_snapshot_if_present(&self.snapshots, &workspace);
+        // 该单元先前若存在快照（切走过），**C1 起不再作废**：权威数据不和资源生命周期
+        // 耦合。是否可信由登记表的 `computed_at` / `dirty` 判定，读路径据此重算
+        // （旧实现把「无生产者」当成「无权威数据」，那是把资源状态泄漏进数据契约的入口）。
 
         // 非 git 单元：跳过所有 git 相关资源（worker / scheduler / heartbeat / git meta watcher），
         // 仅保留文件监听 + 文件树变更事件。避免对非 git 目录启动 git status worker 执行 git rev-parse 等命令。
@@ -402,18 +471,16 @@ impl WatcherManager {
         let (worker, scheduler, mount_ticket, mut ticket_guard) = if git_repo {
             let ticket = self.issue_ticket(&workspace);
             let guard = MountTicketGuard::arm(&self.mount_tickets, &ticket);
-            let snapshots_store = self.snapshots.clone();
-            let floors_store = self.version_floors.clone();
+            let store_for_push = self.status_store.clone();
             let tickets_store = self.mount_tickets.clone();
             let ticket_for_cb = ticket.clone();
             let worker = GitStatusWorker::start(repo.clone(), move |snapshot| {
                 // 凭证有效 → 盖章写入 + emit；失效（已释放 / 被重挂载取代）→ 丢弃且不 emit。
-                // version 由注册表盖章后**再**推送：事件里的 version 必须与槽位里的一致，
+                // version 由登记表盖章后**再**推送：事件里的 version 必须与登记表里的一致，
                 // 否则前端的乱序闸门会拿两套序号互比（见 `deliver_push`）。
                 let _ = deliver_push(
                     &sink_for_diff,
-                    &snapshots_store,
-                    &floors_store,
+                    &store_for_push,
                     &tickets_store,
                     &ticket_for_cb,
                     snapshot,
@@ -752,19 +819,20 @@ impl WatcherManager {
         }
     }
 
-    /// 释放某单元的全部资源（watcher 句柄 drop → debounce channel 关闭、停止信号置位），
-    /// 并作废其快照 —— 未挂载期间没有生产者，残留快照会被当成权威数据渲染。
+    /// 释放某单元的全部资源（watcher 句柄 drop → debounce channel 关闭、停止信号置位）。
+    ///
+    /// **C1 起不再作废快照**：释放的语义是「没有 push 生产者」，不是「没有权威数据」。
+    /// 残留快照的可信度由 `computed_at` 决定 —— 陈旧则读路径重算，与挂载状态无关。
     pub fn unwatch(&self, repo: &WorkspaceRef) {
         self.release_one(&repo.key());
         crate::common::file::services::invalidate_remote_ignored_cache(repo.project_id());
     }
 
-    /// 项目被移除 / 路径变更时，释放该项目下**所有**单元的挂载，并回收其 version 号段。
+    /// 项目被移除 / 路径变更时，释放该项目下**所有**单元的挂载，并作废其登记。
     ///
-    /// 号段只在「项目本身不存在了」时回收：单元的号段必须比它的快照活得久（见
-    /// [`Self::version_floors`]），否则「切走再切回」的第一份快照会被前端闸门判成旧的丢掉。
-    /// 规模因此以项目为单位有界 —— 一个项目的号段条目数 = 该项目挂载过的单元数（主仓 1 +
-    /// 每个 linked worktree 至多 1），项目移除即清零。
+    /// **号段随条目一起回收**（`StatusStore::forget_project`）：项目不存在了，前端那两个槽位
+    /// 也不会再被读。单元级的「切走视图」不走这里 —— 那条路径保留数据与号段
+    /// （见 [`super::store`]）。
     pub fn unwatch_project(&self, project_id: &str) {
         let units: Vec<String> = self
             .watchers
@@ -781,79 +849,69 @@ impl WatcherManager {
         for workspace in units {
             self.release_one(&workspace);
         }
-        if let Ok(mut floors) = self.version_floors.lock() {
-            floors.retain(|k, _| {
-                !WorkspaceRef::parse_key(k).is_some_and(|(pid, _)| pid == project_id)
-            });
+        // 项目没了：数据与号段一起回收（单元级的「切走视图」不走这里）。
+        if let Ok(mut store) = self.status_store.lock() {
+            store.forget_project(project_id);
         }
         crate::common::file::services::invalidate_remote_ignored_cache(project_id);
     }
 
-    /// 释放除 `keep` 之外的**所有**单元挂载，返回被释放的 key。
+    /// 确保这批单元**已挂载**，返回本次**新建**挂载的 key 列表（已挂载者不重建、不重复注册）。
     ///
-    /// 决策 D-B 的字面语义是「只挂当前视图所在的那一个单元」，所以收口范围是全局而不是
-    /// 同项目 —— 实测理由：后端在 `app.rs` / `set_active_project` 里也曾按项目挂主仓单元，
-    /// 切项目时旧项目的挂载无人回收（2026-09-28 隔离实例日志：同一主仓单元被挂两次并报
-    /// `already watched`，随后才由 worktree 单元接管）。挂载唯一入口是 `activate()`，
-    /// 回收也必须在这里单点完成，否则「谁在看」又会散落到各处。
+    /// **不释放任何单元**（C2）：这是删除排他挂载后唯一的挂载入口 —— 可见集合里的每个单元
+    /// 都可以同时拥有 push 生产者。释放只由**单元消失**触发（[`Self::unwatch`] /
+    /// [`Self::unwatch_project`]），不再由「挂了别人」触发 ⇒ 互踢在结构上不可能。
     ///
-    /// **与 [`Self::mount_only`] 的关系**：本方法是「只释放」；需要「释放 + 挂载」成对发生
-    /// （即 D-B 的不变量）时必须走 `mount_only` —— 两步之间没有共同临界区就有 TOCTOU 窗口。
-    #[must_use = "返回被释放的单元 key；忽略它等于丢掉一次可观测的生命周期事件"]
-    pub fn release_except(&self, keep: &str) -> Vec<String> {
-        let _mount_guard = self.mount_lock.lock().unwrap_or_else(|e| e.into_inner());
-        self.release_except_inner(keep)
-    }
-
-    /// 挂载 `repo` 并在**同一临界区内**释放其它单元 —— D-B（全局至多一套挂载）的执行点。
+    /// **幂等**：先判 [`Self::is_watched`] 再调 [`Self::watch`] —— 后者的重复注册分支是 WARN，
+    /// 诊断语义是「有人绕过了挂载入口」（D-B 落地前正是它暴露了启动期双发起点）。调用方会
+    /// **合法地**重申同一单元（前端首个快照未落地时的有界重试、激活态被改写成后端 canonical
+    /// 形态后的一次重发），被合法路径撞上等于把告警作废，因此幂等性必须在入口强制。
     ///
-    /// 为什么必须原子：`release_except` 与 `watch` 各自只持有片刻锁，两者之间没有共同临界区
-    /// 时，两个并发的 `activate`（快速切换项目 / 连点）可以交错成
-    /// `c1.release → c2.release → c1.watch → c2.watch` ⇒ **两个单元同时挂载**：
-    /// 线程与句柄白占、同一变更推两份快照（AC11「恰好 1 条」被破）。同一单元的并发挂载
-    /// 也会穿过 `watch()` 内部的 check-then-insert，建出两套监听。
-    /// 不变量属于资源所有者，不靠调用方记得「先释放再挂载」的顺序来维持。
+    /// **临界区**：整批在 [`Self::watch_lock`] 内完成 —— 它保护的是 `watch()` 的
+    /// check-then-insert（同单元并发挂载不得建出两套监听），而不再是「释放 + 挂载成对」。
     ///
-    /// **语义是「确保该单元挂载」，不是「注册一次」**：已挂载时直接返回，不转调 [`Self::watch`]。
-    /// 调用方会合法地重申同一单元 —— 前端首个快照未落地时的有界重试、激活态被改写成后端
-    /// canonical 形态后的一次重发。那时走 `watch` 只会命中它的「重复注册」告警分支，而那条
-    /// WARN 的诊断语义是「有人绕过了唯一挂载入口」（D-B 落地前正是它暴露了启动期双发起点，
-    /// 现场核对以「0 条 already watched」为证据）。被合法路径触发等于把告警作废，因此把幂等性
-    /// 提到本方法：重复注册告警只留给真正绕过 `mount_only` 的调用方。
-    #[must_use = "返回被释放的单元 key；忽略它等于丢掉一次可观测的生命周期事件"]
-    pub fn mount_only(&self, repo: WorkspaceRef, sink: Arc<dyn WatcherEventSink>) -> Vec<String> {
-        let _mount_guard = self.mount_lock.lock().unwrap_or_else(|e| e.into_inner());
-        let released = self.release_except_inner(&repo.key());
-        // 重申挂载是空操作：不重建 watcher，也不动已落地的快照（worker 的产出可能刚刚到）。
-        if !self.is_watched(&repo) {
+    /// **阻塞**：`watch()` 内含 notify 递归注册（Linux 上同步遍历整树）与 fs 探测 ⇒ 调用方
+    /// 必须在阻塞池内（`run_blocking` / `spawn_blocking`，红线 3）。
+    #[must_use = "返回本次新建的挂载 key；忽略它等于丢掉一次可观测的生命周期事件"]
+    pub fn ensure_mounted(
+        &self,
+        units: Vec<(WorkspaceRef, Arc<dyn WatcherEventSink>)>,
+    ) -> Vec<String> {
+        let total = units.len();
+        let _watch_guard = self.watch_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut created = Vec::new();
+        for (repo, sink) in units {
+            let key = repo.key();
+            if self.is_watched(&repo) {
+                // 重申挂载是空操作：不重建 watcher，也不动已落地的快照（worker 的产出可能刚到）。
+                continue;
+            }
             self.watch(repo, sink);
+            // setup 失败（`watch` 内部已记录告警）不计入新建：调用方据此退化为一次 pull。
+            if self.is_watched_key(&key) {
+                created.push(key);
+            }
         }
-        released
+        // R4.2：挂载集合可从日志读出 —— 批量命令在这里留**一条**记录（未新建的单元由更早那次
+        // 调用的 `Started watching workspace` 记录体现，不去撑重复日志）。
+        log::info!(
+            "[Watcher] ensure mounted {} units (new: {})",
+            total,
+            created.len()
+        );
+        created
     }
 
-    /// [`Self::release_except`] 的无锁内核（调用方必须已持有 `mount_lock`）。
-    fn release_except_inner(&self, keep: &str) -> Vec<String> {
-        let stale: Vec<String> = self
-            .watchers
-            .lock()
-            .map(|m| m.keys().filter(|k| k.as_str() != keep).cloned().collect())
-            .unwrap_or_default();
-        for workspace in &stale {
-            self.release_one(workspace);
-        }
-        stale
-    }
-
-    /// 摘掉一个单元的挂载并作废其快照（`unwatch` / `unwatch_project` / `release_except` 的公共内核）。
+    /// 摘掉一个单元的挂载资源（`unwatch` / `unwatch_project` 的公共内核）。
     ///
-    /// **只作废数据，不作废号段**（`version_floors` 保留）：释放的语义是「该单元当前没有权威
-    /// 数据」，不是「该单元从未被看过」。
+    /// **只释放资源，不动登记表**（C1）：数据是否可信由 `computed_at` / `dirty` 决定，
+    /// 与资源是否存在无关。号段同理不再需要「活得比数据久」的特殊处理 —— 它和数据同表、
+    /// 同生命周期（只有容量淘汰与 `forget` 会动它）。
     ///
-    /// **票号先于快照作废**（顺序契约，勿动）：晚到推送的凭证校验与快照写入在同一临界区
-    /// （见 [`store_push_snapshot`]），先删快照再吊销票会留下「校验通过 → 把刚删的槽位插回来」
-    /// 的窗口 —— 正是 2026-10 CI 竞态。吊销只针对**该挂载自己的票**（compare-and-remove）：
-    /// 并发「释放 + 重挂载」交错时，无条件删除会误杀新挂载刚签发的票（新挂载此后收不到任何
-    /// 数据，比漏杀一票隐蔽得多）。
+    /// **票号吊销与移除 handle 同临界区**（顺序契约，勿动）：晚到推送的凭证校验与快照写入
+    /// 在同一临界区（见 [`store_push_snapshot`]）。吊销只针对**该挂载自己的票**
+    /// （compare-and-remove）：并发「释放 + 重挂载」交错时，无条件删除会误杀新挂载刚签发的票
+    /// （新挂载此后收不到任何数据，比漏杀一票隐蔽得多）。
     fn release_one(&self, workspace: &str) {
         let released = {
             let mut watchers = self
@@ -869,18 +927,21 @@ impl WatcherManager {
                 revoke_ticket_if(&self.mount_tickets, &ticket.key, ticket.seq);
             }
         }
-        drop_snapshot_if_present(&self.snapshots, workspace);
     }
 
     /// 该单元是否已挂载资源（区分「冷启动中」与「压根没挂 → 走 pull」两种 None）。
     #[must_use]
     pub fn is_watched(&self, repo: &WorkspaceRef) -> bool {
-        self.watchers
-            .lock()
-            .is_ok_and(|m| m.contains_key(&repo.key()))
+        self.is_watched_key(&repo.key())
     }
 
-    /// 当前挂载中的单元 key 集合（测试观测口 + `set_active_workspace` 的释放依据）。
+    /// 按 key 判挂载（[`Self::is_watched`] 的内核：`ensure_mounted` 在 `watch()` **之后**
+    /// 复查同一身份时已无处借 `WorkspaceRef` 了）。
+    fn is_watched_key(&self, key: &str) -> bool {
+        self.watchers.lock().is_ok_and(|m| m.contains_key(key))
+    }
+
+    /// 当前挂载中的单元 key 集合（测试观测口：可见集合契约的唯一可观测面）。
     #[must_use]
     pub fn watched_units(&self) -> Vec<String> {
         self.watchers
@@ -936,21 +997,11 @@ impl WatcherManager {
     }
 }
 
-/// 作废一个单元的快照条目。
-fn drop_snapshot_if_present(
-    store: &Arc<Mutex<HashMap<String, Arc<GitStatusSnapshot>>>>,
-    workspace: &str,
-) {
-    if let Ok(mut map) = store.lock() {
-        map.remove(workspace);
-    }
-}
-
 /// 一次挂载的**写入凭证**（类型化票号）。
 ///
 /// 写权的载体：worker 的推送回调（Push）活在 `watch()` 栈之外，释放单元后仍会触发 ——
-/// 晚到的推送若无人校验，会把已作废的槽位重新填上「权威数据」（2026-10 CI 竞态：macOS
-/// `activate_style_release_except_keeps_only_the_target_unit`）。凭证把写权从隐式
+/// 晚到的推送若无人校验，会把已作废的槽位重新填上「权威数据」（2026-10 CI 竞态的确定性
+/// 回归：`push_after_release_with_stale_ticket_is_rejected`）。凭证把写权从隐式
 /// （持有 `Arc` 克隆就能写 = 进程级有效）收紧为显式且可失效（= 挂载级有效）：
 /// - 只能由 [`WatcherManager::issue_ticket`] 构造（字段私有，全仓无第二签发方）；
 /// - `release_one` / 挂载中止使其失效；[`store_push_snapshot`] 在写入临界区内校验。
@@ -1030,73 +1081,20 @@ fn revoke_ticket_if(tickets: &Arc<Mutex<HashMap<String, u64>>>, key: &str, seq: 
 /// `snapshot.version` 在此被覆盖，生产者传什么都不作数（保留字段只为让 worker 自身的
 /// 迭代测试可断言）。
 ///
-/// **锁纪律**（改动前必读）：嵌套锁序固定为 `store → watchers`、`store → floors`、
-/// `store → tickets`。全仓不存在反向嵌套（`release_one` / `watch` / `poke_status_worker_and_wait`
-/// 对 watchers 与 store 都是先释放再取的另一把，`mount_lock` 只在最外层），因此无死锁环。
-/// 新增代码不得引入 `watchers → store` / `floors → store` / `tickets → store` 的持锁嵌套。
+/// **锁纪律**（改动前必读）：嵌套锁序固定为 `store → tickets`。全仓不存在反向嵌套
+/// （`release_one` / `watch` / `poke_status_worker_and_wait` 对 watchers 与 store 都是先释放
+/// 再取的另一把，`watch_lock` 只在最外层），因此无死锁环。
+/// 新增代码不得引入 `tickets → store` 的持锁嵌套。
 ///
 /// **锁中毒不中止**：登记路径的锁一律按本文件既有策略恢复
 /// （`unwrap_or_else(PoisonError::into_inner)`）。快照登记是「读接口的数据源」，
 /// 一次中毒（任一持锁线程 panic）若让登记失败，轻则读命令拿不到数据、重则把整条命令
 /// 升级成进程 abort —— 本应用的底线是不闪退，登记失败必须退化成可用状态。
-fn stamp_and_insert(
-    store: &mut HashMap<String, Arc<GitStatusSnapshot>>,
-    floors: &Arc<Mutex<HashMap<String, u64>>>,
-    mut snapshot: GitStatusSnapshot,
-) -> Arc<GitStatusSnapshot> {
-    let key = snapshot.workspace_key.clone();
-    // 槽位当前 version 只作下界校验用（持锁不变量下它必然 ≤ 水位）
-    let in_slot = store.get(&key).map_or(0, |s| s.version);
-    // 号段推进与取号在同一次持锁里完成：并发盖章既不会撞号，也不会「小号后插入」
-    let next = {
-        let mut floors = floors
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let next = floors.get(&key).copied().unwrap_or(0).max(in_slot) + 1;
-        floors.insert(key.clone(), next);
-        next
-    };
-    snapshot.version = next;
-    let arc = Arc::new(snapshot);
-    store.insert(key, arc.clone());
-    arc
-}
-
-/// Pull 登记（未挂载单元的现算，[`WatcherManager::record_computed`]）：**无凭证闸门** ——
-/// pull 是显式同步调用，调用方自带写入意图，无所谓「凭证过期」。
-///
-/// R2.4 裁决（pull 不得覆盖挂载中单元的 push 数据）与写入在**同一临界区**内完成 ——
-/// 守卫若留在锁外就是 check-then-act：pull 的 git 子进程耗时以百毫秒计，worker 完全可能
-/// 在守卫通过后、写入前推完一整轮，晚到的 pull 拿着注册表盖的更大号覆盖更新的 push
-/// （前端 version 闸门对这份旧数据只能放行）。挂载中但尚无快照（冷启动窗口）仍然登记：
-/// 那正是 pull 存在的意义，且 worker 首个推送会拿到更大的号自然接管。
-fn store_pull_snapshot(
-    store: &Arc<Mutex<HashMap<String, Arc<GitStatusSnapshot>>>>,
-    floors: &Arc<Mutex<HashMap<String, u64>>>,
-    watchers: &Arc<Mutex<HashMap<String, WatcherHandle>>>,
-    snapshot: GitStatusSnapshot,
-) -> Arc<GitStatusSnapshot> {
-    let key = snapshot.workspace_key.clone();
-    let mut store = store
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let watched = watchers
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .contains_key(&key);
-    if watched {
-        if let Some(authoritative) = store.get(&key) {
-            return authoritative.clone();
-        }
-    }
-    stamp_and_insert(&mut store, floors, snapshot)
-}
-
 /// Push 登记（挂载中 worker 的产出）：**凭证闸门**与写入在同一 `store` 临界区内。
 ///
 /// 返回 `None` = 票号已失效（该次挂载已被释放 / 已被重挂载取代）——调用方必须丢弃写入
-/// 且不得 emit：晚到推送把已作废槽位重新填上「权威数据」正是 2026-10 CI 竞态
-/// （macOS `activate_style_release_except_keeps_only_the_target_unit`）的形态。
+/// 且不得 emit：晚到推送把已作废槽位重新填上「权威数据」正是 2026-10 CI 竞态的形态
+/// （确定性回归：`push_after_release_with_stale_ticket_is_rejected`）。
 ///
 /// 为什么闸门是票号而不是 `watchers.contains_key`：
 /// 1. `watch()` 在创建 worker 前签发票号、在 watcher 建好后才登记 handle —— 冷启动首个
@@ -1104,11 +1102,10 @@ fn store_pull_snapshot(
 ///    闸门不会补发）；
 /// 2. 「释放 → 重挂载」后旧 worker 的晚到推送会被 `contains_key` 放行（新挂载在册），
 ///    拿到更大 version 覆盖新数据 —— 比亡羊补牢更隐蔽的变体，票号一并拒掉；
-/// 3. 闸门与插入同临界区，且 `release_one` **先吊销票再删快照** —— 两件事共同排除
-///    「校验通过 → 释放发生 → 晚到插入复活槽位」的窗口。
+/// 3. 闸门与插入同临界区，且 `release_one` **先吊销票** —— 两件事共同排除
+///    「校验通过 → 释放发生 → 晚到插入复活数据」的窗口。
 fn store_push_snapshot(
-    store: &Arc<Mutex<HashMap<String, Arc<GitStatusSnapshot>>>>,
-    floors: &Arc<Mutex<HashMap<String, u64>>>,
+    store: &Arc<Mutex<StatusStore>>,
     tickets: &Arc<Mutex<HashMap<String, u64>>>,
     ticket: &MountTicket,
     snapshot: GitStatusSnapshot,
@@ -1126,7 +1123,7 @@ fn store_push_snapshot(
     if current != Some(ticket.seq) {
         return None;
     }
-    Some(stamp_and_insert(&mut store, floors, snapshot))
+    Some(store.upsert_push(snapshot, Instant::now()))
 }
 
 /// Push 投递的完整决策（worker 回调与确定性测试**共用同一实现**）：
@@ -1134,13 +1131,12 @@ fn store_push_snapshot(
 /// 返回 `Some(已盖章快照)` = 已写入并已 emit。
 fn deliver_push(
     sink: &Arc<dyn WatcherEventSink>,
-    snapshots: &Arc<Mutex<HashMap<String, Arc<GitStatusSnapshot>>>>,
-    floors: &Arc<Mutex<HashMap<String, u64>>>,
+    store: &Arc<Mutex<StatusStore>>,
     tickets: &Arc<Mutex<HashMap<String, u64>>>,
     ticket: &MountTicket,
     snapshot: GitStatusSnapshot,
 ) -> Option<Arc<GitStatusSnapshot>> {
-    let Some(stamped) = store_push_snapshot(snapshots, floors, tickets, ticket, snapshot) else {
+    let Some(stamped) = store_push_snapshot(store, tickets, ticket, snapshot) else {
         log::debug!(
             "[Watcher] dropped late push for released workspace {}",
             ticket.key

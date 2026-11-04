@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "集成验收：§12 D-B 反转记录 + §14 契约未被破坏"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "前端单一写者与 WorkspaceKey 身份（红线 17 判据）"}

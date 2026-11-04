@@ -50,24 +50,54 @@ pub async fn get_workspace_status(
     crate::git::services::status::read_workspace_status(&state, &repo).await
 }
 
-/// 激活一个Workspace（决策 D-B：只挂当前视图所在的那个单元）。
+/// 设置**可见集合**：让这些Workspace同时拥有 push 生产者。
 ///
-/// 释放该项目下其它单元 → 挂载本单元 → 取首个快照。结果是二值状态：
-/// `ready`（快照就绪）或 `pending`（挂载已成立、首轮重算在途，由推送/重试收敛）——
-/// **冷窗口不是错误**（2026-10 CI 事故：慢机上超时被当成失败）。
-/// 「当前视图」在前端只有一个派生函数，它是本命令的唯一调用方；
-/// 编排逻辑见 `git::services::status::activate`。
+/// C2 起不再有「同时至多一套挂载」：挂 A 不释放 B，因此「主仓 / linked worktree 互相顶掉」
+/// 在结构上不可能（红线 16：资源稀缺只允许影响**调度顺序**，不得影响**可观测集合**）。
+///
+/// 返回**逐单元**结局：`ready`（快照就绪）/ `pending`（挂载已成立、首轮重算在途，由推送与
+/// 前端收敛 —— 冷窗口**不是错误**）/ `failed`（该单元解析不出来、不是 git 库、或 pull 失败）。
+/// 一个坏项目只让自己那项 `failed`，不影响同批其它单元（整批失败会拖死全部）。
+/// 编排逻辑见 `git::services::status::activate_many`。
+///
+/// **前端 caller 在 C4 落地**（届时 `useVisibleWorkspaces` 直接发可见集合，并删除
+/// `set_active_workspace`）—— 本命令先按契约注册好，接线时只需加一次 `invoke`。
+#[tauri::command]
+pub async fn set_visible_workspaces(
+    workspaces: Vec<WorkspaceSession>,
+    app: tauri::AppHandle,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<crate::git::services::status::WorkspaceActivationEntry>, AppError> {
+    // 交付适配器只在此处构造（服务层只认端口，见 `common/file/watcher/sink.rs`）。
+    let sink: std::sync::Arc<dyn crate::common::file::watcher::WatcherEventSink> =
+        std::sync::Arc::new(crate::common::file::watcher::AppHandleSink::new(app));
+    let outcomes = crate::git::services::status::activate_many(&state, sink, &workspaces).await;
+    Ok(outcomes
+        .into_iter()
+        .map(|(key, outcome)| {
+            crate::git::services::status::WorkspaceActivationEntry::of(&key, outcome)
+        })
+        .collect())
+}
+
+/// 激活**一个**Workspace —— **C4 会删除本命令**（届时前端直接发可见集合）。
+///
+/// C2 起它只是 [`set_visible_workspaces`] 的薄包装：把地址转发成**单元素集合**，走同一条
+/// 服务层编排（`activate_many`），只把「单元级失败」映射回本命令原有的 `Err` 错误空间 ——
+/// 前端 `useActivateWorkspace` 因此零改动（AC7）。
+///
+/// 语义变化（有意）：**不再释放**其它已挂载单元。结果仍是二值状态 `ready` / `pending`
+/// （挂载已成立、首轮重算在途），**冷窗口不是错误**（2026-10 CI 事故：慢机上超时被当成失败）。
 #[tauri::command]
 pub async fn set_active_workspace(
     workspace: WorkspaceSession,
     app: tauri::AppHandle,
     state: State<'_, AppStateWrapper>,
 ) -> Result<crate::git::services::status::WorkspaceActivation, AppError> {
-    let (_t, repo) = state.resolve_workspace_target(&workspace).await?;
     // 交付适配器只在此处构造（服务层只认端口，见 `common/file/watcher/sink.rs`）。
     let sink: std::sync::Arc<dyn crate::common::file::watcher::WatcherEventSink> =
         std::sync::Arc::new(crate::common::file::watcher::AppHandleSink::new(app));
-    crate::git::services::status::activate(&state, sink, &repo).await
+    crate::git::services::status::activate(&state, sink, &workspace).await
 }
 
 /// 把调用方持有的 worktree 路径归一成后端使用的 canonical 形态。

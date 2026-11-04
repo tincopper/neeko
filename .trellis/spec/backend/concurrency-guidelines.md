@@ -137,11 +137,13 @@ stop.store(true, Ordering::Relaxed);
    HEAD / index / workdir 各自独立），按 project 幂等会把 worktree 的挂载判成「已注册」而
    整块跳过（`common/git/workspace_ref.rs`，详版 `git-domain.md` §12）。重复注册会**翻倍投递事件
    并再泄漏一套线程**，不变量必须在所有者入口强制，而非依赖调用方自觉。
-3. **挂载临界区原子化**：`release_except` + `watch` 这一对必须由 `mount_only(repo, sink)` 在
-   **同一个临界区**内完成（`mount_lock: Arc<Mutex<()>>`）。单线程下「先释放再挂载」看起来等价，
-   但两个并发的 `activate`（快速切项目 / 连点）会交错成 `c1.release, c2.release, c1.watch,
-   c2.watch` ⇒ 两套挂载常驻。**不变量属于资源所有者**：只要调用方还需要记得调用顺序，
-   它就不是不变量，而是约定。锁内走无锁内核 `release_except_inner`（否则自死锁）。
+3. **挂载集合是「确保」，不是「替换」（C2 起）**：`ensure_mounted(units)` 是唯一的挂载入口，
+   它在一个临界区内对每个单元「未挂载则 `watch`」，**不释放任何别的单元**（可见集合里的单元
+   可以同时挂载；旧决策「全局至多一套」已反转，见 `git-domain.md` §12 的反转记录）。
+   临界区（`watch_lock: Arc<Mutex<()>>`）现在只保护 `watch()` 的 **check-then-insert**：
+   单线程下「先判后插」看起来等价，但两个并发挂载同一单元会各建一套监听（**翻倍投递事件 +
+   再泄漏一套线程**），幂等只在单线程下成立。**不变量属于资源所有者**：调用方不需要记得任何
+   顺序，也不需要在「挂载别人」时先释放谁。
 4. **事件出口依赖倒置**：watcher 域不接触 Tauri `AppHandle`——统一走
    `WatcherEventSink`（`sink.rs`，`WatcherEvent` 枚举 + 单方法 trait），生产适配器
    `AppHandleSink` 在组合根注入。这同时让**无 GUI 契约测试**成为可能
@@ -152,11 +154,15 @@ stop.store(true, Ordering::Relaxed);
    已 Red 验证）。
 5. **契约测试必须 Red 验证**：新加的生命周期测试要临时回退修复确认会失败
    （当年 4/5 失败、恢复后 5/5 绿），否则「恰好绿」抓不住回归。并发不变量尤其如此 ——
-   去掉 `mount_lock` 后 `concurrent_mount_*` 用例必须（在布障同步下）稳定变红，
-   否则用例只是顺序重复了一遍。
+   去掉 `watch_lock` 后 `concurrent_mount_of_same_unit_creates_exactly_one_watcher_set`
+   必须（在布障同步下）稳定变红；反过来，把「确保挂载」改回「释放 + 挂载」后
+   `mounting_two_units_keeps_both_mounted` 与 `activate_keeps_previous_unit_mounted`
+   必须变红（C2 已实测：两条都红，恢复后绿），否则用例只是把顺序重复了一遍。
 6. **写入凭证随挂载失效（票号）**：push 生产者（worker 推送回调）活在 `watch()` 栈之外 ——
-   释放单元后仍在飞的推送若无校验，会把已作废槽位重新填上「权威数据」（2026-10 CI 竞态：
-   macOS `activate_style_release_except_keeps_only_the_target_unit`）。写权不得是「持有
+   释放单元后仍在飞的推送若无校验，会把已作废槽位重新填上「权威数据」（2026-10 CI 竞态的
+   确定性回归：`push_after_release_with_stale_ticket_is_rejected`）。**C2 保留它**（父任务删除
+   台账 D3 的前提是「释放不再存在」，而 `unwatch` 仍存在 —— 见 `git-domain.md` §12 偏差表）。
+   写权不得是「持有
    `Arc` 克隆」（进程级有效），必须是**挂载级有效**的显式凭证：`watch()` 在创建 worker
    **之前**签发 `MountTicket`（字段私有 + 唯一签发方 ⇒ 不可伪造），`store_push_snapshot`
    签名强制携带它并在**同一存储临界区内**校验，`release_one` **先吊销票、再删快照**
@@ -170,9 +176,10 @@ stop.store(true, Ordering::Relaxed);
 环形强引用让「断开即退出」永不触发。
 **Correct**：线程持 `Weak<T>` + 每消息 `upgrade()`；或确保持有的引用链严格单向（所有者 → 线程）。
 
-**Wrong**（挂载）：调用方依次写 `manager.release_except(&keep); manager.watch(repo, sink);` ——
-两步各自加锁，中间那段敞开着，并发调用即可留下两套挂载。
-**Correct**（挂载）：只调 `manager.mount_only(repo, sink)`；锁在所有者内部，调用方无从破坏顺序。
+**Wrong**（挂载）：调用方自己「先判 `is_watched` 再 `watch`」—— 两步各自加锁，中间那段敞开着，
+两个并发调用即可给**同一单元**建出两套监听（事件翻倍 + 线程泄漏）。
+**Correct**（挂载）：只调 `manager.ensure_mounted(vec![(repo, sink)])`；判定与登记在同一临界区内，
+幂等性由所有者强制。顺带：**不要**为「挂载一个新单元」而释放别的单元 —— 那是已反转的 D-B。
 
 ### `tokio::sync::mpsc::UnboundedSender/Receiver` —— 用于 SSH I/O 通道
 

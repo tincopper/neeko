@@ -117,7 +117,7 @@ fn paths_of(entries: &[FileChange]) -> Vec<&Path> {
 
 /// pull 生产者的测试夹具：绑定到 `unit` 的一份快照（branch = "main"、ahead/behind = 0）。
 ///
-/// `record_computed` 的入参是**完整快照**（与 push 生产者同形），因此测试也按快照构造，
+/// `record_pull` 的入参是**完整快照**（与 push 生产者同形），因此测试也按快照构造，
 /// 而不是一串展开的参数（后者会把「同一份快照的不同字段」在调用点摊成多个位置参数）。
 fn pull_snapshot(unit: &WorkspaceRef, entries: Vec<FileChange>) -> GitStatusSnapshot {
     let mut snap = GitStatusSnapshot::for_unit(unit, 0);
@@ -185,15 +185,26 @@ fn wait_for_more_events(
 /// 等到该单元在注册表里出现任一份快照（挂载后的 worker 首轮）。
 ///
 /// 这是**事件驱动**的等待（有数据立即返回），不是固定 sleep。
-fn wait_for_snapshot(manager: &WatcherManager, unit: &WorkspaceRef) -> Arc<GitStatusSnapshot> {
+/// 轮询到该单元的快照**比 `after_version` 更新**为止。
+///
+/// 与 [`wait_for_snapshot`] 的差别是必要的（C1）：登记表不再随挂载释放而作废，
+/// 挂载一个「此前已有权威数据」的单元时，`snapshot()` 会先返回那份**旧**数据。
+/// 要断言「worker 的首轮推送接在同一号段之后」，就必须等一个**新号**，而不是等「非空」。
+fn wait_for_snapshot_newer_than(
+    manager: &WatcherManager,
+    unit: &WorkspaceRef,
+    after_version: u64,
+) -> Arc<GitStatusSnapshot> {
     let deadline = Instant::now() + FIRST_EVENT_TIMEOUT;
     loop {
         if let Some(snap) = manager.snapshot(unit) {
-            return snap;
+            if snap.version > after_version {
+                return snap;
+            }
         }
         assert!(
             Instant::now() < deadline,
-            "{} 挂载后必须在时限内由自己的 worker 产出一份快照",
+            "{} 挂载后的首轮推送必须在时限内给出大于 v{after_version} 的新号",
             unit.key()
         );
         std::thread::sleep(Duration::from_millis(25));
@@ -510,9 +521,13 @@ fn two_units_of_one_project_keep_independent_snapshots() {
     assert_eq!(wt_snap.project_id, "p1");
 }
 
-/// 未挂载 = 未知，不得读成旧数据：`unwatch` 必须作废该单元快照；且只能作废自己那一个。
+/// **资源与数据解耦（C1）**：`unwatch` 只释放资源，**不作废权威数据**；且只影响自己那一个。
+///
+/// 旧不变量是「未挂载 = 未知 ⇒ 释放必须作废槽位」。它把资源状态当成了数据可信度的代理，
+/// 于是非激活单元永远没有可显示的数据（用户报的「有的项目 git 状态完全无法显示」）。
+/// 现在可信度由登记表的 `computed_at` / `dirty` 判定：数据留着，陈旧就重算。
 #[test]
-fn unwatch_drops_only_that_unit_snapshot() {
+fn unwatch_releases_resources_without_discarding_authoritative_data() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     let worktree = tmp.path().join("repo-wt");
@@ -543,9 +558,12 @@ fn unwatch_drops_only_that_unit_snapshot() {
     );
 
     manager.unwatch(&main_unit);
-    assert!(
-        manager.snapshot(&main_unit).is_none(),
-        "unwatch 后残留快照会被当成权威数据渲染（必须作废）"
+    let preserved = manager
+        .snapshot(&main_unit)
+        .expect("unwatch 只释放资源，不得丢弃权威数据（否则非激活单元永远无法显示）");
+    assert_eq!(
+        preserved.version, stale_version,
+        "保留的必须是切走前那份**最新**数据，不得回退"
     );
     assert!(
         !manager.is_watched(&main_unit),
@@ -558,28 +576,20 @@ fn unwatch_drops_only_that_unit_snapshot() {
     assert!(manager.is_watched(&wt_unit));
     assert_eq!(manager.watched_units(), vec![wt_unit.key()]);
 
-    // 重新挂载主仓单元：切走期间的变更要么还没进槽（= 未知，合法），要么进来的是**重算后**
-    // 的数据 —— 唯独不能是切走前那份旧快照（未挂载期间没有任何生产者，残留即伪权威）。
-    // 判据取「version 严格大于切走前的水位」：号段跨挂载单调（`version_floors`），残留槽位的
-    // 号不可能变大，所以比得上就是新盖章的那一份。
+    // 重新挂载主仓单元：worker 的首轮推送必须**接在同一号段之后**（号段与数据同表，
+    // 淘汰/重算都不会回退），且必须反映切走期间的写入。
+    //
+    // 注意判据的变化（C1）：切走不再丢弃数据，所以重新挂载后**先读到**的是保留下来那份
+    // （`preserved`），这是合法且必要的（非激活单元要能显示）。要断言「重算确实发生」，
+    // 必须等一个**新号**，而不是等「非空」。
     std::fs::write(root.join("added-while-unmounted.txt"), "x\n").unwrap();
     manager.watch(main_unit.clone(), sink.clone());
-    match manager.snapshot(&main_unit) {
-        None => {}
-        Some(snap) => {
-            assert!(
-                snap.version > stale_version,
-                "重新挂载后必须拿到比切走前更新的号；v{} 不大于切走前的 v{} ⇒ 读到的仍是残留槽位",
-                snap.version,
-                stale_version
-            );
-            assert!(
-                paths_of(&snap.entries).contains(&Path::new("added-while-unmounted.txt")),
-                "重新挂载后读到的是切走前的残留快照（串内容的形态）：{:?}",
-                paths_of(&snap.entries)
-            );
-        }
-    }
+    let remounted = wait_for_snapshot_newer_than(&manager, &main_unit, stale_version);
+    assert!(
+        paths_of(&remounted.entries).contains(&Path::new("added-while-unmounted.txt")),
+        "重新挂载后的新快照必须反映切走期间的写入，实际 {:?}",
+        paths_of(&remounted.entries)
+    );
 }
 
 /// 项目被移除时必须释放该项目下**所有**单元（旧实现只有 project 粒度，天然覆盖；
@@ -635,9 +645,11 @@ fn unwatch_project_releases_every_workspace_of_that_project() {
 
 /// **AC3（PRD · 后端侧）**：写操作后的 poke 必须打在**被写入的那个单元**上。
 ///
-/// 决策 D-B 下每个项目同时至多一套挂载资源，所以这里按生产形态表达「切换视图」：
-/// 挂 A（主仓）→ 在 A 内写 → `poke(A)`；`unwatch(A)` 换挂 B（同一项目的 linked
-/// worktree）→ 在 B 内写 → `poke(B)`。
+/// 形态：挂 A（主仓）→ 在 A 内写 → `poke(A)`；`unwatch(A)` 换挂 B（同一项目的 linked
+/// worktree）→ 在 B 内写 → `poke(B)`。这里的 `unwatch(A)` 是**有意保留**的：C2 起生产路径
+/// 切换视图不再释放 A（`ensure_mounted` 只增不减），但「释放后 poke 仍打对被写入单元」这条
+/// 收口（worktree 被删 / 项目移除）仍需覆盖，而它与「A 的数据保留下来」的组合正是本用例
+/// 断言的对象。
 ///
 /// 钉住的缺陷形态：poke 按 `project_id` 取 worker ⇒ 在 worktree 里 stage / discard
 /// 戳的是**主仓**的 worker，主仓 porcelain 一字未变 → 查询-比较闸门判定「无变化」→
@@ -674,9 +686,17 @@ fn poke_after_unit_switch_recomputes_the_unit_that_was_written() {
     // ── 阶段 2：切换视图 —— 释放 A，挂载同一项目的 linked worktree 单元 B
     manager.unwatch(&unit_a);
     manager.watch(unit_b.clone(), sink.clone());
-    assert!(
-        manager.snapshot(&unit_a).is_none(),
-        "切走后 A 必须是「未知」，不得留旧数据被当成权威渲染"
+    // C1：切走**只释放资源**，A 的权威数据留在登记表里 —— 这正是「非激活单元也能显示」
+    // 的前提。断言因此从「必须未知」改为「仍在，且仍是 A 自己的数据」：挂载 B 不得把
+    // A 的槽位串成 B 的内容（跨单元串数据是身份补全要根治的另一类缺陷）。
+    let preserved_a = manager
+        .snapshot(&unit_a)
+        .expect("切走视图不得丢弃 A 的权威数据");
+    assert_eq!(preserved_a.workspace_key, unit_a.key());
+    assert_eq!(
+        paths_of(&preserved_a.entries),
+        vec![Path::new("main-only.txt")],
+        "A 保留下来的必须仍是 A 自己的数据，不得被 B 的挂载覆盖"
     );
 
     std::fs::write(worktree.join("worktree-only.txt"), "x\n").unwrap();
@@ -699,10 +719,18 @@ fn poke_after_unit_switch_recomputes_the_unit_that_was_written() {
         "必须是相对 worktree 根的 B 自己的写入，不得串主仓内容"
     );
 
-    // 未挂载的 A 不得被同项目的 poke 顺带产出快照，也没有 worker 可戳
-    assert!(
-        manager.snapshot(&unit_a).is_none(),
-        "poke(B) 不得给未挂载的 A 产出快照（跨单元泄漏）"
+    // 未挂载的 A 没有 worker 可戳；poke(B) 也不得**改写** A 的数据（跨单元泄漏）。
+    // C1 起 A 的权威数据在切走后仍然保留（这正是非激活单元可显示的前提），所以判据是
+    // 「一字未动」而不是「必须为空」。
+    let a_after = manager.snapshot(&unit_a).expect("A 的权威数据必须保留");
+    assert_eq!(
+        a_after.version, preserved_a.version,
+        "poke(B) 不得推进 A 的号（跨单元泄漏）"
+    );
+    assert_eq!(
+        paths_of(&a_after.entries),
+        paths_of(&preserved_a.entries),
+        "poke(B) 不得改写 A 的数据（跨单元泄漏）"
     );
     assert!(
         !manager.poke_status_worker_and_wait(&unit_a, Duration::from_millis(200)),
@@ -801,20 +829,20 @@ fn linked_worktree_edit_pushes_versioned_snapshot_without_manual_poke() {
     );
 }
 
-/// **AC11①（PRD · 反复切换 20 次不累积）**：按 D-B 的形态连续切换 20 次，
-/// 挂载表里必须始终只有当前那一个单元，且被换掉的单元句柄真的被摘走（而不是留在表里）。
+/// **AC1 / AC11①（PRD）**：反复切换 20 次**既不重建也不累积** —— 两个单元都留在表里，
+/// 各自的 watcher 只建过一次。
 ///
-/// 为什么断言句柄数而不是 OS 线程数：线程由 `stop_signal` + 句柄 drop 收敛，属实现细节；
-/// 「累积」的可观测形态就是挂载表增长 —— 表里留一份句柄就必然留一套后台线程与文件描述符。
+/// 判据翻转（C2）：旧不变量是「始终只剩当前那一个单元」（排他挂载），新的前提是
+/// 「挂载一个单元不释放任何别的单元」—— 两个单元都应常驻，而**重建次数**才是资源泄漏的判据
+/// （每重建一套就再泄漏一套线程与文件描述符）。`watcher_set_creations` 直接量它：map 尺寸
+/// 测不出「重复 insert 覆盖旧 handle」那条路径。
 ///
-/// **不启动任何 OS 监听**：单元 key 只由 `(project_id, workdir)` 决定，与目录是否存在无关；
-/// 指向**尚不存在**的路径时，notify 在 `append_path` 阶段即以 `path_not_found` 失败
-/// （发生在 `FSEventStreamStart` 之前），于是 `watch()` 仍完整走生产路径 —— 建句柄、写挂载表、
-/// 起 debounce/maintenance 线程 —— 却不创建 FSEvents 流。本用例的唯一判据是挂载表簿记，
-/// 20 次真实建流只是给 macOS 的 fseventsd 交税（单次建流有系统级成本，见 2026-10-10 事故）。
-/// 真实目录上的「挂载/释放确实生效」由本文件 `repo_with_linked_worktree` 系列用例覆盖。
+/// **不启动任何 OS 监听**：`without_real_fs` 用 `PlatformWatcher::Noop` 替换真实流，编排与
+/// 状态机（幂等检查、票号签发、handle 登记）照常执行 —— 20 次真实建流只是给 macOS 的
+/// fseventsd 交税（单次建流有系统级成本，见 2026-10-10 事故）。真实目录上的「挂载/释放确实
+/// 生效」由本文件 `repo_with_linked_worktree` 系列用例覆盖。
 #[test]
-fn twenty_unit_switches_do_not_accumulate_mounts() {
+fn repeated_switches_keep_both_units_without_rebuilding() {
     let tmp = tempfile::tempdir().unwrap();
     let main = tmp.path().join("repo");
     let worktree = tmp.path().join("repo-wt");
@@ -823,27 +851,43 @@ fn twenty_unit_switches_do_not_accumulate_mounts() {
 
     let sink = CollectingSink::new();
     let manager = WatcherManager::new().without_real_fs();
-    for i in 0..20 {
-        // 生产形态：activate() = release_except(目标) + watch(目标)，两个单元来回切
-        let unit = if i % 2 == 0 { &wt_unit } else { &main_unit };
-        let released = manager.release_except(&unit.key());
-        assert!(
-            released.len() <= 1,
-            "第 {i} 次切换最多回收上一个单元，实际回收 {released:?}"
-        );
-        manager.watch(unit.clone(), sink.clone());
+    // 前置：两个单元都已挂载（各自建一套资源）。
+    for unit in [&main_unit, &wt_unit] {
         assert_eq!(
-            manager.watched_units(),
+            manager.ensure_mounted(vec![(unit.clone(), sink.clone())]),
             vec![unit.key()],
-            "第 {i} 次切换后挂载表必须只剩当前单元（多出来的每一项都是一套泄漏的线程/句柄）"
+            "首次挂载是新建"
         );
     }
-    // 收尾：切到未挂载侧（如项目被关闭）后不得留任何挂载
-    let cleared = manager.release_except("nonexistent-unit-key");
-    assert_eq!(cleared.len(), 1, "最后一次挂载必须被回收");
+    for i in 0..20 {
+        // 生产形态：可见集合每轮只含当前视图那一个单元（前端 C4 才发集合），但后端**不得**
+        // 因此释放另一个 —— 它只是不在这一轮的集合里，不是不存在。
+        let unit = if i % 2 == 0 { &wt_unit } else { &main_unit };
+        let created = manager.ensure_mounted(vec![(unit.clone(), sink.clone())]);
+        assert!(
+            created.is_empty(),
+            "第 {i} 次切换不得重建已挂载单元（重建=再泄漏一套线程/句柄），实际新建 {created:?}"
+        );
+        assert_eq!(
+            manager.watched_units().len(),
+            2,
+            "第 {i} 次切换后两个单元都必须仍在表里（释放只由单元消失触发），实际 {:?}",
+            manager.watched_units()
+        );
+        assert!(manager.is_watched(&main_unit) && manager.is_watched(&wt_unit));
+    }
+    assert_eq!(
+        manager.watcher_set_creations(),
+        2,
+        "两个单元各只建一套资源（重复切换不得重建）"
+    );
+
+    // 收尾：单元消失（项目关闭 / worktree 删除）才是释放的唯一原因
+    manager.unwatch(&main_unit);
+    manager.unwatch(&wt_unit);
     assert!(
         manager.watched_units().is_empty(),
-        "release_except 必须能清空全部挂载，残留即资源累积"
+        "unwatch 必须能清空挂载，残留即资源累积"
     );
 }
 
@@ -932,14 +976,57 @@ fn writes_in_unmounted_sibling_unit_leak_nothing_into_mounted_unit() {
     );
 }
 
-/// **R2.4（pull 生产者不得覆盖 push）**：挂载中且 worker 已产出过快照 ⇒ 该槽位归 push 所有，
-/// pull 回读即可。
+/// **新鲜度栅栏（取代旧 R2.4 的「按是否挂载」守卫）**：判据是**时间**，不是资源状态。
 ///
-/// 钉住的竞态形态：`compute_and_record` 的 git 子进程耗时以百毫秒计，期间 worker 完全可能
-/// 推送**更新**的数据；晚到的 pull 若照常写表，注册表盖的号还会让它看起来比被它覆盖的 push
-/// 更新 —— 前端按 version 门控就会接受这份旧数据（= 静默过期）。
+/// 旧实现按「该单元是否挂载」拒写 pull —— 把资源状态当成了数据新鲜度的代理，于是未挂载单元
+/// 的 pull 结果永远不可信（每次读都必须现算），而挂载单元在冷窗口里只能报错。
+/// 现在判据是事实本身：**一轮重算的结果只在「它开始之后没有更新的登记落地」时才被采纳**。
+///
+/// 钉住的竞态形态不变：`compute_and_record` 的 git 子进程耗时以百毫秒计，期间 worker
+/// 完全可能推送**更新**的数据；晚到的 pull 若照常写表，登记表盖的号还会让它看起来比被它
+/// 覆盖的 push 更新 —— 前端按 version 门控就会接受这份旧数据（= 静默过期）。
 #[test]
-fn pull_cannot_overwrite_a_live_push_snapshot() {
+fn a_pull_started_before_a_newer_snapshot_is_discarded() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("repo");
+    std::fs::create_dir_all(&root).unwrap();
+    git2::Repository::init(&root).expect("init git repo");
+
+    let unit = main_unit(&root);
+    let manager = WatcherManager::new().without_real_fs();
+
+    // 一轮 pull 的开始时刻
+    let started = Instant::now();
+    // 期间有更新的登记落地（同一条写入路径：push 也走 upsert）
+    let newer = manager
+        .record_pull(
+            pull_snapshot(&unit, parse_porcelain("?? newer.txt")),
+            started,
+        )
+        .expect("首份登记必须被采纳");
+    // 晚到的旧结果
+    let late = manager.record_pull(
+        pull_snapshot(&unit, parse_porcelain("?? late.txt")),
+        started,
+    );
+    assert!(late.is_none(), "晚到的旧 pull 不得覆盖更新的登记");
+    assert_eq!(
+        paths_of(&manager.snapshot(&unit).expect("槽位仍在").entries),
+        vec![Path::new("newer.txt")],
+        "登记表里留下的必须是更新的那份"
+    );
+    assert_eq!(
+        manager.snapshot(&unit).expect("槽位仍在").version,
+        newer.version
+    );
+}
+
+/// 反方向：**在最后一次登记之后**才开始的重算必须被采纳 —— 即便是「挂载中」的单元。
+///
+/// 这条是旧 R2.4 守卫的直接反面：旧实现里挂载中的单元永远拒写 pull（回读槽位），
+/// 于是「挂载了但 worker 没算出首个快照」的冷窗口只能报错（`NotFound("not available yet")`）。
+#[test]
+fn a_pull_started_after_the_last_snapshot_is_accepted_even_when_mounted() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     std::fs::create_dir_all(&root).unwrap();
@@ -953,29 +1040,30 @@ fn pull_cannot_overwrite_a_live_push_snapshot() {
     assert!(manager.poke_status_worker_and_wait(&unit, FIRST_EVENT_TIMEOUT));
     let push = manager.snapshot(&unit).expect("push 快照必须已落地");
 
-    let pulled = manager.record_computed(pull_snapshot(
-        &unit,
-        parse_porcelain("?? from-a-late-pull.txt"),
-    ));
-    assert_eq!(
-        pulled.version, push.version,
-        "回读的必须是 push 本身，而不是 pull 另起一个号"
+    let accepted = manager.record_pull(
+        pull_snapshot(&unit, parse_porcelain("?? from-a-later-pull.txt")),
+        Instant::now(),
+    );
+    let accepted = accepted.expect("挂载中单元的**更新**重算必须被采纳");
+    assert!(
+        accepted.version > push.version,
+        "采纳的重算必须比它之前那份更新：{} <= {}",
+        accepted.version,
+        push.version
     );
     assert_eq!(
         paths_of(&manager.snapshot(&unit).expect("槽位仍在").entries),
-        paths_of(&push.entries),
-        "晚到的 pull 不得改写挂载中单元的权威条目"
+        vec![Path::new("from-a-later-pull.txt")]
     );
-    assert!(!paths_of(&pulled.entries).contains(&Path::new("from-a-late-pull.txt")));
 }
 
-/// **D-B 的全局形态**：挂载另一个单元（哪怕是**别的项目**）必须释放此前所有挂载。
+/// **AC1 的直接判据**：挂载另一个单元（哪怕是**别的项目**）**不得释放**任何已有挂载。
 ///
-/// 现场证据（2026-09-28 隔离实例）：旧写法只回收同项目的其它单元，切换项目时上一个项目
-/// 的挂载无人释放；而后端自己又会在 `set_active_project` / 启动恢复时按项目预挂主仓单元，
-/// 于是启动序列里出现「先挂主仓、随后改挂 worktree」的两个发起点。
+/// 这是旧不变量「全局至多一套挂载」的反方向断言（C2 改写，不是删除）：互踢的结构性消失点
+/// 就在于「没有互斥槽位可抢」—— 只要这条成立，主仓与 linked worktree 交替激活就只是两次
+/// 幂等挂载，各自的 worker / FSEvents 流 / manifest 一次建好、不再销毁重建。
 #[test]
-fn activate_style_release_except_keeps_only_the_target_unit() {
+fn mounting_the_target_keeps_every_other_unit() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     let worktree = tmp.path().join("repo-wt");
@@ -992,23 +1080,77 @@ fn activate_style_release_except_keeps_only_the_target_unit() {
 
     let sink = CollectingSink::new();
     let manager = WatcherManager::new().without_real_fs();
-    manager.watch(unit_a.clone(), sink.clone());
-    manager.watch(unit_other_project.clone(), sink.clone());
+    let created = manager.ensure_mounted(vec![
+        (unit_a.clone(), sink.clone()),
+        (unit_other_project.clone(), sink.clone()),
+    ]);
+    assert_eq!(created.len(), 2, "两个单元都是新建，实际 {created:?}");
     assert_eq!(manager.watched_units().len(), 2);
 
-    // 挂载 unit_b（模拟 `activate()`：先 release_except 再 watch）
-    let released = manager.release_except(&unit_b.key());
-    assert_eq!(released.len(), 2, "跨项目的挂载都要回收");
-    manager.watch(unit_b.clone(), sink.clone());
+    // 挂载 unit_b（生产形态：`activate()` 现在就是单元素集合的 `ensure_mounted`）
+    let created = manager.ensure_mounted(vec![(unit_b.clone(), sink.clone())]);
+    assert_eq!(created, vec![unit_b.key()], "只有目标单元是新建的");
 
     assert_eq!(
-        manager.watched_units(),
+        manager.watched_units().len(),
+        3,
+        "三个单元必须同时在表里（清单即互踢已消失），实际 {:?}",
+        manager.watched_units()
+    );
+    for unit in [&unit_a, &unit_b, &unit_other_project] {
+        assert!(
+            manager.is_watched(unit),
+            "挂载目标不得释放任何其它单元：{} 被摘了",
+            unit.thread_tag()
+        );
+    }
+}
+
+/// **R1.1 / AC1 的最小形态**：依次挂载 A、B 之后两者都在表里。
+///
+/// 这是本任务的红→绿判据：在「至多一套挂载」的实现下，挂 B 会先释放 A，第二句断言必红。
+/// 它同时钉住幂等的另一半 —— 已经挂上的 A 不会被 B 的挂载重建（`watcher_set_creations`
+/// 每单元恰好一次）。
+#[test]
+fn mounting_two_units_keeps_both_mounted() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("repo");
+    let worktree = tmp.path().join("repo-wt");
+    for dir in [&root, &worktree] {
+        std::fs::create_dir_all(dir).unwrap();
+        git2::Repository::init(dir).expect("init git repo");
+    }
+
+    let unit_a = main_unit(&root);
+    let unit_b = worktree_unit(&root, &worktree);
+    let sink = CollectingSink::new();
+    let manager = WatcherManager::new().without_real_fs();
+
+    assert_eq!(
+        manager.ensure_mounted(vec![(unit_a.clone(), sink.clone())]),
+        vec![unit_a.key()],
+        "首次挂载 A 是新建"
+    );
+    assert!(manager.is_watched(&unit_a));
+
+    assert_eq!(
+        manager.ensure_mounted(vec![(unit_b.clone(), sink.clone())]),
         vec![unit_b.key()],
-        "全局只能剩当前视图那一个单元"
+        "挂载 B 是新建，且不得重建 A"
     );
     assert!(
-        manager.snapshot(&unit_a).is_none() && manager.snapshot(&unit_other_project).is_none(),
-        "被释放单元的槽位必须作废，不得留旧数据被渲染"
+        manager.is_watched(&unit_a),
+        "挂载 B 不得释放 A（互斥槽位已删除）"
+    );
+    assert!(manager.is_watched(&unit_b));
+
+    let watched = manager.watched_units();
+    assert_eq!(watched.len(), 2, "两个单元必须同时在表里，实际 {watched:?}");
+    assert!(watched.contains(&unit_a.key()) && watched.contains(&unit_b.key()));
+    assert_eq!(
+        manager.watcher_set_creations(),
+        2,
+        "每个单元各建一套资源（重申/并存都不重建）"
     );
 }
 
@@ -1061,9 +1203,9 @@ fn push_with_current_ticket_is_written_and_emitted() {
 
 /// **凭证闸门 · 释放后**：旧票的晚到推送必须被拒 —— 不写槽位、不 emit、票号已注销。
 ///
-/// 这是 2026-10 CI 竞态（macOS `activate_style_release_except_keeps_only_the_target_unit`）
-/// 的确定性复现：worker 的推送回调活在 `watch()` 栈之外，释放后仍可能在飞；此前没有任何
-/// 校验，晚到推送会把已作废的槽位重新填上权威数据（概率性暴露 ⇒ 只在慢机 CI 偶发）。
+/// 这是 2026-10 CI 竞态的确定性复现：worker 的推送回调活在 `watch()` 栈之外，释放后仍可能
+/// 在飞；此前没有任何校验，晚到推送会把已作废的槽位重新填上权威数据（概率性暴露 ⇒ 只在慢机
+/// CI 偶发）。C2 保留票号正是为了这条 —— `unwatch`（worktree 被删 / 项目移除）依然存在。
 #[test]
 fn push_after_release_with_stale_ticket_is_rejected() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1083,12 +1225,12 @@ fn push_after_release_with_stale_ticket_is_rejected() {
         .current_ticket(&unit.key())
         .expect("挂载在册 ⇒ 有票");
 
+    let before_release = manager.snapshot(&unit).expect("释放前必须有权威数据");
     manager.unwatch(&unit);
     assert!(
         manager.current_ticket(&unit.key()).is_none(),
         "释放必须注销票号"
     );
-    assert!(manager.snapshot(&unit).is_none(), "释放必须作废槽位");
 
     let baseline = sink.count(GIT_STATUS_SNAPSHOT_EVENT);
     let rejected = manager.deliver_push_with_ticket(
@@ -1097,7 +1239,18 @@ fn push_after_release_with_stale_ticket_is_rejected() {
         pull_snapshot(&unit, parse_porcelain("?? late.txt")),
     );
     assert!(rejected.is_none(), "释放后旧票号的推送必须被拒");
-    assert!(manager.snapshot(&unit).is_none(), "被拒的推送不得复活槽位");
+    // 「被拒」的判据是**数据一字未动**（不是「槽位必须为空」）：C1 起释放不丢数据，
+    // 旧票晚到推送必须连号带内容都改不了。
+    let after = manager.snapshot(&unit).expect("释放留下的权威数据仍在");
+    assert_eq!(
+        after.version, before_release.version,
+        "被拒的推送不得推进号"
+    );
+    assert_eq!(
+        paths_of(&after.entries),
+        paths_of(&before_release.entries),
+        "被拒的推送不得改写权威数据"
+    );
     assert_eq!(
         sink.count(GIT_STATUS_SNAPSHOT_EVENT),
         baseline,
@@ -1260,8 +1413,18 @@ fn version_sequence_stays_monotonic_across_every_producer_and_release() {
     assert!(!manager.is_watched(&unit), "夹具前提：起始未挂载");
 
     // ① pull → pull：未挂载单元（WSL / SSH / 侧栏取计数）两次算出的号必须递增。
-    let first_pull = manager.record_computed(pull_snapshot(&unit, parse_porcelain("?? a.txt")));
-    let second_pull = manager.record_computed(pull_snapshot(&unit, parse_porcelain("?? b.txt")));
+    let first_pull = manager
+        .record_pull(
+            pull_snapshot(&unit, parse_porcelain("?? a.txt")),
+            Instant::now(),
+        )
+        .expect("首份登记必须被采纳");
+    let second_pull = manager
+        .record_pull(
+            pull_snapshot(&unit, parse_porcelain("?? b.txt")),
+            Instant::now(),
+        )
+        .expect("后一份登记必须被采纳");
     assert_eq!(first_pull.version, 1, "号源从 1 起");
     assert_eq!(
         second_pull.version,
@@ -1278,7 +1441,7 @@ fn version_sequence_stays_monotonic_across_every_producer_and_release() {
 
     // ② 挂载内：worker 的 push 与 pull 共用同一条号段（挂载首轮也必须接在后面）。
     manager.watch(unit.clone(), sink.clone());
-    let mounted = wait_for_snapshot(&manager, &unit);
+    let mounted = wait_for_snapshot_newer_than(&manager, &unit, high_water);
     assert!(
         mounted.version > high_water,
         "② 挂载首轮快照要接在同一号段之后：{} <= {}",
@@ -1315,14 +1478,17 @@ fn version_sequence_stays_monotonic_across_every_producer_and_release() {
     );
     high_water = after_poke.version;
 
-    // ③ 释放 → 重挂载：数据作废，号段不得退回（原缺陷：每次释放号都从 1 重新起）。
+    // ③ 释放 → 重挂载：数据保留，号段不得退回（原缺陷：每次释放号都从 1 重新起）。
     manager.unwatch(&unit);
-    assert!(
-        manager.snapshot(&unit).is_none(),
-        "③ 释放即作废数据（I1-b）"
+    let kept = manager
+        .snapshot(&unit)
+        .expect("③ 释放只释放资源，不丢弃权威数据（C1）");
+    assert_eq!(
+        kept.version, high_water,
+        "③ 释放后保留的必须是切走前那份最新数据"
     );
     manager.watch(unit.clone(), sink.clone());
-    let after_remount = wait_for_snapshot(&manager, &unit);
+    let after_remount = wait_for_snapshot_newer_than(&manager, &unit, high_water);
     assert!(
         after_remount.version > high_water,
         "③ version 跨挂载周期也必须单调：切回后的第一份是 {}，而前端槽位里还留着切走前的 {}\
@@ -1334,8 +1500,12 @@ fn version_sequence_stays_monotonic_across_every_producer_and_release() {
     manager.unwatch(&unit);
 
     // ④ 释放之后 pull：号不得回退到切走前那一段。
-    let after_release_pull =
-        manager.record_computed(pull_snapshot(&unit, parse_porcelain("?? c.txt")));
+    let after_release_pull = manager
+        .record_pull(
+            pull_snapshot(&unit, parse_porcelain("?? c.txt")),
+            Instant::now(),
+        )
+        .expect("释放之后的重算必须被采纳（数据与资源生命周期解耦）");
     assert!(
         after_release_pull.version > high_water,
         "④ 释放之后 pull 拿到的号不得回退到切走前那一段：{} <= {}",
@@ -1471,11 +1641,11 @@ fn edit_to_push_latency_p95_worktree_vs_main() {
     );
 }
 
-// ── D-B 不变量的并发判据（P2-4）──────────────────────────────────────────────
+// ── 挂载集合的并发判据（C2 翻转）────────────────────────────────────────────
 //
-// 不变量：「每项目/全局同时至多一套挂载资源」。它属于**资源所有者**（`mount_only`），
-// 不能靠调用方记得「先 release 再 watch」的顺序维持 —— 两个并发的 `activate`
-// （快速切项目 / 连点）会在两步之间交错，留下两套挂载（线程与句柄泄漏、同一变更推两份快照）。
+// 新不变量（旧 D-B 已反转）：「可见集合里的每个单元都可以同时挂载」。它仍属于**资源所有者**：
+// `ensure_mounted` 在同一临界区内完成「已挂载则不重建」的判定与登记（`watch_lock`），
+// 因此并发调用既不会互踢、也不会给同一单元建出两套监听。
 
 /// 指定项目 id 的主仓形态单元（key 只含 project_id，故两单元必须用不同 project id 才不同址）。
 fn workspace_of(project_id: &str, root: &Path) -> WorkspaceRef {
@@ -1488,12 +1658,12 @@ fn workspace_of(project_id: &str, root: &Path) -> WorkspaceRef {
     .expect("tempdir-derived unit path must resolve")
 }
 
-/// 并发挂**不同**单元：最终必须恰好一套挂载。
+/// 并发挂**不同**单元：两个都必须挂上（且各建一套资源）—— 互斥槽位已删除。
 ///
-/// 红→绿判据：把 `mount_only` 换回「release_except + watch」两连调时，本用例在并发布障
-/// 同步下会观察到 2 套挂载（`watched_units().len() == 2`）。
+/// 旧判据是「最终恰好一套挂载」（互踢的正方向）。C2 删除排他后，同一个布障并发必须得到
+/// **2 套**：既没有谁被释放，也没有谁被重复建。
 #[test]
-fn concurrent_mount_of_different_units_keeps_single_mount() {
+fn concurrent_mount_of_different_units_keeps_both_mounted() {
     let tmp = tempfile::tempdir().unwrap();
     let dir_a = tmp.path().join("unit-a");
     let dir_b = tmp.path().join("unit-b");
@@ -1502,9 +1672,10 @@ fn concurrent_mount_of_different_units_keeps_single_mount() {
 
     let manager = WatcherManager::new().without_real_fs();
     let sink = CollectingSink::new();
-    // 两个线程在同一时刻冲进「释放 + 挂载」这一段
+    // 两个线程在同一时刻冲进 `ensure_mounted`
     let barrier = Arc::new(std::sync::Barrier::new(2));
     let units = [workspace_of("p1", &dir_a), workspace_of("p2", &dir_b)];
+    let keys: Vec<String> = units.iter().map(WorkspaceRef::key).collect();
 
     let handles: Vec<_> = units
         .into_iter()
@@ -1514,7 +1685,7 @@ fn concurrent_mount_of_different_units_keeps_single_mount() {
             let barrier = Arc::clone(&barrier);
             std::thread::spawn(move || {
                 barrier.wait();
-                let _ = manager.mount_only(unit, sink);
+                let _ = manager.ensure_mounted(vec![(unit, sink)]);
             })
         })
         .collect();
@@ -1524,14 +1695,20 @@ fn concurrent_mount_of_different_units_keeps_single_mount() {
 
     assert_eq!(
         manager.watched_units().len(),
-        1,
-        "并发 activate 之后必须只剩一套挂载（D-B）：{:?}",
+        2,
+        "并发挂载两个不同单元后两者都必须常驻（互斥槽位已删除）：{:?}",
         manager.watched_units()
     );
+    for key in &keys {
+        assert!(
+            manager.watched_units().contains(key),
+            "{key} 被另一个单元的挂载释放了（排他语义回潮）"
+        );
+    }
     assert_eq!(
         manager.watcher_set_creations(),
         2,
-        "两次挂载各建一套，其中一套必须被释放"
+        "两个单元各建一套资源，不得互相重建"
     );
 }
 
@@ -1556,7 +1733,7 @@ fn concurrent_mount_of_same_unit_creates_exactly_one_watcher_set() {
             let unit = unit.clone();
             std::thread::spawn(move || {
                 barrier.wait();
-                let _ = manager.mount_only(unit, sink);
+                let _ = manager.ensure_mounted(vec![(unit, sink)]);
             })
         })
         .collect();
@@ -1572,34 +1749,33 @@ fn concurrent_mount_of_same_unit_creates_exactly_one_watcher_set() {
     );
 }
 
-/// 重申挂载同一单元 = 空操作（`mount_only` 的语义是「确保该单元挂载」，不是「注册一次」）。
+/// 重申挂载同一单元 = 空操作（`ensure_mounted` 的语义是「确保该单元挂载」，不是「注册一次」）。
 ///
 /// 契约来源：调用方会**合法地**重申同一单元 —— 前端首个快照未落地时的有界重试，以及激活态被
-/// 后端改写成 canonical 形态后的一次重发。旧实现把重申直接转给 `watch`，于是每次都命中它的
-/// 「重复注册」告警分支；那条 WARN 的诊断语义是「有人绕过了唯一挂载入口」（D-B 落地前正是它
-/// 暴露了启动期双发起点，现场核对以「0 条 already watched」为证据），被合法路径触发即失效。
+/// 后端改写成 canonical 形态后的一次重发。重申若直接转给 `watch`，每次都命中它的「重复注册」
+/// 告警分支；那条 WARN 的诊断语义是「有人绕过了唯一挂载入口」（D-B 落地前正是它暴露了启动期
+/// 双发起点，现场核对以「0 条 already watched」为证据），被合法路径触发即失效。
 ///
 /// 本用例钉住重申的**可观察契约**：不重建资源、不动挂载集合、不释放任何单元。
 #[test]
-fn mount_only_reasserting_same_unit_is_a_noop() {
+fn ensure_mounted_reasserting_same_unit_is_a_noop() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().to_path_buf();
     let sink = CollectingSink::new();
     let manager = WatcherManager::new().without_real_fs();
 
-    assert!(
-        manager
-            .mount_only(main_unit(&root), sink.clone())
-            .is_empty(),
-        "首次挂载没有可释放的单元"
+    assert_eq!(
+        manager.ensure_mounted(vec![(main_unit(&root), sink.clone())]),
+        vec![main_unit(&root).key()],
+        "首次挂载是新建的那一个单元"
     );
     assert_eq!(manager.watcher_set_creations(), 1);
 
     assert!(
         manager
-            .mount_only(main_unit(&root), sink.clone())
+            .ensure_mounted(vec![(main_unit(&root), sink.clone())])
             .is_empty(),
-        "重申挂载不得释放任何单元（含自身）"
+        "重申挂载不得新建、也不得释放任何单元（含自身）"
     );
     assert_eq!(
         manager.watcher_set_creations(),
@@ -1644,11 +1820,11 @@ fn concurrent_pulls_on_one_unit_never_regress_the_slot() {
             let unit = unit.clone();
             std::thread::spawn(move || {
                 barrier.wait();
-                let snap = manager.record_computed(pull_snapshot(
-                    &unit,
-                    parse_porcelain(&format!("?? f{i}.txt")),
-                ));
-                (snap.version, snap.entries[0].path.clone())
+                let snap = manager.record_pull(
+                    pull_snapshot(&unit, parse_porcelain(&format!("?? f{i}.txt"))),
+                    Instant::now(),
+                );
+                snap.map(|snap| (snap.version, snap.entries[0].path.clone()))
             })
         })
         .collect();
@@ -1657,19 +1833,25 @@ fn concurrent_pulls_on_one_unit_never_regress_the_slot() {
         .map(|h| h.join().expect("pull thread should not panic"))
         .collect();
 
-    // 取号互不撞号：每线程恰取一号 ⇒ 版本集合恰为 1..=N
-    let mut versions: Vec<u64> = results.iter().map(|(v, _)| *v).collect();
+    // 新鲜度栅栏允许「开始得更早的那轮被丢弃」（并发下合法的合并），因此断言的是
+    // 「被采纳的那些**恰好取走连续的号**」—— 不得撞号、不得跳号；被丢弃的那几轮不取号。
+    let accepted: Vec<(u64, std::path::PathBuf)> = results.into_iter().flatten().collect();
+    assert!(!accepted.is_empty(), "并发重算至少有一轮必须被采纳");
+    let mut versions: Vec<u64> = accepted.iter().map(|(v, _)| *v).collect();
     versions.sort_unstable();
-    let expected: Vec<u64> = (1..=threads as u64).collect();
-    assert_eq!(versions, expected, "并发取号不得撞号、不得跳号");
+    let expected: Vec<u64> = (1..=accepted.len() as u64).collect();
+    assert_eq!(
+        versions, expected,
+        "被采纳的重算必须取走连续号（不撞号、不跳号）"
+    );
 
     // 槽位必须收敛到最大号，且条目正是拿到最大号那一轮的数据（不得「取小号后插入」回退）
     let slot = manager.snapshot(&unit).expect("槽位必须在");
-    assert_eq!(slot.version, threads as u64);
-    let (max_version, max_path) = results
+    assert_eq!(slot.version, accepted.len() as u64);
+    let (max_version, max_path) = accepted
         .iter()
         .max_by_key(|(v, _)| *v)
-        .expect("results 非空");
+        .expect("accepted 非空");
     assert_eq!(
         slot.entries[0].path, *max_path,
         "槽位数据必须与最大版本号（v{max_version}）同轮"

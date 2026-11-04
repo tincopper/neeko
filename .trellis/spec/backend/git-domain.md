@@ -556,48 +556,96 @@ golden 测试钉住（`golden_key_format_matches_frontend_contract` ↔ `workspa
 > 见该函数文档 —— 其中「gitdir 在订阅根下」是 linked worktree 不被合并的原因，
 > 误判会让该单元 HEAD/index/refs 变化永久丢失。
 
-- push 生产者 = 挂载中的 `GitStatusWorker`；pull 生产者 = `record_computed`（WSL / SSH /
+- push 生产者 = 挂载中的 `GitStatusWorker`；pull 生产者 = `record_pull`（WSL / SSH /
   未挂载单元，例如侧栏要为每个 worktree 取计数）。两者产出同一种 `GitStatusSnapshot`、
-  进同一张表。
-- **`version` 由注册表统一盖章**（`store_snapshot`）：号源必须只有一个。生产者自带序号
+  进同一张表（`manager/store.rs::StatusStore`）。
+- **`version` 由登记表统一盖章**（`StatusStore::upsert`）：号源必须只有一个。生产者自带序号
   （worker 私有计数器从 1 起算、pull 另按 `prev+1`）交错后必然出现平手或回退，而前端按
   version 做单元内乱序闸门 —— 被丢弃的那一次恰恰是「数据已经新了、界面还留着旧的」。
-  事件载荷与槽位数据因此同源同号。
-- **`version` 号段跨挂载周期单调，快照数据不跨**：`store_snapshot` 的取号来自
-  `version_floors`（每单元最高水位），不是槽位里那份快照。释放（`release_one` /
-  `release_except` / `unwatch`）**只作废数据，不作废号段**。
-  反例（2026-09-29 真 app 手测日志暴露，13 次推送全是 `v1`）：号段随槽位一起归零时，
+  事件载荷与登记数据因此同源同号。
+- **号段与数据同表同生命周期（C1 起）**：取号来自 `StatusStore.version_floors`（每单元最高
+  水位），它与条目在**同一个临界区**里推进，但条目被容量淘汰（`MAX_ENTRIES`）时**水位保留** ——
+  「淘汰 → 重算」产出的第一份快照必须仍大于前端手里那份 version。
+  反例（2026-09-29 真 app 手测日志暴露，13 次推送全是 `v1`）：号段随数据一起归零时，
   「切走 → 释放 → 切回」后 worker 的第一份快照永远是 `v1`，而前端槽位里可能还留着切走前的
   `v3`（**切项目**这条路上没人作废它，`invalidateStatus` 只在 worktree 切换时发），
   `version <= prev` 于是把这份**更新**的数据判成旧的丢掉 —— 界面继续显示离开时的旧快照，
-  正是 issue #2「要手动刷新才恢复」的形态。号段只在项目移除时随挂载一起回收
-  （`unwatch_project`），规模以「项目 × 该项目的单元数」为界。
-- **pull 不得覆盖挂载中单元的既有快照**（`record_computed` 回读即返）：pull 的 git 子进程
-  耗时以百毫秒计，晚到的 pull 若照常写表，注册表盖的号还会让它看起来比它覆盖的 push 更新。
-  冷挂载窗口（已挂载、尚无快照）仍然登记 —— 那正是 pull 存在的意义。
+  正是 issue #2「要手动刷新才恢复」的形态。
+  **号段不再需要「活得比数据久」的特殊处理**：释放（`release_one` / `release_except` /
+  `unwatch`）现在**既不作废数据、也不动号段**（见下一条）。
+- **释放不作废数据（C1）**：`unwatch` / `release_except` 只释放**资源**（watcher / worker /
+  线程），登记表里的权威快照保留。理由：资源状态不是数据可信度的代理 —— 旧实现把「未挂载」
+  当成「无权威数据」，导致读路径只能按 `is_watched` 分支，进而**非激活单元永远没有可显示的
+  数据**（「有的项目 git status 完全无法显示」）。可信度由 `computed_at` + `dirty` 判定：
+  超过 `STALE_AFTER`（3s）或有脏位就重算，与挂载状态无关。
+  「未知」的精确定义因此变成「登记表里没有该 key」（从未算过 / 被容量淘汰 / 项目移除）。
+- **新鲜度闸栏取代旧的「pull 不得覆盖挂载中单元」（C1）**：判据从**资源状态**（是否挂载）
+  换成**事实**（时间）：`record_pull(snapshot, computed_from)` 只在一轮重算**开始之后没有
+  更新的登记落地**时才被采纳，否则丢弃并回读登记表那一份。晚到的 pull 仍然不能覆盖更新的
+  push（原竞态不变），但「挂载中的单元永远拒写 pull」这条副产品消失了 —— 那正是冷窗口只能
+  报 `NotFound("not available yet")` 的原因。
 
-**挂载唯一入口（已被护栏钉住）**：`set_active_workspace` → `git/services/status.rs::activate`，语义 =
-释放该项目下其它单元 → 挂载目标单元 → 取首个快照，返回二值状态 `WorkspaceActivation`（serde tag = `state`）：
-`ready`（快照就绪）| `pending`（挂载已成立、首轮重算在途 —— **冷窗口不是错误**，由
-`git-status-snapshot` 推送与前端 `useActiveWorkspaceSync` 的重试环收敛；错误空间只留解析失败 /
-非 git 库；pull 分支（WSL / SSH）恒 `ready`）。有界等待（`RECALC_WAIT_TIMEOUT`）只是延迟优化，
-不是正确性判据（2026-10 CI 事故：慢机上超时曾被当成错误）。生产代码里 `WatcherManager::watch` 的调用点由护栏第 5 类判据限定为**只有** `activate`（实测破过一次：`app.rs` 启动恢复与 `set_active_project` 各按项目预挂主仓单元，于是每次启动都有两个发起点，日志报 `already watched`）。每项目同时**至多一套**挂载资源
-（用户决策 D-B）。前端唯一发起点是 `app/hooks/useActiveWorkspaceSync.ts`；用户动作（点
-worktree、切回主仓）只写激活态，不直接发命令 —— 挂载/释放必须与「当前视图」严格一致，两个
-发起点就有时序差。
+> **已反转的用户决策 D-B（2026-11-04，子任务 C2 落地）** —— **不要把「至多一套挂载」当回归改回去。**
+>
+> 旧决策：每项目同时**至多一套**挂载资源（旧 `mount_only` = 释放除目标外的全部挂载 + 挂载目标）。
+> 反转理由（第一性原理）：它把**资源稀缺**写进了**数据契约**。UI 契约是「任何 workspace 都能
+> 显示」，后端能力是「1 个」，两者不一致 ⇒ 必然产出「不显示」与「互踢」两个症状。现场证据
+> （`~/.neeko/neeko.log` 2026-11-04）：同一项目的主仓与 linked worktree 每 1.5–11.6s 互踢一次，
+> 每轮代价是 `GitStatusWorker` 线程销毁重建 + 全树 `WatchManifest::compute` + FSEvents 流重建 +
+> `git status` 重跑；挂载存活期常短于一次重算 ⇒ 快照刚产出就被释放。
+>
+> 现在是：**可见集合里的每个单元都可以同时挂载**（`WatcherManager::ensure_mounted`），挂载一个
+> 单元**不释放**任何别的单元 ⇒ 互踢在结构上不可能（没有互斥槽位可抢）。稀缺只允许落在
+> **调度顺序**上（C3 的 `RecomputeScheduler`：Hot / Warm / Cold + 有界并发）。
+> 对应设计稿红线 16「资源稀缺 ⊥ 可观测集合」。
+>
+> **与父任务删除台账的偏差（有意，登记在此）**：
+>
+> | 台账项 | 决定 | 理由 |
+> | --- | --- | --- |
+> | D3 `mount_tickets` / `MountTicket` / `revoke_ticket_if` | **保留** | 删除前提是「释放不再存在」，但 `unwatch`（worktree 被删 / 项目移除）仍在 ⇒ 晚到推送仍可能写回已不存在的单元。票号是该问题最省的答案（比设计新机制便宜）。回归：`push_after_release_with_stale_ticket_is_rejected` |
+> | D5 `mount_lock` | **保留并改名 `watch_lock`** | 它原本承担两件事：①「释放 + 挂载成对原子」—— 随排他消失；② `watch()` 的 check-then-insert 原子性 —— **仍在**（删掉会重开「同单元两套监听」，见 `concurrency-guidelines.md` 契约 3） |
+> | D4 `version_floors` | 已在 C1 并入 `StatusStore` | 不再是独立并发状态 |
+> | D10 `supports_push_producer` 双路径分叉 | **本任务不改** | PRD R2 未列。它承载的是「该连接形态能不能有本地 notify」这一**事实**，不是排他性；把远端单元强行并进挂载路径只会得到一套监听不到远端工作区的资源 |
+>
+> D6（`unwatch` / `unwatch_project` 改「从可见集合移除 + 标冷」）**不在 C2 范围**：本任务明确保留
+> 「单元消失即释放」（C2 PRD 的 AC4），改它是另一件事（会让已删除单元的资源长期常驻）。
 
-**服务层只依赖端口（依赖倒置，已被护栏铉住）**：`activate()` 收 `Arc<dyn WatcherEventSink>`，
-不接收 `tauri::AppHandle`、也不自己 `new AppHandleSink` —— 交付适配器的构造留在命令边界
-（`git/commands/query.rs::set_active_workspace`）。这样服务层可用测试替身（`CollectingSink`）
-驱动：`status.rs` 的编排测试（注入 sink + 隔离 `AppStateWrapper` + tempdir 真实 git 仓）
-覆盖「Local 走挂载 + 首份快照经端口投递」与「激活新单元释放旧单元（D-B 在编排层成立）」
-—— 后者此前只在 `mount_only` 层被测，服务层组合无人验证。护栏 `check_service_no_delivery_dep`
-钉住 `git/services/**` 不得出现 `tauri::` / `AppHandle` / `AppHandleSink`（注释除外）。
+**挂载入口（C2 起是批量「确保挂载」，已被护栏钉住）**：`WatcherManager::ensure_mounted(units)`
+在一个临界区（`watch_lock`）内对每个单元「未挂载则 `watch`」，返回**本次新建**的 key 列表；
+**不释放任何单元**。它替代了旧 `mount_only`（释放除目标外的全部挂载 + 挂载目标）。
+生产代码里 `WatcherManager::watch` 的调用点由护栏第 5 类判据限定（管理器自身与
+`git/services/status.rs` 之外一律违规；实测破过一次：`app.rs` 启动恢复与 `set_active_project`
+各按项目预挂主仓单元 ⇒ 每次启动两个发起点、日志报 `already watched`）。
 
-**远端 pull 分支已有代码级测试**（AC13 的代码层闭合）：`activate_with(…, &ExecTarget::Local,
-has_push_producer=false)` 用**本地 transport** 驱动同一条分支（收口 + 现算 + 不挂载 + 不产生
-watcher 事件），无需真机、也无需假 transport。判据：
-`remote_branch_pulls_without_mounting_and_releases_the_previous_unit` 与
+命令面与结局（serde tag = `state`）：
+
+| 命令 | 载荷 | 语义 |
+| --- | --- | --- |
+| `set_visible_workspaces(workspaces)` | `Vec<WorkspaceActivationEntry>`（`ready` / `pending` / `failed`） | **可见集合**语义：逐单元给结局，一个坏项目只让自己那项 `failed` |
+| `set_active_workspace(workspace)` | `WorkspaceActivation`（`ready` / `pending`） | **C4 会删除**；C2 起是单元素薄包装（转发成单元素集合，走同一条 `activate_many`，单元级失败回到 `Err`） |
+
+`pending` = 挂载已成立、首轮重算在途（**冷窗口不是错误**，由 `git-status-snapshot` 推送与前端
+`useActiveWorkspaceSync` 的重试环收敛；错误空间只留解析失败 / 非 git 库 / pull 失败）。pull 分支
+（WSL / SSH）恒 `ready`。有界等待（`RECALC_WAIT_TIMEOUT`）只是延迟优化，不是正确性判据
+（2026-10 CI 事故：慢机上超时曾被当成错误）。前端唯一发起点仍是
+`app/hooks/useActiveWorkspaceSync.ts`；用户动作（点 worktree、切回主仓）只写激活态，不直接发
+命令。
+
+**服务层只依赖端口（依赖倒置，已被护栏钉住）**：`activate()` / `activate_many()` 收
+`Arc<dyn WatcherEventSink>`，不接收 `tauri::AppHandle`、也不自己 `new AppHandleSink` ——
+交付适配器的构造留在命令边界（`git/commands/query.rs`）。这样服务层可用测试替身
+（`CollectingSink`）驱动：`status.rs` 的编排测试（注入 sink + 隔离 `AppStateWrapper` + tempdir
+真实 git 仓）覆盖「Local 走挂载 + 首份快照经端口投递」、「激活新单元**保留**旧单元」与「批量
+入口逐单元隔离失败」。护栏 `check_service_no_delivery_dep` 钉住 `git/services/**` 不得出现
+`tauri::` / `AppHandle` / `AppHandleSink`（注释除外）。
+
+**远端 pull 分支已有代码级测试**（AC13 的代码层闭合）：`pull_outcome(…, &ExecTarget::Local)` 用
+**本地 transport** 驱动同一条 pull 编排（现算 + 不挂载 + 不产生 watcher 事件），无需真机、也
+无需假 transport；分类判据（`supports_push_producer`）由 `only_local_targets_get_a_push_producer`
+单独钉住，两者合起来覆盖整条远端分支。判据：
+`pull_branch_computes_without_mounting_or_releasing_other_units`、
+`batch_activation_mounts_every_unit_and_isolates_failures` 与
 `read_workspace_status_of_an_unmounted_unit_computes_and_records`；真机验证降级为确认。
 
 **实现时踩过的顺序坑**：`watch()` 里「作废切走前快照」那句必须在 `worker.check()` **之前**。
@@ -656,20 +704,20 @@ versioned_snapshot_without_manual_poke` 就是为钉这条顺序而写红的）�
 正常现象（快照由 worker 异步产出），两点互判会让挂载抖动。挂载失败的正确语义是：**保留激活
 意图、槽位置为未知、放开同意图的重发门闸**。
 
-**挂载回收是全局的，且必须原子**：`activate()` 只调 `WatcherManager::mount_only(repo, sink)` ——
-它在**同一个临界区**内完成「释放除目标之外的所有挂载（跨项目也算）+ 挂载目标」；命令层不再按项目
-预挂主仓单元（旧实现在 `app.rs` 启动恢复与 `set_active_project` 里各挂一次，实测每次启动都出现
-「先挂主仓、随后改挂 worktree」的两个发起点）。
+**挂载是「确保」，不是「替换」**：`activate_many` 把本轮的 Local 单元汇总成一批交
+`ensure_mounted`（一次临界区、一条 `[Watcher] ensure mounted N units (new: M)` 日志），随后逐单元
+取结局；**没有释放步骤** —— 这是「互踢」的结构性消失点。释放只由**单元消失**触发：
+`unwatch`（worktree 被删）/ `unwatch_project`（项目移除，二者都保留登记表数据，见「释放不作废
+数据」）。命令层仍不按项目预挂主仓单元。
 
-原子性是**不变量属于资源所有者**的直接后果：D-B（全局至多一套挂载）不能靠调用方记得「先
-release 再 watch」的顺序维持 —— 两个并发的 `activate`（快速切项目 / 连点）会在两步之间交错成
-`c1.release, c2.release, c1.watch, c2.watch` ⇒ 两套挂载常驻（线程与句柄泄漏 + 同一变更推两份
-快照）；同单元的并发 `watch` 也会穿过 `watch()` 的 check 到 insert（幂等只在单线程下成立）。
-落点是 `mount_lock: Arc<Mutex<()>>`，`release_except` 公共面同样取该锁（语义不变），内部走无锁
-内核 `release_except_inner` 以免自死锁；每单元的释放原语只有 `release_one` 一个。
+`watch_lock` 保留的唯一职责是 `watch()` 的 **check-then-insert 原子性**：`watch()` 的「已注册则
+告警返回」与末尾 `insert` 不在同一临界区，两个并发 `ensure_mounted` 会各建一套监听（事件翻倍 +
+线程泄漏 + 同一变更推两份快照）。**不变量属于资源所有者**：调用方不需要记得任何顺序。
+每单元的释放原语只有 `release_one` 一个。
 
 **退役清单**（不得回潮，护栏 `tools/guards/checks/check_workspace_identity.py` 按符号钉）：
-libgit2 第二 status 引擎（`get_worktree_changed_files` / `get_changed_files_from_repo`）、
+**排他挂载**（旧 `mount_only` / `release_except` / `release_except_inner` —— `rg` 在 `src-tauri/src`
+里必须零命中，C2 PRD 的 AC3）、libgit2 第二 status 引擎（`get_worktree_changed_files` / `get_changed_files_from_repo`）、
 `version: 0` 无语义载荷、`resolve_validated_work_dir`（校验时 canonicalize、返回时丢弃）、
 跨 worktree 补挂广播（`rearm_worktrees_if_needed` / `resolve_worktree_roots` /
 `WorktreeMetaChanged` / `has_worktrees`）、前端 `applyGitStatus` / `versionGateAccepts` /
@@ -681,7 +729,11 @@ libgit2 第二 status 引擎（`get_worktree_changed_files` / `get_changed_files
 `platform/path_identity/rules.rs`（Windows 形态渲染纯字符串用例，三端运行）、
 `path_guard`（`..` / NUL / 非 UTF-8 拒绝）、`manager/lifecycle_tests.rs`（两单元独立槽、
 poke 打对单元、编辑即推送、未挂载兄弟单元零泄漏、pull 不覆盖 push、unwatch/unwatch_project
-收口、**并发挂载不同单元 ⇒ 恰好一套挂载**、**并发挂载同单元 ⇒ 只建一套 watcher**）。
+收口、**依次挂载两个单元 ⇒ 两个都在**（`mounting_two_units_keeps_both_mounted`）、
+**挂载目标不得释放任何其它单元**（`mounting_the_target_keeps_every_other_unit`）、
+**并发挂载不同单元 ⇒ 两个都在且各建一套**（`concurrent_mount_of_different_units_keeps_both_mounted`）、
+**并发挂载同单元 ⇒ 只建一套 watcher**、**反复切换 20 次不重建也不累积**
+（`repeated_switches_keep_both_units_without_rebuilding`））。
 
 ## 13. 长操作超时策略与 Console 可见性（push / fetch / pull / commit）
 
@@ -817,7 +869,7 @@ kill 不收敛仍有界返回 / 合流：小读合流 / 宽限交付 / EOF 尾�
    查询-比较闸门决定是否 emit；**不新增事件名**（红线 5）、不 emit、不形成「写 refs → 事件 →
    再写」自反馈。
 4. **change gate 比较「即将 emit 的快照本身」，而非一组平行局部变量**：`GitStatusSnapshot`
-   `derive(PartialEq)`，worker 先组装候选快照（`version` 归零 —— 注册表 `store_snapshot` 盖章，
+   `derive(PartialEq)`，worker 先组装候选快照（`version` 归零 —— 登记表 `StatusStore::upsert` 盖章，
    worker 私有 counter 已被覆盖），再以 `last_snapshot.as_ref() == Some(&candidate)` 判定。
    新增快照字段**自动纳入闸门**，不需要维护一组布尔合取 —— 历史写法
    `current == last_status && current_branch == last_branch && ahead == last_ahead && behind == last_behind`
@@ -835,7 +887,7 @@ kill 不收敛仍有界返回 / 合流：小读合流 / 宽限交付 / EOF 尾�
 6. **条目上限与快照承载是同一条不变量**：`MAX_STATUS_ENTRIES` 与 `truncated` 由
    `GitStatusSnapshot::enforce_entry_cap()` **单点施加**（worker 与 pull 生产者共用），
    禁止各自 `truncate`（重复实现即两处上限可漂移，且 pull 侧容易漏掉 `truncated`）。
-   pull 生产者构造**完整快照**后交 `record_computed(snapshot)`（不再用
+   pull 生产者构造**完整快照**后交 `record_pull(snapshot, computed_from)`（不再用
    `(repo, entries, branch, ahead, behind)` 的伸缩参数 —— 下一个派生面不必再改签名）。
 7. **前端单通道消费**：`useGitStatusEventsSync` 在**快照被 version gate 接受后**才
    `setAheadBehind(workspace_key, {ahead, behind})`（被拒的陈旧快照不得覆盖徽标）；不得再有第二条

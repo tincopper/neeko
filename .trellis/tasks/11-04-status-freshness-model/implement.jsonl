@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "§12 Workspace 身份与 status 生产者单源（本任务要改的就是它）+ §14 派生值新鲜度与 ahead/behind 单源"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "per-key 单飞与锁序约束；core::exec 同步桥语义（红线 3）"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "读命令的 IPC 载荷上限与错误空间（红线 4）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新 store.rs 的落点与 mod.rs 极薄约束（红线 9）"}
