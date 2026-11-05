@@ -293,6 +293,37 @@ pnpm check:quick   # 收尾一次
 - 「面板根是海面」：`island.parentElement` 必须带 `bg-bg-primary`。
 - 三条空态用例改为断言「住在**主岛**内 + 分区是 `bg-tertiary`」。
 
+## 进度（2026-11-03j，工具栏优化）
+
+> 用户：「tasks 的工具栏可以再优化一下」。三处偏离全仓惯例，已修正。
+
+| # | 旧 | 新 |
+| --- | --- | --- |
+| 1 | 字符 `↻` 当刷新图标 | lucide `RefreshCw`（与 `BrowserToolbar` / `BranchInfo` 同款） |
+| 2 | 搜索框裸 `Input` | 前置 `Search` 图标 + 有内容才出现的 `X` 清空（`LibrarySearchBar` 同款） |
+| 3 | GitHub 勾选框夹在搜索与动作之间 | 独立「数据源」分组（`role=group aria-label="数据源"`） |
+
+工具栏分区：`[视图切换] [搜索 flex-1] [数据源开关] [动作：新建（主）→ 刷新（次）]`。
+
+顺带修 `WorkItemRunsSection` 的同类 `↻` 字符图标（改 `RefreshCw`）。
+
+### 连带修正
+
+`+ 新建` 的 `+` 改成 `aria-hidden` 的 lucide `Plus` ⇒ 按钮可访问名从 `+ 新建` 变 `新建`，
+`TasksPanel.test.tsx` 的 `getByRole('button', { name: '+ 新建' })` 同步改为 `新建`。
+**这类改动必须同步调用点**：`aria-hidden` 图标不进可访问名。
+
+### 测试账（2026-11-03j）
+
+新增 `TasksPanelHeader.test.tsx`（10 条，此前该组件零独立覆盖）：
+- 图标是 SVG 不是字符（刷新 / 新建 / 搜索，含 `textContent` 为空的反证）
+- 清空按钮：有内容才出现、点它置空、空时不渲染
+- 三分区顺序（`compareDocumentPosition`，不用 snapshot）
+- 数据源组与动作组分离（开关不许住动作组）
+- 动作不是 hint 字阶
+
+`pnpm vitest run src/features src/app src/styles` → **5444 条绿**（613 文件）。
+
 ## 进度（2026-11-03i，参考图：列变圆角块 + 卡片自适配）
 
 > 用户给了参考图（Linear 式看板），并裁决两点：**① 列要变圆角块；② 底层 token 不变，
