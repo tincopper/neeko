@@ -1651,3 +1651,25 @@ P4–P6 以两个英文提交落地：中心区形态不再数 tab 注册表；d
 ### Next Steps
 
 - src-tauri/src/common/db/migrations.rs（LATEST_VERSION 18）仍是用户自测改动，未纳入这两次提交
+
+
+## Session 414: git status 可观测性：C1/C2/C4 落地（读与挂载解耦、排他移除、热集合 reconcile）
+<!-- trellis-session: v=2 fp=5ffeba8066d1a606 -->
+
+**Date**: 2026-11-05
+**Task**: git status 可观测性：C1/C2/C4 落地（读与挂载解耦、排他移除、热集合 reconcile）
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a9aec393` | refactor(git): make the hot set the only mount declaration |
+
+### Status
+
+[OK] **Completed**
