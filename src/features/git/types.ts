@@ -29,7 +29,7 @@ export type {
   StashEntry,
   StashActionResult,
   GitStatusSnapshot,
-  WorkspaceActivation,
+  WorkspaceActivationEntry,
   ConflictKind,
   ConflictSide,
   MergeRegion,

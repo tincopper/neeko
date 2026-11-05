@@ -89,6 +89,25 @@ describe('useGitStatusEventsSync — 事件按Workspace定址', () => {
     vi.restoreAllMocks();
   });
 
+  it('清单里已不含当前 worktree 时回落主仓（删掉 render-time effect 后的唯一自动触发者）', async () => {
+    // 场景：当前视图在 /wt/a，用户在终端里 `git worktree remove /wt/a`。
+    // `git-changed` 通常带的是**共享 gitdir 的活单元**（这里是主仓）的 key，因此
+    // `refreshUnitBranchInfo` 能成功拿到「已不含 /wt/a」的新清单 —— 这正是判死需要的那个事实。
+    // 删掉 render-time 回落 effect 后，若这里也不收口，界面会永久停在已不存在的单元上。
+    useWorkspaceStore.setState({
+      byProject: { p1: { activePath: '/wt/a', activeBranch: 'wt', opened: [] } },
+    });
+    const { unmount } = renderHook(() => useGitStatusEventsSync());
+    await waitFor(() => expect(listeners[GIT_CHANGED_EVENT]?.length).toBe(1));
+
+    emit(GIT_CHANGED_EVENT, { workspace_key: MAIN_KEY, project_id: 'p1' });
+
+    await waitFor(() => expect(useWorkspaceStore.getState().byProject.p1?.activePath).toBeNull());
+    // 回落必须走单点收口：该单元的槽位同时作废（未知 ≠ 旧数据）
+    expect(useProjectStore.getState().statuses).not.toHaveProperty(WT_KEY);
+    unmount();
+  });
+
   it('focused=true 时只刷新**当前视图单元**（不写死主仓）', async () => {
     useWorkspaceStore.setState({
       byProject: { p1: { activePath: '/wt/a', activeBranch: 'wt', opened: [] } },

@@ -365,7 +365,9 @@ class ContextCommandSetTest(unittest.TestCase):
         #   否则点目录里的图片静默 403；见 .trellis/spec/frontend/api-layer.md）
         # + check_feature_firewall_coverage（FEATURE_DIRS 必须等于 src/features 的目录集合：
         #   漏一个目录 = 该域跨域私有导入完全不受约束，见 quality-guidelines.md）
-        self.assertEqual(self.in_process_count("local"), 33)
+        # + check_frontend_resource_mirror（前端不得维护后端资源状态的影子副本 / 状态读
+        #   不得渲染期裸调用，见 state-management.md「声明式 reconcile」场景）
+        self.assertEqual(self.in_process_count("local"), 34)
 
     def test_coverage_entry_is_the_manual_stage(self):
         self.assertEqual(
@@ -391,7 +393,7 @@ class ContextCommandSetTest(unittest.TestCase):
         self.assertEqual(self.command_ids("ci", suite="lint", source="python"), [])
         # 与 local 档同源（同一批进程内判据）：新增一条就要同时改这里 ——
         # 这两个数字互不相等时，意味着某条护栏只在本地跑、对 PR 零约束力（历史事故）。
-        self.assertEqual(self.in_process_count("ci", suite="lint", source="python"), 33)
+        self.assertEqual(self.in_process_count("ci", suite="lint", source="python"), 34)
 
 
 if __name__ == "__main__":

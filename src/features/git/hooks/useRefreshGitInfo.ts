@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { fallbackToMainIfWorkspaceGone } from '@/shared/store/workspaceStore';
 import type { ProjectCommands, ProjectView } from '@/shared/types';
 
 /**
@@ -17,6 +18,9 @@ import type { ProjectCommands, ProjectView } from '@/shared/types';
  * - ahead/behind 不再在这里单独取（不再触发 `getAheadBehind`）—— 它随权威快照
  *   `git-status-snapshot` 单通道投递（见 `useGitStatusEventsSync`），冷启动由
  *   `useAheadBehindSync` 作初始种子。
+ * - **清单读取即判一次**：刷新拿到的是权威 worktree 清单，若激活的 worktree 已不在其中
+ *   （在别处被 `git worktree remove` 删掉）就一次性回落主仓 —— 取代旧的 render-time
+ *   清单校验（C4 / prd R2.2）。
  */
 export function useRefreshGitInfo(
   project: ProjectView | null,
@@ -67,5 +71,16 @@ export function useRefreshGitInfo(
     });
     useProjectStore.getState().applyStatus(snapshot);
     useGitStore.getState().setStatusTruncated(snapshot.workspace_key, snapshot.truncated);
+
+    // 清单读取后的**一次性**收口：激活的 worktree 不在清单里 ⇒ 回落主仓。
+    // 这里**不**逐渲染比较（那是被删掉的补偿机制），只在读到权威清单的这一刻判一次。
+    if (
+      fallbackToMainIfWorkspaceGone(
+        proj.id,
+        gitInfo.worktrees.map((wt) => wt.path),
+      )
+    ) {
+      console.warn('[worktree] active workspace gone, fell back to main');
+    }
   }, []);
 }

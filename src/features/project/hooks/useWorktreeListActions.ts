@@ -26,7 +26,7 @@ import {
  *
  * 生命周期收口契约（与本 hook 的实现一一对应）：
  * - 删除成功后：该单元槽位作废（I1-b「未知 ≠ 旧数据」）+ 它是当前视图时激活态回落主仓
- *   （回落由 `useActiveWorkspaceSync` 反应成「挂载主仓」，这里不手动刷数据）；
+ *   （回落由 `useVisibleWorkspaces` 声明成新集合，后端据此重挂主仓，这里不手动刷数据）；
  * - 改名成功后：旧路径槽位作废 + 它是当前视图时激活态改指**后端 canonical** 的新路径
  *   （前端派生串不得直接写激活态 —— 归一只能问后端，红线 8/12）。
  */
@@ -47,7 +47,7 @@ export function useWorktreeListActions(
         // 该单元从此没有任何生产者，槽位必须作废（I1-b「未知 ≠ 旧数据」）——命令成功后才做，
         // 失败时工作树还在、挂载与数据仍然有效。作废**只发生一次**：
         // - 删的正是当前视图所在单元 ⇒ 由 `clearActiveWorkspace` 单点完成（同时把激活态回落
-        //   主仓，`useActiveWorkspaceSync` 据此重挂主仓，这里不手动刷任何数据）；
+        //   主仓，`useVisibleWorkspaces` 据此声明新集合（后端 reconcile 重挂主仓），这里不手动刷任何数据）；
         // - 否则该槽位不会被任何其他路径碰到，在此显式作废。
         // 两条路互斥，避免「同一槽作废两次」让 `clearActiveWorkspace` 的单点契约变假。
         if (selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId) === worktreePath) {

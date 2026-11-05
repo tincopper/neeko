@@ -15,6 +15,7 @@ import {
   activeWorkspaceKeyOf,
   activeWorkspaceRootOf,
   activeWorkspaceSession,
+  fallbackToMainIfWorkspaceGone,
   selectActiveWorkspaceKey,
   selectActiveCheckoutPath,
   useActiveWorkspaceKey,
@@ -198,6 +199,34 @@ describe('activeWorkspaceSession —— 当前视图单元的地址值构造', (
 
     rerender({ pid: null });
     expect(result.current).toBeNull();
+  });
+});
+
+describe('fallbackToMainIfWorkspaceGone —— 清单读取后的一次性回落', () => {
+  it('激活 worktree 仍在清单里 ⇒ 不动（含清单为空但激活的是主仓）', () => {
+    useWorkspaceStore.getState().setActiveWorkspace('p1', WT_A, 'feature-a');
+    expect(fallbackToMainIfWorkspaceGone('p1', [WT_A, '/wt/b'])).toBe(false);
+    expect(selectActiveCheckoutPath(useWorkspaceStore.getState(), 'p1')).toBe(WT_A);
+
+    useWorkspaceStore.getState().clearActiveWorkspace('p1');
+    expect(fallbackToMainIfWorkspaceGone('p1', [])).toBe(false);
+  });
+
+  it('激活 worktree 不在清单里 ⇒ 回落主仓并作废该单元槽位', () => {
+    const key = String(WT_KEY);
+    useWorkspaceStore.getState().setActiveWorkspace('p1', WT_A, 'feature-a');
+    useProjectStore.setState({ statuses: { [key]: { workspace_key: key } as never } });
+
+    expect(fallbackToMainIfWorkspaceGone('p1', ['/wt/other'])).toBe(true);
+    expect(selectActiveCheckoutPath(useWorkspaceStore.getState(), 'p1')).toBeNull();
+    // 该单元从此没有生产者：残留快照不得继续被渲染（I1-b「未知 ≠ 旧数据」）
+    expect(useProjectStore.getState().statuses[key]).toBeUndefined();
+  });
+
+  it('清单为空也是「已消失」（没有任何 linked worktree）', () => {
+    useWorkspaceStore.getState().setActiveWorkspace('p1', WT_A, 'feature-a');
+    expect(fallbackToMainIfWorkspaceGone('p1', [])).toBe(true);
+    expect(selectActiveCheckoutPath(useWorkspaceStore.getState(), 'p1')).toBeNull();
   });
 });
 

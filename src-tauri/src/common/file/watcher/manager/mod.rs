@@ -5,7 +5,7 @@
 //! - [`handle`]：单项目 watcher 句柄（聚合全部运行资源）；
 //! - [`callbacks`]：notify 事件回调构建（闭包体抽离，组装编排保持精简）；
 //! - [`git_meta_merge`]：git 元数据并入主 watcher 的判定与回调构造；
-//! - [`core`]：`WatcherManager`（ensure_mounted / unwatch / stop_all）；
+//! - [`core`]：`WatcherManager`（reconcile_mounted / unwatch / stop_all）；
 //! - [`store`]：每单元权威 status 登记表（快照 + `computed_at` + `dirty` + 号段）。
 
 mod callbacks;

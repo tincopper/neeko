@@ -125,7 +125,7 @@ pub async fn set_active_project(
     };
 
     // 释放旧激活项目的挂载：drop notify watcher（递归反注册）可能短暂阻塞 → run_blocking
-    // 隔离（红线 3），与挂载侧 ensure_mounted 对称。（remove_project / change_project_path 是
+    // 隔离（红线 3），与挂载侧 reconcile_mounted 对称。（remove_project / change_project_path 是
     // 同步命令，不跑在 Tokio worker 上，其直调是合法的。）
     if let Some(old_id) = current.as_deref() {
         let manager = state.watcher_manager.clone();
@@ -133,8 +133,8 @@ pub async fn set_active_project(
         let _ = run_blocking(move || manager.unwatch_project(&old_id)).await;
     }
 
-    // 这里**不**挂新项目的 watcher：挂载的唯一发起点是前端 `useActiveWorkspaceSync`
-    // （反应 `(activeProjectId, 激活 worktree)` → `set_active_workspace`），旧项目已在上一步
+    // 这里**不**挂新项目的 watcher：挂载的唯一发起点是前端 `useVisibleWorkspaces`
+    // （反应 `(activeProjectId, 激活 worktree)` → `set_visible_workspaces`），旧项目已在上一步
     // `unwatch_project` 释放。以前在命令层按项目预挂主仓单元，等于给「谁在看」加了第二个
     // 发起点：切到带激活 worktree 的项目时，先挂主仓再被前端改挂 worktree，中间那份主仓
     // 快照既没人看也白跑一次 git status（2026-09-28 隔离实例日志实测到 already watched 告警）。

@@ -16,7 +16,7 @@ import { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
  * 单一表示：状态只有 `workspaceStore.byProject[projectId]` 一份（旧版本并行维护过
  * `activeWorktreePath` 等全局镜像，事件回调读镜像 → 读到别的项目/别的工作树的值）。
  * 单一方向：本 hook **只写激活态并作废旧单元槽位**，不发 git 命令 —— 后端挂载由
- * `useActiveWorkspaceSync`（composition 层）对激活态的订阅统一完成。两个发起点必然产生
+ * `useVisibleWorkspaces`（composition 层）对激活态的订阅统一完成（声明式 reconcile）。两个发起点必然产生
  * 时序差，那正是旧实现里「列表要不要手动刷新」取决于谁先跑完的根因。
  *
  * **mutator 的目标项目一律显式传入**（第一参数 `projectId`）：渲染期闭包捕获的

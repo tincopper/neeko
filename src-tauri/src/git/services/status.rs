@@ -2,7 +2,8 @@
 //!
 //! 命令层（`git/commands/query.rs`）只做参数校验 + 委派（红线 6），本模块承担编排：
 //! 快照优先、冷启动有界等待、未挂载单元退化为一次 pull 计算并登记同一张表。
-//! 激活是**可见集合**语义（C2）：批量确保挂载、逐单元给结局，挂载一个不释放任何别的单元。
+//! 激活是**声明式 reconcile**（C4）：一次调用把挂载集合收敛到可见集合 —— 挂载集合内的单元、
+//! 释放集合外的单元（两个动作在同一次调用、同一临界区内完成，不是「挂一个踢一个」）。
 //!
 //! **单一形态**：无论生产者是 push（挂载中的 watcher worker）还是 pull（本文件的
 //! `compute_and_record`），读出来的都是同一个 `GitStatusSnapshot` —— 同一个 `version`
@@ -73,11 +74,13 @@ pub async fn wait_main_status_fresh(state: &AppStateWrapper, project_id: &str) {
 /// 工作树存在」。目录没了还留着挂载：① 线程与句柄白占（AC11 的资源规模契约）；② 该单元
 /// 槽位里最后一份快照继续被当成权威数据渲染（I1-b 明令禁止的「旧数据伪装成事实」）。
 ///
-/// 前端把激活态切走后 `activate()` 也会顺带释放本项目其它单元，但**资源生命周期的归属在
-/// 后端** —— 不能把不变量寄托在调用方记得改状态上。`unwatch` 同时做掉释放与作废。
+/// 前端把激活态切走后 `reconcile_mounted` 的差集**也会**释放该单元（离热即释放，C4），但
+/// **资源生命周期的归属在后端** —— 不能把不变量寄托在调用方记得改状态上。`unwatch` 用于
+/// 「单元真的消失」（worktree 被删 / 项目移除）：它与离热释放同一语义（只拆资源、保留登记
+/// 数据），区别只在于触发者。
 ///
 /// **阻塞语义**：drop notify watcher（递归反注册 inotify/FSEvents 句柄）可能短暂阻塞 →
-/// 经 `run_blocking` 隔离（红线 3），与挂载侧 `ensure_mounted` 对称。
+/// 经 `run_blocking` 隔离（红线 3），与挂载侧 `reconcile_mounted` 对称。
 pub async fn release_workspace(state: &AppStateWrapper, repo: &WorkspaceRef) {
     let manager = state.watcher_manager.clone();
     let repo = repo.clone();
@@ -245,16 +248,15 @@ pub const fn supports_push_producer(target: &ExecTarget) -> bool {
     matches!(target, ExecTarget::Local)
 }
 
-/// Workspace 激活命令的结果（**单元素**载荷）：**「未就绪」是一等状态，不是错误**。
+/// 单个单元激活的结局（[`WorkspaceActivationEntry`] 的内部形态）：**「未就绪」是一等状态，
+/// 不是错误**。
 ///
 /// 冷启动窗口（挂载已成立、worker 首轮重算尚未落地）在慢环境（CI 冷 FS / Windows
 /// Defender）上必然超过任何固定预算 —— 把超时当错误，正确性就依赖环境延迟
 /// （2026-10 CI 事故：`activate_*` 在 windows-latest 上超时 panic）。
-/// `Pending` 的收敛通道有两条且都已存在：`git-status-snapshot` 推送事件 + 前端
-/// `useActiveWorkspaceSync` 的重试环。错误空间只留：单元解析失败、非 git 库、pull 失败。
-///
-/// **C2 起只是单元素投影**：语义与批量入口（[`WorkspaceActivationEntry`]）完全一致，差别只在
-/// 「一个单元的失败会不会影响别的」—— 那是批量才有的问题，所以只有批量把它表达成数据。
+/// `Pending` 的收敛通道是 `git-status-snapshot` 推送事件 + 读路径（C1 起读永远给得出答案）——
+/// 前端**不再**维护重试环（C4：重试环是「挂载可能不收敛」的影子记账，红线 17）。
+/// 错误空间只留：单元解析失败、非 git 库、pull 失败。
 #[derive(Debug, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum WorkspaceActivation {
@@ -270,11 +272,11 @@ pub enum WorkspaceActivation {
     },
 }
 
-/// 批量激活的**逐单元**结局（`set_visible_workspaces` 的载荷）。
+/// 可见集合命令的**逐单元**结局（`set_visible_workspaces` 的载荷）——**唯一** wire 形态。
 ///
-/// 与 [`WorkspaceActivation`] **刻意分开**：批量入口把「单元级失败」也表达成数据（`failed`），
-/// 因为整批 `Err` 会让一个坏项目拖死全部单元（前端只能整体渲染一次错误）。单元素入口保持原有
-/// 错误空间，前端 `useActivateWorkspace` 的失败分支因此零改动。
+/// 与 [`WorkspaceActivation`] **刻意分开**：wire 上把「单元级失败」也表达成数据（`failed`），
+/// 因为整批 `Err` 会让一个坏项目拖死全部单元（前端只能整体渲染一次错误）。单元素命令
+/// （`set_active_workspace`）已在 C4 删除 —— 前端只发可见集合。
 ///
 /// `workspace_key` 在三态里都带上：调用方按单元匹配结局（`ready` 的 `snapshot` 里也有同一个
 /// key，但让「哪个单元」成为**条目**的字段，匹配规则就不依赖载荷形状）。
@@ -355,14 +357,19 @@ enum UnitPlan {
     Failed { key: String, error: AppError },
 }
 
-/// 激活一批**可见**Workspace：逐个单元给结局，**挂载一个不释放任何别的单元**（C2）。
+/// 激活一批**可见**Workspace：把挂载集合收敛到本批集合，逐个单元给结局（声明式 reconcile）。
 ///
-/// 三段式（`11-04-git-status-observability/design.md` §1 的 C2 落地）：
+/// 三段式（`11-04-git-status-observability/design.md` §1 的 C4 落地）：
 /// 1. **解析 + 校验**：逐单元解析 [`WorkspaceRef`] 与 transport；非 git 库直接记 `Failed`；
-/// 2. **批量挂载**：本地单元汇总交 [`WatcherManager::ensure_mounted`] —— 一次临界区、一条日志，
-///    已挂载者不重建（R1.1 / R1.2 / R4.2）。**没有释放步骤**：互斥槽位已删除，A/B 互踢
-///    因此结构性不可能；
+/// 2. **批量 reconcile**：本地单元汇总交 [`WatcherManager::reconcile_mounted`] —— 一次临界区、
+///    一条日志：挂载集合内的单元（已挂载者不重建），**释放集合外已挂载的单元**（R1.3）。
+///    声明集合 `keep` = 本批**解析成功且是 git 库**的全部单元（含远端 `Pull` 单元）—— 远端单元
+///    无 push 生产者，从不挂载，也绝不因「不在 `mount_batch` 里」被释放；
 /// 3. **逐单元落点**：本地取首快照（冷窗口 ⇒ `pending`），远端 pull 一次（恒 `ready`）。
+///
+/// **离热释放保留数据**（C1）：释放只拆资源（watcher / worker / 线程），登记表里的快照与
+/// `computed_at` / `dirty` 留下 —— 切回该单元时读路径要么直接给旧值，要么因脏/陈旧现算，
+/// 不会出现「空转」。
 ///
 /// **单元级隔离**：解析失败 / 非 git 库 / pull 失败只影响**该项**，其余照常 —— 整批失败会让
 /// 一个坏项目拖死全部（见 [`WorkspaceActivationEntry`]）。返回顺序与入参一致。
@@ -373,6 +380,7 @@ pub async fn activate_many(
 ) -> Vec<(String, Result<WorkspaceActivation, AppError>)> {
     let mut plan: Vec<UnitPlan> = Vec::with_capacity(workspaces.len());
     let mut mount_batch: Vec<(WorkspaceRef, Arc<dyn WatcherEventSink>)> = Vec::new();
+    let mut visible_keys: Vec<String> = Vec::with_capacity(workspaces.len());
 
     for workspace in workspaces {
         let (target, repo) = match state.resolve_workspace_target(workspace).await {
@@ -397,23 +405,27 @@ pub async fn activate_many(
             });
             continue;
         }
+        // 可见集合（reconcile 的声明）：解析成功且是 git 库的单元，**含远端** —— 见函数 docstring。
+        visible_keys.push(repo.key());
         if supports_push_producer(&target) {
             mount_batch.push((repo.clone(), Arc::clone(&sink)));
             plan.push(UnitPlan::Mount { repo, target });
         } else {
+            // 远端单元：在可见集合里（不得被差集误释放），但没有可挂载的资源。
             plan.push(UnitPlan::Pull { repo, target });
         }
     }
 
-    // 批量挂载：一次临界区、一条日志（R4.2），且**不释放**任何已有挂载 —— 这是「互踢」的
-    // 结构性消失点：没有互斥槽位可抢，就没有「谁被顶掉」。
+    // 声明式 reconcile：挂载集合内的单元 + 释放集合外已挂载的单元，一次临界区、一条日志。
     // notify 的递归注册在 Linux 上会同步遍历整树 ⇒ 必须离开 IPC/async 线程（红线 3）。
-    if !mount_batch.is_empty() {
+    {
         let manager = state.watcher_manager.clone();
-        if let Err(error) = run_blocking(move || manager.ensure_mounted(mount_batch)).await {
-            // 批量挂载整体没跑完（运行时关停 / 阻塞池 panic）：下面的 `is_watched` 判据会把这批
+        let reconciled =
+            run_blocking(move || manager.reconcile_mounted(mount_batch, &visible_keys)).await;
+        if let Err(error) = reconciled {
+            // reconcile 整体没跑完（运行时关停 / 阻塞池 panic）：下面的 `is_watched` 判据会把这批
             // 单元退化为一次 pull —— 至少给出数据，错误只落在真正算不出来的单元上。
-            log::warn!("[GitStatus] batch mount task failed: {error}");
+            log::warn!("[GitStatus] batch reconcile task failed: {error}");
         }
     }
 
@@ -434,36 +446,10 @@ pub async fn activate_many(
     outcomes
 }
 
-/// 单个Workspace的激活入口 —— **单元素集合**语义，与批量入口共用同一套编排。
-///
-/// C2 起它不再是「只允许挂这一个」：挂载本单元**不影响**任何已挂载单元（排他已删除）。语义上
-/// 等价于 `activate_many(&[workspace])`，唯一差别是结局映射：单元级失败回到 `Err` 错误空间 ——
-/// 前端 `useActivateWorkspace` 的失败分支依赖它（零改动契约）。
-///
-/// **依赖倒置**：挂载所需的事件出口以端口 [`WatcherEventSink`] 注入，本函数不接收
-/// `tauri::AppHandle`、也不自己 `new AppHandleSink` —— 交付适配器的构造属于命令边界
-/// （`git/commands/query.rs`）。这样服务层可用测试替身（`CollectingSink`）驱动，
-/// 且模块结构上不再依赖 Tauri（另有护栏 `check_service_no_delivery_dep` 钉住）。
-pub async fn activate(
-    state: &AppStateWrapper,
-    sink: Arc<dyn WatcherEventSink>,
-    workspace: &WorkspaceSession,
-) -> Result<WorkspaceActivation, AppError> {
-    let mut outcomes = activate_many(state, sink, std::slice::from_ref(workspace)).await;
-    match outcomes.pop() {
-        Some((_key, outcome)) => outcome,
-        // `activate_many` 的契约是「逐元素一进一出」；走到这里说明契约被破坏。
-        None => Err(AppError::Unknown(format!(
-            "workspace {} produced no activation outcome",
-            workspace.key()
-        ))),
-    }
-}
-
 /// 落点 A：挂载**已确保**的本地单元 —— 取首个快照，冷窗口 ⇒ [`WorkspaceActivation::Pending`]。
 ///
-/// 挂载未成立（`ensure_mounted` 内部的 setup 失败已记录告警、没有 push 生产者）⇒ 退化为一次性
-/// pull：与旧读路径同语义 —— 至少给出数据，槽位有权威值可渲染。
+/// 挂载未成立（`reconcile_mounted` 内部的 setup 失败已记录告警、没有 push 生产者）⇒ 退化为
+/// 一次性 pull：与旧读路径同语义 —— 至少给出数据，槽位有权威值可渲染。
 async fn mounted_outcome(
     state: &AppStateWrapper,
     repo: &WorkspaceRef,
@@ -472,7 +458,7 @@ async fn mounted_outcome(
     if !state.watcher_manager.is_watched(repo) {
         return pull_outcome(state, repo, transport).await;
     }
-    // 预算内未就绪（冷窗口）⇒ `Pending`：挂载已成立、数据在途，由推送事件与前端重试环收敛
+    // 预算内未就绪（冷窗口）⇒ `Pending`：挂载已成立、数据在途，由推送事件与读路径收敛
     // —— 这里**绝不返回 Err**（见 [`WorkspaceActivation`]）。
     Ok(first_snapshot_outcome(
         read_mounted_snapshot(&state.watcher_manager, repo).await,
@@ -500,7 +486,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
-        activate, activate_many, first_snapshot_outcome, pull_outcome, read_workspace_status,
+        activate_many, first_snapshot_outcome, pull_outcome, read_workspace_status,
         supports_push_producer, WorkspaceActivation,
     };
     use crate::common::executor::factory::ExecTarget;
@@ -602,13 +588,19 @@ mod tests {
             .await
             .expect("resolve repo");
         let sink = CollectingSink::new();
-        let outcome = activate(
+        let outcomes = activate_many(
             &state,
             sink.clone(),
-            &WorkspaceSession::of(project_id, None),
+            &[WorkspaceSession::of(project_id, None)],
         )
-        .await
-        .expect("冷窗口必须是合法结局（Ready/Pending），不得是错误");
+        .await;
+        assert_eq!(outcomes.len(), 1, "逐单元一进一出");
+        let outcome = outcomes
+            .into_iter()
+            .next()
+            .expect("single outcome")
+            .1
+            .expect("冷窗口必须是合法结局（Ready/Pending），不得是错误");
 
         assert!(state.watcher_manager.is_watched(&repo));
         // 收敛走**事件通道**（冷窗口语义下事件是唯一保证）：
@@ -623,13 +615,15 @@ mod tests {
         }
     }
 
-    /// **AC1 的服务层判据**：激活新单元**不得**释放旧单元。
+    /// **C2 能力仍在（不被 C4 的 reconcile 削弱）**：同一批声明两个单元 ⇒ 两个都在。
     ///
-    /// 改写自 `activate_releases_the_previous_unit`（旧 D-B 不变量的正方向断言，
-    /// 见 prd R2.2：反向测试必须翻转为正向断言，不得简单删除）。旧版本断言
-    /// `!is_watched(A)` —— 那正是互踢；现在它必须失败。
+    /// 语义边界说清楚：reconcile 只释放**声明外**的单元；它**不是**互斥（「挂一个就踢一个」）。
+    /// 旧用例 `activate_keeps_previous_unit_mounted`（依次声明 A、B ⇒ 两个都在）断言的是
+    /// **互斥消失**，而 C4 之后「只声明 B」的正确结局恰好是释放 A —— 它已由
+    /// `visible_set_releases_units_outside_it` 接管。本用例保留旧用例真正想钉的那条能力：
+    /// 多单元可同时拥有 push 生产者。
     #[tokio::test]
-    async fn activate_keeps_previous_unit_mounted() {
+    async fn declaring_two_units_mounts_both() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let (state, project_a) = plain_project_state(&tmp);
         init_git_repo(&tmp.path().join("proj"));
@@ -645,51 +639,163 @@ mod tests {
             .expect("repo b");
 
         let sink_a = CollectingSink::new();
-        activate(
+        let outcomes = activate_many(
             &state,
             sink_a.clone(),
-            &WorkspaceSession::of(project_a, None),
+            &[
+                WorkspaceSession::of(project_a, None),
+                WorkspaceSession::of(project_b, None),
+            ],
         )
-        .await
-        .expect("activate a（冷窗口不得为错误）");
+        .await;
+        for (key, outcome) in &outcomes {
+            assert!(outcome.is_ok(), "{key} 的冷窗口不得为错误：{outcome:?}");
+        }
         assert!(state.watcher_manager.is_watched(&repo_a));
+        assert!(state.watcher_manager.is_watched(&repo_b));
         // 夹具前提：A 的权威快照已落地（事件是冷窗口语义下唯一的收敛保证）。
         assert!(
             wait_for_sink_event(&sink_a, FIRST_EVENT_TIMEOUT).await,
             "A 的首份快照必须经注入端口投递"
+        );
+        assert!(state.watcher_manager.snapshot(&repo_a).is_some());
+    }
+
+    /// **R1.3 / AC1-AC2（后端侧闭合）**：声明集合收缩 ⇒ 差集内的单元被释放，**登记表数据保留**。
+    ///
+    /// 这是 C2 遗留缺口的收口点：C2 的挂载入口只「确保」、从不释放 ⇒ 会话内访问过的每个
+    /// workspace 永久占一套 watcher + worker + FSEvents 流（无界累积）。
+    #[tokio::test]
+    async fn visible_set_releases_units_outside_it() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_a) = plain_project_state(&tmp);
+        init_git_repo(&tmp.path().join("proj"));
+        let project_b = add_git_project(&state, &tmp.path().join("proj-b"));
+
+        let (_ta, repo_a) = state
+            .resolve_workspace(&project_a, None)
+            .await
+            .expect("repo a");
+        let (_tb, repo_b) = state
+            .resolve_workspace(&project_b, None)
+            .await
+            .expect("repo b");
+
+        // 先声明 A + B（两个都挂上），并等 A 的快照落地（下面要断言释放后它仍在）。
+        let sink_ab = CollectingSink::new();
+        activate_many(
+            &state,
+            sink_ab.clone(),
+            &[
+                WorkspaceSession::of(&project_a, None),
+                WorkspaceSession::of(&project_b, None),
+            ],
+        )
+        .await;
+        assert!(state.watcher_manager.is_watched(&repo_a));
+        assert!(state.watcher_manager.is_watched(&repo_b));
+        assert!(
+            wait_for_sink_event(&sink_ab, FIRST_EVENT_TIMEOUT).await,
+            "先决条件：A 的首份快照落地，后面的 retention 断言才有意义"
         );
         let before = state
             .watcher_manager
             .snapshot(&repo_a)
             .expect("A 的快照已落地");
 
-        activate(
+        // 声明收缩到 [A] ⇒ B 离热释放，A 不受影响。
+        activate_many(
             &state,
             CollectingSink::new(),
-            &WorkspaceSession::of(project_b, None),
+            &[WorkspaceSession::of(&project_a, None)],
         )
-        .await
-        .expect("activate b（冷窗口不得为错误）");
+        .await;
 
-        assert!(state.watcher_manager.is_watched(&repo_b));
+        let watched = state.watcher_manager.watched_units();
+        assert!(
+            !state.watcher_manager.is_watched(&repo_b),
+            "声明外的单元必须被释放（否则挂载集合随访问历史无界增长）：{watched:?}"
+        );
         assert!(
             state.watcher_manager.is_watched(&repo_a),
-            "激活新单元不得释放旧单元（C2 已删除排他挂载：互斥槽位不存在）"
+            "声明内的单元不得被差集误杀：{watched:?}"
         );
+        // 释放 ≠ 作废数据（C1）：切回该单元读得到旧值 + 脏位/陈旧窗口触发重算。
         let after = state
             .watcher_manager
             .snapshot(&repo_a)
-            .expect("A 的槽位不得被清空（挂载释放才作废资源，数据只由淘汰/forget 回收）");
-        assert_eq!(
-            after.workspace_key, before.workspace_key,
-            "A 的槽位必须仍属于 A"
-        );
+            .expect("A 的登记数据不得因本轮 reconcile 消失");
+        assert_eq!(after.workspace_key, before.workspace_key);
         assert!(
             after.version >= before.version,
-            "A 的槽位不得回退：{} < {}",
+            "A 的号段不得回退：{} < {}",
             after.version,
             before.version
         );
+    }
+
+    /// **R1.3 的幂等面**：同一集合重复声明 ⇒ 既无 created 也无 released。
+    ///
+    /// 前端去重（R1.4）只保证「集合不变时不发命令」，后端仍必须自己幂等 —— 两个幂等面
+    /// 任何一侧缺失都会把重复声明放大成资源重建（互踢的另一种形状）。
+    #[tokio::test]
+    async fn reconcile_keeps_a_unit_that_is_still_in_the_set() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_id) = plain_project_state(&tmp);
+        init_git_repo(&tmp.path().join("proj"));
+        let (_t, repo) = state
+            .resolve_workspace(&project_id, None)
+            .await
+            .expect("repo");
+
+        let keep = vec![repo.key()];
+        let (created, released) = state
+            .watcher_manager
+            .reconcile_mounted(vec![(repo.clone(), CollectingSink::new())], &keep);
+        assert_eq!(created, keep, "首轮必须新建该单元的挂载");
+        assert!(released.is_empty(), "首轮没有可释放的单元");
+
+        let (created, released) = state
+            .watcher_manager
+            .reconcile_mounted(vec![(repo.clone(), CollectingSink::new())], &keep);
+        assert!(created.is_empty(), "重申同一单元不得重建（幂等）");
+        assert!(released.is_empty(), "集合内单元不得被释放");
+        assert!(state.watcher_manager.is_watched(&repo));
+        assert_eq!(state.watcher_manager.watched_units(), keep);
+    }
+
+    /// **远端单元不参与差集**：声明 `[远端单元]` 不得释放任何本地挂载。
+    ///
+    /// 机制：`keep` 是本批**解析成功且是 git 库**的全部单元（含 `Pull` 单元），因此远端单元在
+    /// `keep` 里、不在 `mount_batch` 里 —— 若把 `keep` 缩成 `mount_batch`，切换到一个远端项目
+    /// 会把本地单元的挂载全部拆掉（服务层回归）。用 `ExecTarget::Wsl` 声明一个远端单元
+    /// 需要真机，故这里直接交给 manager：`reconcile_mounted([], &[A, remote])`。
+    #[tokio::test]
+    async fn reconcile_never_releases_a_unit_that_is_declared_but_not_mountable() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_id) = plain_project_state(&tmp);
+        init_git_repo(&tmp.path().join("proj"));
+        let (_t, repo) = state
+            .resolve_workspace(&project_id, None)
+            .await
+            .expect("repo");
+
+        let _ = state
+            .watcher_manager
+            .reconcile_mounted(vec![(repo.clone(), CollectingSink::new())], &[repo.key()]);
+        assert!(state.watcher_manager.is_watched(&repo));
+
+        // 本轮声明里带上一个「无 push 生产者、从不挂载」的单元（远端形态）—— 它没有任何资源
+        // 可释放，也不得把别人带下水。key 用占位串（本用例只验差集，不验身份形态）。
+        let unmountable = "remote-unit-without-local-resources".to_string();
+        let (_created, released) = state
+            .watcher_manager
+            .reconcile_mounted(Vec::new(), &[repo.key(), unmountable]);
+        assert!(
+            released.is_empty(),
+            "声明内（即使不可挂载）的单元不得被差集释放：{released:?}"
+        );
+        assert!(state.watcher_manager.is_watched(&repo));
     }
 
     /// **AC2（批量命令）**：一次 `activate_many([A, 坏项目, C])` ⇒ 三个单元各自给结局 ——
@@ -762,23 +868,24 @@ mod tests {
         );
     }
 
-    /// 单元素入口把**单元级失败**保留在错误空间（批量入口才把它转成 `failed` 数据）。
+    /// **单元素声明同样是逐单元结局**：坏项目落 `failed` **数据**，不是整批 `Err`。
     ///
-    /// 前端的 `useActivateWorkspace` 依赖这条（`catch` → 槽位置空 + 一次诊断），是 AC7
-    /// 「前端零改动」的判据：命令契约没变，变了的是「不再释放别人」。
+    /// C4 删除了单元素命令（`set_active_workspace`）—— 前端只发可见集合。因此这条
+    /// 「单元级失败不拖死同批其它单元」的隔离契约唯一留在 `activate_many` 上。
     #[tokio::test]
-    async fn single_unit_entry_surfaces_unit_level_failure_as_error() {
+    async fn missing_project_surfaces_as_a_failed_entry_not_a_batch_error() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let (state, _project_id) = plain_project_state(&tmp);
-        let outcome = activate(
+        let outcomes = activate_many(
             &state,
             CollectingSink::new(),
-            &WorkspaceSession::of("missing-project", None),
+            &[WorkspaceSession::of("missing-project", None)],
         )
         .await;
+        assert_eq!(outcomes.len(), 1, "逐单元一进一出");
         assert!(
-            outcome.is_err(),
-            "未知项目必须回到错误空间（不是 pending / failed 数据）"
+            outcomes[0].1.is_err(),
+            "未知项目必须是单元级失败（整批 Err 由命令边界判定，不得拖死其它项）"
         );
     }
 
@@ -786,7 +893,9 @@ mod tests {
     ///
     /// 用 `&ExecTarget::Local`（本地真仓）驱动**同一条 pull 编排**（`pull_outcome`），无需真机
     /// 也无需假 transport；分类判据由 `only_local_targets_get_a_push_producer` 单独钉住 ——
-    /// 两条合起来覆盖整条远端分支。C2 起它**不再释放**其它单元的挂载（排他已删除）。
+    /// 两条合起来覆盖整条远端分支。拉取路径本身从不碰挂载（释放只发生在
+    /// `reconcile_mounted` 的差集里，而远端单元在 `keep` 中，见
+    /// `reconcile_never_releases_a_unit_that_is_declared_but_not_mountable`）。
     #[tokio::test]
     async fn pull_branch_computes_without_mounting_or_releasing_other_units() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -804,13 +913,12 @@ mod tests {
             .expect("repo b");
 
         // A 按 Local 正常挂载（有 push 生产者）
-        activate(
+        activate_many(
             &state,
             CollectingSink::new(),
-            &WorkspaceSession::of(project_a, None),
+            &[WorkspaceSession::of(project_a, None)],
         )
-        .await
-        .expect("mount a（冷窗口不得为错误）");
+        .await;
         assert!(state.watcher_manager.is_watched(&repo_a));
 
         // B 走「远端形态」：同一条 pull 编排（本地 transport + 无 push 生产者）
@@ -833,7 +941,7 @@ mod tests {
         );
         assert!(
             state.watcher_manager.is_watched(&repo_a),
-            "pull 分支不得释放已有挂载（C2 删除排他：切换远端项目不再顶掉本地单元）"
+            "pull 分支不得释放已有挂载（它从不碰挂载：释放只发生在 reconcile 的差集里）"
         );
         assert!(
             sink.event_names().is_empty(),

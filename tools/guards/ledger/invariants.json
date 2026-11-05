@@ -46,13 +46,13 @@
     },
     {
       "id": "mount-entry-singularity",
-      "title": "Workspace挂载只有一个入口（WatcherManager::ensure_mounted）",
+      "title": "Workspace挂载只有一个入口（WatcherManager::reconcile_mounted）",
       "tier": "structure",
       "enforcement": [
         {
           "kind": "guard",
           "ref": "check_workspace_identity",
-          "note": "生产代码里 WatcherManager::watch 调用点唯一；structure 指「挂载资源所有权集中在 ensure_mounted，服务层经 git/services/status.rs::activate_many 调用」。C2 起该入口是批量的「确保挂载」（不释放任何其它单元）—— 唯一性说的是入口，不是「全局只能有一套挂载」"
+          "note": "生产代码里 WatcherManager::watch 调用点唯一；structure 指「挂载资源所有权集中在 reconcile_mounted（声明式 reconcile：挂载声明集合 + 释放集合外的已挂载单元），服务层经 git/services/status.rs::activate_many 调用」。C4 收口了「挂载集合随访问历史无界增长」（C2 的 ensure_mounted 只增不减）—— 差集与挂载同临界区，因此仍不是「挂一个踢一个」的互斥槽位；唯一性说的是入口，不是「全局只能有一套挂载」"
         },
         {
           "kind": "test",
@@ -330,28 +330,23 @@
     },
     {
       "id": "activation-readiness-is-a-state-not-an-error",
-      "title": "激活命令的就绪性是一等状态：冷窗口超时返回 Pending，不得进入错误空间",
+      "title": "激活的就绪性是一等状态：冷窗口返回 pending（数据），不得进入错误空间",
       "tier": "type",
       "enforcement": [
         {
           "kind": "type",
           "ref": "src-tauri/src/git/services/status.rs",
-          "note": "范围 = 单元素激活命令（set_active_workspace）：WorkspaceActivation{Ready|Pending}（serde tag=state）+ first_snapshot_outcome 无错误分支（批量命令 set_visible_workspaces 另用 WorkspaceActivationEntry，把**单元级**失败表达成数据而不是整批 Err —— 一个坏项目不得拖死其余单元）；有界等待（RECALC_WAIT_TIMEOUT）只是延迟优化，正确性归 git-status-snapshot 推送。读命令（get_workspace_status）冷窗口仍返回 Err(NotFound) —— 消费方按「未知」收敛（catch→null），如需同化另行评估"
+          "note": "WorkspaceActivation{Ready|Pending}（serde tag=state）+ first_snapshot_outcome 无错误分支；wire 上唯一形态是 set_visible_workspaces → WorkspaceActivationEntry{ready|pending|failed}（单元级失败落数据，一个坏项目不得拖死其余单元）。单元素命令 set_active_workspace 已在 C4 删除（前端只发可见集合）。有界等待（RECALC_WAIT_TIMEOUT）只是延迟优化，正确性归 git-status-snapshot 推送 + 读路径（C1）。读命令（get_workspace_status）冷窗口仍返回 Err(NotFound) —— 消费方按「未知」收敛（catch→null），如需同化另行评估"
         },
         {
           "kind": "test",
           "ref": "src-tauri/src/git/services/status.rs",
-          "note": "冷窗口纯映射直测 + 「activate 冷窗口不得为错误」+ pull 分支恒 Ready"
+          "note": "冷窗口纯映射直测 + 「挂载后首快照经注入端口投递，冷窗口不得是错误」+ pull 分支恒 Ready"
         },
         {
           "kind": "test",
-          "ref": "src/app/hooks/__tests__/useActiveWorkspaceSync.test.ts",
-          "note": "前端对偶：pending 不判死不报错、退避重试直到落地（与失败路径同一收敛模型）"
-        },
-        {
-          "kind": "test",
-          "ref": "src/features/git/hooks/__tests__/useActivateWorkspace.test.ts",
-          "note": "pending 不写槽位、不报错"
+          "ref": "src/app/hooks/__tests__/useVisibleWorkspaces.test.ts",
+          "note": "前端对偶：pending 不写槽位不报错、failed 只记一条 dev 日志、失败不重发（没有重试环）"
         }
       ],
       "red_line": null
@@ -485,6 +480,52 @@
         }
       ],
       "red_line": 12
+    },
+    {
+      "id": "frontend-no-resource-state-mirror",
+      "title": "前端不得维护后端资源状态的影子副本；状态读不得渲染期裸调用（红线 17 的机器判据）",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_frontend_resource_mirror",
+          "note": "A：src/** 生产代码出现 requestedIntent / inflightMount / mountTicket 类「镜像后端资源态」的记账标识符即违规（原文级，含注释）；B：getWorkspaceStatus / refreshWorkspaceStatus 的调用点必须位于 useEffect / useCallback / useLayoutEffect 括号范围内，或位于普通函数（非 hook / 非组件）体内—— useMemo 不在允许集合（渲染期同步执行）"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_frontend_resource_mirror.py",
+          "note": "正反用例：清单每条标识符、注释命中、前缀不误杀、测试/类型文件豁免、effect/callback/普通函数放行、hook·组件·useMemo 拦下"
+        },
+        {
+          "kind": "structure",
+          "ref": "src/app/hooks/useVisibleWorkspaces.ts",
+          "note": "结构面：唯一发送端 = 声明式 reconcile（一个 effect 一次 set_visible_workspaces，去重判据是 WorkspaceKey 排序后的字符串签名）。前端不持有「我请求过谁 / 后端挂了谁」的记账—— 那正是红线 17 禁止的影子副本；删除台账见 .trellis/tasks/11-04-frontend-single-writer"
+        }
+      ],
+      "red_line": 17
+    },
+    {
+      "id": "resource-scarcity-stays-out-of-the-data-contract",
+      "title": "资源稀缺只影响调度顺序，不得成为「能否显示」的前提（红线 16）",
+      "tier": "structure",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_workspace_identity",
+          "note": "挂载入口唯一（判据 4）：生产代码里 WatcherManager::watch 只允许出现在管理器自身的 reconcile_mounted 与服务层编排—— 入口唯一是为了「谁在看」可追溯，不是为了把观测集合压到 1"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/git/services/status.rs",
+          "note": "读路径与挂载解耦的代码级判据：read_workspace_status 不按 is_watched 分支；visible_set_releases_units_outside_it / reconcile_keeps_a_unit_that_is_still_in_the_set 钉住「集合是声明」"
+        },
+        {
+          "kind": "structure",
+          "ref": "src-tauri/src/common/file/watcher/manager/core.rs",
+          "note": "结构面：reconcile_mounted(units, keep) 在同一临界区内完成「挂 keep、释放非 keep」；资源稀缺体现在调度（谁先被算），不体现在可观测性。历史反例 mount_only/release_except 已删除（2026-11 互踢事故）"
+        }
+      ],
+      "red_line": 16
     }
   ]
 }

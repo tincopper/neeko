@@ -42,7 +42,7 @@ export function useCrossTypeSelection({
     async (projectId: ProjectId) => {
       closeSettingsView();
 
-      // 切换项目类型：清掉各项目的激活单元（后端挂载由 useActiveWorkspaceSync 跟随）
+      // 切换项目类型：清掉各项目的激活单元（后端挂载由 useVisibleWorkspaces 声明（reconcile 跟随））
       for (const pid of Object.keys(useWorkspaceStore.getState().byProject)) {
         useWorkspaceStore.getState().clearActiveWorkspace(pid as ProjectId);
       }

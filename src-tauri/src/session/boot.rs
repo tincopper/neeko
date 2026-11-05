@@ -6,8 +6,8 @@
 //!   只记警告 —— 一个失效项目不该让整次启动降级；
 //! - **激活项目**必须指向本次装载成功的项目之一，悬空 id 一律降级为 `None`
 //!   （旧会话可能引用已被删除的项目）；
-//! - 启动期**不**预挂 watcher 单元：挂载的唯一发起点是前端 `useActiveWorkspaceSync`
-//!   （它反应 `(activeProjectId, 激活 worktree)` → `set_active_workspace`）。旧实现
+//! - 启动期**不**预挂 watcher 单元：挂载的唯一发起点是前端 `useVisibleWorkspaces`
+//!   （它把「热集合」声明成 `set_visible_workspaces`，后端按声明 reconcile）。旧实现
 //!   在此按会话的激活项目先挂主仓，于是每次启动都出现「先挂主仓、1 秒后改挂
 //!   worktree」的两发起点时序差（实测日志报 already watched）；
 //! - 会话文件缺失 / 损坏**不**视为启动失败：返回空结果，应用以空工作区启动。

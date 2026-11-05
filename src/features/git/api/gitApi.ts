@@ -16,7 +16,7 @@ import type {
   StashActionResult,
   StashEntry,
   GitStatusSnapshot,
-  WorkspaceActivation,
+  WorkspaceActivationEntry,
   ConflictStages,
   ConflictResolution,
 } from '../types';
@@ -255,15 +255,19 @@ export function getWorkspaceStatus(workspace: WorkspaceSession): Promise<GitStat
 }
 
 /**
- * 激活一个Workspace（决策 D-B：后端只挂当前视图所在的那一个单元）。
+ * 声明**可见集合**（= 热集合）：这些Workspace应当拥有 push 生产者，集合外的已挂载单元
+ * 由后端释放（声明式 reconcile，不是「挂一个踢一个」）。
  *
- * 后端会释放该项目下其它单元的挂载、挂载本单元，并**尽力**取回首个快照：
- * `ready` 携带快照，`pending` = 挂载已成立、首轮重算在途（冷窗口，不是错误 ——
- * 由推送事件与重试环收敛，见 `WorkspaceActivation`）。
- * 唯一调用方是 `useActivateWorkspace`（前端「当前视图」的唯一派生点）。
+ * 释放**不作废登记表数据**（C1）：切回该单元读到的是旧值 + 脏位/陈旧窗口触发的重算。
+ * 返回值是**逐单元**结局：`ready` 带快照、`pending` = 冷窗口（不是错误）、`failed` =
+ * 该单元自己失败（不影响同批其它单元）。
+ *
+ * 唯一调用方是 `useVisibleWorkspaces`（app 层「当前视图是谁」的唯一发送端）。
  */
-export function activateWorkspace(workspace: WorkspaceSession): Promise<WorkspaceActivation> {
-  return invoke<WorkspaceActivation>('set_active_workspace', { workspace });
+export function setVisibleWorkspaces(
+  workspaces: WorkspaceSession[],
+): Promise<WorkspaceActivationEntry[]> {
+  return invoke<WorkspaceActivationEntry[]>('set_visible_workspaces', { workspaces });
 }
 
 /**

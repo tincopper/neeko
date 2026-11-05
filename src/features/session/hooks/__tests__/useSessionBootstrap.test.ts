@@ -26,7 +26,6 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('../../../git/api/gitApi', () => ({
   // status 读接口的唯一形态：按Workspace的 versioned 快照
   getWorkspaceStatus: mockGetWorkspaceStatus,
-  activateWorkspace: vi.fn(() => Promise.resolve({})),
   getGitBranchInfo: mockGetGitBranchInfo,
   getAheadBehind: mockGetAheadBehind,
   canonicalWorktreePath: mockCanonicalWtPath,
@@ -211,10 +210,11 @@ describe('useSessionBootstrap — 启动恢复 session 激活 worktree', () => {
     expect(unit?.opened).toEqual([{ path: '/repo/wt/Test', branch: 'Test' }]);
   });
 
-  it('清单里匹配不上也照样把路径意图交给挂载点（前端不判路径死活 —— 红线 12）', async () => {
+  it('清单里认不出 ⇒ 停在主仓（判死落在这唯一一次清单读取上 —— C4/R2.2）', async () => {
     // 匹配不上有两种成因：真被删了，或 session 里存的是**非 canonical 形态**
-    // （`/tmp` ↔ `/private/tmp`）。后者在本仓里前端无法分辨，因此一律交给后端：
-    // 解析得了就恢复（并把激活态改写成后端形态），解析不了由挂载点回落主仓。
+    // （`/tmp` ↔ `/private/tmp`）。后者由 `canonicalWorktreePath` 归一后再比，能认出来；
+    // 认不出就只能是「该 worktree 已被删除」。恢复流程刚读完权威清单，判死只在这一刻发生
+    // （不再由 `useAppShellData` 逐渲染比较 —— 那个判死点已在 C4 删除）。
     mockLoadSession.mockResolvedValue({
       active_project_id: 'p1',
       worktree_state: { p1: '/repo/wt/Gone' },
@@ -229,9 +229,8 @@ describe('useSessionBootstrap — 启动恢复 session 激活 worktree', () => {
     setup();
     await act(async () => {});
 
-    expect(useWorkspaceStore.getState().byProject['p1']?.activePath).toBe('/repo/wt/Gone');
-    // 不在清单里就不进 opened（那部分是纯本地展示，没有身份含义）
-    expect(useWorkspaceStore.getState().byProject['p1']?.opened).toEqual([]);
+    // 不写激活态 = 停在主仓（workspaceStore 的缺失项就是「主 checkout」）。
+    expect(useWorkspaceStore.getState().byProject['p1']).toBeUndefined();
   });
 
   it('session 存的是符号链接形态路径 → 交后端归一后按 canonical 形态恢复（AC6）', async () => {

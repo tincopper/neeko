@@ -1119,8 +1119,8 @@ rerun: async (projectId) => {
   当时只有 per-project 一个 `changed_files` 槽 + 一个 per-project version 计数，两个单元共槽
   必然互相覆盖；worktree 又没有权威生产者，于是「不刷新就不动」。
 - Scope：`shared/utils/workspaceRef.ts`（身份）、`shared/store/projectStore.ts`（`statuses` 分槽 +
-  唯一写入口）、`shared/store/workspaceStore.ts`（激活态单源）、`features/git/hooks/useRepoUnit.ts`
-  + `app/hooks/useActiveWorkspaceSync.ts`（挂载唯一入口）、`features/git/utils/gitStatus.ts`。
+  唯一写入口）、`shared/store/workspaceStore.ts`（激活态单源）、`app/hooks/useVisibleWorkspaces.ts`
+  （可见集合唯一发送端，C4）、`features/git/utils/gitStatus.ts`。
 
 ### 2. Signatures
 
@@ -1170,26 +1170,29 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(workspaceKe
 5. **激活态只有一个真源**：`workspaceStore.byProject[projectId]`。全局
    `activeWorktreePath / activeWorktreeBranch / openedWorktrees` 镜像字段已删除 —— 镜像需要有人
    同步，而「谁在看」这件事一旦有两份表示，就会有两份不一致的视图。
-6. **挂载唯一发起点 + 两个判据分离**：只有 `useActiveWorkspaceSync` 会请求后端挂载/取回快照；用户
-   动作（点 worktree、切回主仓）只写激活态。两个发起点必然有时序差。后端因此可以维持「每项目至多
-   一套挂载资源」的成本决策，而前端不需要知道它挂了谁 —— 它只按 `workspace_key` 读自己的槽。
+6. **可见集合只有一个写者，且形态是声明式 reconcile**（C4）：只有 `app/hooks/useVisibleWorkspaces.ts`
+   会向后端声明「现在谁可见」——一个 effect、一次 `set_visible_workspaces(hotSet)`；用户动作
+   （点 worktree、切回主仓）只写激活态。后端的语义是**收敛**：挂载集合内的单元、释放集合外已
+   挂载的单元（同一次调用、同一临界区内完成，不是「挂一个踢一个」）。
 
-   **「请求挂载」与「重试」是两个判据，合成就出洞**（2026-09-30 修）：
-   - **请求挂载的判据是意图边沿**（意图变化 ⇒ 必须请后端接管该单元）。**禁止**用「槽位非空」
-     代替 —— 槽位是**数据面**（`get_workspace_status` 的 pull 读也写它），不证明后端有 push 生产者；
-     后端资源状态才是唯一权威，前端的合法替代证据只有**自己的请求历史**。
-   - **重试的判据是槽位为空**（有权威数据即收敛完成）。**禁止**按请求结局
-     （`mounted / stale / failed`）分支 —— 失败与「槽位被别的写者作废」之后意图可以完全没变，
-     按结局分支就没有任何东西会再发起，`ChangesList` 永久停在 `unknown`（"Loading changes…"）。
-   **机制、触发场景与实现取舍**见 `app/hooks/useActiveWorkspaceSync.ts` 的 docstring（本规则只留
-   判据与禁令 —— 同一条理由写两遍，改一处必漏另一处）。
-   **How to apply**：重试**有界**（策略在 `shared/utils/retryBudget.ts`，纯函数、按意图作用域、
-   指数退避封顶），墙钟最坏约 8s（每次尝试内含后端 1.5s 有界等待）；耗尽 ⇒ 保持「未知」且**只
-   上报一次**（`logFrontendError`，只落日志不弹 toast），此后靠意图变化或 push 事件恢复 —— 耗尽
-   只停主动轮询，不是死局。**重试本身绝不判死** —— 「激活单元已从清单消失 ⇒ 回落主仓」的判据
-   仍然只有 `useAppShellData` 那一处（两处判死互抖是 2026-09-28 的既成事故）。把 `WorkspaceKey` 写进
-   日志/提示一律走 `workspaceKeyLabel` —— 键含 NUL 分隔符，直接插值会让日志文件被判成二进制
-   （`file(1)` 报 `data`，检索与轮转一并失效）。
+   - **热集合 = 内容可见性**：当前视图单元。停靠面板都渲染当前单元，所以集合恒为 1 元素；形状
+     保留集合（多面板同时展示两个不同 Workspace 才是 2，见任务 prd 的开放问题）。
+   - **发送去重判据 = `WorkspaceKey` 排序后的字符串签名**。**禁止**按对象 / 数组身份去重 ——
+     集合每次渲染都是新对象，那等于「永远变了」（`hook-guidelines.md` 常见错误 5）。
+   - **没有重试环、没有记账**：`pending`（挂载已成立、首快照在途）⇒ 什么都不做，读路径
+     （C1 起读永远给得出答案）与 `git-status-snapshot` 推送会收敛；`failed` ⇒ 一条
+     `logFrontendError`（不弹用户可见错误）。**禁止**引入 `requestedIntent` / `inflightMount` /
+     `retryTick` 类「我请求过谁 / 后端挂了谁」的变量 —— 那是后端资源状态的影子副本（红线 17，
+     护栏 `check_frontend_resource_mirror`）。
+   - **判死点**：激活单元从清单消失 ⇒ 回落主仓只由「用户动作」（`useWorktreeListActions` 的
+     `clearActiveWorkspace`、切项目）与「清单读取」（`useSessionBootstrap` 恢复、
+     `useRefreshGitInfo` 刷新 → `fallbackToMainIfWorkspaceGone`）触发。**禁止** render-time 逐渲染
+     比较 `git_info.worktrees`（两处判死互抖是 2026-09-28 的既成事故，C4 已删掉那个 effect）。
+
+   **机制与实现取舍**见 `app/hooks/useVisibleWorkspaces.ts` 的 docstring（本规则只留判据与禁令 ——
+   同一条理由写两遍，改一处必漏另一处）。把 `WorkspaceKey` 写进日志/提示一律走
+   `workspaceKeyLabel` —— 键含 NUL 分隔符，直接插值会让日志文件被判成二进制（`file(1)` 报
+   `data`，检索与轮转一并失效）。
 7. **ahead/behind 的键就是 `WorkspaceKey`**（无 `{source}:{connectionId}` 前缀）。复合键 helper
    `aheadBehindKey(kind, entryId, projectId)` 已退役（护栏 `RETIRED_FRONTEND` 按符号钉）。
    **Why**：同一份数字曾有四种键约定 —— 写侧 `{kind}:{distro|host}:{unit}` 与
@@ -1273,9 +1276,9 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(workspaceKe
 - Base：单主仓项目，行为与改造前一致（多了一层 `WorkspaceSession.of(projectId, null).key`）。
 - Bad（都会重新引入本 issue 的症状）：把 `statuses` 又拍平回 per-project；在组件里
   `useWorkspaceStore.getState().activeWorktreePath`（或 `.byProject[pid].activePath`）取当前单元；
-  给 `applyStatus` 加「`version === 0` 也放行」的兼容分支；在 `useEffect` 里再调一次
-  `set_active_workspace`；给 ahead/behind 再拼一次 `{source}:{connectionId}` 前缀；事件消费点
-  用 `project.path` 当相对路径基准。
+  给 `applyStatus` 加「`version === 0` 也放行」的兼容分支；再引入第二个「声明谁可见」的发起点
+  （或在前端记账「后端挂了谁」）；给 ahead/behind 再拼一次 `{source}:{connectionId}` 前缀；
+  事件消费点用 `project.path` 当相对路径基准。
 
 ### 6. Tests Required
 
@@ -1286,8 +1289,10 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(workspaceKe
   `invalidateStatus` 只作废一个。
 - `shared/store/__tests__/workspaceStore.test.ts`：`selectActiveWorkspaceKey` / `activeWorkspaceKeyOf` 的
   两个形态同语义、跨项目不串用。
-- `features/git/hooks/__tests__/useActivateWorkspace.test.ts`：迟到响应在当前视图已切换时必须丢弃；
-  激活失败 → 该单元置为未知（不是保留旧数据）。
+- `app/hooks/__tests__/useVisibleWorkspaces.test.ts`：集合不变不重发（含重渲染）/ 集合变化只发一次 /
+  `ready` 写槽位 / `pending` 什么都不做 / `failed` 只记一条 dev 日志且不重发 / 非 git 项目声明空集合。
+- `shared/store/__tests__/workspaceStore.test.ts`：`fallbackToMainIfWorkspaceGone` 三态
+  （仍在清单 ⇒ 不动 / 不在 ⇒ 回落主仓并作废槽位 / 空清单也算消失）。
 - ahead/behind 键契约：`useRefreshGitInfo.test.ts`（键空间里只有单元身份，旧前缀键必须为
   `undefined`；worktree 刷新不碰主仓键）、`git/components/__tests__/BranchStatusBarWidget.test.tsx`
   （**读侧此前无测试，恒空 bug 因此长期无人发现**）。

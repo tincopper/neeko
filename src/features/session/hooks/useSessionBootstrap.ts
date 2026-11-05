@@ -70,7 +70,7 @@ export function useSessionBootstrap(deps: {
           if (p.git_info === null) continue;
           const mainKey = WorkspaceSession.of(p.id, null).key;
           // 主仓单元 status：走同一写入口（applyStatus 内含 version gate），侧栏
-          // 变更计数因此有数据来源；激活单元由 useActiveWorkspaceSync 负责挂载与刷新。
+          // 激活单元由 useVisibleWorkspaces 声明给后端（挂载 + 释放由后端 reconcile）。
           if (!selectHasStatus(useProjectStore.getState(), mainKey)) {
             getWorkspaceStatus(WorkspaceSession.of(p.id, null))
               .then((snapshot) => {
@@ -146,7 +146,7 @@ export function useSessionBootstrap(deps: {
               });
             };
             // 不在这里拉 status：激活哪个单元由下面的恢复流程决定，
-            // 统一由 useActiveWorkspaceSync 挂载 + 取首个快照（避免旧实现里
+            // 统一由 useVisibleWorkspaces 声明（避免旧实现里
             // 「先按主仓拉一次、随后才恢复 worktree」导致首屏显示主仓内容）。
             getGitBranchInfo(WorkspaceSession.of(activeId, null))
               .then(async (branchInfo) => {
@@ -155,8 +155,7 @@ export function useSessionBootstrap(deps: {
                   worktrees: branchInfo.worktrees,
                 });
                 // 恢复上次激活的 worktree（session 只持久化了 path）：
-                // worktrees 此刻已加载，可校验 worktree 仍存在；且校验 effect
-                // 对空 worktrees 不再清理激活态，避免「先清后加载」竞态。
+                // worktrees 此刻已加载，清单就是**权威**（后端 `git worktree list` 的结果）。
                 // 恢复上次激活的单元：只写单一表示 byProject[projectId]
                 // （旧实现同时写三份镜像字段，读镜像的事件回调因此会拿到别的单元的路径）
                 const restoredWtPath = wtState?.[activeId];
@@ -175,10 +174,17 @@ export function useSessionBootstrap(deps: {
                     store.markWorkspaceOpened(activeId, wt.path, wt.branch);
                     store.setActiveWorkspace(activeId, wt.path, wt.branch);
                   } else {
-                    // 认不出 ⇒ 交回唯一判死点（`useAppShellData` 的清单校验）判「工作树已消失」，
-                    // 这里不重复判死：两处各有各的「不存在」会互相打架，实测 main ↔ worktree
-                    // 反复重挂。
-                    store.setActiveWorkspace(activeId, canonical);
+                    // 清单里认不出 ⇒ 该 worktree 已被删除（在别处删的，或 session 存的是
+                    // 已失效路径）。**不写激活态** ⇒ 停在主仓。
+                    //
+                    // 判死点归属（C4 / prd R2.2）：旧实现在这里先写上路径、再交给
+                    // `useAppShellData` 的 render-time 清单校验回落 —— 那等于给「谁在看」
+                    // 加一个由渲染驱动的第二判死点。现在唯一有资格判「它还在不在」的就是
+                    // 刚读完权威清单的这一刻（一次性），而不是每一次渲染。
+                    console.warn(
+                      '[worktree] restored workspace is gone, staying on main:',
+                      canonical,
+                    );
                   }
                 }
               })

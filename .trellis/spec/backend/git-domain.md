@@ -594,10 +594,11 @@ golden 测试钉住（`golden_key_format_matches_frontend_contract` ↔ `workspa
 > 每轮代价是 `GitStatusWorker` 线程销毁重建 + 全树 `WatchManifest::compute` + FSEvents 流重建 +
 > `git status` 重跑；挂载存活期常短于一次重算 ⇒ 快照刚产出就被释放。
 >
-> 现在是：**可见集合里的每个单元都可以同时挂载**（`WatcherManager::ensure_mounted`），挂载一个
-> 单元**不释放**任何别的单元 ⇒ 互踢在结构上不可能（没有互斥槽位可抢）。稀缺只允许落在
-> **调度顺序**上（C3 的 `RecomputeScheduler`：Hot / Warm / Cold + 有界并发）。
-> 对应设计稿红线 16「资源稀缺 ⊥ 可观测集合」。
+> 现在是：**可见集合里的每个单元都可以同时挂载**（`WatcherManager::reconcile_mounted`：挂载声明
+> 集合、**释放声明外**的已挂载单元），互斥槽位不存在 ⇒ 互踢在结构上不可能；而「离热即释放」让
+> 挂载集合有收敛方向（C4 收口了 C2 的只增不减）。稀缺只允许落在**调度顺序**上（C3 的
+> `RecomputeScheduler`：Hot / Warm / Cold + 有界并发）。
+> 对应设计稿红线 16「资源稀缺 ⊥ 可观测集合」与红线 17「禁止影子副本」。
 >
 > **与父任务删除台账的偏差（有意，登记在此）**：
 >
@@ -611,9 +612,10 @@ golden 测试钉住（`golden_key_format_matches_frontend_contract` ↔ `workspa
 > D6（`unwatch` / `unwatch_project` 改「从可见集合移除 + 标冷」）**不在 C2 范围**：本任务明确保留
 > 「单元消失即释放」（C2 PRD 的 AC4），改它是另一件事（会让已删除单元的资源长期常驻）。
 
-**挂载入口（C2 起是批量「确保挂载」，已被护栏钉住）**：`WatcherManager::ensure_mounted(units)`
-在一个临界区（`watch_lock`）内对每个单元「未挂载则 `watch`」，返回**本次新建**的 key 列表；
-**不释放任何单元**。它替代了旧 `mount_only`（释放除目标外的全部挂载 + 挂载目标）。
+**挂载入口（C4 起是声明式 reconcile，已被护栏钉住）**：`WatcherManager::reconcile_mounted(units, keep)`
+在一个临界区（`watch_lock`）内完成「挂载 `units` 里未挂载的单元 + 释放已挂载但不在 `keep` 里的
+单元」，返回 `(created, released)`。它替代了 C2 的 `ensure_mounted`（只增不减 —— 那个形态已在
+C4 删除）与更早的 `mount_only`（释放除目标外的全部挂载 + 挂载目标）。
 生产代码里 `WatcherManager::watch` 的调用点由护栏第 5 类判据限定（管理器自身与
 `git/services/status.rs` 之外一律违规；实测破过一次：`app.rs` 启动恢复与 `set_active_project`
 各按项目预挂主仓单元 ⇒ 每次启动两个发起点、日志报 `already watched`）。
@@ -622,22 +624,25 @@ golden 测试钉住（`golden_key_format_matches_frontend_contract` ↔ `workspa
 
 | 命令 | 载荷 | 语义 |
 | --- | --- | --- |
-| `set_visible_workspaces(workspaces)` | `Vec<WorkspaceActivationEntry>`（`ready` / `pending` / `failed`） | **可见集合**语义：逐单元给结局，一个坏项目只让自己那项 `failed` |
-| `set_active_workspace(workspace)` | `WorkspaceActivation`（`ready` / `pending`） | **C4 会删除**；C2 起是单元素薄包装（转发成单元素集合，走同一条 `activate_many`，单元级失败回到 `Err`） |
+| `set_visible_workspaces(workspaces)` | `Vec<WorkspaceActivationEntry>`（`ready` / `pending` / `failed`） | **声明式 reconcile**（C4）：逐单元给结局 + **释放集合外已挂载的单元**，一个坏项目只让自己那项 `failed` |
 
-`pending` = 挂载已成立、首轮重算在途（**冷窗口不是错误**，由 `git-status-snapshot` 推送与前端
-`useActiveWorkspaceSync` 的重试环收敛；错误空间只留解析失败 / 非 git 库 / pull 失败）。pull 分支
-（WSL / SSH）恒 `ready`。有界等待（`RECALC_WAIT_TIMEOUT`）只是延迟优化，不是正确性判据
-（2026-10 CI 事故：慢机上超时曾被当成错误）。前端唯一发起点仍是
-`app/hooks/useActiveWorkspaceSync.ts`；用户动作（点 worktree、切回主仓）只写激活态，不直接发
-命令。
+单元素命令 `set_active_workspace` 与 `activate()` 已在 C4 删除（前端只发可见集合，`ready`/`pending`
+的两态载荷随之退场）。`WorkspaceActivation` 保留为 `activate_many` 的内部逐单元结局。
 
-**服务层只依赖端口（依赖倒置，已被护栏钉住）**：`activate()` / `activate_many()` 收
+`pending` = 挂载已成立、首轮重算在途（**冷窗口不是错误**，由 `git-status-snapshot` 推送与读路径
+收敛；错误空间只留解析失败 / 非 git 库 / pull 失败）。pull 分支（WSL / SSH）恒 `ready`。有界等待
+（`RECALC_WAIT_TIMEOUT`）只是延迟优化，不是正确性判据（2026-10 CI 事故：慢机上超时曾被当成错误）。
+前端唯一发起点是 `app/hooks/useVisibleWorkspaces.ts`（一个 effect、一次声明、去重判据是
+`WorkspaceKey` 排序后的字符串签名）；用户动作（点 worktree、切回主仓）只写激活态，不直接发命令。
+前端**不持有**「我请求过谁 / 后端挂了谁」的记账 —— 那是后端资源状态的影子副本（红线 17），
+重试环与 `requestedIntent` 一并在 C4 删除。
+
+**服务层只依赖端口（依赖倒置，已被护栏钉住）**：`activate_many()` 收
 `Arc<dyn WatcherEventSink>`，不接收 `tauri::AppHandle`、也不自己 `new AppHandleSink` ——
 交付适配器的构造留在命令边界（`git/commands/query.rs`）。这样服务层可用测试替身
 （`CollectingSink`）驱动：`status.rs` 的编排测试（注入 sink + 隔离 `AppStateWrapper` + tempdir
-真实 git 仓）覆盖「Local 走挂载 + 首份快照经端口投递」、「激活新单元**保留**旧单元」与「批量
-入口逐单元隔离失败」。护栏 `check_service_no_delivery_dep` 钉住 `git/services/**` 不得出现
+真实 git 仓）覆盖「Local 走挂载 + 首份快照经端口投递」、「同一批声明两个单元 ⇒ 两个都在」、
+「集合收缩 ⇒ 差集内单元被释放且登记表数据保留」与「批量入口逐单元隔离失败」。护栏 `check_service_no_delivery_dep` 钉住 `git/services/**` 不得出现
 `tauri::` / `AppHandle` / `AppHandleSink`（注释除外）。
 
 **远端 pull 分支已有代码级测试**（AC13 的代码层闭合）：`pull_outcome(…, &ExecTarget::Local)` 用
@@ -704,15 +709,26 @@ versioned_snapshot_without_manual_poke` 就是为钉这条顺序而写红的）�
 正常现象（快照由 worker 异步产出），两点互判会让挂载抖动。挂载失败的正确语义是：**保留激活
 意图、槽位置为未知、放开同意图的重发门闸**。
 
-**挂载是「确保」，不是「替换」**：`activate_many` 把本轮的 Local 单元汇总成一批交
-`ensure_mounted`（一次临界区、一条 `[Watcher] ensure mounted N units (new: M)` 日志），随后逐单元
-取结局；**没有释放步骤** —— 这是「互踢」的结构性消失点。释放只由**单元消失**触发：
-`unwatch`（worktree 被删）/ `unwatch_project`（项目移除，二者都保留登记表数据，见「释放不作废
-数据」）。命令层仍不按项目预挂主仓单元。
+**挂载是「声明式 reconcile」，不是「替换」也不是「只增」**（C4）：`activate_many` 把本轮的 Local
+单元交 `WatcherManager::reconcile_mounted(units, keep)` —— 一次临界区、一条
+`[Watcher] reconcile mounted N units (new: X, released: Y)` 日志：
 
-`watch_lock` 保留的唯一职责是 `watch()` 的 **check-then-insert 原子性**：`watch()` 的「已注册则
-告警返回」与末尾 `insert` 不在同一临界区，两个并发 `ensure_mounted` 会各建一套监听（事件翻倍 +
-线程泄漏 + 同一变更推两份快照）。**不变量属于资源所有者**：调用方不需要记得任何顺序。
+- `keep` = 本批**解析成功且是 git 库**的全部单元（含远端 `Pull` 单元）。远端单元从不挂载，
+  但它在 `keep` 里 —— 若把 `keep` 缩成「可挂载的那批」，切到一个远端项目就会把本地单元的挂载
+  全部拆掉；
+- 集合内的单元未挂载则挂载（已挂载者不重建）；**集合外已挂载的单元被释放**（`release_one`，
+  保留登记表数据 —— 见「释放不作废数据」）。差集与挂载**同临界区**：先算差集再释放会被并发
+  挂载插队，把刚被别的调用点挂上的单元误杀；
+- 这条是 C2 遗留缺口（那版挂载入口只增不减 ⇒ 会话内访问过的每个单元永久占一套 watcher +
+  worker + FSEvents 流）的收口点。**它仍不是互踢**：声明式真值的差集与挂载同批发生，不是
+  「挂一个就踢一个」的竞争。
+
+另一条释放路径是**单元消失**：`unwatch`（worktree 被删）/ `unwatch_project`（项目移除，二者都
+保留登记表数据）。命令层仍不按项目预挂主仓单元。
+
+`watch_lock` 保留的职责是 `watch()` 的 **check-then-insert 原子性** + reconcile 的
+「差集 + 挂载 + 释放」原子性：`watch()` 的「已注册则告警返回」与末尾 `insert` 不在同一临界区，
+两个并发 `reconcile_mounted` 会各建一套监听（事件翻倍 + 线程泄漏 + 同一变更推两份快照）。**不变量属于资源所有者**：调用方不需要记得任何顺序。
 每单元的释放原语只有 `release_one` 一个。
 
 **退役清单**（不得回潮，护栏 `tools/guards/checks/check_workspace_identity.py` 按符号钉）：
@@ -729,11 +745,13 @@ versioned_snapshot_without_manual_poke` 就是为钉这条顺序而写红的）�
 `platform/path_identity/rules.rs`（Windows 形态渲染纯字符串用例，三端运行）、
 `path_guard`（`..` / NUL / 非 UTF-8 拒绝）、`manager/lifecycle_tests.rs`（两单元独立槽、
 poke 打对单元、编辑即推送、未挂载兄弟单元零泄漏、pull 不覆盖 push、unwatch/unwatch_project
-收口、**依次挂载两个单元 ⇒ 两个都在**（`mounting_two_units_keeps_both_mounted`）、
-**挂载目标不得释放任何其它单元**（`mounting_the_target_keeps_every_other_unit`）、
-**并发挂载不同单元 ⇒ 两个都在且各建一套**（`concurrent_mount_of_different_units_keeps_both_mounted`）、
-**并发挂载同单元 ⇒ 只建一套 watcher**、**反复切换 20 次不重建也不累积**
-（`repeated_switches_keep_both_units_without_rebuilding`））。
+收口、**一批声明两个单元 ⇒ 两个都在且各建一套**（`declaring_two_units_in_one_batch_mounts_both`）、
+**声明收缩 ⇒ 差集内单元被释放且登记表数据保留**
+（`reconcile_releases_undeclared_units_and_keeps_declared_ones`）、
+**并发声明同一集合 ⇒ 每个单元各挂一套、谁也释放不了谁**
+（`concurrent_declaration_of_the_same_set_mounts_every_unit_once`）、
+**并发挂载同单元 ⇒ 只建一套 watcher**、**反复切换 20 次挂载集合恒等于声明**（无累积）
+（`repeated_switches_keep_only_the_declared_unit`）。
 
 ## 13. 长操作超时策略与 Console 可见性（push / fetch / pull / commit）
 
@@ -1001,7 +1019,7 @@ Workspace」，且不能比这更少。前端可手搓的散参（`worktreePath?
 **已收对象（含原先被误列为 C 类的）**：`branch.rs`（`checkout_branch` / `create_branch` /
 `delete_branch` / `rename_branch` / `create_and_switch_branch` / `checkout_detached`）与 `pr.rs`
 （`list_prs` / … / `add_comment_reaction` 共 16 个）均改收 `workspace: WorkspaceSession`；
-`set_active_workspace` 亦然（它激活的就是一个具体 Workspace）。
+`set_visible_workspaces`（C4 前的 `set_active_workspace` 亦然）—— 它声明/激活的就是具体 Workspace 集合。
 
 **`search` 域（本次落地）**：`search/commands.rs::search_run` 同样收首参 `workspace: WorkspaceSession`
 （原先只收 `project_id` 并自行 `project_manager.get_project(...).path` 取根）。它不属 git 域，但同一

@@ -463,7 +463,7 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | `useAppShellData` | 领域 Hook 编排 + 副作用注册 | `AppShellData` + `toolbarProps` |
 | `useAppStoreSync` | 同步视图状态与动作引用到 `projectStore` | （仅副作用，无返回值） |
 | `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth` |
-| `useActiveWorkspaceSync` | 反应激活单元变化、请求后端挂载（唯一发起点） | （仅副作用） |
+| `useVisibleWorkspaces` | 声明「当前视图谁可见」（热集合）→ 后端声明式 reconcile（唯一发送端，C4） | （仅副作用） |
 
 ---
 

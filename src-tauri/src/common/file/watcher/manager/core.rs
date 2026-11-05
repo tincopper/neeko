@@ -13,8 +13,14 @@
 //! **C2 起：可见集合里的每个单元都可以同时挂载**（用户决策 D-B 已反转 —— 见
 //! `git-domain.md §12` 的反转记录）。挂载一个单元**不释放**任何其它单元，因此「A/B 互踢」
 //! 在结构上不可能：没有互斥槽位可抢。稀缺性只允许落在**调度顺序**上（先算谁、算多勤，
-//! C3 的调度器），不得落在「能不能被观测」上（红线 16）。释放只由**单元消失**触发
-//! （[`WatcherManager::unwatch`] / [`WatcherManager::unwatch_project`]）。
+//! C3 的调度器），不得落在「能不能被观测」上（红线 16）。
+//!
+//! **C4 起：释放由「可见集合」声明，而不是由「挂了别人」触发**。
+//! [`WatcherManager::reconcile_mounted`] 在一次临界区内完成「挂载声明集合 + 释放声明外的
+//! 已挂载单元」，这是「会话内访问过的每个单元永久占一套 watcher」那个无界缺口的收口点；
+//! 它仍不是互斥 —— 声明式真值的差集与挂载同批发生，不是「挂一个就踢一个」的竞争。
+//! 另有一条释放路径是**单元消失**（[`WatcherManager::unwatch`] /
+//! [`WatcherManager::unwatch_project`]）。两条路径都保留登记表数据（C1）。
 
 use super::super::debounce::{DebounceSender, ThrottleScheduler, TreeChangeDebounceSender};
 #[cfg(test)]
@@ -856,29 +862,43 @@ impl WatcherManager {
         crate::common::file::services::invalidate_remote_ignored_cache(project_id);
     }
 
-    /// 确保这批单元**已挂载**，返回本次**新建**挂载的 key 列表（已挂载者不重建、不重复注册）。
+    /// **声明式 reconcile（唯一的挂载入口）**：把挂载集合收敛到 `keep`（可见集合），返回
+    /// `(created, released)`。
     ///
-    /// **不释放任何单元**（C2）：这是删除排他挂载后唯一的挂载入口 —— 可见集合里的每个单元
-    /// 都可以同时拥有 push 生产者。释放只由**单元消失**触发（[`Self::unwatch`] /
-    /// [`Self::unwatch_project`]），不再由「挂了别人」触发 ⇒ 互踢在结构上不可能。
+    /// 语义（C4）：
+    /// - `units` 里的单元**未挂载则挂载**。**幂等**：先判 [`Self::is_watched`] 再调
+    ///   [`Self::watch`] —— 后者的重复注册分支是 WARN，诊断语义是「有人绕过了挂载入口」
+    ///   （D-B 落地前正是它暴露了启动期双发起点）。调用方会**合法地**重申同一单元（前端集合
+    ///   未变时的重申、激活态被改写成后端 canonical 形态后的一次重发），被合法路径撞上等于把
+    ///   告警作废，因此幂等性必须在入口强制；
+    /// - 已挂载但**不在 `keep` 里**的单元**释放**（[`Self::release_one`]，保留登记表数据 ——
+    ///   「释放 ≠ 数据作废」，C1 语义）。
     ///
-    /// **幂等**：先判 [`Self::is_watched`] 再调 [`Self::watch`] —— 后者的重复注册分支是 WARN，
-    /// 诊断语义是「有人绕过了挂载入口」（D-B 落地前正是它暴露了启动期双发起点）。调用方会
-    /// **合法地**重申同一单元（前端首个快照未落地时的有界重试、激活态被改写成后端 canonical
-    /// 形态后的一次重发），被合法路径撞上等于把告警作废，因此幂等性必须在入口强制。
+    /// **差集与挂载必须在同一个 `watch_lock` 临界区内完成**：先算差集再释放会在中间被并发挂载
+    /// 插队，把「刚被别的调用点挂上」的单元误杀（R1.3 的实现要点）。
     ///
-    /// **临界区**：整批在 [`Self::watch_lock`] 内完成 —— 它保护的是 `watch()` 的
-    /// check-then-insert（同单元并发挂载不得建出两套监听），而不再是「释放 + 挂载成对」。
+    /// **`keep` 是调用方的声明，不是 `units` 的投影**：远端单元（WSL / SSH，无 push 生产者）
+    /// 从不挂载，但它们属于可见集合 —— 若把 `keep` 缩成 `units`，任何「远端单元在册」的声明
+    /// 都会退化成「释放本地单元」。释放集合因此只与 `keep` 求差，与 `units` 无关。
     ///
-    /// **阻塞**：`watch()` 内含 notify 递归注册（Linux 上同步遍历整树）与 fs 探测 ⇒ 调用方
+    /// **不收敛的部分**：`keep` 之外的**未挂载**单元不产生任何动作（没有资源可释放）；
+    /// `units` 的 setup 失败（`watch` 内部已记录告警）不计入 `created`，调用方据此退化为一次 pull。
+    ///
+    /// **临界区**：整批在 [`Self::watch_lock`] 内完成 —— 它保护两件事：`watch()` 的
+    /// check-then-insert（同单元并发挂载不得建出两套监听），以及「差集 + 挂载 + 释放」的原子性。
+    ///
+    /// **阻塞**：内含 notify 递归注册（Linux 上同步遍历整树）与 fs 探测 ⇒ 调用方
     /// 必须在阻塞池内（`run_blocking` / `spawn_blocking`，红线 3）。
-    #[must_use = "返回本次新建的挂载 key；忽略它等于丢掉一次可观测的生命周期事件"]
-    pub fn ensure_mounted(
+    #[must_use = "返回 (新建, 释放) 的 key；忽略它等于丢掉一次可观测的生命周期事件"]
+    pub fn reconcile_mounted(
         &self,
         units: Vec<(WorkspaceRef, Arc<dyn WatcherEventSink>)>,
-    ) -> Vec<String> {
+        keep: &[String],
+    ) -> (Vec<String>, Vec<String>) {
         let total = units.len();
+        let keep: std::collections::HashSet<&str> = keep.iter().map(String::as_str).collect();
         let _watch_guard = self.watch_lock.lock().unwrap_or_else(|e| e.into_inner());
+
         let mut created = Vec::new();
         for (repo, sink) in units {
             let key = repo.key();
@@ -887,19 +907,31 @@ impl WatcherManager {
                 continue;
             }
             self.watch(repo, sink);
-            // setup 失败（`watch` 内部已记录告警）不计入新建：调用方据此退化为一次 pull。
+            // setup 失败不计入新建：调用方据此退化为一次 pull。
             if self.is_watched_key(&key) {
                 created.push(key);
             }
         }
+
+        // 离热释放：与挂载同临界区（见上）。`release_one` 只释放资源，登记表数据保留。
+        let stale: Vec<String> = self
+            .watched_units()
+            .into_iter()
+            .filter(|key| !keep.contains(key.as_str()))
+            .collect();
+        for key in &stale {
+            self.release_one(key);
+        }
+
         // R4.2：挂载集合可从日志读出 —— 批量命令在这里留**一条**记录（未新建的单元由更早那次
         // 调用的 `Started watching workspace` 记录体现，不去撑重复日志）。
         log::info!(
-            "[Watcher] ensure mounted {} units (new: {})",
+            "[Watcher] reconcile mounted {} units (new: {}, released: {})",
             total,
-            created.len()
+            created.len(),
+            stale.len()
         );
-        created
+        (created, stale)
     }
 
     /// 摘掉一个单元的挂载资源（`unwatch` / `unwatch_project` 的公共内核）。
@@ -935,7 +967,7 @@ impl WatcherManager {
         self.is_watched_key(&repo.key())
     }
 
-    /// 按 key 判挂载（[`Self::is_watched`] 的内核：`ensure_mounted` 在 `watch()` **之后**
+    /// 按 key 判挂载（[`Self::is_watched`] 的内核：`reconcile_mounted` 在 `watch()` **之后**
     /// 复查同一身份时已无处借 `WorkspaceRef` 了）。
     fn is_watched_key(&self, key: &str) -> bool {
         self.watchers.lock().is_ok_and(|m| m.contains_key(key))

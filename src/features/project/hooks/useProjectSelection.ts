@@ -25,7 +25,7 @@ export function useProjectSelection() {
       activeProject: targetProject,
     };
 
-    // 选中项目 = 回到该项目的主仓单元（后端挂载由 useActiveWorkspaceSync 跟随激活态变化）
+    // 选中项目 = 回到该项目的主仓单元（后端挂载由 useVisibleWorkspaces 声明（reconcile 跟随激活态变化））
     if (selectActiveCheckoutPath(wtStore, projectId) !== null) {
       wtStore.clearActiveWorkspace(projectId);
     }

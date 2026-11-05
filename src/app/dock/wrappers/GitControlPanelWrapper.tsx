@@ -17,7 +17,7 @@ const GIT_CONTROL_VIEW = panelView('gitControl');
  * Git Control dock 面板适配层（薄容器）：只做 dock/上下文适配 —— 面板可见性门控、
  * 当前Workspace定址、git 元数据刷新编排（useRefreshGitInfo）。数据 hooks 内聚在 GitControlPanel。
  *
- * **不再监听 worktree 切换去刷 git**：挂载/刷新由 `useActiveWorkspaceSync`（composition 层）
+ * **不再监听 worktree 切换去刷 git**：挂载/释放由 `useVisibleWorkspaces`（composition 层）
  * 统一负责，本层只读该单元的槽位。旧实现里这个 effect 与事件回调、聚焦刷新并发写同一个
  * per-project 槽，谁后跑完谁就是屏幕上看到的内容。
  */

@@ -60,12 +60,28 @@ fn real_fs_guard() -> std::sync::MutexGuard<'static, ()> {
 
 /// 首次事件的宽容上限（git 项目还要等 worker 起 git 子进程）。
 const FIRST_EVENT_TIMEOUT: Duration = Duration::from_secs(8);
+
 /// 静默窗口：> debounce 的 max_wait（1.5s），确保"没有事件"是真结论。
 ///
 /// 注意：这是**唯一**仍需要的等待窗（`writes_in_unmounted_sibling_unit_...` 用它收敛
 /// 基线推送）。任何新增的「等一会儿看看」都不被允许 —— 先问断言对象是不是本仓状态，
 /// 是的话用 `without_real_fs()` + 合成事件同步断言。
 const QUIET_WINDOW: Duration = Duration::from_millis(2000);
+
+/// 测试专用：`reconcile_mounted` 的「声明集合 = 本批单元」形态（= 只挂载、不释放其它）。
+///
+/// 生产形态由 `git/services/status.rs::activate_many` 使用（`keep` = 可见集合，可大于本批
+/// 可挂载单元）；本文件的状态机断言只需要「挂这几个」这一种陈述。返回本次新建的 key。
+fn declare(
+    manager: &WatcherManager,
+    units: Vec<(
+        WorkspaceRef,
+        Arc<dyn crate::common::file::watcher::WatcherEventSink>,
+    )>,
+) -> Vec<String> {
+    let keep: Vec<String> = units.iter().map(|(unit, _)| unit.key()).collect();
+    manager.reconcile_mounted(units, &keep).0
+}
 
 /// 被测Workspace = 主仓形态（Local）。
 ///
@@ -646,10 +662,10 @@ fn unwatch_project_releases_every_workspace_of_that_project() {
 /// **AC3（PRD · 后端侧）**：写操作后的 poke 必须打在**被写入的那个单元**上。
 ///
 /// 形态：挂 A（主仓）→ 在 A 内写 → `poke(A)`；`unwatch(A)` 换挂 B（同一项目的 linked
-/// worktree）→ 在 B 内写 → `poke(B)`。这里的 `unwatch(A)` 是**有意保留**的：C2 起生产路径
-/// 切换视图不再释放 A（`ensure_mounted` 只增不减），但「释放后 poke 仍打对被写入单元」这条
-/// 收口（worktree 被删 / 项目移除）仍需覆盖，而它与「A 的数据保留下来」的组合正是本用例
-/// 断言的对象。
+/// worktree）→ 在 B 内写 → `poke(B)`。这里的 `unwatch(A)` 是**显式**的（而不是靠 reconcile
+/// 的差集）：本用例断言的是「释放后 poke 仍打对被写入单元」这条收口，与「A 的数据保留下来」
+/// 的组合 —— 两条释放路径（离热差集 / 单元消失）在登记表上同一语义，用显式 `unwatch`
+/// 只是让本用例的因果不依赖 reconcile 的实现细节。
 ///
 /// 钉住的缺陷形态：poke 按 `project_id` 取 worker ⇒ 在 worktree 里 stage / discard
 /// 戳的是**主仓**的 worker，主仓 porcelain 一字未变 → 查询-比较闸门判定「无变化」→
@@ -829,20 +845,22 @@ fn linked_worktree_edit_pushes_versioned_snapshot_without_manual_poke() {
     );
 }
 
-/// **AC1 / AC11①（PRD）**：反复切换 20 次**既不重建也不累积** —— 两个单元都留在表里，
-/// 各自的 watcher 只建过一次。
+/// **AC1 / AC2（PRD）**：反复切换 20 次，挂载集合始终**只**等于本轮声明的那个单元。
 ///
-/// 判据翻转（C2）：旧不变量是「始终只剩当前那一个单元」（排他挂载），新的前提是
-/// 「挂载一个单元不释放任何别的单元」—— 两个单元都应常驻，而**重建次数**才是资源泄漏的判据
-/// （每重建一套就再泄漏一套线程与文件描述符）。`watcher_set_creations` 直接量它：map 尺寸
-/// 测不出「重复 insert 覆盖旧 handle」那条路径。
+/// 判据翻转（C4）：C2 的形态是「挂一个不释放任何别的」（`ensure_mounted` 只增不减）⇒
+/// 会话内访问过的每个单元永久占一套 watcher + worker + FSEvents 流，**没有收敛方向**。
+/// 现在是声明式 reconcile：热集合就是真值，离热即释放。因此本用例的断言是
+/// **`watched_units()` 恒为 1**（无累积）—— 切回一个已释放的单元**允许**重建（那是离热
+/// 释放的必然代价，读路径的权威性由 C1 保证：释放不作废数据）。
+///
+/// 20 次 = 「挂载 / 释放 / 重挂」的反复，覆盖票号吊销与重新签发的交错。
 ///
 /// **不启动任何 OS 监听**：`without_real_fs` 用 `PlatformWatcher::Noop` 替换真实流，编排与
 /// 状态机（幂等检查、票号签发、handle 登记）照常执行 —— 20 次真实建流只是给 macOS 的
 /// fseventsd 交税（单次建流有系统级成本，见 2026-10-10 事故）。真实目录上的「挂载/释放确实
 /// 生效」由本文件 `repo_with_linked_worktree` 系列用例覆盖。
 #[test]
-fn repeated_switches_keep_both_units_without_rebuilding() {
+fn repeated_switches_keep_only_the_declared_unit() {
     let tmp = tempfile::tempdir().unwrap();
     let main = tmp.path().join("repo");
     let worktree = tmp.path().join("repo-wt");
@@ -851,40 +869,27 @@ fn repeated_switches_keep_both_units_without_rebuilding() {
 
     let sink = CollectingSink::new();
     let manager = WatcherManager::new().without_real_fs();
-    // 前置：两个单元都已挂载（各自建一套资源）。
-    for unit in [&main_unit, &wt_unit] {
-        assert_eq!(
-            manager.ensure_mounted(vec![(unit.clone(), sink.clone())]),
-            vec![unit.key()],
-            "首次挂载是新建"
-        );
-    }
+
     for i in 0..20 {
-        // 生产形态：可见集合每轮只含当前视图那一个单元（前端 C4 才发集合），但后端**不得**
-        // 因此释放另一个 —— 它只是不在这一轮的集合里，不是不存在。
+        // 生产形态：热集合每轮只含当前视图那一个单元。
         let unit = if i % 2 == 0 { &wt_unit } else { &main_unit };
-        let created = manager.ensure_mounted(vec![(unit.clone(), sink.clone())]);
-        assert!(
-            created.is_empty(),
-            "第 {i} 次切换不得重建已挂载单元（重建=再泄漏一套线程/句柄），实际新建 {created:?}"
+        let created = declare(&manager, vec![(unit.clone(), sink.clone())]);
+        assert_eq!(
+            created,
+            vec![unit.key()],
+            "第 {i} 次声明必须把该单元挂上（它已被上一轮释放，属正常重建）"
         );
         assert_eq!(
-            manager.watched_units().len(),
-            2,
-            "第 {i} 次切换后两个单元都必须仍在表里（释放只由单元消失触发），实际 {:?}",
+            manager.watched_units(),
+            vec![unit.key()],
+            "第 {i} 次切换后挂载集合必须恰好是本轮声明（否则资源随访问历史累积），实际 {:?}",
             manager.watched_units()
         );
-        assert!(manager.is_watched(&main_unit) && manager.is_watched(&wt_unit));
     }
-    assert_eq!(
-        manager.watcher_set_creations(),
-        2,
-        "两个单元各只建一套资源（重复切换不得重建）"
-    );
 
-    // 收尾：单元消失（项目关闭 / worktree 删除）才是释放的唯一原因
-    manager.unwatch(&main_unit);
+    // 收尾：单元消失（项目关闭 / worktree 删除）仍是另一条释放路径
     manager.unwatch(&wt_unit);
+    manager.unwatch(&main_unit);
     assert!(
         manager.watched_units().is_empty(),
         "unwatch 必须能清空挂载，残留即资源累积"
@@ -1057,13 +1062,18 @@ fn a_pull_started_after_the_last_snapshot_is_accepted_even_when_mounted() {
     );
 }
 
-/// **AC1 的直接判据**：挂载另一个单元（哪怕是**别的项目**）**不得释放**任何已有挂载。
+/// **reconcile 的差集契约**：声明几就挂几个；声明收缩则差集内单元被释放（**不**作废数据）。
 ///
-/// 这是旧不变量「全局至多一套挂载」的反方向断言（C2 改写，不是删除）：互踢的结构性消失点
-/// 就在于「没有互斥槽位可抢」—— 只要这条成立，主仓与 linked worktree 交替激活就只是两次
-/// 幂等挂载，各自的 worker / FSEvents 流 / manifest 一次建好、不再销毁重建。
+/// 这条把两个方向钉在同一个夹具里：
+/// - 正方向（C2 起、C4 保留）：**多单元可同时拥有 push 生产者** —— 一次声明三个就三个都在，
+///   互斥槽位不存在；
+/// - 反方向（C4 新增）：声明收缩到 `[unit_b]` ⇒ 另外两个**离热释放**。C2 的
+///   `ensure_mounted` 只增不减，缺少的正是这个方向（会话内访问过的单元永久占资源）。
+///
+/// 释放**不作废登记表数据**（C1）：`snapshot` 仍在 —— 切回该单元时读路径要么给旧值，要么因
+/// 脏位/陈旧窗口现算，不会空转。
 #[test]
-fn mounting_the_target_keeps_every_other_unit() {
+fn reconcile_releases_undeclared_units_and_keeps_declared_ones() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     let worktree = tmp.path().join("repo-wt");
@@ -1080,39 +1090,60 @@ fn mounting_the_target_keeps_every_other_unit() {
 
     let sink = CollectingSink::new();
     let manager = WatcherManager::new().without_real_fs();
-    let created = manager.ensure_mounted(vec![
-        (unit_a.clone(), sink.clone()),
-        (unit_other_project.clone(), sink.clone()),
-    ]);
-    assert_eq!(created.len(), 2, "两个单元都是新建，实际 {created:?}");
-    assert_eq!(manager.watched_units().len(), 2);
+    let all = [unit_a.clone(), unit_b.clone(), unit_other_project.clone()];
+    let keep: Vec<String> = all.iter().map(WorkspaceRef::key).collect();
+    let units = all
+        .iter()
+        .map(|unit| {
+            (
+                unit.clone(),
+                Arc::clone(&sink) as Arc<dyn super::super::sink::WatcherEventSink>,
+            )
+        })
+        .collect::<Vec<_>>();
+    let (created, released) = manager.reconcile_mounted(units, &keep);
+    assert_eq!(created.len(), 3, "三个单元都是新建，实际 {created:?}");
+    assert!(released.is_empty(), "首轮没有可释放的单元");
+    assert_eq!(manager.watched_units().len(), 3, "声明三个就挂三个");
 
-    // 挂载 unit_b（生产形态：`activate()` 现在就是单元素集合的 `ensure_mounted`）
-    let created = manager.ensure_mounted(vec![(unit_b.clone(), sink.clone())]);
-    assert_eq!(created, vec![unit_b.key()], "只有目标单元是新建的");
-
-    assert_eq!(
-        manager.watched_units().len(),
-        3,
-        "三个单元必须同时在表里（清单即互踢已消失），实际 {:?}",
-        manager.watched_units()
-    );
-    for unit in [&unit_a, &unit_b, &unit_other_project] {
+    // 前置：两个即将离热的单元先各自产出权威快照（否则「释放不作废数据」无从断言）。
+    for unit in [&unit_a, &unit_other_project] {
         assert!(
-            manager.is_watched(unit),
-            "挂载目标不得释放任何其它单元：{} 被摘了",
+            manager.poke_status_worker_and_wait(unit, FIRST_EVENT_TIMEOUT),
+            "{} 挂载中必须能算出一轮快照",
             unit.thread_tag()
+        );
+    }
+
+    // 声明收缩到只剩 unit_b：另外两个离热释放。
+    let (created, released) =
+        manager.reconcile_mounted(vec![(unit_b.clone(), sink.clone())], &[unit_b.key()]);
+    assert!(created.is_empty(), "unit_b 已挂载，不得重建：{created:?}");
+    let mut released = released;
+    released.sort();
+    let mut expected = vec![unit_a.key(), unit_other_project.key()];
+    expected.sort();
+    assert_eq!(released, expected, "差集内单元必须被释放");
+    assert_eq!(
+        manager.watched_units(),
+        vec![unit_b.key()],
+        "声明外的单元不得留在表里（否则挂载集合随访问历史无界增长）"
+    );
+    for unit in [&unit_a, &unit_other_project] {
+        assert!(
+            manager.snapshot(unit).is_some(),
+            "释放 ≠ 作废数据（C1）：{} 的登记不得因离热释放而消失",
+            unit.thread_tag(),
         );
     }
 }
 
-/// **R1.1 / AC1 的最小形态**：依次挂载 A、B 之后两者都在表里。
+/// **R1.1 / AC1 的最小形态**：一批声明 A + B ⇒ 两个都挂上，各自的 watcher 只建一次。
 ///
-/// 这是本任务的红→绿判据：在「至多一套挂载」的实现下，挂 B 会先释放 A，第二句断言必红。
-/// 它同时钉住幂等的另一半 —— 已经挂上的 A 不会被 B 的挂载重建（`watcher_set_creations`
-/// 每单元恰好一次）。
+/// 判据翻转（C2，C4 保留）：在「至多一套挂载」的实现下第二句断言必红。它同时钉住幂等的
+/// 另一半 —— 同批里的 A 不会被 B 的挂载重建（`watcher_set_creations` 每单元恰好一次）。
 #[test]
-fn mounting_two_units_keeps_both_mounted() {
+fn declaring_two_units_in_one_batch_mounts_both() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     let worktree = tmp.path().join("repo-wt");
@@ -1126,31 +1157,25 @@ fn mounting_two_units_keeps_both_mounted() {
     let sink = CollectingSink::new();
     let manager = WatcherManager::new().without_real_fs();
 
-    assert_eq!(
-        manager.ensure_mounted(vec![(unit_a.clone(), sink.clone())]),
-        vec![unit_a.key()],
-        "首次挂载 A 是新建"
+    let mut created = declare(
+        &manager,
+        vec![
+            (unit_a.clone(), sink.clone()),
+            (unit_b.clone(), sink.clone()),
+        ],
     );
-    assert!(manager.is_watched(&unit_a));
+    created.sort();
+    let mut expected = vec![unit_a.key(), unit_b.key()];
+    expected.sort();
+    assert_eq!(created, expected, "两个单元都是新建");
 
-    assert_eq!(
-        manager.ensure_mounted(vec![(unit_b.clone(), sink.clone())]),
-        vec![unit_b.key()],
-        "挂载 B 是新建，且不得重建 A"
-    );
-    assert!(
-        manager.is_watched(&unit_a),
-        "挂载 B 不得释放 A（互斥槽位已删除）"
-    );
-    assert!(manager.is_watched(&unit_b));
-
-    let watched = manager.watched_units();
-    assert_eq!(watched.len(), 2, "两个单元必须同时在表里，实际 {watched:?}");
-    assert!(watched.contains(&unit_a.key()) && watched.contains(&unit_b.key()));
+    let mut watched = manager.watched_units();
+    watched.sort();
+    assert_eq!(watched, expected, "两个单元必须同时在表里");
     assert_eq!(
         manager.watcher_set_creations(),
         2,
-        "每个单元各建一套资源（重申/并存都不重建）"
+        "每个单元各建一套资源（并存不重建）"
     );
 }
 
@@ -1641,10 +1666,10 @@ fn edit_to_push_latency_p95_worktree_vs_main() {
     );
 }
 
-// ── 挂载集合的并发判据（C2 翻转）────────────────────────────────────────────
+// ── 挂载集合的并发判据（C2 翻转，C4 保留）──────────────────────────────────
 //
-// 新不变量（旧 D-B 已反转）：「可见集合里的每个单元都可以同时挂载」。它仍属于**资源所有者**：
-// `ensure_mounted` 在同一临界区内完成「已挂载则不重建」的判定与登记（`watch_lock`），
+// 不变量：「可见集合里的每个单元都可以同时挂载」。它仍属于**资源所有者**：
+// `reconcile_mounted` 在同一临界区内完成「差集 + 挂载 + 释放」的判定与登记（`watch_lock`），
 // 因此并发调用既不会互踢、也不会给同一单元建出两套监听。
 
 /// 指定项目 id 的主仓形态单元（key 只含 project_id，故两单元必须用不同 project id 才不同址）。
@@ -1658,12 +1683,14 @@ fn workspace_of(project_id: &str, root: &Path) -> WorkspaceRef {
     .expect("tempdir-derived unit path must resolve")
 }
 
-/// 并发挂**不同**单元：两个都必须挂上（且各建一套资源）—— 互斥槽位已删除。
+/// 并发声明**同一份集合**：每个单元各挂一套，谁也释放不了谁（差集为空）。
 ///
-/// 旧判据是「最终恰好一套挂载」（互踢的正方向）。C2 删除排他后，同一个布障并发必须得到
-/// **2 套**：既没有谁被释放，也没有谁被重复建。
+/// 判据沿革：旧形态是「并发挂不同单元 ⇒ 两个都常驻」（C2 的 `ensure_mounted` 只增不减）。
+/// C4 起释放由声明决定 ⇒ 「各自只声明自己」= 后到的声明让先到的离热（声明式 API 的固有
+/// 语义：last writer wins）。因此这里让两个线程声明**同一份集合**，钉住的仍是原来的资源
+/// 所有权契约：并发调用不得互踢、不得重复建、不得少挂。
 #[test]
-fn concurrent_mount_of_different_units_keeps_both_mounted() {
+fn concurrent_declaration_of_the_same_set_mounts_every_unit_once() {
     let tmp = tempfile::tempdir().unwrap();
     let dir_a = tmp.path().join("unit-a");
     let dir_b = tmp.path().join("unit-b");
@@ -1672,20 +1699,25 @@ fn concurrent_mount_of_different_units_keeps_both_mounted() {
 
     let manager = WatcherManager::new().without_real_fs();
     let sink = CollectingSink::new();
-    // 两个线程在同一时刻冲进 `ensure_mounted`
+    // 两个线程在同一时刻冲进 `reconcile_mounted`，声明**同一份**集合
     let barrier = Arc::new(std::sync::Barrier::new(2));
     let units = [workspace_of("p1", &dir_a), workspace_of("p2", &dir_b)];
-    let keys: Vec<String> = units.iter().map(WorkspaceRef::key).collect();
+    let keep: Vec<String> = units.iter().map(WorkspaceRef::key).collect();
 
-    let handles: Vec<_> = units
-        .into_iter()
-        .map(|unit| {
+    let handles: Vec<_> = (0..2)
+        .map(|_| {
             let manager = manager.clone();
             let sink = Arc::clone(&sink) as Arc<dyn super::super::sink::WatcherEventSink>;
             let barrier = Arc::clone(&barrier);
+            let units = units.clone();
+            let keep = keep.clone();
             std::thread::spawn(move || {
                 barrier.wait();
-                let _ = manager.ensure_mounted(vec![(unit, sink)]);
+                let batch = units
+                    .into_iter()
+                    .map(|unit| (unit, Arc::clone(&sink)))
+                    .collect::<Vec<_>>();
+                let _ = manager.reconcile_mounted(batch, &keep);
             })
         })
         .collect();
@@ -1693,18 +1725,14 @@ fn concurrent_mount_of_different_units_keeps_both_mounted() {
         handle.join().expect("mount thread should not panic");
     }
 
+    let mut watched = manager.watched_units();
+    watched.sort();
+    let mut expected = keep.clone();
+    expected.sort();
     assert_eq!(
-        manager.watched_units().len(),
-        2,
-        "并发挂载两个不同单元后两者都必须常驻（互斥槽位已删除）：{:?}",
-        manager.watched_units()
+        watched, expected,
+        "并发声明同一集合后两个单元都必须常驻（且不得被差集误杀）"
     );
-    for key in &keys {
-        assert!(
-            manager.watched_units().contains(key),
-            "{key} 被另一个单元的挂载释放了（排他语义回潮）"
-        );
-    }
     assert_eq!(
         manager.watcher_set_creations(),
         2,
@@ -1733,7 +1761,8 @@ fn concurrent_mount_of_same_unit_creates_exactly_one_watcher_set() {
             let unit = unit.clone();
             std::thread::spawn(move || {
                 barrier.wait();
-                let _ = manager.ensure_mounted(vec![(unit, sink)]);
+                let key = unit.key();
+                let _ = manager.reconcile_mounted(vec![(unit, sink)], &[key]);
             })
         })
         .collect();
@@ -1749,33 +1778,39 @@ fn concurrent_mount_of_same_unit_creates_exactly_one_watcher_set() {
     );
 }
 
-/// 重申挂载同一单元 = 空操作（`ensure_mounted` 的语义是「确保该单元挂载」，不是「注册一次」）。
+/// 重申同一单元 = 空操作（`reconcile_mounted` 的语义是「收敛到声明」，不是「注册一次」）。
 ///
-/// 契约来源：调用方会**合法地**重申同一单元 —— 前端首个快照未落地时的有界重试，以及激活态被
-/// 后端改写成 canonical 形态后的一次重发。重申若直接转给 `watch`，每次都命中它的「重复注册」
-/// 告警分支；那条 WARN 的诊断语义是「有人绕过了唯一挂载入口」（D-B 落地前正是它暴露了启动期
-/// 双发起点，现场核对以「0 条 already watched」为证据），被合法路径触发即失效。
+/// 契约来源：调用方会**合法地**重申同一单元 —— 集合未变时的一次重发、激活态被后端改写成
+/// canonical 形态后的一次重发。重申若直接转给 `watch`，每次都命中它的「重复注册」告警分支；
+/// 那条 WARN 的诊断语义是「有人绕过了唯一挂载入口」（D-B 落地前正是它暴露了启动期双发起点，
+/// 现场核对以「0 条 already watched」为证据），被合法路径触发即失效。
 ///
 /// 本用例钉住重申的**可观察契约**：不重建资源、不动挂载集合、不释放任何单元。
 #[test]
-fn ensure_mounted_reasserting_same_unit_is_a_noop() {
+fn reconcile_reasserting_same_unit_is_a_noop() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().to_path_buf();
     let sink = CollectingSink::new();
     let manager = WatcherManager::new().without_real_fs();
 
+    let key = main_unit(&root).key();
     assert_eq!(
-        manager.ensure_mounted(vec![(main_unit(&root), sink.clone())]),
-        vec![main_unit(&root).key()],
-        "首次挂载是新建的那一个单元"
+        manager.reconcile_mounted(
+            vec![(main_unit(&root), sink.clone())],
+            std::slice::from_ref(&key),
+        ),
+        (vec![key.clone()], Vec::new()),
+        "首次声明是新建的那一个单元，且无释放"
     );
     assert_eq!(manager.watcher_set_creations(), 1);
 
-    assert!(
-        manager
-            .ensure_mounted(vec![(main_unit(&root), sink.clone())])
-            .is_empty(),
-        "重申挂载不得新建、也不得释放任何单元（含自身）"
+    assert_eq!(
+        manager.reconcile_mounted(
+            vec![(main_unit(&root), sink.clone())],
+            std::slice::from_ref(&key),
+        ),
+        (Vec::new(), Vec::new()),
+        "重申不得新建、也不得释放任何单元（含自身）"
     );
     assert_eq!(
         manager.watcher_set_creations(),

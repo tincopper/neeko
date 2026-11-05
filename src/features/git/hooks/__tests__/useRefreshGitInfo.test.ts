@@ -146,6 +146,23 @@ describe('useRefreshGitInfo', () => {
     expect(store.statuses[MAIN_KEY]).toBeUndefined();
   });
 
+  // ── 清单读取后的一次性回落（取代旧的 render-time 清单校验，C4/R2.2）─────────
+
+  it('清单里已没有激活的 worktree ⇒ 一次性回落主仓（清单读取即判死）', async () => {
+    useWorkspaceStore.setState({
+      byProject: { 'proj-1': { activePath: '/test/gone', activeBranch: 'gone', opened: [] } },
+    });
+    // 清单为空（没有任何 linked worktree）⇒ 激活的那个必已消失
+    const commands = makeCommands();
+    const { result } = renderHook(() => useRefreshGitInfo(makeView(), commands));
+
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(useWorkspaceStore.getState().byProject['proj-1']?.activePath).toBeNull();
+  });
+
   it('should_be_noop_without_project_or_commands', async () => {
     const { result } = renderHook(() => useRefreshGitInfo(null, null));
     await act(async () => {
@@ -164,8 +181,15 @@ describe('useRefreshGitInfo', () => {
         [MAIN_KEY]: makeSnapshot({ version: 4, branch: 'main', entries: [] }),
       },
     });
-    // 命令端口按「当前视图单元」绑定：这里回的是 worktree 单元的快照
+    // 命令端口按「当前视图单元」绑定：这里回的是 worktree 单元的快照。
+    // 清单里**包含**该 worktree —— 否则列表读取后的一次性回落会把它视为已删除（见下一条用例）。
     const commands = makeCommands({
+      refreshGitInfo: vi.fn().mockResolvedValue(
+        makeGitInfo({
+          branches: ['main'],
+          worktrees: [{ path: '/test/wt', branch: 'wt-branch', head: 'abc' }],
+        }),
+      ),
       refreshWorkspaceStatus: vi.fn().mockResolvedValue(
         makeSnapshot({
           workspace_key: WT_KEY,

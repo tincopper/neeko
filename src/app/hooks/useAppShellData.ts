@@ -29,13 +29,13 @@ import type { ToolbarFooterProps } from '../components/ToolbarFooter';
 
 import { type AppShellData } from './buildAppShellValues';
 import { closeActiveTabCommand } from './closeActiveTabCommand';
-import { useActiveWorkspaceSync } from './useActiveWorkspaceSync';
 import { useAppEntryAddRefresh } from './useAppEntryAddRefresh';
 import { useAppInitialGitRefresh } from './useAppInitialGitRefresh';
 import { useAppStoreSync } from './useAppStoreSync';
 import { useConfirmExit } from './useConfirmExit';
 import { useHiddenAgentToggle } from './useHiddenAgentToggle';
 import { useToolbarFooterProps } from './useToolbarFooterProps';
+import { useVisibleWorkspaces } from './useVisibleWorkspaces';
 
 export interface UseAppShellDataResult extends AppShellData {
   initializing: boolean;
@@ -128,22 +128,6 @@ export function useAppShellData(): UseAppShellDataResult {
 
   const { activeCheckoutPath, activateWorkspace, markWorkspaceOpened } =
     useWorkspaceState(activeProjectId);
-  useEffect(() => {
-    if (!activeCheckoutPath || !activeProject?.git_info) return;
-    const worktrees = activeProject.git_info.worktrees;
-    // worktrees 为空可能是「尚未加载完成」而非「确实没有」，此时不清理激活态。
-    // 路径为后端 canonical 形态（WorkspaceRef 归一）→ 等值比较即身份比较。
-    if (worktrees.length > 0 && !worktrees.some((wt) => wt.path === activeCheckoutPath)) {
-      console.warn('[worktree] active workspace gone, fallback to main:', activeCheckoutPath);
-      activateWorkspace(activeProject.id, null, '');
-    }
-  }, [
-    activeProject?.git_info?.worktrees,
-    activeCheckoutPath,
-    activateWorkspace,
-    activeProject?.git_info,
-    activeProject?.id,
-  ]);
 
   const wslActionsWrap = useProjectActions({
     environment: 'wsl',
@@ -190,8 +174,8 @@ export function useAppShellData(): UseAppShellDataResult {
     wslActionsWrap.setWslDiffState?.(null);
   }, [wslActionsWrap]);
 
-  // 当前视图所在Workspace → 后端挂载的唯一同步点（决策 D-B 落地点）
-  useActiveWorkspaceSync();
+  // 当前视图所在Workspace → 后端可见集合的唯一写者（声明式 reconcile，C4）
+  useVisibleWorkspaces();
   const { initializing } = useSessionBootstrap({
     loadProjects,
     restoreWorktreeState: session.restoreWorktreeState,

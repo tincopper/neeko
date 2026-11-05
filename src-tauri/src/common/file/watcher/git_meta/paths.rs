@@ -86,7 +86,7 @@ impl GitMetaPaths {
 /// 而私有 gitdir 下根本没有 `refs/` —— 外部 `git push` 永远不会触发 worktree 视图重算。
 ///
 /// **阻塞前置条件**：本函数内含同步 `std::fs::read_to_string` + `canonicalize`（红线 3 的
-/// 阻塞 I/O）。调用方必须在阻塞池内运行（当前唯一调用链是 `ensure_mounted` → `watch`，由
+/// 阻塞 I/O）。调用方必须在阻塞池内运行（当前唯一调用链是 `reconcile_mounted` → `watch`，由
 /// `git/services/status.rs` 的 `run_blocking` 包裹）—— 不得在 async 上下文直呼。
 fn resolve_common_git_dir(git_dir: &Path) -> PathBuf {
     let commondir_file = git_dir.join("commondir");

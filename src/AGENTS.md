@@ -102,6 +102,19 @@ Feature-Based 架构，`src/` 顶层：
 `tools/guards/checks/check_terminal_key_mint.py`（已接 `pnpm lint` 与 CI），契约全文见
 `docs/domain-model.md` 的 terminal 小节。
 
+**17. 禁止影子副本** —— 禁止一方维护另一方**资源态 / 状态**的镜像。要判断「对方做了什么」，
+只能问对方的**读接口**，或读自己那份数据里**由对方写入的字段**；本地记账的等价信息（「我请求过
+什么」「后端挂了谁」「谁被作废了」）一律视为影子副本。
+
+反例（2026-11，两处同族）：前端用 `requestedIntent` / `inflightIntent` / `reportedGiveUp` 自己
+记「后端已接管谁」，再用重试预算补偿记账误差 —— 记账一旦与后端错位就变成打后端的自激环；
+后端侧的同族物是用「是否挂载」推断数据新鲜度。两处都在「读路径与挂载解耦」后消失。
+
+判据：`tools/guards/checks/check_frontend_resource_mirror.py`（已接 `pnpm lint` 与 CI）——
+影子标识符，以及「渲染期裸调 `getWorkspaceStatus` / `refreshWorkspaceStatus`」均判违规。
+契约全文见 `.trellis/spec/frontend/state-management.md` 与
+`.trellis/spec/backend/git-domain.md` §12。
+
 ## 测试
 
 Vitest + `@testing-library/react` + jsdom。目录约定：`src/testing/`（`setup.ts` 全局 setup、

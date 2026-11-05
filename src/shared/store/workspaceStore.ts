@@ -105,6 +105,34 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
   },
 }));
 
+/**
+ * 清单读取后的**一次性**收口：激活的 worktree 已不在清单里 ⇒ 回落主仓。
+ *
+ * **它不是 render-time 判据**（C4 / prd R2.2）：判死的触发者只有两类 ——
+ * ① **用户动作**（删 worktree → `useWorktreeListActions` 的 `clearActiveWorkspace`、切项目 →
+ *    `useProjectStore.selectProject`）；② **清单读取**（session 恢复、手动刷新 git 信息）。
+ * 旧实现在 `useAppShellData` 里拿 `project.git_info.worktrees` 与激活态逐渲染比较，等于给
+ * 「谁在看」加了一个由 render 驱动的第二判死点（与挂载/恢复两条路径互相打架）。
+ *
+ * 清单是后端 `git worktree list` 的权威结果（只含 linked worktree，主仓恒不在其中），
+ * 路径已经是后端 identity 形态 ⇒ 等值比较即身份比较（前端不做字符串归一，红线 12）。
+ * 「清单为空」= 没有任何 linked worktree ⇒ 激活 worktree 必已消失（不是「尚未加载」：
+ * 本函数只在读取**成功**后调用）。
+ *
+ * @returns 是否发生了回落（调用方只需记日志）。
+ */
+export function fallbackToMainIfWorkspaceGone(
+  projectId: ProjectId,
+  worktreePaths: readonly string[],
+): boolean {
+  const activePath = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
+  if (activePath === null) return false;
+  if (worktreePaths.includes(activePath)) return false;
+  // clearActiveWorkspace 单点完成「回落主仓 + 作废该单元槽位」（I1-b：未知 ≠ 旧数据）。
+  useWorkspaceStore.getState().clearActiveWorkspace(projectId);
+  return true;
+}
+
 // ── selectors / hooks（唯一读取口）──
 
 export function selectWorkspaceStateOf(

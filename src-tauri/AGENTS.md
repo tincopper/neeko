@@ -161,3 +161,17 @@ Windows 默认 `autocrlf=true` 会转 CRLF，**不确定**）。
 
 改通用模块需要知道「这是哪种语言」时，先问「这条知识能不能作为插件字段携带」。字段清单、消费点与
 三条护栏测试见 `.trellis/spec/backend/lsp-domain.md`「语言差异必须落在插件数据」。
+
+**16. 资源稀缺不得进数据契约** —— 一个资源预算（并发数、监听数、流数、条目数）只允许影响
+**调度顺序**（先算谁、算多勤），**禁止**影响**可观测集合**（能不能显示）。任何「至多 N 个 X」
+的不变量，若 X 是某个 UI 契约的主体，必须写成「至多 N 个**热** X，其余惰性可读」。
+
+反例（2026-11 事故）：`WatcherManager::mount_only` 让「全局至多一套挂载」成为 status 的可观测前提
+⇒ 一个项目的主仓与 linked worktree 交替释放对方，worker 与 FSEvents 流每 1.5–11.6s 重建一次，
+非激活单元永远读不到数据。修法不是加「最小驻留时间」，而是删掉不变量：新鲜度由
+`StatusStore{computed_at, dirty}` 判定（读与挂载解耦），挂载集合由 `reconcile_mounted` 按**声明**
+收敛（挂集合内、释放集合外），稀缺只体现在「谁先被算」。
+
+判据：出现「先挂载才能读」或「释放即作废数据」的结构即违规。契约全文见
+`.trellis/spec/backend/git-domain.md` §12；机器判据是 `tools/guards/checks/check_workspace_identity.py`
+（挂载入口唯一性）与 `tools/guards/ledger/invariants.json` 的 `mount-entry-singularity`。

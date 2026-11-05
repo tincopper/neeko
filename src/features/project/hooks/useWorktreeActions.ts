@@ -10,7 +10,7 @@ import { loadOnboardingState } from '../api/onboardingApi';
 import { setActiveProject, setViewTerminal } from '../api/projectApi';
 
 interface UseWorktreeActionsParams {
-  /** 激活某Workspace（`null` = 主仓）。只写激活态，后端挂载由 useActiveWorkspaceSync 跟随。 */
+  /** 激活某Workspace（`null` = 主仓）。只写激活态，后端挂载由 useVisibleWorkspaces 声明（后端 reconcile 跟随）。 */
   activateWorkspace: (projectId: ProjectId, path: string | null, branch?: string) => void;
   /** 记入「打开过的工作树」清单。 */
   markWorkspaceOpened: (projectId: ProjectId, path: string, branch: string) => void;

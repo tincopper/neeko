@@ -86,20 +86,22 @@ C2 之后「被抢」已不存在（挂载不互斥），重试环因此成了�
 
 ## Acceptance Criteria
 
-- [ ] AC1 切 tab / 切项目时，`[Watcher] ensure mounted N units` 的 N 等于热集合大小（通常 1），
+- [x] AC1 切 tab / 切项目时，`[Watcher] ensure mounted N units` 的 N 等于热集合大小（通常 1），
       **不随项目总数增长**；且日志出现对应的 release 行（离热释放）。
-- [ ] AC2 驻留验证：访问 6 个不同 workspace 后，`watched_units()` 只剩热集合内的单元
+- [x] AC2 驻留验证：访问 6 个不同 workspace 后，`watched_units()` 只剩热集合内的单元
       （≤2），不再随访问历史累积。
-- [ ] AC3 热层实时：在当前视图单元改文件，`git-status-snapshot` 在 200ms 内到达
+- [x] AC3 热层实时：在当前视图单元改文件，`git-status-snapshot` 在 200ms 内到达
       （沿用后端现有的编辑→推送时延测量）。
-- [ ] AC4 非激活项目**切过去即正确**：在别处改了文件，切过去后列表立刻是新的
+- [x] AC4 非激活项目**切过去即正确**：在别处改了文件，切过去后列表立刻是新的
       （不需要手动刷新、不需要等 TTL）。
-- [ ] AC5 `rg 'requestedIntent|ACTIVATION_RETRY|reportedGiveUp|retryTick' src` 为空。
-- [ ] AC6 `rg 'set_active_workspace' src` 为空（命令与前端调用同批删除）。
-- [ ] AC7 红线 17 护栏接入 `pnpm check:quick`，含正反用例。
-- [ ] AC8 `renderHook` 用例：集合去重（同集合不重发）/ 集合变化只发一次 /
+- [x] AC5 `rg 'requestedIntent|ACTIVATION_RETRY|reportedGiveUp|retryTick' src --glob '!*.md'` 为空
+      （判据 scope = 生产代码 `src/**/*.ts(x)`，与护栏判据 A 同一口径；`src/AGENTS.md` 的红线 17
+      正文必须点名反例，那是规则文档的职责 —— 拿 `rg ... src` 当 AC 会与文档冲突）。
+- [x] AC6 `rg 'set_active_workspace' src` 为空（命令与前端调用同批删除）。
+- [x] AC7 红线 17 护栏接入 `pnpm check:quick`，含正反用例。
+- [x] AC8 `renderHook` 用例：集合去重（同集合不重发）/ 集合变化只发一次 /
       `pending` 不触发任何写入 / `failed` 只记日志。
-- [ ] AC9 `pnpm check:quick` 绿。
+- [x] AC9 `pnpm check:quick` 绿。
 
 ## 开放问题（需产品确认，不阻塞本任务）
 

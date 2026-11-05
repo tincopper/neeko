@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore, selectStatus } from '@/shared/store/projectStore';
-import { activeWorkspaceKeyOf } from '@/shared/store/workspaceStore';
+import { activeWorkspaceKeyOf, fallbackToMainIfWorkspaceGone } from '@/shared/store/workspaceStore';
 import type { GitChangedEvent, GitStatusSnapshot } from '@/shared/types';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
@@ -40,6 +40,17 @@ function refreshUnitBranchInfo(workspaceKey: string): void {
             : p,
         ),
       }));
+      // 清单到手后做一次「当前单元是否还在清单里」的收口（C4 起这里是**唯一**的自动触发者）。
+      //
+      // 为什么必须落在这：删掉 render-time 回落 effect 后，`useRefreshGitInfo` 的回落跑不到 ——
+      // 它位于 `Promise.all([refreshGitInfo, refreshWorkspaceStatus])` 之后，而这两个命令都
+      // 按**当前单元**寻址；单元已被删时它们必然 reject（`assert_git_repo` 失败）⇒ 回落永不执行。
+      // 触发本函数的 `git-changed` 通常带的是**共享 gitdir 的活单元**的 key，因此它反而能成功拿到
+      // 「已不含被删 worktree」的新清单 —— 这正是判死需要的那个事实。
+      fallbackToMainIfWorkspaceGone(
+        projectId,
+        branchInfo.worktrees.map((wt) => wt.path),
+      );
     })
     .catch((e) => console.error('[git] get_git_branch_info failed:', e));
 }
