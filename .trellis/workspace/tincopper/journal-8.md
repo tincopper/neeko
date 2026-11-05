@@ -1695,3 +1695,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 416: git status：切项目后 Changes 冻结的修复（号段不得回退）
+<!-- trellis-session: v=2 fp=d0e4947fa7aa4389 -->
+
+**Date**: 2026-11-05
+**Task**: git status：切项目后 Changes 冻结的修复（号段不得回退）
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `efe9045b` | fix(git): release must never move a version floor backwards |
+
+### Status
+
+[OK] **Completed**

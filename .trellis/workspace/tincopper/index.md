@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 415
+- **Total Sessions**: 416
 - **Last Active**: 2026-11-05
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1697 | Active |
+| `journal-8.md` | ~1719 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 416 | 2026-11-05 | git status：切项目后 Changes 冻结的修复（号段不得回退） | `efe9045b` | `main` |
 | 415 | 2026-11-05 | git status 可观测性收官：C3 日志降噪（76% 噪声源）+ 决策登记 | `cd731b40` | `main` |
 | 414 | 2026-11-05 | git status 可观测性：C1/C2/C4 落地（读与挂载解耦、排他移除、热集合 reconcile） | `a9aec393` | `main` |
 | 411 | 2026-11-04 | dock: center pane shape and zone visibility derived from content | `6a4d7f20`, `eca747ec` | `main` |
