@@ -293,6 +293,44 @@ pnpm check:quick   # 收尾一次
 - 「面板根是海面」：`island.parentElement` 必须带 `bg-bg-primary`。
 - 三条空态用例改为断言「住在**主岛**内 + 分区是 `bg-tertiary`」。
 
+## 进度（2026-11-03h，内容卡片岛同源几何 + 呼吸感）
+
+> 用户反馈：「内容卡片可以采用岛屿的方式进行展示，带一点呼吸感，当前看起来比前面好一点
+> 但是还是不够美观」。
+
+**判据**：「像岛」≠「套 `ISLAND_CLASS`」（那是岛中岛中岛）。卡片取与岛**同源的几何语汇**：
+
+| 特征 | 岛 | 卡片 |
+| --- | --- | --- |
+| 圆角 / 阴影 | `rounded-lg` / `shadow-sm` | **同源** |
+| 描边 | 无 | `border border-border`（卡片小，阴影在浅色主题不可见） |
+| 底色 | `bg-bg-secondary` | `bg-bg-primary` |
+
+**呼吸感三处一起给**（只改一处等于没改）：
+
+| 位置 | 旧 | 新 |
+| --- | --- | --- |
+| 卡片内距 | `px-2 py-1.5`（8/6px） | `px-2.5 py-2`（10/8px） |
+| 卡片之间 | `gap-1`（4px） | `gap-1.5`（6px） |
+| 标题 ↔ 元数据 | `mt-1`（4px） | `mt-1.5`（6px） |
+| 列头 / 列底 | `py-1` + `text-micro` | `py-1.5` + `text-meta` |
+| 列表行 | `py-1.5` + `gap-0.5` | `py-2` + `gap-1` |
+
+### 测试账（2026-11-03h）
+
+`pnpm vitest run src/features src/app src/styles` → **5422 条绿**（611 文件）。
+
+新增 / 改写：
+- `WorkItemCard.test.tsx` +4 条（岛同源几何 / 不套岛壳 / 呼吸感 token / 元数据行 6px）；
+- `BoardView.test.tsx` +3 条（列头 py-1.5 / 列底 py-1.5+text-meta / 列内 gap-1.5+p-1.5），
+  全部 `getAllByRole` 逐列验；
+- **新增** `ListView.test.tsx`（此前零覆盖）：行不加岛壳 / 行内距 py-2 / 行内 gap-1 / 空态字阶。
+
+两个踩到的坑（已写进 spec）：
+- 正则 `\bpx-2\b` 会匹配 `px-2.5` 前缀 ⇒ 一律用 token 集合精确比对；
+- `querySelector` / `parentElement` / `closest` 全被 `testing-library/no-node-access` 拦
+  ⇒ 用 `data-testid`（与 `data-work-item-id` 同款做法）。
+
 ## 进度（2026-11-03g，主题适配：表面阶梯走到最内层）
 
 > 用户反馈：「但是UI还是需要根据应用的主题进行适配，当前的UI和整个应用主题不适配」。
