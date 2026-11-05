@@ -1188,45 +1188,79 @@ dnd-kit 的激活键是同一组键。结论：**项目列表只支持指针拖�
 > 改动不属本任务，不碰（它的 4 个迁移用例红是既有状态，不归本轮修复）。
 
 ### 32.1 后端（TDD，先红后绿）
-- [ ] 32.1.1 先红：`live_sessions/cursor.rs`
-  - `from_entry`：chat / terminal（含纯 shell）**都**投影；`!has_user_input` ⇒ `None`（不落盘）；
-  - `into_entry`：持久化行 → `SessionEntry`，状态固定 `Stopped`；标题 / kind / 地址 / native id /
-    时间戳 round-trip 一致。
-- [ ] 32.1.2 先红：`agent/chat/session_store.rs`
-  - 新列：`kind` / `project_id` / `worktree_path` / `title` / `title_source` / `has_user_input` /
-    `native_session_id`；`created_at` → `started_at`，`last_activity` → `updated_at`；
-  - 幂等扩列（`PRAGMA table_info` + `ALTER TABLE`，不加 `user_version` 门禁）；
-  - `SessionStore` 新面：`list_restorable()` / `delete_cursor()`；`save_cursor` upsert 仍保留
-    `model` / `runtime_mode`（既有不变量）；
-  - 旧 schema 用例：先建旧表 + 插一行 → 新 store 打开后列存在、旧行不崩、不被 `list_restorable` 返回。
-- [ ] 32.1.3 `Registry`
-  - 写穿：`report` / `report_first` / `report_user_input` / `report_authoritative` / `set_title` /
-    `record_native_session_id`（仅 `has_user_input`）；`adopt` 删旧行 + 写新行；
-  - `restore_from_store()`：一次插表 + 单次 bump，**不** emit（前端挂载即 hydrate）；
-  - `begin_shutdown()`（AtomicBool）+ `unregister` 抑制删除；
-  - `app::boot::on_setup` 调恢复；`shutdown_background_and_exit` 第一行置标志。
-- [ ] 32.1.4 用例：列出的会话落盘 / 未列出不落盘 / 改名 / native id / `unregister` 删除 /
-      shutdown 不删 / 恢复为 `Stopped` / `adopt` 迁移行 / 重复恢复不产生重复条目。
-- 验证：`cargo test --lib live_sessions::` + `cargo test --lib agent::chat::session_store`
-  （`common::db::migrations` 的既有红不属本轮）。
+- [x] 32.1.1 `live_sessions/cursor.rs`：`from_entry` 单门控（`has_user_input`）、`into_entry`
+      （状态恒 `Stopped`、Placeholder 不变量、时间戳回退）；双向枚举映射穷举。
+- [x] 32.1.2 `agent/chat/session_store.rs`：7 列幂等扩列（含并发打开容错）、`row_to_cursor` 单列清单、
+      `list_restorable` / `delete_cursor`；upsert 保留 `model` / `runtime_mode` / `created_at`。
+- [x] 32.1.3 `Registry`：report 家族真变化写穿、`persist_gate` 串行化（闸门内重投影）、
+      `record_native_session_id` 落盘不 bump、`adopt` 先写新行后删旧行、`unregister` 删行 +
+      退出抑制、`restore_from_store` 单次 bump；`boot::restore` 接入 `on_setup`。
+- [x] 32.1.4 用例：138 passed（`cargo test --lib live_sessions::`）+ 9 passed（session_store）。
+- 验证：`cargo test --lib live_sessions::` + `cargo test --lib agent::chat::session_store`。
+  （`common::db::migrations` 的既有红不属本轮，未触碰该文件。）
 
 ### 32.2 前端（TDD）
-- [ ] 32.2.1 先红：`SessionList` 改名用例改 `userEvent.type` 连打多字（当前实现只剩最后一字）；
-      新增 `InlineRenameInput` 用例：挂载即 focus + select。
-- [ ] 32.2.2 `InlineRenameInput` → `ui/Input size="sm"`，组件内 focus + select；删 `inputRef` prop。
-  - 侧栏行 / worktree 行 / TagGroupRail 三处共用；继承 IME 空格守卫 + `noAutocorrectProps`。
-- [ ] 32.2.3 `SessionList` 删 effect / ref；`useWorktreeRowState` 删 focus effect 与 `renameInputRef`；
-      `WorktreeRowList` / `ConnectionWorktreeList` 同步；TagGroupRail 改名改走 `InlineRenameInput`，
-      新建输入改走 `ui/Input`。
-- [ ] 32.2.4 视觉回归：行高 / 字号 / focus ring 与 `prototype.html` 对齐；测试不再断言裸 input 类名。
+- [x] 32.2.1 先红 → 绿：`SessionList` 逐字符输入回归（旧实现只剩最后一个字）；`InlineRenameInput`
+      挂载即 focus + 全选用例。
+- [x] 32.2.2 `InlineRenameInput` → `ui/Input size="sm"`（`Input` 改 `forwardRef`），组件内 focus + select。
+- [x] 32.2.3 `SessionList` / `useWorktreeRowState` / `WorktreeRowList` 删 ref 与 focus effect；
+      `TagGroupRail` 改名走 `InlineRenameInput`、新建走 `ui/Input`。
+- [ ] 32.2.4 真机视觉回归（行高 / 字号 / focus ring 与 `prototype.html`）—— 需人工确认。
 
 ### 32.3 文档
-- [ ] 32.3.1 更新 `.trellis/spec/backend/persistence-and-cache.md` §4b：
-      标题 / 可见性落盘、反向投影存在且固定为 `Stopped`、terminal 行也落盘、退出抑制。
-- [ ] 32.3.2 `agent-chat-transports.md`：若「会话结束 / 删除」描述受影响则同步。
+- [x] 32.3.1 `persistence-and-cache.md` §4b：双向投影 / 写穿策略 / 退出抑制 / 串行化闸门。
+- [x] 32.3.2 `agent-chat-transports.md`：关 tab 条目跨重启、adopt 行搬家。
+- [x] 32.3.3 `component-guidelines.md`：行内编辑 focus / 全选归组件。
 
 ### 32.4 验证与回滚
-- 验证：`cargo test --lib live_sessions::` + 相关 `agent::chat` 用例 + 相关 vitest；
-  收尾跑一次 `pnpm check:quick`。
+- [x] 验证：`pnpm check:quick` 全绿（23/23）；`cargo clippy --all-targets -D warnings` / `cargo fmt` 绿；
+      `pnpm run type-check` 绿；`trellis-check` 无 Block（修掉落盘竞态闸门 / adopt 写序 / 并发扩列容错）。
+- 已知取舍：chat 恢复行不 `adopt`（旧行留作历史，手动删）；关 tab 的 stopped 行全量保留
+      （保留策略待产品决定）；AC15 真机待验。
 - 回滚：后端「启动恢复调用」与「退出抑制」两行独立可摘（摘掉即回到内存态）；
   前端输入框统一可单独回滚（组件 API 变更同 diff 完成）。
+
+## 第 33 轮：审核后收敛（neeko-check 复审 → 修复）
+
+> 审核结论：`pnpm check:quick` 绿但 `cargo test --lib` 有红 —— `common/db/migrations.rs` 的
+> `LATEST_VERSION = 18` 而 `migrate_step` 只登记到 12（**既有红，用户明确本轮不动**，
+> 归它自己的批次修）。其余问题本轮修完。
+
+### 33.1 判据收敛（同一事实一处表示）
+- [x] 先红：`list_restorable_applies_the_rust_gate_on_top_of_the_sql_prefilter`
+      （损坏行「`Placeholder` 却有标题」能过 SQL 粗筛，必须先红）。
+- [x] `ResumeCursor::is_restorable()` 成为**唯一读门**：`into_entry` / SQL 实现 / `RecordingStore`
+      全部调它；SQL 的 `WHERE` 降格为粗筛（必须超集），`ORDER BY` 删除（排序属视图层）。
+- [x] 写门 `has_user_input` 与读门在文档里分别命名（两者回答不同问题，不再散成四份实现）。
+
+### 33.2 列所有权单一来源
+- [x] `ResumeCursor::with_creation_fields_of()`：创建期字段清单只写一处；`Registry::write_cursor`
+      由手写结构体字面量改为调它。
+- [x] `creation_fields_survive_both_write_paths`：纯函数 + SQL upsert 两条腿一起钉。
+
+### 33.3 死代码与语义钉子
+- [x] 删 `SessionStore::list_active` + `AgentChatManager::list_active`（两者均无生产消费者）。
+- [x] `natural_exit_deletes_the_row_while_an_explicit_close_keeps_it`：把「进程自己结束 ⇒ 删行 /
+      点 X ⇒ 保留行」这条**故意相反**的契约钉在库上（此前只钉内存，状态列没有读者）。
+- [x] `TagGroupRail` 的 `onCommit` 恢复 `void` 前缀（显式 fire-and-forget 标记）。
+
+### 33.4 文档
+- [x] `persistence-and-cache.md` §4b.4 判据表（写门 / 读门 + 粗筛超集）；
+      新增 §4b.6 列所有权契约、§4b.7 三个张力（IPC 增长 vs 红线 4/16、双入口去留、阻塞写位置）。
+
+### 33.5 验证
+- `cargo test --lib live_sessions` **139 passed**；`agent::chat::session_store` **11 passed**。
+- `cargo clippy --all-targets -D warnings` / `cargo fmt --check` 绿；`pnpm check:quick` 23/23 绿。
+- `cargo test --lib` 的其余红全部来自上面那条既有 `LATEST_VERSION` 红
+  （实测 `workspace_ctx_*` 的 panic 是 `fixture: in-memory library store: migration from
+  version 13 to 14 failed`）。
+
+### 33.6 本轮的**判断性取舍**（未改，理由在此）
+- **不拆 `SessionStore` 为两个 trait**：两个消费者本来就各读自己的行，拆分会引入两个 `Arc`
+  与 supertrait，而真正的不内聚在 `ResumeCursor` 装了两域字段（要拆就拆表，不是拆 trait）。
+  当前用 trait 文档的「两半接口」表 + 列所有权契约划界，规模（5 方法）不足以支撑拆表成本。
+- **不加行保留策略 / 不加 `LIMIT`**：红线 16 明确禁止用上限裁掉可观测集合；正确形状是
+  「热 N + 其余惰性可读」，属产品决策（已写入 §4b.7①）。
+- **不改「自然结束删行」**：产品语义，已用测试钉住现状；若要统一成「都保留」，先改用例。
+- **不把 `adopt_live_session` 改 async**：正确改法是 `spawn_blocking`（加 `async` 会把阻塞 IO
+  挪进执行器线程，红线 3 反方向），当前体量不值得动；已记入 §4b.7③。

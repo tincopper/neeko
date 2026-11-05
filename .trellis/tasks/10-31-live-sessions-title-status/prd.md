@@ -193,6 +193,12 @@ R4.3 随之解除「不做 OSC」的限制：Native 恢复为可用来源（prov
 - **R7.3 点击才恢复**：沿用 `useActivateSession` 现有路径 —— terminal 有 `native_session_id` 就
   `--resume`，否则新建同 agent 终端；chat 打开一条新的 chat tab（会话级恢复仍在 Histor 面板，
   chat 侧没有原生 session id，见 `implement.md` §8.2）。
+
+  **已知取舍（不阻塞本轮）**：
+  - chat 恢复行点击后不会 `adopt` 旧行（chat tab 没有 `resumeFromSessionId` 通道），旧行会作为
+    历史保留，需用户手动删除；
+  - 「关 tab」= `Stopped` 且保留条目（既有语义），因此这类行也会跨重启存活、不会自动清理；
+    本轮不做保留策略（全量保留，侧栏分页），清理阈值需要产品另行决定。
 - **R7.4 退出不得删库**：`shutdown_background_and_exit` 先置「关闭中」标志，`close_all_sessions`
   触发的 `unregister` 只摘内存条目、不删持久化记录（否则退出 = 清空列表）。崩溃 / 强杀天然满足。
 - **R7.5 恢复记录必须能定位单元**：落盘 `project_id` + `worktree_path`（不存拼好的 key：后端没有
@@ -205,11 +211,11 @@ session id，见 §8.2）；其它裸 `<input>` 的全量收编（另开任务�
 
 ### 第五轮验收补充
 
-- [ ] AC12 单测：注册表在 `has_user_input` 置位 / 标题变化 / native id 回填时写穿；未列出的会话不落盘；
+- [x] AC12 单测：注册表在 `has_user_input` 置位 / 标题变化 / native id 回填时写穿；未列出的会话不落盘；
       `unregister` 删除行；`begin_shutdown` 后 `unregister` 不删行。
-- [ ] AC13 单测：`cursor::from_entry` 对 chat / terminal（含纯 shell）都投影出记录；反向 `into_entry`
+- [x] AC13 单测：`cursor::from_entry` 对 chat / terminal（含纯 shell）都投影出记录；反向 `into_entry`
       固定把状态还原为 `Stopped`，标题 / kind / 地址 / native id / 时间戳往返一致。
-- [ ] AC14 单测：`SqliteSessionStore` 在旧 schema 上幂等扩列；`list_restorable` 只返回可定位且有名字的行。
+- [x] AC14 单测：`SqliteSessionStore` 在旧 schema 上幂等扩列；`list_restorable` 只返回可定位且有名字的行。
 - [ ] AC15 真机：列出若干 chat / terminal 会话 → 退出 → 重启，侧栏行仍在、标题不变、
       单元归属正确、行状态为 stopped；点 terminal 行能 `--resume`（有 native id 时）；
       删除一条后重启不再出现。
