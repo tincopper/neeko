@@ -1226,6 +1226,50 @@ fn push_with_current_ticket_is_written_and_emitted() {
     );
 }
 
+/// **现场回归（2026-11-05）**：切项目 = `set_active_project` → `unwatch_project` → 重新挂载。
+///
+/// 这不是「这个项目从此不存在了」，而是**释放**：数据可以丢，**号段不能回退**。号段一归零，
+/// 重新挂载的 worker 从 `v1` 起号，而前端槽位里还留着切走前的 `vN` —— `applyStatus` 的
+/// `version <= prev` 会把**每一份**新快照都判成旧的丢掉，面板永久停在切走前那份数据上
+/// （实测表现为「文件已经提交，却仍留在 Changes 列表里」）。
+///
+/// 机制与 2026-09-29 的「13 次推送全是 v1」同族；区别只在入口：那次是释放删了槽位，
+/// 这次是 `forget_project` 连号段一起删。
+#[test]
+fn remount_after_unwatch_project_keeps_the_version_climbing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("repo");
+    std::fs::create_dir_all(&root).unwrap();
+    git2::Repository::init(&root).expect("init git repo");
+
+    let unit = main_unit(&root);
+    let sink = CollectingSink::new();
+    let manager = WatcherManager::new().without_real_fs();
+
+    let created = declare(&manager, vec![(unit.clone(), sink.clone())]);
+    assert_eq!(created.len(), 1, "夹具前提：首次声明挂上了");
+    let before = wait_for_snapshot_newer_than(&manager, &unit, 0);
+    assert!(before.version >= 1);
+
+    // 切到别的项目：`set_active_project` 的收口
+    manager.unwatch_project("p1");
+    assert!(
+        manager.snapshot(&unit).is_none(),
+        "数据作废（未知 ≠ 旧数据）"
+    );
+    assert!(!manager.is_watched(&unit), "资源释放");
+
+    // 切回来：重新声明 → 新 worker 的推送必须比切走前更新
+    declare(&manager, vec![(unit.clone(), sink.clone())]);
+    let after = wait_for_snapshot_newer_than(&manager, &unit, before.version);
+    assert!(
+        after.version > before.version,
+        "切回后号段必须继续前进：{} <= {} ⇒ 前端 `version <= prev` 会把每一份新快照丢掉",
+        after.version,
+        before.version
+    );
+}
+
 /// **凭证闸门 · 释放后**：旧票的晚到推送必须被拒 —— 不写槽位、不 emit、票号已注销。
 ///
 /// 这是 2026-10 CI 竞态的确定性复现：worker 的推送回调活在 `watch()` 栈之外，释放后仍可能

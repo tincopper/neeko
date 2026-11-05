@@ -320,23 +320,30 @@ impl StatusStore {
         self.dirty.remove(key);
     }
 
-    /// 项目被移除：数据与号段一并回收（该项目的单元不会再有读者）。
+    /// 项目级的**数据作废**：只丢条目与脏位，**号段一律保留**。
     ///
-    /// 与 [`Self::forget`] 的差别只在号段：单元级的「切走视图」必须保留号段（否则重新挂载的
-    /// 第一份快照会被前端闸门判成旧的丢掉），而项目级移除没有这个约束。
+    /// **号段为什么不跟着删**（2026-11-05 现场回归，机制同 2026-09-29 的「13 次推送全是 v1」）：
+    /// 本函数唯一的调用者是 `unwatch_project`，而 `unwatch_project` 由 `set_active_project`
+    /// **每次切项目**调用一次 —— 那是**释放**，不是「这个项目从此不存在了」。号段一归零，
+    /// 切走再切回时新挂载的 worker 从 `v1` 起号，而前端槽位里还留着切走前的 `v37`，
+    /// `applyStatus` 的 `version <= prev` 会把**每一份**新快照都判成旧的丢掉 ⇒ 面板永久停在
+    /// 切走前那份数据上（表现为「文件已提交却仍在 Changes 列表」）。实测时序：切项目 →
+    /// release + re-mount 在 1 秒内完成，之后的 emit 全部被前端闸门吞掉。
+    ///
+    /// 号段的内存规模以「本会话挂载过的单元」为界（u64 / 单元），保留它是**有意的**：
+    /// 释放的语义是「此刻没有权威数据」，不是「时间倒流」。
     pub(in crate::common::file::watcher) fn forget_project(&mut self, project_id: &str) {
         let owned: Vec<String> = self
             .entries
             .keys()
             .chain(self.dirty.keys())
-            .chain(self.version_floors.keys())
             .filter(|key| WorkspaceRef::parse_key(key).is_some_and(|(pid, _)| pid == project_id))
             .cloned()
             .collect();
         for key in owned {
             self.entries.remove(&key);
             self.dirty.remove(&key);
-            self.version_floors.remove(&key);
+            // `version_floors` 刻意不动：见函数文档（释放不得使号段回退）。
         }
     }
 
@@ -541,6 +548,36 @@ mod tests {
         let accepted =
             store.upsert_if_not_superseded(snapshot(0), started, now + Duration::from_millis(400));
         assert_eq!(accepted.map(|s| s.version), Some(3));
+    }
+
+    /// 「项目级作废」与「单元级作废」必须同一条号段契约：**释放不得使号段回退**。
+    ///
+    /// 回归钉子（2026-11-05 现场）：`set_active_project` 每次切项目都调 `unwatch_project`
+    /// ⇒ `forget_project`。若这里连 floors 一起删，切回后 worker 从 v1 起号，前端 `version <= prev`
+    /// 会把每份新快照都丢掉（面板永久停在旧数据）。
+    #[test]
+    fn forget_project_clears_data_but_keeps_version_floors() {
+        let now = Instant::now();
+        let mut store = StatusStore::new();
+        assert_eq!(store.upsert(snapshot(0), now).version, 1);
+        assert_eq!(store.upsert(snapshot(0), now).version, 2);
+
+        store.forget_project("p1");
+
+        assert!(
+            store.snapshot(&key()).is_none(),
+            "数据必须作废（未知 ≠ 旧数据）"
+        );
+        assert_eq!(
+            store.version_floor(&key()),
+            Some(2),
+            "号段必须保留：释放不是时间倒流"
+        );
+        assert_eq!(
+            store.upsert(snapshot(0), now).version,
+            3,
+            "作废后重新起号必须仍大于前端手里那份（否则被闸门判成旧的丢掉）"
+        );
     }
 
     #[test]

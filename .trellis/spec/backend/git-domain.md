@@ -571,8 +571,15 @@ golden 测试钉住（`golden_key_format_matches_frontend_contract` ↔ `workspa
   `v3`（**切项目**这条路上没人作废它，`invalidateStatus` 只在 worktree 切换时发），
   `version <= prev` 于是把这份**更新**的数据判成旧的丢掉 —— 界面继续显示离开时的旧快照，
   正是 issue #2「要手动刷新才恢复」的形态。
-  **号段不再需要「活得比数据久」的特殊处理**：释放（`release_one` / `release_except` /
+  **号段不再需要「活得比数据久」的特殊处理**：释放（`release_one` / `reconcile_mounted` /
   `unwatch`）现在**既不作废数据、也不动号段**（见下一条）。
+  **`unwatch_project` 同样不得清号段**（2026-11-05 现场回归）：它不只服务「项目被移除」——
+  `set_active_project` **每次切项目**都会调它一次。号段一归零，切回后新挂载的 worker 从 `v1`
+  起号，而前端槽位里还留着切走前的 `vN`，`applyStatus` 的 `version <= prev` 会把**每一份**
+  新快照都判成旧的丢掉 ⇒ 面板永久停在切走前那份数据上（实测症状：文件已提交却仍在 Changes
+  列表里）。不变量表述：**任何释放 / 淘汰路径都不得使某 key 的下一次号 ≤ 它曾给出过的最大号**；
+  回归 `forget_project_clears_data_but_keeps_version_floors`、
+  `remount_after_unwatch_project_keeps_the_version_climbing`。
 - **释放不作废数据（C1）**：`unwatch` / `release_except` 只释放**资源**（watcher / worker /
   线程），登记表里的权威快照保留。理由：资源状态不是数据可信度的代理 —— 旧实现把「未挂载」
   当成「无权威数据」，导致读路径只能按 `is_watched` 分支，进而**非激活单元永远没有可显示的
