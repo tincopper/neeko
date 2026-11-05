@@ -177,3 +177,39 @@ R4.3 随之解除「不做 OSC」的限制：Native 恢复为可用来源（prov
       `修复登录竞态`）通过。
 - [x] AC11 单测：判负**不改写**已有标题 —— `Prompt` 命名后收到噪声 `Native`，`title` 与
       `title_source` 都保持原值（证明准入发生在 `should_upgrade` 之前）。
+
+### 第五轮修订（持久化侧栏会话列表，2026-11-05）
+
+**问题**（真机实测）：应用退出后侧栏会话子列表整片消失。注册表是纯内存事实，写穿只覆盖
+`status` / `turn_count` / `last_activity`，标题、可见性、kind、单元地址、原生会话 id 都不落盘；
+启动时 `Registry::new` 为空表。
+
+**R7（P0）——只持久化「侧栏列表」这一层事实，不恢复运行中的 agent：**
+
+- **R7.1 落盘时机**：会话**进入侧栏**时开始持久化（`has_user_input = true`），之后标题升级 /
+  用户改名 / `native_session_id` 回填都要更新；`unregister`（用户删除 / 进程结束）删除记录。
+- **R7.2 启动恢复**：把持久化记录回填注册表，状态一律为 `Stopped`（没有进程在跑）；**不**自动建 tab、
+  **不**自动启动 agent、**不**自动恢复对话。前端初次 hydrate 就能看到这些行（无需新命令 / 事件）。
+- **R7.3 点击才恢复**：沿用 `useActivateSession` 现有路径 —— terminal 有 `native_session_id` 就
+  `--resume`，否则新建同 agent 终端；chat 打开一条新的 chat tab（会话级恢复仍在 Histor 面板，
+  chat 侧没有原生 session id，见 `implement.md` §8.2）。
+- **R7.4 退出不得删库**：`shutdown_background_and_exit` 先置「关闭中」标志，`close_all_sessions`
+  触发的 `unregister` 只摘内存条目、不删持久化记录（否则退出 = 清空列表）。崩溃 / 强杀天然满足。
+- **R7.5 恢复记录必须能定位单元**：落盘 `project_id` + `worktree_path`（不存拼好的 key：后端没有
+  `from_key` 解析器），前端仍按 `workspaceKey` 等值分组。
+- **R7.6 兼容存量**：`agent_sessions.db` 是私有迁移链（无 `user_version`），扩列必须幂等；
+  旧行缺字段时给默认值，`project_id` 为空 / 无标题的旧行不恢复（无法定位单元 / 不可见）。
+
+**不在本轮范围**：启动时自动恢复 agent / 自动打开 tab；chat 会话级对话自动续接（需要 chat 原生
+session id，见 §8.2）；其它裸 `<input>` 的全量收编（另开任务）。
+
+### 第五轮验收补充
+
+- [ ] AC12 单测：注册表在 `has_user_input` 置位 / 标题变化 / native id 回填时写穿；未列出的会话不落盘；
+      `unregister` 删除行；`begin_shutdown` 后 `unregister` 不删行。
+- [ ] AC13 单测：`cursor::from_entry` 对 chat / terminal（含纯 shell）都投影出记录；反向 `into_entry`
+      固定把状态还原为 `Stopped`，标题 / kind / 地址 / native id / 时间戳往返一致。
+- [ ] AC14 单测：`SqliteSessionStore` 在旧 schema 上幂等扩列；`list_restorable` 只返回可定位且有名字的行。
+- [ ] AC15 真机：列出若干 chat / terminal 会话 → 退出 → 重启，侧栏行仍在、标题不变、
+      单元归属正确、行状态为 stopped；点 terminal 行能 `--resume`（有 native id 时）；
+      删除一条后重启不再出现。

@@ -380,3 +380,79 @@ fn budgeted(text: &str) -> &str {
 3. **provider 会话文件反查标题**（orca 的 `aiVaultTitle`）：§8.2 已定。但记下它的护栏：
    一旦 neeko 支持 tab 内多 PTY，标题归属必须按 **sessionId** 而非 tabId，否则同 tab 的两个
    pane 会互相抢名字（orca 用 `agent + sessionId` 双匹配才认）。当前单 PTY/tab 无此风险。
+
+## 12. 第五轮修订：持久化侧栏会话列表（2026-11-05）
+
+### 12.1 事实分层
+- 持久化的是**侧栏列表条目** = 身份 + 标题 + 可见性 + 时间 + 原生恢复参数；运行时状态**不进**
+  数据库（恢复时没有进程，任何非终止态都是假数据）。
+- 注册表仍是唯一事实；DB 是它的重启投影，不是第二个事实源。恢复 = 把 DB 行**投影回**
+  `SessionEntry`，且 `state` 固定为 `Stopped`。
+- 行存在与否 =「这条会话在侧栏出现过」。因此**写穿从首次用户输入开始**，不在 `register` 无条件写。
+
+### 12.2 存储位置：扩展 `session_cursors`（不新开表 / 不新开库）
+
+`agent_sessions.db` 已有 `SessionStore`（注册表与 `AgentChatManager` 共用一个实例），且没有
+`user_version` 门禁（`CREATE TABLE IF NOT EXISTS`），扩列风险远低于 `neeko.db` 的单一迁移链。
+
+新列：`kind` / `project_id` / `worktree_path` / `title` / `title_source` / `has_user_input` /
+`native_session_id`。时间不进新列：`created_at` → `started_at`，`last_activity` → `updated_at`。
+`ResumeCursor` 仍是唯一持久化形状（名字保留，语义由 `cursor.rs` 的单向投影说明）。
+
+**为什么不新开表**：`persistence-and-cache.md` §4b 的判据仍成立 —— 两张表会对「哪些会话该恢复」
+给出两个答案。旧注释「终端不落 chat 表」随之改写：落盘的是**行**，不是「可恢复的进程」。
+
+**兼容**：幂等扩列用 `PRAGMA table_info` 判存在性 + `ALTER TABLE ADD COLUMN`（每列一个默认值）。
+旧行缺字段时：`kind` 默认 `chat`、`project_id` 空、`title` 空 —— 恢复时被过滤，不入注册表。
+
+### 12.3 写穿策略（读者驱动）
+
+| 时机 | 写什么 | 理由 |
+| --- | --- | --- |
+| `register` | 仅 `has_user_input == true` | 列表只列用户用过的会话 |
+| 首次输入 / 首次 Engage | `has_user_input` + 标题 | 行「出现」的时刻 |
+| 标题升级 / 用户改名 | `title` + `title_source` | 用户改过的名字必须活过重启 |
+| native id 回填 | `native_session_id` | 点击恢复的唯一入参 |
+| 状态转移 | 沿用既有节流（终态 / `turn_count`） | 不新增高频写 |
+| `unregister` | DELETE | 删除 / 进程结束 = 从列表消失 |
+| `begin_shutdown` 之后 | 只摘内存、不 DELETE | 退出不能等价于清空 |
+
+锁内只做 map 操作；落盘一律锁外 best-effort（失败只 `warn`）—— 沿用 §4b.3。
+
+### 12.4 启动恢复
+
+`app::boot::on_setup` 调 `live_sessions::boot::restore(&state.live_sessions)`：
+
+1. `list_restorable()`：过滤 `project_id != ''` 且 `title != ''`（旧行 / 无名行无法出现在列表里）；
+2. 每行 → `SessionEntry { state: Stopped, .. }`；
+3. 一次性插表 + **单次** `bump()`。
+
+**不 emit 事件**：前端尚未挂载；`useLiveSessionsBridge` 挂载即拉快照。也不需要新命令。
+
+### 12.5 退出抑制
+
+`shutdown_background_and_exit` 第一行调 `live_sessions.begin_shutdown()`（`AtomicBool`）。
+`Registry::unregister` 照常摘内存，但跳过 `store.delete_cursor`。不改关闭协议的顺序：
+只要标志先置位，任何并发清理路径的 `unregister` 都不会删行。崩溃 / 强杀天然满足（根本没走到
+`unregister`）。
+
+### 12.6 点击才恢复（不改前端协议）
+
+恢复出来的行就是普通 `SessionView`（`state = stopped`），点击走既有 `useActivateSession`：
+
+- **terminal**：`isLiveSession = false` → `recreateSessionTab` → `live_session_resume_command` 读
+  `native_session_id`（已持久化）→ 拼 `--resume`；成功后 `adopt_live_session` 继承标题、旧行退场。
+  `Registry::adopt` 需同时「删旧 DB 行 + 写新 DB 行」。
+- **chat**：打开一条新 chat tab（chat 侧没有原生 session id，§8.2 既有结论）；对话级恢复仍在
+  Histor 面板。这是已知限制，不在本轮扩展。
+
+### 12.7 重命名输入框统一（同轮，前端）
+
+- 根因：`SessionList` 的 focus effect 依赖 `[draft]`，每敲一个字符就重新 `select()` → 下一次
+  按键覆盖整段（表现为「一输入就是选中状态」）。
+- 归属错误：focus + 全选是「行内重命名输入框」的行为，应该由组件自己持有；现在
+  `SessionList` / `useWorktreeRowState` / `TagGroupRail` 各写一份，漂移已在第一份发生。
+- 统一：`InlineRenameInput` → `ui/Input size="sm"`，挂载即 focus + select；调用方删掉各自的
+  effect 与 ref 透传。顺带继承 `ui/Input` 的 IME 空格守卫 / `noAutocorrectProps` / 统一 focus 样式。
+- 范围：行内重命名 / 新建文本输入（侧栏会话行、worktree 行、tag group）；搜索框、过滤器等
+  其它裸 `<input>` 不在本轮。

@@ -1179,3 +1179,54 @@ dnd-kit 的激活键是同一组键。结论：**项目列表只支持指针拖�
 行外壳带 `role="listitem"`、容器 `role="list"`。选中底色画在外壳上（工具栏是按钮的兄弟
 节点，只给按钮会让高亮在 `⋯` 前断掉），而屏幕阅读器把「标题 + 操作」读成一个列表项。
 顺带消掉 `data-testid="session-row"`（多行列表里 `getByTestId` 必然抛）。
+
+---
+
+## 32. 第五轮修订（2026-11-05）：侧栏列表持久化 + 重命名输入框统一
+
+> 只持久化列表，不恢复 agent；点击才恢复。`src-tauri/src/common/db/migrations.rs` 的未提交
+> 改动不属本任务，不碰（它的 4 个迁移用例红是既有状态，不归本轮修复）。
+
+### 32.1 后端（TDD，先红后绿）
+- [ ] 32.1.1 先红：`live_sessions/cursor.rs`
+  - `from_entry`：chat / terminal（含纯 shell）**都**投影；`!has_user_input` ⇒ `None`（不落盘）；
+  - `into_entry`：持久化行 → `SessionEntry`，状态固定 `Stopped`；标题 / kind / 地址 / native id /
+    时间戳 round-trip 一致。
+- [ ] 32.1.2 先红：`agent/chat/session_store.rs`
+  - 新列：`kind` / `project_id` / `worktree_path` / `title` / `title_source` / `has_user_input` /
+    `native_session_id`；`created_at` → `started_at`，`last_activity` → `updated_at`；
+  - 幂等扩列（`PRAGMA table_info` + `ALTER TABLE`，不加 `user_version` 门禁）；
+  - `SessionStore` 新面：`list_restorable()` / `delete_cursor()`；`save_cursor` upsert 仍保留
+    `model` / `runtime_mode`（既有不变量）；
+  - 旧 schema 用例：先建旧表 + 插一行 → 新 store 打开后列存在、旧行不崩、不被 `list_restorable` 返回。
+- [ ] 32.1.3 `Registry`
+  - 写穿：`report` / `report_first` / `report_user_input` / `report_authoritative` / `set_title` /
+    `record_native_session_id`（仅 `has_user_input`）；`adopt` 删旧行 + 写新行；
+  - `restore_from_store()`：一次插表 + 单次 bump，**不** emit（前端挂载即 hydrate）；
+  - `begin_shutdown()`（AtomicBool）+ `unregister` 抑制删除；
+  - `app::boot::on_setup` 调恢复；`shutdown_background_and_exit` 第一行置标志。
+- [ ] 32.1.4 用例：列出的会话落盘 / 未列出不落盘 / 改名 / native id / `unregister` 删除 /
+      shutdown 不删 / 恢复为 `Stopped` / `adopt` 迁移行 / 重复恢复不产生重复条目。
+- 验证：`cargo test --lib live_sessions::` + `cargo test --lib agent::chat::session_store`
+  （`common::db::migrations` 的既有红不属本轮）。
+
+### 32.2 前端（TDD）
+- [ ] 32.2.1 先红：`SessionList` 改名用例改 `userEvent.type` 连打多字（当前实现只剩最后一字）；
+      新增 `InlineRenameInput` 用例：挂载即 focus + select。
+- [ ] 32.2.2 `InlineRenameInput` → `ui/Input size="sm"`，组件内 focus + select；删 `inputRef` prop。
+  - 侧栏行 / worktree 行 / TagGroupRail 三处共用；继承 IME 空格守卫 + `noAutocorrectProps`。
+- [ ] 32.2.3 `SessionList` 删 effect / ref；`useWorktreeRowState` 删 focus effect 与 `renameInputRef`；
+      `WorktreeRowList` / `ConnectionWorktreeList` 同步；TagGroupRail 改名改走 `InlineRenameInput`，
+      新建输入改走 `ui/Input`。
+- [ ] 32.2.4 视觉回归：行高 / 字号 / focus ring 与 `prototype.html` 对齐；测试不再断言裸 input 类名。
+
+### 32.3 文档
+- [ ] 32.3.1 更新 `.trellis/spec/backend/persistence-and-cache.md` §4b：
+      标题 / 可见性落盘、反向投影存在且固定为 `Stopped`、terminal 行也落盘、退出抑制。
+- [ ] 32.3.2 `agent-chat-transports.md`：若「会话结束 / 删除」描述受影响则同步。
+
+### 32.4 验证与回滚
+- 验证：`cargo test --lib live_sessions::` + 相关 `agent::chat` 用例 + 相关 vitest；
+  收尾跑一次 `pnpm check:quick`。
+- 回滚：后端「启动恢复调用」与「退出抑制」两行独立可摘（摘掉即回到内存态）；
+  前端输入框统一可单独回滚（组件 API 变更同 diff 完成）。
