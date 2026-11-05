@@ -59,10 +59,15 @@ export const DOCK_PANEL_META: Record<string, DockPanelMeta> = {
   },
   tasks: {
     id: 'tasks',
-    defaultZone: 'right',
-    // 工作项是「今天要处理什么」的入口，排在看过的对话 / 团队之后、搜索之前。
+    // 中心视图（design §4.2c）：占**中间区**，但**不收左栏**。
+    // 左栏 Projects 是「切项目」的入口 —— 看板的数据是按项目存的，收起它等于让用户
+    // 看不见自己在看哪个项目的工作项（Library 相反：它自带导航列，左栏就是第三层导航）。
+    // 排 `defaultOrder: 4` 紧跟 library（3）：两者都是「中心视图入口」，在左栏菜单里连排。
     // 与 search 同 zone 不同序：同序时顺序取决于对象字面量的键序（既有注释已钉住这条）。
-    defaultOrder: 6,
+    defaultZone: 'left',
+    defaultOrder: 4,
+    openAs: 'tab',
+    collapseLeftZone: false,
   },
   search: {
     id: 'search',

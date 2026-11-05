@@ -25,6 +25,7 @@ export {
   Keyboard as KeyboardIcon,
   MoreVertical as MoreVerticalIcon,
   Server as ServerIcon,
+  ListChecks as ListChecksIcon,
 } from 'lucide-react';
 
 // ─── Re-export everything so all lucide icons importable from one path ───

@@ -37,6 +37,8 @@ export interface AppShellData {
   handleBackToMainTerminal: ProjectActionsContextValue['onBackToMainTerminal'];
   handleOpenIdeForSidebar: ProjectActionsContextValue['onOpenIde'];
   handleOpenWorktreeTerminal: ProjectActionsContextValue['onOpenWorktreeTerminal'];
+  /** 打开某个项目的 Tasks（先切项目，再进中心视图）—— design §4.2c。 */
+  handleOpenTasks: ProjectActionsContextValue['onOpenTasks'];
   handleDragEnd: ProjectActionsContextValue['onDragEnd'];
   handleSaveProjectSettings: ProjectActionsContextValue['onSaveProjectSettings'];
   // file actions
@@ -125,6 +127,7 @@ export function buildAppShellValues(data: AppShellData) {
     handleBackToMainTerminal,
     handleOpenIdeForSidebar,
     handleOpenWorktreeTerminal,
+    handleOpenTasks,
     handleDragEnd,
     handleSaveProjectSettings,
     handleFileSelect,
@@ -195,6 +198,7 @@ export function buildAppShellValues(data: AppShellData) {
     onBackToMainTerminal: handleBackToMainTerminal,
     onOpenIde: handleOpenIdeForSidebar,
     onOpenWorktreeTerminal: handleOpenWorktreeTerminal,
+    onOpenTasks: handleOpenTasks,
     onDragEnd: handleDragEnd,
     onSaveProjectSettings: handleSaveProjectSettings,
   };

@@ -38,6 +38,7 @@ function makeData(): AppShellData {
     handleBackToMainTerminal: fn,
     handleOpenIdeForSidebar: fn,
     handleOpenWorktreeTerminal: fn,
+    handleOpenTasks: fn,
     handleDragEnd: fn,
     handleSaveProjectSettings: fn,
     handleFileSelect: fn,
@@ -113,6 +114,9 @@ describe('buildAppShellValues', () => {
     expect(projectActionsValue.onBackToMainTerminal).toBe(data.handleBackToMainTerminal);
     expect(projectActionsValue.onOpenIde).toBe(data.handleOpenIdeForSidebar);
     expect(projectActionsValue.onOpenWorktreeTerminal).toBe(data.handleOpenWorktreeTerminal);
+    // 项目级 Tasks 入口（design §4.2c）：必须穿透到 ProjectActionsContext，
+    // 否则项目卡片拿不到它（入口会静默不渲染）。
+    expect(projectActionsValue.onOpenTasks).toBe(data.handleOpenTasks);
     expect(projectActionsValue.onDragEnd).toBe(data.handleDragEnd);
     expect(projectActionsValue.onSaveProjectSettings).toBe(data.handleSaveProjectSettings);
   });

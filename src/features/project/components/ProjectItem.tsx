@@ -43,6 +43,7 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
     onRefresh,
     onShowToast,
     onSaveProjectSettings,
+    onOpenTasks,
   } = actions;
 
   const ideCommandOverrides = viewConfig?.ideCommandOverrides;
@@ -84,6 +85,7 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
     onPush,
     onPull,
     hasConfig: Boolean(config),
+    onOpenTasks,
   });
 
   const toggleCollapsed = async () => {
@@ -151,6 +153,8 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
                 })
             : undefined,
           onOpenIde: project.selected_ide && onOpenIde ? () => onOpenIde(project.id) : undefined,
+          // 项目级 Tasks 入口（design §4.2c）：与右键菜单项是同一个动作。
+          onOpenTasks: onOpenTasks ? () => onOpenTasks(project.id) : undefined,
           onRemove: () => setConfirmRemove(true),
         }}
         headerExtra={

@@ -35,6 +35,7 @@ import { useAppInitialGitRefresh } from './useAppInitialGitRefresh';
 import { useAppStoreSync } from './useAppStoreSync';
 import { useConfirmExit } from './useConfirmExit';
 import { useHiddenAgentToggle } from './useHiddenAgentToggle';
+import { useOpenProjectTasks } from './useOpenProjectTasks';
 import { useToolbarFooterProps } from './useToolbarFooterProps';
 
 export interface UseAppShellDataResult extends AppShellData {
@@ -275,6 +276,9 @@ export function useAppShellData(): UseAppShellDataResult {
   // 「隐藏 agent」的 config.json 读写整体进全局串行门（见该 hook 的文档）。
   const handleToggleHiddenAgent = useHiddenAgentToggle(saveConfig);
 
+  /** 项目级 Tasks 入口（规则与顺序判据见 `useOpenProjectTasks` 的文件头）。 */
+  const handleOpenTasks = useOpenProjectTasks(cross.handleSelectProject);
+
   const { handleWslEntryAddRefresh, handleRemoteEntryAddRefresh } = useAppEntryAddRefresh({
     handleWSLEntryAdd,
     wslActionsWrap,
@@ -325,6 +329,7 @@ export function useAppShellData(): UseAppShellDataResult {
     handleBackToMainTerminal: worktreeActionsWrap.handleBackToMainTerminal,
     handleOpenIdeForSidebar: agentActionsWrap.handleOpenIdeForSidebar,
     handleOpenWorktreeTerminal: worktreeActionsWrap.handleOpenWorktreeTerminal,
+    handleOpenTasks,
     handleDragEnd,
     handleSaveProjectSettings: agentActionsWrap.handleSaveProjectSettings,
     handleFileSelect,

@@ -151,8 +151,8 @@ const UI_BINDINGS: Record<string, UiBinding> = {
     component: LazyTasksPanelWrapper as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
-    // 看板列固定 168px + 列间距：再窄就只剩半列，卡片标题全被截断。
-    minPanelSize: 280,
+    // 不写 minPanelSize：tab 面板（openAs: 'tab'）根本不进 dock zone，
+    // 宽度由中心区决定 —— 写一个 280 只会让下一个人以为它还受那个约束。
   },
 };
 

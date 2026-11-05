@@ -1,7 +1,13 @@
 import React from 'react';
 
 import { cn } from '@/lib/utils';
-import { ChevronRightIcon, PlusIcon, TrashIcon, MoreVerticalIcon } from '@/shared/components/icons';
+import {
+  ChevronRightIcon,
+  ListChecksIcon,
+  MoreVerticalIcon,
+  PlusIcon,
+  TrashIcon,
+} from '@/shared/components/icons';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
 
 interface ProjectGroupActions {
@@ -13,6 +19,8 @@ interface ProjectGroupActions {
   onOpenIde?: () => void;
   /** Hover 槽位：弹出 Git 下拉菜单（Commit/Push/Pull/...） */
   onGitMenu?: (e: React.MouseEvent) => void;
+  /** Hover 槽位：打开本项目的 Tasks（design §4.2c）。caller 决定是否提供 */
+  onOpenTasks?: () => void;
   /** Hover 槽位：移除项目 */
   onRemove?: () => void;
   /** 右键菜单 */
@@ -162,6 +170,13 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
               ) : (
                 <MoreVerticalIcon size={13} />
               )}
+            </HeaderActionButton>
+          )}
+          {/* 「Open Tasks」在 Git 菜单之前：它是项目级入口，与「Open in IDE」同一层语义
+              （「拿这个项目做点什么」），比 Git 的单次动作更常点。 */}
+          {actions.onOpenTasks && (
+            <HeaderActionButton title="Open Tasks" onClick={actions.onOpenTasks}>
+              <ListChecksIcon size={13} />
             </HeaderActionButton>
           )}
           {actions.onGitMenu && (

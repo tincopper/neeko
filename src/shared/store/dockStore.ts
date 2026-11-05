@@ -31,8 +31,8 @@ export interface DockStore {
   rightPanelSizes: Record<string, number>;
   /** Left sidebar width as a percentage (0-100). Default 18. */
   leftPanelSize: number;
-  /** Left zone expanded state before Library center view opened (transient, restored on close). */
-  leftZoneExpandedBeforeLibrary: boolean | null;
+  /** Left zone expanded state before a tab (center) view opened (transient, restored on close). */
+  leftZoneExpandedBeforeTabView: boolean | null;
 
   togglePanel: (panelId: string) => void;
   activatePanel: (zoneId: ZoneId, panelId: string) => void;
@@ -107,16 +107,50 @@ function findPanelZone(zones: Record<ZoneId, DockZoneState>, panelId: string): Z
 }
 
 /**
- * Partial state for opening a tab (center) view: collapse the left zone and
- * remember its previous expanded state so it can be restored on close.
- * Library 与左栏（含 Projects）互斥：打开 Library 即收起左栏。
+ * `appView` 是否指向一个 tab 面板（中心视图）。
+ *
+ * `'normal'` / `'settings'` 不是面板 id（`DOCK_PANEL_META[...]` 为 undefined）⇒ false，
+ * 所以调用处不需要自己排除它们 —— 也不需要把 'library' 写死在两处。
  */
-function openTabView(state: DockStore): Partial<DockStore> {
+function isTabView(view: string): boolean {
+  return DOCK_PANEL_META[view]?.openAs === 'tab';
+}
+
+/**
+ * Partial state for opening a tab (center) view: apply that view's left-zone policy and
+ * remember the previous expanded state so it can be restored on close.
+ *
+ * # 左栏策略是**每个视图自己的属性**（`DOCK_PANEL_META[id].collapseLeftZone`）
+ *
+ * | 视图 | 策略 | 结果 |
+ * | --- | --- | --- |
+ * | Library | 收起（缺省） | 中心区整幅给 master-detail（它自带导航列，左栏会是第三层导航） |
+ * | Tasks | **不收起** | 只占中间区：左栏 Projects 是「切项目」的入口，收起等于把上下文藏起来 |
+ *
+ * 所以这里不再“一律收起”，而是按属性决定 `expanded`。特例写法（`if (id === 'tasks')`）
+ * 会在新增第三个中心视图时静默沿用旧行为，而属性写法强制新视图回答这个问题。
+ *
+ * # `fromTabView` 为什么必需
+ *
+ * 从另一个 tab 视图切过来（Library → Tasks）时，左栏的展开态**已经被上一个视图改过**。
+ * 再记一次当时的 `expanded`，记住的值就从 true 变成 false —— 用户之后退出中心视图，
+ * 左栏永远回不来。所以“已经在 tab 视图里”时保留原来那一份。
+ *
+ * 注意：**保留记忆不等于保留展开态**。Tasks 不收左栏，所以从 Library 切过来时它要
+ * 把左栏**展开**（否则 Projects 永远回不来）；记忆值仍然只记“打开 tab 之前”的那一份。
+ *
+ * 「哪一个 tab 视图」不记：中心区同一时只会有一个视图（`appView` 单值），
+ * 因此一个布尔量就够，多存一份视图名只会多一个可以不一致的字段。
+ */
+function openTabView(state: DockStore, panelId: string, fromTabView: boolean): Partial<DockStore> {
+  const collapseLeft = DOCK_PANEL_META[panelId]?.collapseLeftZone ?? true;
   return {
-    leftZoneExpandedBeforeLibrary: state.zones.left?.expanded ?? true,
+    leftZoneExpandedBeforeTabView: fromTabView
+      ? state.leftZoneExpandedBeforeTabView
+      : (state.zones.left?.expanded ?? true),
     zones: {
       ...state.zones,
-      left: state.zones.left ? { ...state.zones.left, expanded: false } : state.zones.left,
+      left: state.zones.left ? { ...state.zones.left, expanded: !collapseLeft } : state.zones.left,
     },
   };
 }
@@ -127,7 +161,7 @@ function restoreLeftZone(state: DockStore): Partial<DockStore> {
     zones: {
       ...state.zones,
       left: state.zones.left
-        ? { ...state.zones.left, expanded: state.leftZoneExpandedBeforeLibrary ?? true }
+        ? { ...state.zones.left, expanded: state.leftZoneExpandedBeforeTabView ?? true }
         : state.zones.left,
     },
   };
@@ -174,7 +208,7 @@ export const useDockStore = create<DockStore>()(
         barItems: initial.barItems,
         rightPanelSizes: { browser: 50 },
         leftPanelSize: 18,
-        leftZoneExpandedBeforeLibrary: null,
+        leftZoneExpandedBeforeTabView: null,
 
         togglePanel: (panelId: string) => {
           // Tab-mode panels (e.g. library) are center views — toggle via appView,
@@ -187,13 +221,23 @@ export const useDockStore = create<DockStore>()(
             const current = useAppViewStore.getState().appView;
             const next: AppView = current === panelId ? 'normal' : panelId;
             useAppViewStore.getState().setAppView(next);
-            set((state) => (next === panelId ? openTabView(state) : restoreLeftZone(state)));
+            set((state) =>
+              next === panelId
+                ? openTabView(state, panelId, isTabView(current))
+                : restoreLeftZone(state),
+            );
             return;
           }
-          // Opening any dock panel exits the library center view back to workspace.
+          // Opening any dock panel exits a tab (center) view back to workspace.
           // 退出 tab 视图时的本次点击一律按“激活”处理（切到该面板并展开），不做 toggle：
           // tab 覆盖期间 zone 可见态是过期/被收起的，此时 toggle 会反直觉地关掉用户刚点的面板。
-          const exitedTabView = useAppViewStore.getState().appView === 'library';
+          //
+          // 判据是「当前 appView 是否为一个 tab 面板」，**不是**硬编码 'library'：
+          // 硬编码时打开 Tasks 再点右栏面板，中心视图不退出，右栏面板会叠在看板上看不见。
+          // `'normal'` / `'settings'` 不是面板 id（`DOCK_PANEL_META[...]` 为 undefined），
+          // 所以它们天然落进「不是 tab 视图」这一边。
+          const currentView = useAppViewStore.getState().appView;
+          const exitedTabView = isTabView(currentView);
           if (exitedTabView) {
             useAppViewStore.getState().setAppView('normal');
             // 恢复左栏原展开态（Library 打开时被收起）

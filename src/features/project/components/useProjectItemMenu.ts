@@ -18,6 +18,8 @@ interface UseProjectItemMenuParams {
   onPush?: (projectId: ProjectId) => void;
   onPull?: (projectId: ProjectId) => void;
   hasConfig: boolean;
+  /** 打开这个项目的 Tasks（design §4.2c）。`undefined` = 不渲染入口。 */
+  onOpenTasks?: (projectId: ProjectId) => void;
 }
 
 export function useProjectItemMenu({
@@ -31,6 +33,7 @@ export function useProjectItemMenu({
   onPush,
   onPull,
   hasConfig,
+  onOpenTasks,
 }: UseProjectItemMenuParams) {
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -53,6 +56,15 @@ export function useProjectItemMenu({
         label: 'Open in IDE',
         shortcut: 'Ctrl+O',
         action: () => onOpenIde(project.id),
+      });
+    }
+
+    // 项目级 Tasks 入口：与「Open in IDE」同列（都是「这个项目的下一步」）。
+    // 没注入就不渲染 —— 一个点了没反应的菜单项比没有更糟。
+    if (onOpenTasks) {
+      items.push({
+        label: 'Open Tasks',
+        action: () => onOpenTasks(project.id),
       });
     }
 
@@ -140,6 +152,7 @@ export function useProjectItemMenu({
     onPush,
     onPull,
     hasConfig,
+    onOpenTasks,
   ]);
 
   return {

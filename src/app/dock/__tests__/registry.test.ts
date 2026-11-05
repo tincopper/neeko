@@ -34,12 +34,13 @@ describe('dock 注册表接线', () => {
     expect(unresolved).toEqual([]);
   });
 
-  it('tasks 面板接上了 TasksPanel，且排在 search 之前（不给两处同序）', () => {
+  it('tasks 面板接上了 TasksPanel，且作为 tab 面板不进 dock zone', () => {
     const tasks = dockPanelRegistry.tasks;
 
     expect(tasks.title).toBe('Tasks');
     expect(tasks.component).toBeDefined();
-    expect(DOCK_PANEL_META.tasks.defaultZone).toBe('right');
-    expect(DOCK_PANEL_META.tasks.defaultOrder).toBeLessThan(DOCK_PANEL_META.search.defaultOrder);
+    expect(tasks.openAs).toBe('tab');
+    // tab 面板的尺寸由中心区决定，登记一个 minPanelSize 只会让下一个人以为它还受那个约束
+    expect(tasks.minPanelSize).toBeUndefined();
   });
 });
