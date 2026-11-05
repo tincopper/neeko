@@ -349,7 +349,7 @@ describe('selectActiveTab — 前台 Tab 对象', () => {
   });
 });
 
-describe('selectActiveSessionRefs', () => {
+describe('selectActiveSessionRefs — 只派生「指定单元」的前台会话（R8）', () => {
   /** 由一个前台 tab 的数据构造「单单元、单 tab」状态。 */
   function stateWithActive(data: Tab['data'], tabKey = SPACE): EditorTabSpaceState {
     const layout = createDefaultEditorLayout();
@@ -360,27 +360,27 @@ describe('selectActiveSessionRefs', () => {
 
   it('前台是终端会话（有 ptySessionId）⇒ 该单元计入', () => {
     const state = stateWithActive({ kind: 'terminal', agentId: null, ptySessionId: 'pty-1' });
-    expect(selectActiveSessionRefs(state)).toEqual([
+    expect(selectActiveSessionRefs(state, SPACE)).toEqual([
       { workspaceKey: SPACE, kind: 'terminal', sessionId: 'pty-1' },
     ]);
   });
 
   it('前台是 agent chat 会话（有 sessionId）⇒ 该单元计入', () => {
     const state = stateWithActive({ kind: 'agent-chat', sessionId: 'chat-1' });
-    expect(selectActiveSessionRefs(state)).toEqual([
+    expect(selectActiveSessionRefs(state, SPACE)).toEqual([
       { workspaceKey: SPACE, kind: 'chat', sessionId: 'chat-1' },
     ]);
   });
 
   it('会话 tab 但还没铸造 id（PTY 未创建）⇒ 不计入（子行也没被高亮）', () => {
-    expect(selectActiveSessionRefs(stateWithActive({ kind: 'terminal', agentId: null }))).toEqual(
-      [],
-    );
-    expect(selectActiveSessionRefs(stateWithActive({ kind: 'agent-chat' }))).toEqual([]);
+    expect(
+      selectActiveSessionRefs(stateWithActive({ kind: 'terminal', agentId: null }), SPACE),
+    ).toEqual([]);
+    expect(selectActiveSessionRefs(stateWithActive({ kind: 'agent-chat' }), SPACE)).toEqual([]);
   });
 
   it('前台是文件 tab ⇒ 不计入（父行保留自己的选中底色）', () => {
-    expect(selectActiveSessionRefs(stateWithActive(mkTab('f').data))).toEqual([]);
+    expect(selectActiveSessionRefs(stateWithActive(mkTab('f').data), SPACE)).toEqual([]);
   });
 
   it('停靠在 dock 宿主前台的会话仍计入（停靠不改「当前会话」这一事实）', () => {
@@ -398,12 +398,40 @@ describe('selectActiveSessionRefs', () => {
       tabs: { [SPACE]: { tabs: [center, docked] } },
       editorLayout: { [SPACE]: layout },
     };
-    expect(selectActiveSessionRefs(state)).toEqual([
+    expect(selectActiveSessionRefs(state, SPACE)).toEqual([
       { workspaceKey: SPACE, kind: 'chat', sessionId: 'chat-1' },
     ]);
   });
 
-  it('多个单元时按 key 排序，供稳定快照比较', () => {
+  it('中心 + 左 dock + 右 dock 各有前台会话 ⇒ 按固定顺序返回（不依赖对象键顺序）', () => {
+    const layout = createDefaultEditorLayout();
+    const mk = (id: string): Tab => ({
+      id,
+      scope: { kind: 'app' },
+      title: id,
+      data: { kind: 'agent-chat', sessionId: id },
+    });
+    const center = mk('center');
+    const left = mk('left');
+    const right = mk('right');
+    layout.groups.left = { tabIds: [center.id], activeTabId: center.id };
+    layout.docked.left = { tabIds: [left.id], activeTabId: left.id };
+    layout.docked.right = { tabIds: [right.id], activeTabId: right.id };
+    const state: EditorTabSpaceState = {
+      tabs: { [SPACE]: { tabs: [right, center, left] } },
+      editorLayout: { [SPACE]: layout },
+    };
+    expect(selectActiveSessionRefs(state, SPACE).map((ref) => ref.sessionId)).toEqual([
+      'center',
+      'left',
+      'right',
+    ]);
+  });
+
+  // R8 回归钉子：两个单元各有前台会话时，只准返回传入的那一个单元。
+  // 旧实现遍历 Object.keys(state.tabs) ⇒ 切到 B 之后 A 的会话仍是「当前」，
+  // 表现为多个项目下各亮一行 + 多个父行让出选中底。
+  it('两单元各有前台会话：传 A 的 key 不得带出 B 的 ref（传 B 亦然）', () => {
     const a: EditorTabSpaceState = stateWithActive(
       { kind: 'terminal', agentId: null, ptySessionId: 'p-a' },
       'p-a\0',
@@ -416,10 +444,19 @@ describe('selectActiveSessionRefs', () => {
       tabs: { ...b.tabs, ...a.tabs },
       editorLayout: { ...b.editorLayout, ...a.editorLayout },
     };
-    expect(selectActiveSessionRefs(merged).map((ref) => ref.workspaceKey)).toEqual([
-      'p-a\0',
-      'p-b\0',
+    expect(selectActiveSessionRefs(merged, 'p-a\0')).toEqual([
+      { workspaceKey: 'p-a\0', kind: 'terminal', sessionId: 'p-a' },
     ]);
+    expect(selectActiveSessionRefs(merged, 'p-b\0')).toEqual([
+      { workspaceKey: 'p-b\0', kind: 'terminal', sessionId: 'p-b' },
+    ]);
+  });
+
+  it('没有当前单元（null）/ 未知单元 ⇒ 空（绝不回退成「所有单元」）', () => {
+    const state = stateWithActive({ kind: 'terminal', agentId: null, ptySessionId: 'pty-1' });
+    expect(selectActiveSessionRefs(state, null)).toEqual([]);
+    expect(selectActiveSessionRefs(state, 'missing')).toEqual([]);
+    expect(selectActiveSessionRefs({ tabs: {}, editorLayout: {} }, SPACE)).toEqual([]);
   });
 });
 

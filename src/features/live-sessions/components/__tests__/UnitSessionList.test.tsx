@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/features/live-sessions/api/liveSessionsApi', async (importOriginal) => ({
@@ -11,7 +11,9 @@ import { useAgentStore } from '@/shared/store/agentStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { selectActiveTabId } from '@/shared/store/editorTabSelectors';
 import { useLiveSessionsStore } from '@/shared/store/liveSessionsStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
 import type { SessionView } from '@/shared/types/liveSessions';
 import type { Tab } from '@/shared/types/tab';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
@@ -60,6 +62,7 @@ beforeEach(() => {
   vi.mocked(liveSessionResumeCommand).mockResolvedValue(null);
   useEditorStore.setState({ tabs: {}, editorLayout: {} });
   useWorkspaceStore.setState({ byProject: {} });
+  useProjectStore.setState({ activeProjectId: null });
   useLiveSessionsStore.setState({ version: 0, sessions: [], hydratedAt: null });
   useAgentStore.setState({ agents: [], loading: false });
 });
@@ -148,6 +151,82 @@ describe('UnitSessionList — 点击会话行', () => {
     await waitFor(() => expect(useEditorStore.getState().tabs[KEY]?.tabs).toHaveLength(1));
     const tab = useEditorStore.getState().tabs[KEY]?.tabs[0];
     expect(tab?.data.kind === 'terminal' && tab.data.taskCommand).toBeUndefined();
+  });
+});
+
+describe('UnitSessionList — 高亮只属于当前项目（R8.1）', () => {
+  const A = WorkspaceSession.of('p1', null);
+  const B = WorkspaceSession.of('p2', null);
+
+  function tabFor(ws: WorkspaceSession, ptySessionId: string): Tab {
+    return {
+      id: `tab-${ptySessionId}`,
+      scope: { kind: 'workspace', session: ws },
+      title: ptySessionId,
+      data: { kind: 'terminal', agentId: null, ptySessionId },
+    };
+  }
+
+  function currentRows(): { rowA: HTMLElement; rowB: HTMLElement } {
+    // 两个列表按 A、B 的渲染顺序各产出一行；用 within 认领行，不做 DOM 树遍历。
+    const [rowA, rowB] = screen.getAllByRole('listitem');
+    expect(within(rowA).getByText('A 会话')).toBeInTheDocument();
+    expect(within(rowB).getByText('B 会话')).toBeInTheDocument();
+    return { rowA, rowB };
+  }
+
+  it('两个项目各有前台会话：切换项目后旧单元的 row-current 立即熄灭', () => {
+    useEditorStore.getState().addTab(tabFor(A, 'pty-a'), 'left');
+    useEditorStore.getState().addTab(tabFor(B, 'pty-b'), 'left');
+    seedSessions(
+      session({ workspaceKey: A.key, sessionId: 'pty-a', title: 'A 会话' }),
+      session({ workspaceKey: B.key, sessionId: 'pty-b', title: 'B 会话' }),
+    );
+    useProjectStore.setState({ activeProjectId: A.projectId });
+
+    render(
+      <>
+        <UnitSessionList workspaceKey={A.key} />
+        <UnitSessionList workspaceKey={B.key} />
+      </>,
+    );
+
+    expect(currentRows().rowA).toHaveClass('row-current');
+    expect(currentRows().rowB).not.toHaveClass('row-current');
+
+    act(() => {
+      useProjectStore.setState({ activeProjectId: B.projectId });
+    });
+
+    expect(currentRows().rowA).not.toHaveClass('row-current');
+    expect(currentRows().rowB).toHaveClass('row-current');
+  });
+
+  it('中心前台与 dock 前台是两条会话时，高亮中心那条（refs 顺序即优先级）', () => {
+    const layout = createDefaultEditorLayout();
+    const center = terminalTab('tab-center', 'pty-center');
+    const docked = terminalTab('tab-docked', 'pty-docked');
+    layout.groups.left = { tabIds: [center.id], activeTabId: center.id };
+    layout.docked.right = { tabIds: [docked.id], activeTabId: docked.id };
+    useEditorStore.setState({
+      tabs: { [KEY]: { tabs: [center, docked] } },
+      editorLayout: { [KEY]: layout },
+    });
+    useWorkspaceStore.getState().setActiveWorkspace(WS.projectId, WS.worktreePath, 'dev');
+    useProjectStore.setState({ activeProjectId: WS.projectId });
+    // 快照顺序故意把 docked 放前面：按 sessions 顺序找会先命中停靠会话。
+    seedSessions(
+      session({ sessionId: 'pty-docked', title: '停靠会话' }),
+      session({ sessionId: 'pty-center', title: '中心会话' }),
+    );
+
+    render(<UnitSessionList workspaceKey={KEY} />);
+
+    const rows = screen.getAllByRole('listitem');
+    const centerRow = rows.find((row) => within(row).queryByText('中心会话'));
+    const dockRow = rows.find((row) => within(row).queryByText('停靠会话'));
+    expect(centerRow).toHaveClass('row-current');
+    expect(dockRow).not.toHaveClass('row-current');
   });
 });
 

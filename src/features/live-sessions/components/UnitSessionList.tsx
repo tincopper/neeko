@@ -1,10 +1,9 @@
 import React, { useCallback, useMemo } from 'react';
 
 import SessionList from '@/shared/components/SessionList';
+import { useActiveSessionRefs } from '@/shared/hooks/useActiveSessionRefs';
 import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
-import { NO_SESSIONS, tabSession } from '@/shared/selectors/liveSessionSelectors';
-import { useEditorStore } from '@/shared/store/editorStore';
-import { selectActiveTabId } from '@/shared/store/editorTabSelectors';
+import { isSameSession, NO_SESSIONS } from '@/shared/selectors/liveSessionSelectors';
 import type { SessionView } from '@/shared/types/liveSessions';
 
 import { useActivateSession } from '../hooks/useActivateSession';
@@ -27,25 +26,34 @@ interface UnitSessionListProps {
 /**
  * 某单元的会话子列表（侧栏投影的**装配件**）。
  *
- * 只做三件装配：从快照里取本单元的会话、算出「哪一行是前台」、把点击接到 tab 激活。
- * 视觉与交互全在 `SessionList`（shared），本组件不重复任何一条。
+ * 只做三件装配：从快照里取本单元的会话、从**当前前台会话的唯一派生点**取高亮行、
+ * 把点击接到 tab 激活。视觉与交互全在 `SessionList`（shared），本组件不重复任何一条。
  *
  * 只在单元行**展开时**挂载（`SessionRow.children` 的折叠语义），因此这里的 store 订阅
  * 与按行订阅 agent 图标的成本都只发生在用户主动展开的单元上。
  */
 const UnitSessionList: React.FC<UnitSessionListProps> = ({ workspaceKey, onRevealUnit }) => {
   const byUnit = useSessionsByUnit();
-  const tabSpace = useEditorStore((s) => s.tabs[workspaceKey]);
-  const activeTabId = useEditorStore((s) => selectActiveTabId(s, workspaceKey));
+  // R8：高亮只能来自「当前激活项目 + 当前激活单元」的前台 tab 空间。
+  // 本单元的 `editorLayout[workspaceKey].activeTabId` 只是恢复语义（局部状态），
+  // 直接用它会让切走后旧单元仍亮着；refs 已编码当前单元，不必再比一次 activeKey。
+  const refs = useActiveSessionRefs();
   const activate = useActivateSession();
   const { rename, remove } = useSessionRowActions();
 
   const unitSessions = byUnit.get(workspaceKey) ?? NO_SESSIONS;
 
+  // refs 的顺序就是前台优先级（中心 → DOCK_SLOTS）：一个单元可能同时有中心会话与
+  // dock 会话在展示，此时「哪一行亮」不能由快照顺序决定 —— 那是后端的事。
+  // 按 refs 外层迭代，让选中行与 `useUnitsWithActiveSession`（父行让出选中底）同源。
   const activeSession = useMemo(() => {
-    const activeTab = tabSpace?.tabs.find((tab) => tab.id === activeTabId);
-    return tabSession(activeTab, unitSessions);
-  }, [tabSpace, activeTabId, unitSessions]);
+    for (const ref of refs) {
+      if (ref.workspaceKey !== workspaceKey) continue;
+      const matched = unitSessions.find((session) => isSameSession(session, ref));
+      if (matched) return matched;
+    }
+    return null;
+  }, [unitSessions, refs, workspaceKey]);
 
   const handleActivate = useCallback(
     (session: SessionView) => {

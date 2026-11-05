@@ -1,6 +1,7 @@
 import { DOCK_SLOTS, type DockSlot } from '@/shared/dock';
 import type { EditorSplitLayout, ProjectTabs, Tab } from '@/shared/types';
 import type { SessionRef } from '@/shared/types/liveSessions';
+import type { WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 /**
  * tab 空间的「视图投影」唯一读取面。
@@ -187,32 +188,43 @@ export function selectDockedActiveTab(
 }
 
 /**
- * 前台会话的完整身份（含所在单元），供 live-session 派生层过滤。
+ * **指定单元**的前台会话完整身份（中心前台 + 每个 dock 宿主前台），供 live-session 派生层过滤。
  *
- * 返回排序后的数组，调用方应在 `useMemo` 中按稳定的 `tabs` / `editorLayout`
- * 引用计算，而不是把它直接作为 zustand selector 的返回值（后者每次 getSnapshot
- * 都会生成新数组）。空集也无需共享常量：只有状态切片变化时才会重算。
+ * 「当前会话」是全局唯一事实 = 当前激活单元 + 该单元的前台 tab；而 `editorLayout[tabKey]`
+ * 是**按单元分槽**的局部状态（切回来要恢复上次前台，是正确的恢复语义）。因此本函数只接受
+ * 一个 `workspaceKey`，由调用方从 `useActiveWorkspaceKey(activeProjectId)` 注入（R8.3）——
+ * 早期版本遍历 `Object.keys(state.tabs)` 的全部单元，切项目后旧单元仍被当作「当前」，
+ * 表现为多个项目下各亮一行 `row-current` + 多个父行让出选中底。
+ *
+ * 顺序固定为「中心前台 → `DOCK_SLOTS` 各宿主前台」（不依赖对象键顺序）；`null` / 未知单元
+ * 返回空数组，绝不回退成「所有单元」。
+ *
+ * 调用方应在 `useMemo` 中按稳定的 `tabs` / `editorLayout` 引用计算，而不是把它直接作为
+ * zustand selector 的返回值（后者每次 getSnapshot 都会生成新数组）。
  */
-export function selectActiveSessionRefs(state: EditorTabSpaceState): readonly SessionRef[] {
+export function selectActiveSessionRefs(
+  state: EditorTabSpaceState,
+  workspaceKey: WorkspaceKey | string | null,
+): readonly SessionRef[] {
+  if (!workspaceKey) return [];
+  const tabKey = String(workspaceKey);
+  const tabs = state.tabs[tabKey];
+  const layout = state.editorLayout[tabKey];
+  // 中心前台 + 每个 dock 宿主的前台：两者都是「正在展示的会话」，父行高亮不得因为
+  // 把 tab 停靠到侧区而熄灭（停靠不改「当前会话」这一事实）。
+  const candidates: (Tab | null)[] = [selectActiveTab(state, tabKey)];
+  for (const slot of DOCK_SLOTS) {
+    candidates.push(selectDockedActiveTab(tabs, layout, slot));
+  }
   const refs: SessionRef[] = [];
-  for (const tabKey of Object.keys(state.tabs)) {
-    const tabs = state.tabs[tabKey];
-    const layout = state.editorLayout[tabKey];
-    // 中心前台 + 每个 dock 宿主的前台：两者都是「正在展示的会话」，父行高亮不得因为
-    // 把 tab 停靠到侧区而熄灭（停靠不改「当前会话」这一事实）。
-    const candidates: (Tab | null)[] = [selectActiveTab(state, tabKey)];
-    for (const slot of DOCK_SLOTS) {
-      candidates.push(selectDockedActiveTab(tabs, layout, slot));
-    }
-    for (const tab of candidates) {
-      if (!tab) continue;
-      const data = tab.data;
-      if (data.kind === 'agent-chat' && data.sessionId) {
-        refs.push({ workspaceKey: tabKey, kind: 'chat', sessionId: data.sessionId });
-      } else if (data.kind === 'terminal' && data.ptySessionId) {
-        refs.push({ workspaceKey: tabKey, kind: 'terminal', sessionId: data.ptySessionId });
-      }
+  for (const tab of candidates) {
+    if (!tab) continue;
+    const data = tab.data;
+    if (data.kind === 'agent-chat' && data.sessionId) {
+      refs.push({ workspaceKey: tabKey, kind: 'chat', sessionId: data.sessionId });
+    } else if (data.kind === 'terminal' && data.ptySessionId) {
+      refs.push({ workspaceKey: tabKey, kind: 'terminal', sessionId: data.ptySessionId });
     }
   }
-  return refs.sort((a, b) => a.workspaceKey.localeCompare(b.workspaceKey));
+  return refs;
 }
