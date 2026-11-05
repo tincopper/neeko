@@ -44,7 +44,7 @@ const PrTaskSection: React.FC<PrTaskSectionProps> = React.memo(({ item, projectI
     const url = info?.url;
     if (url === undefined || url === '') return;
     openInDefaultBrowser(url).catch((err: unknown) => {
-      showToast(invokeErrorMessage(err, '打开浏览器失败'), 'error');
+      showToast(invokeErrorMessage(err, 'Failed to open browser'), 'error');
     });
   }, [info, showToast]);
 
@@ -54,7 +54,7 @@ const PrTaskSection: React.FC<PrTaskSectionProps> = React.memo(({ item, projectI
 
   // 「能不能点」只看拿到 url 没有：loading 与 error 是两种不同的"还没拿到"，理由各说一句。
   const openDisabled = info?.url === undefined || info?.url === '';
-  const openTitle = loading ? '正在读取 PR 地址…' : (error ?? undefined);
+  const openTitle = loading ? 'Loading PR URL…' : (error ?? undefined);
 
   return (
     <section aria-label="GitHub PR" className="mt-2 flex flex-col gap-1">
@@ -69,11 +69,11 @@ const PrTaskSection: React.FC<PrTaskSectionProps> = React.memo(({ item, projectI
 
       <dl className="grid grid-cols-[auto_1fr] items-start gap-x-2 gap-y-1 text-meta">
         {/* base ← head：箭头指向数据流（head 合进 base），不是「现在在哪」。 */}
-        <dt className="text-text-muted">分支</dt>
+        <dt className="text-text-muted">Branch</dt>
         <dd className="min-w-0 font-mono text-micro break-all text-text-primary">
           {pr.baseRefName} ← {pr.headRefName}
         </dd>
-        <dt className="text-text-muted">作者</dt>
+        <dt className="text-text-muted">Author</dt>
         <dd className="min-w-0 break-all text-text-primary">{pr.author}</dd>
       </dl>
 
@@ -85,7 +85,7 @@ const PrTaskSection: React.FC<PrTaskSectionProps> = React.memo(({ item, projectI
           disabled={openDisabled}
           title={openTitle}
         >
-          在浏览器打开
+          Open in browser
         </Button>
         {error === null ? null : (
           <>
@@ -97,17 +97,19 @@ const PrTaskSection: React.FC<PrTaskSectionProps> = React.memo(({ item, projectI
               onClick={reload}
               className="shrink-0 rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
             >
-              重试
+              Retry
             </button>
           </>
         )}
       </div>
 
-      <h4 className="mt-2 text-micro font-semibold text-text-secondary">描述</h4>
+      <h4 className="mt-2 text-micro font-semibold text-text-secondary">Description</h4>
       {/* 正文来自 `viewPr`（`PRListItem` 不带 body）：按行渲染，不当 markdown 解析器用。 */}
       <p className="mt-0.5 text-meta break-words whitespace-pre-wrap text-text-primary">
         {info === null || info.body === null || info.body.trim() === '' ? (
-          <span className="text-text-muted">{loading ? '正在读取 PR 正文…' : '（无描述）'}</span>
+          <span className="text-text-muted">
+            {loading ? 'Loading PR body…' : '(no description)'}
+          </span>
         ) : (
           info.body
         )}

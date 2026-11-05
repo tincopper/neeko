@@ -56,7 +56,7 @@ export function useWorkItemRuns(workItemId: string): UseWorkItemRunsResult {
       (err: unknown) => {
         if (cancelled) return;
         // 失败清空记录：留着上一轮的记录会让「刷新失败」看起来像「刷新成功且没变」。
-        setFetched({ workItemId, runs: [], error: invokeErrorMessage(err, '读取执行记录失败') });
+        setFetched({ workItemId, runs: [], error: invokeErrorMessage(err, 'Failed to load runs') });
       },
     );
     return () => {

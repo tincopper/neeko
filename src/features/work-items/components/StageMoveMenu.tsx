@@ -42,7 +42,7 @@ const StageMoveMenu: React.FC<StageMoveMenuProps> = React.memo(({ stages, onMove
           disabled
           className="px-2 py-1 text-micro text-text-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-60"
         >
-          没有可流转的阶段
+          No reachable stages
         </ContextMenuItem>
       ) : (
         stages.map((stage) => (

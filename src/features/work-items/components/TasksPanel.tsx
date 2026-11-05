@@ -2,14 +2,16 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 
 import { useToast } from '@/shared/hooks/useToast';
 import { invokeErrorMessage } from '@/shared/utils/invokeError';
+import { Island } from '@/ui/Island';
 
 import { usePanelShortcuts } from '../hooks/usePanelShortcuts';
 import { useRevealRow } from '../hooks/useRevealRow';
 import { useStagePlan } from '../hooks/useStagePlan';
 import { useTaskFeed } from '../hooks/useTaskFeed';
 import { useWorkItemDelete } from '../hooks/useWorkItemDelete';
+import { useWorkItemDialogSubmit } from '../hooks/useWorkItemDialogSubmit';
 import { GITHUB_PR_PROVIDER_LABEL } from '../providers/githubPr';
-import type { UpdateWorkItemParams } from '../types';
+import { filterWorkItems } from '../utils/filterWorkItems';
 import {
   localStorageOrNull,
   readViewPreference,
@@ -20,9 +22,8 @@ import TasksPanelBody from './TasksPanelBody';
 import TasksPanelHeader, { type TaskView } from './TasksPanelHeader';
 import TasksPanelStatus from './TasksPanelStatus';
 import UndoBar from './UndoBar';
-import WorkItemDetail from './WorkItemDetail';
+import WorkItemDetailPane from './WorkItemDetailPane';
 import WorkItemDialog from './WorkItemDialog';
-import type { WorkItemCreateDraft, WorkItemDialogIntent } from './WorkItemForm';
 
 /**
  * Tasks 面板（design §4.2）：Board / List 双视图 + 详情 + 新建/编辑 + 撤销条。
@@ -35,6 +36,7 @@ import type { WorkItemCreateDraft, WorkItemDialogIntent } from './WorkItemForm';
  * | 两档来源合并成一份 `items`（不跨 provider 重排、不重排我自己的顺序） | `hooks/useTaskFeed` |
  * | 5 秒撤销窗口（以 `undoDelete()` 的返回值为准，不拿条子的计时器当判据） | `hooks/useWorkItemDelete` |
  * | 视图 / provider 开关的持久化与容错 | `utils/viewPreference` / `utils/providerPreference` |
+ * | 详情岛的接线（选中项 + 阶段轨 + 四个动作） | `components/WorkItemDetailPane` |
  *
  * 留下的是「这次挂载」的状态（搜索 / 选中 / 对话框）与把动作接到对应 hook 的胶水。选中项由
  * `selectedId` **派生**：被删的行从列表消失时详情自然关掉，不需要任何同步代码。
@@ -77,9 +79,6 @@ const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId, repoLabel
   const [view, setView] = useState<TaskView>(() => readViewPreference(localStorageOrNull()));
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [intent, setIntent] = useState<WorkItemDialogIntent | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [dialogError, setDialogError] = useState<string | null>(null);
   /** 删除 + 撤销窗口（规则见 `useWorkItemDelete` 的文件头）。 */
   const {
     pendingTitle,
@@ -92,97 +91,41 @@ const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId, repoLabel
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const revealRow = useRevealRow(bodyRef);
 
+  /**
+   * 新建 / 编辑对话框的开关与提交（规则见 `useWorkItemDialogSubmit` 的文件头）。
+   *
+   * `onCreated` 传 `revealRow`：只有**本面板发起的** create 会滚动（design §11.7）。
+   */
+  const dialog = useWorkItemDialogSubmit({
+    actions,
+    projectId,
+    showToast,
+    onCreated: revealRow,
+  });
+
   /** 选中项由 `selectedId` **派生**：被删的行从列表消失时它自然是 `null`。 */
   const selected = useMemo(
     () => (selectedId === null ? null : (items.find((row) => row.id === selectedId) ?? null)),
     [items, selectedId],
   );
 
-  const visible = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (query === '') return items;
-    return items.filter(
-      (item) =>
-        item.title.toLowerCase().includes(query) ||
-        item.labels.some((label) => label.toLowerCase().includes(query)) ||
-        (item.assignee ?? '').toLowerCase().includes(query),
-    );
-  }, [items, search]);
+  /** 搜索过滤的判据住在 `utils/filterWorkItems`（纯函数，边界由它的单测钉住）。 */
+  const visible = useMemo(() => filterWorkItems(items, search), [items, search]);
 
-  const handleNew = useCallback(() => {
-    setDialogError(null);
-    setIntent({ kind: 'create', stage: plan?.stages[0] });
-  }, [plan]);
-
-  const handleAddToStage = useCallback((stage: string) => {
-    setDialogError(null);
-    setIntent({ kind: 'create', stage });
-  }, []);
+  const handleNew = useCallback(() => dialog.openCreate(plan?.stages[0]), [dialog, plan]);
 
   const handleOpen = useCallback((id: string) => setSelectedId(id), []);
 
   const handleCloseDetail = useCallback(() => setSelectedId(null), []);
 
-  const handleEdit = useCallback(() => {
-    if (selected === null) return;
-    setDialogError(null);
-    setIntent({ kind: 'edit', item: selected });
-  }, [selected]);
-
-  const handleCloseDialog = useCallback(() => {
-    setIntent(null);
-    setDialogError(null);
-  }, []);
-
-  const handleCreate = useCallback(
-    (draft: WorkItemCreateDraft) => {
-      if (projectId === null) return;
-      setSubmitting(true);
-      setDialogError(null);
-      actions.create({ ...draft, projectId }).then(
-        (created) => {
-          setSubmitting(false);
-          setIntent(null);
-          showToast('已创建工作项');
-          // 只对**本面板发起的** create 滚动（design §11.7）：列表的其它变化不滚，
-          // 尤其是 5 秒后提交失败的删除把行放回来的那一次（那不是新建）。
-          revealRow(created.id);
-        },
-        (err: unknown) => {
-          // 失败**不关**对话框：用户刚填的内容还在里面，关掉等于让他重填一遍。
-          setSubmitting(false);
-          setDialogError(invokeErrorMessage(err, '创建工作项失败'));
-        },
-      );
-    },
-    [actions, projectId, revealRow, showToast],
-  );
-
-  const handleUpdate = useCallback(
-    (params: UpdateWorkItemParams) => {
-      setSubmitting(true);
-      setDialogError(null);
-      actions.update(params).then(
-        () => {
-          setSubmitting(false);
-          setIntent(null);
-          showToast('已保存工作项');
-        },
-        (err: unknown) => {
-          setSubmitting(false);
-          setDialogError(invokeErrorMessage(err, '保存工作项失败'));
-        },
-      );
-    },
-    [actions, showToast],
-  );
+  const handleEdit = useCallback(() => dialog.openEdit(selected), [dialog, selected]);
 
   const handleMove = useCallback(
     (id: string, to: string) => {
       // store 已做乐观更新与失败回滚，但它**不写** `errors`（没有调用方可以替它提示），
       // 所以提示落在这里：回滚发生了，用户必须知道卡片为什么又跳回原列。
       actions.transition(id, to).catch((err: unknown) => {
-        showToast(`流转失败：${invokeErrorMessage(err, '未知错误')}`, 'error');
+        showToast(`Transition failed: ${invokeErrorMessage(err, 'Unknown error')}`, 'error');
       });
     },
     [actions, showToast],
@@ -211,7 +154,7 @@ const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId, repoLabel
   }, []);
 
   const handleShortcut = usePanelShortcuts(
-    { dialogOpen: intent !== null, hasSelection: selected !== null },
+    { dialogOpen: dialog.intent !== null, hasSelection: selected !== null },
     { onCreate: handleNew, onDelete: handleDelete, onClose: handleCloseDetail },
   );
 
@@ -221,74 +164,89 @@ const TasksPanel: React.FC<TasksPanelProps> = React.memo(({ projectId, repoLabel
     //
     // 这是**加速器**而非唯一入口（新建 / 删除 / 关闭都有可见按钮），且面板本身不是 widget ——
     // 给它 `role` 反而会向读屏逐报一个并不存在的交互组件，所以只给事件、不给角色。
+    //
+    // # 几何全部由 `CenterViewFrame` 给（2026-11-03）
+    //
+    // 这里**不写**背景 / 内缩 / 圆角 / 高度 —— 那些是中心框架的职责，写在这里就会与
+    // 其它中心视图对不齐（本面板曾经自写 `rounded-lg bg-bg-primary p-1.5`，四周比
+    // ProjectView / Library / Settings 各多缩 6px）。
+    //
+    // 本组件只负责**往里填空**：一座主岛（头部 + 内容都在岛内）。
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 容器被委派的快捷键（同上）
-    <div className="relative flex h-full min-h-0 flex-col bg-bg-primary" onKeyDown={handleShortcut}>
-      <TasksPanelHeader
-        view={view}
-        onSelectView={handleSelectView}
-        search={search}
-        onSearchChange={setSearch}
-        onRefresh={refreshFeed}
-        onNew={handleNew}
-        githubEnabled={github.enabled}
-        githubAvailability={github.availability}
-        githubBlockedReason={github.blockedReason}
-        onToggleGithub={github.setEnabled}
-      />
-
-      {/* provider 的错误自己带名字：横幅只有一句话，不点名就不知道是谁坏了。 */}
-      <TasksPanelStatus
-        error={error}
-        onRetry={refreshFeed}
-        providerError={
-          github.error === null ? null : `${GITHUB_PR_PROVIDER_LABEL} PR：${github.error}`
-        }
-        onRetryProvider={github.refresh}
-        toast={toast}
-      />
-
-      <div ref={bodyRef} className="min-h-0 flex-1 overflow-auto">
-        <TasksPanelBody
-          projectId={projectId}
-          loading={loading}
-          error={error}
-          items={items}
-          visible={visible}
+    <div className="relative flex min-h-0 flex-1 flex-col" onKeyDown={handleShortcut}>
+      <Island data-testid="tasks-main-island" className="flex-1">
+        <TasksPanelHeader
           view={view}
-          plan={plan}
-          planLoading={planLoading}
-          onOpen={handleOpen}
-          onMove={handleMove}
-          onAdd={handleAddToStage}
+          onSelectView={handleSelectView}
+          search={search}
+          onSearchChange={setSearch}
+          onRefresh={refreshFeed}
           onNew={handleNew}
+          githubEnabled={github.enabled}
+          githubAvailability={github.availability}
+          githubBlockedReason={github.blockedReason}
+          onToggleGithub={github.setEnabled}
         />
-      </div>
 
-      {pendingTitle === null ? null : (
-        <UndoBar title={pendingTitle} onUndo={undoDelete} onExpire={dismissUndo} />
-      )}
-
-      {selected === null ? null : (
-        <WorkItemDetail
-          item={selected}
-          plan={plan}
-          projectId={projectId}
-          showToast={showToast}
-          onMove={handleDetailMove}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onClose={handleCloseDetail}
+        {/* provider 的错误自己带名字：横幅只有一句话，不点名就不知道是谁坏了。 */}
+        <TasksPanelStatus
+          error={error}
+          onRetry={refreshFeed}
+          providerError={
+            github.error === null ? null : `${GITHUB_PR_PROVIDER_LABEL} PR: ${github.error}`
+          }
+          onRetryProvider={github.refresh}
+          toast={toast}
         />
-      )}
+
+        {/*
+        内容区**不自己滚动**：两个视图各自滚动（看板列 / 列表 / 详情岛）。
+        在分栏外面再包一层 `overflow-auto` 等于两块又变回一整个长文档（`component-guidelines.md`）。
+      */}
+        <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col">
+          <TasksPanelBody
+            projectId={projectId}
+            loading={loading}
+            error={error}
+            items={items}
+            visible={visible}
+            view={view}
+            plan={plan}
+            planLoading={planLoading}
+            onOpen={handleOpen}
+            onMove={handleMove}
+            onNew={handleNew}
+            // 没有选中项就传 `null`：分栏据此不渲染第二块（否则会留一条能拖的空缝）。
+            detail={
+              selected === null ? null : (
+                <WorkItemDetailPane
+                  item={selected}
+                  plan={plan}
+                  projectId={projectId}
+                  showToast={showToast}
+                  onMove={handleDetailMove}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  onClose={handleCloseDetail}
+                />
+              )
+            }
+          />
+        </div>
+
+        {pendingTitle === null ? null : (
+          <UndoBar title={pendingTitle} onUndo={undoDelete} onExpire={dismissUndo} />
+        )}
+      </Island>
 
       <WorkItemDialog
-        intent={intent}
+        intent={dialog.intent}
         plan={plan}
-        submitting={submitting}
-        error={dialogError}
-        onCreate={handleCreate}
-        onUpdate={handleUpdate}
-        onClose={handleCloseDialog}
+        submitting={dialog.submitting}
+        error={dialog.error}
+        onCreate={dialog.create}
+        onUpdate={dialog.update}
+        onClose={dialog.close}
       />
     </div>
   );

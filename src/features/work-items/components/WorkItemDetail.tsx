@@ -33,11 +33,17 @@ import WorkItemRunsSection from './WorkItemRunsSection';
  * 这里不同：PR 根本没有那个字段/那个写路径，摆一个灰按钮等于承诺「以后能改 GitHub」。
  * 所以 PR 详情只保留事实 + 一个出口，动作条整块不渲染。
  *
- * # 覆盖面板而不是把看板卸载掉
+ * # 它是**一座岛的内容**，不是覆盖层
  *
- * 详情是一层 `absolute inset-0` 的覆盖层（`bg-bg-primary`，不透明）：关掉它要回到**同一个**
- * 滚动位置与列。整棵树替换掉看板也能做到「显示详情」，代价是回来时列全重建 —— 又正好违背
- * 「5 秒后延迟提交失败的删除会让那一行自己回到列表，别把回魂当新建」那条纪律。
+ * 2026-11-03 修订（用户反馈「应该使用岛屿布局」）：原来的详情是一层
+ * `absolute inset-0 bg-bg-primary` 覆盖层 —— 它把整座中心岛换掉，用户丢掉看板与滚动位置，
+ * 关掉详情回来时列全重建（而那正好违背「5 秒后延迟提交失败的删除会让那一行自己回到列表」
+ * 那条纪律）。现在详情是**右侧第二座岛**（宿主 [`WorkItemsSplitView`](./WorkItemsSplitView.tsx)
+ * 提供岛壳与可拖分栏），看板始终在左边。
+ *
+ * 所以本组件只排内部结构：`h-full` + `flex-col`，**不写** `absolute inset-0`，也**不写**
+ * `bg-bg-primary`（那是海面，会把岛挖穿）。岛内 header / footer **不刷表面**，只靠
+ * `border-b` / `border-t` 划界（与 `TasksPanelHeader` 同款）。
  *
  * # 为什么是 `region` 而不是 `dialog`
  *
@@ -71,12 +77,12 @@ const WorkItemDetail: React.FC<WorkItemDetailProps> = React.memo(
 
     return (
       <section
-        aria-label="工作项详情"
+        aria-label="Work item detail"
         data-work-item-detail={item.id}
         data-task-source={item.source}
-        className="absolute inset-0 z-10 flex min-h-0 flex-col bg-bg-primary"
+        className="flex h-full min-h-0 flex-col"
       >
-        <header className="flex items-start gap-2 border-b border-border px-2 py-1.5">
+        <header className="flex shrink-0 items-start gap-2 border-b border-border px-2.5 py-1.5">
           <TaskSourceBadge source={item.source} />
           <h3 className="min-w-0 flex-1 text-meta font-semibold break-words text-text-primary">
             {item.title}
@@ -84,50 +90,50 @@ const WorkItemDetail: React.FC<WorkItemDetailProps> = React.memo(
           <button
             type="button"
             onClick={onClose}
-            aria-label="关闭工作项详情"
+            aria-label="Close work item detail"
             className="shrink-0 rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
-            关闭
+            Close
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-auto px-2 py-1.5">
+        <div className="min-h-0 flex-1 overflow-auto px-2.5 py-2">
           {isLocal ? (
             <>
               <StageRail plan={plan} current={item.stage} onMove={onMove} />
 
               <dl className="mt-2 grid grid-cols-[auto_1fr] items-start gap-x-2 gap-y-1 text-meta">
-                <dt className="text-text-muted">优先级</dt>
+                <dt className="text-text-muted">Priority</dt>
                 <dd className="min-w-0">
                   {item.priority === null ? (
-                    <span className="text-text-muted">未设置</span>
+                    <span className="text-text-muted">Not set</span>
                   ) : (
                     <PriorityChip priority={item.priority} />
                   )}
                 </dd>
-                <dt className="text-text-muted">负责人</dt>
+                <dt className="text-text-muted">Assignee</dt>
                 <dd className="min-w-0 break-words text-text-primary">
                   {item.assignee === null ? (
-                    <span className="text-text-muted">未指派</span>
+                    <span className="text-text-muted">Unassigned</span>
                   ) : (
                     item.assignee
                   )}
                 </dd>
-                <dt className="text-text-muted">标签</dt>
+                <dt className="text-text-muted">Labels</dt>
                 <dd className="flex min-w-0 flex-wrap gap-1">
                   {item.labels.length === 0 ? (
-                    <span className="text-text-muted">无</span>
+                    <span className="text-text-muted">None</span>
                   ) : (
                     <LabelChips labels={item.labels} />
                   )}
                 </dd>
               </dl>
 
-              <h4 className="mt-3 text-micro font-semibold text-text-secondary">描述</h4>
+              <h4 className="mt-3 text-micro font-semibold text-text-secondary">Description</h4>
               {/* 纯文本按行渲染（`pre-wrap`）：不引 markdown 库，也不把用户的正文魔法成 HTML。 */}
               <p className="mt-0.5 text-meta break-words whitespace-pre-wrap text-text-primary">
                 {item.body.trim() === '' ? (
-                  <span className="text-text-muted">（无描述）</span>
+                  <span className="text-text-muted">(no description)</span>
                 ) : (
                   item.body
                 )}
@@ -141,12 +147,12 @@ const WorkItemDetail: React.FC<WorkItemDetailProps> = React.memo(
         </div>
 
         {isLocal ? (
-          <footer className="flex shrink-0 items-center gap-1 border-t border-border px-2 py-1.5">
+          <footer className="flex shrink-0 items-center gap-1 border-t border-border px-2.5 py-1.5">
             <Button variant="secondary" size="sm" onClick={onEdit}>
-              编辑
+              Edit
             </Button>
             <Button variant="destructive" size="sm" onClick={onDelete}>
-              删除
+              Delete
             </Button>
           </footer>
         ) : null}

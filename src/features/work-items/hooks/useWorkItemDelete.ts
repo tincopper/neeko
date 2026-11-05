@@ -47,7 +47,7 @@ export function useWorkItemDelete(
     (id: string, title: string) => {
       actions.remove(id).then(
         () => setPendingTitle(title),
-        (err: unknown) => showToast(invokeErrorMessage(err, '删除工作项失败'), 'error'),
+        (err: unknown) => showToast(invokeErrorMessage(err, 'Failed to delete work item'), 'error'),
       );
     },
     [actions, showToast],
@@ -56,7 +56,7 @@ export function useWorkItemDelete(
   const undo = useCallback(() => {
     const restored = actions.undo();
     setPendingTitle(null);
-    if (restored) showToast('已恢复工作项');
+    if (restored) showToast('Work item restored');
   }, [actions, showToast]);
 
   const dismiss = useCallback(() => setPendingTitle(null), []);

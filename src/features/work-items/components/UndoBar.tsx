@@ -53,13 +53,13 @@ const UndoBar: React.FC<UndoBarProps> = React.memo(
     return (
       <div
         role="status"
-        className="flex shrink-0 items-center gap-2 border-t border-border bg-bg-tertiary px-2 py-1"
+        className="flex shrink-0 items-center gap-2 border-t border-border px-2 py-1"
       >
         <span className="min-w-0 flex-1 truncate text-micro text-text-secondary">
-          {`已删除「${title}」`}
+          {`Deleted "${title}"`}
         </span>
         <Button variant="secondary" size="sm" onClick={onUndo}>
-          撤销
+          Undo
         </Button>
       </div>
     );

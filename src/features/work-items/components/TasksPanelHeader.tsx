@@ -1,3 +1,4 @@
+import { Plus, RefreshCw, Search, X } from 'lucide-react';
 import React, { useCallback } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -28,6 +29,30 @@ import type { PanelView } from '../utils/viewPreference';
  * 因为它不只是组件的 prop：它还要被持久化（design §4.5「记忆用户上次选择」）。在这里定义
  * 会让 `utils/` 反过来从 `components/` 取类型（依赖倒挂），所以类型住在 util 里，本文件只做
  * 别名 —— 现有的 `import type { TaskView } from './TasksPanelHeader'` 调用点不用改。
+ *
+ * # 头部是**主岛内的一条**（不是独立的岛，2026-11-03 修订）
+ *
+ * 层级是「海面 → 主岛（`TasksPanel` 的 `tasks-main-island`）→ 头部 + 内容」。
+ * 头部若自己再套 `<Island>`，就是**岛中岛**：两层圆角阴影之间那条缝没有任何含义，
+ * 而且看起来像「头部是另一个面板」。所以它**只给一条底边分割线**，表面透传岛底
+ * （与 `LibraryToolbar` / `GitControlPanel` / `PaneTabBar` 同款），岛壳由主岛给。
+ *
+ * 曾经它是一条裸 `border-b` 横条直接压在海面底色上 —— 那是另一种极端（看起来不像面板的
+ * 一部分）。现在两头都对：它在岛里，且不重复岛壳。
+ *
+ * # 工具栏的三分区（2026-11-03 三次修订）
+ *
+ * ```
+ * [视图切换] [搜索框（flex-1）] [数据源开关] [动作：新建 / 刷新]
+ * ```
+ *
+ * 三条偏离全仓惯例的地方已修正：
+ *
+ * | # | 旧 | 新 | 为什么 |
+ * | --- | --- | --- | --- |
+ * | 1 | 字符 `↻` 当刷新图标 | lucide `RefreshCw` | 全仓只有 work-items 用字符图标；字符图标不跟字号、在部分字体下被渲染成方块 |
+ * | 2 | 搜索框裸 input | `Search` 前置图标 + `X` 清空 | `LibrarySearchBar` 同款；没有清空按钮时用户只能全选删除 |
+ * | 3 | GitHub 勾选框夹在搜索与动作之间 | 独立「数据源」分组 | 它是**数据源开关**，不是每帧都点的动作。夹在中间时 `flex-1` 的搜索框被两侧各挤一次，窄窗口下先换行的是开关，把主动作推到第二行 |
  *
  * # GitHub 勾选框为什么在这个文件里
  *
@@ -106,58 +131,102 @@ const TasksPanelHeader: React.FC<TasksPanelHeaderProps> = React.memo(
       [onSearchChange],
     );
 
+    const handleClearSearch = useCallback(() => onSearchChange(''), [onSearchChange]);
+
     return (
-      <header className="flex shrink-0 flex-col gap-1 border-b border-border px-2 py-1.5">
-        <div className="flex items-center gap-1">
-          <div role="group" aria-label="视图切换" className="flex items-center gap-0.5">
-            {VIEWS.map((option) => (
-              <ViewButton
-                key={option.id}
-                view={option.id}
-                label={option.label}
-                active={view === option.id}
-                onSelectView={onSelectView}
-              />
-            ))}
-          </div>
-          <span className="flex-1" />
-          <Button variant="secondary" size="sm" onClick={onNew}>
-            + 新建
-          </Button>
-          <button
-            type="button"
-            onClick={onRefresh}
-            aria-label="刷新工作项"
-            className="rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
-          >
-            ↻
-          </button>
+      // 一行横排 + `flex-wrap` 兑窄：本面板现在是**中心全宽视图**（tab 面板），
+      // 搜索/筛选/视图切换原来竖着堆三行，在 1400px 宽的看板上方就是三条空得很厉害的栏。
+      // 不写断点式响应式：同一份标记在窄窗口（用户把窗口拉窄）下靠 `wrap` 自动堆回去，
+      // 而搜索框的 `min-w` 决定它什么时候才让位（低于它就不硬撑，而是换行）。
+      //
+      // 岛内 header：**不套 `<Island>`**（岛壳在主岛那一层，见文件头），
+      // 也**不自刷 `bg-bg-*`** —— 表面透传岛底，只靠 `border-b` 划界。
+      // 全仓同款：`LibraryToolbar` / `GitControlPanel` / `PaneTabBar` / `McpProjectContent`
+      // 都只写 `border-b`。刷一层 `bg-bg-tertiary` 有两个后果：读起来像「头部是另一块面板」
+      // （而它明明在同一座岛里），且一条满宽 tertiary 横条会与它下面的分区（也是 tertiary）
+      // 直接连成一片、分隔线形同虚设。
+      <header className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border px-2.5 py-2">
+        {/* ① 视图切换：互斥开关，不是 tablist（见文件头） */}
+        <div role="group" aria-label="View" className="flex shrink-0 items-center gap-0.5">
+          {VIEWS.map((option) => (
+            <ViewButton
+              key={option.id}
+              view={option.id}
+              label={option.label}
+              active={view === option.id}
+              onSelectView={onSelectView}
+            />
+          ))}
         </div>
-        <Input
-          size="sm"
-          aria-label="搜索工作项"
-          placeholder="搜索标题 / 标签 / 负责人…"
-          value={search}
-          onChange={handleSearch}
-        />
-        <div className="flex min-w-0 items-center gap-1">
+
+        {/* ② 搜索：`flex-1` 吃掉剩余宽度。前置图标 + 有内容才出现的清空按钮
+            （`LibrarySearchBar` 同款）—— 没有清空按钮时用户只能全选删除。 */}
+        <div className="relative min-w-[140px] flex-1">
+          <Search
+            aria-hidden="true"
+            data-testid="icon-search"
+            className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-text-muted"
+          />
+          <Input
+            size="sm"
+            aria-label="Search work items"
+            placeholder="Search title / label / assignee…"
+            value={search}
+            onChange={handleSearch}
+            className="pl-7"
+          />
+          {search === '' ? null : (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={handleClearSearch}
+              className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5 text-text-muted transition-colors hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+            >
+              <X aria-hidden="true" className="size-3" />
+            </button>
+          )}
+        </div>
+
+        {/* ③ 数据源开关：**独立分组**。它是「拉不拉外部数据」，不是每帧都点的动作。
+            夹在搜索与动作之间时，`flex-1` 的搜索框被两侧各挤一次，窄窗口下先换行的
+            是开关，把主动作（新建 / 刷新）推到第二行。 */}
+        <div role="group" aria-label="Sources" className="flex shrink-0 items-center gap-1.5">
           <Checkbox
             label="GitHub PRs"
             checked={githubEnabled}
             disabled={githubAvailability !== 'ready'}
             onCheckedChange={(next) => onToggleGithub(next === true)}
             title={githubBlockedReason ?? undefined}
-            className="shrink-0 text-micro text-text-secondary"
+            className="shrink-0 text-meta text-text-secondary"
           />
           {githubBlockedReason === null ? null : (
             <span
               data-github-blocked-reason=""
               title={githubBlockedReason}
-              className="min-w-0 truncate text-micro text-text-muted"
+              // 上限 28ch + `truncate`：理由是**一句话**（「未安装 gh」/「未登录 gh」），
+              // 不限制时它会占满剩下的全部宽度，把动作组推到看不见的地方。
+              className="min-w-0 max-w-[28ch] truncate text-micro text-text-muted"
             >
               {githubBlockedReason}
             </span>
           )}
+        </div>
+
+        {/* ④ 动作：主（新建）在左、次（刷新）在右，与全仓工具栏同序。 */}
+        <div role="group" aria-label="Actions" className="flex shrink-0 items-center gap-1">
+          <Button variant="secondary" size="sm" onClick={onNew} className="shrink-0">
+            <Plus aria-hidden="true" data-testid="icon-new" className="size-3.5" />
+            New
+          </Button>
+          <button
+            type="button"
+            onClick={onRefresh}
+            aria-label="Refresh work items"
+            // 图标按钮：`size-7` 与全仓工具栏图标按钮同档；`text-meta` 不是 hint 档
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-meta text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+          >
+            <RefreshCw aria-hidden="true" data-testid="icon-refresh" className="size-3.5" />
+          </button>
         </div>
       </header>
     );

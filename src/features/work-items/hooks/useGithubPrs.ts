@@ -65,8 +65,8 @@ interface PrFetch {
 /** 空列表的**稳定**引用：未启用 / 不可用时每次 render 返回同一个数组，下游 `memo` 才有意义。 */
 const NO_ITEMS: TaskItem[] = [];
 
-const CHECKING_REASON = '正在检查 GitHub CLI（gh）…';
-const NO_PROJECT_REASON = '没有激活项目';
+const CHECKING_REASON = 'Checking GitHub CLI (gh)…';
+const NO_PROJECT_REASON = 'No active project';
 
 /**
  * 探一次 `gh` 的能力。
@@ -80,18 +80,18 @@ async function probeGh(): Promise<GhProbe> {
   try {
     installed = await isGhInstalled();
   } catch {
-    return { status: 'blocked', reason: '无法确认 GitHub CLI（gh）是否已安装' };
+    return { status: 'blocked', reason: 'Cannot confirm whether GitHub CLI (gh) is installed' };
   }
-  if (!installed) return { status: 'blocked', reason: '未安装 GitHub CLI（gh）' };
+  if (!installed) return { status: 'blocked', reason: 'GitHub CLI (gh) is not installed' };
 
   let authenticated: boolean;
   try {
     authenticated = await isGhAuthenticated();
   } catch {
-    return { status: 'blocked', reason: '无法确认 GitHub CLI（gh）的登录状态' };
+    return { status: 'blocked', reason: 'Cannot confirm GitHub CLI (gh) login status' };
   }
   if (!authenticated)
-    return { status: 'blocked', reason: 'GitHub CLI（gh）未登录（gh auth login）' };
+    return { status: 'blocked', reason: 'GitHub CLI (gh) is not logged in (run: gh auth login)' };
 
   return { status: 'ready' };
 }
@@ -169,7 +169,7 @@ export function useGithubPrs(projectId: string | null, repoLabel = ''): UseGithu
           epoch,
           // 同一单元的旧列表留着（失败不清空看板）；跨单元则必须是空的（旧列表属于别人）。
           items: prev !== null && prev.workspaceKey === workspaceKey ? prev.items : [],
-          error: invokeErrorMessage(err, '读取 GitHub PR 失败'),
+          error: invokeErrorMessage(err, 'Failed to load GitHub PRs'),
         }));
       },
     );

@@ -88,7 +88,7 @@ export function useRunSingleWorkItem(
     async (item: WorkItem, agentId?: string): Promise<boolean> => {
       // 没有激活项目就没有 tab 空间可落（面板正常不会走到这里：列表本来就是空的）。
       if (projectId === null) {
-        showToast('没有激活项目，无法发起执行', 'error');
+        showToast('No active project; cannot start a run', 'error');
         return false;
       }
       // 连点：第二次直接静默返回，不再弹一次 toast（用户已经看到按钮变灰了）。
@@ -102,7 +102,7 @@ export function useRunSingleWorkItem(
         // 两种来源：都开不出会话，都该给出同一句可读的话。
         const agent = await getAgent(resolvedId).catch(() => null);
         if (!agent || agent.command.trim() === '') {
-          showToast('该 agent 未安装或缺少命令', 'error');
+          showToast('That agent is not installed or has no command', 'error');
           return false;
         }
 
@@ -117,7 +117,7 @@ export function useRunSingleWorkItem(
         });
         if (tabId === null) {
           // 配额满：端口没有建 tab，所以这里没有需要撤回的东西。
-          showToast('终端数量已达上限，请先关掉一些终端', 'error');
+          showToast('Terminal limit reached; close some terminals first', 'error');
           return false;
         }
 
@@ -132,7 +132,10 @@ export function useRunSingleWorkItem(
           });
         } catch (err: unknown) {
           // **不回滚终端**（文件头）：只把「账没记上」说清楚，并让调用方刷新记录。
-          showToast(`执行已开始，但记录失败：${invokeErrorMessage(err, '未知错误')}`, 'error');
+          showToast(
+            `Run started, but recording failed: ${invokeErrorMessage(err, 'Unknown error')}`,
+            'error',
+          );
         }
         return true;
       } finally {

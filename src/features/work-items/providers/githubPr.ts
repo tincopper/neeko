@@ -60,6 +60,6 @@ export async function fetchGithubPrs(
     return rows.map((pr) => prToTask(pr, repoLabel));
   } catch (err) {
     // 原样保留后端 `AppError` 的 `Display`（它已经是给人看的句子），只在真的空手时兜底。
-    throw new Error(invokeErrorMessage(err, '读取 GitHub PR 失败'));
+    throw new Error(invokeErrorMessage(err, 'Failed to load GitHub PRs'));
   }
 }

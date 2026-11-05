@@ -40,7 +40,7 @@ interface TaskSourceBadgeProps {
 const TaskSourceBadge: React.FC<TaskSourceBadgeProps> = React.memo(({ source }) => (
   <span
     data-task-source={source}
-    title={`来源：${SOURCE_LABEL[source]}`}
+    title={`Source: ${SOURCE_LABEL[source]}`}
     className={cn(
       'inline-flex shrink-0 items-center rounded border px-1 py-0.5 text-micro leading-none',
       SOURCE_CLASS[source],

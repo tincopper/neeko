@@ -105,7 +105,7 @@ const WorkItemForm: React.FC<WorkItemFormProps> = ({
       event.preventDefault();
       const trimmedTitle = title.trim();
       if (trimmedTitle === '') {
-        setTitleError('标题不能为空');
+        setTitleError('Title is required');
         return;
       }
       setTitleError(null);
@@ -137,16 +137,16 @@ const WorkItemForm: React.FC<WorkItemFormProps> = ({
   );
 
   const creating = intent.kind === 'create';
-  const submitLabel = creating ? '创建' : '保存';
+  const submitLabel = creating ? 'Create' : 'Save';
 
   return (
-    <form onSubmit={handleSubmit} aria-label={creating ? '新建工作项' : '编辑工作项'}>
+    <form onSubmit={handleSubmit} aria-label={creating ? 'New work item' : 'Edit work item'}>
       <DialogHeader>
-        <DialogTitle>{creating ? '新建工作项' : '编辑工作项'}</DialogTitle>
+        <DialogTitle>{creating ? 'New work item' : 'Edit work item'}</DialogTitle>
         <DialogDescription>
           {creating
-            ? '工作项保存在本机（Local provider）。'
-            : '改阶段请用详情里的阶段轨道 —— 那是一次流转，不是一次改名。'}
+            ? 'Work items are stored locally (Local provider).'
+            : 'To change stage, use the stage rail in the detail pane — that is a transition, not a rename.'}
         </DialogDescription>
       </DialogHeader>
 
@@ -159,14 +159,14 @@ const WorkItemForm: React.FC<WorkItemFormProps> = ({
       <div className="flex flex-col gap-2">
         <div className="flex flex-col gap-1">
           <label htmlFor="work-item-title" className={FIELD_LABEL_CLASS}>
-            标题
+            Title
           </label>
           <Input
             id="work-item-title"
             value={title}
             size="sm"
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="例如：修复登录态过期"
+            placeholder="e.g. Fix expired login session"
           />
           {titleError === null ? null : (
             <p role="alert" className="text-micro text-accent-red">
@@ -177,13 +177,13 @@ const WorkItemForm: React.FC<WorkItemFormProps> = ({
 
         <div className="flex flex-col gap-1">
           <label htmlFor="work-item-body" className={FIELD_LABEL_CLASS}>
-            描述
+            Description
           </label>
           <Textarea
             id="work-item-body"
             value={body}
             onChange={(event) => setBody(event.target.value)}
-            placeholder="可选"
+            placeholder="Optional"
             className="min-h-[64px] py-1 text-[0.82em]"
           />
         </div>
@@ -194,7 +194,7 @@ const WorkItemForm: React.FC<WorkItemFormProps> = ({
           {creating && plan !== null ? (
             <div className="flex min-w-[120px] flex-1 flex-col gap-1">
               <label htmlFor="work-item-stage" className={FIELD_LABEL_CLASS}>
-                阶段
+                Stage
               </label>
               <select
                 id="work-item-stage"
@@ -213,7 +213,7 @@ const WorkItemForm: React.FC<WorkItemFormProps> = ({
 
           <div className="flex min-w-[100px] flex-1 flex-col gap-1">
             <label htmlFor="work-item-priority" className={FIELD_LABEL_CLASS}>
-              优先级
+              Priority
             </label>
             <select
               id="work-item-priority"
@@ -221,7 +221,7 @@ const WorkItemForm: React.FC<WorkItemFormProps> = ({
               onChange={(event) => setPriority(event.target.value as WorkItemPriority | '')}
               className={SELECT_CLASS}
             >
-              <option value="">未设置</option>
+              <option value="">Not set</option>
               {PRIORITY_OPTIONS.map((option) => (
                 <option key={option} value={option}>
                   {option.toUpperCase()}
@@ -233,7 +233,7 @@ const WorkItemForm: React.FC<WorkItemFormProps> = ({
 
         <div className="flex flex-col gap-1">
           <label htmlFor="work-item-labels" className={FIELD_LABEL_CLASS}>
-            标签（逗号分隔）
+            Labels (comma separated)
           </label>
           <Input
             id="work-item-labels"
@@ -246,24 +246,24 @@ const WorkItemForm: React.FC<WorkItemFormProps> = ({
 
         <div className="flex flex-col gap-1">
           <label htmlFor="work-item-assignee" className={FIELD_LABEL_CLASS}>
-            负责人
+            Assignee
           </label>
           <Input
             id="work-item-assignee"
             value={assignee}
             size="sm"
             onChange={(event) => setAssignee(event.target.value)}
-            placeholder="可选"
+            placeholder="Optional"
           />
         </div>
       </div>
 
       <DialogFooter>
         <Button variant="outline" type="button" onClick={onClose}>
-          取消
+          Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={submitting}>
-          {submitting ? '提交中…' : submitLabel}
+          {submitting ? 'Submitting…' : submitLabel}
         </Button>
       </DialogFooter>
     </form>

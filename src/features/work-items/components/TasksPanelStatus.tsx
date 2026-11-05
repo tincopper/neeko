@@ -57,7 +57,7 @@ const ErrorBanner: React.FC<ErrorBannerProps> = React.memo(({ message, onRetry }
       onClick={onRetry}
       className="shrink-0 rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
     >
-      重试
+      Retry
     </button>
   </div>
 ));

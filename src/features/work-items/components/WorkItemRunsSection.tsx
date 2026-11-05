@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -42,8 +43,10 @@ import WorkItemRunRow from './WorkItemRunRow';
  * 出现在列表里。记录失败时更需要读 —— 用户刚被告知「账没记上」，他需要看到库里到底有没有。
  * 反过来，终端都没起来（缺命令 / 配额满）则不重读：什么都没发生，刷新只会让列表闪一下。
  */
-const TEAM_DISABLED_REASON = '派给团队：团队侧的派活入口还没接线（依赖 10-30 收尾）';
-const FLOW_DISABLED_REASON = 'Run flow…：固定流程引擎未实现，本期只留入口';
+const TEAM_DISABLED_REASON =
+  'Assign to team: the team-side entry point is not wired yet (depends on task 10-30)';
+const FLOW_DISABLED_REASON =
+  'Run flow…: the fixed-flow engine is not implemented; this entry is a placeholder';
 
 /** agent 下拉的尺寸与配色（与 `WorkItemForm` 的 select 同一套 token，不另立一套）。 */
 const SELECT_CLASS =
@@ -169,16 +172,18 @@ const WorkItemRunsSection: React.FC<WorkItemRunsSectionProps> = React.memo(
     }, [handleReload, item, pickedAgentId, run]);
 
     return (
-      <section aria-label="执行" className="mt-3 border-t border-border pt-2">
+      <section aria-label="Runs" className="mt-3 border-t border-border pt-2">
         <header className="flex items-center justify-between gap-1">
-          <h4 className="text-micro font-semibold text-text-secondary">执行</h4>
+          <h4 className="text-micro font-semibold text-text-secondary">Runs</h4>
           <button
             type="button"
             onClick={handleReload}
-            aria-label="刷新执行记录"
-            className="rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+            aria-label="Refresh runs"
+            // 图标用 lucide（不是字符 `↻`）：字符图标不跟字号、部分字体下渲染成方块，
+            // 且全仓其余刷新按钮都是 `RefreshCw`。尺寸与 `TasksPanelHeader` 同档。
+            className="inline-flex size-6 items-center justify-center rounded text-meta text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
-            ↻
+            <RefreshCw aria-hidden="true" className="size-3" />
           </button>
         </header>
 
@@ -188,15 +193,15 @@ const WorkItemRunsSection: React.FC<WorkItemRunsSectionProps> = React.memo(
             size="sm"
             disabled={launching || projectId === null}
             aria-busy={launching}
-            title={projectId === null ? '没有激活项目' : undefined}
+            title={projectId === null ? 'No active project' : undefined}
             onClick={handleRun}
           >
             Run with agent
           </Button>
           <label className="flex items-center gap-1 text-micro text-text-secondary">
-            <span className="sr-only">选择 agent</span>
+            <span className="sr-only">Select agent</span>
             <select
-              aria-label="选择 agent"
+              aria-label="Select agent"
               value={agentId}
               disabled={launching}
               onChange={(event) => setPickedAgentId(event.target.value)}
@@ -228,12 +233,12 @@ const WorkItemRunsSection: React.FC<WorkItemRunsSectionProps> = React.memo(
 
         {loading ? (
           <p role="status" className="mt-1 text-micro text-text-muted">
-            正在读取执行记录…
+            Loading runs…
           </p>
         ) : runs.length === 0 ? (
-          <p className="mt-1 text-micro text-text-muted">还没有执行记录</p>
+          <p className="mt-1 text-micro text-text-muted">No runs yet</p>
         ) : (
-          <ul aria-label="执行记录" className="mt-1 flex flex-col gap-1">
+          <ul aria-label="Runs" className="mt-1 flex flex-col gap-1">
             {runs.map((record) => (
               <WorkItemRunRow
                 key={record.id}

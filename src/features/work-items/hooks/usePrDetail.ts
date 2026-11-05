@@ -58,7 +58,11 @@ export function usePrDetail(projectId: string | null, prNumber: number | null): 
       },
       (err: unknown) => {
         if (cancelled) return;
-        setFetched({ prNumber, info: null, error: invokeErrorMessage(err, '读取 PR 详情失败') });
+        setFetched({
+          prNumber,
+          info: null,
+          error: invokeErrorMessage(err, 'Failed to load PR details'),
+        });
       },
     );
     return () => {

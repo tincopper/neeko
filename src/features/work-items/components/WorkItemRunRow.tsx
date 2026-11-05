@@ -38,12 +38,12 @@ const RUN_STATE_CLASS: Record<RunState, string> = {
 };
 
 const RUN_STATE_LABEL: Record<RunState, string> = {
-  queued: '排队中',
-  running: '运行中',
-  awaiting: '等待确认',
-  done: '已完成',
-  failed: '失败',
-  unknown: '已不可查',
+  queued: 'Queued',
+  running: 'Running',
+  awaiting: 'Awaiting approval',
+  done: 'Completed',
+  failed: 'Failed',
+  unknown: 'No longer available',
 };
 
 const RUN_MODE_LABEL: Record<RunMode, string> = {
@@ -83,7 +83,7 @@ const WorkItemRunRow: React.FC<WorkItemRunRowProps> = React.memo(
         {/* 陈旧标记：只说明「这枚快照可能旧了」，不参与任何完成判定（design §4.6）。 */}
         {isStale(run.snapshot.capturedAt, now) ? (
           <span data-stale="true" className="text-accent-yellow">
-            · 已过期
+            · Stale
           </span>
         ) : null}
       </span>
@@ -101,7 +101,7 @@ const WorkItemRunRow: React.FC<WorkItemRunRowProps> = React.memo(
             variant="secondary"
             size="sm"
             disabled={!tabOpen}
-            title={tabOpen ? '切换到该终端' : '该会话已关闭'}
+            title={tabOpen ? 'Switch to that terminal' : 'That session is closed'}
             onClick={() => onOpen(run.ref.id)}
           >
             Open

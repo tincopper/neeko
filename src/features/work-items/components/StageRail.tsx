@@ -94,7 +94,7 @@ const StageRail: React.FC<StageRailProps> = React.memo(({ plan, current, onMove 
   return (
     <div
       role="group"
-      aria-label="阶段轨道"
+      aria-label="Stage rail"
       className="flex flex-wrap items-center gap-1"
       data-current-stage={current}
     >

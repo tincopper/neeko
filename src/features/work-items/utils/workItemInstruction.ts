@@ -25,7 +25,7 @@
 import type { WorkItem } from '../types';
 
 /** 开场一句：说明这是「一件事」，不是一段命令。不含任何步骤。 */
-const INTRO = '请完成下面这个工作项，完成后按你的习惯汇报结果。';
+const INTRO = 'Complete the work item below, then report the result as you normally would.';
 
 /**
  * 渲染工作项的意图文本。
@@ -43,20 +43,20 @@ const INTRO = '请完成下面这个工作项，完成后按你的习惯汇报�
  * 让纯函数去 import 一个组件文件是反方向的依赖，而在这里复制一张表就是两份会漂移的真相。）
  */
 export function renderWorkItemInstruction(item: WorkItem): string {
-  const lines: string[] = [INTRO, '', `标题：${item.title}`, `编号：${item.id}`];
+  const lines: string[] = [INTRO, '', `Title: ${item.title}`, `ID: ${item.id}`];
 
   const stage = item.stage.trim();
-  if (stage !== '') lines.push(`阶段：${stage}`);
+  if (stage !== '') lines.push(`Stage: ${stage}`);
 
-  if (item.priority !== null) lines.push(`优先级：${item.priority.toUpperCase()}`);
+  if (item.priority !== null) lines.push(`Priority: ${item.priority.toUpperCase()}`);
 
   const assignee = (item.assignee ?? '').trim();
-  if (assignee !== '') lines.push(`负责人：${assignee}`);
+  if (assignee !== '') lines.push(`Assignee: ${assignee}`);
 
-  if (item.labels.length > 0) lines.push(`标签：${item.labels.join(', ')}`);
+  if (item.labels.length > 0) lines.push(`Labels: ${item.labels.join(', ')}`);
 
   // 正文不 trim（首行缩进 / 代码块有意义，与后端「正文不 trim」同口径），只在**全空**时省略。
-  if (item.body.trim() !== '') lines.push('', '描述：', item.body);
+  if (item.body.trim() !== '') lines.push('', 'Description:', item.body);
 
   return lines.join('\n');
 }
