@@ -151,9 +151,15 @@ C3 依赖 C2 移除挂载概念后的调度器；C4 与 C2 同批验收（前端
       —— `release_except` / `requestedIntent` 为空；`mount_tickets` **有意保留**（`unwatch` 仍在，
       晚到推送仍需凭证闸门，见 C2 偏差 4）；`version_floors` 已并入 `StatusStore` 内部字段。
 - [x] AC6 `cargo test --lib`（2594 passed）+ `pnpm check:quick`（36 条护栏）绿。
-- [ ] AC7 **待真机**：切主仓 ↔ worktree 抖动 30 次 + 删除 worktree，状态收敛无残留旧数据。
-      单元层已有等价覆盖（`poke_after_unit_switch_*`、`concrete_worktree_removal_*`、
-      C4 的 `fallbackToMainIfWorkspaceGone` 回归用例），真机确认的是**集成层**无回归。
+- [x] AC7 切主仓 ↔ worktree 抖动 + 删除 worktree，状态收敛无残留旧数据 —— **真机已确认**
+      （2026-11-05）。首次真机验证时发现了一个**新回归**并已修复：切项目后 Changes 列表停在
+      切走前那份快照上（「文件已提交却仍在列表里」）。根因是 `set_active_project` 每次都走
+      `unwatch_project` → `StatusStore::forget_project`，把 `version_floors` 连数据一起删了，
+      于是切回后新 worker 从 `v1` 起号、被前端 `version <= prev` 闸门全部丢弃 —— 与 2026-09-29
+      的「13 次推送全是 v1」同一机制，只是入口不同（C4 的声明式 reconcile 让「切项目即释放」
+      成了主路径，把这条老洞暴露出来）。修复 `efe9045b`，不变量已写进 `git-domain.md §12`，
+      回归 `forget_project_clears_data_but_keeps_version_floors` /
+      `remount_after_unwatch_project_keeps_the_version_climbing`。
 
 ## 非目标
 
