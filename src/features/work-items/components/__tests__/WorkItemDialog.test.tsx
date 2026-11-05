@@ -70,18 +70,18 @@ describe('WorkItemDialog — 新建', () => {
     const user = userEvent.setup();
     const { onCreate } = renderDialog({ kind: 'create', stage: 'Backlog' });
 
-    await user.click(screen.getByRole('button', { name: '创建' }));
+    await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(onCreate).not.toHaveBeenCalled();
-    expect(screen.getByText('标题不能为空')).toBeInTheDocument();
+    expect(screen.getByText('Title is required')).toBeInTheDocument();
   });
 
   it('提交时带上预填的 stage，空的可选字段落成 undefined', async () => {
     const user = userEvent.setup();
     const { onCreate } = renderDialog({ kind: 'create', stage: 'Ready' });
 
-    await user.type(screen.getByLabelText('标题'), '  重构 认证模块  ');
-    await user.click(screen.getByRole('button', { name: '创建' }));
+    await user.type(screen.getByLabelText('Title'), '  重构 认证模块  ');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(onCreate).toHaveBeenCalledExactlyOnceWith({
       title: '重构 认证模块',
@@ -98,11 +98,11 @@ describe('WorkItemDialog — 编辑', () => {
   it('预填当前值，并且**不出现** stage 选择器', async () => {
     const { onUpdate } = renderDialog({ kind: 'edit', item: item() });
 
-    expect(screen.getByLabelText('标题')).toHaveValue('修复登录态过期');
-    expect(screen.getByLabelText('负责人')).toHaveValue('tincopper');
+    expect(screen.getByLabelText('Title')).toHaveValue('修复登录态过期');
+    expect(screen.getByLabelText('Assignee')).toHaveValue('tincopper');
     // 改阶段只能走 StageRail：`UpdateWorkItemParams` 没有 `stage`，所以控件不该出现。
     expect(screen.queryByLabelText('阶段')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '保存' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
@@ -113,9 +113,9 @@ describe('WorkItemDialog — 编辑', () => {
       item: item({ assignee: 'tincopper', priority: 'p1' }),
     });
 
-    await user.selectOptions(screen.getByLabelText('优先级'), '');
-    await user.clear(screen.getByLabelText('负责人'));
-    await user.click(screen.getByRole('button', { name: '保存' }));
+    await user.selectOptions(screen.getByLabelText('Priority'), '');
+    await user.clear(screen.getByLabelText('Assignee'));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(onUpdate).toHaveBeenCalledExactlyOnceWith({
       id: 'wi_1',

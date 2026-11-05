@@ -79,6 +79,6 @@ describe('fetchGithubPrs', () => {
   it('后端什么也没说时回落固定文案（不让空消息冒到横幅上）', async () => {
     gitApi.listPrs.mockRejectedValue(null);
 
-    await expect(fetchGithubPrs(WORKSPACE, 'neeko')).rejects.toThrow('读取 GitHub PR 失败');
+    await expect(fetchGithubPrs(WORKSPACE, 'neeko')).rejects.toThrow('Failed to load GitHub PRs');
   });
 });

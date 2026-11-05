@@ -120,6 +120,6 @@ describe('useWorkItemRuns', () => {
     api.listWorkItemRuns.mockRejectedValueOnce(null as unknown as Error);
     const { result } = renderHook(() => useWorkItemRuns('wi_1'));
 
-    await waitFor(() => expect(result.current.error).toBe('读取执行记录失败'));
+    await waitFor(() => expect(result.current.error).toBe('Failed to load runs'));
   });
 });

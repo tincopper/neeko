@@ -1,9 +1,9 @@
 /**
- * `WorkItemRunsSection`：执行区的**动作**与**跳转**（`run-single` 落地的两块）。
+ * `WorkItemRunsSection`：执行区的**Actions**与**跳转**（`run-single` 落地的两块）。
  *
  * 这里**不 mock 终端端口**：整条链路的要点就是「点击 → 真的在 store 里多一个 terminal tab →
- * 记录指向它 → 点 Open 能切回去」。把 `createTaskTerminal` mock 掉，就只剩「我们调用了自己写的
- * 函数」，而 tab 空间键写错（自己拼 `projectId` 而不是 `activeWorkspaceSession().key`）这类
+ * 记录指向它 → 点 Open 能切回去"。把 `createTaskTerminal` mock 掉，就只剩「我们调用了自己写的
+ * 函数"，而 tab 空间键写错（自己拼 `projectId` 而不是 `activeWorkspaceSession().key`）这类
  * 缺陷会安静通过 —— 恰恰是这条链最容易错的地方。
  *
  * 只 mock 三个真 IPC 入口：agent 列表 / agent 配置 / 工作项 api。
@@ -84,7 +84,7 @@ beforeEach(() => {
   );
   agentApi.listAgents.mockResolvedValue([
     createAgent({ id: 'opencode', name: 'OpenCode', command: 'opencode' }),
-    // 没有命令的 agent 列进下拉等于给用户一个「点了才知道不行」的选项。
+    // 没有命令的 agent column进下拉等于给用户一个「点了才知道不行"的选项。
     createAgent({ id: 'mockAgent', name: 'Mock', command: '' }),
   ]);
   agentApi.getAgent.mockResolvedValue(createAgent({ id: 'opencode', name: 'OpenCode' }));
@@ -104,7 +104,7 @@ describe('WorkItemRunsSection — agent 下拉', () => {
   it('只列有 command 的 agent，缺省选项目 selected_agents[0]', async () => {
     mountSection();
 
-    const select = screen.getByRole('combobox', { name: '选择 agent' });
+    const select = screen.getByRole('combobox', { name: 'Select agent' });
     await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(1));
     expect(within(select).getByRole('option', { name: 'OpenCode' })).toBeInTheDocument();
     expect(within(select).queryByRole('option', { name: 'Mock' })).not.toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('WorkItemRunsSection — agent 下拉', () => {
     });
     mountSection();
 
-    const select = screen.getByRole('combobox', { name: '选择 agent' });
+    const select = screen.getByRole('combobox', { name: 'Select agent' });
     await waitFor(() => expect(select).toHaveValue('custom'));
     expect(within(select).getByRole('option', { name: 'custom' })).toBeInTheDocument();
   });
@@ -126,7 +126,7 @@ describe('WorkItemRunsSection — agent 下拉', () => {
     agentApi.listAgents.mockRejectedValue(new Error('ipc down'));
     mountSection();
 
-    const select = screen.getByRole('combobox', { name: '选择 agent' });
+    const select = screen.getByRole('combobox', { name: 'Select agent' });
     await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(1));
     expect(screen.getByRole('button', { name: 'Run with agent' })).toBeEnabled();
   });
@@ -142,7 +142,7 @@ describe('WorkItemRunsSection — agent 下拉', () => {
     );
     mountSection();
 
-    const select = screen.getByRole('combobox', { name: '选择 agent' });
+    const select = screen.getByRole('combobox', { name: 'Select agent' });
     await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(2));
     await user.selectOptions(select, 'claude');
     await user.click(screen.getByRole('button', { name: 'Run with agent' }));
@@ -155,7 +155,7 @@ describe('WorkItemRunsSection — agent 下拉', () => {
 
     const run = screen.getByRole('button', { name: 'Run with agent' });
     expect(run).toBeDisabled();
-    expect(run).toHaveAttribute('title', '没有激活项目');
+    expect(run).toHaveAttribute('title', 'No active project');
   });
 });
 
@@ -192,9 +192,9 @@ describe('WorkItemRunsSection — Run with agent 全链路', () => {
     api.listWorkItemRuns.mockResolvedValue([
       run({ ref: { kind: 'session', id: tab.id, sub: null } }),
     ]);
-    await user.click(screen.getByRole('button', { name: '刷新执行记录' }));
+    await user.click(screen.getByRole('button', { name: 'Refresh runs' }));
 
-    const list = await screen.findByRole('list', { name: '执行记录' });
+    const list = await screen.findByRole('list', { name: 'Runs' });
     expect(within(list).getByText('OpenCode')).toBeInTheDocument();
 
     // 4) 记录指向的 tab 还在 ⇒ Open 可点（跳转本身由下面那条用例钉住）。
@@ -210,7 +210,7 @@ describe('WorkItemRunsSection — Run with agent 全链路', () => {
 
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith(
-        '执行已开始，但记录失败：Invalid input: only single',
+        'Run started, but recording failed: Invalid input: only single',
         'error',
       ),
     );
@@ -230,7 +230,10 @@ describe('WorkItemRunsSection — Run with agent 全链路', () => {
     await user.click(screen.getByRole('button', { name: 'Run with agent' }));
 
     await waitFor(() =>
-      expect(showToast).toHaveBeenCalledWith('该 agent 未安装或缺少命令', 'error'),
+      expect(showToast).toHaveBeenCalledWith(
+        'That agent is not installed or has no command',
+        'error',
+      ),
     );
     expect(tabsInSpace()).toHaveLength(0);
     expect(api.listWorkItemRuns).toHaveBeenCalledTimes(1);
@@ -242,10 +245,10 @@ describe('WorkItemRunsSection — 跳转按钮', () => {
     api.listWorkItemRuns.mockResolvedValue([run()]);
     mountSection();
 
-    const list = await screen.findByRole('list', { name: '执行记录' });
+    const list = await screen.findByRole('list', { name: 'Runs' });
     const open = within(list).getByRole('button', { name: 'Open' });
     expect(open).toBeDisabled();
-    expect(open).toHaveAttribute('title', '该会话已关闭');
+    expect(open).toHaveAttribute('title', 'That session is closed');
   });
 
   it('tab 还在：Open 可点，点击切到那个 tab（tabKey 走 activeWorkspaceSession）', async () => {
@@ -269,7 +272,7 @@ describe('WorkItemRunsSection — 跳转按钮', () => {
 
     mountSection();
 
-    const list = await screen.findByRole('list', { name: '执行记录' });
+    const list = await screen.findByRole('list', { name: 'Runs' });
     const open = within(list).getByRole('button', { name: 'Open' });
     expect(open).toBeEnabled();
     await user.click(open);
@@ -285,7 +288,7 @@ describe('WorkItemRunsSection — 跳转按钮', () => {
     ]);
     mountSection();
 
-    const list = await screen.findByRole('list', { name: '执行记录' });
+    const list = await screen.findByRole('list', { name: 'Runs' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
     expect(within(list).queryByRole('button', { name: 'Open' })).not.toBeInTheDocument();
   });

@@ -37,16 +37,16 @@ describe('renderWorkItemInstruction', () => {
   it('全字段：标题 / 编号 / 阶段 / 优先级 / 负责人 / 标签 / 描述逐行给出', () => {
     expect(renderWorkItemInstruction(item())).toBe(
       [
-        '请完成下面这个工作项，完成后按你的习惯汇报结果。',
+        'Complete the work item below, then report the result as you normally would.',
         '',
-        '标题：修复登录态过期',
-        '编号：wi_1',
-        '阶段：In Progress',
-        '优先级：P1',
-        '负责人：tincopper',
-        '标签：bug, auth',
+        'Title: 修复登录态过期',
+        'ID: wi_1',
+        'Stage: In Progress',
+        'Priority: P1',
+        'Assignee: tincopper',
+        'Labels: bug, auth',
         '',
-        '描述：',
+        'Description:',
         '第一行',
         '第二行',
       ].join('\n'),
@@ -60,10 +60,10 @@ describe('renderWorkItemInstruction', () => {
 
     expect(rendered).toBe(
       [
-        '请完成下面这个工作项，完成后按你的习惯汇报结果。',
+        'Complete the work item below, then report the result as you normally would.',
         '',
-        '标题：修复登录态过期',
-        '编号：wi_1',
+        'Title: 修复登录态过期',
+        'ID: wi_1',
       ].join('\n'),
     );
     // 占位文案的形态（`(none)` / `未设置` / 空 `描述：`）一个都不许出现。
@@ -87,7 +87,7 @@ describe('renderWorkItemInstruction', () => {
     const body = '  缩进的一行\n```ts\nconst a = 1;\n```';
     const rendered = renderWorkItemInstruction(item({ body }));
 
-    expect(rendered.endsWith(`描述：\n${body}`)).toBe(true);
+    expect(rendered.endsWith(`Description:\n${body}`)).toBe(true);
   });
 
   it('单引号正文经整条链路仍然是安全的一条命令（转义在 buildAgentPromptCommand）', () => {

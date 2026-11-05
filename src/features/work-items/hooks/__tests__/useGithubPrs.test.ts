@@ -102,7 +102,7 @@ describe('useGithubPrs — gh 可用性', () => {
     const { result } = await mount();
 
     expect(result.current.availability).toBe('blocked');
-    expect(result.current.blockedReason).toBe('未安装 GitHub CLI（gh）');
+    expect(result.current.blockedReason).toBe('GitHub CLI (gh) is not installed');
 
     act(() => result.current.setEnabled(true));
     await Promise.resolve();
@@ -114,7 +114,9 @@ describe('useGithubPrs — gh 可用性', () => {
     gitApi.isGhAuthenticated.mockResolvedValue(false);
     const { result } = await mount();
 
-    expect(result.current.blockedReason).toBe('GitHub CLI（gh）未登录（gh auth login）');
+    expect(result.current.blockedReason).toBe(
+      'GitHub CLI (gh) is not logged in (run: gh auth login)',
+    );
     expect(gitApi.listPrs).not.toHaveBeenCalled();
   });
 
@@ -123,22 +125,24 @@ describe('useGithubPrs — gh 可用性', () => {
     const { result } = await mount();
 
     expect(result.current.availability).toBe('blocked');
-    expect(result.current.blockedReason).toBe('无法确认 GitHub CLI（gh）是否已安装');
+    expect(result.current.blockedReason).toBe(
+      'Cannot confirm whether GitHub CLI (gh) is installed',
+    );
   });
 
   it('登录探测失败同样不可用（此时不能保证能拉）', async () => {
     gitApi.isGhAuthenticated.mockRejectedValue(new Error('timeout'));
     const { result } = await mount();
 
-    expect(result.current.blockedReason).toBe('无法确认 GitHub CLI（gh）的登录状态');
+    expect(result.current.blockedReason).toBe('Cannot confirm GitHub CLI (gh) login status');
   });
 
-  it('没有激活项目：不探测、不可用，原因是「没有激活项目」', async () => {
+  it('No active project：不探测、不可用，原因是「No active project」', async () => {
     const { result } = await mount(null);
 
     expect(gitApi.isGhInstalled).not.toHaveBeenCalled();
     expect(result.current.availability).toBe('blocked');
-    expect(result.current.blockedReason).toBe('没有激活项目');
+    expect(result.current.blockedReason).toBe('No active project');
   });
 });
 

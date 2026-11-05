@@ -1,5 +1,5 @@
 /**
- * `StageRail`：三态视觉、只让 `reachable` 可点、以及三种「画不出来」的情形。
+ * `StageRail`：三态视觉、只让 `reachable` 可点、以及三种「画不出来"的情形。
  *
  * 判据全部来自 `utils/stageRail.ts`（`stageNodes` 查后端下发的 `transitions` 表）。这里钉的是
  * **呈现与交互**：类名/aria 是否表达了状态、current 与 locked 点了会不会误触发 `onMove`。
@@ -28,7 +28,7 @@ const PLAN: StagePlan = {
 };
 
 function rail(): HTMLElement {
-  return screen.getByRole('group', { name: '阶段轨道' });
+  return screen.getByRole('group', { name: 'Stage rail' });
 }
 
 function node(stage: string): HTMLElement {
@@ -75,14 +75,14 @@ describe('StageRail — 三态', () => {
 describe('StageRail — 画不出来时不猜位置', () => {
   it('plan 为 null 时整条轨道不渲染', () => {
     render(<StageRail plan={null} current="Ready" onMove={vi.fn()} />);
-    expect(screen.queryByRole('group', { name: '阶段轨道' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Stage rail' })).not.toBeInTheDocument();
   });
 
   it('当前 stage 不在 plan 里时没有任何 current 节点', () => {
     render(<StageRail plan={PLAN} current="Unknown Stage" onMove={vi.fn()} />);
 
     expect(rail()).toHaveAttribute('data-current-stage', 'Unknown Stage');
-    // 不猜「最像的」位置：全部 locked，没有 `aria-current`。
+    // 不猜「最像的"位置：全部 locked，没有 `aria-current`。
     expect(within(rail()).queryAllByRole('button', { current: 'step' })).toHaveLength(0);
     expect(node('Backlog')).toHaveAttribute('data-status', 'locked');
   });

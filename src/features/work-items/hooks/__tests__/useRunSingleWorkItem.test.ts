@@ -153,7 +153,7 @@ describe('useRunSingleWorkItem — 成功链路', () => {
 });
 
 describe('useRunSingleWorkItem — 失败链路', () => {
-  it('没有激活项目：toast 一次并返回 false（不建终端、不写记录）', async () => {
+  it('No active project：toast 一次并返回 false（不建终端、不写记录）', async () => {
     const showToast = vi.fn();
     const { result } = renderHook(() => useRunSingleWorkItem(null, showToast));
 
@@ -163,7 +163,10 @@ describe('useRunSingleWorkItem — 失败链路', () => {
     });
 
     expect(launched).toBe(false);
-    expect(showToast).toHaveBeenCalledExactlyOnceWith('没有激活项目，无法发起执行', 'error');
+    expect(showToast).toHaveBeenCalledExactlyOnceWith(
+      'No active project; cannot start a run',
+      'error',
+    );
     expect(terminalApi.createTaskTerminal).not.toHaveBeenCalled();
     expect(workItemsApi.recordWorkItemRun).not.toHaveBeenCalled();
   });
@@ -179,7 +182,10 @@ describe('useRunSingleWorkItem — 失败链路', () => {
     });
 
     expect(launched).toBe(false);
-    expect(showToast).toHaveBeenCalledExactlyOnceWith('该 agent 未安装或缺少命令', 'error');
+    expect(showToast).toHaveBeenCalledExactlyOnceWith(
+      'That agent is not installed or has no command',
+      'error',
+    );
     expect(terminalApi.createTaskTerminal).not.toHaveBeenCalled();
   });
 
@@ -192,7 +198,10 @@ describe('useRunSingleWorkItem — 失败链路', () => {
       await result.current.run(item());
     });
 
-    expect(showToast).toHaveBeenCalledExactlyOnceWith('该 agent 未安装或缺少命令', 'error');
+    expect(showToast).toHaveBeenCalledExactlyOnceWith(
+      'That agent is not installed or has no command',
+      'error',
+    );
   });
 
   it('终端配额满（端口返回 null）：toast 并返回 false，不写记录', async () => {
@@ -207,7 +216,7 @@ describe('useRunSingleWorkItem — 失败链路', () => {
 
     expect(launched).toBe(false);
     expect(showToast).toHaveBeenCalledExactlyOnceWith(
-      '终端数量已达上限，请先关掉一些终端',
+      'Terminal limit reached; close some terminals first',
       'error',
     );
     expect(workItemsApi.recordWorkItemRun).not.toHaveBeenCalled();
@@ -225,7 +234,7 @@ describe('useRunSingleWorkItem — 失败链路', () => {
 
     expect(launched).toBe(true);
     expect(showToast).toHaveBeenCalledExactlyOnceWith(
-      '执行已开始，但记录失败：Invalid input: nope',
+      'Run started, but recording failed: Invalid input: nope',
       'error',
     );
     // 终端只建了一次、没有被「回滚」（端口没有关闭入口，唯一能做错的补救是再建一个）。
