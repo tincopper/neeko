@@ -415,6 +415,576 @@ async 作用域且永不收敛 ⇒ 后续渲染全部丢失（表现为「明明
 - 非 div 宿主（`ResizablePanel`）用导出的 `ISLAND_CLASS` 字符串；
 - 海面几何见上节（`src/layout/islands.ts`）。
 
+### 表面层级契约（四条，缺一条就是重犯）
+
+> 触发事故：Tasks 面板（2026-11-03）。用户反馈「太丑，没有遵循项目的 UI 规范」。
+> 复盘结论不是审美，而是**表面层级整个倒过来了**：面板根节点写 `bg-bg-primary`（海面色）
+> 被中心区 `<Island>`（`bg-bg-secondary`）包着 —— 岛被填成海，中心区看起来像挖了个洞；
+> 看板列与卡片又各自手写 `rounded-md border border-border bg-bg-secondary`，没有一处走
+> `ISLAND_CLASS`。而当时**没有任何测试或护栏会失败**（`check_ui_style_tokens` 只判硬编码色）。
+
+| 层 | 谁负责 | 类名 | 禁止 |
+| --- | --- | --- | --- |
+| 海面 | 中心框架（`CenterViewFrame`） | `bg-bg-primary` | 视图自己再画一层海面 |
+| 岛屿 | 每块**独立可滚动/可聚焦**的内容块 | `ISLAND_CLASS` | 手写 `rounded-* border border-border bg-bg-secondary` 冒充岛屿 |
+| 岛内分区 | 主岛内的列 / 列表 / 空态容器 | `bg-bg-tertiary` | 分区套 `ISLAND_CLASS`（一排浮岛） |
+| 分区内控件面 | 分区里的卡片 / 行 / 输入框 | `bg-bg-primary` 或 `bg-bg-secondary`（**必须与所在分区不同色**） | 与所在分区同色（对比恒 1.00，只剩一个方框） |
+| 岛内 header / footer | 岛内的横条 | **不自刷背景**，只写 `border-b` / `border-t` | 满宽横条刷 `bg-bg-tertiary`（与下面的分区连成一片） |
+| 岛间距 | 分栏宿主 | 分栏：`ISLAND_SPLIT_GROUP_CLASS`；并列/堆叠：`ISLAND_GAP_CLASS` | 各面板自定 `gap-2` / `p-2` |
+
+判据：
+
+1. **一座岛 = 一块面板，不是一块滚动区**（2026-11-03 修正）。
+   看板每列、列表**不是**岛 —— 它们是主岛内部的分区（`bg-bg-tertiary`，圆角见下节「圆角块」）；
+   列内的卡片同理。只有**可以独立开/关的另一块内容**（如详情面板）才是第二座岛。
+
+   > 这条曾经写反了（「看板每列、列表、详情各是一座岛」），后果是看板变成「一排浮岛漂在
+   > 海面上」，而 Library 的正确形态是**一座主岛 + 岛内 toolbar/content**。用户反馈原话：
+   > 「中间应该像这样有一层岛屿作为内容的承载，而不是直接内容在海里面」。
+   > 判据不是「它自己滚不滚」，而是「它是不是一块独立的 UI 单元」。
+2. **岛屿外壳只有一处**（`ISLAND_CLASS` / `<Island>`）。任何自写的 `rounded-* border border-border bg-bg-secondary`
+   都是第二套外壳，必须删。
+3. **岛间距只有一处**：分栏位置用 `ISLAND_SPLIT_GROUP_CLASS`（`gap-px`，两侧各贴一条
+   `ResizableHandle`，三者相加才是 3px）；非分栏位置用 `ISLAND_GAP_CLASS`（6px，对应
+   `--gap-island`）。两个常量**不能互换**：只写 `gap-px` 而没有手柄时岛屿的 `rounded-lg`
+   在 1px 缝里读起来像表格线。
+4. **自己带岛屿的视图必须裸挂进中心区**（判据是「这个视图内部有没有岛」）：
+   `ProjectView` 是裸内容 → 被 `<Island>` 包；`Library` / `Tasks` 自带岛 → 裸挂，
+   外层只给透明定位包装（`flex-1` + `hidden` 切换）。套一层岛会让视图内部的海面色把外层岛
+   填成洞。机器判据：`src/app/components/__tests__/AppCenter.test.tsx` 的
+   「中心视图的包装形状」三条。
+
+#### 中心视图框架：几何的**唯一所有者**（`src/app/components/CenterViewFrame.tsx`）
+
+> 触发事故：Tasks 面板「高度和宽度没有和其他中间内容区域对齐」。用户的原话指出了真正的
+> 判据：「中间这块应该是应用的一个统一组件，而不是每创建一个功能其中间的大小需要重新实现，
+> 内容只是在这个框架里实现」。
+>
+> 实测当时四个中心视图各自写外壳，几何**三种**：
+>
+> | 视图 | 自己的外壳 | 结果 |
+> | --- | --- | --- |
+> | ProjectView | `<Island className="flex-1 h-full">` | 满格 |
+> | Library | 根 `bg-bg-primary`（无内缩） | 满格 |
+> | Tasks | 根 `rounded-lg bg-bg-primary p-1.5` | **四周多缩 6px + 双层圆角** |
+> | Settings | `<Island className="flex-1">` | 满格 |
+>
+> 根因不是审美：**外圈内缩有两个所有者**。布局框架里这件事本是唯一的 —— `DockLayout` 的
+> `center-area` 面板给 `py-0.5 px-px`。功能面板再各缩一次，就必然对不齐。
+
+**框架与内容的边界**（新增中心视图时照此填，不要自己写外壳）：
+
+| 归 `CenterViewFrame` | 归功能视图 |
+| --- | --- |
+| 海面（`bg-bg-primary`） | 岛（`<Island>` / `ResizablePanel` + `ISLAND_CLASS`） |
+| 尺寸链（`flex-1 min-h-0 flex-col`） | 岛内的分栏、列表、空态、表格 |
+| 裁切（`overflow-hidden`） | — |
+| 显隐（`hidden` 类，**不卸载**） | — |
+
+**框架绝不加 padding / 圆角 / margin**：内缩归 `DockLayout` 的 `center-area`，
+圆角归岛本身。框架再给一层 = 双重内缩（对不齐的直接来源）+ 双层描边。
+
+硬约束（违反即 Block）：
+
+1. **一个视图只用 `CENTER_VIEW_FRAME_CLASS` 这一份几何**，禁止再写 `p-*` / `rounded-*` /
+   `bg-bg-primary` / `h-full`。视图只负责「我这一格里放什么岛」。
+2. **AppCenter 里恰好一层框架**。给每个视图各套一个 `CenterViewFrame` 也会破坏不变量
+   （N 个几何所有者）—— 视图是框架的**子节点**。
+3. **显隐用 `hidden` 类，不用原生 `hidden` 属性**：后者被 `.flex`（author 样式）覆盖，不生效。
+4. 机器判据：`CenterViewAlignment.test.tsx`（四视图框架类串集合相等 + 恰好一层）+
+   `CenterViewFrame.test.tsx`（框架不含 `p-*`/`m-*`/`rounded-*`）+ 各视图自己的
+   「本面板不自写几何」用例。
+
+#### 表面用法：**同一面板内相邻两层不能同色**（2026-11-03）
+
+> 触发事故：用户反馈「当前的 UI 和整个应用主题不适配」。查下来不是配色选错，而是
+> **表面层级被压平了** —— 上一轮修「看得出岛」时，把卡片也写成了 `bg-bg-tertiary`：
+>
+> ```
+> 主岛        bg-bg-secondary
+> └ 看板列    bg-bg-tertiary   ← 分区
+>   └ 卡片    bg-bg-tertiary   ← 与列同一个 token
+> ```
+>
+> 卡片与列在**每一个主题**里对比度恒为 **1.00**：边框之内与边框之外完全同色，
+> 卡片不是「浮在列里」，而是「列被画了一个方框」。
+>
+> **教训**：上一轮我只检查了「列 vs 岛」（1.19 之类，确实不同），却没检查
+> 「卡片 vs 列」。逐层检查必须**沿整条阶梯走到最内层**，在中间停一层就等于没查。
+
+**全仓惯例**（同一件事只有一个答案）：
+
+| 层 | 类名 | 谁在用 |
+| --- | --- | --- |
+| 岛 | `bg-bg-secondary` | `<Island>` / `ISLAND_CLASS` |
+| 岛内分区 | `bg-bg-tertiary` | 看板列、列表容器、空态容器 |
+| **分区内卡片 / 行 / 输入框** | **`bg-bg-secondary`**（看板卡片 / 列表行）或 **`bg-bg-primary`**（`ui/Card` / `ui/Input` 等通用控件） | `WorkItemCard`、`ListView` 的行、`ui/Card`、`PromptCard`、`McpAgentServerList`、`TaskCardRow`、`MemberApprovalQueue` 的行 |
+| 岛内 header / footer | **不自刷背景**，只写 `border-b` / `border-t` | `LibraryToolbar`、`GitControlPanel`、`PaneTabBar`、`McpProjectContent`、`TasksPanelHeader`、`WorkItemDetail` |
+
+> **为什么卡片有两种合法 token**：判据不是「等于某个具体 token」，而是
+> **「与它所在的分区不同色」**（对比 ≥ 1.05，见 `surfaceContrast.test.ts`）。
+> 看板卡片与列表行取 `bg-bg-secondary`（实测在每个主题里都比 `bg-bg-tertiary` 亮）；
+> `ui/Card` 等通用控件沿用 `bg-bg-primary`。两者都成立 —— 写死 token 名会让
+> 「换一套表面阶梯」这种正当改动变成改测试。
+
+两条容易被写反的地方：
+
+1. **`bg-bg-primary` 在分区内不是「海面」**。它只在「岛 ↔ 海」的边界上代表海；
+   一旦已经进了岛内的分区，它就是「分区之上再一层控件面」。判断某个 `bg-bg-primary`
+   违不违规，看它的**父节点**是什么：父节点是岛/分区 ⇒ 合法；父节点是中心框架 ⇒ 违规（挖穿岛）。
+2. **满宽横条不自刷 `bg-bg-tertiary`**。全仓 `<header>` 自带 `bg-bg-*` 的只有 0 处
+   （修完后）；`bg-bg-tertiary` 的正确位置是**分区**与**控件**（按钮、输入框），
+   不是「横条」。一条满宽 tertiary 横条会与它下面的分区（也是 tertiary）连成一片，
+   分隔线形同虚设。
+
+**机器判据**（三层，缺一层就会像上一轮那样「绿着却错」）：
+
+| 层 | 文件 | 断言 |
+| --- | --- | --- |
+| 数值（跨主题） | `features/work-items/components/__tests__/surfaceContrast.test.ts` | 相邻两层对比 ≥ 1.05（五个主题逐个过）；含「同色 = 1.00」反证 |
+| DOM（token 不同） | `BoardView.test.tsx`「卡片与所在列是**不同表面**」 | 卡片与列**不共享**表面 token（不是断言等于某个具体 token） |
+| DOM（不自刷表面） | `TasksPanel.test.tsx`「岛内 header 只靠 border 划界」、`UndoBar.test.tsx`、`WorkItemDetail.test.tsx` | header / footer / 底条不含任何 `bg-bg-*` |
+
+**为什么数值层不能省**：`toHaveClass('bg-bg-primary')` 只能证明某一行文本没被改掉，
+证明不了它在别的主题下看得见。而把 token 名写进测试又会让「换一套表面阶梯」这种
+正当改动变成改测试。所以数值判据写成**对比度阈值**，DOM 判据写成**「两者不同」**。
+
+#### 看板 / 列表：**圆角块**（2026-11-03 二次裁决）
+
+> 触发：用户看过参考图后确认「列要变回圆角块」，同时明确「**底层 token 不变，卡片自己适配**」。
+
+上一版把列判成「没有圆角/阴影的分区」——那是在否决「列套 `ISLAND_CLASS`」
+（`rounded-lg shadow-sm bg-bg-secondary`，看板会变成「一排浮岛漂在海面上」）。
+但参考图的列是**中间态**，spec 当时没考虑过。三条特征必须**分开判**：
+
+| 特征 | 取值 | 为什么 |
+| --- | --- | --- |
+| 圆角 | `rounded-lg` | 列是一块有边界的块，不是紧贴的分区条 |
+| 阴影 | **无** | 有阴影就是「浮岛」，即当初被否决的形态 |
+| 底色 | `bg-bg-tertiary` | **底层不变**（用户明确要求）；换 token 会连带影响全仓表面阶梯 |
+| 间距 | `ISLAND_GAP_CLASS`（6px） | 圆角在 1px 缝里读成表格线（见 `islands.ts`） |
+
+**判据是「无阴影」，不是「无圆角」** —— 这条必须写进测试注释，否则下一个人会照着
+「列不该有圆角」的旧结论把它改回去。
+
+#### 卡片与行：**自己适配底层，不是改底层**
+
+底层 token 不动，所以「卡片要浮在列上」只能靠**换卡片自己的底色**：
+
+| 层 | 底色 | 五主题实测对比（对列 `bg-bg-tertiary`） |
+| --- | --- | --- |
+| 列 | `bg-bg-tertiary` | — |
+| 卡片 / 行 | **`bg-bg-secondary`** | dark 1.19 / light 1.09 / claude 1.24 / one-dark-pro 1.10 / classic-dark 1.39 |
+
+上一版卡片用 `bg-bg-primary`，在 **dark 下比列还暗**（对比 1.25 是「列更亮」）——
+观感是「列在发光、卡片是洞」，与参考图相反。`bg-bg-secondary` 在每个主题里都比列亮。
+
+行与卡片的差别只有一档：
+
+| | 圆角 | 底色 | 阴影 | 内距 |
+| --- | --- | --- | --- | --- |
+| 卡片（看板列里） | `rounded-lg` | `bg-bg-secondary` | `shadow-sm`（轻） | `p-3`（12px） |
+| 行（列表里） | `rounded-lg` | `bg-bg-secondary` | **无** | `px-3 py-2.5` |
+
+**行不加阴影**：一屏 20 行的阴影会让列表看起来在抖。
+**行之间靠 6px 空隙分开，不再画 `border-b`**：块之间画线就退回「表格行」，
+与看板的圆角块并列时两个视图读起来像两个产品。
+
+#### 卡片标题：**主信息要占 2-3 行**
+
+参考图里标题占 2–3 行、字重最重。上一版是 `text-meta font-medium` + `truncate`：
+长标题被压成一行省略号，扫视时读不到「这件事是什么」。
+
+```tsx
+// 对：三行上限（卡片高度仍然有界）
+className="… font-semibold break-words line-clamp-3"
+
+// 错：单行截断
+className="… font-medium truncate"
+```
+
+#### 卡片时间：**取 `updatedAt`，且是纯函数**
+
+看板列是「它现在处于哪个阶段」，用户扫视时问的是「这条多久没动过了」——
+那是 `updatedAt`。`createdAt` 对一条 3 个月前建、昨天刚流转的卡片会显示"3 个月前"，
+读起来像「这件事烂了三个月」，与实际相反。
+
+`features/work-items/utils/relativeTime.ts::relativeUpdatedAt(updatedAt, now)`：
+**`now` 必传**（不给默认值）。函数内读 `Date.now()` 的后果是 `React.memo` 全灭
+（每次父级渲染都重算），且测试只能靠 mock 全局时钟。
+
+未来时间戳（时钟不同源）返回**空串**（不显示）——「-2 分钟前」比不显示更糟。
+
+#### 表面层叠判据：**自动发现，不要手写配对列表**
+
+> 同一个缺陷（表面层级没走到最内层）出现了**三次**：
+>
+> | # | 形态 | 当时为什么没被发现 |
+> | --- | --- | --- |
+> | ① | 海面 vs 岛 | 面板根写了海面色，被外层岛包着 → 岛被填成海 |
+> | ② | 卡片 vs 列 | 卡片也写 `bg-bg-tertiary` → 与列同色，恒 1.00 |
+> | ③ | 行 vs 主岛 | 列表容器没底色，行（`secondary`）直接叠在主岛（也是 `secondary`）→ 恒 1.00 |
+>
+> 每次的修法都是「人肉列一张我关心的 token 配对」，而缺陷恰好落在**没列到**的那一对上。
+> 手写列表只能覆盖「我已经想到的层」—— 这是**结构性的盲区，不是疏忽**。
+
+**现在的判据形态**（`features/work-items/utils/surfaceLayers.ts` +
+`components/__tests__/SurfaceContrast.test.tsx`）：
+
+1. **渲染真实组件**（Board / List / 空态），不是手写 `<div>`；
+2. `collectSurfacePairs(root)` 自动抽出每对「内层表面 / **最近的外层表面**」；
+3. 对每一对，在**每个主题**下验算对比度 ≥ 1.05。
+
+新增一层表面时它自动进入判据，**不需要有人记得去登记**。
+
+三条硬约束（每条都是踩出来的）：
+
+| # | 约束 | 违反后果 |
+| --- | --- | --- |
+| 1 | 视图必须**包在真实宿主里**渲染（如主岛外壳） | 独立渲染时外层没有表面 ⇒ 不产生配对 ⇒ 「缺一层」的缺陷**完全隐身**（变异验证抓到的） |
+| 2 | 「外层」是**最近画表面的祖先**，不是直接父节点 | 真实代码中间夹着透明容器（`<ul>` / `flex` wrapper），按父节点判会漏 |
+| 3 | 收集器**不判断可见性**，只如实报告配对 | 若它只收集「不同 token」的对，同色缺陷永远进不了判据集合 |
+
+**必须做变异验证**（判据的价值全在「坏掉时会红」）。两条已固化在用例里：
+
+- 删掉列表分区层 → `bg-bg-secondary > bg-bg-secondary` 在五个主题全红；
+- 卡片改成 `bg-bg-tertiary` → `bg-bg-tertiary > bg-bg-tertiary` 全红。
+
+**辅助判据**：`findMultipleSurfaces(root)` 抓「同一元素写了两个表面类」——
+两个 `bg-bg-*` 并存时实际生效取决于 CSS 产出顺序而非书写顺序，**不可预测**，一律禁止。
+这条与「内外层可分辨」是两件事，分开判。
+
+#### 面板可见文案：**一个界面只有一种语言**
+
+> 触发：用户反馈「页面内容显示使用英文，保持一致性，不要部分应用部分中文，都采用英文」。
+
+半中半英不是「某处写错了」，而是**同一界面里两种语言并存**：工具栏是英文
+（`Board` / `List` / `GitHub PRs`）、空态是中文（「还没有工作项」）、列头又是中文
+（「共 N 条」）。
+
+**这类混排最难自查**：加一条文案时你只看自己那一行，而「一致性」是**全局**属性 ——
+只能整体断言。所以护栏是**扫源码文本**，不是渲染树：
+
+```ts
+// features/work-items/__tests__/visibleCopyEnglish.test.ts
+visibleTextOf(line, state)  // 逐字符：剥注释与 console 参数，剩下「可能渲染到界面」的文本
+```
+
+为什么扫源码而不是渲染：渲染一棵树只覆盖当前分支（board vs list、有数据 vs 空态、
+详情开 vs 关），而语言一致性要对**全部**分支成立。
+
+**判据的例外（刻意的，不是漏的）**：
+
+| 查 | 不查 |
+| --- | --- |
+| JSX 文本节点（含**独占一行的裸文本**）、`aria-label` / `placeholder` / `title` / `alt` 属性值、单/双引号与模板字符串里的文案 | JSDoc / 行内注释 / `{/* … *​/}`（项目惯例是中文） |
+| 中文（含**全角标点** `：` `，` `（`） | `console.*(…)` 的**参数**（日志不进界面） |
+| — | 英文文案里的 `…`（`Loading work items…`）与 `·`（`Commit Diff · foo.ts`） |
+
+> **判据必须是逐字符扫描，不能是几条正则**（2026-11-03 实测）。首版按行跑正则
+> （`/>([^<>{}]*[\u4e00-\u9fff]…)</`）看似合理，但它**绿着漏掉了 21 条真实中文文案**：
+>
+> | 形态 | 源码长相 | 为什么正则抓不到 |
+> | --- | --- | --- |
+> | 独占一行的裸 JSX 文本 | `            还没有工作项` | 没有 `>` `<` 包着 |
+> | 多行元素的子文本 | `<Button>\n  创建第一条工作项\n</Button>` | 同上 |
+> | 中文全角标点 | `` `${label} PR：${err}` `` | 判据只查 CJK 表意文字 |
+>
+> 同时它**过宽地**放行了「整行含 `console.`」的写法 —— 于是
+> `console.error('…'); showToast('中文')` 也被跳过，而 toast 是渲染到界面上的。
+> 现在 `console.*` 的例外只覆盖**它自己的参数**（按括号深度计，可跨行）。
+>
+> **变异验证是这条护栏的准入条件**：把任一条英文文案改回中文，护栏必须红；
+> 把 `console.*` 的例外改回「整行跳过」，反证用例必须红。
+
+**新面板接入时**：把 `visibleCopyEnglish.test.ts` 的 `FEATURE_DIR` 指向该域，
+或直接复制一份。它是**域级**护栏，不是全局护栏 —— 逐域接入才能按域推进。
+
+#### 面板工具栏：**三分区 + 图标而非字符**
+
+> 触发：用户反馈「tasks 的工具栏可以再优化一下」。三处偏离全仓惯例：
+
+| # | 偏离 | 全仓惯例 | 后果 |
+| --- | --- | --- | --- |
+| 1 | 字符 `↻` 当刷新图标 | lucide `RefreshCw`（`BrowserToolbar` / `BranchInfo` / `LibraryToolbar` 的 `Plus`） | 字符图标不跟字号、部分字体下渲染成方块；全仓 `↻` 只在 work-items 出现 |
+| 2 | 搜索框裸 `input` | `LibrarySearchBar`：前置 `Search` + 有内容才出现的 `X` 清空 | 没有清空按钮时用户只能全选删除 |
+| 3 | 数据源开关夹在搜索与动作之间 | **独立分组** | `flex-1` 的搜索框被两侧各挤一次；窄窗口下先换行的是开关，把主动作推到第二行 |
+
+**四分顺序是契约**：`[视图切换] [搜索（flex-1）] [数据源开关] [动作：主→次]`。
+
+判据写法（三条都要）：
+
+```tsx
+// ① 图标是 SVG 而不是字符 —— lucide 默认 aria-hidden，按元素类型/标识查
+//    （`data-testid` 是**必要不充分**：字符节点也能带同一个 testid，所以必须加 `textContent` 反证）
+expect(within(refresh).getByTestId('icon-refresh')).toBeInTheDocument();
+expect(refresh.textContent?.trim()).toBe('');   // 反证：不能靠一个字符当图标
+
+// ② 分区用 role=group + aria-label，按名字取（不靠 closest 爬 DOM）
+const dataSourceGroup = screen.getByRole('group', { name: 'Sources' });
+const actionGroup = screen.getByRole('group', { name: 'Actions' });
+expect(within(actionGroup).queryByRole('checkbox')).toBeNull();  // 开关不许住动作组
+
+// ③ 顺序用 compareDocumentPosition 判，不用 snapshot（snapshot 会锁死整个 DOM 结构）
+//    ⚠️ 数组必须**包含全部四个分区**：只写「View → 搜索 → 刷新按钮」时，
+//    把 Sources 与 Actions 两组整块对调仍然全绿（实测 10/10）—— 而契约问的正是中间那两组的次序。
+const order = [viewGroup, searchInput, sourcesGroup, actionsGroup];
+const relation = order[i - 1].compareDocumentPosition(order[i]);
+expect(relation & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+```
+
+**图标按钮的命名**：图标按钮没有可见文字，`aria-label` 是唯一的可读来源；
+`aria-hidden` 的图标**不进**可访问名 —— 所以 `+ New` 变成 `Plus`（图标）+「New」文本后，
+按钮名是 `New`，调用点的 `getByRole('button', { name: '+ New' })` 必须同步改。
+（本域文案已于 2026-11-03 全部英文化，`新建` → `New`、`撤销` → `Undo`、`删除` → `Delete`。）
+
+#### 列头：**圆点 + 名字 + 数字 pill**
+
+参考图是「● 待开始 10」。三元素分工：圆点=扫视锚点（列头是一行小字，纯文字扫得很慢）、
+名字=主信息、pill=数字与名字**视觉分离**（同字号同行会读成名字的一部分）。
+
+**圆点用中性色 `bg-text-muted`，不用语义色**：阶段不是严重度，红黄绿会让用户以为
+「红的列有问题」。靠形状区分，不靠颜色。
+
+#### 列里**没有**创建入口（2026-11-03 三次）
+
+列底曾有一个 `+ Add` 按钮（用该 stage 预填创建对话框）。用户明确要求去掉，三条理由：
+
+1. 工具栏已有 `New`，两处入口做同一件事，而列底那个还多带一个隐式 stage 参数；
+2. 它固定在列的最底部，列内一滚动就跟着滚走 —— 是个**会消失**的按钮；
+3. 每列一个，5 列就是 5 个同样的横条，把列底切成「内容 + 一条按钮」两段。
+
+**判据不能写成「按某个名字查不到」**。首版是
+`queryByRole('button', { name: /新建工作项/ })` —— 那**恒真**：一个叫 `Add task` /
+`+` / 任意其它写法的按钮都能通过。实测把按钮加回去，17 条全绿（零判别力）。
+
+正确判据是**结构**的：列内除了卡片（带 `data-work-item-id` 的 button）不允许有任何其它
+button，不管它叫什么。
+
+#### 内容卡片：**岛同源几何 + 呼吸感**（2026-11-03）
+
+> 用户反馈：「内容卡片可以采用岛屿的方式进行展示，带一点呼吸感，当前看起来比前面好一点
+> 但是还是不够美观」。
+
+**「像岛」不是「套 `ISLAND_CLASS`」**。卡片是**分区内的控件面**，套岛壳就是岛中岛中岛
+（层级：海 → 岛 → 分区 → 卡片）。它要的是与岛**同源的几何语汇**：
+
+| 特征 | 岛（`ISLAND_CLASS`） | 卡片 |
+| --- | --- | --- |
+| 圆角 | `rounded-lg`（8px） | `rounded-lg`（**同源**） |
+| 阴影 | `shadow-sm` | `shadow-sm`（**同源**） |
+| 描边 | 无（靠底色 + 阴影分层） | `border border-border`（卡片小，需硬边界） |
+| 底色 | `bg-bg-secondary` | `bg-bg-primary` |
+
+为什么卡片要**额外**有描边而岛不需要：岛的面积大、阴影足够被感知；卡片只有几十像素高，
+`shadow-sm` 在浅色主题下几乎不可见（light 的岛/海对比只有 1.18）。描边是卡片唯一可靠的边界。
+
+**呼吸感 = 三处一起给**（只改一处等于没改）：
+
+| 位置 | 紧贴档（旧） | 呼吸档 | 全仓参照 |
+| --- | --- | --- | --- |
+| 卡片内距 | `px-2 py-1.5`（8/6px） | `px-2.5 py-2`（10/8px） | `PromptCard` 的 `p-3`（12px） |
+| 卡片之间 | `gap-1`（4px） | `gap-1.5`（6px） | `TeamTaskBoard` 列内 `gap-1.5` |
+| 标题 ↔ 元数据 | `mt-1`（4px） | `mt-1.5`（6px） | — |
+
+**列头 / 列底**同步：`py-1`（4px）→ `py-1.5`（6px），`text-micro`（10px，hint 档）→ `text-meta`。
+一条列如果是「两条薄横条夹着卡片」，读起来是表格；加上松紧对比才是一叠卡片。
+
+**列表行走同一套语汇**（2026-11-03 二次裁决后修订）：行也是**圆角块**（`rounded-lg` + `bg-bg-secondary` + `px-3 py-2.5`），**只是不加阴影** —— 一屏 20 行的阴影会让列表看起来在抖。行与列一样是**块**，靠 6px 空隙分开，**不画 `border-b`**。
+
+> 本节曾被写成「行式布局不走这一套：行靠行高 + 分隔线分层，不加圆角/阴影」。
+> 那是「行 = 表格行」时代的结论，已被看板列变圆角块的裁决推翻 —— 两个视图并排时
+> 一个块、一个表，读起来像两个产品。现行规则见「看板 / 列表：圆角块」与「卡片与行」两节。
+
+**列表侧必须补中间层**（否则行与岛同色）：
+
+```
+主岛（bg-secondary）
+└ 列表分区（bg-tertiary）   ← 这一层不能省！
+  └ 行（bg-secondary）
+```
+
+上一版的列表容器是裸 `flex-1`（无底色），于是行直接叠在主岛上：`secondary` 对
+`secondary` 在五个主题里对比度恒为 **1.00**，行只剩一个 `border` 方框。
+看板侧天然是对的（列自带 `bg-tertiary`），列表侧缺的正是这一层。
+
+**这层缺失在数值判据上曾经完全隐身**：`surfaceContrast.test.ts` 首版只钉
+`['--bg-primary', '--bg-tertiary']` 这一对 —— 而本域的卡片/行已改用 `--bg-secondary`，
+于是它断言的是一个**本域不再使用的组合**（数值全绿），真实的那一对没人钉。现在两对都钉
+（`CARD_ON_REGION_PAIRS`），另加一条「行与岛同色必须被判为不可分辨」的反证。
+
+**判据的分层方式**（照抄上节的教训：单层判据必漏）：
+
+| 层 | 断言 |
+| --- | --- |
+| 几何同源 | 卡片 `rounded-lg` + `shadow-sm` + `border` 都在 |
+| 不套岛壳 | 卡片不含 `ISLAND_CLASS` 的 `flex-col` / `overflow-hidden` / `min-h-0` |
+| **与所在分区不同色** | 行/卡片表面 token ≠ 它**最近的自带表面祖先**的 token（`ListView.test.tsx`） |
+| 呼吸感 | **按完整 token** 判定：`tokens` 集合不含 `px-2`/`py-1.5`，含 `px-2.5`/`py-2` |
+
+> ⚠️ **不要用正则判 token**：`/\bpx-2\b/` 会匹配到 `px-2.5` 的前缀（`\b` 在 `.` 前成立），
+> 于是「呼吸档」反而被自己的判据判违规。一律 `new Set(className.split(/\s+/))` 后精确比对。
+
+> ⚠️ **多列 / 多行必须逐条验**：`getAllByRole(...)` 然后 `for` 循环断言。
+> 只验第一列时，「只改了一列」也会绿。
+
+#### 空态：**居中 + 正文级字阶**
+
+> 同一轮事故的另一面：Tasks 的空态是 `px-2 py-3 text-micro`（贴左上角 + 10px）。
+
+`text-micro` 在字阶表里的用途是「时间戳、快捷键 hint」—— 拿它当空态正文，
+等于把面板的主要信息写成脚注。全仓面板内空态的统一形态：
+
+```tsx
+<div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+  <p className="text-meta text-text-secondary">…</p>
+</div>
+```
+
+参照实现：`PromptListSection`（`items-center justify-center h-full` +
+`text-[var(--font-size)] text-text-secondary text-center`）、
+`PullRequestsPanelWrapper` / `GitControlPanelWrapper`（`items-center justify-center`）。
+
+例外：**列内 / 行内的局部占位**（「暂无工作项」这类）贴左对齐是对的 —— 它占的是
+「这一格里的空位」，不是「整个面板没有内容」。但字号仍是 `text-meta`，不是 `text-micro`。
+
+#### 判据：**三个表面 token 必须互不相同**（这是「看得出岛」的唯一判据）
+
+> 触发事故：Tasks 面板连续两轮「改了但看不出岛」。两轮都**有** `Island` 元素，
+> 两轮都看不出 —— 因为判据一直写错：
+>
+> | 轮次 | 写法 | 为什么看不出 |
+> | --- | --- | --- |
+> | ① | 面板根 `bg-bg-primary` 被外层 `<Island>`（`bg-secondary`）包住 | 岛被填成海 |
+> | ② | 根**无海面**（中心区 `center-area` 只有 `py-0.5 px-px`，无底色）+ 空态容器也是 `bg-secondary` | 岛与窗口渐变无对比、岛与岛内分区同色 |
+>
+> 断言「有 Island 元素」永远抓不到这类问题。它能抓的只有：
+
+```
+海面   bg-bg-primary    ← 面板根（`overflow-hidden rounded-lg` + 内缩 padding）
+岛屿   bg-bg-secondary  ← <Island>（圆角 + 细阴影）
+岛内分区 bg-bg-tertiary  ← 列 / 列表 / 空态容器
+```
+
+**三条硬约束**：
+
+1. **没有海就没有岛**（海面归中心框架，**不归面板**）。全仓只有一个地方画海面：
+   `CenterViewFrame`（`CENTER_VIEW_FRAME_CLASS` 含 `bg-bg-primary`）。视图与面板
+   **不许**再自写 `bg-bg-primary` —— 上一轮就是因为「面板根自写海面 + 宿主也给一层」
+   得到**两层海**，四周多缩 6px，对不齐。历史参照（现在仍合法的两处）：
+   `LibraryPanel` 与 `EditorGroupLayout` 的根自画海面 —— 它们**不在 `AppCenter` 的
+   `CenterViewFrame` 里**（前者是 dock 面板，后者是编辑器组）。
+2. **岛与分区不能同色**。空态 / 加载中 / 无匹配这些「没有行可渲染」的容器曾经套 `<Island>`
+   （`bg-secondary`）—— 而它们就住在主岛里（也是 `bg-secondary`）：同色叠同色，视觉上仍是一片白，
+   只是多了一层看不见的圆角。它们该是 `bg-tertiary` 分区。
+3. **机器判据**：`TasksPanel.test.tsx` 的「岛 / 岛内分区是两个不同表面」——
+   同时断言 `island.bg-secondary` / `column.bg-tertiary`；海面那一条归
+   `CenterViewFrame.test.tsx`（因为海面已经不由面板画了）。
+   只断言其中一个、或只断言「有 Island 元素」，等于没断言。
+
+#### 面板层级总表（Tasks 作为参照实现）
+
+```
+海面（bg-primary，由 `CenterViewFrame` 提供）
+└ 主岛（<Island data-testid="tasks-main-island">：头部 + 内容都在岛内）
+  ├ 岛内 header（**不自刷表面** + border-b，**不**套 <Island>）
+  └ 分栏（gap-px）
+    ├ 主格：看板列 / 列表（**分区**：bg-tertiary，圆角块无阴影）
+    │  └ 卡片 / 行（bg-secondary：分区之上更亮一层）
+    └ 详情岛（**第二座岛**：可独立开/关的另一块内容）
+```
+
+“岛内不再套岛” 的两条具体禁令：
+
+- **岛内 header 不套 `<Island>`**：岛壳归主岛，它**也不自刷表面**（只写 `border-b`）。
+  刷一层 `bg-tertiary` 会与它下面的分区（也是 tertiary）连成一片，分隔线形同虚设。
+  套 `<Island>` 则是两层圆角阴影，看起来像「头部是另一个面板」。
+- **分区不套 `ISLAND_CLASS`**：看板列 / 列表是 `bg-tertiary` 分区（可以带圆角，见「圆角块」节，
+  **但不带阴影**）。写成岛（含 `shadow-sm`）就是「一排浮岛漂在海面上」。
+
+#### 空态 / 加载中 / 无匹配：**也要住在内容岛里**
+
+> 触发事故：Tasks 面板的空态（2026-11-03）。截图里看得很清楚 —— 看板区域空的时候，
+> 「还没有工作项」是一段裸 `<p>`，**直接画在面板根的海面上**。它不像「面板的内容」，
+> 而像「面板没渲染完，漏出一段文字」。
+
+判据：**状态不改变表面层级**。空态也是「一块内容」，不是「没有内容所以不需要容器」。
+
+```
+┌ 头部岛 ────────────────────────┐
+└────────────────────────────────┘
+┌ 内容岛（一切状态都在这块里）────┐   ← 空态 / 加载中 / 无匹配 / 有数据
+│ 还没有工作项                    │
+│ [创建第一条工作项]              │
+└────────────────────────────────┘
+```
+
+两条落地规则：
+
+1. **四种「无行」状态统一包进同一座岛**（`<Island data-testid="…-content-island">`），
+   与有数据时的列岛 / 列表岛**同一层** —— 切状态时几何不跳（高度始终由这块岛填满）。
+2. **有数据时不包**：看板 / 列表自带分栏与岛屿（列岛、列表岛、详情岛），再包一层就是岛中岛
+   （看板会变成「岛里的海」）。所以岛壳只给「没有行可渲染」的那几档。
+
+**唯一例外：读失败且从未成功** —— 那一档返回 `null`。顶部错误横幅已经解释了原因，
+再摆一座空岛等于让用户以为「加载成功了，只是没数据」。
+
+#### 详情面板：**第二座岛**，不是覆盖层
+
+「点一条 → 看详情」有两种画法，选第二座岛：
+
+| 画法 | 代价 | 裁决 |
+| --- | --- | --- |
+| `absolute inset-0` 覆盖层 | 把整座中心岛换掉：用户丢掉看板与滚动位置，关掉后列全重建 | ❌ 已废 |
+| 分栏里的第二座岛 | 主内容被压窄，但**始终可见** | ✅ 唯一写法 |
+
+参考实现：`features/work-items/components/WorkItemsSplitView.tsx`（Board 与 List 共用一条分栏契约），
+尺寸走 `useDefaultLayout`（理由见上节「变体：面板没有 owning persisted store 时」——
+`workItemsStore` 会随 `reset()` 清空，把布局比例塞进去会让「切项目后回到默认宽度」变成无解释行为）。
+
+两个必须照做的细节：
+
+- **`detail === null` 时才不渲染第二块**：若子组件在内部 `return null`，父层传进去的仍然是一个
+  非 null 的 React 元素，分栏照样画面板与分隔条 —— 用户看到一条能拖的缝，右边什么都没有。
+- **`Island` 的 `data-testid` 与 `ResizablePanel` 的 `id` 不能同名**：`react-resizable-panels`
+  会给 Panel 自己一个 `data-testid={id}`，两处同名会让「取详情岛」变成一次歧义查询。
+
+#### 测试写法陷阱：分栏会让 `user.click()` 抢走焦点
+
+`react-resizable-panels` 在 document 上挂 `pointerdown`（capture），按**指针到分隔条的距离**
+判定命中。jsdom 里所有 rect 都是 0×0、`clientX/Y` 都是 0 ⇒ 距离恒为 0 ⇒ **任何点击都会把焦点
+抢给分隔条**（真实浏览器里算得出来，只有贴着分隔条点才会命中）。所以「点击输入框 → 断言焦点在
+输入框」这类用例在有分栏的树里必须改用确定性的 `element.focus()`，并在按下按键前**先断言**
+`toHaveFocus()` —— 否则用例失败的原因会看起来像「快捷键判据坏了」。
+
+#### 中心视图的左栏策略（`collapseLeftZone`）
+
+`openAs: 'tab'` 的视图不一律收起左栏 —— 那是**每个视图自己的属性**（
+`DOCK_PANEL_META[id].collapseLeftZone`，缺省 `true`）：
+
+| 视图 | 值 | 理由 |
+| --- | --- | --- |
+| Library | 缺省（true） | 两栏 master-detail，导航列已在面板内部；再摆一个 Projects 就是三层导航 |
+| Tasks | **false** | 它只需要**中间区**。左栏 Projects 是「切项目」的入口，收起它等于把上下文藏起来 |
+
+写成属性而不是特例（`if (id === 'tasks')`）：特例会漂移 —— 新增第三个中心视图时没人记得
+要加分支，而属性让「新视图的左栏策略是什么」成为一个必须回答的问题。
+
+配套：跨视图切换时**保留记忆值不等于保留展开态**。从 Library 切到 Tasks 时，记忆值仍是
+「打开 tab 之前」那一份，但展开态要按新视图的策略重算（否则 Projects 永远回不来）。
+
+#### 项目级入口：先切项目，再进视图
+
+左侧 Projects 的「打开本项目 Tasks」（悬停图标 + 右键菜单项）语义是**先选中这个项目，
+再进 Tasks**，不是「进 Tasks 然后自己找项目」：工作项按项目分槽，反过来的顺序会让面板
+在切换那一帧渲染**上一个项目**的数据。
+
+两条纪律：
+
+1. **顺序不可交换**（`src/app/hooks/useOpenProjectTasks.ts`，单测钉住 `select` 先于 `view`）；
+2. **入口不是开关**：不复用 `togglePanel('tasks')`（那边再点一次是关）。项目入口永远是
+   「看这个项目」，从项目 A 切到项目 B 的入口时只换项目，不关面板。
+
 ---
 
 ## 样式模式
