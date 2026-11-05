@@ -128,36 +128,43 @@ C3 依赖 C2 移除挂载概念后的调度器；C4 与 C2 同批验收（前端
 
 ## 跨子任务验收标准
 
-> **状态**：4 个子任务全部归档（C1 / C2 / C4 / C3）。代码级判据已全部落地并通过；
-> 标注「待真机」的三条只能由运行中的应用确认（本会话没有运行环境）。
+> **状态**：4 个子任务全部归档（C1 / C2 / C4 / C3）。代码级判据全部落地并通过；
+> 真机项已跑过一轮（2026-11-05），其中 AC3 因「两个实例同时写同一个日志」无法归因而剩最后一次测量。
 
-- [x] AC1 ~~同时打开 ≥3 个 git 项目 + 1 个 linked worktree，每个单元首个快照 ≤2s，60s 内
-      activate/release ≤1~~ —— 判据已在**单元层**闭合：`declaring_two_units_in_one_batch_mounts_both`、
-      `reconcile_releases_undeclared_units_and_keeps_declared_ones`、
+- [x] AC1 每个单元首个快照 ≤2s —— **实测通过**：日志里 73 个「挂载 → 首份快照」样本，
+      最快 66ms、中位 **156ms**、最慢 1561ms，**73/73 ≤ 2000ms**。
+      单元层判据：`declaring_two_units_in_one_batch_mounts_both` /
+      `reconcile_releases_undeclared_units_and_keeps_declared_ones` /
       `repeated_switches_keep_only_the_declared_unit`（每次切换只留声明内单元、不重建 watcher）。
-      **待真机**：首个快照的墙钟与日志中的 activate/release 次数。
+      日志中同一单元的 activate/release 只在切项目时成对出现（声明式 reconcile 的预期行为），
+      不再有「无人操作时自激的互踢」。
 - [x] AC2 ~~修改任一非激活项目的文件，其 changed 计数/列表在 ≤2s 内更新~~
       —— **判据已作废**（见 `design.md §1.0` 的现场核对）：侧栏不显示任何单元的变更数，
       徽标按设计只在该行是当前视图时出现。用户要的是「切过去时是新的」，由 C1 的读路径 +
-      C2 的不互踢满足（`activate` 不再释放、读永远给得出答案）。
-- [x] AC3 `~/.neeko/neeko.log` 不再有 `ignore::walk` 逐目录行 —— C3 交付；实测该噪声源占
-      **76% 行**（39,353 / 51,606），同 target 的 WARN/ERROR 为 0（未丢信号）。
-      「5 分钟 <1MB」需真机复测（噪声消失后按行数比例估算为原来的 ~24%）。
+      C2 的不互踢满足。
+- [ ] AC3 日志增长 <1MB / 5min —— **未测，且当前测不出来**。日志里仍有 `ignore::walk` 行，
+      但那**不是过滤失效**的证据：`ps` 实测有**两个实例**在写同一个 `neeko.log` ——
+      `/Applications/Neeko.app`（09:06 启动，旧版）与 `target/dev-bundle/NeekoDev.app`
+      （10:02 启动，含 C1–C4 + 日志过滤），按行无法归因（开发版二进制 mtime 10:02:31 晚于
+      进程启动 10:02:16，跑的也可能是上一版）。
+      **测法**：退出旧版安装包 → 只留开发版跑 5 分钟编辑活动 → 量增量与 `ignore::walk` 行数（应为 0）。
+      > 顺带发现（与本任务无关、未修，登记备查）：两个实例共享 `sessions.json` / `neeko.db` /
+      > 同一批仓库 watcher，会互相覆盖会话状态。属「同时开两个 Neeko」的独立问题。
 - [x] AC4 ~~日志中不再出现 `exclusion roots exceed FSEvents max … truncated=true`~~
       —— **不实现，已登记理由**（C3 `prd.md` Background）：实测被应用的 8 条已包含
-      `node_modules` / `src-tauri/target` 等重目录，正确性由回调过滤兜底，且热集合 ≈1 时
+      `node_modules` / `src-tauri/target` 等重目录，正确性由回调过滤兜底，热集合 ≈1 时
       每仓库只有一条流。
 - [x] AC5 `rg 'release_except|mount_tickets|version_floors|requestedIntent' src src-tauri/src`
       —— `release_except` / `requestedIntent` 为空；`mount_tickets` **有意保留**（`unwatch` 仍在，
       晚到推送仍需凭证闸门，见 C2 偏差 4）；`version_floors` 已并入 `StatusStore` 内部字段。
-- [x] AC6 `cargo test --lib`（2594 passed）+ `pnpm check:quick`（36 条护栏）绿。
+- [x] AC6 `cargo test --lib`（2596 passed）+ `pnpm check:quick`（36 条护栏）绿。
 - [x] AC7 切主仓 ↔ worktree 抖动 + 删除 worktree，状态收敛无残留旧数据 —— **真机已确认**
-      （2026-11-05）。首次真机验证时发现了一个**新回归**并已修复：切项目后 Changes 列表停在
-      切走前那份快照上（「文件已提交却仍在列表里」）。根因是 `set_active_project` 每次都走
-      `unwatch_project` → `StatusStore::forget_project`，把 `version_floors` 连数据一起删了，
-      于是切回后新 worker 从 `v1` 起号、被前端 `version <= prev` 闸门全部丢弃 —— 与 2026-09-29
-      的「13 次推送全是 v1」同一机制，只是入口不同（C4 的声明式 reconcile 让「切项目即释放」
-      成了主路径，把这条老洞暴露出来）。修复 `efe9045b`，不变量已写进 `git-domain.md §12`，
+      （2026-11-05）。首次真机验证发现了一个**新回归**并已修复：切项目后 Changes 列表停在切走前
+      那份快照上（「文件已提交却仍在列表里」）。根因是 `set_active_project` 每次都走
+      `unwatch_project` → `StatusStore::forget_project`，把 `version_floors` 连数据一起删了 ——
+      切回后新 worker 从 `v1` 起号、被前端 `version <= prev` 闸门全部丢弃，与 2026-09-29 的
+      「13 次推送全是 v1」同一机制，只是入口不同（C4 的声明式 reconcile 让「切项目即释放」
+      成了主路径，把这条老洞暴露出来）。修复 `efe9045b`；不变量写进 `git-domain.md §12`；
       回归 `forget_project_clears_data_but_keeps_version_floors` /
       `remount_after_unwatch_project_keeps_the_version_climbing`。
 
