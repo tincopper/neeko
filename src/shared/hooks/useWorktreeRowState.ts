@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-} from 'react';
+import { useCallback, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
 
 import { getFileName } from '@/shared/utils/fileTree';
 
@@ -20,8 +13,8 @@ export interface ConfirmDeleteState {
  * linked worktree 行的**交互状态机**（重命名 / 删除 / 确认弹窗）。
  *
  * **为什么单独成 hook**：本地侧栏（`WorktreeList`）与 WSL/SSH 侧栏
- * （`ConnectionWorktreeList`）曾各写一份逐字相同的状态机（状态 + focus effect + 五个
- * handler）。那是 `.trellis/spec/guides/code-reuse-thinking-guide.md` 的「模式 4：跨域几乎
+ * （`ConnectionWorktreeList`）曾各写一份逐字相同的状态机（状态 + 五个 handler）。那是
+ * `.trellis/spec/guides/code-reuse-thinking-guide.md` 的「模式 4：跨域几乎
  * 相同的实现并行」—— 新增一个字段要改两遍，且两份会静默漂移。
  *
  * **边界**：本 hook 只持有**视图交互态**，不发 IPC、不读 store。域侧的真实动作由调用方注入
@@ -48,19 +41,12 @@ export function useWorktreeRowState(
 ) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  // React 18 类型：`useRef<HTMLInputElement>(null)` 产出 `RefObject<HTMLInputElement>`，
-  // 其 `.current` 本就是 `HTMLInputElement | null` —— 与子组件 prop 同形。
-  const renameInputRef = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteState | null>(null);
 
-  // 进入重命名态即聚焦并全选（名字通常整段替换，比手动清空快）。
-  useEffect(() => {
-    if (renaming !== null && renameInputRef.current) {
-      renameInputRef.current.focus();
-      renameInputRef.current.select();
-    }
-  }, [renaming]);
+  // 这里**没有** focus effect：进入改名态即聚焦并全选是「行内重命名输入框」的职责，
+  // 现在由 `InlineRenameInput` 在挂载时自己做（三个调用点共用一份）。
+  // 本 hook 再持一份 ref 就会造出第二个「谁聚焦」的实现，而第一份已经漂移过。
 
   const handleRemove = useCallback(
     async (worktreePath: string, branch: string, e: ReactMouseEvent) => {
@@ -133,7 +119,6 @@ export function useWorktreeRowState(
       renaming,
       renameValue,
       setRenameValue,
-      renameInputRef,
       deleting,
       confirmDelete,
       dismissConfirmDelete,
@@ -147,7 +132,6 @@ export function useWorktreeRowState(
       renaming,
       renameValue,
       setRenameValue,
-      renameInputRef,
       deleting,
       confirmDelete,
       dismissConfirmDelete,

@@ -99,13 +99,9 @@ const SessionListRow: React.FC<SessionListRowProps> = ({
   // ── 行内改名 ────────────────────────────────────────────────────────────
   // 只在本地持有「正在改的那一版文本」：提交时交给调用方（它负责落地与失败处理），
   // 本组件不写 store（`shared/` 不碰能力，与会话激活同一条分层）。
+  // focus + 全选、Enter/Escape/blur 三路键都在 `InlineRenameInput` 里 —— 本组件不再持有
+  // 输入框 ref，也不再有「依赖草稿」的 focus effect（那正是「每键重新全选」的根因）。
   const [draft, setDraft] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (draft === null) return;
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, [draft]);
   const commitRename = useCallback(() => {
     if (draft === null) return;
     const next = draft.trim();
@@ -131,7 +127,6 @@ const SessionListRow: React.FC<SessionListRowProps> = ({
           className="w-[13px] h-[13px] shrink-0 object-contain"
         />
         <InlineRenameInput
-          inputRef={inputRef}
           value={draft}
           onChange={setDraft}
           onCommit={commitRename}

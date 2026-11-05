@@ -171,6 +171,20 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
 `size` 变体（`default` / `sm`）用 `cva` 定义，与 `Button` 同一模式。需要局部差异（如某区块换底色）时传 `className`，`cn`（tailwind-merge）会按后写覆盖前写的规则消解冲突。
 
+### 行内编辑的 focus / 全选归组件，不归调用方（2026-11-05）
+
+行内重命名（侧栏会话行、worktree 行、tag group 行）统一用 `InlineRenameInput`：它渲染
+`ui/Input size="sm"`，并在**挂载时**做一次 `focus()` + `select()`；调用方只持有草稿状态，
+不持有输入框 ref。
+
+错误形态：调用方各写一份 `useEffect(() => { focus(); select(); }, [draft])` —— 依赖草稿会让
+每敲一个字符重新全选，下一次按键覆盖整段（用户实测：「一输入就是选中状态，只能打出最后一个
+字」）。正确依赖是 `[]`（编辑态的生命周期 = 挂载 / 卸载）。
+
+两个回归钉子：`InlineRenameInput.test.tsx`（挂载即 focus + 全选、逐字符输入完整字符串）与
+`SessionList.test.tsx` 的 `userEvent.type` 多字符用例。只用 `fireEvent.change` 一次改写整段
+会把这类缺陷完全掩盖。
+
 ### 例外：`type="checkbox" | "radio" | "file"`
 
 这些不需要 IME / 自动大写 / 文本 focus 样式，裸标签是正常用法。

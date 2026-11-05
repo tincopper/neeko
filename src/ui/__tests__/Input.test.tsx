@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { createRef } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { Input, Textarea } from '../Input';
@@ -16,6 +17,16 @@ describe('Input', () => {
     render(<Input autoCapitalize="sentences" />);
     const el = screen.getByRole('textbox');
     expect(el).toHaveAttribute('autocapitalize', 'sentences');
+  });
+
+  /**
+   * 行内编辑类输入框（`InlineRenameInput`）必须能在挂载时自己 focus + select，
+   * 而它们复用本组件 —— 所以 `ref` 必须真的落到原生 `<input>` 上。
+   */
+  it('should forward ref to the native input', () => {
+    const ref = createRef<HTMLInputElement>();
+    render(<Input ref={ref} placeholder="rename" />);
+    expect(ref.current).toBe(screen.getByPlaceholderText('rename'));
   });
 });
 

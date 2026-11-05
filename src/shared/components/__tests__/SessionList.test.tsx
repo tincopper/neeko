@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SessionList from '@/shared/components/SessionList';
@@ -292,6 +293,34 @@ describe('SessionList — 行工具栏（重命名 / 删除）', () => {
     fireEvent.change(input, { target: { value: '新名字' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
+    expect(onRename).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1' }), '新名字');
+  });
+
+  /**
+   * 回归（真实 bug）：改名框的 focus effect 曾依赖 `[draft]`，每敲一个字符就重新
+   * `select()` 全选 → 下一个按键覆盖整段，表现为「一输入就是选中状态，只能打出最后一个字」。
+   *
+   * 必须用 `userEvent.type` 逐字符输入：`fireEvent.change` 一次写完会把这个缺陷完全掩盖。
+   */
+  it('逐字符连续输入时不被重新全选覆盖（回归：最终只剩最后一个字）', async () => {
+    const user = userEvent.setup();
+    const onRename = vi.fn();
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: '旧名字' })]}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.doubleClick(screen.getByRole('button', { name: /^旧名字/ }));
+    const input = screen.getByDisplayValue('旧名字') as HTMLInputElement;
+
+    await user.type(input, '新名字', { skipClick: true });
+
+    // 先钉住输入框里真的是完整字符串（旧实现只剩「字」），再钉住提交出去的是它。
+    expect(input.value).toBe('新名字');
+    fireEvent.keyDown(input, { key: 'Enter' });
     expect(onRename).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1' }), '新名字');
   });
 

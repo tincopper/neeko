@@ -109,7 +109,6 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
             editing={
               isRenaming ? (
                 <InlineRenameInput
-                  inputRef={rowState.renameInputRef}
                   value={rowState.renameValue}
                   onChange={rowState.setRenameValue}
                   onCommit={rowState.commitRename}

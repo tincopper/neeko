@@ -40,12 +40,23 @@ const inputVariants = cva(
 );
 
 export interface InputProps
-  extends Omit<React.ComponentProps<'input'>, 'size'>, VariantProps<typeof inputVariants> {}
+  extends Omit<React.ComponentProps<'input'>, 'size' | 'ref'>, VariantProps<typeof inputVariants> {}
 
-function Input({ className, size, onCompositionEnd, ...props }: InputProps) {
+/**
+ * 统一输入框。
+ *
+ * `forwardRef` 不是可选装饰：行内编辑类组件（`InlineRenameInput`）要在**挂载时**自己
+ * focus + select，而它们必须复用本组件才能继承 IME 空格守卫 / WebKit 关断属性 /
+ * 统一 focus 样式 —— 没有 ref 就只能退回裸 `<input>` 再丢一遍保护。
+ */
+const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
+  { className, size, onCompositionEnd, ...props },
+  ref,
+) {
   const guard = useImeSpaceGuard<HTMLInputElement>();
   return (
     <input
+      ref={ref}
       data-slot="input"
       {...noAutocorrectProps}
       className={cn(
@@ -63,7 +74,8 @@ function Input({ className, size, onCompositionEnd, ...props }: InputProps) {
       {...props}
     />
   );
-}
+});
+Input.displayName = 'Input';
 
 function Textarea({ className, onCompositionEnd, ...props }: React.ComponentProps<'textarea'>) {
   const guard = useImeSpaceGuard<HTMLTextAreaElement>();

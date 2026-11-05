@@ -56,7 +56,8 @@ interface SessionRowProps {
   onClick?: (e: React.MouseEvent) => void;
   /**
    * 编辑态替换 label + branch 区（linked worktree 的行内重命名）。
-   * 由调用方拥有状态与输入框 ref —— 展示组件不持有输入状态。
+   * 由调用方拥有**草稿状态**，输入框的 focus / 全选归 `InlineRenameInput` —— 展示组件
+   * 与行状态机都不持有 ref。
    */
   editing?: React.ReactNode;
   /** 双击 label 的语义（worktree = 开始重命名；local 不传）。 */

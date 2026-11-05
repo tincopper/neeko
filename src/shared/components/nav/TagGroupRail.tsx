@@ -3,11 +3,13 @@ import React, { useEffect, useRef } from 'react';
 
 import { cn } from '@/lib/utils';
 import DeleteConfirmDialog from '@/shared/components/DeleteConfirmDialog';
+import InlineRenameInput from '@/shared/components/InlineRenameInput';
 import CountLabel from '@/shared/components/nav/CountLabel';
 import NavEmpty from '@/shared/components/nav/NavEmpty';
 import NavRow from '@/shared/components/nav/NavRow';
 import NavSection from '@/shared/components/nav/NavSection';
 import type { TagGroupCrud, TagGroupCrudItem } from '@/shared/hooks/useTagGroupCrud';
+import { Input } from '@/ui/Input';
 
 interface TagGroupRailProps {
   /** `useTagGroupCrud` 的返回（或其超集）——CRUD 状态与处理器。 */
@@ -39,7 +41,6 @@ interface TagGroupRailRowProps {
   onRenameSubmit: (id: string, value: string) => void;
   onRenameCancel: () => void;
   onDelete: (id: string) => void;
-  renameInputRef: React.Ref<HTMLInputElement>;
   /** 可选能力：同步到 agents（仅 Skills 侧提供）。 */
   onSync?: (id: string, name: string) => void;
 }
@@ -62,7 +63,6 @@ const TagGroupRailRow: React.FC<TagGroupRailRowProps> = React.memo(
     onRenameSubmit,
     onRenameCancel,
     onDelete,
-    renameInputRef,
     onSync,
   }) => (
     <NavRow
@@ -111,20 +111,11 @@ const TagGroupRailRow: React.FC<TagGroupRailRowProps> = React.memo(
       }
     >
       {renameDraft !== null ? (
-        <input
-          ref={renameInputRef}
-          className={cn(
-            'flex-1 min-w-0 h-6 px-1.5 text-[var(--font-size)] rounded',
-            'bg-bg-hover/60 border border-border text-text-primary outline-none',
-          )}
+        <InlineRenameInput
           value={renameDraft}
-          onChange={(e) => onRenameValueChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void onRenameSubmit(group.id, renameDraft);
-            if (e.key === 'Escape') onRenameCancel();
-          }}
-          onBlur={() => void onRenameSubmit(group.id, renameDraft)}
-          onClick={(e) => e.stopPropagation()}
+          onChange={onRenameValueChange}
+          onCommit={() => void onRenameSubmit(group.id, renameDraft)}
+          onCancel={onRenameCancel}
         />
       ) : (
         <span className="truncate flex-1 font-medium">{group.name}</span>
@@ -155,15 +146,13 @@ const TagGroupRail: React.FC<TagGroupRailProps> = ({
   syncingId,
   onSync,
 }) => {
+  // 创建行的「挂载即聚焦」留在本地：它是一次性的单一用途 effect（只依赖 `creating`），
+  // 与曾经漂移的改名焦点不同 —— 改名（focus + 全选）已沉到 `InlineRenameInput`，
+  // 本组件不再持有重命名 ref。
   const createInputRef = useRef<HTMLInputElement>(null);
-  const renameInputRef = useRef<HTMLInputElement>(null);
-
-  // 进入编辑态即聚焦（创建 / 重命名两个目标共用一个 effect；重命名后判定，
-  // 两者同时成立时以重命名输入为准）。
   useEffect(() => {
     if (crud.creating) createInputRef.current?.focus();
-    if (crud.renamingId) renameInputRef.current?.focus();
-  }, [crud.creating, crud.renamingId]);
+  }, [crud.creating]);
 
   return (
     <>
@@ -184,13 +173,10 @@ const TagGroupRail: React.FC<TagGroupRailProps> = ({
       >
         {crud.creating ? (
           <div className="px-1.5 py-1 flex gap-1 items-center mb-0.5">
-            <input
+            <Input
               ref={createInputRef}
-              className={cn(
-                'flex-1 min-w-0 h-7 px-2 text-[var(--font-size)] rounded-md',
-                'bg-bg-hover/60 border border-border text-text-primary',
-                'outline-none focus:border-border focus:bg-bg-primary placeholder:text-text-muted',
-              )}
+              size="sm"
+              className="flex-1 min-w-0 text-[var(--font-size)]"
               placeholder="e.g. Backend"
               value={crud.newName}
               onChange={(e) => crud.setNewName(e.target.value)}
@@ -229,7 +215,6 @@ const TagGroupRail: React.FC<TagGroupRailProps> = ({
             onRenameSubmit={crud.submitRename}
             onRenameCancel={crud.cancelRename}
             onDelete={crud.requestDelete}
-            renameInputRef={renameInputRef}
             onSync={onSync}
           />
         ))}
