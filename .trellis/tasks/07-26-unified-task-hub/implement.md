@@ -293,6 +293,153 @@ pnpm check:quick   # 收尾一次
 - 「面板根是海面」：`island.parentElement` 必须带 `bg-bg-primary`。
 - 三条空态用例改为断言「住在**主岛**内 + 分区是 `bg-tertiary`」。
 
+## 进度（2026-11-03l，trellis-check 复审：4 类真实缺陷）
+
+> 复审发现首版有 4 类「绿着但错」的问题。全部已修 + 变异验证。
+
+### ① 英文护栏判据写窄 → 21 条中文文案绿着漏掉
+
+首版按行跑正则，三种真实形态全漏：独占一行的裸 JSX 文本、多行元素子文本、中文全角标点。
+排除项 `/console./` 整行跳过 → `console.error(…); showToast('中文')` 也放行。
+
+改为**逐字符扫描**（剥注释 / 按括号深度剥 `console.*` 参数 / 剥分隔符类正则字面量），
+判据扩为 CJK 表意文字 + CJK 标点 + 全角形式（刻意排除 `…`、`·`）。
+**变异验证 4/4 由绿转红**。
+
+### ② 21 条文案实际未改（首版只改了 grep 能看到的那些）
+
+`ListView` / `PrTaskSection` / `StageMoveMenu` / `TasksPanel` / `TasksPanelBody` /
+`TasksPanelHeader` / `TasksPanelStatus` / `UndoBar` / `WorkItemDetail` / `WorkItemForm` /
+`WorkItemRunRow` / `WorkItemRunsSection` 共 12 个文件。
+
+### ③ 列表分区缺一层表面（真实视觉缺陷）
+
+行 `bg-bg-secondary` 直接叠在主岛（**也是** `bg-bg-secondary`）上 ⇒ 五主题对比恒 **1.00**，
+行只剩一个 `border` 方框。补 `bg-bg-tertiary` 分区层。
+`surfaceContrast.test.ts` 首版钉的是**本域已不再使用**的组合（数值全绿而真实那对没人钉），
+改为 `CARD_ON_REGION_PAIRS` 两对 + 反证。
+
+### ④ 三条「绿得没判别力」的用例
+
+| 用例 | 首版问题 | 变异结果 |
+| --- | --- | --- |
+| `BoardView`「列底没有 `+ Add`」 | `queryByRole({name:/新建工作项/})` **恒真** | 加回 `aria-label="Add task"` 按钮，首版 **17/17 仍全绿** |
+| `TasksPanelHeader`「分区顺序」 | 只断言 View→搜索→刷新 | Sources/Actions 整块对调，首版 **10/10 仍全绿** |
+| `ListView`「行是圆角块」 | 只断言自身 token，测不到栖身层 | 缺陷代码上直接绿 |
+
+均改为结构判据（列内除卡片不许有 button / 四分区全入数组 / 行与所在分区不同表面），
+三条现在都转红。
+
+### ⑤ spec 四处被后文推翻的旧结论
+
+`component-guidelines.md` 里「分区无圆角」「面板根必须自画海面」「岛内 header 给 `bg-tertiary`」
+「行式布局不加圆角」——均按现行裁决改写，保留「为何被推翻」。
+
+### 测试账（2026-11-03l）
+
+`pnpm vitest run src/features src/app src/styles` → **5449 条绿**（614 文件）。
+`pnpm check:quick` 13/13 护栏通过。
+
+## 进度（2026-11-03k，去掉列底 `+ Add` + 可见文案统一英文）
+
+> 用户两条指令：①「下方的 +Add 去掉」；②「页面内容显示使用英文，保持一致性，
+> 不要部分应用部分中文，都采用英文」。
+
+### ① 去掉列底 `+ Add`
+
+连同整条链路删除（不留死代码）：`BoardView` 的列底按钮 → `BoardColumn` 的 `onAdd` →
+`BoardViewProps.onAdd` → `TasksPanelBody.onAdd` → `TasksPanel.handleAddToStage`。
+`openCreate(stage?)` 保留 —— 工具栏「新建」仍用它预填 `stages[0]`。
+
+理由（写进测试注释）：工具栏已有「新建」，两处入口做同一件事；列底那个固定在列底，
+列内一滚动就跟着滚走（是个**会消失**的按钮）；5 列就是 5 个同样的横条。
+
+### ② 可见文案统一英文
+
+新增**域级护栏** `src/features/work-items/__tests__/visibleCopyEnglish.test.ts`：
+扫 `work-items/` 全部生产代码，抓三种形态的中文可见文案（JSX 文本 / 属性值 / 字符串字面量），
+注释与 `console.*` 说明刻意例外。
+
+改动覆盖 **20 个生产文件 + 11 个测试文件**：
+
+| 类别 | 例（旧 → 新） |
+| --- | --- |
+| 工具栏 / 列头 | `视图切换`→`View`、`数据源`→`Sources`、`刷新工作项`→`Refresh work items` |
+| 空态 | `还没有工作项`→`No work items yet`、`没有匹配的工作项`→`No matching work items` |
+| 详情 / 表单 | `优先级`→`Priority`、`未指派`→`Unassigned`、`创建`→`Create` |
+| 执行区 | `排队中`→`Queued`、`执行`→`Runs`、`已不可查`→`No longer available` |
+| 相对时间 | `${n} 天前`→`${n}d ago`、`刚刚`→`just now` |
+| hook / provider | `读取 GitHub PR 失败`→`Failed to load GitHub PRs` |
+| agent 指令文本 | `标题：`→`Title:`、`描述：`→`Description:`（进 prompt 的文本也统一） |
+
+### 一个批量替换的教训
+
+我先用「字符串 → 字符串」的宽替换同步测试期望值，结果**误伤了测试描述名**
+（`卡片落在自己的 stage 列里` → `stage column里`、`「加载中」` → `「加载中"`）。
+修正方式：测试描述（`it(...)` / `describe(...)` 的标题）是**中文惯例**，不在替换范围内；
+只改断言的字符串内容。
+
+### 测试账（2026-11-03k）
+
+`pnpm vitest run src/features src/app src/styles` → **5445 条绿**（614 文件）。
+`work-items` 自身 291 条绿（30 文件）。
+
+### Review 修正（2026-11-03l，check agent）
+
+上一轮的「可见文案统一英文」**实际只改了约一半**：护栏测试绿着，而 21 条中文可见文案仍在。
+根因是判据写窄了（不是漏改文案），所以三处都按「判据先修」处理。
+
+#### ① 护栏 `visibleCopyEnglish.test.ts` 改成逐字符扫描
+
+首版按行跑正则，三种真实形态**全部漏掉**（实测 21 条）：
+
+| 形态 | 源码长相 | 为什么漏 |
+| --- | --- | --- |
+| 独占一行的裸 JSX 文本 | `            还没有工作项` | 正则要的是 `>…<`，裸文本没有 |
+| 多行元素的子文本 | `<Button>\n 创建第一条工作项\n</Button>` | 同上 |
+| 中文全角标点 | `` `${label} PR：${err}` `` | 判据只查 CJK 表意文字 |
+
+同时「整行含 `console.` 就跳过」过宽：`console.error(…); showToast('中文')` 也被放行。
+现在 `console.*` 的例外只覆盖**它自己的参数**（按括号深度计，可跨行）。
+判据扩展为 CJK 表意文字 + CJK 标点 + 全角形式；刻意排除 `…` 与 `·`（英文文案里的合法字符）。
+
+**变异验证**（三次，全部由绿转红）：同行文案改中文 / 独立行裸文本改中文 / 全角冒号。
+另加一条反证：同行 `console` + toast 的中文必须被抓到。
+
+#### ② 实际改掉的 21 条文案
+
+`New` / `Undo` / `Delete` / `Edit` / `Close` / `Cancel` / `Retry`（×2）/ `Open in browser` /
+`No reachable stages` / `Create your first work item` / `Title` / `Description` / `Stage` /
+`Priority` / `Labels (comma separated)` / `Assignee` / `· Stale` / `Loading runs…` /
+`No work items yet` / `PR: `（全角冒号 → 半角）。测试期望值同步更新 7 个文件。
+
+#### ③ 列表分区缺一层表面（真实视觉缺陷）
+
+`ListView` 的容器是裸 `flex-1`（无底色），行（`bg-bg-secondary`）直接叠在主岛（也是
+`bg-bg-secondary`）上 ⇒ 五个主题对比恒 **1.00** ⇒ 行只剩一个 `border` 方框。
+补 `bg-bg-tertiary` 分区层（看板侧天然是对的，因为列自带 tertiary）。
+
+`surfaceContrast.test.ts` 首版钉的是 `['--bg-primary', '--bg-tertiary']` —— 而本域卡片/行
+已改用 `--bg-secondary`，于是它断言的是一个**本域不再使用的组合**（数值全绿，真实的那一对没人钉）。
+现在 `CARD_ON_REGION_PAIRS` 两对都钉，另加「行与岛同色必须判为不可分辨」反证。
+
+#### ④ 三条「绿得没判别力」的用例
+
+| 用例 | 首版问题 | 修法 |
+| --- | --- | --- |
+| `BoardView`「列底没有 `+ Add`」 | `queryByRole({ name: /新建工作项/ })` **恒真** —— 把 `aria-label="Add task"` 的按钮加回去，17 条仍全绿 | 改成结构判据：列内除卡片外不许有任何 button |
+| `TasksPanelHeader` 分区顺序 | 只断言 View→搜索→刷新，把 Sources 与 Actions **整块对调**仍 10/10 绿 | 数组补全四个分区 |
+| `ListView`「行是圆角块」 | 只断言 `bg-bg-secondary`，测不到「它栖身的那层是什么」 | 加一条「行与所在分区不同表面」 |
+
+三条都做了变异验证（把实现改坏 → 用例转红）。
+
+#### ⑤ spec 里被后文推翻的旧结论
+
+`component-guidelines.md` 同一主题下留了四段自相矛盾的历史结论（「分区无圆角」vs「圆角块」、
+「面板根必须自己画海面」vs `CenterViewFrame` 独占海面、「岛内 header 给 bg-tertiary」vs
+「横条不自刷表面」、「行式布局不走圆角块」vs「行是圆角块」）。全部按现行裁决改写，
+并把「为什么会被推翻」留在原地（避免下一个人照着旧结论改回去）。
+
 ## 进度（2026-11-03j，工具栏优化）
 
 > 用户：「tasks 的工具栏可以再优化一下」。三处偏离全仓惯例，已修正。
