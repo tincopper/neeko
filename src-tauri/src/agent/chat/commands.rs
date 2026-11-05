@@ -15,7 +15,9 @@ use crate::agent::chat::events::{
 
 use crate::agent::chat::manager::SessionHandle;
 use crate::agent::chat::notify;
-use crate::agent::chat::session_store::{ResumeCursor, SessionStatus};
+use crate::agent::chat::session_store::{
+    PersistedSessionKind, PersistedTitleSource, ResumeCursor, SessionStatus,
+};
 use crate::common::agent::types::AgentConfig;
 use crate::core::project::ProjectEnvironment;
 use crate::live_sessions::emit_changed;
@@ -483,9 +485,10 @@ pub(crate) fn spawn_session_pipeline(
         };
         let _ = AgentChatBridge::run(sid.clone(), session, emit).await;
         manager.unregister(&sid);
-        // 会话结束：从注册表注销（侧栏随之移除）。`manager.unregister` 已经把持久化游标
-        // 置 Closed；这里的 close 是同一条 UPDATE 的幂等重复（两个消费者共用一个 store，
-        // 各自负责自己那条路径的收尾 —— 不为了少一次写把两边耦合起来）。
+        // 会话结束：从注册表注销（侧栏随之移除）。两步落盘并不是同一件事：
+        // `manager.unregister` 把游标标 `Closed`（agent 域自己的状态词表），
+        // 注册表的 `unregister` 才删掉侧栏行 —— 后者才是「重启后不再出现」的依据。
+        // 先 Close 后删不会复活行（UPDATE 打在即将消失的行上，幂等）。
         if is_chat_channel {
             unregister_live_session(&live, Some(&live_exit_handle), &sid);
         }
@@ -518,6 +521,16 @@ fn build_resume_cursor(req: &StreamRequest, session_id: &str, cwd: &str) -> Resu
         turn_count: 0,
         status: SessionStatus::Running,
         last_activity: chrono::Utc::now().to_rfc3339(),
+        // 侧栏列的创建期默认值：标题 / 可见性由注册表在**首次用户输入**时写穿，
+        // 这里只负责把身份与地址坐实（否则重启后这些行无法定位单元）。
+        kind: PersistedSessionKind::Chat,
+        project_id: req.workspace.project_id.clone(),
+        worktree_path: req.workspace.worktree_path.clone(),
+        title: String::new(),
+        title_source: PersistedTitleSource::Placeholder,
+        has_user_input: false,
+        native_session_id: None,
+        started_at: chrono::Utc::now().to_rfc3339(),
     }
 }
 

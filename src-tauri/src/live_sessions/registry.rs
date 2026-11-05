@@ -12,7 +12,7 @@
 //!    （`concurrency-guidelines.md` 红线 3 口径）。
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -29,13 +29,23 @@ pub struct Registry {
     sessions: Mutex<HashMap<String, SessionEntry>>,
     /// 变更版本号（长轮询的比较基准）。单调递增，初值 0。
     version: AtomicU64,
+    /// 应用是否正在退出。置位后 `unregister` 只摘内存，不删持久化行 ——
+    /// 退出不能等价于「清空侧栏列表」。崩溃 / 强杀天然满足（根本没走到 `unregister`）。
+    shutting_down: AtomicBool,
     /// 版本变更唤醒器（credit-pull：前端挂起等版本，不推全量快照）。
     ///
     /// 用 `notify_one`（无 waiter 时存一个 permit）而不是 `notify_waiters`：
     /// 「检查版本 → 注册 waiter」之间的竞态窗口由 permit 覆盖，代价至多多循环一次。
     changed: tokio::sync::Notify,
-    /// 持久化后端（chat 会话的恢复游标；terminal 不落盘）。
+    /// 持久化后端：侧栏列表条目（`has_user_input` 的那些行）。
     store: Arc<dyn SessionStore>,
+    /// 落盘闸门：把「从内存投影 → 写库」串行化。
+    ///
+    /// 同一会话有三个写者（Tauri 命令线程 / hook HTTP 线程 / chat 事件泵），而 `store` 是
+    /// 阻塞 IO、不能在 `sessions` 锁内调用。没有闸门时，后拿到锁的写者可能拿一份**更旧**的
+    /// 快照去覆盖（用户改名 / 原生 id 回退，只在重启后暴露）。闸门内**重新**投影一次，
+    /// 写入顺序就与内存顺序一致（全量快照，最后一次写必然包含此前全部变更）。
+    persist_gate: Mutex<()>,
 }
 
 impl Registry {
@@ -45,8 +55,10 @@ impl Registry {
         Self {
             sessions: Mutex::new(HashMap::new()),
             version: AtomicU64::new(0),
+            shutting_down: AtomicBool::new(false),
             changed: tokio::sync::Notify::new(),
             store,
+            persist_gate: Mutex::new(()),
         }
     }
 
@@ -61,20 +73,18 @@ impl Registry {
     /// 重复 id 只 `log::warn!` 并覆盖，绝不 panic：会话 id 撞车是上游缺陷，但把它
     /// 变成崩溃只会让整个注册表不可用。
     pub fn register(&self, entry: SessionEntry) -> bool {
-        let (duplicate, cursor) = {
+        let session_id = entry.session_id.clone();
+        let duplicate = {
             let mut sessions = self.guard();
-            let duplicate = sessions.contains_key(&entry.session_id);
-            sessions.insert(entry.session_id.clone(), entry.clone());
-            (duplicate, ResumeCursor::from_entry(&entry))
+            let duplicate = sessions.contains_key(&session_id);
+            sessions.insert(session_id.clone(), entry);
+            duplicate
         };
         if duplicate {
-            log::warn!(
-                "[live_sessions] duplicate session id registered, overriding: {}",
-                entry.session_id
-            );
+            log::warn!("[live_sessions] duplicate session id registered, overriding: {session_id}");
         }
         self.bump();
-        self.persist(cursor);
+        self.persist_entry(&session_id);
         !duplicate
     }
 
@@ -84,17 +94,16 @@ impl Registry {
     /// 「登记 = 首次出现」这条判据只在锁内成立一次 —— 判据与写入必须同一个临界区，
     /// 否则 `contains` 之后、`register` 之前插进来的条目会被静默覆盖。
     pub fn register_if_absent(&self, entry: SessionEntry) -> bool {
-        let cursor = {
+        let session_id = entry.session_id.clone();
+        {
             let mut sessions = self.guard();
-            if sessions.contains_key(&entry.session_id) {
+            if sessions.contains_key(&session_id) {
                 return false;
             }
-            let cursor = ResumeCursor::from_entry(&entry);
-            sessions.insert(entry.session_id.clone(), entry);
-            cursor
-        };
+            sessions.insert(session_id.clone(), entry);
+        }
         self.bump();
-        self.persist(cursor);
+        self.persist_entry(&session_id);
         true
     }
 
@@ -113,13 +122,13 @@ impl Registry {
     }
 
     fn apply_signal(&self, session_id: &str, signal: Signal, from_activity: bool) -> bool {
-        // 外层 `None` = 会话未知；内层 `(changed, cursor)` = 状态是否变、是否写穿。
+        // 外层 `None` = 会话未知；内层 `(changed, persist)` = 状态是否变、是否该写穿。
         let outcome = self.mutate(session_id, |entry| {
             if from_activity
                 && entry.awaiting_user_activity
                 && matches!(signal, Signal::TurnStarted | Signal::TurnFinished)
             {
-                return (false, None);
+                return (false, false);
             }
             apply_transition(entry, signal)
         });
@@ -128,10 +137,12 @@ impl Registry {
                 log::debug!("[live_sessions] dropped {signal:?} for unknown session: {session_id}");
                 false
             }
-            Some((changed, cursor)) => {
+            Some((changed, persist)) => {
                 if changed {
                     self.bump();
-                    self.persist(cursor);
+                    if persist {
+                        self.persist_entry(session_id);
+                    }
                 }
                 changed
             }
@@ -219,7 +230,7 @@ impl Registry {
                 entry.has_user_input = true;
                 changed = true;
             }
-            let (state_changed, cursor) = apply_transition(entry, signal);
+            let (state_changed, _) = apply_transition(entry, signal);
             changed |= state_changed;
             // 只有非终止的「等待用户」态需要门。终止态已被状态机永久吸收，
             // 再置门只会让字段语义失真。
@@ -231,7 +242,9 @@ impl Registry {
             if changed {
                 entry.updated_at = Utc::now();
             }
-            (changed, cursor)
+            // 权威事件（每回合一次）同时携带标题与可见性；写穿由 `persist_entry` 在闸门内
+            // 重新投影（未列出的会话仍由 `from_entry` 返回 `None` 挡掉）。
+            changed
         });
         match outcome {
             None => {
@@ -240,10 +253,10 @@ impl Registry {
                 );
                 false
             }
-            Some((changed, cursor)) => {
+            Some(changed) => {
                 if changed {
                     self.bump();
-                    self.persist(cursor);
+                    self.persist_entry(session_id);
                 }
                 changed
             }
@@ -317,10 +330,18 @@ impl Registry {
             sessions.remove(from_session_id);
             true
         };
-        if adopted {
-            self.bump();
+        if !adopted {
+            return false;
         }
-        adopted
+        self.bump();
+        // 锁外落盘：新行先写、旧行后删。反过来的话，两次写之间崩溃会两行都丢；
+        // 这个顺序最坏只留一条可见的陈旧 stopped 行（用户可手动删）。
+        let _gate = self.guard_gate();
+        self.write_entry(into_session_id);
+        if let Err(e) = self.store.delete_cursor(from_session_id) {
+            log::warn!("[live_sessions] failed to delete adopted cursor {from_session_id}: {e}");
+        }
+        true
     }
 
     /// 记录 agent 侧的原生会话 id（hook 上报携带）。返回「是否真的写了」。
@@ -328,21 +349,29 @@ impl Registry {
     /// **不 bump 版本**：这个字段不进 wire 契约（视图不显示、不派生），只有点击恢复时
     /// 后端自己读一次。为一个 UI 看不见的字段刷快照，会让侧栏跟着重渲染。
     ///
+    /// 但**必须落盘**（在锁外）：它是重启后 `live_session_resume_command` 读 `--resume`
+    /// 参数的唯一来源 —— 不落盘就等于「重启后每次恢复都只能新建终端」。
+    ///
     /// 只写一次：CLI 的同一条会话后续 hook 上报里 native id 不会变，重复写是噪声。
     pub fn record_native_session_id(&self, session_id: &str, native_session_id: &str) -> bool {
         let native_session_id = native_session_id.trim();
         if native_session_id.is_empty() {
             return false;
         }
-        let mut sessions = self.guard();
-        let Some(entry) = sessions.get_mut(session_id) else {
-            return false;
+        let written = {
+            let mut sessions = self.guard();
+            let Some(entry) = sessions.get_mut(session_id) else {
+                return false;
+            };
+            if entry.native_session_id.is_some() {
+                return false;
+            }
+            entry.native_session_id = Some(native_session_id.to_string());
+            true
         };
-        if entry.native_session_id.is_some() {
-            return false;
-        }
-        entry.native_session_id = Some(native_session_id.to_string());
-        true
+        // 锁外落盘（闸门内重读最新快照）：不 bump（它不进 wire 契约）。
+        self.persist_entry(session_id);
+        written
     }
 
     /// 按 id 取一条条目的快照（点击恢复时读 agent / native id / cwd）。
@@ -351,10 +380,10 @@ impl Registry {
         self.guard().get(session_id).cloned()
     }
 
-    /// 上报类写入的收尾（锁外）：未知会话记 debug，真变化才 bump 版本并唤醒长轮询。
+    /// 上报类写入的收尾（锁外）：未知会话记 debug，真变化才 bump 版本、写穿侧栏行。
     ///
-    /// 不写穿 `ResumeCursor`：标题与可见性都不落库（`cursor::from_entry` 没有这两列），
-    /// 重启后的可见性由登记时的形态重新决定。
+    /// 写穿对象是**侧栏列表条目**（标题 / 可见性 / kind / 单元地址 / 原生 id）；未列出
+    /// 的会话由 `cursor::from_entry` 的 `has_user_input` 门控直接返回 `None`，调用点不重复判断。
     fn finish(&self, session_id: &str, applied: Option<bool>, op: &str) -> bool {
         match applied {
             None => {
@@ -364,6 +393,7 @@ impl Registry {
             Some(changed) => {
                 if changed {
                     self.bump();
+                    self.persist_entry(session_id);
                 }
                 changed
             }
@@ -385,18 +415,69 @@ impl Registry {
         self.finish(session_id, applied, "set_title")
     }
 
-    /// 注销会话：先摘表（视图立即看不到），再 best-effort 关闭持久化游标。
+    /// 标记应用进入退出流程：之后的 `unregister` 只摘内存条目，不删持久化行。
+    ///
+    /// 必须在任何清理路径之前置位 —— 只有标志先置好，并发的关闭路径才不会把
+    /// 「退出」写成「用户删光了所有会话」。
+    pub fn begin_shutdown(&self) {
+        self.shutting_down.store(true, Ordering::SeqCst);
+    }
+
+    /// 注销会话：先摘表（视图立即看不到），再 best-effort 删掉持久化行。
+    ///
+    /// 删行而不是标 `Closed`：注销 = 「这条会话从侧栏消失」（用户删除 / 进程结束）。
+    /// 退出流程例外（[`Registry::begin_shutdown`]）。
     pub fn unregister(&self, session_id: &str) -> bool {
         let removed = self.guard().remove(session_id).is_some();
         if !removed {
             return false;
         }
         self.bump();
+        if self.shutting_down.load(Ordering::SeqCst) {
+            return true;
+        }
         // 锁外落盘：失败只 warn（会话已经不可见了，不该因为库里写失败而卡住注销）。
-        if let Err(e) = self.store.close_session(session_id) {
-            log::warn!("[live_sessions] failed to close persisted cursor {session_id}: {e}");
+        // 与 `persist_entry` 共用闸门：已摘掉内存条目的写者拿到闸门后会重读到 `None`，
+        // 不会把刚删的行又写回去（“删完又被一个在途旧快照复活”）。
+        let _gate = self.guard_gate();
+        if let Err(e) = self.store.delete_cursor(session_id) {
+            log::warn!("[live_sessions] failed to delete persisted cursor {session_id}: {e}");
         }
         true
+    }
+
+    /// 启动恢复：把持久化行投影回侧栏列表，返回**新插入**的条目数。
+    ///
+    /// 三条约束：
+    /// - 状态一律 `Stopped`（见 `cursor::into_entry`）—— 不建 tab、不起进程、不 emit；
+    /// - 已在表里的会话**不覆盖**：本次运行拿到的是更新的事实，恢复不该把它退回停止态；
+    /// - 不写回库（只读），且整批只 bump 一次（一次插入 = 一次快照变化）。
+    pub fn restore_from_store(&self) -> usize {
+        let restored: Vec<SessionEntry> = self
+            .store
+            .list_restorable()
+            .iter()
+            .filter_map(ResumeCursor::into_entry)
+            .collect();
+        if restored.is_empty() {
+            return 0;
+        }
+        let inserted = {
+            let mut sessions = self.guard();
+            let mut inserted = 0;
+            for entry in restored {
+                if sessions.contains_key(&entry.session_id) {
+                    continue;
+                }
+                sessions.insert(entry.session_id.clone(), entry);
+                inserted += 1;
+            }
+            inserted
+        };
+        if inserted > 0 {
+            self.bump();
+        }
+        inserted
     }
 
     /// 快照（wire 前的条目列表）。
@@ -450,6 +531,13 @@ impl Registry {
         self.sessions.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// 落盘闸门（poison 容忍口径同上）。
+    fn guard_gate(&self) -> MutexGuard<'_, ()> {
+        self.persist_gate
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// 版本 +1 并唤醒挂起的长轮询。
     fn bump(&self) -> u64 {
         let next = self.version.fetch_add(1, Ordering::SeqCst) + 1;
@@ -457,22 +545,38 @@ impl Registry {
         next
     }
 
-    /// 写穿恢复游标（best-effort，锁外调用）。
+    /// 写穿指定会话的当前状态（best-effort，锁外调用）。
     ///
-    /// **只覆盖注册表知道的字段**（status / turn_count / last_activity）：
-    /// `model` / `runtime_mode` 由创建期写入的 cursor 保留（`build_resume_cursor` 携带用户的
-    /// `confirm` 模式）。用投影整体覆盖会把用户设置静默改写回 `auto`。
-    fn persist(&self, cursor: Option<ResumeCursor>) {
+    /// **必须经闸门重新投影**：调用点在锁内算出变化的「结论」，但不携带快照 —— 否则
+    /// 并发写者会用更旧的快照覆盖用户改名 / 原生 id（只在重启后可见）。
+    fn persist_entry(&self, session_id: &str) {
+        let _gate = self.guard_gate();
+        self.write_entry(session_id);
+    }
+
+    /// 调用方**必须已持有** [`Registry::persist_gate`]：先读最新条目再写。
+    fn write_entry(&self, session_id: &str) {
+        let cursor = {
+            let sessions = self.guard();
+            sessions.get(session_id).and_then(ResumeCursor::from_entry)
+        };
+        self.write_cursor(cursor);
+    }
+
+    /// 写穿侧栏条目（best-effort，调用方持有闸门）。
+    ///
+    /// **创建期定格的字段以库里的旧值为准**，其余字段（标题 / 可见性 / 地址 / 原生 id /
+    /// 投影时间）以本次投影为准 —— 否则标题与 native id 永远写不进去。
+    ///
+    /// 字段清单及其理由在 [`ResumeCursor::with_creation_fields_of`]（与类型同住），本函数
+    /// 只负责「读旧值 → 请求合并 → 写」这三步。这是给**任何** `SessionStore` 实现的契约：
+    /// 替代实现即使整体覆盖，也不会把用户设置（比如 `confirm` 模式）改回默认值。
+    fn write_cursor(&self, cursor: Option<ResumeCursor>) {
         let Some(cursor) = cursor else {
             return;
         };
         let merged = match self.store.load_cursor(&cursor.session_id) {
-            Some(mut existing) => {
-                existing.status = cursor.status;
-                existing.turn_count = cursor.turn_count;
-                existing.last_activity = cursor.last_activity;
-                existing
-            }
+            Some(existing) => cursor.with_creation_fields_of(&existing),
             None => cursor,
         };
         if let Err(e) = self.store.save_cursor(&merged) {
@@ -540,7 +644,7 @@ fn mark_entry_user_activity(entry: &mut SessionEntry) -> bool {
 }
 
 /// 应用一条状态信号并返回 `(是否变化, 是否写穿)`。
-fn apply_transition(entry: &mut SessionEntry, signal: Signal) -> (bool, Option<ResumeCursor>) {
+fn apply_transition(entry: &mut SessionEntry, signal: Signal) -> (bool, bool) {
     match reduce(entry.state, signal) {
         Some(next) if next != entry.state => {
             entry.state = next;
@@ -549,21 +653,18 @@ fn apply_transition(entry: &mut SessionEntry, signal: Signal) -> (bool, Option<R
             if turn_finished {
                 entry.turn_count = entry.turn_count.saturating_add(1);
             }
-            // 只在「DB 读者真的会读到」的变化上写穿：`turn_count` 与终态
-            // （`SessionStore::list_active` 按 `status != Closed` 过滤）。中间态
-            // （Running / AwaitingApproval）重启后没有任何代码读回 live 条目，
-            // 而每次转移都同步写一次 SQLite 会把这些写压在异步执行器线程上
-            // （红线 3 取向）。
-            (
-                true,
-                if turn_finished || next.is_terminal() {
-                    ResumeCursor::from_entry(entry)
-                } else {
-                    None
-                },
-            )
+            // 本函数**只管状态**，而状态列没有真正的读者：启动恢复把每一行都投影成
+            // `Stopped`（`cursor::into_entry`），`status` 只服务于兼容旧 chat 语义。
+            // 因此只有「顺带记录了别的事实」的转移值得落盘 —— `turn_count`
+            // （`TurnFinished` 累计）与终态。
+            //
+            // 中间态（Running / AwaitingApproval）**不写**：这条路径的高频调用方是
+            // chat 的 16ms 合帧 emit 与 PTY 活动 tick，每次转移同步写一次 SQLite 就是
+            // 把阻塞调用压在异步执行器 / reader 线程上（红线 3 取向）。标题 / 可见性 /
+            // 原生 id 的落盘不在这里，走 report 家族（那边一次变化的收益是永久的）。
+            (true, turn_finished || next.is_terminal())
         }
-        _ => (false, None),
+        _ => (false, false),
     }
 }
 

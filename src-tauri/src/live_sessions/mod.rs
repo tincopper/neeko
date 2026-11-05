@@ -22,6 +22,7 @@
 //! 视图层（tab 标题、侧栏图标、侧栏会话列表）只是同一快照的**纯投影**：不持有状态
 //! 副本、不推断状态、不写标题。
 
+pub(crate) mod boot;
 pub(crate) mod commands;
 mod cursor;
 mod entry;

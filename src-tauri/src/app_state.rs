@@ -98,6 +98,10 @@ impl AppStateWrapper {
     /// 组合根只声明"要清理哪些域"（任务表）；并行清理的**机制**在
     /// [`crate::common::shutdown::run_cleanup_and_exit`]。
     pub fn shutdown_background_and_exit(&self) {
+        // 第一行：置「退出中」标志 —— 之后任何清理路径触发的 `unregister` 都只摘内存条目，
+        // 不删持久化行。否则「退出」会被写成「用户删光了所有会话」，下次启动侧栏为空。
+        self.live_sessions.begin_shutdown();
+
         let terminal_manager = self.terminal_router.local().clone();
         let remote_terminal_manager = self.terminal_router.remote().clone();
         let watcher_manager = self.watcher_manager.clone();

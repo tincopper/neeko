@@ -13,7 +13,7 @@
 //! | 入口 | 转移 | 侧栏 |
 //! | --- | --- | --- |
 //! | [`close_and_notify`] | `apply(Stopped)`，**保留**条目 | 行留着（「点回来」的入口） |
-//! | [`unregister_and_notify`] | `unregister`（摘条目 + 关游标） | 行消失 |
+//! | [`unregister_and_notify`] | `unregister`（摘条目 + 删持久化行） | 行消失 |
 //!
 //! 进程怎么结束不在这里 —— 那是各生产者自己的知识（终端路由 / chat 管理器），
 //! 组合根按归属把它们接起来（见 `app::session_lifecycle`）。
@@ -47,6 +47,7 @@ pub fn close_and_notify(registry: &Registry, app: Option<&AppHandle>, session_id
 /// 销毁会话（删单元 / 清 tab 空间 / 用户删除）：注销 + 通知。
 ///
 /// 只是 [`Registry::unregister`] 的通知收尾 —— 转移本身属注册表，本模块不复制它。
+/// 注销会**删掉持久化侧栏行**（退出流程例外：`Registry::begin_shutdown` 之后只摘内存）。
 ///
 /// `app` 为 `None` 的调用方（退出清理 / 测试）只做注销不发事件 —— 那时没有前端在听。
 pub fn unregister_and_notify(

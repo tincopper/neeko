@@ -5,18 +5,21 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use super::*;
-use crate::agent::chat::session_store::SessionStatus;
+use crate::agent::chat::session_store::{
+    PersistedSessionKind, PersistedTitleSource, SessionStatus,
+};
 use crate::common::git::WorkspaceSession;
 use crate::live_sessions::entry::{SessionKind, SessionState};
 use crate::AppError;
 
-/// 记录型 store：断言写穿了什么、关掉了谁（真正的 SQLite 由 `session_store` 自测）。
+/// 记录型 store：断言写穿了什么、删掉了谁（真正的 SQLite 由 `session_store` 自测）。
 #[derive(Default)]
 struct RecordingStore {
     cursors: Mutex<HashMap<String, ResumeCursor>>,
-    closed: Mutex<Vec<String>>,
     /// 每次 `save_cursor` 落下的状态（写穿节流的判据：哪些变化**真的**会落盘）。
     saves: Mutex<Vec<SessionStatus>>,
+    /// 被 `delete_cursor` 删掉的会话 id（注册注销 / adopt 迁移 / 退出抑制的判据）。
+    deleted: Mutex<Vec<String>>,
 }
 
 impl RecordingStore {
@@ -33,6 +36,21 @@ impl RecordingStore {
             .lock()
             .expect("infallible: cursors")
             .insert(cursor.session_id.clone(), cursor);
+    }
+
+    fn deleted_ids(&self) -> Vec<String> {
+        self.deleted.lock().expect("infallible: deleted").clone()
+    }
+
+    /// 库里**所有**行（不按 status 过滤）：断言「根本没建行」时的判据。
+    /// 只看 `list_restorable` 会漏掉「落了 Closed 行」的实现（那同样是 bug）。
+    fn stored_ids(&self) -> Vec<String> {
+        self.cursors
+            .lock()
+            .expect("infallible: cursors")
+            .keys()
+            .cloned()
+            .collect()
     }
 }
 
@@ -53,21 +71,19 @@ impl SessionStore for RecordingStore {
         self.cursor(session_id)
     }
 
-    fn list_active(&self) -> Vec<ResumeCursor> {
+    /// 判据与 SQL 侧同源：[`ResumeCursor::is_restorable`]。测试替身不重写规则 ——
+    /// 重写一份就会让「替身通过、真实库不通过」的差异只在生产上出现。
+    fn list_restorable(&self) -> Vec<ResumeCursor> {
         self.cursors
             .lock()
             .expect("infallible: cursors")
             .values()
-            .filter(|c| c.status != SessionStatus::Closed)
+            .filter(|c| c.is_restorable())
             .cloned()
             .collect()
     }
 
     fn close_session(&self, session_id: &str) -> Result<(), AppError> {
-        self.closed
-            .lock()
-            .expect("infallible: closed")
-            .push(session_id.to_string());
         if let Some(cursor) = self
             .cursors
             .lock()
@@ -76,6 +92,18 @@ impl SessionStore for RecordingStore {
         {
             cursor.status = SessionStatus::Closed;
         }
+        Ok(())
+    }
+
+    fn delete_cursor(&self, session_id: &str) -> Result<(), AppError> {
+        self.deleted
+            .lock()
+            .expect("infallible: deleted")
+            .push(session_id.to_string());
+        self.cursors
+            .lock()
+            .expect("infallible: cursors")
+            .remove(session_id);
         Ok(())
     }
 }
@@ -88,6 +116,9 @@ fn registry() -> (Registry, Arc<RecordingStore>) {
 /// 夹具：生产路径经 `set_title` 写入标题；这里直接给字段，省掉每条用例一次额外写入。
 /// 值必须满足 `title::admit` 的不变量（`Placeholder` ⇒ 空标题），否则夹具会造出
 /// 生产不可能出现的状态。
+///
+/// 默认是**已列出**的会话（`has_user_input = true`）：只有列出的会话才落盘，
+/// 需要验证「不落盘」的用例自己清掉它。
 fn entry(id: &str, cwd: &str) -> SessionEntry {
     let mut entry = SessionEntry::new(
         id,
@@ -95,9 +126,18 @@ fn entry(id: &str, cwd: &str) -> SessionEntry {
         Some("pi".into()),
         WorkspaceSession::of("p1", None),
         cwd,
-    );
+    )
+    .with_user_input(true);
     entry.title = format!("title-{id}");
     entry.title_source = TitleSource::Prompt;
+    entry
+}
+
+/// 尚未进侧栏的 chat 会话（`Silent` 建连 / hook 纯信息事件前）。
+fn unlisted_entry(id: &str, cwd: &str) -> SessionEntry {
+    let mut entry = entry(id, cwd).with_user_input(false);
+    entry.title = String::new();
+    entry.title_source = TitleSource::Placeholder;
     entry
 }
 
@@ -110,6 +150,7 @@ fn terminal_entry(id: &str, cwd: &str) -> SessionEntry {
         cwd,
     )
     .with_state(SessionState::Running)
+    .with_user_input(true)
 }
 
 fn cursor(runtime_mode: &str) -> ResumeCursor {
@@ -123,6 +164,14 @@ fn cursor(runtime_mode: &str) -> ResumeCursor {
         turn_count: 0,
         status: SessionStatus::Ready,
         last_activity: "2026-10-31T00:00:00+00:00".into(),
+        kind: PersistedSessionKind::Chat,
+        project_id: "p1".into(),
+        worktree_path: None,
+        title: "title-s1".into(),
+        title_source: PersistedTitleSource::Prompt,
+        has_user_input: true,
+        native_session_id: None,
+        started_at: "2026-10-30T00:00:00+00:00".into(),
     }
 }
 
@@ -214,7 +263,7 @@ fn approval_round_trip_walks_through_awaiting() {
 #[test]
 fn engaging_without_a_title_is_idempotent_and_drops_unknown_sessions() {
     let (registry, _store) = registry();
-    registry.register(entry("s1", "/proj"));
+    registry.register(unlisted_entry("s1", "/proj"));
     let before = registry.version();
     assert!(
         !registry.snapshot()[0].has_user_input,
@@ -240,7 +289,7 @@ fn engaging_without_a_title_is_idempotent_and_drops_unknown_sessions() {
 /// 那一行反而消失了」。
 #[test]
 fn adopt_moves_identity_from_a_stopped_session() {
-    let (registry, _store) = registry();
+    let (registry, store) = registry();
     let mut old = entry("old", "/proj");
     old.title = "修复登录竞态".into();
     old.title_source = TitleSource::Prompt;
@@ -248,6 +297,7 @@ fn adopt_moves_identity_from_a_stopped_session() {
     registry.register(old);
     registry.apply("old", Signal::TurnFinished);
     registry.apply("old", Signal::Stopped);
+    assert!(store.cursor("old").is_some(), "旧行在库里");
 
     let mut fresh = terminal_entry("new", "/proj");
     fresh.title = String::new();
@@ -262,8 +312,20 @@ fn adopt_moves_identity_from_a_stopped_session() {
     assert!(registry.entry("old").is_none(), "旧条目退场");
     assert_eq!(registry.snapshot().len(), 1);
 
+    // 库里的行也要「搬家」：旧行删掉、新行拿到继承后的标题 —— 否则重启后
+    // 侧栏会同时出现「已停止的旧会话」与「没名字的新会话」。
+    assert_eq!(store.deleted_ids(), vec!["old".to_string()]);
+    let migrated = store.cursor("new").expect("新行必须落盘");
+    assert_eq!(migrated.title, "修复登录竞态");
+    assert!(migrated.has_user_input);
+    assert!(store
+        .list_restorable()
+        .iter()
+        .any(|c| c.session_id == "new"));
+
     // 幂等：旧条目已消失，再继承一次什么都不发生。
     assert!(!registry.adopt("old", "new"));
+    assert_eq!(store.deleted_ids(), vec!["old".to_string()]);
 }
 
 /// 活着的会话**不得**被一次点击合并掉（否则用户点一下丢一条正在跑的会话）。
@@ -278,10 +340,32 @@ fn adopt_refuses_a_live_source() {
     assert_eq!(registry.snapshot().len(), 2);
 }
 
+/// 继承是否发生与「新条目是否已进侧栏」是两件事：`from` 没进过侧栏（`has_user_input = false`）
+/// 时也要真正继承并 bump，只是不需要写库 —— 不能把「无可落盘快照」误当成「没继承」。
+#[test]
+fn adopt_of_an_unlisted_source_still_adopts_and_bumps() {
+    let (registry, store) = registry();
+    let mut old = unlisted_entry("old", "/proj");
+    old.kind = SessionKind::Terminal;
+    old.state = SessionState::Stopped;
+    registry.register(old);
+    registry.register(unlisted_entry("new", "/proj"));
+    let before = registry.version();
+
+    assert!(registry.adopt("old", "new"));
+    assert_eq!(registry.version(), before + 1, "继承是一次可见变更");
+    assert!(registry.entry("old").is_none(), "旧条目必须退场");
+    assert!(
+        store.deleted_ids().contains(&"old".to_string()),
+        "旧行尝试删除（幂等）"
+    );
+    assert!(store.cursor("new").is_none(), "未列出的新条目不落盘");
+}
+
 /// 原生会话 id：只写一次、未知会话不建条目、**不 bump 版本**（它不进 wire 契约）。
 #[test]
 fn native_session_id_is_recorded_once_without_bumping_the_version() {
-    let (registry, _store) = registry();
+    let (registry, store) = registry();
     registry.register(entry("s1", "/proj"));
     let before = registry.version();
 
@@ -292,6 +376,11 @@ fn native_session_id_is_recorded_once_without_bumping_the_version() {
         "trim 后落库"
     );
     assert_eq!(registry.version(), before, "UI 看不见的字段不刷快照");
+    assert_eq!(
+        store.cursor("s1").and_then(|c| c.native_session_id),
+        Some("native-42".to_string()),
+        "原生 id 必须落盘：它是点击恢复（--resume）的唯一入参"
+    );
 
     assert!(
         !registry.record_native_session_id("s1", "another"),
@@ -300,12 +389,17 @@ fn native_session_id_is_recorded_once_without_bumping_the_version() {
     assert!(!registry.record_native_session_id("ghost", "native-9"));
     assert!(!registry.record_native_session_id("s1", "   "), "空白不写");
     assert_eq!(registry.snapshot().len(), 1, "不得为未知会话建条目");
+    assert_eq!(
+        store.cursor("s1").and_then(|c| c.native_session_id),
+        Some("native-42".to_string()),
+        "晚到的上报不得覆盖已记下的原生 id"
+    );
 }
 
 #[test]
 fn report_first_titles_and_engages_once_only() {
     let (registry, _store) = registry();
-    registry.register(entry("s1", "/proj"));
+    registry.register(unlisted_entry("s1", "/proj"));
     let before = registry.version();
 
     assert!(registry.report_first("s1", &[(TitleSource::Prompt, "第一条消息")]));
@@ -329,10 +423,7 @@ fn report_first_titles_and_engages_once_only() {
 #[test]
 fn report_first_fills_a_missing_title_after_hook_engagement() {
     let (registry, _store) = registry();
-    let mut silent = entry("s1", "/proj");
-    silent.title = String::new();
-    silent.title_source = TitleSource::Placeholder;
-    registry.register(silent);
+    registry.register(unlisted_entry("s1", "/proj"));
 
     assert!(registry.report("s1", None, true));
     assert_eq!(registry.snapshot()[0].title, "");
@@ -423,12 +514,16 @@ fn persist_keeps_fields_the_registry_does_not_know() {
     );
 }
 
-/// 写穿只发生在「DB 读者真的会读到」的变化上。
+/// `apply` / `apply_activity` 的写穿节流：只有 `turn_count` 变化与终态落盘。
 ///
-/// `SessionStore::list_active` 只按 `status != Closed` 过滤，没有任何代码把
-/// `Ready/Running/AwaitingApproval` 读回 live 条目 —— 于是中间态不必落盘。这条判据
-/// 同时把「每次状态转移都在异步执行器线程上同步写一次 SQLite」压回每回合一次
-/// （红线 3 取向，见 `persistence-and-cache.md` §4b.3）。
+/// 判据是「这一列有没有读者」，而不是「状态是不是重要」——`status` 列**没有**真读者：
+/// 启动恢复把每一行都投影成 `Stopped`（`cursor::into_entry`），没有任何读者按
+/// `status != Closed` 查询（旧的 `list_active` 已无消费者，已删）。因此中间态
+/// （`Running` / `AwaitingApproval`）写进去只会在 chat 的 16ms 合帧 emit 与 PTY 活动 tick
+/// 上多做一次同步 SQLite 写（红线 3 取向，见 `persistence-and-cache.md` §4b.3b）。
+///
+/// 注意这条节流只适用于本路径：`report_authoritative` / `set_title` 等报告类写入**会**
+/// 落盘中间态，因为它们同时携带标题 / 可见性 / 原生 id（那些列有真读者）。
 #[test]
 fn persist_is_throttled_to_reader_relevant_transitions() {
     let (registry, store) = registry();
@@ -453,19 +548,44 @@ fn persist_is_throttled_to_reader_relevant_transitions() {
         after_register + 1
     );
 
-    // 终态：`list_active` 的过滤依据 ⇒ 落盘。
+    // 终态：携带「结局」这一事实 ⇒ 落盘。
     assert!(registry.apply("s1", Signal::Failed));
     let saved = store.cursor("s1").expect("cursor");
     assert_eq!(saved.status, SessionStatus::Closed, "终态落 Closed");
 }
 
 #[test]
-fn terminal_entries_are_never_persisted() {
+fn terminal_rows_are_persisted_only_once_they_are_listed() {
     let (registry, store) = registry();
+
+    // 未列出：打开 tab / 起进程都不算「在用」。
+    let unlisted = SessionEntry::new(
+        "t0",
+        SessionKind::Terminal,
+        Some("pi".into()),
+        WorkspaceSession::of("p1", Some("/proj-wt".into())),
+        "/proj-wt",
+    )
+    .with_state(SessionState::Running);
+    registry.register(unlisted);
+    registry.apply("t0", Signal::TurnFinished);
+    registry.apply("t0", Signal::Failed);
+    assert!(
+        store.stored_ids().is_empty(),
+        "未列出的 terminal 一行都不落"
+    );
+
+    // 列出：行出现的那一刻开始持久化，之后状态转移沿用既有节流。
     registry.register(terminal_entry("t1", "/proj-wt"));
+    let saved = store.cursor("t1").expect("列出的 terminal 必须落盘");
+    assert_eq!(saved.kind, PersistedSessionKind::Terminal);
+    assert_eq!(saved.project_id, "p1");
+    assert_eq!(saved.worktree_path.as_deref(), Some("/proj-wt"));
+    assert!(saved.has_user_input);
+
     registry.apply("t1", Signal::TurnStarted);
     registry.apply("t1", Signal::TurnFinished);
-    assert!(store.list_active().is_empty(), "terminal 不落 chat 表");
+    assert_eq!(store.cursor("t1").expect("cursor").turn_count, 1);
 }
 
 /// hook 的完成态是权威事实：之后 Codex TUI 重绘产生的 PTY 输出不得把 Ready 推回 Running。
@@ -509,25 +629,145 @@ fn authoritative_approval_waits_for_user_activity() {
 }
 
 #[test]
-fn unregister_removes_the_entry_and_closes_the_cursor() {
+fn unregister_removes_the_entry_and_deletes_the_cursor() {
     let (registry, store) = registry();
     registry.register(entry("s1", "/proj"));
     registry.apply("s1", Signal::TurnStarted);
     let before = registry.version();
+    assert!(store.cursor("s1").is_some());
 
     assert!(registry.unregister("s1"));
     assert_eq!(registry.version(), before + 1);
     assert!(registry.snapshot().is_empty());
-    assert_eq!(store.closed.lock().expect("infallible: closed").len(), 1);
-    assert_eq!(
-        store.cursor("s1").expect("cursor").status,
-        SessionStatus::Closed
+    assert_eq!(store.deleted_ids(), vec!["s1".to_string()]);
+    assert!(
+        store.cursor("s1").is_none(),
+        "注销 = 删行（不是标 Closed）：否则重启后侧栏会复活已删除的会话"
     );
 
-    // 幂等：重复注销只返回 false，不重复关 cursor。
+    // 幂等：重复注销只返回 false，不重复删行。
     assert!(!registry.unregister("s1"));
     assert_eq!(registry.version(), before + 1);
-    assert_eq!(store.closed.lock().expect("infallible: closed").len(), 1);
+    assert_eq!(store.deleted_ids(), vec!["s1".to_string()]);
+}
+
+/// 退出不能等价于「清空列表」：`begin_shutdown` 之后只摘内存。
+/// 崩溃 / 强杀天然满足（根本没走到 `unregister`）。
+#[test]
+fn begin_shutdown_suppresses_cursor_deletion() {
+    let (registry, store) = registry();
+    registry.register(entry("s1", "/proj"));
+    let before = registry.version();
+
+    registry.begin_shutdown();
+    assert!(registry.unregister("s1"));
+    assert_eq!(registry.version(), before + 1, "内存条目照常摘掉");
+    assert!(registry.snapshot().is_empty());
+    assert!(store.deleted_ids().is_empty(), "退出期间不删行");
+    assert!(store.cursor("s1").is_some(), "行留给下次启动");
+}
+
+/// 启动恢复：只回填侧栏列表，状态一律 `Stopped`（没有进程在跑）。
+#[test]
+fn restore_from_store_rebuilds_stopped_rows_in_one_bump() {
+    let (registry, store) = registry();
+    let mut original = entry("s1", "/proj");
+    original.title = "修复登录竞态".into();
+    original.title_source = TitleSource::Prompt;
+    original.native_session_id = Some("native-42".into());
+    store.seed(ResumeCursor::from_entry(&original).expect("listed entry"));
+    // 不可恢复的行（无单元 / 无名字）不得进表。
+    store.seed(ResumeCursor {
+        project_id: String::new(),
+        ..ResumeCursor::from_entry(&entry("orphan", "/proj")).expect("listed entry")
+    });
+    store.seed(ResumeCursor {
+        title: String::new(),
+        title_source: PersistedTitleSource::Placeholder,
+        ..ResumeCursor::from_entry(&entry("nameless", "/proj")).expect("listed entry")
+    });
+
+    let before = registry.version();
+    assert_eq!(registry.restore_from_store(), 1);
+
+    let restored = registry.entry("s1").expect("侧栏行必须回来");
+    assert_eq!(restored.state, SessionState::Stopped, "没有进程在跑");
+    assert!(!restored.awaiting_user_activity);
+    assert_eq!(restored.title, "修复登录竞态");
+    assert_eq!(restored.title_source, TitleSource::Prompt);
+    assert_eq!(restored.native_session_id.as_deref(), Some("native-42"));
+    assert_eq!(restored.workspace, original.workspace);
+    assert!(registry.entry("orphan").is_none());
+    assert!(registry.entry("nameless").is_none());
+    assert_eq!(registry.version(), before + 1, "一次插表只 bump 一次");
+
+    // 重复恢复不产生重复条目，也不再 bump / 不再写库。
+    assert_eq!(registry.restore_from_store(), 0);
+    assert_eq!(registry.version(), before + 1);
+    assert_eq!(registry.snapshot().len(), 1);
+}
+
+#[test]
+fn restore_from_an_empty_store_does_not_bump() {
+    let (registry, _store) = registry();
+    let before = registry.version();
+    assert_eq!(registry.restore_from_store(), 0);
+    assert_eq!(registry.version(), before);
+    assert!(registry.snapshot().is_empty());
+}
+
+/// 本次运行已经登记的会话是**更新的事实**，恢复不得覆盖它（也不得退回 `Stopped`）。
+#[test]
+fn restore_never_overwrites_a_live_session() {
+    let (registry, store) = registry();
+    store.seed(cursor("auto"));
+    registry.register(entry("s1", "/proj"));
+    registry.apply("s1", Signal::TurnStarted);
+
+    assert_eq!(registry.restore_from_store(), 0);
+    let live = registry.entry("s1").expect("仍是被登记的那条");
+    assert_eq!(live.state, SessionState::Running, "不得被恢复成 Stopped");
+}
+
+/// 标题变化（首次命名 / 用户改名 / OSC 原生标题）都要活过重启。
+#[test]
+fn title_changes_are_written_through() {
+    let (registry, store) = registry();
+    registry.register(unlisted_entry("s1", "/proj"));
+    assert!(store.stored_ids().is_empty(), "未列出不落盘");
+
+    // 用户第一次提交：行出现 + 标题落盘（发送即出现在侧栏，不等跑完）。
+    assert!(registry.report_user_input("s1", "修复登录竞态"));
+    let saved = store.cursor("s1").expect("首次提交即落盘");
+    assert!(saved.has_user_input);
+    assert_eq!(saved.title, "修复登录竞态");
+    assert_eq!(saved.title_source, PersistedTitleSource::Prompt);
+
+    // 用户改名：更强来源覆盖，且必须落盘（用户改过的名字优先级最高）。
+    assert!(registry.set_title("s1", TitleSource::User, "我的会话"));
+    let saved = store.cursor("s1").expect("改名必须活过重启");
+    assert_eq!(saved.title, "我的会话");
+    assert_eq!(saved.title_source, PersistedTitleSource::User);
+
+    // CLI 的 OSC / 主题上报（`report`，不置位）同样落盘标题 —— 但 `User` 不被自动来源覆盖。
+    assert!(!registry.report("s1", Some((TitleSource::Native, "Parser bug")), false));
+    assert_eq!(
+        store.cursor("s1").expect("cursor").title,
+        "我的会话",
+        "User 不被自动来源覆盖"
+    );
+}
+
+/// 没有用户改名时，CLI 自报的原生标题（OSC 0/2 / hook 主题）升级后立即落盘。
+#[test]
+fn native_titles_are_written_through() {
+    let (registry, store) = registry();
+    registry.register(unlisted_entry("s2", "/proj"));
+    registry.report_user_input("s2", "fix the parser");
+    assert!(registry.report("s2", Some((TitleSource::Native, "Parser bug")), false));
+    let saved = store.cursor("s2").expect("原生标题也要活过重启");
+    assert_eq!(saved.title, "Parser bug");
+    assert_eq!(saved.title_source, PersistedTitleSource::Native);
 }
 
 /// 快照是**全量**的：单元分组在前端 selector（按 `workspaceKey` 等值），后端不切片。

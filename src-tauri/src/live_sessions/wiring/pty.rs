@@ -287,7 +287,7 @@ pub(crate) fn exit_and_notify(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::chat::session_store::SqliteSessionStore;
+    use crate::agent::chat::session_store::{SessionStore, SqliteSessionStore};
     use crate::live_sessions::lifecycle::close_and_notify;
     use crate::live_sessions::state::reduce;
 
@@ -411,6 +411,51 @@ mod tests {
             registry.entry("t1").is_some(),
             "关 tab 之后的退出不得摘条目"
         );
+    }
+
+    /// **持久化契约（故意相反）**：同一个物理事实「终端进程结束」有两条入口，行去留不同：
+    ///
+    /// - 用户点 X（[`close_and_notify`]）⇒ 行**保留**（`Stopped`，是「点回来」的入口）；
+    /// - 进程自己结束（[`on_exit`]）⇒ 行**删除**（会话真的结束了）。
+    ///
+    /// 钉在库上而不是只钉内存：状态列没有读者（`into_entry` 恒投影 `Stopped`），真正决定
+    /// 「重启后还看不看得见这一行」的是行是否存在。产品若要把两条入口统一，改这里会红 ——
+    /// 那正是本用例存在的意义（保留策略见 `prd.md` §12.6.1）。
+    #[test]
+    fn natural_exit_deletes_the_row_while_an_explicit_close_keeps_it() {
+        let store = Arc::new(SqliteSessionStore::open_in_memory().expect("in-memory store"));
+        let registry = Registry::new(store.clone());
+        let base = registration(Some("claude-code"));
+
+        for id in ["natural", "closed"] {
+            let mut entry = SessionEntry::new(
+                id,
+                SessionKind::Terminal,
+                base.agent_id.clone(),
+                base.workspace.clone(),
+                base.cwd.as_str(),
+            )
+            .with_state(SessionState::Running)
+            // 列出的会话才落盘（写门 = `has_user_input`）。
+            .with_user_input(true);
+            entry.title = format!("会话-{id}");
+            entry.title_source = crate::live_sessions::entry::TitleSource::Prompt;
+            registry.register(entry);
+        }
+        assert!(store.load_cursor("natural").is_some(), "夹具：两行都在库里");
+        assert!(store.load_cursor("closed").is_some());
+
+        // 路径 A：进程自己结束 ⇒ 行随会话一起消失。
+        assert!(on_exit(&registry, "natural", Some(0)));
+        assert!(store.load_cursor("natural").is_none(), "自然结束必须删行");
+
+        // 路径 B：关 tab ⇒ 随后的退出是那次关闭的尾巴，行留着跨重启。
+        assert!(close_and_notify(&registry, None, "closed"));
+        assert!(!on_exit(&registry, "closed", None));
+        let kept = store
+            .load_cursor("closed")
+            .expect("关 tab 的行必须留在库里");
+        assert_eq!(kept.title, "会话-closed");
     }
 
     /// 未知会话的退出信号被丢弃（不会凭空建条目）。

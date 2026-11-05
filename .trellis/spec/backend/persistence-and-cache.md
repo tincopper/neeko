@@ -355,53 +355,132 @@ conn.trace(Some(|sql| { if sql.starts_with("BEGIN") { count += 1 } }));
 `AppStateWrapper` 注入时 `Arc::clone`）。新增一份「运行时状态表」等于让「哪些会话该恢复」
 有两个答案，而两者会独立漂移。
 
-### 4b.1 单向投影：`ResumeCursor::from_entry`
+### 4b.1 双向投影：`ResumeCursor::from_entry` / `into_entry`
 
-`live_sessions/cursor.rs` 是**唯一**投影点，方向固定为「运行时条目 → 持久化游标」：
+`live_sessions/cursor.rs` 是**唯一**投影点（2026-11-05 起双向）：
+
+**正向（运行时 → 持久化）**：只落**已出现在侧栏**的会话（`has_user_input`），chat 与
+terminal（含纯 shell）一视同仁 —— 落盘的是**侧栏行**，不是「一个可恢复的进程」。行的字段 =
+身份 + 标题 + 可见性 + 时间 + 原生恢复参数（`kind` / `project_id` / `worktree_path` /
+`title` / `title_source` / `has_user_input` / `native_session_id`；`created_at` → `started_at`，
+`last_activity` → `updated_at`）。
+
+状态投影仍然是单向的词表映射（运行时 5 态 → 持久化 4 态）：
 
 | 运行时（5 态） | 持久化 `SessionStatus`（4 态） | 理由 |
 | --- | --- | --- |
-| `Ready` / `Running` / `AwaitingApproval` | 同名 | 重启后要恢复的就是「还活着的会话」 |
-| `Failed` / `Stopped` | `Closed` | 数据库只需要回答「还在跑吗」，不需要区分怎么结束的 |
+| `Ready` / `Running` / `AwaitingApproval` | 同名 | 兼容既有 chat 恢复语义 |
+| `Failed` / `Stopped` | `Closed` | 数据库不需要区分怎么结束的 |
 
-反向投影**不存在**：启动时从不把 cursor 还原成 live 条目 —— 进程已经没了，凭空造一条
-`Ready` 会话就是侧栏幽灵行。投影穷举由 `every_runtime_state_projects_to_a_persisted_status` 钉住。
+**反向（持久化 → 运行时）**：`into_entry` 把行投影回 `SessionEntry`，且 `state` **固定为
+`Stopped`** —— 启动时进程已经没了，凭空造一条 `Ready` 会话就是侧栏幽灵行。反向只用于
+**回填侧栏列表**：不建 tab、不起进程、不 emit（`live_sessions::boot::restore` 在 `setup`
+调用，前端挂载后自己拉快照）。不可读的行返回 `None`，判据只有一份
+（[`ResumeCursor::is_restorable`]）：没名字、没单元、`Placeholder` 却带标题（损坏，不猜）。
 
-**terminal 条目投影为 `None`**（`terminal_entry_is_not_persistable_even_with_an_agent` /
-`terminal_entries_are_never_persisted`）：`agent_sessions.db` 存的是 agent chat 会话（原生
-resume 要 `agent_kind` / `model` / `runtime_mode`），写进终端条目只会造出「重启后能恢复一个
-终端」的假承诺。纯 shell 终端同理（拿不到 `agent_id`）。
+投影穷举由 `every_runtime_state_projects_to_a_persisted_status` 与
+`kind_and_title_source_maps_are_bijective` 钉住；全字段往返由
+`entry_survives_a_projection_round_trip` 钉住。
 
-### 4b.2 只覆盖注册表知道的字段
+### 4b.2 只覆盖创建期定格的字段
 
-写穿前先 `load_cursor` 读回既有行，**只**改写 `status` / `turn_count` / `last_activity`，
-保留 `model` / `runtime_mode`。原因：`runtime_mode` 是用户在创建会话时选的（如 `confirm`），
-用投影整体覆盖会把它静默改写回 `auto` —— 表现是「设置了一次，下次启动又变回去」，而且
-没有任何报错（`persist_keeps_fields_the_registry_does_not_know`）。
+写穿前先 `load_cursor` 读回既有行，**只**保留 `model` / `runtime_mode`（其余字段——标题 /
+可见性 / 地址 / 原生 id / 时间——以本次投影为准）。原因：`runtime_mode` 是用户在创建会话时
+选的（如 `confirm`），用投影整体覆盖会把它静默改写回 `auto` —— 表现是「设置了一次，下次启动
+又变回去」，而且没有任何报错（`persist_keeps_fields_the_registry_does_not_know`）。
 
 ### 4b.3 锁外落盘 + 失败只 warn
 
-注册表锁内只做 map 操作与克隆（`concurrency-guidelines.md` 红线 3 口径）：`register` / `apply`
-在 `guard()` 作用域里算出待写的 cursor，**出锁之后**才 `load_cursor` + `save_cursor`。写失败只
-`log::warn!`：内存事实已是权威，让一次磁盘抖动阻断状态转移只会把 UI 卡在旧状态。
+注册表锁内只做 map 操作与克隆（`concurrency-guidelines.md` 红线 3 口径）。**调用点只算
+「是否变化 / 是否需要写」的结论，不携带快照**：`Registry::persist_entry` 在专用
+`persist_gate: Mutex<()>` 内**重新**从内存投影再写。
 
-### 4b.3b 写穿节流：只写「DB 读者真的会读到」的变化
+这一层闸门不是装饰：同一会话有三个写者（Tauri 命令线程 / hook HTTP 线程 / chat 事件泵），
+而 `store` 是阻塞 IO、不能放进 `sessions` 锁。若直接把锁内快照拿到锁外写，后拿到锁的写者
+可能用**更旧**的快照覆盖用户改名 / `native_session_id`（只在重启后暴露）。闸门内重读让写入
+顺序与内存顺序一致（全量快照，最后一次写必然包含此前全部变更）。`unregister` 的删除同闸：
+否则一个在途旧快照会把刚删的行又写回去。写失败只 `log::warn!`：内存事实已是权威，让一次
+磁盘抖动阻断状态转移只会把 UI 卡在旧状态。
 
-`apply` 只在 **`turn_count` 变化（回合结束）** 或 **新状态是终态** 时落盘；`Running` /
-`AwaitingApproval` 这类中间态**不写**。
+### 4b.3b 写穿节流：只写「真的变了」的变化
 
-判据来自读者而不是感觉：`SessionStore::list_active` 只按 `status != Closed` 过滤，
-`session::boot` 也只拿它决定「哪些会话可恢复」—— 没有任何代码把中间态读回 live 条目。
-而 `apply` 的调用点在 `agent_chat` 的 16ms 合帧 emit 闭包里（`tauri::async_runtime::spawn`
+两条分支的节流判据不同，因为调用频率差一个量级：
+
+- **`apply` / `apply_activity`**（chat 事件泵、PTY 活动推断，高频）：只在 **`turn_count` 变化**
+  或 **新状态是终态** 时落盘；`Running` / `AwaitingApproval` 中间态**不写**。
+- **report 家族**（`report` / `report_first` / `report_user_input` / `report_authoritative` /
+  `set_title`，每回合或每次用户提交一次）：真变化就写穿 —— 否则标题、`has_user_input`、
+  `native_session_id` 永远进不了库（而它们正是重启后侧栏行与 `--resume` 的依据）。
+
+`apply` 的调用点在 `agent_chat` 的 16ms 合帧 emit 闭包里（`tauri::async_runtime::spawn`
 的任务内），每次转移同步写两次 SQLite 就是把这些阻塞调用压在异步执行器线程上（红线 3 取向）。
 节流后每个回合只写一次，且语义对全部读者等价（`persist_is_throttled_to_reader_relevant_transitions`）。
+report 家族的调用频率本身是「一回合一次」，无需再压。
 
-### 4b.4 标题不落盘
+### 4b.4 标题 / 可见性必须落盘（2026-11-05 改写）
 
-`ResumeCursor` 没有标题列，`set_title` 因此**只影响内存与版本号**。这不是缺项：标题是
-渲染期投影（会话恢复时由 `StreamRequest.topic` 重新成为 `Native` 素材，新会话由首条 prompt
-成为 `Prompt`），持久化它等于给标题造第二张表。`unregister` 才是落盘动作的终点 ——
-先摘表（视图立即看不到），再 best-effort `close_session`（`unregister_removes_the_entry_and_closes_the_cursor`）。
+旧结论「标题不落盘、反向投影不存在」已被用户实测推翻：应用退出后侧栏会话列表整片消失。
+新契约（`prd.md` R7）：
+
+| 事件 | 落盘 |
+| --- | --- |
+| 会话首次进入侧栏（`has_user_input` 置位 / 首次 Engage） | 建行（标题可能同批到达） |
+| 标题升级 / 用户改名（`User` 来源） | 更新 `title` / `title_source` —— 用户改的名字必须活过重启 |
+| `native_session_id` 回填 | 更新 —— 点击恢复的唯一入参 |
+| 状态转移 | 沿用 §4b.3b 的节流 |
+| `unregister`（用户删除 / 进程结束） | **DELETE** 行（不是标 `Closed`） |
+| `begin_shutdown` 之后 | 只摘内存，**不删行**（退出不等于清空） |
+
+**判据只有两份，各有名字，不要各自重写**：
+
+| 名字 | 位置 | 回答的问题 |
+| --- | --- | --- |
+| **写门** `has_user_input` | `live_sessions::cursor::from_entry` | 这一行**该不该存在**（用户确实动过这条会话） |
+| **读门** `ResumeCursor::is_restorable` | `agent::chat::session_store`（与类型同住） | 这一行**能不能投影回侧栏**（有名字 + 能定位单元 + 不是损坏行） |
+
+`SqliteSessionStore::list_restorable` 的 `WHERE project_id != '' AND title != ''` 只是**粗筛**
+（性能），必须是读门的**超集**；真正的过滤在 Rust 侧 `filter(ResumeCursor::is_restorable)`。
+漏一行的代价是「重启后会话消失」，多放一行只是浪费一次投影 —— 所以判据只准往「漏」的方向
+收紧，且只能改上面那一处。测试替身（`RecordingStore`）同样调读门，不重写规则
+（`list_restorable_applies_the_rust_gate_on_top_of_the_sql_prefilter`）。
+
+### 4b.5 退出抑制：`Registry::begin_shutdown`
+
+`shutdown_background_and_exit` 第一行调 `begin_shutdown()`（`AtomicBool`）。之后任何清理路径
+（`close_all_sessions` → `unregister`）只摘内存条目、不删持久化行 —— 否则「退出」会被写成
+「用户删光了所有会话」，下次启动侧栏为空。崩溃 / 强杀天然满足（根本没走到 `unregister`）。
+
+### 4b.6 列所有权：`ResumeCursor::with_creation_fields_of`
+
+一行被两个域写：agent 域写**创建期定格**列（`model` / `runtime_mode` / `started_at`，来自
+`build_resume_cursor`），live_sessions 域写**投影**列（标题 / 可见性 / 地址 / 原生 id / 时间）。
+
+字段清单只写在 `with_creation_fields_of` 一处，两条写路径都必须成立：
+
+1. `Registry::write_cursor` 在写盘前读旧值并调该函数（与具体 store 实现无关）；
+2. `SqliteSessionStore::save_cursor` 的 `ON CONFLICT DO UPDATE` **不含**这三列。
+
+护栏：`creation_fields_survive_both_write_paths`（纯函数 + SQL 两条腿）、
+`persist_keeps_fields_the_registry_does_not_know`（注册表侧）。改任一处清单都会红。
+
+### 4b.7 三个已知张力（增长 / 去留 / 阻塞写）
+
+**① 增长路径（红线 4 / 16）**：行只在 `unregister` 时删除，关 tab 的行永久保留，
+`restore_from_store` 启动全量读回，而 `list_live_sessions` 单次返回整份快照 —— 这是**唯一**
+单调增长的 IPC 载荷。红线 16 已给出正确形状：不要加 `LIMIT` 裁掉可观测集合，而是
+「至多 N 个**热**行，其余惰性可读」（进入单元时按需拉）。保留策略（N 天 / 每单元最近 K 条）
+是产品决策，未定；在它定之前，不要在读取侧偷偷加截断。
+
+**② 同一事实两种去留（故意）**：终端进程自己结束 ⇒ `on_exit` → `unregister` **删行**；
+用户点 X ⇒ `close_and_notify` → **保留行**（`Stopped`，跨重启的「点回来」入口）。
+两条都不是缺陷，但产品若要统一，先改 `natural_exit_deletes_the_row_while_an_explicit_close_keeps_it`
+这条用例再改实现。
+
+**③ 阻塞写的位置（红线 3）**：`set_live_session_title` / `adopt_live_session` 是**非 async** 的
+`#[tauri::command]`，其中的 SQLite 写在 IPC 线程上同步执行（`save_cursor` = SELECT + UPSERT）。
+当前体量（一次改名 / 一次恢复）可接受；若将来变慢，正确改法是
+`tauri::async_runtime::spawn_blocking`，**不要**加 `async` 关键字（那会把阻塞 IO 挪进异步
+执行器线程，正是红线 3 反对的方向）。
 
 ## 5. 前端通用层（`src/shared/cache/`）
 

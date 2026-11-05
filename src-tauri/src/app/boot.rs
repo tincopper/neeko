@@ -97,6 +97,11 @@ fn on_setup(app: &tauri::App) {
 
     inject_main_window(app, &state);
 
+    // 侧栏列表恢复：只把持久化行回填成 `Stopped` 条目 —— **不**建 tab、**不**起进程，
+    // 进程恢复发生在用户点击那一行之后（`useActivateSession`）。不 emit：前端尚未挂载，
+    // `useLiveSessionsBridge` 挂载即拉快照。失败只降级为「空列表」（注册表仍是本次运行的事实）。
+    crate::live_sessions::boot::restore(&state.live_sessions);
+
     if let Some(active_id) =
         crate::session::boot::restore_workspace(&state.storage_manager, &state.project_manager)
     {

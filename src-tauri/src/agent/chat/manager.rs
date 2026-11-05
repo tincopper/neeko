@@ -177,11 +177,6 @@ impl AgentChatManager {
             .map_err(|e| AppError::Unknown(format!("agent chat request channel closed: {e}")))
     }
 
-    /// List all active (non-closed) sessions from the store.
-    pub fn list_active(&self) -> Vec<ResumeCursor> {
-        self.store.list_active()
-    }
-
     /// Update a session's status in the store.
     pub fn update_status(&self, session_id: &str, status: SessionStatus) -> Result<(), AppError> {
         let mut cursor = self
