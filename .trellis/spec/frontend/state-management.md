@@ -2231,11 +2231,26 @@ failed > ready > stopped`），**无会话返回 `null` 且不渲染状态点**�
 会话行用强调色 12% 淡底（单通道 —— 左侧 2px 色条已按 2026-11-02 反馈去掉：它和行内的
 agent 图标挤在同一段左内边距上，读起来像错位的装饰块）；父级（单元行）在
 **它里面有会话被选中时不再填充**，只保留文字语气，否则才用中性 `--bg-selected`。
-判据来源是 `selectActiveSessionRefs`（从稳定的 `tabs` / `editorLayout` 切片在 `useMemo`
-中派生前台会话的 `workspaceKey + kind + sessionId`）+ `unitsWithListedActiveSession`
-（再与 live 快照求交，未列出 / 未输入的会话不让父行失去选中态）。父行只在子列表**实际
-展开**时让出填充，折叠或当前会话被分页挡住时仍保留中性选中底。图标方块**不再叠第二层底色** ——
+判据来源是一份共享的 refs：`useActiveSessionRefs`（`shared/hooks/`）订阅 `activeProjectId`
++ `useActiveWorkspaceKey` + 稳定的 `tabs` / `editorLayout` 切片，只让 `selectActiveSessionRefs`
+派生**当前单元**的中心前台与各 dock 宿主前台（`workspaceKey + kind + sessionId`）；
+`useUnitsWithActiveSession`（父行）与 `UnitSessionList`（子行 `activeSession`）都消费这一份，
+父行侧再经 `unitsWithListedActiveSession` 与 live 快照求交（未列出 / 未输入的会话不让父行
+失去选中态）。父行只在子列表**实际展开**时让出填充，折叠时仍保留中性选中底（`SessionList` 的
+`effectiveVisibleCount` 保证当前会话不会被分页藏起来）。图标方块**不再叠第二层底色** ——
 同一个选中被强调两次，是「别扭」的第二个来源。
+
+**「当前」只有一个派生点（R8，2026-11-05）**：`editorLayout[tabKey].activeTabId` 是**按单元
+分槽**的局部状态（切回来要恢复上次前台 tab，是正确的恢复语义），不是全局「当前」。早期
+`selectActiveSessionRefs` 遍历 `Object.keys(tabs)` 的全部单元，且 `UnitSessionList` 自己读本单元
+的 `activeTabId` ⇒ 切项目 / 切 worktree 后旧单元仍亮着，多个项目各有一行 `row-current`。
+修复形态：`selectActiveSessionRefs(state, workspaceKey)` 收窄为**单 tab 空间**（`null` ⇒ `[]`），
+候选顺序固定为「中心前台 → `DOCK_SLOTS` 各宿主前台」；key 只由
+`useActiveWorkspaceKey(activeProjectId)` 注入；两处消费共用 `useActiveSessionRefs`。
+**禁止**在每个组件里各写一遍 `workspaceKey === activeKey`（第二份判据），也禁止为此新建
+全局「当前会话」store（影子状态，红线 17）。停靠到 dock 宿主的会话同样进 refs，所以父子
+两层同源；若中心前台与 dock 前台是两条不同会话，`UnitSessionList` 按 **refs 顺序**取第一条
+（中心优先），不让后端快照顺序决定「哪一行亮」。
 
 **侧栏只列「用户已经用过、且有名字」的会话**（`isListedSession` = `has_user_input` && `isNamedSession`）。
 `has_user_input` 由后端在**用户发出第一条输入**时翻转（chat 的首次 `agent_stream`——含

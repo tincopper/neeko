@@ -206,8 +206,14 @@ R4.3 随之解除「不做 OSC」的限制：Native 恢复为可用来源（prov
 - **R7.6 兼容存量**：`agent_sessions.db` 是私有迁移链（无 `user_version`），扩列必须幂等；
   旧行缺字段时给默认值，`project_id` 为空 / 无标题的旧行不恢复（无法定位单元 / 不可见）。
 
-**不在本轮范围**：启动时自动恢复 agent / 自动打开 tab；chat 会话级对话自动续接（需要 chat 原生
-session id，见 §8.2）；其它裸 `<input>` 的全量收编（另开任务）。
+**R8（P0）——「当前会话」是全局唯一事实（第 34 轮回归）：**
+
+- **R8.1 高亮只属于当前单元**：会话行的选中态（`row-current`）只能出现在**当前激活项目 + 当前激活单元**下。切换项目 / 切换 worktree 后，旧单元的会话行必须立即熄灭 —— 不能出现多个项目下各亮一行「当前」。
+- **R8.2 父子两层同源**：父行让出选中底（`childActive`）与子行高亮必须由同一份「当前前台会话」派生，禁止「父行让出、子行不亮」或「父行不让、子行却亮」。
+- **R8.3 局部状态 ≠ 全局事实**：每个 tab 空间保存自己的前台 tab（`editorLayout[tabKey].activeTabId`）是**恢复语义**（切回来要接上），不得直接当作全局「当前」。区分两者的派生点只有一个：`workspaceStore` 的 `useActiveWorkspaceKey(activeProjectId)` / `activeWorkspaceKeyOf()`。
+- **R8.4 dock 一致性**：停靠到 dock 宿主的会话仍是「正在展示的会话」，切换项目时一并熄灭，不高亮、不让出父行选中底。
+
+**不在本轮范围**：多面板同时展示两个不同 Workspace（当前热集合恒为 1 元素）；跨项目的「最近访问」视觉提示（产品未定义）。
 
 ### 第五轮验收补充
 
@@ -219,3 +225,12 @@ session id，见 §8.2）；其它裸 `<input>` 的全量收编（另开任务�
 - [ ] AC15 真机：列出若干 chat / terminal 会话 → 退出 → 重启，侧栏行仍在、标题不变、
       单元归属正确、行状态为 stopped；点 terminal 行能 `--resume`（有 native id 时）；
       删除一条后重启不再出现。
+
+### 第六轮验收补充（R8 回归）
+
+- [x] AC16 单测：`selectActiveSessionRefs` 只返回**指定单元**的前台会话 refs（含 dock 宿主前台）；
+      传入另一个单元的 key 时返回那个单元的，传 `null` 返回空。
+- [x] AC17 单测：切换 `activeProjectId` 后，旧单元的 `useUnitsWithActiveSession` 不再命中，
+      `UnitSessionList` 不再把 `activeSession` 传给旧单元的 `SessionList`。
+- [ ] AC18 真机：两个项目各点一个会话行 → 切到另一个项目，旧项目下的 `row-current` 消失，
+      侧栏只剩当前项目的「当前」提示。

@@ -1264,3 +1264,77 @@ dnd-kit 的激活键是同一组键。结论：**项目列表只支持指针拖�
 - **不改「自然结束删行」**：产品语义，已用测试钉住现状；若要统一成「都保留」，先改用例。
 - **不把 `adopt_live_session` 改 async**：正确改法是 `spawn_blocking`（加 `async` 会把阻塞 IO
   挪进执行器线程，红线 3 反方向），当前体量不值得动；已记入 §4b.7③。
+
+## 第 34 轮：会话列表「当前」跨项目残留（R8 回归，TDD）
+
+### 34.0 现场与第一性原理
+
+用户实测：点某项目下的会话行后该行亮起；切到另一个项目后它**仍然亮着**，多个项目下同时有
+「选中」，分不清当前选中的是哪个项目。
+
+- **事实层**：`editorStore.editorLayout[tabKey].activeTabId` 是**按单元分槽**保存的局部状态
+  （切回该单元要恢复上次前台 tab，这是正确的恢复语义）。
+- **错误**：`UnitSessionList.tsx:38-43` 直接用本槽 `activeTabId` 算 `activeSession` →
+  `SessionList` 画 `row-current`，**没有叠加「这个单元是不是当前单元」**。
+- **第二处**：`useUnitsWithActiveSession.ts:27` 的 `selectActiveSessionRefs` 遍历
+  `Object.keys(state.tabs)` 的**所有单元**，于是旧项目父行也 `childActive=true` → 让出选中底。
+- **唯一真源**：`workspaceStore` 的 `useActiveWorkspaceKey(activeProjectId)` /
+  `activeWorkspaceKeyOf()`（状态管理规范 §8「激活态只有一个真源」；`useVisibleWorkspaces`
+  的热集合就是它，恒 1 元素）。本地侧栏与 WSL/SSH 连接侧栏都用同一个 projectId 空间。
+
+**修复原则**：把「当前前台会话 refs」收敛成**一个**派生点，输入含 `activeWorkspaceKey`；
+两处消费共用它。禁止在每个组件里各写一遍 `workspaceKey === activeKey`（那会造出第二份判据）。
+
+### 34.1 先红（Red）
+- [x] `editorTabSelectors.test.ts`：`selectActiveSessionRefs(state, workspaceKey)` 只返回指定单元；
+      两单元都有前台会话时，传 A 的 key 不得带出 B 的 ref；传 `null` 返回空（先跑出红）。
+- [x] 回归用例：模拟两个项目各有前台会话 tab，切换 `activeProjectId` 后，旧单元的
+      `useUnitsWithActiveSession` 不命中 / `UnitSessionList` 不传 `activeSession`。
+
+### 34.2 后绿（Green）
+- [x] `editorTabSelectors.ts`：`selectActiveSessionRefs` 收窄为「单个 tab 空间」语义
+      （中心前台 + `DOCK_SLOTS` 各宿主前台），`workspaceKey: WorkspaceKey | string | null` 入参；
+      候选顺序固定为「中心 → 左 dock → 右 dock」（`sort` 随单单元语义退役，新增顺序用例），
+      更新既有 6 条用例。
+- [x] 新增 `shared/hooks/useActiveSessionRefs.ts`：`activeProjectId` + `useActiveWorkspaceKey`
+      + `tabs` / `editorLayout` 稳定切片 → 当前单元的前台会话 refs（无当前单元时返回共享空常量）。
+- [x] `useUnitsWithActiveSession.ts` 改为复用该 hook（删掉自己的 store 订阅与 select 调用）。
+- [x] `UnitSessionList.tsx` 改用同一份 refs 求 `activeSession`（`isSameSession` + workspaceKey 相等）；
+      删掉 `tabSpace` / `activeTabId` / `tabSession` 的局部派生。注意顺带修好既有不一致：
+      dock 里的会话此前会让父行让出选中底、子行却不亮。
+- [x] 不新建全局「当前会话」store、不加影子状态（红线 17）。
+
+### 34.3 验证与同步
+- [x] 相关 vitest：`vitest run` 5 个文件 **89 passed**（`editorTabSelectors` /
+      `useActiveSessionRefs` / `useUnitsWithActiveSession` / `UnitSessionList` /
+      `liveSessionSelectors`）；`pnpm check:quick` **22/22 护栏、0 违规、0 护栏失效**。
+- [x] 同步 `.trellis/spec/frontend/state-management.md`「选中态」契约（R8 单派生点）。
+      `component-guidelines.md` 本轮无契约变化，未动。
+- 不动 `src-tauri/src/common/db/migrations.rs`（工作树里的既有破坏性改动，用户明确不碰）。
+
+### 34.4 `trellis-check` 复核与收口（Round 34 收尾）
+
+- 独立审核结论：**无 Block，可提交**。变异验证（把 3 个生产文件退回 HEAD）⇒ 4 个测试文件
+  共 **7 条用例转红**，回归钉子是真的；WSL/SSH 连接侧栏的 `mainUnitKey` 与本地侧栏同处一个
+  projectId 空间（`useCrossTypeSelection.handleSelectProject` 设 `activeProjectId`），无双高亮、
+  无未用 import、`tabSession` 仍有其他消费者。
+- [x] **收口 Warning 1（dock 优先级）**：`UnitSessionList.activeSession` 由
+      `unitSessions.find(…refs.some…)` 改为**按 refs 外层迭代**（中心前台优先），不让后端快照
+      顺序决定「哪一行亮」。补组件用例 `中心前台与 dock 前台是两条不同会话`，先红（旧实现
+      先命中快照里靠前的停靠会话）后绿。spec 同步写明该优先级。
+- **Warning 2 记录为 follow-up（本轮不改）**：`src/shared/hooks/useProjectActions.ts:70-88`
+  的 WSL/SSH `openWorktreeTerminal` 读全局 `activeProjectId` 且不切项目；而
+  `useActivateSession` 只 `setActiveWorkspace(...)`、不写 `activeProjectId`。因此点击**非激活**
+  WSL/SSH worktree 卡片下的会话行，R8 之后不会高亮（该项目本来就不是「当前」，符合 R8.1，
+  但点击体验有落差）。修它要动 onboarding 流程与 `revealUnit` 的分工，超出本轮范围；
+  若要修，正确落点是让 `revealUnit` 先切 `activeProjectId`（主单元行已经这么做）。
+- **两条 Nit 不改，理由**：
+  - `selectActiveSessionRefs` 保留 `WorkspaceKey | string | null` + `String()`：`EditorTabSpaceState.tabs`
+    是 `Record<string, …>`，这是**按 store 键索引**而非构造身份（红线 12 管的是后者）；收紧成
+    纯 `WorkspaceKey` 会迫使测试夹具写无意义的 cast，唯一生产调用方传的本来就是 `WorkspaceKey`。
+  - `useActiveSessionRefs.test.ts` 夹具的 `scope: {kind:'app'}` 不是生产形态，但该 selector
+    只读 `tab.data`、不看 `scope`，改成 workspace scope 不增加判别力（YAGNI）。
+- [x] spec 里「当前会话被分页挡住」分句删除 —— `effectiveVisibleCount` 保证不可达。
+- [x] 验证：4 个测试文件 **56 passed**（含 dock 优先级新用例）；
+      `pnpm check:quick` 收尾 **22/22 护栏、0 违规、0 护栏失效**（含 eslint + tsc + clippy）。
+- [ ] AC18 真机仍待人工：两个项目各点一个会话行 → 切到另一个项目，旧项目 `row-current` 消失。
