@@ -4,7 +4,6 @@ export { useDockBarMove } from './useDockBarMove';
 export { useDockBarOpenTab } from './useDockBarOpenTab';
 export { useDockTabHostContent } from './useDockTabHostContent';
 export { useDockTabHostReveal } from './useDockTabHostReveal';
-export { useVisibleTabKinds } from './useVisibleTabKinds';
 export { useAppGlobalEffects } from './useAppGlobalEffects';
 export { useAppStoreSync } from './useAppStoreSync';
 export { useAppEntryAddRefresh } from './useAppEntryAddRefresh';

@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { EditorGroupPane } from '@/features/editor';
-import { isViewVisible, tabHostView, type DockSlot } from '@/shared/dock';
+import { slotVisibleView, tabHostView, type DockSlot } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
 import { DOCK_PANE_ID } from '@/shared/types/editorGroup';
 
@@ -50,7 +50,9 @@ const DockTabHost: React.FC<DockTabHostProps> = ({
   const { tabs, activeTabId } = useDockedPane(tabKey, slot);
   // 本宿主是否真的可见（槽位展开 + 本宿主为前台）：浏览器 tab 的 sub-webview 靠它开关
   // —— 未前台的槽位内容被 DockZone 用 CSS hidden 藏起，不能让 webview 还「以为自己在显示」。
-  const isActivePane = useDockStore((s) => isViewVisible(s, tabHostView(slot)));
+  // 槽内口径（不是 `isViewVisible` 的跨槽口径）：图标选中态（`selectSlotFrontTabKind`）用的是
+  // 同一个判据，两处必须同生死 —— 否则会出现「图标说隐藏、webview 说显示」的分叉。
+  const isActivePane = useDockStore((s) => slotVisibleView(s, slot) === tabHostView(slot));
 
   if (!tabKey || tabs.length === 0) {
     return null;

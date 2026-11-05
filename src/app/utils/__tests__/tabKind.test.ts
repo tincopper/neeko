@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { tabHostView } from '@/shared/dock';
+import { panelView, tabHostView, type DockSlot } from '@/shared/dock';
 import { createDefaultDockState, useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { Tab } from '@/shared/types';
+import type { Tab, TabKind } from '@/shared/types';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import {
+  findTabInSlot,
   findTabOfKind,
   isOpenableTabKind,
   SESSION_KIND_OF_TAB_KIND,
-  selectVisibleTabKinds,
+  selectSlotFrontTabKind,
 } from '../tabKind';
 
 /**
@@ -44,9 +45,10 @@ function find(kind: 'terminal' | 'agent-chat') {
   return findTabOfKind(tabs, layout, kind);
 }
 
-function visible(appView: 'normal' | 'settings' | 'library' = 'normal') {
+/** 某一栏图标的选中态判据（只有「本栏」参与，中心区不参与）。 */
+function frontKind(slot: DockSlot = 'right') {
   const { tabs, layout } = space();
-  return selectVisibleTabKinds(tabs, layout, useDockStore.getState(), appView);
+  return selectSlotFrontTabKind(tabs, layout, useDockStore.getState(), slot);
 }
 
 beforeEach(() => {
@@ -113,48 +115,146 @@ describe('findTabOfKind', () => {
   });
 });
 
-describe('selectVisibleTabKinds — 图标选中态的唯一判据', () => {
-  it('无布局 → 空集', () => {
+describe('selectSlotFrontTabKind — 图标选中态的唯一判据（只看**本栏**）', () => {
+  it('无布局 → null', () => {
     expect(
-      selectVisibleTabKinds(undefined, undefined, useDockStore.getState(), 'normal').size,
-    ).toBe(0);
+      selectSlotFrontTabKind(undefined, undefined, useDockStore.getState(), 'right'),
+    ).toBeNull();
   });
 
-  it('中心前台 tab 的种类可见（normal 视图）', () => {
+  it('中心前台 tab 不点亮任何一栏的图标（回归：中间开 chat 不该让右栏图标选中）', () => {
     seed([workspaceTab('c1', 'agent-chat')]);
 
-    expect(visible()).toEqual(new Set(['agent-chat']));
+    expect(frontKind('right')).toBeNull();
+    expect(frontKind('left')).toBeNull();
   });
 
-  it('Library / Settings 覆盖中心区 → 中间的 tab 不可见', () => {
-    seed([workspaceTab('c1', 'agent-chat')]);
+  it('中心前台是 terminal 同样不点亮（右栏 Terminal 图标只代表右栏自己）', () => {
+    seed([workspaceTab('t1', 'terminal')]);
 
-    expect(visible('library').size).toBe(0);
-    expect(visible('settings').size).toBe(0);
+    expect(frontKind('right')).toBeNull();
   });
 
-  it('停靠宿主可见（槽展开 + 宿主前台）→ 该槽前台 tab 的种类可见', () => {
+  it('停靠宿主可见（槽展开 + 宿主前台）→ 该栏前台的种类', () => {
     seed([workspaceTab('t1', 'terminal')]);
     useEditorStore.getState().dockTab(SPACE, 't1', 'right');
     useDockStore.getState().activateView(tabHostView('right'));
 
-    expect(visible()).toEqual(new Set(['terminal']));
+    expect(frontKind('right')).toBe('terminal');
   });
 
-  it('宿主被收起 → 不可见（隐藏的 tab 不该点亮图标）', () => {
+  it('宿主被收起 → null（隐藏的 tab 不该点亮图标）', () => {
     seed([workspaceTab('t1', 'terminal')]);
     useEditorStore.getState().dockTab(SPACE, 't1', 'right');
     useDockStore.getState().activateView(tabHostView('right'));
     useDockStore.getState().setSlotExpanded('right', false);
 
-    expect(visible().size).toBe(0);
+    expect(frontKind('right')).toBeNull();
   });
 
-  it('中心与宿主可以同时可见（两种 kind 同时高亮，不是单选）', () => {
-    seed([workspaceTab('c1', 'agent-chat'), workspaceTab('t1', 'terminal')]);
+  it('本栏被别的面板占着前台（宿主不在前台）→ null', () => {
+    seed([workspaceTab('t1', 'terminal')]);
     useEditorStore.getState().dockTab(SPACE, 't1', 'right');
     useDockStore.getState().activateView(tabHostView('right'));
+    useDockStore.getState().activateView(panelView('files'));
 
-    expect(visible()).toEqual(new Set(['agent-chat', 'terminal']));
+    expect(frontKind('right')).toBeNull();
+  });
+
+  it('两栏互相独立：左栏报 chat、右栏报 terminal（不是一个全局集合）', () => {
+    seed([workspaceTab('c1', 'agent-chat'), workspaceTab('t1', 'terminal')]);
+    useEditorStore.getState().dockTab(SPACE, 'c1', 'left');
+    useEditorStore.getState().dockTab(SPACE, 't1', 'right');
+    useDockStore.getState().activateView(tabHostView('left'));
+    useDockStore.getState().activateView(tabHostView('right'));
+
+    expect(frontKind('left')).toBe('agent-chat');
+    expect(frontKind('right')).toBe('terminal');
+  });
+
+  it('宿主前台换到另一条 kind → 返回值跟着换（不是「出现过就常亮」）', () => {
+    seed([workspaceTab('c1', 'agent-chat'), workspaceTab('t1', 'terminal')]);
+    useEditorStore.getState().dockTab(SPACE, 'c1', 'right');
+    useEditorStore.getState().dockTab(SPACE, 't1', 'right');
+    useDockStore.getState().activateView(tabHostView('right'));
+    expect(frontKind('right')).toBe('terminal');
+
+    useEditorStore.getState().activateTab(SPACE, 'c1');
+
+    expect(frontKind('right')).toBe('agent-chat');
+  });
+
+  it('本槽收起时，别的槽把前台指向本槽宿主也不算「本栏打开」（跨槽泄漏）', () => {
+    seed([workspaceTab('t1', 'terminal')]);
+    useEditorStore.getState().dockTab(SPACE, 't1', 'left');
+    // isViewVisible 会在这个态上说「tabHost:left 可见」（右槽展开且前台指向它）——
+    // 槽内口径必须回答「左槽在显示谁」：左槽收起 → null。
+    useDockStore.setState({
+      zones: {
+        left: { expanded: false, activeView: tabHostView('left') },
+        right: { expanded: true, activeView: tabHostView('left') },
+      },
+    });
+
+    expect(frontKind('left')).toBeNull();
+  });
+
+  it('前台指向已不存在的 tab → null（残留 id 不点亮图标）', () => {
+    seed([workspaceTab('t1', 'terminal')]);
+    useEditorStore.getState().dockTab(SPACE, 't1', 'right');
+    useDockStore.getState().activateView(tabHostView('right'));
+    useEditorStore.setState((s) => ({
+      editorLayout: {
+        [SPACE]: {
+          ...s.editorLayout[SPACE],
+          docked: {
+            ...s.editorLayout[SPACE].docked,
+            right: { tabIds: ['ghost'], activeTabId: 'ghost' },
+          },
+        },
+      },
+    }));
+
+    expect(frontKind('right')).toBeNull();
+  });
+
+  it('tabs 注册表缺失 → null（不拿未知种类去点亮图标）', () => {
+    seed([workspaceTab('t1', 'terminal')]);
+    useEditorStore.getState().dockTab(SPACE, 't1', 'right');
+    useDockStore.getState().activateView(tabHostView('right'));
+    const { layout } = space();
+
+    expect(selectSlotFrontTabKind(undefined, layout, useDockStore.getState(), 'right')).toBeNull();
+  });
+});
+
+describe('findTabInSlot — 「这一栏的实例」= 前台优先，否则声明序', () => {
+  function inSlot(slot: DockSlot, kind: TabKind) {
+    const { tabs, layout } = space();
+    return findTabInSlot(tabs, layout, slot, kind);
+  }
+
+  it('同栏多条同种：前台优先（高亮着时点一下 = 收起，而不是「切到另一条」）', () => {
+    seed([workspaceTab('t1', 'terminal'), workspaceTab('t2', 'terminal')]);
+    useEditorStore.getState().dockTab(SPACE, 't1', 'right');
+    useEditorStore.getState().dockTab(SPACE, 't2', 'right'); // 后停的是前台
+
+    expect(inSlot('right', 'terminal')?.tabId).toBe('t2');
+  });
+
+  it('前台不是该种类时回落声明序首条（确定性，不随点击漂移）', () => {
+    seed([workspaceTab('t1', 'terminal'), workspaceTab('c1', 'agent-chat')]);
+    useEditorStore.getState().dockTab(SPACE, 't1', 'right');
+    useEditorStore.getState().dockTab(SPACE, 'c1', 'right'); // 前台是 chat
+
+    expect(inSlot('right', 'terminal')?.tabId).toBe('t1');
+    expect(inSlot('right', 'terminal')?.tabId).toBe('t1');
+  });
+
+  it('只看本槽：另一槽的同种 tab 不被认', () => {
+    seed([workspaceTab('t1', 'terminal')]);
+    useEditorStore.getState().dockTab(SPACE, 't1', 'left');
+
+    expect(inSlot('right', 'terminal')).toBeNull();
   });
 });

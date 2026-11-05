@@ -1,11 +1,11 @@
 import {
   DOCK_SLOTS,
-  isViewVisible,
+  slotVisibleView,
   tabHostView,
   type DockLayoutState,
   type DockSlot,
 } from '@/shared/dock';
-import type { AppView } from '@/shared/store/appViewStore';
+import { selectDockedActiveTab } from '@/shared/store/editorTabSelectors';
 import type { EditorSplitLayout, ProjectTabs, Tab, TabKind } from '@/shared/types';
 import type { SessionKind } from '@/shared/types/liveSessions';
 
@@ -15,8 +15,8 @@ import type { SessionKind } from '@/shared/types/liveSessions';
  * 第一性原理：种类入口点下去只有两种结果（**激活已有的**或**新建一条**），而「已有」与
  * 「落在哪个槽」都是**布局事实的派生**，不是可以各写一份的判断：
  * - 哪条 tab 属于这个种类、它现在在哪个 surface → `findTabOfKind`（读 `editorLayout`）；
- * - 哪些种类此刻真的显示在屏幕上（图标选中态） → `selectVisibleTabKinds`（与 `DockTabHost`
- *   的可见判据同源：槽展开 + 宿主为前台）。
+ * - 某一栏的图标此刻该不该亮 → `selectSlotFrontTabKind`（与 `DockTabHost` 的可见判据同源：
+ *   槽展开 + 宿主为前台）。
  *
  * 判据若散到消费侧，就会出现「图标高亮着但那条 tab 其实在收起的槽里」这类分叉。
  */
@@ -65,7 +65,10 @@ export function matchOfOpenableKind(kind: OpenableTabKind): (tab: Tab) => boolea
  * 只在**指定槽**里找该种类的 tab（`dockEntryScope: 'slot'` 用）。
  *
  * 与 `findTabOfKind` 的差别是范围而不是判据：判据（`match`）必须两边一致，否则
- * 「什么算同一条」会出现第二个定义。
+ * 「什么算同一条」会出现第二个定义。两者的**优先级也一致**：前台优先 —— 「这一栏的实例」
+ * 指你正在看的那一条；否则图标亮着时点一下，得到的是「切到另一条」这种无声的反直觉行为。
+ *
+ * 前台由 `selectDockedActiveTab` 给出（存活口径的唯一派生点），不在本函数里比 `activeTabId`。
  */
 export function findTabInSlot(
   tabs: ProjectTabs | undefined,
@@ -74,11 +77,16 @@ export function findTabInSlot(
   kind: TabKind,
   match: (tab: Tab) => boolean = () => true,
 ): TabKindTarget | null {
-  const group = layout?.docked[slot];
-  if (!group) return null;
+  if (!layout) return null;
+
   const byId = new Map((tabs?.tabs ?? []).map((tab) => [tab.id, tab]));
-  for (const id of group.tabIds) {
-    const tab = byId.get(id);
+  const front = selectDockedActiveTab(tabs, layout, slot);
+  // 前台优先，其余按槽内声明序（确定性：同样输入点两次不会选到不同的 tab）
+  const ordered = [
+    ...(front ? [front] : []),
+    ...layout.docked[slot].tabIds.filter((id) => id !== front?.id).map((id) => byId.get(id)),
+  ];
+  for (const tab of ordered) {
     if (tab && tab.data.kind === kind && match(tab)) return { tabId: tab.id, dockSlot: slot };
   }
   return null;
@@ -108,9 +116,14 @@ export function findTabOfKind(
   if (matches.length === 0) return null;
   if (!layout) return { tabId: matches[0].id, dockSlot: null };
 
+  // 前台集合：中心组 + 每个停靠宿主（宿主前台走同一个派生点，不在这里重复存活口径）
   const foreground = new Set<string>();
-  foreground.add(layout.groups[layout.activeGroupId].activeTabId ?? '');
-  for (const slot of DOCK_SLOTS) foreground.add(layout.docked[slot].activeTabId ?? '');
+  const centerActiveId = layout.groups[layout.activeGroupId].activeTabId;
+  if (centerActiveId) foreground.add(centerActiveId);
+  for (const slot of DOCK_SLOTS) {
+    const front = selectDockedActiveTab(tabs, layout, slot);
+    if (front) foreground.add(front.id);
+  }
   const target = matches.find((tab) => foreground.has(tab.id)) ?? matches[0];
 
   const dockSlot =
@@ -119,33 +132,31 @@ export function findTabOfKind(
 }
 
 /**
- * 当前**真的显示出来**的 tab 种类集合（图标选中态的唯一判据）。
+ * 某一栏的槽位宿主此刻**前台显示**的 tab 种类（`null` = 这一栏没在显示任何停靠 tab）。
  *
- * 用 `string` 而不是 `TabKind` 作元素类型：入参来源是声明表的 `tabKind`（遮蔽成
- * `TabKindLike`，刻意不让 `shared/dock` 依赖 tab 联合），消费侧只做「这个种类亮不亮」，
- * 收窄成联合只会在边界多一次断言。
+ * 种类入口图标的**选中态唯一判据**。图标代表的是「**这一栏**的入口」，所以判据只看本栏：
+ * - 本栏宿主不可见（槽收起 / 本栏前台是别的面板）→ `null`；
+ * - 本栏宿主可见 → 它前台的 tab 种类。
  *
- * 中心区只在 `normal` 视图下可见（Library / Settings 覆盖它，此时中间的 tab 看不见）；
- * 槽位宿主与 `DockTabHost` 同判据（槽展开 + 宿主为前台）。
+ * 中心区**刻意不参与**：中间的 chat / terminal 不是「侧栏被打开」，把它算进来会让图标在右栏
+ * 收起时也常亮（用户无法从图标判断右栏到底是开还是关）。
+ *
+ * 「本栏是否在显示宿主」问 `slotVisibleView`（**槽内**口径），不是 `isViewVisible`（跨槽口径）——
+ * 后者会把别的槽把前台指向本槽这种异常态也算成「本栏打开」。
+ *
+ * 与点击的关系：`dockEntryScope: 'slot'` 的入口（terminal）因为 `findTabInSlot` 同样前台优先，
+ * 高亮时点一下就是「收起」；`'anywhere'` 的入口（agent-chat）点击是「回到我正在用的那条」，
+ * 可能落在中心区 —— 两种语义各自成立，不要把它们写成一句等价关系。
+ *
+ * 返回值用 `string` 而不是 `TabKind`：入参来源是声明表的 `tabKind`（遮蔽成 `TabKindLike`，
+ * 刻意不让 `shared/dock` 依赖 tab 联合）；消费侧只做一次比较（`frontTabKind === activation.tabKind`）。
  */
-export function selectVisibleTabKinds(
+export function selectSlotFrontTabKind(
   tabs: ProjectTabs | undefined,
   layout: EditorSplitLayout | undefined,
   dock: Pick<DockLayoutState, 'zones'>,
-  appView: AppView,
-): ReadonlySet<string> {
-  const kinds = new Set<string>();
-  if (!layout) return kinds;
-
-  const byId = new Map((tabs?.tabs ?? []).map((tab) => [tab.id, tab]));
-  const add = (tabId: string | null | undefined): void => {
-    const tab = tabId ? byId.get(tabId) : undefined;
-    if (tab) kinds.add(tab.data.kind);
-  };
-
-  if (appView === 'normal') add(layout.groups[layout.activeGroupId].activeTabId);
-  for (const slot of DOCK_SLOTS) {
-    if (isViewVisible(dock, tabHostView(slot))) add(layout.docked[slot].activeTabId);
-  }
-  return kinds;
+  slot: DockSlot,
+): string | null {
+  if (slotVisibleView(dock, slot) !== tabHostView(slot)) return null;
+  return selectDockedActiveTab(tabs, layout, slot)?.data.kind ?? null;
 }

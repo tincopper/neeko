@@ -6,7 +6,7 @@ import {
   DOCK_VIEW_META,
   appViewKey,
   isDockSlot,
-  isViewVisible,
+  slotVisibleView,
   tabHostView,
   type DockSlot,
   type ViewKey,
@@ -15,6 +15,7 @@ import { selectLatestSessionForUnit, sessionTab } from '@/shared/selectors/liveS
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { selectDockedActiveTab } from '@/shared/store/editorTabSelectors';
 import { useLiveSessionsStore } from '@/shared/store/liveSessionsStore';
 import { notify } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -145,12 +146,16 @@ export function useDockBarOpenTab(): OpenTabHandler {
         // **再点一次 = 收起**（toggle 语义）：宿主正可见、且前台就是这条 tab → 收起该槽。
         // 注意收的是宿主（zone）而**不是** tab：种类入口背后是长跑会话（chat / PTY），
         // 用户点第二下的意图是「先藏起来」，不是「结束这个会话」。
+        //
+        // 两个条件与图标选中态（`selectSlotFrontTabKind`）用的是**同一对派生点**：
+        // `slotVisibleView`（本槽是否在显示该宿主）+ `selectDockedActiveTab`（该宿主前台是谁）。
+        // 共用不是洁癖：两处一旦分叉，就会出现「图标亮着但点一下不收起」这种无解释行为。
         const dockState = useDockStore.getState();
         if (
           existing.dockSlot &&
           layout &&
-          isViewVisible(dockState, tabHostView(existing.dockSlot)) &&
-          layout.docked[existing.dockSlot].activeTabId === existing.tabId
+          slotVisibleView(dockState, existing.dockSlot) === tabHostView(existing.dockSlot) &&
+          selectDockedActiveTab(tabs, layout, existing.dockSlot)?.id === existing.tabId
         ) {
           dockState.toggleView(tabHostView(existing.dockSlot));
           return;

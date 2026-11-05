@@ -1,8 +1,12 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { appViewKey, panelView, tabKindView, type ViewKey } from '@/shared/dock';
+import { appViewKey, panelView, tabHostView, tabKindView, type ViewKey } from '@/shared/dock';
 import { createDefaultDockState, useDockStore } from '@/shared/store/dockStore';
+import { useEditorStore } from '@/shared/store/editorStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import type { Project } from '@/shared/types';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 // Mock DockBarButton to a thin passthrough so the hook test focuses on
 // placement → bar derivation (slot / order / onBar) rather than registry/icon wiring.
@@ -28,6 +32,8 @@ describe('useDockBarButtons', () => {
   beforeEach(() => {
     localStorage.clear();
     useDockStore.setState({ ...createDefaultDockState(), leftZoneExpandedBeforeLibrary: null });
+    useEditorStore.setState({ tabs: {}, editorLayout: {} });
+    useProjectStore.setState({ activeProjectId: null, activeProject: null });
   });
 
   it('只给该侧的条目，按槽内 order 升序', () => {
@@ -85,15 +91,59 @@ describe('useDockBarButtons', () => {
     expect(entry.node.props.onMove).toBe(onMove);
   });
 
-  it('注入的 onOpenTab 与可见性判据透传进按钮（种类入口的端口与选中态都在 app 层）', () => {
+  it('注入的 onOpenTab 与本栏前台种类透传进按钮（种类入口的端口与选中态都在 app 层）', () => {
     const onOpenTab = vi.fn();
     const { result } = renderHook(() => useDockBarButtons('right', { onOpenTab }));
 
     const entry = result.current.find((item) => viewOf(item) === AGENT_CHAT) as unknown as {
-      node: { props: { onOpenTab?: typeof onOpenTab; isTabKindVisible?: unknown } };
+      node: { props: { onOpenTab?: typeof onOpenTab; frontTabKind?: string | null } };
     };
     expect(entry.node.props.onOpenTab).toBe(onOpenTab);
-    expect(typeof entry.node.props.isTabKindVisible).toBe('function');
+    expect(entry.node.props.frontTabKind).toBeNull();
+  });
+
+  it('选中态按**本栏**读：tab 停在本侧 → 给出种类', () => {
+    useProjectStore.setState({
+      activeProjectId: 'p1',
+      activeProject: { id: 'p1' } as unknown as Project,
+    });
+    useEditorStore.getState().addTab({
+      id: 't1',
+      scope: { kind: 'workspace', session: WorkspaceSession.of('p1', null) },
+      title: 't1',
+      data: { kind: 'terminal', agentId: null },
+    });
+    useEditorStore.getState().dockTab(WorkspaceSession.of('p1', null).key, 't1', 'right');
+    useDockStore.getState().activateView(tabHostView('right'));
+
+    const { result } = renderHook(() => useDockBarButtons('right'));
+    const terminalEntry = result.current.find(
+      (item) => viewOf(item) === TERMINAL_VIEW,
+    ) as unknown as { node: { props: { frontTabKind?: string | null } } };
+
+    expect(terminalEntry.node.props.frontTabKind).toBe('terminal');
+  });
+
+  it('tab 停在另一侧时本栏为 null（两栏各自问自己的宿主）', () => {
+    useProjectStore.setState({
+      activeProjectId: 'p1',
+      activeProject: { id: 'p1' } as unknown as Project,
+    });
+    useEditorStore.getState().addTab({
+      id: 't1',
+      scope: { kind: 'workspace', session: WorkspaceSession.of('p1', null) },
+      title: 't1',
+      data: { kind: 'terminal', agentId: null },
+    });
+    useEditorStore.getState().dockTab(WorkspaceSession.of('p1', null).key, 't1', 'left');
+    useDockStore.getState().activateView(tabHostView('left'));
+
+    const { result } = renderHook(() => useDockBarButtons('right'));
+    const terminalEntry = result.current.find(
+      (item) => viewOf(item) === TERMINAL_VIEW,
+    ) as unknown as { node: { props: { frontTabKind?: string | null } } };
+
+    expect(terminalEntry.node.props.frontTabKind).toBeNull();
   });
 
   it('每条图标都注入拖拽浮层内容（否则拖拽只剩下源图标 dim，看不出正在拖什么）', () => {

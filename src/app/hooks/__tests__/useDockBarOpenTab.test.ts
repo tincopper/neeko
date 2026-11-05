@@ -338,7 +338,7 @@ describe('useDockBarOpenTab — Terminal 图标 = 纯 shell（不默认拉起 ag
     expect(layout.docked.right.tabIds[0]).not.toBe(centerId);
   });
 
-  it('右栏已有一条停靠终端时，再点只激活（不新建第二条）', () => {
+  it('右栏已有一条停靠终端且它就是前台时，再点 = 收起（不新建第二条）', () => {
     seedProject('p-term-docked', ['a1']);
     const space = spaceOf('p-term-docked');
     const dockedId = addTerminalTab('p-term-docked', null);
@@ -353,6 +353,28 @@ describe('useDockBarOpenTab — Terminal 图标 = 纯 shell（不默认拉起 ag
     expect(tabCount('p-term-docked')).toBe(1);
     expect(useDockStore.getState().zones.right.expanded).toBe(false); // 第二次点击 = 收起
     expect(useEditorStore.getState().editorLayout[space]!.docked.right.tabIds).toEqual([dockedId]);
+  });
+
+  // 高亮 ⟺ 点一下收起，要求「点哪条」与「亮不亮」问的是同一件事：该槽的前台。
+  // 回归：`findTabInSlot` 曾按声明序取首条，同栏两条同种时图标亮着、点一下却在切 tab。
+  it('同栏两条纯 shell、前台是后一条时，点图标 = 收起（不切到前一条）', () => {
+    seedProject('p-term-multi', ['a1']);
+    const space = spaceOf('p-term-multi');
+    const first = addTerminalTab('p-term-multi', null);
+    const second = addTerminalTab('p-term-multi', null);
+    useEditorStore.getState().dockTab(space, first, 'right');
+    useEditorStore.getState().dockTab(space, second, 'right'); // 后停的是前台
+    useDockStore.getState().activateView(tabHostView('right'));
+
+    const { open } = renderOpenTab();
+    act(() => {
+      open(TERMINAL_VIEW, 'right');
+    });
+
+    const layout = useEditorStore.getState().editorLayout[space]!;
+    expect(layout.docked.right.activeTabId).toBe(second); // 前台没被切走
+    expect(useDockStore.getState().zones.right.expanded).toBe(false); // 一次点击就收起
+    expect(tabCount('p-term-multi')).toBe(2);
   });
 
   it('配额满 → 提示（addTab 的配额门是静默 return，必须解释「点了没反应」）', () => {

@@ -39,8 +39,15 @@ interface DockBarButtonProps {
    * 「打开哪种 tab、落到哪个宿主」是 app 层的端口（与 `onMove` 同构）。
    */
   onOpenTab?: (view: ViewKey, slot: DockSlot) => void;
-  /** 种类入口的选中态判据（app 层派生：当前显示的 tab 种类）。 */
-  isTabKindVisible?: (kind: string) => boolean;
+  /**
+   * 本栏槽位宿主**前台**的 tab 种类（`null` = 本栏没在显示停靠 tab）。
+   * 种类入口（`openTab`）的选中态：它们不进 zone，只能由「本栏宿主正在显示这一种」派生。
+   * 由 app 层注入一条值而不是谓词 —— 选中态就只剩一次比较。
+   *
+   * 必填（允许 `null`）：两种「没有」的拼法（缺省 / null）会让「忘了传」退化成静默不亮；
+   * 必填后漏传是 `tsc` 报错。
+   */
+  frontTabKind: string | null;
 }
 
 const DockBarButton: React.FC<DockBarButtonProps> = ({
@@ -48,7 +55,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({
   side = 'right',
   onMove,
   onOpenTab,
-  isTabKindVisible,
+  frontTabKind,
 }) => {
   const def = dockPanelRegistry[view];
   const activation = def?.activation;
@@ -58,11 +65,9 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({
   const appViewActive = useAppViewStore((s) =>
     activation?.kind === 'appView' ? s.appView === activation.view : false,
   );
-  // 种类入口同样不进 zone：选中态 = 「该种类的 tab 此刻真的显示着」（与宿主同源判据）
-  const tabKindActive =
-    activation?.kind === 'openTab' && isTabKindVisible
-      ? isTabKindVisible(activation.tabKind)
-      : false;
+  // 种类入口同样不进 zone：选中态 = **本栏**宿主前台正是这个种类。中心区的前台 tab 不参与 ——
+  // 中间的 chat / terminal 不是「这一栏被打开」，否则图标在右栏收起时也会常亮。
+  const tabKindActive = activation?.kind === 'openTab' && frontTabKind === activation.tabKind;
   const isActive =
     activation?.kind === 'appView'
       ? appViewActive

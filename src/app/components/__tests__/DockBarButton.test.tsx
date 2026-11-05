@@ -17,7 +17,7 @@ const AGENT_CHAT = tabKindView('agent-chat');
 interface Handlers {
   onMove?: (view: ViewKey, slot: DockSlot) => void;
   onOpenTab?: (view: ViewKey, slot: DockSlot) => void;
-  isTabKindVisible?: (kind: string) => boolean;
+  frontTabKind?: string | null;
 }
 
 function renderButton(view: ViewKey, side: DockSlot = 'left', handlers: Handlers = {}): void {
@@ -28,7 +28,7 @@ function renderButton(view: ViewKey, side: DockSlot = 'left', handlers: Handlers
         side={side}
         onMove={handlers.onMove}
         onOpenTab={handlers.onOpenTab}
-        isTabKindVisible={handlers.isTabKindVisible}
+        frontTabKind={handlers.frontTabKind ?? null}
       />
     </TooltipProvider>,
   );
@@ -171,7 +171,7 @@ describe('DockBarButton — 键位只有一处来源（aria 与 keydown 同源�
       const onMove = vi.fn();
       const { unmount } = render(
         <TooltipProvider>
-          <DockBarButton view={FILES} side={side} onMove={onMove} />
+          <DockBarButton view={FILES} side={side} frontTabKind={null} onMove={onMove} />
         </TooltipProvider>,
       );
 
@@ -209,14 +209,20 @@ describe('DockBarButton — 种类级入口（openTab）', () => {
     expect(useEditorStore.getState().tabs).toEqual({});
   });
 
-  it('选中态由注入的可见性判据给出（openTab 不进 zone，没有别的来源）', () => {
-    renderButton(AGENT_CHAT, 'right', { isTabKindVisible: (kind) => kind === 'agent-chat' });
+  it('选中态 = 本栏宿主前台正是这个种类（openTab 不进 zone，没有别的来源）', () => {
+    renderButton(AGENT_CHAT, 'right', { frontTabKind: 'agent-chat' });
 
     expect(innerSpanOf('Agent Chat').className).toContain('bg-bg-selected');
   });
 
-  it('该种类的 tab 不可见时不亮（收起宿主里的 tab 不该点亮图标）', () => {
-    renderButton(AGENT_CHAT, 'right', { isTabKindVisible: () => false });
+  it('本栏前台是另一种 kind → 不亮（同时只可能亮一个种类入口）', () => {
+    renderButton(AGENT_CHAT, 'right', { frontTabKind: 'terminal' });
+
+    expect(innerSpanOf('Agent Chat').className).not.toContain('bg-bg-selected');
+  });
+
+  it('本栏没有前台 tab（收起）→ 不亮', () => {
+    renderButton(AGENT_CHAT, 'right', { frontTabKind: null });
 
     expect(innerSpanOf('Agent Chat').className).not.toContain('bg-bg-selected');
   });

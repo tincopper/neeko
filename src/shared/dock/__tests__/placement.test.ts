@@ -10,6 +10,7 @@ import {
   isViewVisible,
   slotPlacements,
   slotViews,
+  slotVisibleView,
 } from '../placement';
 import type { DockLayoutState, DockPlacement, DockSlot, ViewKey } from '../types';
 import { appViewKey, panelView } from '../viewKey';
@@ -105,6 +106,28 @@ describe('slotPlacements / slotViews / hasSlotViews / isViewVisible', () => {
     const expanded = makeState(LEFT, RIGHT, { right: { expanded: true, activeView: FILES } });
     expect(isViewVisible(expanded, FILES)).toBe(true);
     expect(isViewVisible(expanded, GIT)).toBe(false);
+  });
+
+  // 槽范围的判据必须问**本槽**：拿 isViewVisible（「在某个槽可见」）回答「本槽在显示谁」
+  // 会依赖「视图只在自己的槽里」这条外部不变量 —— 本次回归就是这种跨槽误答。
+  it('slotVisibleView = 只读本槽（展开 ∧ 前台），收起时 null', () => {
+    const collapsed = makeState(LEFT, RIGHT, { right: { expanded: false, activeView: FILES } });
+    expect(slotVisibleView(collapsed, 'right')).toBeNull();
+    expect(slotVisibleView(collapsed, 'left')).toBe(PROJECTS); // 左槽默认展开，前台 = LEFT[0]
+
+    const expanded = makeState(LEFT, RIGHT, { right: { expanded: true, activeView: FILES } });
+    expect(slotVisibleView(expanded, 'right')).toBe(FILES);
+    expect(slotVisibleView(expanded, 'left')).toBe(PROJECTS);
+  });
+
+  it('别的槽把前台指向本槽的视图 ⇒ 本槽仍为 null（跨槽口径与槽内口径分离）', () => {
+    const leaky = makeState(LEFT, RIGHT, {
+      left: { expanded: false, activeView: PROJECTS },
+      right: { expanded: true, activeView: PROJECTS },
+    });
+
+    expect(isViewVisible(leaky, PROJECTS)).toBe(true); // 「在某个槽可见」
+    expect(slotVisibleView(leaky, 'left')).toBeNull(); // 「左槽在显示谁」→ 关着
   });
 });
 

@@ -10,6 +10,7 @@ import {
   selectActiveTab,
   selectActiveTabId,
   selectActiveSessionRefs,
+  selectDockedActiveTab,
   selectOrderedTabIds,
   selectOrderedTabs,
   type EditorTabSpaceState,
@@ -419,5 +420,58 @@ describe('selectActiveSessionRefs', () => {
       'p-a\0',
       'p-b\0',
     ]);
+  });
+});
+
+describe('selectDockedActiveTab — 某个停靠宿主的前台 tab（唯一派生点）', () => {
+  function hostState(args: {
+    left?: string[];
+    right?: string[];
+    registryIds?: string[];
+    skipLayout?: boolean;
+  }): EditorTabSpaceState {
+    const layout = createDefaultEditorLayout();
+    layout.docked.left = {
+      tabIds: args.left ?? [],
+      activeTabId: args.left?.[0] ?? null,
+    };
+    layout.docked.right = {
+      tabIds: args.right ?? [],
+      activeTabId: args.right?.[0] ?? null,
+    };
+    const allIds = [...(args.left ?? []), ...(args.right ?? [])];
+    return {
+      tabs: { [SPACE]: { tabs: (args.registryIds ?? allIds).map(mkTab) } },
+      editorLayout: args.skipLayout ? {} : { [SPACE]: layout },
+    };
+  }
+
+  function frontOf(state: EditorTabSpaceState, slot: 'left' | 'right'): Tab | null {
+    return selectDockedActiveTab(state.tabs[SPACE], state.editorLayout[SPACE], slot);
+  }
+
+  it('返回该槽前台那条；左右互不冒充', () => {
+    const state = hostState({ left: ['L'], right: ['R1', 'R2'] });
+    expect(frontOf(state, 'left')?.id).toBe('L');
+    expect(frontOf(state, 'right')?.id).toBe('R1'); // activeTabId 取首条（本夹具口径）
+  });
+
+  it('前台的 id 被改指另一条 ⇒ 跟着变（读布局事实，不留缓存）', () => {
+    const state = hostState({ right: ['R1', 'R2'] });
+    state.editorLayout[SPACE]!.docked.right.activeTabId = 'R2';
+
+    expect(frontOf(state, 'right')?.id).toBe('R2');
+  });
+
+  it('布局残留已关闭 tab 的 id ⇒ null（存活口径：注册表里没有就不算前台）', () => {
+    const state = hostState({ right: ['GHOST'], registryIds: [] });
+
+    expect(frontOf(state, 'right')).toBeNull();
+  });
+
+  it('空宿主 / 缺 layout / tabs 缺失 ⇒ null（不抛，不猜）', () => {
+    expect(frontOf(hostState({}), 'right')).toBeNull();
+    expect(frontOf(hostState({ right: ['R'], skipLayout: true }), 'right')).toBeNull();
+    expect(selectDockedActiveTab(undefined, undefined, 'right')).toBeNull();
   });
 });

@@ -28,6 +28,7 @@ export {
   placementsInSlot,
   slotPlacements,
   slotViews,
+  slotVisibleView,
 } from './placement';
 
 export { isZoneRenderable, zoneFrontView, zoneHostedViews } from './zone';

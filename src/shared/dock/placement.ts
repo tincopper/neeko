@@ -44,17 +44,33 @@ export function hasSlotViews(state: DockLayoutState, slot: DockSlot): boolean {
 }
 
 /**
+ * 该槽**当前可见**的前台视图（`null` = 槽收起 / 无前台）。
+ *
+ * **槽范围的问题一律问它**（「这一栏在显示谁」）：收起的槽即使 `activeView` 还指着某个视图
+ * 也不算可见。跨槽问题才用 `isViewVisible`（「它是否出现在屏幕上的某处」），后者就是本函数的
+ * `some`。两个口径分开是一次回归的产物：曾经用跨槽判据回答槽内问题 —— 当另一个槽的前台指向
+ * 本槽的视图（宿主换槽 / 快照异常）时，明明收起的本栏会因为那个槽而“可见”。
+ */
+export function slotVisibleView(
+  state: Pick<DockLayoutState, 'zones'>,
+  slot: DockSlot,
+): ViewKey | null {
+  const zone = state.zones[slot];
+  return zone?.expanded === true ? zone.activeView : null;
+}
+
+/**
  * 视图是否在某个槽里**可见**（前台 + 展开）。面板按需加载的门控口径。
  * 消费侧不要自己遍历 `zones` 比较 activeView —— 两份判据必然漂移。
  *
- * 入参只收 `zones`（结构子集）：可见性**只**依赖槽运行态。收窄后，只需要可见性
- * 的派生（如种类入口的图标选中态）不必为此造一份假的 `placements`。
+ * 入参只收 `zones`（结构子集）：可见性**只**依赖槽运行态。收窄后，只需要可见性的派生不必
+ * 为此造一份假的 `placements`。
+ *
+ * **这是跨槽判据**（任一槽可见即为真）。问「**这一栏**在显示谁」用 `slotVisibleView` —— 用本函数
+ * 回答槽内问题会转移到「视图只在自己的槽里」这类外部不变量上，那种依赖不会报错，只会待机出错。
  */
 export function isViewVisible(state: Pick<DockLayoutState, 'zones'>, view: ViewKey): boolean {
-  return DOCK_SLOTS.some((slot) => {
-    const zone = state.zones[slot];
-    return zone?.expanded === true && zone.activeView === view;
-  });
+  return DOCK_SLOTS.some((slot) => slotVisibleView(state, slot) === view);
 }
 
 export interface MoveViewRequest {

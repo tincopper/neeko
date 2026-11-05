@@ -175,6 +175,24 @@ await saveSession(session);
 `meta.defaultSlot` 只是兜底 —— 禁止再造一条 `kind → slot` 策略）。无项目 / 拿不到 agent 必须提示，
 静默 no-op 不可接受（`DockBarButton` 只调用注入的 handler，不 import 任何 feature 域）。
 
+**种类入口的选中态只看「本栏」**（`selectSlotFrontTabKind` / `useSlotFrontTabKind`）：
+图标亮 ⟺ **图标所在槽**的 tab 宿主可见（`slotVisibleView(slot)` 是宿主）**且**它的前台 tab
+（`selectDockedActiveTab`）正是该种类。中心区的前台 tab **不参与** —— 中间的 chat / terminal 不是
+「这一栏被打开」，把它算进来会让图标在右栏收起时也常亮（回归 2026-11：中间开 Terminal，右栏
+Terminal 图标被点亮，用户无法从图标判断右栏到底是开还是关）。
+
+这条判据的每个事实只有一个派生点：`shared/dock/placement.slotVisibleView`（**本槽**在显示
+谁）与 `shared/store/editorTabSelectors.selectDockedActiveTab`（该宿主前台是哪条 tab，含存活
+口径）。`useDockBarOpenTab` 的 toggle-off 与 `DockTabHost.isActivePane` 用的是同一对函数 ——
+分叉的表现是「图标亮着但点一下不收起」/「图标说隐藏、webview 说显示」。
+
+两个口径不得混用：**槽内**问题（这一栏在显示谁）用 `slotVisibleView`，**跨槽**问题（它是否出现
+在屏幕上）用 `isViewVisible`。用错不会报错，只会在「另一个槽的前台指向本槽」这类异常快照下
+待机出错。
+
+高亮与点击不是等价关系：`dockEntryScope: 'slot'`（terminal）因为 `findTabInSlot` 同样前台优先，
+高亮时点一下 = 收起；`'anywhere'`（agent-chat）点击是「回到我正在用的那条」，可能落在中心区。
+
 ---
 
 ## 何时使用全局状态

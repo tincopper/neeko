@@ -1,4 +1,4 @@
-import type { DockSlot } from '@/shared/dock';
+import { DOCK_SLOTS, type DockSlot } from '@/shared/dock';
 import type { EditorSplitLayout, ProjectTabs, Tab } from '@/shared/types';
 import type { SessionRef } from '@/shared/types/liveSessions';
 
@@ -166,6 +166,27 @@ export function selectActiveTab(state: EditorTabSpaceState, tabKey: string): Tab
 }
 
 /**
+ * 某个**停靠宿主**的前台 tab（存活口径：注册表里没有该 id → `null`）。
+ *
+ * 与 `selectActiveTab` 分工：那个是中心组（`activeGroupId`），这个是某一个停靠槽。
+ * **「这一槽的前台是谁」只有这一处派生**：要判断「这条 tab 是不是该宿主的前台」、
+ * 「该宿主前台是哪个种类」、或要按「前台优先」选实例，一律调本函数 —— 在看板上自行比
+ * `docked[slot].activeTabId` 会漏掉存活口径（布局可能残留已关闭 tab 的 id）。
+ *
+ * 收 `tabs` / `layout` 而不是 `(state, tabKey)`：本函数的调用方已把这两块结构解开
+ * （app 层的纯函数衍生座与 `selectActiveSessionRefs` 都是这个粒度）。
+ */
+export function selectDockedActiveTab(
+  tabs: ProjectTabs | undefined,
+  layout: EditorSplitLayout | undefined,
+  slot: DockSlot,
+): Tab | null {
+  const activeId = layout?.docked[slot].activeTabId;
+  if (!activeId) return null;
+  return (tabs?.tabs ?? []).find((tab) => tab.id === activeId) ?? null;
+}
+
+/**
  * 前台会话的完整身份（含所在单元），供 live-session 派生层过滤。
  *
  * 返回排序后的数组，调用方应在 `useMemo` 中按稳定的 `tabs` / `editorLayout`
@@ -175,16 +196,13 @@ export function selectActiveTab(state: EditorTabSpaceState, tabKey: string): Tab
 export function selectActiveSessionRefs(state: EditorTabSpaceState): readonly SessionRef[] {
   const refs: SessionRef[] = [];
   for (const tabKey of Object.keys(state.tabs)) {
+    const tabs = state.tabs[tabKey];
+    const layout = state.editorLayout[tabKey];
     // 中心前台 + 每个 dock 宿主的前台：两者都是「正在展示的会话」，父行高亮不得因为
     // 把 tab 停靠到侧区而熄灭（停靠不改「当前会话」这一事实）。
     const candidates: (Tab | null)[] = [selectActiveTab(state, tabKey)];
-    const layout = state.editorLayout[tabKey];
-    if (layout) {
-      const byId = new Map((state.tabs[tabKey]?.tabs ?? []).map((tab) => [tab.id, tab]));
-      for (const slot of ['left', 'right'] as const) {
-        const activeId = layout.docked[slot].activeTabId;
-        candidates.push(activeId ? (byId.get(activeId) ?? null) : null);
-      }
+    for (const slot of DOCK_SLOTS) {
+      candidates.push(selectDockedActiveTab(tabs, layout, slot));
     }
     for (const tab of candidates) {
       if (!tab) continue;
