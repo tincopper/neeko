@@ -293,6 +293,54 @@ pnpm check:quick   # 收尾一次
 - 「面板根是海面」：`island.parentElement` 必须带 `bg-bg-primary`。
 - 三条空态用例改为断言「住在**主岛**内 + 分区是 `bg-tertiary`」。
 
+## 进度（2026-11-03i，参考图：列变圆角块 + 卡片自适配）
+
+> 用户给了参考图（Linear 式看板），并裁决两点：**① 列要变圆角块；② 底层 token 不变，
+> 卡片自己适配底层**。
+
+| # | 动作 | 文件 |
+| --- | --- | --- |
+| 1 | 列 → 圆角块（`rounded-lg` + `overflow-hidden`，**无阴影**，底色仍 `bg-bg-tertiary`） | `BoardView.tsx` |
+| 2 | 列间距 `gap-px` → `ISLAND_GAP_CLASS`（6px），容器 `p-1` → `p-1.5` | `BoardView.tsx` |
+| 3 | 列头 → 圆点（中性色）+ 名字 + 数字 pill | `BoardView.tsx` |
+| 4 | 卡片底色 `bg-bg-primary` → **`bg-bg-secondary`**（列之上更亮一层）、内距 `p-3` | `WorkItemCard.tsx` |
+| 5 | 卡片标题 → `font-semibold` + `line-clamp-3`（不再 `truncate`） | `WorkItemCard.tsx` |
+| 6 | 卡片加**相对时间**（新纯函数） | `utils/relativeTime.ts`（新）+ `WorkItemCard.tsx` |
+| 7 | 列表行 → 圆角块（`bg-bg-secondary` + `px-3 py-2.5`，**无阴影**、**去 border-b**） | `ListView.tsx` |
+
+### 为什么卡片换 `bg-bg-secondary`（关键判据）
+
+底层 token 不动 ⇒「卡片浮在列上」只能靠换卡片自己的底色。五主题实测（对列 `bg-bg-tertiary`）：
+
+| 主题 | 卡片=`secondary` | 上一版卡片=`primary` |
+| --- | --- | --- |
+| dark | **1.19** | 1.25（**列更亮** ⇒ 卡片是洞） |
+| light | 1.09 | 1.08 |
+| claude | 1.24 | 1.11 |
+| one-dark-pro | 1.10 | 1.30 |
+| classic-dark | 1.39 | 1.16 |
+
+`secondary` 在**每个**主题里都比列亮；`primary` 在 dark 下比列暗。
+
+### 判据修正（两处旧断言写反了）
+
+1. `TasksPanel.test.tsx::islandOf` 原来用 `rounded-lg` 当「是岛」的判据 —— 列有了圆角后
+   会把列误判成岛。改为 `ISLAND_CLASS` 的**三个**特征（`flex-col` + `overflow-hidden` + `shadow-sm`）。
+   列刻意无阴影，正是为了这条判据能把它与岛分开。
+2. `ListView` / `WorkItemCard` 的「行/卡片没有圆角、不许 `bg-secondary`」两条旧断言
+   → 改为「判据是**无阴影**」+「卡片/行底色就是 `secondary`」。
+
+### 测试账（2026-11-03i）
+
+`pnpm vitest run src/features src/app src/styles` → **5434 条绿**（612 文件）。
+
+新增：
+- `utils/__tests__/relativeTime.test.ts`（4 条）：分档边界逐个钉 + 未来时间戳返回空串 +
+  纯函数断言 + `cardTimeOf` 取 `updatedAt` 的反证。
+- `BoardView.test.tsx` +2 条（列头圆点 / 数字 pill）+ 改写 2 条（圆角块 / 6px 间距）。
+- `WorkItemCard.test.tsx` +4 条（`bg-secondary` / 标题 `line-clamp-3` / `p-3` / 相对时间）。
+- `ListView.test.tsx` +2 条（圆角块无阴影 / 6px 空隙无 border-b）+ 改写 2 条。
+
 ## 进度（2026-11-03h，内容卡片岛同源几何 + 呼吸感）
 
 > 用户反馈：「内容卡片可以采用岛屿的方式进行展示，带一点呼吸感，当前看起来比前面好一点
