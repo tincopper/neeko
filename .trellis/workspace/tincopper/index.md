@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 420
+- **Total Sessions**: 421
 - **Last Active**: 2026-11-05
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1181 | Active |
+| `journal-8.md` | ~1203 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 421 | 2026-11-05 | 表面层叠判据改为自动发现（堵住三次同型事故的结构盲区） | `2cc58c64` | `multi-agent` |
 | 420 | 2026-11-05 | Tasks 面板：圆角块/工具栏/英文文案 + check 复审修 4 类缺陷 | `98554a06` | `multi-agent` |
 | 419 | 2026-11-05 | Tasks 工具栏优化：三分区 + lucide 图标 + 搜索清空 | `d086955e` | `multi-agent` |
 | 418 | 2026-11-05 | 参考图落地：列变圆角块 + 卡片自适配底层 | `64375892` | `multi-agent` |

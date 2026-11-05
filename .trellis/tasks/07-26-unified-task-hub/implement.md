@@ -293,6 +293,42 @@ pnpm check:quick   # 收尾一次
 - 「面板根是海面」：`island.parentElement` 必须带 `bg-bg-primary`。
 - 三条空态用例改为断言「住在**主岛**内 + 分区是 `bg-tertiary`」。
 
+## 进度（2026-11-03m，表面层叠判据改为自动发现）
+
+> 用户：「可以」（同意把「手写配对列表」改成自动发现）。
+
+**动机**：同一个缺陷（表面层级没走到最内层）出现三次（海面/岛、卡片/列、行/主岛）。
+每次修法都是人肉列一张 token 配对表，而缺陷恰好落在没列到的那一对上 —— 结构性盲区。
+
+### 落地
+
+| # | 动作 | 文件 |
+| --- | --- | --- |
+| 1 | 新增纯函数模块：`surfaceOf` / `collectSurfacePairs` / `findMultipleSurfaces` / `parseSurfacePair` | `utils/surfaceLayers.ts`（新） |
+| 2 | 纯函数单测（11 条） | `utils/__tests__/surfaceLayers.test.ts`（新） |
+| 3 | 判据改为「渲染真实组件 → 自动收集配对 → 逐主题验算」 | `components/__tests__/SurfaceContrast.test.tsx`（替换旧 `.ts`） |
+
+**「外层」= 最近画表面的祖先**（不是直接父节点）：真实代码中间夹着 `<ul>` / `flex` wrapper，
+按父节点判会漏。
+
+### 关键：变异验证抓出首版的致命缺陷
+
+首版把 `ListView` / `BoardView` **单独渲染** —— 它们外面没有主岛，行/列往上找不到表面，
+于是**不产生配对**。把列表分区层的 `bg-bg-tertiary` 删掉（复现第③次事故），判据**仍然全绿**。
+
+修法：每个视图包一层**主岛外壳**（`bg-bg-secondary`，与 `TasksPanel` 的真实结构一致）。
+现在两次变异都红：
+
+| 变异 | 结果 |
+| --- | --- |
+| 删掉列表分区层 | `bg-bg-secondary > bg-bg-secondary` 五主题全红（1.00 < 1.05） |
+| 卡片改 `bg-bg-tertiary` | `bg-bg-tertiary > bg-bg-tertiary` 全红 |
+
+### 测试账（2026-11-03m）
+
+`pnpm vitest run src/features src/app src/styles` → **5462 条绿**（615 文件）。
+`work-items` 自身 308 条绿（31 文件）。
+
 ## 进度（2026-11-03l，trellis-check 复审：4 类真实缺陷）
 
 > 复审发现首版有 4 类「绿着但错」的问题。全部已修 + 变异验证。
