@@ -26,6 +26,37 @@ const ROTATE_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 /// Number of rotated backups to keep (`neeko.log.1` … `neeko.log.{MAX_BACKUPS}`).
 const MAX_BACKUPS: u32 = 3;
 
+/// 第三方**遍历库**的逐目录 DEBUG 不落盘。
+///
+/// `ignore`（gitignore 感知的目录遍历）与 `globset`（其模式编译）在 DEBUG 级别下**每个目录 /
+/// 每个模式各打一行**。实测 `tail -200000 ~/.neeko/neeko.log` 按模块计数：`ignore::walk`
+/// 31,279 行（第一大来源）、`globset` 6,909、`ignore::gitignore` 1,137 —— 合计 ~20%，
+/// 而**我们的源码从不读这些行**。代价不只在磁盘（9MB / 会话、轮转档 20–43MB）：事故排查时
+/// 它们会把真正的时序淹掉（定位 git 状态互踢时必须先 `grep -v` 掉它们才看得清挂载/释放序列）。
+///
+/// **只登记「实测占行数且从不被读」的 target 前缀**，不要收成「所有第三方都丢」——
+/// `notify`（内核事件投递）/ `sqlx` / `tauri` 的 DEBUG 是有价值的一手证据。
+///
+/// 再评估方法：
+/// `tail -200000 ~/.neeko/neeko.log | grep -aoE '\[DEBUG\]\[[a-z_:]+' | sort | uniq -c | sort -rn`
+/// 按**模块名**登记（不是字符串前缀）：`"globset"` 必须同时命中 `globset` 与
+/// `globset::glob::GlobSet`，但不能误伤将来叫 `globsetx` 的 crate。
+const NOISY_TARGETS: &[&str] = &["ignore", "globset"];
+
+/// 是否应把该条记录写进文件。
+///
+/// 过滤**只针对 `Debug` 及以下**：来自同一 target 的 `Info` / `Warn` / `Error` 是异常信号
+/// （例如遍历库报某个目录不可读），必须保留 —— 它们不是逐目录噪声。
+fn should_write(level: Level, target: &str) -> bool {
+    // `log::Level` 的序是 Error < Warn < Info < Debug < Trace。
+    if level <= Level::Info {
+        return true;
+    }
+    !NOISY_TARGETS
+        .iter()
+        .any(|prefix| target.starts_with(prefix))
+}
+
 /// A [`log::Log`] implementation that writes timestamped log lines to a file.
 struct FileLogger;
 
@@ -36,6 +67,9 @@ impl log::Log for FileLogger {
 
     fn log(&self, record: &Record) {
         if !self.enabled(record.metadata()) {
+            return;
+        }
+        if !should_write(record.level(), record.target()) {
             return;
         }
 
@@ -193,6 +227,80 @@ fn backup_path(log_path: &Path, index: u32) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 接线测试：`log()` 必须真的查询 `should_write`（否则谓词对了、噪声照样落盘）。
+    ///
+    /// 直接驱动 `LOGGER` 并临时装一个临时文件，绕开 `init_logger`（那会写真实 `~/.neeko`）。
+    /// 并行的其他用例在此期间写的行会落进这个临时文件 —— 无害：本用例只断言「noise 不在 / keep-me 在」。
+    #[test]
+    fn log_writes_only_what_the_filter_allows() {
+        use log::Log as _;
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("neeko.log");
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap();
+        *FILE_LOGGER.lock().unwrap() = Some(file);
+
+        LOGGER.log(
+            &Record::builder()
+                .level(Level::Debug)
+                .target("ignore::walk")
+                .args(format_args!("noise-should-not-land"))
+                .build(),
+        );
+        LOGGER.log(
+            &Record::builder()
+                .level(Level::Debug)
+                .target("neeko_lib::common::git::status_worker::worker")
+                .args(format_args!("keep-me"))
+                .build(),
+        );
+
+        *FILE_LOGGER.lock().unwrap() = None;
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(!content.contains("noise-should-not-land"), "噪声不得落盘");
+        assert!(content.contains("keep-me"), "我们的 DEBUG 必须落盘");
+    }
+
+    #[test]
+    fn third_party_traversal_debug_is_dropped() {
+        // 实测噪声源（占日志行数 ~20%）：逐目录 / 逐模式各一行，我们的源码从不读
+        assert!(!should_write(Level::Debug, "ignore::walk"));
+        assert!(!should_write(Level::Debug, "ignore::gitignore"));
+        assert!(!should_write(Level::Debug, "globset"));
+        assert!(!should_write(Level::Trace, "globset::glob::GlobSet"));
+    }
+
+    #[test]
+    fn our_own_debug_is_kept() {
+        // 不能因为降噪把一手证据关掉：后端模块的 DEBUG 是排查挂载/重算时序的唯一来源
+        assert!(should_write(
+            Level::Debug,
+            "neeko_lib::common::file::watcher::manager::core"
+        ));
+        assert!(should_write(
+            Level::Debug,
+            "neeko_lib::common::git::status_worker::worker"
+        ));
+    }
+
+    #[test]
+    fn third_party_debug_other_than_traversal_is_kept() {
+        // 黑名单只登记「实测占行数且从不被读」的那两个前缀；notify 的内核投递是有效证据
+        assert!(should_write(Level::Debug, "notify::inotify"));
+        assert!(should_write(Level::Debug, "sqlx::query"));
+    }
+
+    #[test]
+    fn warn_and_error_from_noisy_targets_are_kept() {
+        // 同一 target 的异常信号不是逐目录噪声（如遍历库报某目录不可读）
+        assert!(should_write(Level::Warn, "ignore::walk"));
+        assert!(should_write(Level::Error, "globset"));
+        assert!(should_write(Level::Info, "ignore::walk"));
+    }
 
     #[test]
     fn backup_path_formats_indexed_names() {

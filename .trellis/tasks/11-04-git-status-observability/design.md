@@ -139,7 +139,13 @@ struct RecomputeScheduler {
 - **远端单元**（SSH/WSL）：`Cold` 只按需读，不进队列；`Hot` 由可见集合驱动，走 transport pull。
   `supports_push_producer` 不再是**两条代码路径**的开关，只是「能否被事件打脏」的能力位。
 
-### 1.4 WatchHub（观测层，C3 交付）
+### 1.4 WatchHub（观测层，**2026-11-04 登记为不实现**）
+
+> **前提消失**：本节假设「可见集合里的多个单元都要实时」，因此想把 N 条 per-repo 流收成
+> 每 host 一条 + 前缀索引。C4 之后热集合 = 同屏内容可见的单元（典型 1 个），在册挂载 ≈ 1–2 套
+> ⇒ 单流化只是把 1 条流换成 1 条流。C3 因此只交付「日志降噪」（`ignore` / `globset` 的逐目录
+> DEBUG 不落盘，实测占日志行数 ~20%）。度量与三条理由见 `.trellis/tasks/11-04-watch-hub-single-stream/prd.md`。
+> 下面保留原设计，供「将来热集合真的变大」时参考 —— 不要按它直接实现。
 
 ```rust
 struct WatchHub {
