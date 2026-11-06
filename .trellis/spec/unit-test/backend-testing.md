@@ -481,6 +481,10 @@ assert_eq!(resolve_db_dir(Some(&padded), fallback), expected);
 
 回归：`common::paths::tests`（`NEEKO_DB_DIR` 覆写）、`.trellis/spec/backend/dap-domain.md` 反例表。
 
+**一行替代物**：需要「平台绝对、不必存在」的路径时用 `common::testing::abs_fixture(label)`
+（返回 `(TempDir, PathBuf)`，目录活着）。判据故意不做静态检查 —— 实测「POSIX 字面量 +
+路径敏感 API 共现」在仓库有 8 处命中且**全部合法**（名字分类器、纯字符串拼接、身份渲染测试）。
+
 ### 2. 测试间存在依赖
 
 每个测试必须独立。不要依赖测试执行顺序或共享的可变状态。
@@ -633,5 +637,9 @@ assert!(template.contains("if (isChildSession(ctx)) return;\n      return handle
    `templates/tests.rs::contract_anchors_hold_for_a_crlf_materialisation`（把正文自己转成 CRLF
    再断言，与 checkout 无关地复现该形态）。
 
-反向判据（变异验证）：删掉归一化，上面的回归钉在**任何**平台必红；只删 `.gitattributes` 条目，
-CI 会在 Windows 上红。与红线 11（换行边界）同族，细则全文见 `src-tauri/AGENTS.md` 红线 11。
+机器判据：**`check_embedded_asset_eol`** —— 解析每个 `include_str!("字面量")`，要求目标被
+`.gitattributes` 里某条 `eol=lf`（或 `-text`）模式命中；非字面量目标直接判违规（无法静态
+判定 = 没人检查）。
+
+反向判据（变异验证）：删掉归一化，跨行回归钉在**任何**平台必红；删掉 `.gitattributes` 条目，
+`check_embedded_asset_eol` 在本地就红（不必等 Windows CI）。与红线 11（换行边界）同族。

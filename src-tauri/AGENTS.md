@@ -149,12 +149,15 @@ Windows 默认 `autocrlf=true` 会转 CRLF，**不确定**）。
   `.gitattributes` 里钉 `text eol=lf` —— 否则 Windows 上 `autocrlf=true` 的 checkout 落 CRLF，
   跨行断言（`contains("a;\n  b;")`）本地绿、CI 红（2026-11-05 实测：
   `templates_gate_child_sessions_at_a_single_registration_point`）。断言侧仍做 `\r\n` → `\n`
-  归一化（双保险：旧 clone / 编辑器改写也不炸）。
+  归一化（双保险：旧 clone / 编辑器改写也不炸）。机器判据：`check_embedded_asset_eol`。
 
 **13. 测试夹具路径平台无关** —— 测试中进入 `Path`/`PathBuf` 语义或路径敏感 API（`is_absolute()`、
 `canonicalize()`、存在性判定）的路径字面量，**禁止硬编码 POSIX 绝对路径**（`/opt/…`、`/home/…`、
 `/tmp/…`）：Windows 上无盘符前缀 `is_absolute()` 恒 false，本地绿而 Windows CI 红。一律由 `tempdir()`
 推导平台绝对路径。纯字符串语义（JSON 载荷、URL query、转义拼接、平台无关断言）不受限。
+
+**让安全写法更便宜**：「平台绝对、不必存在」的路径用 `common::testing::abs_fixture`。
+静态判据故意不做 —— 实测 8 处「字面量 + 路径敏感 API」共现命中全部合法。
 
 执行方式：本红线无稳定语法指纹（静态 grep 实证 45+ 文件合法命中，脚本化信噪比不可接受），由
 **AI 审查对 diff 内夹具路径字面量专项检查**，唯一可靠判定是 CI 的 Windows `cargo test` job。

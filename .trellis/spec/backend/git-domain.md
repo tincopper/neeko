@@ -693,7 +693,10 @@ versioned_snapshot_without_manual_poke` 就是为钉这条顺序而写红的）�
   归属判定 `common/git/unit_scope.rs::contains` 因此手写分量比较：分量边界 ⇒ `/proj` 不含
   `/proj-other`，驱动器根 `C:/` 保留尾斜杠仍认领 `C:/proj` 而不认领 `C:foo`。
   回归：`backslash_is_not_a_separator_in_the_identity_alphabet` /
-  `remote_paths_use_posix_letters`（Windows CI 是唯一判据）。
+  `remote_paths_use_posix_letters`（Windows CI 是唯一判据）。机器判据：
+  `check_identity_no_host_path` + `ledger/identity_host_path.json`（登记「身份比较/渲染」
+  模块，禁止其中出现 `std::path` / `std::fs`；`CheckoutPath::resolve` 这类铸造点不登记 ——
+  它是宿主语义的合法归属地）。
 - **非目标**：Unicode NFD/NFC 归一、大小写不敏感文件系统上输入大小写的折叠、
   `\\?\Volume{GUID}` 形态（原样保留）。
 
