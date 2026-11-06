@@ -62,44 +62,59 @@ pub async fn wait_live_sessions(
     })
 }
 
-/// 回传会话标题 / 用户提交：CLI 自报的 `source = native`，或终端用户的每次提交
-/// （`source = prompt`）。
+/// 终端上报「用户提交过输入」—— 行文本随活动一起到达，**能否命名由注册表按会话类型裁决**。
 ///
-/// **为什么是一条命令而不是新的前端→后端事件**：既有前端→后端通道只有
-/// `terminal-input-{id}`（载荷是 stdin 字节）与 agent chat 事件（后端→前端），
-/// 复用前者会把标题塞进 stdin 流、复用后者方向不对 —— 两者都得新造一条通道名，
-/// 那正是红线 5 要消灭的形态。
+/// # 源隔离仍然成立（第 35 轮），但多了一个**纯 shell** 例外（第 37 轮）
 ///
-/// **为什么用户输入也走这里而不是再加一条命令**：安装态的旧构建里多一个命令名没有意义
-/// （漏注册时前端只会拿到一个被吞掉的 invoke 错误），而标题本来就是同一个事实
-/// 「这条会话叫什么」，只是来源不同 —— 差异用 `source` 表达，不用再开一条通道。
+/// OSC 标题（`onTitleChange`）依旧完全不进注册表 —— 它与状态栏、cwd、spinner、
+/// TUI 控件文本共用通道。行文本的分流在 [`Registry::report_terminal_input`]：
 ///
-/// # 语义
+/// | 会话 | 这行能不能当标题 | 理由 |
+/// | --- | --- | --- |
+/// | 纯 shell（`agent_id = None`） | **能** | 它没有 hook / conversation 缓存，这是唯一素材 |
+/// | agent 终端（`agent_id = Some`） | **不能** | 里面混着 `/model` 过滤词这类 TUI 面板输入 |
 ///
-/// - `source = prompt`（用户提交）⇒ 首次无真标题时按 `Prompt` 命名并标记「用户已在用」；
-///   后续提交只清除 CLI hook 的权威状态门，不重复改名；
-/// - `source = native`（CLI 自报）⇒ 只升级标题。
-///
-/// 空白 `Prompt` 仍是一次用户提交（清除权威状态门），但不会写入空标题；
-/// 空白 `Native` 什么都不发生。`Result` 是 IPC 契约而不是当下的错误分支（前端 `invoke<boolean>`
-/// 依赖它，且失败形状已经存在：锁中毒 / 将来加校验），不从契约面上抹掉。
-#[allow(clippy::unnecessary_wraps)] // 同上：返回形状是契约，不是实际错误路径
+/// 命令体只有派发（红线 6）：裁决不在命令层 —— 它要读 `agent_id`，而那是注册表里的事实。
+#[allow(clippy::unnecessary_wraps)] // 返回形状是 IPC 契约，不是当下的错误路径
 #[tauri::command]
-pub fn set_live_session_title(
+pub fn report_live_session_activity(
     session_id: String,
-    title: String,
-    source: Option<TitleSource>,
+    line: String,
     state: State<'_, AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<bool, AppError> {
-    let origin = source.unwrap_or(TitleSource::Native);
-    let changed = apply_title(&state.live_sessions, &session_id, &title, origin);
-    if changed {
-        // 与其它生产者（chat 合帧 emit / PTY 注册与退出 / hook 投影）同口径：版本真的变了就
-        // 通知一次（载荷只有版本号）。
-        emit_changed(&app_handle, state.live_sessions.version());
-    }
+    let changed = state
+        .live_sessions
+        .report_terminal_input(&session_id, &line);
+    notify(&state.live_sessions, &app_handle, changed);
     Ok(changed)
+}
+
+/// 侧栏行内改名：**来源恒为 `User`**，IPC 不接受前端声明的 `source`。
+///
+/// 这是唯一从前端写标题的入口。`Native` / `Prompt` 由各生产者直接写注册表（hook topic /
+/// conversation 缓存 / 终端活动 / chat 的 prompt），不经 IPC —— 让前端可控来源等于给
+/// 任意字节流开一条伪装成 provider title 的路。
+#[allow(clippy::unnecessary_wraps)] // 同上：返回形状是契约
+#[tauri::command]
+pub fn rename_live_session(
+    session_id: String,
+    title: String,
+    state: State<'_, AppStateWrapper>,
+    app_handle: tauri::AppHandle,
+) -> Result<bool, AppError> {
+    let changed = state
+        .live_sessions
+        .set_title(&session_id, TitleSource::User, &title);
+    notify(&state.live_sessions, &app_handle, changed);
+    Ok(changed)
+}
+
+/// 真变化才发一次版本号（载荷只有版本号，与其它生产者同口径）。
+fn notify(registry: &Registry, app_handle: &tauri::AppHandle, changed: bool) {
+    if changed {
+        emit_changed(app_handle, registry.version());
+    }
 }
 
 /// 恢复成功后，让新会话**继承**旧会话的身份并让旧条目退场。
@@ -151,23 +166,6 @@ pub fn live_session_resume_command(
         .resume_command_for_native(&agent_id, &native_session_id, &entry.cwd)
 }
 
-/// 标题上报的**唯一**决策（`source` 决定是否顺带把会话标成「在用」）。
-///
-/// 抽成自由函数以便直测（不需要 Tauri 运行时）—— `Native` 与 `Prompt` 的差别只能靠
-/// 「同级可覆盖 / 弱级被拒」的用例区分，断言最终标题值本身区分不了。
-///
-/// 用户提交走 `Registry::report_user_input`（标题 + 可见性 + 清权威门一次加锁）；
-/// 其余来源走 `Registry::set_title` 的纯标题路径。空白已由 `title::admit` 判负，
-/// 这里不再重复检查。准入与升级规则仍只有一份实现。
-fn apply_title(registry: &Registry, session_id: &str, title: &str, source: TitleSource) -> bool {
-    match source {
-        // 用户提交 = 可能首次命名，也可能只是后续输入（清除权威状态门）。
-        // 两者必须共用一次加锁，不能拆成「先查标题、再写状态」。
-        TitleSource::Prompt => registry.report_user_input(session_id, title),
-        _ => registry.set_title(session_id, source, title),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,298 +184,31 @@ mod tests {
         assert_eq!(clamp_wait_timeout(Some(u64::MAX)), WAIT_TIMEOUT_MAX);
     }
 
-    mod reported_input {
-        use std::sync::Arc;
-
-        use super::*;
-        use crate::agent::chat::session_store::SqliteSessionStore;
-        use crate::common::git::WorkspaceSession;
-        use crate::live_sessions::entry::{SessionEntry, SessionKind, SessionState};
-
-        fn registry_with(title: (TitleSource, &str)) -> Registry {
-            let registry = Registry::new(Arc::new(
-                SqliteSessionStore::open_in_memory().expect("in-memory session store"),
-            ));
-            registry.register(
-                SessionEntry::new(
-                    "pty-1",
-                    SessionKind::Terminal,
-                    Some("pi".into()),
-                    WorkspaceSession::of("p1", Some("/proj-wt".into())),
-                    "/proj-wt",
-                )
-                .with_state(SessionState::Running),
-            );
-            // 夹具走**生产同一条**写路径（`set_title` → 准入 + 覆盖序），
-            // 不直接改字段：否则夹具能造出 `admit` 不会放行的状态。
-            registry.set_title("pty-1", title.0, title.1);
-            registry
-        }
-
-        /// 首条输入 ⇒ `Prompt` 标题 + 立刻可见（发送即出现，不等 agent 跑完）。
-        #[test]
-        fn first_input_titles_and_reveals_the_session() {
-            let registry = registry_with((TitleSource::Placeholder, ""));
-            let changed = apply_title(&registry, "pty-1", "  修复登录竞态 ", TitleSource::Prompt);
-            let entry = &registry.snapshot()[0];
-            assert!(changed);
-            assert_eq!(entry.title, "修复登录竞态", "空白被折叠/裁剪");
-            assert_eq!(entry.title_source, TitleSource::Prompt);
-            assert!(entry.has_user_input, "发送那一刻标题已有 ⇒ 侧栏立刻列出");
-        }
-
-        /// `Native` 比 `Prompt` 强：CLI 已经自报标题时，用户首行不会把它改名
-        ///（但 has_user_input 照置 —— 用户确实在用）。
-        #[test]
-        fn cli_native_title_wins_over_the_first_input() {
-            let registry = registry_with((TitleSource::Native, "claude"));
-            assert!(
-                apply_title(&registry, "pty-1", "npm test", TitleSource::Prompt),
-                "已发过输入（可见性）变化"
-            );
-            let entry = &registry.snapshot()[0];
-            assert_eq!(entry.title, "claude");
-            assert_eq!(entry.title_source, TitleSource::Native);
-        }
-
-        /// 重复上报幂等（同一条输入重发不 bump 版本）。
-        #[test]
-        fn repeated_report_is_idempotent() {
-            let registry = registry_with((TitleSource::Placeholder, ""));
-            assert!(apply_title(&registry, "pty-1", "ls", TitleSource::Prompt));
-            let version = registry.version();
-            assert!(!apply_title(&registry, "pty-1", "ls", TitleSource::Prompt));
-            assert_eq!(registry.version(), version);
-        }
-
-        /// 后续提交不能改名：同一会话第一次命名为 `ls` 后，`pwd` 只恢复活动态。
-        #[test]
-        fn later_input_does_not_rename_the_session() {
-            let registry = registry_with((TitleSource::Placeholder, ""));
-            assert!(apply_title(&registry, "pty-1", "ls", TitleSource::Prompt));
-            let version = registry.version();
-            assert!(
-                !apply_title(&registry, "pty-1", "pwd", TitleSource::Prompt),
-                "已有真标题时后续输入只允许状态变化"
-            );
-            let entry = &registry.snapshot()[0];
-            assert_eq!(entry.title, "ls");
-            assert_eq!(entry.title_source, TitleSource::Prompt);
-            assert_eq!(registry.version(), version, "仅改名被拒时不 bump");
-        }
-
-        /// 斜杠命令不是会话主题：不命名，但仍算「用户提交」（解除权威状态门）；
-        /// 之后第一条真正的消息才命名。
-        ///
-        /// 实测事故：用户敲 `/model`，在自动补全菜单里按回车 —— 捕获到的是半截命令 `/mo`，
-        /// 侧栏与 tab 标题都变成了这个既不是完整输入、也无从辨认的字符串。
-        #[test]
-        fn slash_command_does_not_become_the_title() {
-            let registry = registry_with((TitleSource::Placeholder, ""));
-            assert!(
-                apply_title(&registry, "pty-1", "/model", TitleSource::Prompt),
-                "用户确实提交了（活动态要变），只是不该命名"
-            );
-            let entry = &registry.snapshot()[0];
-            assert_eq!(entry.title, "", "命令不是标题");
-            assert!(entry.has_user_input, "但发送事实照记");
-            assert_eq!(entry.title_source, TitleSource::Placeholder, "来源不升级");
-
-            // 第一条真正的消息才命名。
-            assert!(apply_title(
-                &registry,
-                "pty-1",
-                "帮我看下 routing group",
-                TitleSource::Prompt
-            ));
-            let entry = &registry.snapshot()[0];
-            assert_eq!(entry.title, "帮我看下 routing group");
-            assert_eq!(entry.title_source, TitleSource::Prompt);
-        }
-
-        /// 未知会话：不建条目、不报错（迟到上报是常态）。
-        #[test]
-        fn unknown_report_is_dropped() {
-            let registry = registry_with((TitleSource::Placeholder, ""));
-            assert!(!apply_title(
-                &registry,
-                "ghost",
-                "hello",
-                TitleSource::Prompt
-            ));
-            assert_eq!(registry.snapshot().len(), 1, "不得凭空建条目");
-        }
-
-        /// 空白 `Prompt` 仍是用户提交（审批只按 Enter 也能解除门），但不会写成标题；
-        /// 空白 `Native` 则完全无动作。
-        #[test]
-        fn blank_input_engages_without_naming() {
-            let registry = registry_with((TitleSource::Placeholder, ""));
-            assert!(
-                apply_title(&registry, "pty-1", "   ", TitleSource::Prompt),
-                "空白 Prompt 也是一次用户提交"
-            );
-            let entry = &registry.snapshot()[0];
-            assert_eq!(entry.title, "", "空白不能成为标题");
-            assert!(entry.has_user_input);
-            let version_after_prompt = registry.version();
-            assert!(
-                !apply_title(&registry, "pty-1", "   ", TitleSource::Native),
-                "空白 Native 不动作"
-            );
-            assert_eq!(registry.version(), version_after_prompt);
-        }
-
-        /// 审批界面按 Enter 时没有标题素材，但必须解除 hook 的权威门。
-        #[test]
-        fn blank_approval_response_clears_the_authority_gate() {
-            let registry = registry_with((TitleSource::Native, "claude"));
-            assert!(registry.report_authoritative(
-                "pty-1",
-                None,
-                crate::live_sessions::state::Signal::ApprovalRequested
-            ));
-            assert_eq!(registry.snapshot()[0].state, SessionState::AwaitingApproval);
-
-            assert!(apply_title(&registry, "pty-1", "  ", TitleSource::Prompt));
-            let entry = &registry.snapshot()[0];
-            assert_eq!(entry.state, SessionState::Running);
-            assert!(!entry.awaiting_user_activity);
-            assert_eq!(entry.title, "claude", "空提交不能覆盖真标题");
-        }
+    /// IPC 契约：改名命令**没有** `source` 参数。
+    ///
+    /// 前端可控的来源曾让任意终端字节流伪装成 `Native` 覆盖用户改名（第 35 轮事故）；
+    /// 现在来源由命令体固定为 `User`，这条断言是它的编译期钉子。
+    #[test]
+    fn rename_command_takes_no_source() {
+        let _: for<'a> fn(
+            String,
+            String,
+            tauri::State<'a, AppStateWrapper>,
+            tauri::AppHandle,
+        ) -> Result<bool, AppError> = rename_live_session;
     }
 
-    mod native_title {
-        use std::sync::Arc;
-
-        use super::*;
-        use crate::agent::chat::session_store::SqliteSessionStore;
-        use crate::common::git::WorkspaceSession;
-        use crate::live_sessions::entry::{SessionEntry, SessionKind, SessionState, TitleSource};
-
-        fn registry_with(cwd: &str, title: (TitleSource, &str)) -> Registry {
-            let registry = Registry::new(Arc::new(
-                SqliteSessionStore::open_in_memory().expect("in-memory session store"),
-            ));
-            registry.register(
-                SessionEntry::new(
-                    "pty-1",
-                    SessionKind::Terminal,
-                    Some("claude-code".into()),
-                    WorkspaceSession::of("p1", Some(cwd.into())),
-                    cwd,
-                )
-                .with_state(SessionState::Running),
-            );
-            // 同上：夹具经唯一写路径，`Placeholder` 的非空文本会被判负（这是正确行为）。
-            registry.set_title("pty-1", title.0, title.1);
-            registry
-        }
-
-        fn title_of(registry: &Registry) -> (String, TitleSource) {
-            let entry = &registry.snapshot()[0];
-            (entry.title.clone(), entry.title_source)
-        }
-
-        /// CLI 原生标题落 `Native`：`Placeholder` 被升级，来源也一并改写。
-        #[test]
-        fn native_title_upgrades_a_placeholder() {
-            let registry = registry_with("/proj-wt", (TitleSource::Placeholder, "claude-code"));
-            assert!(apply_title(
-                &registry,
-                "pty-1",
-                "  Fix   the parser  ",
-                TitleSource::Native
-            ));
-            assert_eq!(
-                title_of(&registry),
-                ("Fix the parser".to_string(), TitleSource::Native)
-            );
-        }
-
-        /// 关键判据：包装层送的是 `Native` 而不是 `Prompt` —— 同级可覆盖（后者会返回
-        /// `false`）。只断言最终标题值的用例在两种来源下都是绿的，区分不了这条。
-        #[test]
-        fn native_title_can_replace_another_native_title() {
-            let registry = registry_with("/proj-wt", (TitleSource::Native, "old title"));
-            assert!(
-                apply_title(&registry, "pty-1", "new title", TitleSource::Native),
-                "Native 同级允许覆盖（送 Prompt 会被拒）"
-            );
-            assert_eq!(title_of(&registry).0, "new title");
-        }
-
-        /// 用户改名永不被自动来源覆盖（CLI hook 的后续主题不能改写用户设置）。
-        #[test]
-        fn native_title_never_overrides_a_user_title() {
-            let registry = registry_with("/proj-wt", (TitleSource::User, "my tab"));
-            assert!(
-                !apply_title(&registry, "pty-1", "a cli topic", TitleSource::Native),
-                "Native 主题本身通过准入，被拒的唯一理由是覆盖序"
-            );
-            assert_eq!(
-                title_of(&registry),
-                ("my tab".to_string(), TitleSource::User)
-            );
-        }
-
-        /// 未知会话 / 空白标题都不制造条目、不报错（迟到上报是常态）。
-        #[test]
-        fn native_title_ignores_unknown_sessions_and_blank_values() {
-            let registry = registry_with("/proj-wt", (TitleSource::Placeholder, "Terminal"));
-            assert!(!apply_title(
-                &registry,
-                "pty-404",
-                "whatever",
-                TitleSource::Native
-            ));
-            assert!(!apply_title(&registry, "pty-1", "   ", TitleSource::Native));
-            assert_eq!(registry.snapshot().len(), 1, "不得凭空建条目");
-            assert_eq!(
-                title_of(&registry),
-                (String::new(), TitleSource::Placeholder),
-                "占位标题恒为空（`Placeholder` 永远不进标题）"
-            );
-        }
-
-        /// `Placeholder` 经 IPC 传进来也不能写标题：占位不是标题。
-        ///
-        /// `source` 是前端可控的（`set_live_session_title` 的 `Option<TitleSource>`），
-        /// 没有准入时它能造出一条「有名字的占位会话」，而那正是本任务从占位里删掉的噪声。
-        #[test]
-        fn placeholder_source_never_writes_a_title() {
-            let registry = registry_with("/proj-wt", (TitleSource::Placeholder, ""));
-            assert!(!apply_title(
-                &registry,
-                "pty-1",
-                "claude-code",
-                TitleSource::Placeholder
-            ));
-            assert_eq!(
-                title_of(&registry),
-                (String::new(), TitleSource::Placeholder)
-            );
-        }
-
-        /// 同值不发：CLI hook 可能重复上报同一标题，
-        /// 但注册表在标题未变时不 bump 版本（R2.3 的同一条判据）。
-        #[test]
-        fn repeated_identical_native_title_does_not_bump() {
-            let registry = registry_with("/proj-wt", (TitleSource::Placeholder, "Terminal"));
-            assert!(apply_title(
-                &registry,
-                "pty-1",
-                "fix the parser",
-                TitleSource::Native
-            ));
-            let version = registry.version();
-            assert!(!apply_title(
-                &registry,
-                "pty-1",
-                "fix the parser",
-                TitleSource::Native
-            ));
-            assert_eq!(registry.version(), version, "同值不得 bump 版本");
-        }
+    /// IPC 契约：终端活动命令收 `(sessionId, line)`，**不接受**来源或标题类型。
+    ///
+    /// 「这行能不能当标题」的裁决在 `Registry::report_terminal_input`（读 `agent_id`），
+    /// 命令层只转发 —— 参数里一旦出现 `source` / `titleSource`，就说明裁决又跑回了命令层。
+    #[test]
+    fn activity_command_takes_only_the_line() {
+        let _: for<'a> fn(
+            String,
+            String,
+            tauri::State<'a, AppStateWrapper>,
+            tauri::AppHandle,
+        ) -> Result<bool, AppError> = report_live_session_activity;
     }
 }

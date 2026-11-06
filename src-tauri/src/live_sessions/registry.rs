@@ -183,7 +183,8 @@ impl Registry {
         self.finish(session_id, applied, "report")
     }
 
-    /// 用户提交输入的**唯一合并写**：首次标题 + 置位已使用 + 清除权威状态门 + 进入 Running。
+    /// 用户提交输入的**唯一合并写**：置位已使用 + 清除权威状态门 + 进入 Running，
+    /// 并在**尚无真标题**时用 `Prompt` 命名。
     ///
     /// 首次输入既要成为标题素材，也要让会话立刻可见；后续输入只需要把已完成的会话
     /// 重新推回活跃态。两者共用本入口，避免调用方在多个锁之间拼状态。
@@ -192,13 +193,16 @@ impl Registry {
     /// 也不能把会话名改掉（用户用侧栏识别会话，改名必须只来自显式改名或更强的来源）。
     ///
     /// 空白行仍是**一次用户提交**（审批界面可能只按 Enter），只是不作为标题素材。
+    ///
+    /// 这是**通用**原语：调用方负责「这串文本是不是会话主题」。终端字节流走
+    /// [`Registry::report_terminal_input`]，那里才有「agent 终端不得命名」的裁决。
     pub fn report_user_input(&self, session_id: &str, title: &str) -> bool {
         let applied = self.mutate(session_id, |entry| {
             if entry.state.is_terminal() {
                 return false;
             }
             let mut changed = false;
-            if !has_real_title(entry) {
+            if !entry.has_real_title() {
                 changed |= upgrade_title(entry, TitleSource::Prompt, title);
             }
             changed |= mark_entry_user_activity(entry);
@@ -208,6 +212,30 @@ impl Registry {
             changed
         });
         self.finish(session_id, applied, "report_user_input")
+    }
+
+    /// 终端字节流上报的用户提交 —— **这个通道的裁决只在这里**。
+    ///
+    /// `report_user_input` 是通用原语，由调用方决定「这串文本是不是会话主题」；
+    /// 终端这条通道的答案由会话自己的登记事实给出：
+    ///
+    /// | 会话 | 这行能不能当标题 | 理由 |
+    /// | --- | --- | --- |
+    /// | 纯 shell（`agent_id = None`） | **能** | 没有 hook / conversation 缓存，这是唯一素材 |
+    /// | agent 终端（`agent_id = Some`） | **不能** | 混着 `/model` 过滤词这类 TUI 面板输入 |
+    ///
+    /// 放在注册表而不是命令层（红线 6）：判据要读 `agent_id`，而它在条目里；放外面就成了
+    /// 「命令层持有一条只有本域才懂规则的副本」，下一个调用方必然会绕过去。
+    /// 先读后写（两次加锁）是安全的：`agent_id` 登记后不变，期间被注销只会让写入变成
+    /// 无操作（`finish` 对未知会话返回 `false`）。
+    pub fn report_terminal_input(&self, session_id: &str, line: &str) -> bool {
+        let title = match self.entry(session_id).and_then(|entry| entry.agent_id) {
+            // 纯 shell：这一行就是「这条会话在干什么」。`admit` 仍会拒掉斜杠命令 / 纯符号。
+            None => line,
+            // agent 终端：终端字节不是会话事实（TUI 面板、协议应答、状态栏帧都在里面）。
+            Some(_) => "",
+        };
+        self.report_user_input(session_id, title)
     }
 
     /// 权威 hook 事件：一次加锁内升级标题 / 置位 / 状态转移，并关闭 PTY 输出推断。
@@ -275,7 +303,7 @@ impl Registry {
     /// 门控在锁内，避免「先读 has_user_input、再写标题」之间的竞态。
     pub fn report_first(&self, session_id: &str, titles: &[(TitleSource, &str)]) -> bool {
         let applied = self.mutate(session_id, |entry| {
-            if entry.has_user_input && (titles.is_empty() || has_real_title(entry)) {
+            if entry.has_user_input && (titles.is_empty() || entry.has_real_title()) {
                 return false;
             }
             let mut changed = false;
@@ -614,15 +642,6 @@ fn upgrade_title(entry: &mut SessionEntry, source: TitleSource, text: &str) -> b
     entry.title = title;
     entry.title_source = source;
     true
-}
-
-/// 是否有可展示的真标题。
-///
-/// 退化为「非空」是因为 [`title::admit`] 对 `Placeholder` 恒返回 `None`：
-/// 于是 `title_source == Placeholder ⟺ title.is_empty()` 恒成立。
-/// 这条不变量同时让前端的 `isNamedSession` 退化成同一个判据。
-const fn has_real_title(entry: &SessionEntry) -> bool {
-    !entry.title.is_empty()
 }
 
 /// 用户活动解除权威状态门，并把非终止会话推回 Running。

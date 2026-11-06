@@ -292,9 +292,11 @@ mod tests {
         assert_eq!(restored.agent_id, None);
     }
 
-    /// 无法定位单元 / 没有名字的行不恢复（旧行扩列后正是这种形态）。
+    /// 无法定位单元的行不恢复；**无名行要恢复**（第 35 轮：可见性 ≠ 命名）。
+    ///
+    /// 旧行扩列后正是「有单元、无名字」的形态 —— 那些行必须能回到侧栏（画成占位行）。
     #[test]
-    fn cursor_without_unit_or_title_is_not_restorable() {
+    fn cursor_without_a_unit_is_not_restorable_but_unnamed_is() {
         let base =
             ResumeCursor::from_entry(&entry(SessionKind::Chat, Some("pi"), SessionState::Ready))
                 .unwrap();
@@ -304,7 +306,10 @@ mod tests {
             title_source: PersistedTitleSource::Placeholder,
             ..base.clone()
         };
-        assert!(no_title.into_entry().is_none(), "无名行不恢复");
+        assert!(
+            no_title.into_entry().is_some(),
+            "无名但有单元 ⇒ 仍要回填（侧栏画占位行）"
+        );
 
         let no_unit = ResumeCursor {
             project_id: String::new(),

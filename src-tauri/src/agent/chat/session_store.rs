@@ -144,18 +144,30 @@ pub trait SessionStore: Send + Sync {
 impl ResumeCursor {
     /// **读判据**（唯一一份）：「这一行能投影回侧栏吗」。
     ///
-    /// 三个拒绝理由：没有名字（侧栏不显示）、没有单元（不知挂哪里）、
-    /// `Placeholder` 却带标题（数据损坏，不猜）。消费点：`into_entry` 与
-    /// `SessionStore::list_restorable`（含测试替身）—— 改判据只改这里。
+    /// 两个拒绝理由：没有单元（不知挂哪里）、`Placeholder` 却带标题（数据损坏，不猜）。
+    /// 消费点：`into_entry` 与 `SessionStore::list_restorable`（含测试替身）—— 改判据只改这里。
+    ///
+    /// **标题可以为空**（第 35 轮修正）：可见性与命名是两件事。终端首条输入不再产生标题，
+    /// 无 hook 的 CLI 永远等不到名字；把 `title != ''` 当读门会让这些会话重启后整条消失。
+    /// 无名行由视图画成占位行，不由后端编一个假名字。
     ///
     /// 与之相对的**写判据**是 `has_user_input`（见 `live_sessions::cursor::from_entry`）：
-    /// 行存在 = 用户确实动过这条会话；行可读 = 它有名字且能定位。两个问题不同，
+    /// 行存在 = 用户确实动过这条会话；行可读 = 它能定位到单元。两个问题不同，
     /// 但不再是散落的四份实现。
     #[must_use]
     pub fn is_restorable(&self) -> bool {
-        !self.title.is_empty()
-            && !self.project_id.is_empty()
-            && self.title_source != PersistedTitleSource::Placeholder
+        !self.project_id.is_empty() && !self.is_corrupt_placeholder()
+    }
+
+    /// 损坏行判据：`Placeholder` 来源却带着标题。
+    ///
+    /// 后端不变量是 `Placeholder ⟺ title == ""`（`title::admit` 对 `Placeholder` 恒返回
+    /// `None`，`SessionEntry::has_real_title` 因此退化为非空判断）。违反它的行没有可信来源，
+    /// 投影回去只会得到一条「没有来源的名字」—— 不猜。
+    ///
+    /// 注意 **`Placeholder` + 空标题是合法的**（第 35 轮起这是常态：已输入但还没有名字）。
+    fn is_corrupt_placeholder(&self) -> bool {
+        self.title_source == PersistedTitleSource::Placeholder && !self.title.is_empty()
     }
 
     /// 用 `existing` 的**创建期定格字段**覆盖自己的投影默认值。
@@ -397,9 +409,10 @@ impl SessionStore for SqliteSessionStore {
         };
         // SQL 只做**粗筛**（必须是 `is_restorable` 的超集）：「`Placeholder` 却带标题」
         // 这类损坏过得了这里，由下面那份判据挡。顺序交给视图层，SQL 不排。
+        // 粗筛不要求 `title != ''`：无名但已输入的行也必须能回来（第 35 轮，可见性≠命名）。
         let mut stmt = match conn.prepare(&format!(
             "SELECT {CURSOR_COLUMNS} FROM session_cursors \
-             WHERE project_id != '' AND title != ''"
+             WHERE project_id != ''"
         )) {
             Ok(s) => s,
             Err(_) => return Vec::new(),
@@ -510,15 +523,23 @@ mod tests {
         assert_eq!(loaded.status, SessionStatus::Running);
     }
 
-    /// 读判据的三个拒绝理由各一条（谓词是唯一一份，必须穷举）：无名 / 无单元 / 损坏。
+    /// 读判据**只拒绝两种行**（谓词是唯一一份，必须穷举）：无单元 / 损坏。
+    ///
+    /// **无名不是拒绝理由**（第 35 轮）：可见性与命名是两件事。终端首条输入不再给每个
+    /// 会话命名，无 hook 的 CLI 永远等不到名字；若继续把 `title != ''` 当读门，重启后
+    /// 那些会话整条消失。
     #[test]
-    fn is_restorable_rejects_each_reason_once() {
+    fn is_restorable_rejects_orphan_or_corrupt_rows() {
         let good = make_cursor("good");
         assert!(good.is_restorable(), "夹具本身就是可恢复的形状");
 
         let mut unnamed = make_cursor("unnamed");
         unnamed.title = String::new();
-        assert!(!unnamed.is_restorable(), "没有名字 ⇒ 侧栏不显示，不恢复");
+        unnamed.title_source = PersistedTitleSource::Placeholder;
+        assert!(
+            unnamed.is_restorable(),
+            "无名但有单元 ⇒ 仍要回填（侧栏自己解释占位）"
+        );
 
         let mut orphan = make_cursor("orphan");
         orphan.project_id = String::new();
@@ -532,9 +553,9 @@ mod tests {
         );
     }
 
-    /// 可恢复的行 = 能定位单元（`project_id` 非空）且能显示（`title` 非空）。
+    /// 可恢复的行 = 能定位单元（`project_id` 非空）且不是损坏行；**标题可以空**。
     #[test]
-    fn list_restorable_requires_a_unit_and_a_title() {
+    fn list_restorable_requires_a_unit_and_skips_corrupt_rows() {
         let store = SqliteSessionStore::open_in_memory().unwrap();
         store.save_cursor(&make_cursor("named")).unwrap();
 
@@ -552,7 +573,7 @@ mod tests {
             .into_iter()
             .map(|c| c.session_id)
             .collect();
-        assert_eq!(ids, vec!["named".to_string()]);
+        assert_eq!(ids, vec!["named".to_string(), "unnamed".to_string()]);
     }
 
     /// 「可恢复」的判据只有一份（[`ResumeCursor::is_restorable`]）：SQL 的 `WHERE` 只是粗筛，

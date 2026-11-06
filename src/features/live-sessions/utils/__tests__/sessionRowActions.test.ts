@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api/liveSessionsApi', () => ({
-  setLiveSessionTitle: vi.fn(() => Promise.resolve(true)),
+  renameLiveSessionTitle: vi.fn(() => Promise.resolve(true)),
   deleteLiveSession: vi.fn(() => Promise.resolve(true)),
 }));
 
@@ -14,7 +14,7 @@ import type { SessionView } from '@/shared/types/liveSessions';
 import type { Tab } from '@/shared/types/tab';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
-import { deleteLiveSession, setLiveSessionTitle } from '../../api/liveSessionsApi';
+import { deleteLiveSession, renameLiveSessionTitle } from '../../api/liveSessionsApi';
 import { deleteSession, renameSession } from '../sessionRowActions';
 
 const KEY = WorkspaceSession.of('p1', '/proj-wt').key;
@@ -46,7 +46,7 @@ function terminalTab(id: string, ptySessionId?: string): Tab {
 }
 
 beforeEach(() => {
-  vi.mocked(setLiveSessionTitle).mockClear();
+  vi.mocked(renameLiveSessionTitle).mockClear();
   vi.mocked(deleteLiveSession).mockClear();
   useEditorStore.setState({ tabs: {}, editorLayout: {} });
   useCloseConfirmStore.setState({ pending: null });
@@ -54,10 +54,10 @@ beforeEach(() => {
 });
 
 describe('sessionRowActions — 改名', () => {
-  it('落 `user` 来源：用户改的名字不该被后续自动标题覆盖', () => {
+  it('只传 id + 名字：来源由后端固定为 user，IPC 不接受前端声明', () => {
     renameSession(session(), '我的新名字');
 
-    expect(setLiveSessionTitle).toHaveBeenCalledWith('pty-1', '我的新名字', 'user');
+    expect(renameLiveSessionTitle).toHaveBeenCalledWith('pty-1', '我的新名字');
   });
 });
 

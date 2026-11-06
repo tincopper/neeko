@@ -62,9 +62,12 @@ impl SessionState {
 pub enum TitleSource {
     /// 创建期占位（agent 名 / `Terminal`）。
     Placeholder,
-    /// 首轮 prompt 截断。
+    /// 真实用户消息：chat 注册时的 prompt，或**纯 shell** 终端的首条输入。
+    ///
+    /// agent 终端的字节流不是标题源（TUI 面板过滤词也在里面，见第 35 轮）。
     Prompt,
-    /// agent 原生标题（恢复会话的 topic、OSC 0/2、conversation 扫描）。
+    /// agent 原生标题（CLI hook topic、conversation 缓存里的 provider title）。
+    /// OSC 0/2 仅作展示态，不再是生产者。
     Native,
     /// 用户改名（自动来源永不覆盖）。
     User,
@@ -168,6 +171,16 @@ impl SessionEntry {
     pub const fn with_user_input(mut self, has_user_input: bool) -> Self {
         self.has_user_input = has_user_input;
         self
+    }
+
+    /// 是否有可展示的真标题 —— **唯一判据**（注册表内部与 hook 投影共用）。
+    ///
+    /// 退化为「非空」是因为 [`title::admit`](crate::live_sessions::title::admit) 对
+    /// `Placeholder` 恒返回 `None`：于是 `title_source == Placeholder ⟺ title.is_empty()`
+    /// 恒成立。这条不变量同时让前端的 `isNamedSession` 退化成同一个判据。
+    #[must_use]
+    pub const fn has_real_title(&self) -> bool {
+        !self.title.is_empty()
     }
 }
 

@@ -11,8 +11,10 @@
 //! 本模块只负责**把原生事实变成信号**；「转移 + 通知」的收尾在注册表域，不在生产者里。
 //!
 //! 会话的**标题与 has_user_input** 不在这里产生：用户输入只有前端分得清「人敲的」与「我们自动
-//! 启动 agent 的那一行」，故由前端经 `set_live_session_title`（`source = prompt`）上报
-//! （见 commands 里的命令文档）；CLI 自己的命名经 hook 上报（[`super::hooks`]）。
+//! 启动 agent 的那一行」，故由前端经 `report_live_session_activity` 上报活动 + 行文本；
+//! **行文本能否当标题由 [`Registry::report_terminal_input`] 按 `agent_id` 裁决** —— 纯 shell
+//! 可以，agent 终端不行（TUI 面板过滤词就在那条通道里）。标题其余来源：CLI hook /
+//! conversation 缓存 / 用户改名（[`super::hooks`]）。
 //!
 //! # 顺序不变量（登记早于信号）
 //!
@@ -548,7 +550,7 @@ mod tests {
         );
         assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
 
-        assert!(registry.report_user_input("t1", ""));
+        assert!(registry.report_terminal_input("t1", ""));
         assert_eq!(registry.snapshot()[0].state, SessionState::Running);
         assert!(!activity.poll(&registry, None, "t1"), "Running 已稳定");
     }

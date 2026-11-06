@@ -386,24 +386,22 @@ export default React.memo(function TerminalViewBase({
           });
           const unlistenClosed = safeUnlisten(rawUnlistenClosed);
 
-          // CLI 自报的终端标题（OSC 0/2）→ 注册表 `Native`；用户输入 → 活动 + `Prompt` 素材。
-          // 判据在后端 `title::admit`，这里只有传输优化（见 `sessionTitleReporter`）。
+          // 终端 I/O 只上报「用户提交过输入」这一活动事实；标题来自改名 / hook /
+          // conversation 缓存，不经终端（源隔离，见 `sessionTitleReporter`）。
           const reporting = installTerminalReporting({
-            term,
             getSessionId: () => entry.sessionId,
           });
 
           // 调度器注销挂到 entry.unlisten 槽位：terminalCache 销毁/重建统一经
-          // entry.unlisten?.() 清理，幂等安全。closed 与两条上报通道一并收口，避免
-          // Tauri 事件注册表 / xterm disposables 残留死闭包。
+          // entry.unlisten?.() 清理，幂等安全。closed 与 Tauri 事件表一并收口，避免残留死闭包。
+          // 活动上报无需解绑：它不订阅任何东西（OSC 标题已从生产者集合里删除）。
           entry.unlisten = () => {
             scheduler.dispose();
             unlistenClosed();
-            reporting.dispose();
           };
 
           // 每个会话一个捕获器：只在**会话创建**时构造（换 tab 是 reattach 既有 entry，不重建）。
-          // 每次提交都上报：首次提供标题素材，后续清除后端的权威状态门。
+          // 每次提交都上报：置位可见性 + 清权威状态门，行文本的去向由后端按会话类型裁决。
           entry.inputController = setupTerminalInput({
             term,
             sendInput: (text: string) => {
@@ -411,8 +409,10 @@ export default React.memo(function TerminalViewBase({
               const bytes = Array.from(new TextEncoder().encode(text));
               // 静默豁免：终端输入，尽力而为，失败无需上报
               emit(terminalInputEvent(entry.sessionId), bytes).catch(() => {});
-              // 用户提交 ⇒ 首次标题 / 后续恢复活动态。**只在这条路径上报**：自动启动
-              // agent 的命令走 `emit(...)` 直写，不经过 `sendInput`。
+              // 用户提交 ⇒ 上报活动（has_user_input / 清权威门）+ 行文本（纯 shell 的
+              // 唯一标题素材，是否采用由后端按 `agent_id` 裁决）。
+              // **只在这条路径上报**：自动启动 agent 的命令走 `emit(...)` 直写，
+              // 不经过 `sendInput`。
               reporting.reportUserInput(text);
             },
           });

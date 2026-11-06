@@ -70,12 +70,14 @@ describe('isListedSession', () => {
     expect(isListedSession(startupTitle)).toBe(false);
   });
 
-  it('用户输入了但还没有标题 ⇒ 不列出（等标题到手再出现）', () => {
+  it('用户输入了但还没有标题 ⇒ **仍要列出**（可见性与命名是两件事）', () => {
+    // 第 35 轮把「首条终端输入 = 标题」删掉后，无 hook 的 CLI 永远等不到标题；
+    // 若继续把「有名字」当列出条件，终端会话会整条从侧栏消失（实测回归）。
     expect(
       isListedSession(
         session({ sessionId: 'a', title: '', titleSource: 'placeholder', hasUserInput: true }),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('已输入 + 有标题 ⇒ 列出', () => {
@@ -84,13 +86,18 @@ describe('isListedSession', () => {
 });
 
 describe('sessionsByUnit', () => {
-  it('无名会话不进分组（打开 tab 但还没有标题时不列条目）', () => {
+  it('无名但已输入的会话**要**进分组（否则终端会话整条消失）', () => {
     const list = [
       session({ sessionId: 'named', title: 'fix login', titleSource: 'prompt' }),
       session({ sessionId: 'unnamed', title: '', titleSource: 'placeholder' }),
     ];
     const byUnit = sessionsByUnit(list);
-    expect(byUnit.get(MAIN_KEY)?.map((s) => s.sessionId)).toEqual(['named']);
+    expect(byUnit.get(MAIN_KEY)?.map((s) => s.sessionId)).toEqual(['named', 'unnamed']);
+  });
+
+  it('未输入的会话不进分组（打开 tab ≠ 在用）', () => {
+    const list = [session({ sessionId: 'opened', hasUserInput: false })];
+    expect(sessionsByUnit(list).size).toBe(0);
   });
 
   it('按 workspaceKey 分组，且保持后端顺序（不重排）', () => {
@@ -123,7 +130,7 @@ describe('sessionsByUnit', () => {
 });
 
 describe('unitsWithListedActiveSession', () => {
-  it('前台 tab 的会话未列出（未输入 / 无标题 / 已注销）⇒ 父行不应让出选中态', () => {
+  it('前台 tab 的会话未输入 ⇒ 父行不应让出选中态', () => {
     const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'hidden' }];
     expect(
       unitsWithListedActiveSession(refs, [
@@ -135,6 +142,15 @@ describe('unitsWithListedActiveSession', () => {
         }),
       ]),
     ).toEqual(new Set());
+  });
+
+  it('前台会话已输入但还没名字 ⇒ 子行仍会画出来，父行要让出选中底', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'unnamed' }];
+    expect(
+      unitsWithListedActiveSession(refs, [
+        session({ sessionId: 'unnamed', title: '', titleSource: 'placeholder' }),
+      ]),
+    ).toEqual(new Set([MAIN_KEY]));
   });
 
   it('前台 tab 的会话在可见集合里 ⇒ 对应单元计入', () => {
@@ -296,11 +312,8 @@ describe('selectLatestSessionForUnit —— 点图标时该接回哪一条', () 
     expect(selectLatestSessionForUnit(sessions, WT_KEY, 'terminal')?.sessionId).toBe('wt');
   });
 
-  it('未 listed（用户没发过输入 / 没名字）的会话不参与 —— 否则第一次点图标就接回一个空会话', () => {
-    const sessions = [
-      session({ sessionId: 'silent', startedAt: late, hasUserInput: false }),
-      session({ sessionId: 'unnamed', startedAt: late, title: '', titleSource: 'placeholder' }),
-    ];
+  it('未 listed（用户没发过输入）的会话不参与 —— 否则第一次点图标就接回一个空会话', () => {
+    const sessions = [session({ sessionId: 'silent', startedAt: late, hasUserInput: false })];
     expect(selectLatestSessionForUnit(sessions, MAIN_KEY, 'terminal')).toBeNull();
 
     // 去掉噪声后，真正用过的那条才被选中
@@ -308,6 +321,16 @@ describe('selectLatestSessionForUnit —— 点图标时该接回哪一条', () 
     expect(selectLatestSessionForUnit([...sessions, listed], MAIN_KEY, 'terminal')?.sessionId).toBe(
       'listed',
     );
+  });
+
+  it('已输入但还没名字的会话**算**用过（无 hook 的终端永远等不到标题）', () => {
+    const unnamed = session({
+      sessionId: 'unnamed',
+      startedAt: late,
+      title: '',
+      titleSource: 'placeholder',
+    });
+    expect(selectLatestSessionForUnit([unnamed], MAIN_KEY, 'terminal')?.sessionId).toBe('unnamed');
   });
 
   it('无命中返回 null（注册表为空）', () => {

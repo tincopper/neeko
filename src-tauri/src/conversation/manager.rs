@@ -979,6 +979,42 @@ impl ConversationManager {
         adapter.resume_command(native_session_id, project_path)
     }
 
+    /// 按 **agent + 原生会话 id** 读缓存里的会话标题（用户改名优先）。
+    ///
+    /// 供 live-sessions 的 hook 投影回落：CLI hook 没带 `topic` 时，provider 已经在
+    /// transcript 里写好的标题仍是权威会话事实。**纯内存**：只读 [`Self::cache`]，
+    /// 不触发 `scan_*`、不读磁盘 —— hook 线程会调用它（红线 3），缓存刷新由既有
+    /// conversation scan 链路负责。
+    ///
+    /// 标题优先级 `user_title` > `title`；trim 后为空 ⇒ `None`（不把空白串当名字）。
+    /// `agent_id` / `native_session_id` 缺省同样直接返回 `None`（缺一就无法定址）。
+    pub fn cached_title_for_native(
+        &self,
+        agent_id: &str,
+        native_session_id: &str,
+    ) -> Result<Option<String>> {
+        if agent_id.trim().is_empty() || native_session_id.trim().is_empty() {
+            return Ok(None);
+        }
+        let key = format!("{agent_id}:{native_session_id}");
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
+        Ok(cache.get(&key).and_then(|meta| {
+            let candidate = meta
+                .user_title
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .or_else(|| {
+                    let title = meta.title.trim();
+                    (!title.is_empty()).then_some(title)
+                });
+            candidate.map(str::to_string)
+        }))
+    }
+
     /// 构建恢复上下文字符串
     ///
     /// 从最近 max_messages 条消息构建，用于不支持原生恢复的 Agent 的兜底方案。
@@ -3543,5 +3579,106 @@ mod tests {
         assert!(tail.len() <= 8 + '…'.len_utf8());
 
         assert_eq!(stderr_tail(b"  boom  ", 400), "boom");
+    }
+
+    /// 第 35 轮：hook 投影的标题回落源（纯内存，不扫盘）。
+    mod cached_title_for_native {
+        use super::*;
+
+        fn with_cached_meta(
+            agent_id: &str,
+            native_id: &str,
+            title: &str,
+            user_title: Option<&str>,
+        ) -> ConversationManager {
+            let manager = ConversationManager::new(vec![]);
+            let id = format!("{agent_id}:{native_id}");
+            let meta = ConversationMeta {
+                id: id.clone(),
+                native_session_id: native_id.to_string(),
+                agent_id: agent_id.to_string(),
+                title: title.to_string(),
+                model: None,
+                started_at: 0,
+                updated_at: 0,
+                message_count: 0,
+                preview: String::new(),
+                file_path: PathBuf::new(),
+                project_path: None,
+                user_title: user_title.map(str::to_string),
+                tags: Vec::new(),
+                supports_resume: false,
+                delete_support: SessionDeleteSupport::Unsupported,
+            };
+            manager.cache.lock().unwrap().insert(id, meta);
+            manager
+        }
+
+        /// 用户改名优先于 provider 标题。
+        #[test]
+        fn prefers_user_title_over_provider_title() {
+            let manager =
+                with_cached_meta("claude-code", "sess-1", "provider 标题", Some("我的名字"));
+            assert_eq!(
+                manager
+                    .cached_title_for_native("claude-code", "sess-1")
+                    .unwrap(),
+                Some("我的名字".to_string())
+            );
+        }
+
+        /// 没有用户改名时回落到 provider 标题，并 trim 空白。
+        #[test]
+        fn falls_back_to_provider_title_and_trims() {
+            let manager = with_cached_meta("claude-code", "sess-1", "  Fix login bug  ", None);
+            assert_eq!(
+                manager
+                    .cached_title_for_native("claude-code", "sess-1")
+                    .unwrap(),
+                Some("Fix login bug".to_string())
+            );
+        }
+
+        /// 空标题不是名字：空白的 user_title 仍可回落到 provider，两者皆空则 None。
+        #[test]
+        fn blank_titles_are_not_names() {
+            let manager = with_cached_meta("claude-code", "sess-1", "provider", Some("   "));
+            assert_eq!(
+                manager
+                    .cached_title_for_native("claude-code", "sess-1")
+                    .unwrap(),
+                Some("provider".to_string())
+            );
+            let manager = with_cached_meta("claude-code", "sess-1", "   ", None);
+            assert_eq!(
+                manager
+                    .cached_title_for_native("claude-code", "sess-1")
+                    .unwrap(),
+                None
+            );
+        }
+
+        /// 缺 agent id / 缓存未命中（含 agent 不匹配）都返回 None，且**不触发扫描**。
+        #[test]
+        fn missing_agent_id_or_cache_miss_returns_none_without_scanning() {
+            // 空 adapters：任何扫描都会 panic / 返回错误，因此这里通过即证明没有触盘。
+            let manager = with_cached_meta("claude-code", "sess-1", "provider", None);
+            assert_eq!(manager.cached_title_for_native("", "sess-1").unwrap(), None);
+            assert_eq!(
+                manager.cached_title_for_native("claude-code", "").unwrap(),
+                None
+            );
+            assert_eq!(
+                manager.cached_title_for_native("pi", "sess-1").unwrap(),
+                None,
+                "agent 不匹配不能靠猜命中"
+            );
+            assert_eq!(
+                manager
+                    .cached_title_for_native("claude-code", "sess-404")
+                    .unwrap(),
+                None
+            );
+        }
     }
 }

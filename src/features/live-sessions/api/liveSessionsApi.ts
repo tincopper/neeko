@@ -9,6 +9,22 @@ import type { WorkspaceSession } from '@/shared/utils/workspaceRef';
  * 协议是 **credit-pull**：后端只在版本变化时 emit 一个版本号，快照靠这里显式拉。
  * 不推送全量 —— macOS WebKit 上每次事件送达 = 一次 `evaluateJavaScript` + 完成值克隆，
  * 推送快照会让 RSS 只增不减（同终端 drain 的结论）。
+ *
+ * # 标题源隔离（2026-11-06）
+ *
+ * 终端 I/O **不是标题源**：xterm `onData` 与 OSC 0/2 `onTitleChange` 共用一条通道，
+ * TUI 面板的过滤词（`/model` 里敲 `deep`）、状态栏帧、协议应答都会被 CLI 反射到终端
+ * 标题栏。它们不是会话事实，因此本文件**不暴露任何从终端写标题的入口**。
+ *
+ * 标题的生产者只有四类，且都不经终端 I/O：用户改名（本文件的
+ * `renameLiveSessionTitle`）、CLI hook `topic`、conversation 缓存里的 provider title、
+ * chat 注册时的真实 prompt。`source` 由后端按生产者固定，IPC 不接受前端声明来源 ——
+ * 前端可控的 `source` 曾让任意字节流伪装成 `Native` 覆盖用户改名。
+ *
+ * 终端上报「用户提交过输入」这一事实（`reportLiveSessionActivity`）：后端据此置
+ * `has_user_input`、清权威状态门。行文本一并到达，但**是否命名由后端按 `agent_id` 裁决**：
+ * 纯 shell（无 agent）没有 hook / conversation 通道，这行是唯一标题素材；有 agent 的
+ * 终端里这行可能是 TUI 面板过滤词，后端一律不用它命名。
  */
 
 /**
@@ -39,31 +55,6 @@ export function waitLiveSessions(
 }
 
 /**
- * 回传会话标题 / 用户提交：CLI 的 `source = 'native'`、终端用户每次提交的
- * `source = 'prompt'`，或侧栏手改名的 `source = 'user'`。
- *
- * - `prompt`：用户提交输入 ⇒ 首次无真标题时按 `Prompt` 命名并标记「已在用」；
- *   后续提交只清除 CLI hook 的权威状态门。空回车同样清除门，但不会写空标题；
- * - `native`：CLI 自报的会话主题 —— 两条来源：hook 面在后端直接调注册表；
- *   终端 OSC 0/2 由 `TerminalViewBase` 的 `onTitleChange` 经本函数上报。
- *
- * `source` **必传**：两端各持一个默认值（前端 `prompt` / 后端 `native`）时，同一个调用的语义
- * 取决于谁在调用 —— 那是两条规则而不是一条。
- *
- * # 判据只在后端，前端只做传输去重
- *
- * 「这条候选配不配当标题」由后端 `live_sessions::title::admit` 唯一裁决：状态栏帧
- * （`π`、`✳ Claude ready`）、身份回显、cwd、`Terminal N` 在那里被判负，注册表不写。
- *
- * 前端**只做两件无语义的事**：与上次上报的原文逐字相同不发、用户首次提交之前不发
- * （都是少发 IPC 的优化 —— 删掉它们行为不变，只是变慢）。
- *
- * 历史：曾因 `π` 覆盖用户首条输入而**整条 OSC 来源被删**。真正的成因是当时没有准入判据
- * （`is_title_material` 是为 `Prompt` 写的，而 `π` 是希腊字母、`✳ Claude ready` 含单词，
- * `char::is_alphanumeric` 全放行）。补上 `admit` 后来源恢复 —— 它也把 `✳ Fix login bug`
- * 这类 provider 自己浓缩过的任务标题带了回来。
- */
-/**
  * 这条会话的**原生恢复命令**参数（`["--resume", "<native id>"]`）；`null` = 不支持。
  *
  * 判据在后端：`native_session_id` 只来自 CLI hook，「这个 agent 支不支持原生恢复」由
@@ -87,12 +78,31 @@ export function adoptLiveSession(fromSessionId: string, intoSessionId: string): 
   return invoke<boolean>('adopt_live_session', { fromSessionId, intoSessionId });
 }
 
-export function setLiveSessionTitle(
-  sessionId: string,
-  title: string,
-  source: 'prompt' | 'native' | 'user',
-): Promise<boolean> {
-  return invoke<boolean>('set_live_session_title', { sessionId, title, source });
+/**
+ * 终端用户提交过一次输入 ⇒ 上报活动 + 行文本（是否命名由后端按会话类型裁决）。
+ *
+ * 后端投影为 `Registry::report_terminal_input(sessionId, line)`：置 `has_user_input`、
+ * 清 CLI hook 的权威状态门、恢复 Running，并按会话的 `agent_id` 决定要不要用这行命名：
+ *
+ * | 会话 | 这行能不能当标题 |
+ * | --- | --- |
+ * | 纯 shell（`agent_id = None`） | **能** —— 它没有 hook / conversation 通道 |
+ * | agent 终端（`agent_id = Some`） | **不能** —— 可能是 `/model` 面板的过滤词 |
+ *
+ * 前端不做这套分流：字节形状无法区分「真实请求」与「TUI 控件输入」，只有后端登记时的
+ * `agent_id` 是可靠事实。裁决与 `agent_id` 同住（注册表）而不是命令层 —— 命令只转发。
+ */
+export function reportLiveSessionActivity(sessionId: string, line: string): Promise<boolean> {
+  return invoke<boolean>('report_live_session_activity', { sessionId, line });
+}
+
+/**
+ * 侧栏行内改名：来源固定为 `User`（后端裁定，前端无需也不能声明 `source`）。
+ *
+ * 改名不置位 `has_user_input`：给还没用过的会话改名不该让它凭空出现在侧栏。
+ */
+export function renameLiveSessionTitle(sessionId: string, title: string): Promise<boolean> {
+  return invoke<boolean>('rename_live_session', { sessionId, title });
 }
 
 /**

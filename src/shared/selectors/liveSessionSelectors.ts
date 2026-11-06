@@ -93,24 +93,27 @@ export function isNamedSession(session: SessionView): boolean {
 }
 
 /**
- * 是否该把这条会话列进侧栏：**用户已经在里面输入过、且它已经有名字**。
+ * 是否该把这条会话列进侧栏：**用户已经在里面输入过**。
  *
- * 两个条件缺一不可，各自挡住一类「假的会话」：
+ * 只有一个条件：`hasUserInput`。它挡住的是一类「假的会话」—— 打开 agent tab 就会创建
+ * PTY / 静默会话，那时用户还没敲一个字（Codex 那样的桌面端也是「发出第一条消息后才建会话」）。
  *
- * 1. `hasUserInput` —— 打开 agent tab 就会创建 PTY / 静默会话，而且 CLI 常常一启动就自己
- *    产生标题。只看标题的话，侧栏会在用户还没敲一个字时就冒出条目（Codex 那样的桌面端
- *    也是「发出第一条消息后才建会话」）。
- * 2. `isNamedSession` —— 用户敲了东西但还没有任何标题（例如纯 shell 没设 OSC 标题）时，
- *    列出来只是一行没有文字的图标。等标题到手它会自己出现（快照版本会变，列表随之重算）。
+ * **为什么不再要求「有名字」**（第 35 轮修正，实测回归）：可见性与命名是两件不同的事。
+ * 第 35 轮把「首条终端输入 = 标题」从生产者集合里删掉后，没有 CLI hook 的终端会话
+ * （纯 shell、未装 hook 的 agent）**永远等不到名字** —— 继续把「有名字」当列出条件，
+ * 它们会整条从侧栏消失。旧实现之所以能成立，靠的是「首条输入即命名」那个已被删除的通道。
+ *
+ * 无名字的行由视图解释成「图标 + 时间 + 状态」的占位行（`SessionList` 已有这个分支），
+ * 不需要后端编一个假名字（`Placeholder` 恒为空串，`title::admit` 永不放行）。
  */
 export function isListedSession(session: SessionView): boolean {
-  return session.hasUserInput && isNamedSession(session);
+  return session.hasUserInput;
 }
 
 /**
  * 前台会话已实际列出的单元集合（父行据此让出选中态）。
  *
- * 父行不能只看 tab 身份：无标题 / 未输入 / 已注销的会话不会出现在子列表，
+ * 父行不能只看 tab 身份：未输入的会话不会出现在子列表，
  * 此时让出填充色会让「当前」在整个侧栏消失。判据与 `sessionsByUnit` 同源。
  */
 export function unitsWithListedActiveSession(

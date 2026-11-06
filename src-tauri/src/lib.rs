@@ -130,7 +130,8 @@ macro_rules! neeko_invoke_handler {
             // ── live sessions ────────────────────────────────────────────────
             $crate::live_sessions::commands::list_live_sessions,
             $crate::live_sessions::commands::wait_live_sessions,
-            $crate::live_sessions::commands::set_live_session_title,
+            $crate::live_sessions::commands::report_live_session_activity,
+            $crate::live_sessions::commands::rename_live_session,
             $crate::live_sessions::commands::live_session_resume_command,
             $crate::live_sessions::commands::adopt_live_session,
             $crate::app::session_lifecycle::delete_live_session,

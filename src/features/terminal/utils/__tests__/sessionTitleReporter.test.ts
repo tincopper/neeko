@@ -1,119 +1,74 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/features/live-sessions/api/liveSessionsApi', () => ({
-  setLiveSessionTitle: vi.fn(() => Promise.resolve(true)),
+  reportLiveSessionActivity: vi.fn(() => Promise.resolve(true)),
+  renameLiveSessionTitle: vi.fn(() => Promise.resolve(true)),
 }));
 
-import { createSessionTitleReporter, installTerminalReporting } from '../sessionTitleReporter';
+import {
+  renameLiveSessionTitle,
+  reportLiveSessionActivity,
+} from '@/features/live-sessions/api/liveSessionsApi';
+
+import { installTerminalReporting } from '../sessionTitleReporter';
 
 function setup(sessionId: string | null = 'pty-1') {
-  const send = vi.fn();
-  const reporter = createSessionTitleReporter({ getSessionId: () => sessionId, send });
-  return { send, reporter };
+  vi.mocked(reportLiveSessionActivity).mockClear();
+  vi.mocked(renameLiveSessionTitle).mockClear();
+  return installTerminalReporting({ getSessionId: () => sessionId });
 }
 
-describe('createSessionTitleReporter', () => {
-  it('用户提交之前不上报（CLI 启动就刷 cwd / 品牌名，那不是会话主题）', () => {
-    const { send, reporter } = setup();
-    reporter.report('/Users/tomgs/RustroverProjects/neeko');
-    reporter.report('π');
-    expect(send).not.toHaveBeenCalled();
-  });
+describe('installTerminalReporting — 终端 I/O 不是标题源', () => {
+  /**
+   * 事故形态：用户在 `/model` 面板里敲过滤词 `deep`，CLI 把它反射到 OSC 标题栏。
+   * 旧实现把 `/model`、`deep` 当 `Prompt` 素材、把 OSC `deep` 当 `Native` 素材，
+   * 三次写入标题 IPC ⇒ 侧栏会话名变成 `deep`。
+   *
+   * 现在只有一条上行通道：活动 + 行文本。行文本能否命名由后端
+   * `Registry::report_terminal_input` 按 `agent_id` 裁决（前端一份判据都没有）。
+   */
+  it('/model → deep 只上报活动，不触发任何改名 IPC', () => {
+    const reporting = setup();
 
-  it('用户提交之后原样上报 —— 判据在后端，前端不过滤', () => {
-    const { send, reporter } = setup();
-    reporter.markUserInput();
-    // 这些形态后端 `title::admit` 会判负；前端仍然上报（双端各一套黑名单必然漂移）。
-    reporter.report('π');
-    reporter.report('✳ Claude ready');
-    expect(send).toHaveBeenNthCalledWith(1, 'pty-1', 'π');
-    expect(send).toHaveBeenNthCalledWith(2, 'pty-1', '✳ Claude ready');
-  });
+    reporting.reportUserInput('/model\r');
+    reporting.reportUserInput('deep\r');
 
-  it('与上次上报的原文相同 ⇒ 不发（CLI 每帧重绘都会触发 onTitleChange）', () => {
-    const { send, reporter } = setup();
-    reporter.markUserInput();
-    reporter.report('✳ Fix login bug');
-    reporter.report('✳ Fix login bug');
-    reporter.report('  ✳ Fix login bug  ');
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(renameLiveSessionTitle).not.toHaveBeenCalled();
+    expect(reportLiveSessionActivity).toHaveBeenCalledTimes(2);
+    expect(reportLiveSessionActivity).toHaveBeenNthCalledWith(1, 'pty-1', '/model');
+    expect(reportLiveSessionActivity).toHaveBeenNthCalledWith(2, 'pty-1', 'deep');
   });
 
   /**
-   * spinner 逐帧只换字形、不换文字 ⇒ 归一后是同一个标题，不重复发 IPC。
+   * 契约钉子：本模块**不接收** xterm 实例，因此结构上不可能订阅 `onTitleChange`。
    *
-   * 回归钉子：逐字比较会把每一帧都当成新标题，用户首次输入之后每秒几次 IPC，
-   * 而它们去重后本就是同一句话。
+   * 旧实现在这里收 `term` 并订阅 OSC；用 `@ts-expect-error` 钉住「这个参数已不存在」——
+   * 一旦有人把 `term` 加回签名（那是 OSC 通道复活的唯一入口），本行就会变成
+   * 「未使用 @ts-expect-error」错误。
    */
-  it('spinner 换字形不算新标题（归一后去重）', () => {
-    const { send, reporter } = setup();
-    reporter.markUserInput();
-    reporter.report('⣋ Fix login bug');
-    reporter.report('⣙ Fix login bug');
-    reporter.report('⣟ Fix login bug');
-    expect(send).toHaveBeenCalledTimes(1);
-
-    // 文字真的变了仍然上报。
-    reporter.report('⣿ Fix logout bug');
-    expect(send).toHaveBeenCalledTimes(2);
-    expect(send).toHaveBeenNthCalledWith(2, 'pty-1', '⣿ Fix logout bug');
-  });
-
-  it('标题变化时上报（CLI 换了任务）', () => {
-    const { send, reporter } = setup();
-    reporter.markUserInput();
-    reporter.report('✳ Fix login bug');
-    reporter.report('✳ Fix logout bug');
-    expect(send).toHaveBeenNthCalledWith(2, 'pty-1', '✳ Fix logout bug');
-  });
-
-  it('空白标题不是素材 ⇒ 不发，也不污染去重槽位', () => {
-    const { send, reporter } = setup();
-    reporter.markUserInput();
-    reporter.report('   ');
-    reporter.report('');
-    expect(send).not.toHaveBeenCalled();
-    // 去重槽位未被空白占住：真正的标题仍然上报。
-    reporter.report('fix the parser');
-    expect(send).toHaveBeenCalledWith('pty-1', 'fix the parser');
-  });
-
-  it('会话 id 还没就绪（PTY 未创建）⇒ 不上报', () => {
-    const { send, reporter } = setup(null);
-    reporter.markUserInput();
-    reporter.report('fix the parser');
-    expect(send).not.toHaveBeenCalled();
-  });
-});
-
-describe('installTerminalReporting', () => {
-  it('输入开闸 ⇒ OSC 标题以 native 上报；用户输入以 prompt 上报；dispose 解绑', async () => {
-    const { setLiveSessionTitle } = await import('@/features/live-sessions/api/liveSessionsApi');
-    vi.mocked(setLiveSessionTitle).mockClear();
-    const dispose = vi.fn();
-    let listener: ((title: string) => void) | null = null;
+  it('不接收 term：OSC 订阅在类型层就已不存在', () => {
     const reporting = installTerminalReporting({
-      term: {
-        onTitleChange: (cb) => {
-          listener = cb;
-          return { dispose };
-        },
-      },
       getSessionId: () => 'pty-1',
+      // @ts-expect-error -- 终端 I/O 不是标题源，本模块不接受 xterm 实例
+      term: { onTitleChange: () => ({ dispose: () => undefined }) },
     });
 
-    // 首次提交之前不上报（传输优化 1）。
-    listener?.('π');
-    expect(setLiveSessionTitle).not.toHaveBeenCalled();
+    expect(Object.keys(reporting)).toEqual(['reportUserInput']);
+  });
 
-    // 用户提交：既是 `Prompt` 素材，也是 OSC 标题的闸门（按回车才结算一行）。
+  it('纯 shell 的首条输入行随活动一起上报（后端按 agent_id 决定要不要命名）', () => {
+    const reporting = setup();
+    reporting.reportUserInput('npm test\r');
+
+    expect(reportLiveSessionActivity).toHaveBeenCalledExactlyOnceWith('pty-1', 'npm test');
+    expect(renameLiveSessionTitle).not.toHaveBeenCalled();
+  });
+
+  it('会话 id 未就绪 ⇒ 连活动也不上报', () => {
+    const reporting = setup(null);
     reporting.reportUserInput('fix the parser\r');
-    expect(setLiveSessionTitle).toHaveBeenCalledWith('pty-1', 'fix the parser', 'prompt');
 
-    listener?.('✳ Fix login bug');
-    expect(setLiveSessionTitle).toHaveBeenLastCalledWith('pty-1', '✳ Fix login bug', 'native');
-
-    reporting.dispose();
-    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(reportLiveSessionActivity).not.toHaveBeenCalled();
+    expect(renameLiveSessionTitle).not.toHaveBeenCalled();
   });
 });

@@ -216,8 +216,9 @@ pub(super) fn spawn_pty_pipeline(
 /// Listen for terminal-input-{id} events and write data to the PTY.
 ///
 /// **不在这里判定「用户开始输入」**：这条通道同时承载我们自动启动 agent 的那行命令
-/// （`TerminalViewBase` 创建会话后立即写入），后端无从区分。会话标题 / has_user_input 由前端
-/// 的 `set_live_session_title`（`source = prompt`）上报 —— 只有前端知道哪次写入来自用户。
+/// （`TerminalViewBase` 创建会话后立即写入），后端无从区分。`has_user_input` 由前端的
+/// `report_live_session_activity` 上报（活动 + 行文本，是否命名由后端按 agent_id 裁决）—— 只有前端知道哪次
+/// 写入来自用户，终端 I/O 不是标题源。
 fn spawn_writer_listener(
     id: &str,
     writer: Box<dyn Write + Send>,

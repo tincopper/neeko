@@ -5,7 +5,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import type { SessionView } from '@/shared/types/liveSessions';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 
-import { deleteLiveSession, setLiveSessionTitle } from '../api/liveSessionsApi';
+import { deleteLiveSession, renameLiveSessionTitle } from '../api/liveSessionsApi';
 
 /**
  * 侧栏会话行的两项**动作**（改名 / 删除）—— 无 React，可直测。
@@ -14,14 +14,15 @@ import { deleteLiveSession, setLiveSessionTitle } from '../api/liveSessionsApi';
  * 判据与顺序都在这里。于是「删除一条会话」只有**一处**实现 —— 未来的批量删除、
  * 命令面板、右键菜单都从这里调，不会各自再写一遍顺序。
  *
- * ## 改名为什么落 `user` 来源
+ * ## 改名为什么是 `user` 来源
  *
  * `TitleSource` 的质量序是 `Placeholder < Prompt < Native < User` —— 手改名落最高级，
- * 于是**任何自动来源都不再覆盖它**（`should_upgrade` 已保证）。这不是「顺手传个参数」：
- * 若落 `Prompt`，紧接着来的一帧 OSC 标题就会把用户改的名字冲掉。
+ * 于是**任何自动来源都不再覆盖它**（`should_upgrade` 已保证）。来源由后端在
+ * `rename_live_session` 里固定：IPC 不再接受前端声明 `source`（前端可控的来源曾让任意
+ * 终端字节流伪装成 `Native` 覆盖用户改名）。
  *
  * 改名**不**置位 `has_user_input`：给一条还没被用过的会话改名，不该让它凭空出现在侧栏
- * （可见性判据是「已经在用 + 有名字」，改的只是名字那一半）。
+ * （可见性判据只有「已经在用」，改的只是名字）。
  *
  * ## 删除的两条不变量
  *
@@ -37,7 +38,7 @@ import { deleteLiveSession, setLiveSessionTitle } from '../api/liveSessionsApi';
 /** 改名：落 `user` 来源（失败上报到统一错误面，不静默）。 */
 export function renameSession(session: SessionView, title: string): void {
   // 失败不静默：这条通道漏了会表现为「改了名又变回去」，用户会以为是自动标题的锅。
-  void setLiveSessionTitle(session.sessionId, title, 'user').catch((err) =>
+  void renameLiveSessionTitle(session.sessionId, title).catch((err) =>
     reportFrontendError('live-sessions.rename', err),
   );
 }

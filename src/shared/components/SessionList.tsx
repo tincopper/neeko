@@ -6,7 +6,7 @@ import InlineRenameInput from '@/shared/components/InlineRenameInput';
 import SessionRowMenu from '@/shared/components/SessionRowMenu';
 import SessionStatusIcon from '@/shared/components/SessionStatusIcon';
 import { useNowTick } from '@/shared/hooks/useNowTick';
-import { isSameSession } from '@/shared/selectors/liveSessionSelectors';
+import { isNamedSession, isSameSession } from '@/shared/selectors/liveSessionSelectors';
 import { useAgentStore } from '@/shared/store/agentStore';
 import type { SessionView } from '@/shared/types/liveSessions';
 import { DEFAULT_AGENT_ICON } from '@/shared/utils/agents';
@@ -19,8 +19,8 @@ import { formatRelativeTime } from '@/shared/utils/relativeTime';
  * - 图标 = **该会话的 agent 品牌图标**（不是 kind 图标）：扫一眼就知道哪个 agent 在跑；
  *   纯 shell / 未知 agent 回落 `cli.svg`（`AgentIcon` 自带兜底，本组件不另建映射表）。
  * - 标题：真标题用主色（**不画任何来源徽标** —— 标题来源是内部事实，见 design §10）。
- *   占位会话没有标题可画（`Placeholder` 恒为空串，且 `isListedSession` 已把它挡在列表外），
- *   所以这里不存在「占位样式」分支。
+ *   会话还没名字时**照样列出**（可见性 ≠ 命名，第 35 轮）：行只画 agent 图标 + 相对时间 +
+ *   状态，不拿 agent 名或项目名编一个假标题。
  * - 相对时间取 `updatedAt`：terminal 全程 `running`，用「还在动」表达而不是伪造 Idle。
  * - **无会话传入 → 渲染 null**（无会话不画点，也不留空壳）。
  */
@@ -89,9 +89,10 @@ const SessionListRow: React.FC<SessionListRowProps> = ({
     session.agentId ? s.agents?.find((a) => a.id === session.agentId)?.icon : undefined,
   );
   const ago = formatRelativeTime(session.updatedAt, now);
-  // 没有会话级标题（CLI 还没给出 hook 主题 / 首条 prompt 未到）⇒ 只画图标。
+  // 没有会话级标题（hook 主题 / 纯 shell 首条输入 / 用户改名都还没到）⇒ 只画图标。
+  // 判据复用 `isNamedSession`（与 tab 标题、侧栏可见性同一份），不在这里重写一遍。
   // 不拿 agent 名或项目名占位：前者不可读，后者与单元行重复（行已经在单元下面）。
-  const hasTitle = session.title.trim().length > 0;
+  const hasTitle = isNamedSession(session);
   // 无标题时按钮仍需要一个可读名字（否则屏幕阅读器只念出「2m」+ 状态）
   const fallbackLabel = session.kind === 'chat' ? '聊天会话' : '终端会话';
   const hasToolbar = Boolean(onRename || onDelete);

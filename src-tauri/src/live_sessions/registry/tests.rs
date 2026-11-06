@@ -153,6 +153,25 @@ fn terminal_entry(id: &str, cwd: &str) -> SessionEntry {
     .with_user_input(true)
 }
 
+/// 刚登记的 agent 终端：用户还没敲过字（尚未进侧栏）。
+fn new_agent_terminal(id: &str, cwd: &str) -> SessionEntry {
+    let mut entry = terminal_entry(id, cwd);
+    entry.has_user_input = false;
+    entry
+}
+
+/// 刚登记的**纯 shell**终端：没有 agent，于是也没有 hook / conversation 标题通道。
+fn new_plain_shell_terminal(id: &str, cwd: &str) -> SessionEntry {
+    SessionEntry::new(
+        id,
+        SessionKind::Terminal,
+        None,
+        WorkspaceSession::of("p1", Some(cwd.to_string())),
+        cwd,
+    )
+    .with_state(SessionState::Running)
+}
+
 fn cursor(runtime_mode: &str) -> ResumeCursor {
     ResumeCursor {
         session_id: "s1".into(),
@@ -604,7 +623,7 @@ fn authoritative_completion_ignores_output_until_user_input() {
     assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
 
     // 用户真正提交输入：清除权威完成门，进入 Running。
-    assert!(registry.report_user_input("t1", ""));
+    assert!(registry.report_terminal_input("t1", ""));
     assert_eq!(registry.snapshot()[0].state, SessionState::Running);
     assert!(
         registry.apply_activity("t1", Signal::TurnFinished),
@@ -624,7 +643,7 @@ fn authoritative_approval_waits_for_user_activity() {
     assert!(!registry.apply_activity("t1", Signal::TurnStarted));
     assert_eq!(registry.snapshot()[0].state, SessionState::AwaitingApproval);
 
-    assert!(registry.report_user_input("t1", ""));
+    assert!(registry.report_terminal_input("t1", ""));
     assert_eq!(registry.snapshot()[0].state, SessionState::Running);
 }
 
@@ -668,6 +687,8 @@ fn begin_shutdown_suppresses_cursor_deletion() {
 }
 
 /// 启动恢复：只回填侧栏列表，状态一律 `Stopped`（没有进程在跑）。
+///
+/// 第 35 轮：**无名行也要回填**（可见性 ≠ 命名）；只有无法定位单元的行被挡。
 #[test]
 fn restore_from_store_rebuilds_stopped_rows_in_one_bump() {
     let (registry, store) = registry();
@@ -676,11 +697,12 @@ fn restore_from_store_rebuilds_stopped_rows_in_one_bump() {
     original.title_source = TitleSource::Prompt;
     original.native_session_id = Some("native-42".into());
     store.seed(ResumeCursor::from_entry(&original).expect("listed entry"));
-    // 不可恢复的行（无单元 / 无名字）不得进表。
+    // 不可恢复的行（无单元）不得进表。
     store.seed(ResumeCursor {
         project_id: String::new(),
         ..ResumeCursor::from_entry(&entry("orphan", "/proj")).expect("listed entry")
     });
+    // 已输入但还没有名字：**要**回填（终端首条输入不再产生标题后的常态）。
     store.seed(ResumeCursor {
         title: String::new(),
         title_source: PersistedTitleSource::Placeholder,
@@ -688,7 +710,7 @@ fn restore_from_store_rebuilds_stopped_rows_in_one_bump() {
     });
 
     let before = registry.version();
-    assert_eq!(registry.restore_from_store(), 1);
+    assert_eq!(registry.restore_from_store(), 2);
 
     let restored = registry.entry("s1").expect("侧栏行必须回来");
     assert_eq!(restored.state, SessionState::Stopped, "没有进程在跑");
@@ -698,13 +720,16 @@ fn restore_from_store_rebuilds_stopped_rows_in_one_bump() {
     assert_eq!(restored.native_session_id.as_deref(), Some("native-42"));
     assert_eq!(restored.workspace, original.workspace);
     assert!(registry.entry("orphan").is_none());
-    assert!(registry.entry("nameless").is_none());
+    let nameless = registry.entry("nameless").expect("无名行也要回来");
+    assert_eq!(nameless.title, "");
+    assert_eq!(nameless.title_source, TitleSource::Placeholder);
+    assert!(nameless.has_user_input, "已输入 ⇒ 侧栏列它");
     assert_eq!(registry.version(), before + 1, "一次插表只 bump 一次");
 
     // 重复恢复不产生重复条目，也不再 bump / 不再写库。
     assert_eq!(registry.restore_from_store(), 0);
     assert_eq!(registry.version(), before + 1);
-    assert_eq!(registry.snapshot().len(), 1);
+    assert_eq!(registry.snapshot().len(), 2);
 }
 
 #[test]
@@ -865,4 +890,124 @@ async fn wait_wakes_up_on_state_change() {
 
     let version = waiter.await.expect("waiter task panicked");
     assert!(version > since, "状态变化必须唤醒挂起的长轮询");
+}
+
+/// 终端字节流通道的裁决（`report_terminal_input`）。
+///
+/// 判据是会话自己的登记事实 `agent_id`，不是字节形状：agent 终端的 `onData` 里混着
+/// TUI 面板输入（`/model` 的过滤词），纯 shell 则除这行之外没有任何标题通道。
+/// 变异验证：把 `report_terminal_input` 里的 `agent_id` 分流删掉，前两条用例必须转红。
+mod terminal_input {
+    use super::*;
+
+    /// agent 终端：只置位 / 清权威门，**不写标题** —— 名字要等 hook / conversation / 改名。
+    #[test]
+    fn agent_terminal_engages_without_naming() {
+        let (registry, _store) = registry();
+        registry.register(new_agent_terminal("t1", "/proj-wt"));
+
+        assert!(registry.report_terminal_input("t1", "deep"));
+        let entry = &registry.snapshot()[0];
+        assert!(entry.has_user_input, "用户确实提交过输入");
+        assert_eq!(
+            entry.title, "",
+            "agent 会话只认 hook topic / conversation 标题"
+        );
+        assert_eq!(entry.title_source, TitleSource::Placeholder);
+    }
+
+    /// 纯 shell：首条输入就是它唯一的标题素材（`admit` 仍会拒掉斜杠命令 / 纯符号）。
+    #[test]
+    fn plain_shell_first_input_names_the_session() {
+        let (registry, _store) = registry();
+        registry.register(new_plain_shell_terminal("t1", "/proj-wt"));
+
+        assert!(registry.report_terminal_input("t1", "  npm  test \t"));
+        let entry = &registry.snapshot()[0];
+        assert_eq!(
+            entry.title, "npm test",
+            "空白折叠 + 去首尾（`title::truncate`）"
+        );
+        assert_eq!(entry.title_source, TitleSource::Prompt);
+        assert!(entry.has_user_input);
+    }
+
+    /// 纯 shell 有名字后，后续输入不改名、不重复 bump。
+    #[test]
+    fn plain_shell_later_input_keeps_the_first_title() {
+        let (registry, _store) = registry();
+        registry.register(new_plain_shell_terminal("t1", "/proj-wt"));
+        assert!(registry.report_terminal_input("t1", "ls"));
+        let version = registry.version();
+
+        assert!(
+            !registry.report_terminal_input("t1", "pwd"),
+            "第二次提交不改变"
+        );
+        let entry = &registry.snapshot()[0];
+        assert_eq!(entry.title, "ls");
+        assert_eq!(entry.title_source, TitleSource::Prompt);
+        assert_eq!(registry.version(), version);
+    }
+
+    /// 斜杠命令不是主题（`title::admit` 判负），但仍算一次用户提交。
+    #[test]
+    fn plain_shell_slash_command_does_not_name_the_session() {
+        let (registry, _store) = registry();
+        registry.register(new_plain_shell_terminal("t1", "/proj-wt"));
+
+        assert!(registry.report_terminal_input("t1", "/model"));
+        let entry = &registry.snapshot()[0];
+        assert_eq!(entry.title, "", "斜杠命令不是主题");
+        assert!(entry.has_user_input);
+    }
+
+    /// CLI 已经命名的会话不被终端输入改写（`should_upgrade` 是唯一覆盖序判据）。
+    #[test]
+    fn terminal_input_never_downgrades_a_cli_title() {
+        let (registry, _store) = registry();
+        registry.register(new_plain_shell_terminal("t1", "/proj-wt"));
+        assert!(registry.set_title("t1", TitleSource::Native, "Parser bug"));
+
+        assert!(registry.report_terminal_input("t1", "npm test"));
+        let entry = &registry.snapshot()[0];
+        assert_eq!(entry.title, "Parser bug");
+        assert_eq!(entry.title_source, TitleSource::Native);
+        assert!(entry.has_user_input);
+    }
+
+    /// 未知会话不建条目（终端活动可能在注销之后才到）。
+    #[test]
+    fn terminal_input_for_unknown_sessions_is_dropped() {
+        let (registry, _store) = registry();
+        assert!(!registry.report_terminal_input("ghost", "ls"));
+        assert!(!registry.set_title("ghost", TitleSource::Native, "Parser bug"));
+        assert!(registry.snapshot().is_empty());
+    }
+}
+
+/// 同级可覆盖：同一条 `Native` 后到的可能更完整（CLI 每回合重绘任务标题）。
+#[test]
+fn native_title_replaces_another_native_title() {
+    let (registry, _store) = registry();
+    registry.register(unlisted_entry("s1", "/proj"));
+    assert!(registry.set_title("s1", TitleSource::Native, "Fix login bug"));
+    assert!(registry.set_title("s1", TitleSource::Native, "Fix login bug in the parser"));
+
+    let entry = &registry.snapshot()[0];
+    assert_eq!(entry.title, "Fix login bug in the parser");
+    assert_eq!(entry.title_source, TitleSource::Native);
+}
+
+/// 改名（`User`）只写标题，不置位可见性 —— 侧栏的「用过」只由输入与 hook 翻转。
+#[test]
+fn user_rename_does_not_engage_the_session() {
+    let (registry, _store) = registry();
+    registry.register(new_plain_shell_terminal("t1", "/proj-wt"));
+
+    assert!(registry.set_title("t1", TitleSource::User, "/model"));
+    let entry = &registry.snapshot()[0];
+    assert_eq!(entry.title, "/model", "用户改名不套任何清理 / 准入拒绝");
+    assert_eq!(entry.title_source, TitleSource::User);
+    assert!(!entry.has_user_input, "改名不是「用过」");
 }

@@ -126,7 +126,7 @@ describe('createFirstLineCapture', () => {
 });
 
 describe('createUserInputActivityReporter', () => {
-  it('用户提交一行输入 ⇒ 每次上报活动与当前行', () => {
+  it('用户每次提交 ⇒ 上报一次活动（只带会话 id，不带标题文本）', () => {
     const report = vi.fn();
     const feed = createUserInputActivityReporter({
       getSessionId: () => 'pty-1',
@@ -134,13 +134,15 @@ describe('createUserInputActivityReporter', () => {
     });
     feed('ls\r');
     feed('next prompt\r');
+    expect(report).toHaveBeenCalledTimes(2);
     expect(report).toHaveBeenNthCalledWith(1, 'pty-1', 'ls');
     expect(report).toHaveBeenNthCalledWith(2, 'pty-1', 'next prompt');
   });
 
-  it('斜杠命令原样上报 —— 「配不配当标题」由后端唯一裁决', () => {
-    // 契约：前端只管「用户提交了什么」。过滤斜杠命令 / 纯符号的判据在
-    // `live_sessions::title::admit`；这里若也过滤一次，就有了两套判据。
+  it('/model 这类 TUI 控件输入仍算一次提交，行文本原样上报（是否命名由后端按 agent 裁决）', () => {
+    // 第 37 轮：行文本重新参与上报（纯 shell 需要它当标题素材）。
+    // 「agent 会话的过滤词不进标题」由后端 `Registry::report_terminal_input` 的
+    // `agent_id` 门控保证，不在前端做第二套判据（双端各一套黑名单必然漂移）。
     const report = vi.fn();
     const feed = createUserInputActivityReporter({
       getSessionId: () => 'pty-1',
@@ -167,8 +169,7 @@ describe('createUserInputActivityReporter', () => {
       report,
     });
     feed('one\rtwo\rthree\r');
-    expect(report).toHaveBeenCalledTimes(1);
-    expect(report).toHaveBeenCalledWith('pty-1', 'one');
+    expect(report).toHaveBeenCalledExactlyOnceWith('pty-1', 'one');
   });
 
   it('空回车也是一次提交（审批界面可能只按 Enter）', () => {
@@ -178,7 +179,7 @@ describe('createUserInputActivityReporter', () => {
       report,
     });
     feed('\r');
-    expect(report).toHaveBeenCalledWith('pty-1', '');
+    expect(report).toHaveBeenCalledExactlyOnceWith('pty-1', '');
   });
 
   it('协议应答 / ESC 序列不算用户活动', () => {
@@ -199,7 +200,7 @@ describe('createUserInputActivityReporter', () => {
       report,
     });
     feed('\u001b[200~first\nsecond\u001b[201~');
-    expect(report).toHaveBeenCalledWith('pty-1', 'first');
+    expect(report).toHaveBeenCalledExactlyOnceWith('pty-1', 'first');
   });
 
   it('会话 id 还没就绪（PTY 未创建）⇒ 不上报', () => {

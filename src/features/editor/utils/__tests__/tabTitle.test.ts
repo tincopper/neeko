@@ -44,6 +44,12 @@ describe('resolveTabTitle', () => {
     expect(resolveTabTitle(TAB, session('   '))).toBe('Agent Chat');
   });
 
+  it('已输入但还没名字 ⇒ 回落 tab 标题（侧栏会列出它，但 tab 不能变成空串）', () => {
+    expect(
+      resolveTabTitle(TAB, { ...session(''), titleSource: 'placeholder', hasUserInput: true }),
+    ).toBe('Agent Chat');
+  });
+
   it('纯函数：同一输入两次结果相同，且不修改入参（派生不写回 store）', () => {
     const s = session('修复登录跳转');
     const before = { ...s };

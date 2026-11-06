@@ -144,7 +144,8 @@ impl RemoteTerminalManager {
         let (resize_tx, mut resize_rx) = mpsc::unbounded_channel::<(u32, u32)>();
 
         // 监听前端输入事件，把数据放入 mpsc。**不在这里判「用户开始输入」**：这条通道也
-        // 承载自动启动 agent 的那行命令，只有前端分得清（见 `set_live_session_title`）。
+        // 承载自动启动 agent 的那行命令，只有前端分得清（见 `report_live_session_activity`）；
+        // 行文本能否当标题由后端按 `agent_id` 裁决，不在这里判断。
         let tx_clone = input_tx.clone();
         let input_listener_id =
             app_handle.listen(
