@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 432
+- **Total Sessions**: 433
 - **Last Active**: 2026-11-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~202 | Active |
+| `journal-9.md` | ~242 | Active |
 | `journal-8.md` | ~1971 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 433 | 2026-11-06 | 修 Windows CI：hook 模板锚点不得赌 checkout 换行 | `347e962f`, `bafe46a5` | `main` |
 | 432 | 2026-11-06 | config-owner-singleton 归档前复核：补 AC6 断言 + AC8 对账 | `e57f57e5`, `70428cf6`, `a13e9a7d`, `806237cc` | `main` |
 | 431 | 2026-11-06 | 提交信息改为英文：重写本地未推送历史 + 落规范 | `f30f200a`, `ca6638cc` | `main` |
 | 430 | 2026-11-06 | 修复 Windows CI 三条红测：身份字母表比较与库目录夹具 | `35c25020`, `9d816ed8` | `main` |

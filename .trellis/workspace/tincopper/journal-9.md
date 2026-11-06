@@ -200,3 +200,43 @@ unit_scope 归属判定不再借宿主 Path；NEEKO_DB_DIR 覆写夹具改由 te
 ### Next Steps
 
 - 07-26-ui-design-audit 与 07-26-unified-task-hub 两个任务仍开着（无本轮关联）
+
+
+## Session 433: 修 Windows CI：hook 模板锚点不得赌 checkout 换行
+<!-- trellis-session: v=2 fp=84edfe0caeb5b007 -->
+
+**Date**: 2026-11-06
+**Task**: 修 Windows CI：hook 模板锚点不得赌 checkout 换行
+**Branch**: `main`
+
+### Summary
+
+本地把模板转成 CRLF 精确复现 CI 失败；修法=断言看归一化视图 + .gitattributes 钉嵌入资产 eol=lf，并沉淀红线 11 补充与 spec 第 8 条
+
+### Main Changes
+
+- templates/tests.rs：新增 template_text(\r\n→\n，LF 时零拷贝)，跨行锚点改读归一化视图
+- 回归钉 2 条：template_text 自身、以及把真实模板转 CRLF 后仍须通过锚点（与 checkout 无关地复现该形态）
+- .gitattributes：include_str! 进二进制的资产（templates/* 与 4 个跨端常量）钉 text eol=lf
+- src-tauri/AGENTS.md 红线 11 补「嵌入资产」条目；backend-testing.md 常见错误第 8 条
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `347e962f` | fix(agent-hooks): make template anchors independent of checkout line endings |
+| `bafe46a5` | docs(spec): record the embedded-asset line-ending rule |
+
+### Testing
+
+- [OK] CRLF 模拟：修复前同一条用例红（同文件同行同文案），修复后 169 条 agent::hooks 全绿
+- [OK] cargo test --lib：2630 passed / 9 ignored / 0 failed
+- [OK] autocrlf=true 的临时 clone 实测：模板与跨端常量 w/lf，未钉的 App.tsx 变 w/crlf（证明 autocrlf 确实生效且被属性覆盖）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 推送后确认 windows-latest 的 backend-test 转绿
