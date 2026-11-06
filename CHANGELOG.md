@@ -2,6 +2,204 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.10] - 2026-11-06
+
+### 🚀 Features
+
+- **terminal**: Auto-hide the xterm scrollbar and make it translucent
+- **theme**: Add per-theme code foreground token
+- **markdown**: Colour inline code instead of a background chip
+- **conversation**: Parse block-array transcripts with one shared extractor
+- **conversation**: Page transcript retrieval under the IPC payload budget
+- **conversation**: Assemble paged transcripts in the webview API layer
+- **conversation**: Serve transcript stats, search and clipboard export from Rust
+- **conversation**: Load transcripts on demand in the viewer
+- **agent-chat**: Resume pi native sessions as live chat
+- **guards**: Pin import-firewall coverage to the filesystem
+- **conversation**: Delete history sessions via a three-state capability
+- **conversation**: Read opencode v2 storage while keeping v1
+- **paths**: Isolate versioned databases via NEEKO_DB_DIR
+- **agent-chat**: Address chat sessions by workspace instead of project id
+- **guards**: Enforce workspace addressing on addresses and command bodies
+- **git**: Own the workspace unit scope as an identity rule
+- **guards**: Reject address-optional command signatures
+- **conversation**: Scope session listing by workspace unit
+- **agent-chat**: Address the restore list by the tab workspace
+- **live-sessions**: Add the session registry and wire both producers
+- **live-sessions**: Add the client snapshot store and version bridge
+- **sidebar**: List live sessions under each workspace unit
+- **live-sessions**: Track when users engage sessions
+- **sidebar**: Reveal engaged live sessions
+- **terminal**: Title sessions from first user input
+- **hooks**: Surface inactive CLI hooks
+- **live-sessions**: Restore and background-run sessions from a sidebar row
+- **live-sessions**: Track CLI-reported status and keep closed tabs alive
+- **live-sessions**: Delete a session through the composition root
+- **live-sessions**: Delete a sidebar session with confirmation
+- **sidebar**: Rename and delete a session from its row
+- **layout**: Make dock placement the single source of truth
+- **layout**: Show a drag preview and keep keyboard focus on the icon
+- **dock**: Dock new agent chats and resume sessions from the icons
+- **dock**: Keep the toolbar for feature entries, not for the host container
+- **dock**: Make the Terminal entry a plain shell, not an agent launcher
+- **live-sessions**: Persist sidebar rows across restarts
+- **guards**: Machine-check the config owner singleton and projection
+- **live-sessions**: Isolate the title source and decouple visibility
+- **guards**: Machine-check platform-independent assets and identity modules
+
+### 🐛 Bug Fixes
+
+- **terminal**: Drop the 14px overview-ruler reserve in addon-fit
+- **ui**: Equalize content insets with per-element scrollbar compensation
+- **conversation**: Align message counts with the rendered transcript
+- **lint**: Close feature-firewall coverage gaps (agent-chat, search)
+- **agent-chat**: Reclaim spawned pi processes when the handle drops
+- **agent-chat**: Stop caching a failed capability query as "unsupported"
+- **ui**: Settle store-driven confirmations as confirmed
+- **conversation**: Include the sqlite wal sidecar in the scan fingerprint
+- **live-sessions**: List a session only once it has a name
+- **live-sessions**: Hold completed CLI status
+- **db**: Drop the hardcoded schema version assertion
+- **sidebar**: Drag only from the project header, and stop claiming keyboard drag
+- **sidebar**: Drop the project header row background
+- **projects**: Hide the list scrollbar instead of compensating it
+- **dock**: Scope the Terminal entry to the slot it sits in
+- **dock**: Keep the guide page when a tab docks right
+- **dock**: Derive dock zone visibility from content
+- **logger**: Keep third-party traversal noise out of the log file
+- **git**: Release must never move a version floor backwards
+- **dock**: Light tab-kind icons only for their own bar
+- **ui**: Keep full text while typing an inline rename
+- **live-sessions**: Limit session highlight to the active workspace
+- **agent-hooks**: Stop sub-agents from faking parent completion
+- **git**: Compare identity parts by hand, not with host Path
+- **paths**: Derive the db-dir override fixture from tempdir
+- **agent-hooks**: Make template anchors independent of checkout line endings
+
+### 🚜 Refactor
+
+- **conversation**: Extract conversation stats derivation
+- **editor**: Drop word-level change marks
+- **diff**: Drop inline word-diff spans
+- **styles**: Share one CSS rule parser
+- **editor**: Derive tab titles and status from the live snapshot
+- **terminal**: Quote shell args and dedupe spinner titles
+- **live-sessions**: Move lifecycle transitions out of the PTY producer
+- **cli-hooks**: Remove the sidebar hook-health hint
+- **git**: Single-source the auth-required outcome handling
+- **projects**: Extract the push/pull console orchestration
+- **agent-chat**: Reuse the shared scrollbar-hidden utility
+- **git**: Decouple status readability from mounts
+- **git**: Make the hot set the only mount declaration
+- **config**: Single config owner, atomic theme projection
+- **testing**: Give fixtures a cheaper path than a POSIX literal
+
+### 📚 Documentation
+
+- **readme**: Left-align comparison tables and inline the badges
+- **trellis**: Record the scrollbar compensation contract
+- **trellis**: Record the inline code foreground contract
+- Record line-level-only change highlighting
+- **conversation**: Record content-block contract and payload boundary
+- **conversation**: Record on-demand loading and count alignment
+- **spec**: Record the live session registry contract
+- **spec**: Document live session engagement and hooks
+- **live-sessions**: Record title admission, CLI status and restore
+- **spec**: Record the new home of lifecycle transitions
+- **spec**: Record the header, scrollbar and git-console decisions
+- **dock-placement**: Plan the placement rework in three phases
+- **spec**: Record the placement model and the dock contracts
+- **dock-placement**: Record the session rule and close the plan
+- **dock-placement**: Tick the delivery plan against what actually shipped
+- **task**: Narrow C4 to hot-set reconcile
+- **task**: Record the acceptance state of the status rework
+- **task**: Close the convergence check, record the regression it found
+- **task**: Plan persisted sidebar session list (round 5)
+- **task**: Record sidebar persistence rounds 32-33
+- **task**: Record round 34 of active-workspace highlighting
+- **spec**: Record config ownership, atomic projection, visibility gating
+- **task**: Record the config owner singleton task
+- **spec**: Record title source isolation and the decision move
+- **task**: Record the round-38 review fixes of the title task
+- **spec**: Record the two causes of the sub-agent completion state
+- **task**: Record rounds 39-40 of the title task
+- **task**: Record the 5 open on-device checks before archiving
+- **contributing**: Require English commit messages
+- **spec**: Require assertions on the projection's downstream fan-outs
+- **task**: Close AC6 and reconcile AC8 before archiving
+- **spec**: Record the embedded-asset line-ending rule
+- **spec**: Point the platform-independence rules at their machine checks
+
+### 🎨 Styling
+
+- **sidebar**: Drop the accent bar from the current session row
+
+### 🧪 Testing
+
+- **styles**: Guard inline code legibility and palette fit
+- **styles**: Guard line-level change highlighting
+- Add real-machine probes for pi resume and opencode storage
+- **config**: Assert the title projection's terminal and agent fan-outs
+
+### ⚙️ Miscellaneous Tasks
+
+- Record journal
+- **trellis**: Record conversation adapter audit sessions
+- **trellis**: Record the on-demand loading sessions
+- **trellis**: Record the pi chat resume task
+- **trellis**: Record the ownership and cache-semantics fixes
+- **trellis**: Record the conversation delete task
+- Record journal
+- **task**: Archive 10-30-conversation-delete
+- Record journal
+- **trellis**: Record the opencode v2 storage task
+- Record journal
+- **task**: Archive 10-30-pi-chat-resume
+- Record journal
+- **task**: Archive 10-30-opencode-v2-storage
+- Record journal
+- **task**: Archive 10-29-md-image-pdf-preview
+- Record journal
+- **trellis**: Record the workspace addressing task
+- Record journal
+- **trellis**: Record the workspace addressing review round
+- **task**: Archive 10-30-workspace-address-everywhere
+- Record journal
+- Record journal
+- **repo**: Ignore local Python bytecode
+- Record journal
+- Record journal
+- Record journal
+- Record journal
+- Record journal
+- Record journal
+- Record journal
+- Record journal
+- **task**: Archive 11-03-dock-placement
+- Record journal
+- **task**: Archive 11-04-status-freshness-model
+- **task**: Archive 11-04-drop-exclusive-mount
+- **task**: Archive 11-04-frontend-single-writer
+- Record journal
+- **task**: Archive 11-04-watch-hub-single-stream
+- Record journal
+- Record journal
+- **task**: Archive 11-04-git-status-observability
+- Record journal
+- Record journal
+- Record journal
+- Record journal
+- **task**: Archive 10-31-live-sessions-title-status
+- Record journal
+- Record journal
+- Record journal
+- **journal**: Follow the reworded commit hashes and subjects
+- Record journal
+- **task**: Archive 11-06-config-owner-singleton
+- Record journal
+- Record journal
+- Record journal
+
 ## [1.0.9] - 2026-10-29
 
 ### 🚀 Features
@@ -925,6 +1123,7 @@ All notable changes to this project will be documented in this file.
 - Point journal entries at the reworded commit hashes
 - Record journal
 - Record journal
+- Release v1.0.9
 
 ### ◀️ Revert
 
