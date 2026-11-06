@@ -1893,3 +1893,79 @@ lefthook 的 pre-commit 会对**部分暂存**的文件取暂存快照（stash u
 
 - 真机 AC20/AC21：纯 shell 首条命令成为标题；agent 终端 /model 过滤 deep 后标题不变。
 - 不主动提交代码。
+
+
+## Session 426: 第 39 轮：子 agent 会话不得污染父会话状态
+<!-- trellis-session: v=2 fp=bbad4a13cdc1e795 -->
+
+**Date**: 2026-11-06
+**Task**: 第 39 轮：子 agent 会话不得污染父会话状态
+**Branch**: `main`
+
+### Summary
+
+真机反馈：agent 执行子 agent 期间侧栏显示已完成、实际仍在跑。根因两层都在 hook 模板，注册表无责。
+
+### Main Changes
+
+- NEEKO_SESSION_ID 是 PTY 进程级 env，pi-subagents 用 createAgentSession + bindExtensions 在同一进程内起子 agent（extensions 默认 true ⇒ 本扩展被继承），子会话的 agent_end 带父会话 id 上报 ⇒ report_authoritative 把父会话判成 TurnFinished 并置位权威门，此后字节推断被永久吞掉。同一条通道还污染父行 native_session_id（first-writer-wins）与标题。
+- 修法：模板侧加 isChildSession（sessionManager.getHeader().parentSession 非空 ⇒ 整条不上报）；完成腿改 agent_settled（旧版回落 agent_end），OMP 加 agent_end.willContinue === true 非终态判据。门收敛成唯一注册点 onStatus（pi.on 每模板只出现一次）——初版逐个 handler 加门，变异验证显示删任一处仍全绿。
+- 契约锚点全部改连续形态：裸名 isChildSession / settledSupported / willContinue 都会被函数定义或注释替身通过（变异实测 3 次 0 红）。清理已污染数据（native_session_id 是 first-writer-wins，不自愈）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d5772f7ffa422cbb0af6162d900f71a1b39c66e7` | chore: record journal |
+
+### Testing
+
+- [OK] pnpm check:quick 10/10 护栏通过；cargo test --lib agent::hooks:: 165 passed。
+- [OK] 变异验证 6/6 会红；真实模板正文 + 桩 pi 行为验证：子会话四类事件 0 条上报、父会话 settled 恰好 1 条、旧版回落仍 1 条、willContinue=true 0 条。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- AC24 真机：让 agent 执行耗时子 agent，侧栏必须保持运行中直到真正结束。
+
+
+## Session 427: 第 40 轮：后台子 agent 不得让父会话误报完成
+<!-- trellis-session: v=2 fp=b81da9c4c3fc5d10 -->
+
+**Date**: 2026-11-06
+**Task**: 第 40 轮：后台子 agent 不得让父会话误报完成
+**Branch**: `main`
+
+### Summary
+
+上一轮修的是「子会话冒充父会话」；真机二次反馈暴露第二个独立成因：后台子 agent 派出去后主 agent 自己结束了回合，agent_settled 是真实发生的，模板照常报完成。
+
+### Main Changes
+
+- 事实源（直读本机 @tintinweb/pi-subagents@0.23.1 dist）: pi.events 发 subagents:started / subagents:completed / subagents:failed，载荷含 id，且先过 isTopLevelAgent ⇒ nested/workflow 由 owner 报不重复计数。
+- templates/neeko-pi-status.ts 加花名册 activeChildren + heldCompletion + turnOpen/reopenedByChild 四条判据：settle 时有孩子就拖住、清空后补发、空闲期孩子补发 turn_started、agent_start 作废旧完成。live_sessions/wiring/hooks.rs 新增 EVENT_TURN_STARTED（只驱动状态，不开输出推断门；不进 event_keys 以免造出死开关）。
+- 花名册回调不走 onStatus（pi.events 回调没有 ctx，无从判会话来源），安全性来自「没有 ctx ⇒ 用 lastSessionId ⇒ 子会话那份为空」；为此 agent_start 也刷新 lastSessionId。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d5772f7ffa422cbb0af6162d900f71a1b39c66e7` | chore: record journal |
+
+### Testing
+
+- [OK] cargo test --lib agent::hooks 167 passed；live_sessions 141 passed；pnpm check:quick 10/10 护栏。
+- [OK] 行为验证 5 场景（真实模板 + 桩 pi.events/fetch）：前台 1 条；后台在 settle 后 0 条、孩子结束 1 条；空闲期孩子先 turn_started 再完成；孩子未清空时发新消息则孩子结束不报；重复 started 不重复计数。
+- [OK] 变异验证：删拖住分支 / 花名册只加不减 / 删 turn_started 补发 三条全红；「agent_start 作废」Rust 锚点不红，由行为场景 D 覆盖，已如实标注。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真机重测：pi TUI 需 /reload 或新会话才会加载新扩展；再跑一次耗时后台子 agent。
+- 脏数据需在应用关闭时清：2992ce49 行的 native_session_id=01a1ae8f（子会话）会在运行期被内存态写回。
