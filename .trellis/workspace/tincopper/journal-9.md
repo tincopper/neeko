@@ -159,3 +159,44 @@ unit_scope 归属判定不再借宿主 Path；NEEKO_DB_DIR 覆写夹具改由 te
 ### Next Steps
 
 - 推送后确认远端历史（force-with-lease；未推送历史重写不需要）
+
+
+## Session 432: config-owner-singleton 归档前复核：补 AC6 断言 + AC8 对账
+<!-- trellis-session: v=2 fp=af4b3d76f2025efc -->
+
+**Date**: 2026-11-06
+**Task**: config-owner-singleton 归档前复核：补 AC6 断言 + AC8 对账
+**Branch**: `main`
+
+### Summary
+
+逐条复核 AC1-AC8：6 条已闭环，AC6 补 4 条下游扇出断言（含变异验证），AC8 记录偏差（6 个 vs ≤5）后归档
+
+### Main Changes
+
+- configProjection.test.ts：终端主题（rAF 合并）+ agent 主题（本地/WSL/空集）共 4 条断言，8→12 例；删掉两个下游调用时 3 红
+- state-management.md：新增「下游扇出同样要断言」判据（mock 不是覆盖），并修正 .test.tsx 名字错误
+- prd AC8 完成对账行（不改 AC 文本）+ design §7 换成实际 6 个模块及逐项拆出理由
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e57f57e5` | test(config): assert the title projection's terminal and agent fan-outs |
+| `70428cf6` | docs(spec): require assertions on the projection's downstream fan-outs |
+| `a13e9a7d` | docs(task): close AC6 and reconcile AC8 before archiving |
+| `806237cc` | chore(task): archive 11-06-config-owner-singleton |
+
+### Testing
+
+- [OK] guards --stage local --suite lint：35/35（check_config_owner_singleton scanned=1191 / owner 1）
+- [OK] pnpm lint:fe：eslint 0 error / 14 既有 warning；tsc No errors
+- [OK] 相关 9 个测试文件 79 passed；configProjection 12 passed
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 07-26-ui-design-audit 与 07-26-unified-task-hub 两个任务仍开着（无本轮关联）
