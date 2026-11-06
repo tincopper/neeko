@@ -240,3 +240,44 @@ unit_scope 归属判定不再借宿主 Path；NEEKO_DB_DIR 覆写夹具改由 te
 ### Next Steps
 
 - 推送后确认 windows-latest 的 backend-test 转绿
+
+
+## Session 434: 把平台无关性变成机器判据：2 条新护栏 + abs_fixture
+<!-- trellis-session: v=2 fp=e6bd35c1d261fa0b -->
+
+**Date**: 2026-11-06
+**Task**: 把平台无关性变成机器判据：2 条新护栏 + abs_fixture
+**Branch**: `main`
+
+### Summary
+
+红线 11 / 13 都成立却都两次被违反 ⇒ 补 che_embedded_asset_eol 与 check_identity_no_host_path，并把 abs_fixture 做成便宜的安全写法；红线 13 的静态判据经实测否决
+
+### Main Changes
+
+- check_embedded_asset_eol：逐个 include_str! 目标校验 .gitattributes 是否钉 eol=lf；非字面量目标 fail-closed
+- check_identity_no_host_path + ledger/identity_host_path.json：身份比较/渲染模块禁 std::path / std::fs（注释里可写）
+- .gitattributes：补 Rust 源码与 picker_script.js 的 eol=lf（守卫实测找出的漏网资产）
+- common::testing::abs_fixture(label) 取代 paths.rs 里的本地夹具；红线 13 记录「让安全写法更便宜」与静态判据的实测否决（8 处共现全部合法）
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9b2aa0fd` | feat(guards): machine-check platform-independent assets and identity modules |
+| `b47bd2fb` | refactor(testing): give fixtures a cheaper path than a POSIX literal |
+| `53b8e6e2` | docs(spec): point the platform-independence rules at their machine checks |
+
+### Testing
+
+- [OK] 护栏自测 789 用例全绿（新增 12 条，负例优先）；全量 37 条护栏 37 通过
+- [OK] cargo test --lib common::：723 passed / 1 ignored；clippy --all-targets -D warnings 无问题
+- [OK] autocrlf=true 临时 clone 复核属性生效（模板 w/lf、未钉的 App.tsx w/crlf）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- src-tauri/AGENTS.md 只剩 78 B 头寸（14,307 / 14,385），下次加规则须先删旧句
