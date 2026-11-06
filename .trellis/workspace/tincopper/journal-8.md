@@ -1916,7 +1916,7 @@ lefthook 的 pre-commit 会对**部分暂存**的文件取暂存快照（stash u
 
 | Hash | Message |
 |------|---------|
-| `d5772f7ffa422cbb0af6162d900f71a1b39c66e7` | chore: record journal |
+| `80cc92be8fbdd06f4a837f70f13352f35a311ec3` | chore: record journal |
 
 ### Testing
 
@@ -1953,7 +1953,7 @@ lefthook 的 pre-commit 会对**部分暂存**的文件取暂存快照（stash u
 
 | Hash | Message |
 |------|---------|
-| `d5772f7ffa422cbb0af6162d900f71a1b39c66e7` | chore: record journal |
+| `80cc92be8fbdd06f4a837f70f13352f35a311ec3` | chore: record journal |
 
 ### Testing
 

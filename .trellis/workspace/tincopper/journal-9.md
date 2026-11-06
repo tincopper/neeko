@@ -22,10 +22,10 @@
 
 | Hash | Message |
 |------|---------|
-| `10580b80` | fix(agent-hooks): 子 agent 不再让父会话误报完成 |
-| `846d7a44` | docs(spec): 记录子 agent 完成态的两个独立成因 |
-| `5e903233` | docs(task): 记录标题任务第 39-40 轮 |
-| `7457e16f` | docs(task): 归档前记录 5 条未完成的真机验收 |
+| `21cd40dd` | fix(agent-hooks): stop sub-agents from faking parent completion |
+| `95372927` | docs(spec): record the two causes of the sub-agent completion state |
+| `a22d1546` | docs(task): record rounds 39-40 of the title task |
+| `841da5a6` | docs(task): record the 5 open on-device checks before archiving |
 
 ### Testing
 
@@ -65,9 +65,9 @@
 
 | Hash | Message |
 |------|---------|
-| `d62e5b9d` | feat(live-sessions): 隔离标题来源并解耦可见性 |
-| `d8592b5a` | docs(spec): 记录标题源隔离与裁决下沉注册表 |
-| `2f295318` | docs(task): 记录标题任务第 38 轮审核修复 |
+| `32125b68` | feat(live-sessions): isolate the title source and decouple visibility |
+| `28a4db5f` | docs(spec): record title source isolation and the decision move |
+| `9d9e728f` | docs(task): record the round-38 review fixes of the title task |
 
 ### Testing
 
@@ -81,7 +81,7 @@
 ### Next Steps
 
 - 本轮只做结构收口、不改行为：真机验收仍按 AC20（/model 过滤词不进标题）与 AC24（前后台子 agent）那两条开着。
-- journal 提交 d5772f7f 被 Session 427 的记录误收（它其实是本轮的 journal 提交），后续归档勿重复归属。
+- journal 提交 80cc92be 被 Session 427 的记录误收（它其实是本轮的 journal 提交），后续归档勿重复归属。
 
 
 ## Session 430: 修复 Windows CI 三条红测：身份字母表比较与库目录夹具
@@ -105,8 +105,8 @@ unit_scope 归属判定不再借宿主 Path；NEEKO_DB_DIR 覆写夹具改由 te
 
 | Hash | Message |
 |------|---------|
-| `7d8a1afb` | fix(git): 归属判定改手写分量比较，不再借宿主 Path |
-| `cf0c313a` | fix(paths): 库目录覆写夹具改由 tempdir 推导 |
+| `35c25020` | fix(git): compare identity parts by hand, not with host Path |
+| `9d816ed8` | fix(paths): derive the db-dir override fixture from tempdir |
 
 ### Testing
 
