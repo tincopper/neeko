@@ -687,6 +687,13 @@ versioned_snapshot_without_manual_poke` 就是为钉这条顺序而写红的）�
   `canonicalize(最深已存在祖先) ⊕ 尾分量` —— 不锚定就会「创建前 `\\?\…\new-wt` / 创建后
   另一个串」，这正是 Windows CI 上 `worktree_nonexistent_path_is_lexically_normalized` 暴露的形态。
   `exec` 在此时保持调用者拼写（那正是将要被创建的字节），两个渲染因此**允许不同**。
+- **I4 比较不得借宿主 `Path`**：身份串的分隔符**只有** `/`，而 `Path::starts_with` /
+  `components` 走**宿主**语义 —— Windows 上 `\` 也是分隔符，于是 `PathAlphabet::Posix` 的
+  远端路径 `/p\x` 被当成 `/p/x` 认领进 `/p` 单元（同一批会话在 Windows 与 macOS 上归属不同）。
+  归属判定 `common/git/unit_scope.rs::contains` 因此手写分量比较：分量边界 ⇒ `/proj` 不含
+  `/proj-other`，驱动器根 `C:/` 保留尾斜杠仍认领 `C:/proj` 而不认领 `C:foo`。
+  回归：`backslash_is_not_a_separator_in_the_identity_alphabet` /
+  `remote_paths_use_posix_letters`（Windows CI 是唯一判据）。
 - **非目标**：Unicode NFD/NFC 归一、大小写不敏感文件系统上输入大小写的折叠、
   `\\?\Volume{GUID}` 形态（原样保留）。
 

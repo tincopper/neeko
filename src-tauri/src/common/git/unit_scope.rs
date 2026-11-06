@@ -29,8 +29,6 @@
 //! 宿主平台：远端（WSL / SSH）路径的消费侧是远端 Linux，用宿主规则渲染会把 `/` 变成 `\`。
 //! [`UnitScope`] 把字母表和根绑在同一个值里 —— 让「拿错字母表」在类型上不成立。
 
-use std::path::Path;
-
 use anyhow::Result;
 
 use crate::common::executor::factory::ExecTarget;
@@ -164,19 +162,32 @@ where
 
 /// 路径包含，**按分量边界**（`/proj` 不含 `/proj-other`）。
 ///
-/// 输入两侧都是身份串（`/` 字母表），所以 `Path` 的分量比较在这里是纯字符串语义，
-/// 且天然处理两种前缀形态：普通根（`/a/b`）与**保留尾斜杠的驱动器根**（`C:/`）——
-/// 后者若用字符串切片判定会恒假（`"C:/proj"[3..]` 不以 `/` 开头）。
+/// 输入两侧都是身份串（`/` 字母表），分隔符**只有** `/`，因此这里不能借 `Path`：
+/// `Path` 的分量规则跟**宿主平台**走，Windows 上会把 `\` 一并当分隔符 ——
+/// 同一批远端路径（`PathAlphabet::Posix`）于是会在两端得到两种归属
+/// （`/p\x` 被当成 `/p/x`）。手写分量比较同时天然处理两种前缀形态：普通根（`/a/b`）
+/// 与**保留尾斜杠的驱动器根**（`C:/`）—— 后者若用字符串切片判定会恒假
+/// （`"C:/proj"[3..]` 不以 `/` 开头）。
 fn contains(root: &str, path: &str) -> bool {
     if root.is_empty() || path.is_empty() {
         return false;
     }
-    Path::new(path).starts_with(Path::new(root))
+    // 绝对/相对必须同类：`/` 根不该认领相对路径（与 `Path::starts_with` 的既有语义一致）。
+    if root.starts_with('/') != path.starts_with('/') {
+        return false;
+    }
+    let mut path_parts = identity_parts(path);
+    identity_parts(root).all(|root_part| path_parts.next() == Some(root_part))
+}
+
+/// 身份串按 `/` 切分量（空段已在渲染阶段折叠，这里只丢空段）。
+fn identity_parts(path: &str) -> impl Iterator<Item = &str> + '_ {
+    path.split('/').filter(|part| !part.is_empty())
 }
 
 /// 根的深度（分量数）。同一字母表内「嵌套 ⇒ 更深」恒成立。
 fn depth(root: &str) -> usize {
-    Path::new(root).components().count()
+    identity_parts(root).count()
 }
 
 #[cfg(test)]
