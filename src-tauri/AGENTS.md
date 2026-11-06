@@ -145,6 +145,11 @@ Windows 默认 `autocrlf=true` 会转 CRLF，**不确定**）。
   （`support::assert_content_eq` / `assert_worktree_eq`），或优先在归一化视图（status/diff）上断言。
   护栏：`tools/guards/checks/check_worktree_byte_assertions.py`（已接 `pnpm lint` 与 CI）。
   细则见 `.trellis/spec/unit-test/backend-testing.md`。
+- **嵌入资产**（`include_str!` 的 hook 模板 / 跨端常量）：字节会被编进二进制，必须在
+  `.gitattributes` 里钉 `text eol=lf` —— 否则 Windows 上 `autocrlf=true` 的 checkout 落 CRLF，
+  跨行断言（`contains("a;\n  b;")`）本地绿、CI 红（2026-11-05 实测：
+  `templates_gate_child_sessions_at_a_single_registration_point`）。断言侧仍做 `\r\n` → `\n`
+  归一化（双保险：旧 clone / 编辑器改写也不炸）。
 
 **13. 测试夹具路径平台无关** —— 测试中进入 `Path`/`PathBuf` 语义或路径敏感 API（`is_absolute()`、
 `canonicalize()`、存在性判定）的路径字面量，**禁止硬编码 POSIX 绝对路径**（`/opt/…`、`/home/…`、

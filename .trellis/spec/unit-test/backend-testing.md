@@ -607,3 +607,31 @@ assert!(!matches!(err, AppError::Unsupported(_)));  // 覆写仍在
 
 **例外**：`tools/java-host/test.sh` 这类**明确标注**为 host 集成测试（`test:host` 独立 gate）
 的入口不受本条约束。
+
+### 8. 对 `include_str!` 嵌入的正文做跨行断言（Windows CI 必挂）
+
+`include_str!` 嵌进二进制的是**宿主工作区的字节**。Windows 上 `core.autocrlf=true` 的 checkout
+会把 `.ts` / `.js` / `.mjs` 模板落成 CRLF，而跨行锚点里写的是 `\n` —— 本地（LF）绿、
+`windows-latest` 红，报错还是一句与换行毫无关系的断言失败。
+
+```rust
+// 错误 —— 判据里混进了「clone 的换行状态」（2026-11-05 实测：
+// templates_gate_child_sessions_at_a_single_registration_point 在 Windows 报
+// 「pi 模板的 onStatus 包装器缺子会话门」，而模板正文一字不差）
+assert!(target.template.contains("if (isChildSession(ctx)) return;\n      return handler(event, ctx);"));
+
+// 正确 —— 断言看归一化视图（双保险的另一半在 .gitattributes：* text eol=lf）
+let template = normalize_eol(target.template);   // \r\n → \n，已是 LF 时零拷贝
+assert!(template.contains("if (isChildSession(ctx)) return;\n      return handler(event, ctx);"));
+```
+
+两条一起做才叫「钉住」：
+
+1. **`.gitattributes` 钉 LF** —— 被 `include_str!` 的资产（`src-tauri/src/agent/hooks/templates/*`、
+   `src/shared/events.ts` 等跨端常量）声明 `text eol=lf`。字节会被编进二进制，就不该随宿主变形。
+2. **断言侧归一化** —— 旧 clone / 编辑器改写仍可能是 CRLF，测试不得因此变红。回归钉：
+   `templates/tests.rs::contract_anchors_hold_for_a_crlf_materialisation`（把正文自己转成 CRLF
+   再断言，与 checkout 无关地复现该形态）。
+
+反向判据（变异验证）：删掉归一化，上面的回归钉在**任何**平台必红；只删 `.gitattributes` 条目，
+CI 会在 Windows 上红。与红线 11（换行边界）同族，细则全文见 `src-tauri/AGENTS.md` 红线 11。
