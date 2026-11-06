@@ -82,3 +82,42 @@
 
 - 本轮只做结构收口、不改行为：真机验收仍按 AC20（/model 过滤词不进标题）与 AC24（前后台子 agent）那两条开着。
 - journal 提交 d5772f7f 被 Session 427 的记录误收（它其实是本轮的 journal 提交），后续归档勿重复归属。
+
+
+## Session 430: 修复 Windows CI 三条红测：身份字母表比较与库目录夹具
+<!-- trellis-session: v=2 fp=659fb3165f3d4f03 -->
+
+**Date**: 2026-11-06
+**Task**: 修复 Windows CI 三条红测：身份字母表比较与库目录夹具
+**Branch**: `main`
+
+### Summary
+
+unit_scope 归属判定不再借宿主 Path；NEEKO_DB_DIR 覆写夹具改由 tempdir 推导（红线 13）
+
+### Main Changes
+
+- contains/depth 改为按 / 切分量的纯字符串比较：Windows 上 `\` 被 Path 当分隔符，/p\\x 误判进 /p 单元
+- paths.rs 测试夹具改由 tempdir() 推导，保留 TempDir 生命周期（is_absolute() 在 Windows 上对 /tmp 恒 false）
+- spec：git-domain 新增 I4（比较不得借 Path）、backend-testing 常见错误 1、dap-domain 反例表补第三次
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7d8a1afb` | fix(git): 归属判定改手写分量比较，不再借宿主 Path |
+| `cf0c313a` | fix(paths): 库目录覆写夹具改由 tempdir 推导 |
+
+### Testing
+
+- [OK] cargo test --lib common::git：349 passed
+- [OK] cargo test --lib common::paths::tests：4 passed；cargo clippy --all-targets -D warnings 无问题
+- [OK] pnpm check:quick：10 条护栏全通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 推送后核对 windows-latest 的 backend-test job（unit_scope 修复的唯一红绿判据）
