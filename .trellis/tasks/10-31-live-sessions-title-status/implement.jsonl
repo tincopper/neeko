@@ -8,3 +8,6 @@
 {"file": ".trellis/spec/frontend/state-management.md", "reason": "zustand store 不派生、派生进 selector 的分层约定。文件 127KB，只按需读「派生层 / selector」相关小节"}
 {"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 纯函数与 mutation 验证要求：reduce / title 必须分支全覆盖"}
 {"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "vitest 纯函数与组件交互测试口径（selector / 图标映射穷举）"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "新增 activity IPC 与用户改名命令：invoke 边界、事件名常量"}
+{"file": ".trellis/spec/unit-test/mutation-verification.md", "reason": "标题源隔离回归断言必须做变异验证"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨端标题生产者/展示层边界与单一事实源"}

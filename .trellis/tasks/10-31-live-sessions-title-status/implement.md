@@ -1338,3 +1338,241 @@ dnd-kit 的激活键是同一组键。结论：**项目列表只支持指针拖�
 - [x] 验证：4 个测试文件 **56 passed**（含 dock 优先级新用例）；
       `pnpm check:quick` 收尾 **22/22 护栏、0 违规、0 护栏失效**（含 eslint + tsc + clippy）。
 - [ ] AC18 真机仍待人工：两个项目各点一个会话行 → 切到另一个项目，旧项目 `row-current` 消失。
+
+## 35. 标题源隔离（2026-11-06，TDD）
+
+> 对照 Orca：标题来自会话事实，不来自终端 I/O。本轮只改生产者集合，`Registry::upgrade_title`
+> 仍是唯一写入点；不引入 LLM 命名 / 磁盘轮询 / daemon 双宿主。
+
+### 35.1 Red（先钉住事故形态）
+- [x] `src/features/terminal/utils/__tests__/sessionTitleReporter.test.ts`：
+      `/model\r` → `deep\r` → `onTitleChange('deep')` 断言**没有任何标题 IPC**；当前实现必红。
+      **Red 证据**：`pnpm exec vitest run <2 files>` → `3 failed | 26 passed`（`onTitleChange`
+      被调用、`set_live_session_title` 标题 IPC 被断言命中、`report` 多带一个行文本参数）。
+- [x] `src/features/terminal/utils/__tests__/inputTitle.test.ts`：保留「活动上报」语义，
+      删除「原样上报标题素材」断言，改为只断言提交次数 / 空回车 / ESC 过滤。
+      Red 证据：`toHaveBeenCalledExactlyOnceWith('pty-1')` 收到 `('pty-1', '/model')`。
+- [x] `src-tauri/src/live_sessions/commands.rs` 测试：新 `report_live_session_activity`
+      只置 `has_user_input` 不写标题；用户改名命令不接受 `source`，非 `User` 来源不能从 IPC 写入。
+      （`isolated_title_sources` 4 例；用 `for<'a> fn(String, String, State<'a,..>, AppHandle)`
+      函数指针断言把「命令签名没有 `source`」钉在编译期。）
+- [x] `src-tauri/src/live_sessions/wiring/hooks.rs` 测试：无 `topic` 时 conversation 缓存标题回落；
+      有 `topic` 时缓存不得覆盖；`User` 标题不被回落改写（另加「缓存未命中不编名字」）。
+- [x] 观察命令（只跑单文件，非门禁）：
+      `pnpm exec vitest run src/features/terminal/utils/__tests__/sessionTitleReporter.test.ts`；
+      `cargo test --lib live_sessions::commands`。
+
+### 35.2 Green（最少实现）
+- [x] 前端 `sessionTitleReporter.ts`：删除 `createSessionTitleReporter` / `onTitleChange` 订阅 /
+      `sendTitle`；`installTerminalReporting` 只保留 `createUserInputActivityReporter` →
+      `reportLiveSessionActivity(sessionId)`。`dispose` 保留空实现以免动组件清理链。
+- [x] `liveSessionsApi.ts`：新增 `reportLiveSessionActivity`；`setLiveSessionTitle` 改为
+      `renameLiveSessionTitle(sessionId, title)`，不再传 `source`。同步 `sessionRowActions.ts`
+      与其测试；`inputTitle.ts` 的 `report` 回调去掉 `line` 参数（行文本在类型层面出不了模块）。
+- [x] `TerminalViewBase.tsx`：`installTerminalReporting` 调用去掉 `term` 入参；其余输入链不动。
+- [x] 后端 `live_sessions/commands.rs`：新增 `report_live_session_activity`；把
+      `set_live_session_title` 收窄为 `rename_live_session`（去掉 `source` 且恒用
+      `TitleSource::User`），同步 `lib.rs::neeko_invoke_handler!`。`apply_title` 的非 IPC
+      `Native`/`Prompt` 直写路径保留给 hooks/chat，不从 IPC 暴露。
+- [x] `conversation/manager.rs`：新增纯内存 `cached_title_for_native(agent_id, native_id)`，
+      优先 `user_title` 再 `title`，trim 后空串判 `None`，锁错误与 `list_page` 同口径；不触发扫描。
+- [x] `live_sessions/wiring/hooks.rs`：hook projection 先 `event.topic()`，否则按 registry 条目的
+      `agent_id + event.agent_session_id` 查 conversation 缓存回落；一次写入 → 一次 `emit_changed`。
+      回落解析器用 `&dyn Fn` 注入，生产由 `ConversationManager` 提供、测试注入固定值（不碰 Tauri）。
+- [x] 更新 `inputTitle.ts` / `sessionTitleReporter.ts` 文件头注释，删除「标题素材 / 双端判据」旧契约；
+      顺带同步 `wiring/pty.rs` / `terminal/remote.rs` / `terminal/services.rs` 指向旧命令的注释。
+
+### 35.3 Refactor / 文档
+- [x] 同步 `.trellis/spec/backend/agent-chat-transports.md` §0.2、
+      `.trellis/spec/backend/conversation-adapter.md` §4.6（追加 §4.6.7）、
+      `.trellis/spec/frontend/api-layer.md`（追加场景契约）：写明终端输入不是标题源、
+      IPC 来源不可控已关闭、hook/conversation 是权威源。另同步 `frontend/state-management.md`
+      与 `backend/persistence-and-cache.md` 两处仍描述旧契约的段落。
+- [x] 更新 `.trellis/tasks/10-31-live-sessions-title-status/prd.md` AC19 勾选；AC20 真机验收
+      保留未勾选（需真人 + 真机，见 35.4）。
+- [x] 变异验证（先 `grep` 确认改到了，再跑单文件，还原后再绿）：
+      - 把 `sessionTitleReporter.ts` 改回订阅 `onTitleChange` + 发 `rename_live_session`（模拟恢复
+        `prompt`/`native` 上报）→ `sessionTitleReporter.test.ts` **2 failed / 1 passed**，还原后 3 passed。
+      - 把 `hooks.rs` 回落分支改成忽略缓存 → `missing_topic_falls_back_to_conversation_cache`
+        **panic（15 passed / 1 failed）**，还原后 16 passed。
+- [x] 2.2 复核补强（子代理限流，主会话执行）：conversation 缓存是扫描快照，不能同级覆盖
+      registry 已有的 `Native` 标题。收敛为「`topic` 缺失 + 条目尚无真标题」才回落；新增
+      `existing_native_title_survives_cache_fallback` 钉住不查缓存、不改写。同步
+      `design.md` §13.3、`agent-chat-transports.md`、`conversation-adapter.md` §4.6.7、
+      `persistence-and-cache.md` §4b.7④。
+- [x] `lint_fe` 修复：`sessionTitleReporter.test.ts` 不再直接 import `@tauri-apps/api/core`
+      （改为 mock `features/live-sessions/api/liveSessionsApi` 的包装函数），补齐 import 分组
+      空行；`sessionTitleReporter.ts` 按 Prettier 重排返回类型签名。
+
+### 35.4 验证（2.2 收尾）
+- [x] `pnpm exec vitest run <改动的 4 个前端测试文件>` → `4 passed / 38 passed`（含
+      `TerminalViewBase.fitScheduler.test.tsx` 签名适配回归）；改写回归用例后由
+      `check:quick` 的 `vitest related` 再次覆盖通过。
+- [x] `cargo test --lib live_sessions::` → `148 passed`（含新增缓存回落保护用例）；
+      `cargo test --lib conversation::manager` → `77 passed`。
+- [x] `rustfmt --edition 2021 --check` 对 7 个改动 Rust 文件：格式化后通过，未触碰无关文件。
+- [x] `git diff --check` 通过；`implement.md` 前 1340 行与 HEAD 逐字一致，仅第 35 节新增。
+- [x] `pnpm check:quick` 最终收尾一次通过：**25/25 护栏 / 0 违规 / 0 护栏失效**，
+      `lint_fe`（eslint + tsc）/ `lint_rust_all_targets` / `vitest related` 全绿。首轮
+      `lint_fe` 3 个错误与次轮 1 个 `import/order` 已按 35.3 修复后收敛。
+- [ ] 真机 AC20：在 CLI `/model` 里过滤 `deep` 后侧栏 / tab 标题不变；首轮真实 prompt 或
+      hook 标题到达后显示该标题。需真人 + 真机。
+- [ ] 不主动提交；会话记录用 `add_session.py`。
+
+## 36. 回归修复：终端会话从侧栏消失（2026-11-06）
+
+> 用户实测反馈：第 35 轮后**终端会话不再展示**。这是源隔离的直接副作用，不是新缺陷。
+
+### 36.1 根因（第一性原理）
+
+第 35 轮删掉了「首条终端输入即命名」这条通道，但 `isListedSession` 仍然要求
+`has_user_input && isNamedSession` —— 两者是**同一条通道的两半**。删掉命名通道后：
+
+- 有 hook 的 agent（claude / pi / codex）仍能拿到 `topic`，会话照常出现；
+- **无 hook 的 CLI / 纯 shell** 永远等不到名字 → `isNamedSession = false` →
+  已输入但无名的会话整条被侧栏过滤。
+
+同一问题在持久化侧还有一份：`ResumeCursor::is_restorable` 要求 `!title.is_empty()`，
+SQL 粗筛也带 `title != ''` —— 重启后这些行同样回不来。
+
+### 36.2 修法：可见性与命名彻底解耦
+
+| 层 | 旧判据 | 新判据 |
+| --- | --- | --- |
+| 侧栏列出（`isListedSession`） | `hasUserInput && isNamedSession` | **`hasUserInput`** |
+| tab 标题（`resolveTabTitle`） | `isListedSession` | **`isListedSession && isNamedSession`** |
+| 持久化读门（`is_restorable`） | `!title.is_empty() && !project_id.is_empty() && 非损坏` | **`!project_id.is_empty() && 非损坏`** |
+| SQL 粗筛 | `project_id != '' AND title != ''` | **`project_id != ''`** |
+
+「损坏」判据独立成 `is_corrupt_placeholder()`：`Placeholder` 来源却带标题。
+**`Placeholder` + 空标题是合法常态**，不再是拒绝理由。
+
+无名行由视图画成占位行（`SessionList` 早已有该分支：图标 + 相对时间 + 状态点），
+不由后端编假名字。
+
+### 36.3 TDD 证据（先红后绿）
+
+- Red：`pnpm exec vitest run liveSessionSelectors tabTitle` → **3 failed**（无名会话被过滤 /
+  父行不让出选中底 / `selectLatestSessionForUnit` 拒选）；
+  `cargo test --lib agent::chat::session_store` → **2 failed**（`is_restorable` 拒无名行）；
+  `cargo test --lib live_sessions::` → **2 failed**（`cursor_without_unit_or_title` /
+  `restore_from_store_rebuilds_stopped_rows_in_one_bump`）。
+- Green：`liveSessionSelectors` + `tabTitle` + `SessionList` → **66 passed**；
+  `cargo test --lib live_sessions::` → **148 passed**；
+  `agent::chat::session_store` → **11 passed**；`conversation::manager` → **77 passed**。
+- 变异验证：把 `isListedSession` 改回 `hasUserInput && isNamedSession` →
+  「用户输入了但还没有标题 ⇒ 仍要列出」必红（已实测红转绿）。
+
+### 36.4 同步文档
+
+- `backend/agent-chat-transports.md`：侧栏列出只看 `has_user_input`；tab 是另一条判据。
+- `backend/persistence-and-cache.md` §4b.4：读门「标题可以空」+ 粗筛去掉 `title != ''`。
+- `frontend/state-management.md`：「侧栏只列有名字的会话」改为「只列用户用过的会话」。
+
+## 37. 回归修复：纯 shell 终端永远没有标题（2026-11-06）
+
+> 用户实测（截图）：侧栏会话行只有一个 `cli.svg` 图标 + 时间 + 状态点，**没有标题**。
+
+### 37.1 根因（第一性原理）
+
+第 35 轮把终端 I/O 从标题生产者里全部移出，但**不同会话类型的标题通道数量不同**：
+
+| 会话 | 可用标题通道（第 35 轮之后） |
+| --- | --- |
+| agent 终端（`agent_id = Some`） | hook `topic` / conversation 缓存 / 用户改名 |
+| chat | 注册时的真实 prompt / hook topic / 用户改名 |
+| **纯 shell**（`agent_id = None`） | **无** —— 没有 hook（不跑 agent CLI）、没有 conversation 缓存 |
+
+第 35 轮前纯 shell 靠「首条输入即命名」兜底；那条通道被删后，它**没有任何可用素材**。
+日志实证（`~/.neeko/neeko.log`）：14:19 那批 PTY（`9fdd4485…` / `5e7757da…` / `43edd7ff…`）
+只有 `title candidate rejected (Prompt): ""`，且**全程无 `POST /hook`** —— 不是归因失败，
+而是根本没有生产者。
+
+### 37.2 修法：行文本回到通道，命名权交给后端按 `agent_id` 裁决
+
+| 层 | 改动 |
+| --- | --- |
+| 前端 `inputTitle.ts` | `report` 回调恢复 `line` 参数（行文本随活动一起上报） |
+| 前端 `liveSessionsApi.ts` | `reportLiveSessionActivity(sessionId, line)` |
+| 后端 `commands.rs::apply_activity` | `agent_id == None ⇒ line`；`Some ⇒ ""` |
+| 后端命令 | `report_live_session_activity(sessionId, line: Option<String>)` |
+
+**为什么不是前端判**：字节形状无法区分「真实请求」与「TUI 控件输入」；只有登记时的
+`agent_id` 是可靠事实。前端原样上报，后端一处分流（双端各一套黑名单必然漂移）。
+
+**为什么 agent 会话仍然不认首条输入**：`/model` 面板的过滤词 `deep` 就在同一条 `onData`
+里 —— 那正是第 35 轮事故。判据不靠内容，靠会话类型。
+
+**OSC 通道仍然完全不进注册表**：`onTitleChange` 无订阅、无 IPC（`sessionTitleReporter`
+保持现状）。
+
+### 37.3 TDD 证据（先红后绿）
+
+- Red：`vitest sessionTitleReporter + inputTitle` → **7 failed**（回调缺 `line`）；
+  `cargo test --lib live_sessions::commands` → 编译失败（`apply_activity` 少了参数）。
+- Green：两个前端文件 **30 passed**；`cargo test --lib live_sessions::` **152 passed**。
+- 覆盖用例（`commands::tests::isolated_title_sources`）：
+  - `plain_shell_first_input_names_the_session`（纯 shell 首条输入 → `Prompt` 标题）
+  - `agent_session_first_input_never_names_the_session`（`deep` 不命名，只置可见性）
+  - `plain_shell_slash_command_does_not_name_the_session`（`/model` 仍被 `admit` 判负）
+  - `plain_shell_later_input_keeps_the_first_title`（后续输入不改名、不 bump）
+- 变异验证：把 `apply_activity` 的分支反转（`None => ""` / `Some => line`）→
+  前两条用例必红。
+
+### 37.4 验证
+
+- `pnpm check:quick` **25/25 护栏通过**；`git diff --check` 干净。
+- `cargo test --lib live_sessions::` **152 passed**；`agent::chat::session_store` **11 passed**；
+  `conversation::manager` **77 passed**。
+- 待真机：新建空白终端 → 敲一条命令 → 侧栏行显示该命令作为标题；
+  在 agent 终端 `/model` 里过滤 `deep` → 标题不变。
+
+## 38. 审核修复：裁决下沉注册表（2026-11-06）
+
+第 35/37 轮把行为改对了，但**判据住错了地方**：`commands::apply_activity` 持有一条只有
+本域才懂的规则（`agent_id` 决定终端行能否命名），而 `agent_id` 住在 `SessionEntry`。
+后果是「哪些会话能用终端行命名」变成调用方的义务 —— 换一个调用点（未来的 SSH 纯 shell
+wiring / 批处理导入）事故原样回来，注册表内部没有任何守卫。
+
+### 38.1 结构改动
+
+| 之前 | 之后 | 理由 |
+| --- | --- | --- |
+| `commands::apply_activity` / `apply_title` / `apply_rename` | `Registry::report_terminal_input(line)` + 命令体直调 `set_title(User)` | 红线 6：命令层只转发；判据与 `agent_id` **同住** |
+| `apply_title` 的 `Native` / `Prompt` 分支 | 删除 | 生产无调用方（hooks/chat 直调注册表），只被自己的测试钉着 —— 死代码 + 文档撒谎 |
+| `registry::has_real_title`（私有 fn）与 hooks 里的 `!title.trim().is_empty()` | `SessionEntry::has_real_title()` 单点 | 同一判据两份实现，一处在 registry、一处在 hook 投影 |
+| `installTerminalReporting` 返回空 `dispose` | 只返回 `{ reportUserInput }` | OSC 已无订阅，「保留空实现以维持清理链」是假 API |
+| `SessionList` 自己算 `title.trim().length > 0` | 复用 `isNamedSession` | 命名判据在共享 selector 里已有一份 |
+| `report_live_session_activity(line: Option<String>)` | `line: String` | 前端恒传字符串，`Option` 是无效表达 |
+
+### 38.2 测试迁移（命令层 → 注册表）
+
+`commands::tests` 的 `reported_input` / `isolated_title_sources` / `native_title` 三个模块
+整体是**注册表行为**的测试，搬到 `registry/tests.rs::terminal_input`（新增纯 shell / agent
+终端两只夹具），与既有的 `set_title_*` / `user_title_survives_*` / `blank_title_candidates_*`
+去重。命令层只留两条编译期契约：改名命令**没有** `source` 参数、活动命令只收 `(id, line)`。
+
+保留并新增的钉子：`agent_terminal_engages_without_naming`、`plain_shell_first_input_names_the_session`
+（含空白折叠）、`plain_shell_later_input_keeps_the_first_title`、
+`plain_shell_slash_command_does_not_name_the_session`、`terminal_input_never_downgrades_a_cli_title`、
+`terminal_input_for_unknown_sessions_is_dropped`、`user_rename_does_not_engage_the_session`、
+`native_title_replaces_another_native_title`。
+
+### 38.3 文档同步
+
+- `inputTitle.ts` 头注释「不向外交出任何行文本 / 回调只拿会话 id」是第 37 轮残留的假话
+  （签名早就带 `line`）—— 改写为「检测 + 原样上行，命名权在后端」。
+- `agent-chat-transports.md`：「五个写入原语」→ 六个（补 `report_terminal_input`）、
+  `apply_title`/`commands::apply_activity` 的叙述、`report_user_input` 的使用者行。
+- `api-layer.md`：`installTerminalReporting` 签名（去 `dispose`）、后端分流入口。
+- `conversation-adapter.md §4.6.7`：回落未命中记 `log::debug!`；**ID 契约**（
+  `ConversationMeta.native_session_id` 必须与 `HookEvent.agent_session_id` 同源同名）写明 ——
+  不等价时回落静默失效，新增 adapter 必须确认。
+- `SessionList.tsx` / `sessionRowActions.ts` 里「可见性 = 已输入 + 有名字」的残留说法。
+- 测试名改回真话：`cursor_without_a_unit_is_not_restorable_but_unnamed_is`、
+  `is_restorable_rejects_orphan_or_corrupt_rows`、`list_restorable_requires_a_unit_and_skips_corrupt_rows`。
+
+### 38.4 验证
+
+- `pnpm check:quick` 25/25 护栏通过（tsc + clippy `--all-targets` + 改动文件前端测试）。
+- `cargo test --lib` **2624 passed / 9 ignored**；`cargo clippy --all-targets -D warnings` 干净。

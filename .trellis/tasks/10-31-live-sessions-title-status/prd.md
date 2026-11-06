@@ -234,3 +234,27 @@ R4.3 随之解除「不做 OSC」的限制：Native 恢复为可用来源（prov
       `UnitSessionList` 不再把 `activeSession` 传给旧单元的 `SessionList`。
 - [ ] AC18 真机：两个项目各点一个会话行 → 切到另一个项目，旧项目下的 `row-current` 消失，
       侧栏只剩当前项目的「当前」提示。
+
+### 第七轮验收补充（R9 标题源隔离，2026-11-06）
+
+- **R9.1 输入流不是标题源**：终端 xterm `onData` 与 OSC `onTitleChange` 不得写入 live-sessions
+  标题；原始按键只上报活动态 / 清权威门，OSC 只作展示态（本轮直接丢弃）。
+- **R9.2 生产者白名单**：标题只能来自用户改名、CLI hook `topic`、conversation 缓存中的
+  provider title、chat 注册时的真实 prompt；`Registry::upgrade_title` 仍是唯一写入点。
+- **R9.3 TUI 控件输入隔离**：`/model` 面板过滤词（如 `deep`）不得进入任何标题写入路径；
+  已有标题不被后续输入或 OSC 改写。
+- **R9.4 兼容性**：关闭终端标题即时命名后，CLI 会话在 hook topic / conversation title 到达前
+  保持占位；不新增 LLM 生成、不新增轮询磁盘扫描。
+- **R9.5 可见性 ≠ 命名（第 36 轮回归修复）**：删掉「首条输入即命名」后，侧栏必须仍然列出
+  已输入的终端会话（无 hook 的 CLI 永远等不到标题）；无名行画成占位行。持久化读门与 SQL
+  粗筛同步去掉 `title != ''`。
+- [x] AC19 单测/集成：`/model\r` + `deep\r` + OSC `deep` 不触发任何标题 IPC；
+      hook `topic` 与 conversation 缓存标题可写入 `Native`；`User` 改名不被自动源覆盖。
+      单测覆盖见 `sessionTitleReporter.test.ts`（零标题 IPC）、`commands.rs::isolated_title_sources`
+      （改名恒 User / 活动不命名）、`hooks.rs`（回落 / topic 优先 / User 保护），
+      以及 `conversation/manager.rs::cached_title_for_native`。
+- [ ] AC20 真机：在 CLI `/model` 里过滤 `deep` 后，侧栏 / tab 标题不变成 `deep`；
+      首轮真实 prompt 或 hook 标题到达后显示该标题。（需真人 + 真机，Phase 2.2 收尾）
+- [x] AC21 单测：`isListedSession` 只要求 `hasUserInput`；`resolveTabTitle` 要求
+      `isListedSession && isNamedSession`；`ResumeCursor::is_restorable` 不再拒绝无名行，
+      只拒绝无单元与 `Placeholder` 却带标题；`restore_from_store` 回填无名行。

@@ -471,3 +471,65 @@ fn budgeted(text: &str) -> &str {
   effect 与 ref 透传。顺带继承 `ui/Input` 的 IME 空格守卫 / `noAutocorrectProps` / 统一 focus 样式。
 - 范围：行内重命名 / 新建文本输入（侧栏会话行、worktree 行、tag group）；搜索框、过滤器等
   其它裸 `<input>` 不在本轮。
+
+### 13. 标题源隔离：从终端 I/O 搬到会话事实（第 35 轮，Orca 对齐）
+
+Orca 的根本做法是把「标题」与「终端传输」分层：xterm `onData` 只转发字节，OSC 标题只作
+低优先级 pane 展示态；稳定名称来自结构化提交、hook / transcript 中的 provider title 或用户改名。
+Neeko 本轮按同一原则收敛，不复制 Orca 的 LLM 命名与 daemon 双宿主。
+
+#### 13.1 数据流（唯一写点不变）
+
+```text
+xterm onData          -> report_live_session_activity -> Registry::report_user_input("", ...)  [仅活动]
+OSC onTitleChange     -> 无 IPC（本轮丢弃）                                            [仅展示]
+HookEvent.topic       -> wiring/hooks.rs             -> Registry::report_*(Native)   [权威]
+Conversation 缓存     -> wiring/hooks.rs 回落        -> Registry::set_title(Native)   [权威]
+ChatRegistration.prompt-> wiring/chat.rs             -> Registry::report_first(Prompt)[真实请求]
+用户改名               -> rename IPC                  -> Registry::set_title(User)     [最高]
+                                  \________________________ upgrade_title ______________________/
+```
+
+`TitleSource` 枚举与 `should_upgrade` 顺序不变；变化的是**允许调用写点的生产者集合**。
+`Prompt` 不再表示「终端收到一行回车」，只表示 chat / hook 已确认的真实请求。
+
+#### 13.2 IPC 边界
+
+- 新增薄命令 `report_live_session_activity(sessionId)`：只调 `report_user_input(sessionId, "")`，
+  用于 `has_user_input`、状态门与可见性；不携带标题文本。
+- `set_live_session_title` 收窄为用户改名专用：去掉前端可控的 `source` 参数，后端恒用
+  `TitleSource::User`。CLI hook / conversation 标题直接走 registry，不经 IPC 声明来源。
+- 前端 `setLiveSessionTitle` 改名为 `renameLiveSessionTitle`，仅 `sessionRowActions.ts` 使用。
+
+#### 13.3 Conversation 回落（不扫描磁盘）
+
+`ConversationManager` 增加按缓存键 `agent_id:native_session_id` 读取 `user_title / title` 的纯
+内存方法。`wiring/hooks.rs` 在 hook 到达时：先用 `event.topic()`；没有 topic、registry 条目尚无真标题
+且能给出 `agent_id` 时，才用 conversation 缓存标题回落。缓存是扫描快照，只用来补空名，
+不得同级覆盖 hook 事件时刻已有的 `Native`/`User` 标题。**hook 线程不做磁盘扫描**（红线 3），
+缓存刷新仍由既有 conversation scan 链路负责；user 改名因 `should_upgrade(Native, User) = false`
+永不被覆盖。
+
+#### 13.4 显式取舍
+
+- 不保留「首条 PTY 输入即时命名」：正是它无法区分 TUI 面板 / 协议应答 / 真实请求。
+- 不把 OSC 标题做成 `Native` 权威源：它与状态栏、cwd、spinner、控件文本共用通道。
+- 不新增 LLM 生成标题、定时器或轮询；缺失标题时显示占位，等权威事件到达。
+
+#### 13.5 可见性与命名必须解耦（第 36 轮回归修复）
+
+删除「首条 PTY 输入即时命名」有一个必须同批处理的后果：**`isListedSession` 曾把「有名字」
+当作列出条件**，而那正是被删掉的通道的另一半。无 hook 的 CLI / 纯 shell 永远等不到标题，
+于是已输入的终端会话整条从侧栏消失（2026-11-06 实测）。
+
+| 层 | 判据 |
+| --- | --- |
+| 侧栏列出 `isListedSession` | **只看 `hasUserInput`**（无名行画占位行） |
+| tab 标题 `resolveTabTitle` | `isListedSession && isNamedSession`（tab 不能是空串） |
+| 持久化读门 `is_restorable` | `!project_id.is_empty() && !is_corrupt_placeholder()`（**标题可以空**） |
+| SQL 粗筛 | `WHERE project_id != ''`（去掉 `title != ''`） |
+
+「损坏」= `Placeholder` 来源却带标题；`Placeholder` + 空标题是合法常态。
+
+原则：**能不能显示**（可见性）与**显示什么**（命名）是两个独立事实，不得用一个通道同时
+承载 —— 否则删掉任一侧都会让另一侧失效。

@@ -4,3 +4,5 @@
 {"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "复核纯层测试是否覆盖全部 (state, signal) 与终止不复活"}
 {"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "复核 selector / 图标映射是否穷举、是否只测实现细节"}
 {"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "复核全局监听是否只挂一次、是否成对清理"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "复核 IPC 边界与命令注册"}
+{"file": ".trellis/spec/unit-test/mutation-verification.md", "reason": "复核新断言的可红性"}
