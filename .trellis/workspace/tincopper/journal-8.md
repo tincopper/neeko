@@ -1817,3 +1817,79 @@ lefthook 的 pre-commit 会对**部分暂存**的文件取暂存快照（stash u
 ### Status
 
 [OK] **Completed**
+
+
+## Session 424: 第 35 轮：会话标题源隔离（Orca 对齐）
+<!-- trellis-session: v=2 fp=da774364fee75d8d -->
+
+**Date**: 2026-11-06
+**Task**: 第 35 轮：会话标题源隔离（Orca 对齐）
+**Branch**: `main`
+
+### Summary
+
+复用 10-31-live-sessions-title-status：断开 xterm onData / OSC 到标题写入点的路径，标题只来自用户改名、hook topic、conversation 缓存回落与 chat 真实 prompt。
+
+### Main Changes
+
+- 前端删除 createSessionTitleReporter / OSC 订阅 / 标题 IPC；新增 reportLiveSessionActivity，改名走 renameLiveSessionTitle(id,title)。
+- 后端新增 report_live_session_activity 与 rename_live_session（恒 User），关闭前端可控 source；hook 无 topic 且条目无真标题时才回落 conversation 内存缓存。
+- 2.2 补强：缓存回落不再覆盖已有 Native 标题；补 existing_native_title_survives_cache_fallback 用例并同步 4 份 spec / 任务设计文档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8ee2c73db6dbd12c899a42855ccda1d032379543` | chore: record journal |
+
+### Testing
+
+- [OK] pnpm check:quick 25/25 护栏通过，lint_fe / lint_rust_all_targets / vitest related / git diff --check 全绿。
+- [OK] cargo test --lib live_sessions:: 148 passed；cargo test --lib conversation::manager 77 passed。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真机 AC20：CLI /model 过滤 deep 后侧栏与 tab 标题不变，首轮真实 prompt 或 hook 标题到达后显示该标题。
+- 不主动提交代码；全量测试由 pre-push / CI 覆盖。
+
+
+## Session 425: 第 36-37 轮：侧栏可见性与纯 shell 标题回归
+<!-- trellis-session: v=2 fp=b64c43a01dea5111 -->
+
+**Date**: 2026-11-06
+**Task**: 第 36-37 轮：侧栏可见性与纯 shell 标题回归
+**Branch**: `main`
+
+### Summary
+
+修复第 35 轮源隔离带来的两处回归：终端会话从侧栏消失（可见性曾依赖命名）、纯 shell 终端永远没有标题（唯一通道被删）。
+
+### Main Changes
+
+- isListedSession 只看 hasUserInput（无名行画占位行）；resolveTabTitle 改为 isListedSession && isNamedSession；ResumeCursor::is_restorable 与 SQL 粗筛去掉 title 非空要求，损坏判据独立为 is_corrupt_placeholder。
+- 行文本回到终端上报通道（reportLiveSessionActivity(sessionId, line)）；命名权由后端 apply_activity 按登记时的 agent_id 裁决：纯 shell 可用首条输入当 Prompt 标题，agent 终端一律不命名（/model 过滤词不得进标题）。OSC onTitleChange 仍完全不进注册表。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8ee2c73db6dbd12c899a42855ccda1d032379543` | chore: record journal |
+
+### Testing
+
+- [OK] pnpm check:quick 25/25 护栏通过；git diff --check 干净。
+- [OK] cargo test --lib live_sessions:: 152 passed；agent::chat::session_store 11 passed；conversation::manager 77 passed。
+- [OK] vitest liveSessionSelectors + tabTitle + SessionList 66 passed；sessionTitleReporter + inputTitle 30 passed。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 真机 AC20/AC21：纯 shell 首条命令成为标题；agent 终端 /model 过滤 deep 后标题不变。
+- 不主动提交代码。

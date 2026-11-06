@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 423
+- **Total Sessions**: 425
 - **Last Active**: 2026-11-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1819 | Active |
+| `journal-8.md` | ~1895 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 425 | 2026-11-06 | 第 36-37 轮：侧栏可见性与纯 shell 标题回归 | `8ee2c73db6dbd12c899a42855ccda1d032379543` | `main` |
+| 424 | 2026-11-06 | 第 35 轮：会话标题源隔离（Orca 对齐） | `8ee2c73db6dbd12c899a42855ccda1d032379543` | `main` |
 | 423 | 2026-11-06 | config owner 审查修复：按功能分组提交（4 个提交） | `77272484`, `deb18392`, `cdae7ba0`, `a7f051d6` | `main` |
 | 422 | 2026-11-06 | config owner 审查修复：原子投影 / 公开面收口 / 可见性门控 | - | `main` |
 | 416 | 2026-11-05 | git status：切项目后 Changes 冻结的修复（号段不得回退） | `efe9045b` | `main` |
