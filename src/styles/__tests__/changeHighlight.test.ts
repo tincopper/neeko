@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest';
 import {
   CHANGE_HIGHLIGHT_SURFACES,
   FORBIDDEN_INLINE_CLASSES,
+  LINE_BACKGROUND_CLASSES,
   changeHighlightViolations,
+  opaqueLineBackgroundViolations,
   type ChangeHighlightSurface,
 } from './changeHighlightCss';
 
@@ -57,6 +59,52 @@ describe('变更高亮：只做行级底色（真实文件）', () => {
     // 「找不到行级底色规则」也必须报出来 —— 用它反推「解析确实跑过」
     const empty = changeHighlightViolations(COMPLIANT_SURFACE, '');
     expect(empty.join('|')).toContain('找不到行级底色规则');
+  });
+});
+
+describe('变更高亮：行底色必须透（真实文件）', () => {
+  it('编辑器 CSS 里没有任何不透明行底色 —— 否则该行拖选无高亮', () => {
+    const css = cssOf(CHANGE_HIGHLIGHT_SURFACES[0]);
+    expect(opaqueLineBackgroundViolations(css)).toEqual([]);
+  });
+
+  it('判据真的扫到了行底色规则（不是对空集判合规）', () => {
+    // 反证方向：判据若把选择器匹配写坏，真实文件也会「零违规」—— 用一条已知不透明规则反推它确实跑过
+    const opaque = opaqueLineBackgroundViolations(
+      '.cm-editor .cm-activeLine.cm-git-line-modified { background: color-mix(in srgb, blue 6%, #1e1e1e) !important; }',
+    );
+    expect(opaque.join('|')).toContain('不透明');
+  });
+
+  it('每个行底色类名都在契约覆盖范围内（类名改名时不会静默漏管）', () => {
+    const css = cssOf(CHANGE_HIGHLIGHT_SURFACES[0]);
+    for (const cls of ['cm-git-line-added', 'cm-git-line-modified']) {
+      expect(LINE_BACKGROUND_CLASSES).toContain(cls);
+      expect(css).toContain(`.${cls}`);
+    }
+  });
+});
+
+describe('变更高亮：不透底色的反证（同一函数判违规）', () => {
+  const translucent = [
+    '.cm-editor .cm-git-line-modified { background: color-mix(in srgb, blue 8%, transparent); }',
+    '.cm-editor .cm-nav-flash-line { background-color: rgba(var(--accent-blue-rgb), 0.28); }',
+    '.cm-editor .cm-git-line-added { background: oklch(0.7 0.15 150 / 0.2); }',
+  ];
+  const opaque = [
+    '.cm-editor .cm-activeLine.cm-git-line-modified { background: color-mix(in srgb, blue 6%, var(--bg-secondary)) !important; }',
+    '.cm-editor .cm-git-line-added { background: #30d158; }',
+    '.cm-editor .cm-git-line-added { background-color: rgba(48, 209, 88, 1); }',
+  ];
+
+  it('透明写法全部通过', () => {
+    for (const css of translucent) expect(opaqueLineBackgroundViolations(css)).toEqual([]);
+  });
+
+  it('不透明写法逐条判违规', () => {
+    for (const css of opaque) {
+      expect(opaqueLineBackgroundViolations(css).join('|')).toContain('不透明');
+    }
   });
 });
 

@@ -207,19 +207,28 @@
 
   /* 行背景（弱化，避免盖过当前行高亮）。
    * 刻意只做整行浅底、不做词级小块：词级底会盖掉语法色，长行里还会碎成色带；
-   * added / modified 一视同仁（仅色相区分），行内细节交给语法高亮。 */
+   * added / modified 一视同仁（仅色相区分），行内细节交给语法高亮。
+   *
+   * 铁律：底色**只能从 transparent 混出来**，不得混不透明基底（--bg-* / 裸色值）。
+   * CM 的选中块画在 `.cm-selectionLayer`（`z-index:-1`，`.cm-scroller` 是 `z-index:0`
+   * 层叠上下文），因此它在所有 `.cm-line` 背景**之下**；不透明行底会把该行选中块
+   * 整块擦掉，而 `drawSelection()` 又把原生 `::selection` 置为透明 —— 表现为「文本已选中但
+   * 毫无高亮」，且只在变更行上出现（普通行只有 5% 的 `.cm-activeLine`）。
+   * 护栏：`__tests__/changeHighlightCss.ts` 的 `opaqueLineBackgroundViolations`。 */
   .cm-editor .cm-git-line-added {
     background: color-mix(in srgb, var(--git-status-added, #30d158) 8%, transparent) !important;
   }
   .cm-editor .cm-git-line-modified {
     background: color-mix(in srgb, var(--git-status-modified, #2997ff) 8%, transparent) !important;
   }
-  /* 行背景与当前行高亮共存时，当前行优先（去 !important 或加更具体选择器） */
+  /* 当前行叠在变更行上：靠更高 α 拉开层次（8% → 14%），**不能**靠不透明基底 ——
+   * 那会把拖选时的 head 行（`highlightActiveLine` 标的就是 `selection.main.head`）
+   * 的选中块整块盖掉，单行内左右拖选于是完全无高亮. */
   .cm-editor .cm-activeLine.cm-git-line-added {
-    background: color-mix(in srgb, var(--git-status-added, #30d158) 6%, var(--bg-secondary)) !important;
+    background: color-mix(in srgb, var(--git-status-added, #30d158) 14%, transparent) !important;
   }
   .cm-editor .cm-activeLine.cm-git-line-modified {
-    background: color-mix(in srgb, var(--git-status-modified, #2997ff) 6%, var(--bg-secondary)) !important;
+    background: color-mix(in srgb, var(--git-status-modified, #2997ff) 14%, transparent) !important;
   }
 
   /* ── 注释译文（`commentView.ts` 产出的 widget 类名）──

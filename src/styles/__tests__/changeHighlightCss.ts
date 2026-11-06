@@ -72,6 +72,78 @@ function usesClass(rule: CssRule, cls: string): boolean {
 }
 
 /**
+ * 会被挂到 CodeMirror `.cm-line` 元素上的行级底色类名。
+ *
+ * 新增一条「整行底色」时把它登记进来，否则下面的透明判据对它空转。
+ */
+export const LINE_BACKGROUND_CLASSES = [
+  'cm-git-line-added',
+  'cm-git-line-modified',
+  'cm-nav-flash-line',
+] as const;
+
+/** `background` 值是否透出下层（即能为选中块留出通道） */
+function isTranslucentBackground(value: string): boolean {
+  const v = value.trim().toLowerCase();
+  if (v === 'none') return true;
+  // 与 transparent 混色（`color-mix(…, transparent)`）是本仓库唯一推荐形态
+  if (/\btransparent\b/.test(v)) return true;
+
+  const alphaOf = (raw: string): number =>
+    raw.endsWith('%') ? Number.parseFloat(raw) / 100 : Number.parseFloat(raw);
+
+  // rgba(r,g,b,α) / hsla(h,s%,l%,α)；triplet 写成 var(--x-rgb) 时末段仍是数值 α。
+  // 贪婪取到最后一个 `)`：`rgba(var(--accent-blue-rgb), 0.28)` 的内层括号不能截断参数表。
+  const fn = v.match(/\b(?:rgba|hsla)\(([\s\S]*)\)/);
+  if (fn) {
+    const parts = fn[1].split(/[,/]/).map((p) => p.trim());
+    const alpha = parts[parts.length - 1];
+    if (parts.length >= 2 && alpha && Number.isFinite(alphaOf(alpha))) {
+      return alphaOf(alpha) < 1;
+    }
+    return false;
+  }
+
+  // 现代语法 `oklch(… / α)` / `color(… / α)` / `rgb(r g b / α)`
+  const slash = v.match(/\/\s*([\d.]+%?)\s*\)/);
+  if (slash) return alphaOf(slash[1]) < 1;
+
+  return false;
+}
+
+/**
+ * 扫描行级底色规则：只要有一条**不透明**，该行的拖选高亮就是隐形的。
+ *
+ * ## 为什么这是白屏级判据
+ *
+ * `drawSelection()` 把选中块画进 `.cm-selectionLayer`，该层 `z-index:-1`，而
+ * `.cm-scroller` 是 `z-index:0` 的层叠上下文 —— 选中块因此位于所有 `.cm-line`
+ * 背景**之下**，同时原生 `::selection` 已被 CM 置为透明。任何不透明行底（如
+ * `color-mix(… 6%, var(--bg-secondary))`）都会让该行「文本已选中但毫无高亮」，
+ * 且只在变更行出现（普通行只有 5% 的 `.cm-activeLine`），极难联想到行底色。
+ * 拖动方向决定隐形的是头行还是尾行，单行内左右拖选则是整块选中不可见。
+ *
+ * 失效方向：判据被删/写错 → 下一次「实底更好看」的改动会静默复发，无任何测试变红。
+ */
+export function opaqueLineBackgroundViolations(css: string): string[] {
+  const violations: string[] = [];
+  for (const rule of parseRules(css)) {
+    for (const cls of LINE_BACKGROUND_CLASSES) {
+      if (!usesClass(rule, cls)) continue;
+      for (const decl of rule.body.matchAll(/background(?:-color)?\s*:\s*([^;]+)/g)) {
+        const value = decl[1].trim();
+        if (!isTranslucentBackground(value)) {
+          violations.push(
+            `\`${rule.selector}\` 的行底色 \`${value}\` 不透明 —— 会盖掉 \`.cm-selectionLayer\`（z-index:-1）的选中块，该行拖选无高亮`,
+          );
+        }
+      }
+    }
+  }
+  return violations;
+}
+
+/**
  * 返回契约违规清单（空数组 = 合规）。
  *
  * 三类判据：
