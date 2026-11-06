@@ -71,7 +71,7 @@
 | chat | `agent::chat::commands::spawn_session_pipeline`（会话注册 + **16ms 合帧 emit 闭包内**逐事件投影 + bridge 结束后注销） | `StreamEvent` → `Signal`（`wiring::chat::signal_of`） |
 | PTY / WSL | `services::spawn_pty_pipeline`（进程句柄入表之后、watcher 线程启动之前）+ 退出 watcher → `wiring::pty::exit_and_notify` | 输出流动 = `TurnStarted`，静默 ≥ `IDLE_AFTER` = `TurnFinished`；退出码 `0`/无 = `Exited`，非 0 = `Failed` |
 | SSH | `RemoteTerminalManager::create_session`（表项就绪之后、io 线程启动之前）+ io 循环的 250ms tick → `OutputActivity::poll` + io 线程收尾 → `exit_and_notify` | 同上（远端无可靠退出码，一律 `Exited`） |
-| CLI hook | `live_sessions::wiring::hooks::project` | `turn_completed` / `approval_requested` / `input_requested` / `session_failed` → 权威 `Signal`；纯信息事件只更新标题 |
+| CLI hook | `live_sessions::wiring::hooks::project` | `turn_completed` / `approval_requested` / `input_requested` / `session_failed` → 权威 `Signal`；`turn_started` → `TurnStarted`（**不开**输出推断门 —— 门只由 `TurnFinished` / `ApprovalRequested` 置位），用于「后台子 agent 在会话已判完成后又开工」（第 40 轮）；其余纯信息事件只更新标题 |
 
 **不新增事件通道**：注册表是既有 chat 事件流与 PTY 生命周期的第二个消费者。
 `agent_id` 与 `workspace` 都是**显式入参**（`create_terminal_session` 的 `agent_id`、
@@ -467,10 +467,97 @@ claude 的 `session_title`）→ 首条用户消息；服务端 `HookEvent::topi
 cwd 在同一项目多会话时必然串号。env 是**唯一随进程树自动传播、零查询成本**的身份载体。
 **禁止 `std::env::set_var`**（进程全局，多会话互相覆盖，`common/executor/env_defaults.rs` 已否决）。
 
-两条边界：① 嵌套 agent 会把父会话 id 报上来 —— 可接受（那个 nest 确实在父会话的进程树里），
-且会话注销后的迟到上报由注册表的 fail-closed 丢弃；② **不按 cwd 猜**：同一项目多会话是常态，
-猜错的表现是「另一个会话的标题被改写」，而标题是用户直接读的文字 —— 宁可空着（`has_user_input`
-这类可回收的低代价判断才允许粗归因）。
+两条边界：① **嵌套 agent 的上报必须在模板侧整条挡掉**（第 39 轮修正，见下）；② **不按 cwd 猜**：
+同一项目多会话是常态，猜错的表现是「另一个会话的标题被改写」，而标题是用户直接读的文字 ——
+宁可空着（`has_user_input` 这类可回收的低代价判断才允许粗归因）。
+
+#### 子 agent 会话不得上报（第 39 轮，2026-11-06 实测）
+
+**事故**：agent 执行子 agent 期间，侧栏把它显示成「已完成」，而实际还在跑。
+
+**根因是两层，都出在 hook 模板，不是注册表**：
+
+1. **`NEEKO_SESSION_ID` 是 PTY 进程级 env，子会话继承同一个值**。`pi-subagents` 用
+   `createAgentSession` + `bindExtensions` 在**同一个 pi 进程内**起子 agent（agent 定义默认
+   `extensions: true`），本扩展因此被继承加载；子会话的 `agent_end` 带着**父会话 id** 到达
+   服务端 → `report_authoritative` 把父会话判成 `TurnFinished`（`Ready`）并置位权威门 →
+   父会话之后的 PTY 字节推断（`TurnStarted`）被**永久吞掉**。
+2. **`agent_end` 不是终止信号**。pi 官方文档原文：*“agent_end is therefore not a final-idle
+   signal; use agent_settled for that”* —— 重试 / 压缩重试 / 队列续跑都会先发一次 `agent_end`。
+
+同一条通道还污染了父行的 `native_session_id`（`record_native_session_id` 是 first-writer-wins，
+指到子会话的 transcript ⇒ 「点击恢复」恢复错会话）与标题（子 agent 的 prompt）。实测数据：
+父会话行里躺着子会话 id `01a1ae8f…` 与子 agent 的首条 prompt `# 角色`。
+
+**修法（两条判据，各一个变异验证过的锚点）**：
+
+| 判据 | 落点 | 形态 |
+| --- | --- | --- |
+| 会话来源门 | 两个模板的 `onStatus` 包装器 | `sessionManager.getHeader().parentSession` 非空 ⇒ 整条不上报 |
+| 稳定终点 | pi：`agent_settled`（旧版回落 `agent_end`）；OMP：`agent_end.willContinue === true` 是非终态 | 完成腿只在稳定终点上报 |
+
+**门必须收敛成一个注册点**：`pi.on` 在每个模板只允许出现**一次**（`onStatus` 包装器内部）。
+初版写成每个 handler 自己加门，变异验证立刻暴露：删掉任意一处门仍全绿 —— `contains` 数不清
+「第 N 个 handler 漏了」，而漏门的表现正是**静默污染父会话**。收敛后漏门在模板里表达不出来，
+判据是 `pi.on(` 的出现次数 == 1（`templates/tests.rs::templates_gate_child_sessions_at_a_single_registration_point`）。
+
+**为什么判据在模板而不是后端**（与本文件其它“判据只在后端一处”的结论不冲突）：
+
+- 后端看到的是 `(agent_session_id, neeko_session_id)` 两个 id，**无法区分**「子会话借父会话的
+  env」与「同一个会话的正常上报」—— 判据需要 `parentSession` 这条只有 CLI 进程内才知道的事实；
+- 后端兜底是多余的：模板已经**不上报**，后端无从过滤；反过来在后端加一层等于给同一判据
+  两套实现（正是本仓反复禁止的形态）。
+
+**已知未覆盖**：其它 CLI 的 in-process 子会话（claude 的 `SubagentStop` 面、opencode 的
+subagent session）是否也有同一形态，尚未实测。真要覆盖时把 `parent_session` 做成
+`HookEvent` 字段（模板上报、后端单一门）—— 但那需要同步 `templates/tests.rs` 的契约锚点，
+不在没有第二个 CLI 证据之前做。
+
+#### 后台子 agent：根会话已 settle，孩子还在跑（第 40 轮，2026-11-06 真机反馈）
+
+上一节的 `isChildSession` 治的是「子会话冒充父会话」。同一个症状还有**第二个、独立的成因**，
+它治不到：主 agent 用 `run_in_background: true` 派孩子时**只负责把任务交出去**，打印完
+agent id 就结束回合 ⇒ pi **正常**发 `agent_settled` ⇒ 模板照常报 `turn_completed` ⇒
+后端置位权威门 ⇒ 子 agent 的 spinner 帧再也推不动状态。用户看到：侧栏「已完成」、
+正文里子 agent 还在 `running command…`。
+
+Orca 的扩展注释写的正是这一条（`Pi settles its own turn while pi-subagents children keep running`）。
+
+**修法：花名册 + 拖住完成**（`templates/neeko-pi-status.ts`）。事实源是装在本机上的包，
+不是推测（`@tintinweb/pi-subagents@0.23.1` 的 `dist/index.js`）：
+
+| 事件（`pi.events`） | 载荷 | 语义 |
+| --- | --- | --- |
+| `subagents:started` | `{id, type, description}` | 孩子开始跑 |
+| `subagents:completed` | `buildEventData(record)`：`{id, status, …}` | 孩子结束 |
+| `subagents:failed` | 同上 | 孩子失败 / 中止 |
+
+三条都先过 `isTopLevelAgent(record)` ⇒ nested / workflow 的孩子由各自 owner 报，不会重复计数；
+`id` 键控的 `Set` 天然幂等（同一进程里父 / 子会话各绑一份本扩展时，子会话那份 `lastSessionId`
+被会话来源门挡着，发不出任何东西）。
+
+四条判据（少任一条都会退回到某种「状态不对」）：
+
+| 判据 | 不做会怎样 |
+| --- | --- |
+| `agent_settled` 时 `activeChildren.size > 0` ⇒ **拖住**（`heldCompletion`），孩子在清空时补发 | 就是本次 bug |
+| 孩子清空时补发那次完成 | 会话永久停在 `Running`（拖住没有解开路径） |
+| 空闲期冒出的孩子（定时任务 / ctrl+b 转后台）补发 `turn_started` | 会话永久停在 `Ready`：上一次的完成已置权威门，字节推断再也推不动它 |
+| `agent_start` 作废 `heldCompletion` | 孩子清空时把**正在跑**的新回合判成完成（症状与本次 bug 同形） |
+
+`turn_started` 是**状态腿而非通知**：它不进 `agent::chat::notify::event_keys`（那张表与
+`NotificationClass` 一一对应，设置页按它生成清单，加进去就是永远不弹的死开关）——
+常量住在 `live_sessions::wiring::hooks::EVENT_TURN_STARTED`，`ingest::notify` 对未知键
+fail-open 正是它能存活的前提（`turn_started_is_a_state_signal_not_a_notification`）。
+
+花名册回调**不走** `onStatus`：`pi.events` 的回调没有 `ctx`，无从判会话来源；那条门因此
+不是「唯一入口」的反例 —— 它的安全性来自「没有 ctx ⇒ 用 `lastSessionId` ⇒ 子会话那份为空」
+（`agent_start` 也刷新 `lastSessionId`，不把这条腿绑在「`session_start` 必然已到」上）。
+
+**未覆盖**：OMP 不发这三条通道，它自己发 `task:subagent:lifecycle`（载荷含 `id` + `status`，
+`started|completed|failed|aborted`，见本机 `omp/18.14.1` 二进制）。本仓**没有** OMP 侧
+「后台子 agent 导致误报完成」的实测反馈，故不预先实现 —— 要加时只需把通道表换成
+`task:subagent:lifecycle` + status 映射，四条判据不变。
 
 #### OSC 标题不是标题源；终端行只对纯 shell 生效（第 35 / 37 轮，2026-11-06）
 
@@ -996,7 +1083,7 @@ cache 计数（拆分在 draft RFD `end-turn-token-usage`）→ 命中率行降�
 | token 判定写成子串匹配 | `--preserve` / `--observe` 被判成 Serve 传输 |
 | `acp` 判定排在 `serve` 之后 | `opencode serve acp` 静默走错传输 |
 | 未知传输字符串兜底成 ACP | 拼错的 `"acpp"` 悄悄当 ACP spawn（**已改为报错**） |
-| 用 `agent_end` 判回合结束 | 压缩/重试场景提前结束，后续输出丢失 |
+| 用 `agent_end` 判回合结束 | 压缩/重试场景提前结束，后续输出丢失（**hook 模板也踩过同一个坑**，见上节「子 agent 会话不得上报」） |
 | 响应也广播给事件流 | 前端把回包渲染成对话事件 |
 | `extension_ui_request` 一律当审批 | 启动时弹出一串无意义审批 |
 | 把 `provider` 从模型 id 里拆 | Pi 的 provider 是字段，拆了会得到错误值 |
