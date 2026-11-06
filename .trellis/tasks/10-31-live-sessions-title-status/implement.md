@@ -1576,3 +1576,176 @@ wiring / 批处理导入）事故原样回来，注册表内部没有任何守�
 
 - `pnpm check:quick` 25/25 护栏通过（tsc + clippy `--all-targets` + 改动文件前端测试）。
 - `cargo test --lib` **2624 passed / 9 ignored**；`cargo clippy --all-targets -D warnings` 干净。
+
+---
+
+## 39. 子 agent 会话污染父会话状态（2026-11-06 真机反馈）
+
+### 39.1 现象与根因
+
+用户报告：agent 执行子 agent 期间，侧栏把会话显示成「已完成」，实际还在跑。
+
+两层根因**都在 hook 模板**，注册表无责：
+
+1. **`NEEKO_SESSION_ID` 是 PTY 进程级 env**。`pi-subagents` 用 `createAgentSession` +
+   `bindExtensions` 在同一个 pi 进程内起子 agent（agent 定义默认 `extensions: true`，本扩展被
+   继承加载），子会话的 `agent_end` 带着**父会话 id** 上报 → `report_authoritative` 把父会话
+   判成 `TurnFinished`（`Ready`）并置位权威门 → 之后父会话的字节推断被永久吞掉。
+2. **`agent_end` 不是终止信号**（pi 官方文档：*“use agent_settled for that”*）。重试 / 压缩 /
+   队列续跑都会先发一次。
+
+同一条通道还污染了父行：`native_session_id` 是 first-writer-wins，被写成子会话 id（「点击恢复」
+指到子会话 transcript），标题被写成子 agent 的首条 prompt。实测证据（本机）：
+
+```
+session_id 2992ce49…  native_session_id = 01a1ae8f…  title = "# 角色"
+子会话 01a1ae8f 的 jsonl 头: parentSession = …01a1ae8d…（= 父会话）
+```
+
+### 39.2 实现
+
+| 文件 | 改动 |
+| --- | --- |
+| `templates/neeko-pi-status.ts` | 新增 `isChildSession(ctx)`；**唯一注册入口** `onStatus(name, handler)` 内统一上门；完成腿改 `agent_settled`（旧版回落 `agent_end`，`settledSupported` 一旦见过永久让位） |
+| `templates/neeko-omp-status.ts` | 同形 `isChildSession` + `onStatus`；完成腿保留 `agent_settled`（OMP 18.14.1 不发）并加 `agent_end.willContinue === true` 非终态判据 |
+| `templates.rs` | 两个常量文档改为实测版本与两条判据 |
+| `templates/tests.rs` | 新增 `templates_gate_child_sessions_at_a_single_registration_point` |
+| `targets/tests.rs` | OMP 变体的注册形态锚点从 `pi.on("…"` 改为 `onStatus("…"` |
+
+**为什么门收敛成一个注册点**（变异验证逼出来的）：初版是每个 `pi.on` 自己加
+`if (isChildSession(ctx)) return;`。删掉任意一处门，契约用例仍**全绿** —— `contains` 数不清
+「第 N 个 handler 漏了」，而漏门的表现正是静默污染父会话（与本次 bug 同形）。收敛后 `pi.on`
+在每个模板只出现一次，漏门在模板里**表达不出来**。
+
+### 39.3 契约锚点全部按「连续形态」而非裸名
+
+变异验证记录（`mutation-verification.md` 的「0 红不是结论」）：
+
+| 变异 | 初版结果 | 修正 |
+| --- | --- | --- |
+| `onStatus("tool_call"` → `pi.on("tool_call"` | 红 ✓ | — |
+| 删 `onStatus` 包装器里的门 | **0 红** | 裸名 `isChildSession(ctx)` 被函数定义替身通过 → 改连续形态 `if (isChildSession(ctx)) return;\n      return handler(event, ctx);` |
+| 删 `agent_settled` 注册 | 红 ✓ | — |
+| 删 `agent_end` 的 `if (settledSupported) return;` | **0 红** | 裸名 `settledSupported` 被赋值处替身通过 → 改连续形态 |
+| 删 `agent_end.willContinue === true` 判据 | **0 红** | 裸名被注释替身通过 → 改连续形态 |
+| `!omp.contains("ui_prompt_start")` 裸名 | 红（误报） | 头部注释必须说明「为何删掉该腿」→ 改注册形态判据 |
+
+六个变异修正后全部会红；还原后全绿。
+
+### 39.4 行为验证（真实模板正文 + 桩 pi）
+
+模板是可执行 JS，用桩 `pi` 与桩 `fetch` 直跑（`/tmp/neeko-tpl/harness*.mjs`，不入仓）：
+
+| 场景 | 结果 |
+| --- | --- |
+| 子会话 `session_start` / `agent_end` / `agent_settled` / `tool_call` | **0 条上报** |
+| 父会话 `agent_settled` | 1 条 `turn_completed`，`agent_session_id` = 父会话自己的 id |
+| `agent_settled` 之后的 `agent_end` | **0 条**（让位生效） |
+| 旧版 pi（无 `agent_settled` handler） | `agent_end` 上报 1 条（回落生效） |
+| OMP `agent_end.willContinue === true` | 0 条；`false` → 1 条 |
+
+### 39.5 已污染数据的清理
+
+`native_session_id` 是 first-writer-wins，**不会自愈**，必须手工清：
+
+```sql
+UPDATE session_cursors
+   SET native_session_id = NULL, title = '', title_source = 'placeholder'
+ WHERE native_session_id = '<子会话 id>';
+```
+
+`Placeholder` + 空标题是合法常态（读门 `is_restorable` 只拒「无单元」与「损坏行」），下一次
+hook / 首条 prompt 会重新命名。本机已执行（备份 `/tmp/agent_sessions.db.bak`）。
+
+### 39.6 验证
+
+- `pnpm check:quick` 9/9 护栏通过（`cargo fmt --check` 先修一次格式）。
+- `cargo test --lib agent::hooks::` **165 passed**。
+- 变异验证 6/6 会红（详见 §39.3）。
+
+### 39.7 未覆盖（诚实标注）
+
+其它 CLI 的 in-process 子会话（claude `SubagentStop` 面、opencode subagent session）是否同一
+形态**尚未实测**。真要覆盖时把 `parent_session` 做成 `HookEvent` 字段（模板上报、后端单一门），
+但那要同步 `templates/tests.rs` 的契约锚点 —— 在没有第二个 CLI 证据之前不做。
+
+---
+
+## 40. 后台子 agent：根会话已 settle，孩子还在跑（2026-11-06 真机二次反馈）
+
+### 40.1 上一轮为什么没治好
+
+§39 的 `isChildSession` 治的是「**子会话**冒充父会话上报」。真机复现（`run_in_background: true`）
+是**另一个成因**：主 agent 只负责把任务交出去，打印完 agent id 就结束回合 ⇒ pi **正常**发
+`agent_settled` ⇒ 模板照常报 `turn_completed` ⇒ 后端置位权威门 ⇒ 子 agent 的 spinner 帧再也
+推不动状态。截图证据：侧栏「刚刚」、正文里子 agent 仍在 `running command…`。
+
+Orca 的扩展注释写的正是这一条：`Pi settles its own turn while pi-subagents children keep running`。
+
+### 40.2 事实源（直读本机安装的包，不猜）
+
+`@tintinweb/pi-subagents@0.23.1` 的 `dist/index.js`：
+
+| `pi.events` 通道 | 载荷 | 语义 |
+| --- | --- | --- |
+| `subagents:started` | `{id, type, description}` | 孩子开始 |
+| `subagents:completed` | `buildEventData(record)` → `{id, status, …}` | 孩子结束 |
+| `subagents:failed` | 同上 | 失败 / 中止 |
+
+三条都先过 `isTopLevelAgent(record)` ⇒ nested / workflow 的孩子由 owner 报，不会重复计数。
+
+### 40.3 实现
+
+| 位置 | 改动 |
+| --- | --- |
+| `templates/neeko-pi-status.ts` | 花名册 `activeChildren`（id 键控 Set）+ `heldCompletion` + `turnOpen` / `reopenedByChild`；`agent_settled` 走 `completeTurn`；新增 `agent_start` 与三条 bus 订阅 |
+| `live_sessions/wiring/hooks.rs` | `EVENT_TURN_STARTED` 常量 + `authoritative_signal` 映射（**不开**门：门只由 `TurnFinished` / `ApprovalRequested` 置位） |
+| `templates/tests.rs` | `templates_hold_completion_while_background_children_run` |
+| `ingest/notify.rs` | `turn_started_is_a_state_signal_not_a_notification` |
+
+四条判据（少任一条退回某种「状态不对」）：
+
+1. `agent_settled` 时 `activeChildren.size > 0` ⇒ 拖住，孩子清空时补发 —— 缺 ⇒ 本次 bug；
+2. 清空时补发 —— 缺 ⇒ 永久 `Running`；
+3. 空闲期冒出的孩子补发 `turn_started` —— 缺 ⇒ 永久 `Ready`（上次完成已置门）；
+4. `agent_start` 作废 `heldCompletion` —— 缺 ⇒ 孩子清空时把**正在跑**的新回合判成完成。
+
+`turn_started` 不进 `event_keys`：那张表与 `NotificationClass` 一一对应，后端设置页按它生成
+清单，加进去就是一个永远不弹的死开关。常量住在 `live_sessions::wiring::hooks`，
+`ingest::notify::classify` 对未知键 fail-open 正是它能存活的前提。
+
+花名册回调**不走** `onStatus`：`pi.events` 回调没有 `ctx`，无从判会话来源。安全性来自
+「没有 ctx ⇒ 用 `lastSessionId` ⇒ 子会话那份恒为空」；为此 `agent_start` 也刷新
+`lastSessionId`（不把这条腿绑在「`session_start` 必然已到」上 —— 那是多余的运行时假设）。
+
+### 40.4 行为验证（真实模板正文 + 桩 `pi.events` / 桩 `fetch`，5 个场景）
+
+| 场景 | 期望 | 实测 |
+| --- | --- | --- |
+| A 前台子 agent（回合内派出） | 恰好 1 条完成 | `["turn_completed@root"]` ✓ |
+| B **后台子 agent（本次 bug）** | 主 agent settle 后 **0 条**；孩子结束后 1 条 | `[]` → `["turn_completed@root"]` ✓ |
+| C 空闲期冒出的孩子（定时任务 / ctrl+b） | 先 `turn_started`，孩子结束再完成 | `["turn_started@root"]` → `[…, "turn_completed@root"]` ✓ |
+| D 孩子还在跑时用户又发一条消息 | 孩子结束 **不报**；新回合自己报 | `[]` → `["turn_completed@root"]` ✓ |
+| E 同一 id 重复 `started` | 不重复计数，只 1 条完成 | `["turn_completed@root"]` ✓ |
+| 旧版 pi（无 `agent_settled`） | `agent_end` 回落仍报 1 条 | ✓ |
+
+### 40.5 变异验证
+
+| 变异 | 结果 |
+| --- | --- |
+| 删掉 `if (activeChildren.size > 0)` 拖住分支 | 红 ✓ |
+| `activeChildren.delete(id)` → 只在 started 加 | 红 ✓ |
+| 删掉空闲期 `post("turn_started")` | 红 ✓ |
+| `agent_start` 不断言作废 `heldCompletion` | Rust 用例 **不红**（`contains` 表达不了「作废时机」）—— **由 §40.4 场景 D 覆盖**，已如实标注 |
+
+### 40.6 未覆盖（诚实标注）
+
+OMP 不发这三条通道，它自己发 `task:subagent:lifecycle`（载荷 `{id, status}`，
+`started|completed|failed|aborted`，见本机 `omp/18.14.1` 二进制）。本仓**没有** OMP 侧
+「后台子 agent 导致误报完成」的实测反馈，故不预先实现 —— 要加时只换通道表 + status 映射，
+四条判据不变。
+
+### 40.7 验证
+
+- `cargo test --lib agent::hooks` **167 passed**；`live_sessions` **141 passed**。
+- `pnpm check:quick` 10/10 护栏通过。

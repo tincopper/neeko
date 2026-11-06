@@ -258,3 +258,59 @@ R4.3 随之解除「不做 OSC」的限制：Native 恢复为可用来源（prov
 - [x] AC21 单测：`isListedSession` 只要求 `hasUserInput`；`resolveTabTitle` 要求
       `isListedSession && isNamedSession`；`ResumeCursor::is_restorable` 不再拒绝无名行，
       只拒绝无单元与 `Placeholder` 却带标题；`restore_from_store` 回填无名行。
+
+### 第八轮验收补充（R10 子 agent 会话不得污染父会话，2026-11-06 真机反馈）
+
+现象：agent 执行子 agent 期间，侧栏把会话显示成「已完成」，实际还在跑。
+
+- **R10.1 子会话不上报**：hook 模板必须按 `sessionManager.getHeader().parentSession` 判定
+  会话来源，in-process 子 agent 会话的事件（完成 / 审批 / 输入请求 / 会话身份）**整条不上报**。
+  判据落在模板而不是后端：后端只看到两个 id，无法区分「子会话借父会话的 env」与「同一会话
+  的正常上报」。
+- **R10.2 完成腿只认稳定终点**：pi 用 `agent_settled`（旧版回落 `agent_end`），OMP 用
+  `agent_end.willContinue === true` 作非终态判据。`agent_end` 在重试 / 压缩 / 队列续跑时会
+  先发一次，只认它就会在子 agent 还在跑时把父会话判成已完成。
+- **R10.3 门只有一个注册点**：`pi.on` 在每个模板只允许出现一次（`onStatus` 包装器内部）。
+  逐个 handler 加门时，漏一处 = 静默污染父会话（无报错、无日志）。
+- **R10.4 不污染父行身份**：子会话不得写入父行的 `native_session_id`（first-writer-wins，
+  指到子会话 transcript 会让「点击恢复」恢复错会话）与标题（子 agent 的 prompt）。
+- [x] AC22 单测：`templates_gate_child_sessions_at_a_single_registration_point` —— 两个模板
+      都有 `isChildSession` / `getHeader` / `parentSession` / `onStatus`，`pi.on(` 出现次数 == 1，
+      `session_start` / `agent_end` / `tool_call`（pi 另有 `ui_prompt_start`）都经 `onStatus` 注册，
+      完成腿让位判据与 OMP 的 `willContinue` 判据都在。
+      变异验证 6/6 会红（含两处「初版 0 红 → 改连续形态判据」的记录，见 `implement.md` §39.3）。
+- [x] AC23 行为验证（真实模板正文 + 桩 `pi` / 桩 `fetch`）：子会话四类事件 0 条上报；
+      父会话 `agent_settled` 恰好 1 条且 id 为父会话自己的；`agent_settled` 后的 `agent_end`
+      0 条；旧版 pi 的 `agent_end` 回落仍报 1 条；OMP `willContinue === true` 0 条。
+- [ ] AC24 真机：让 agent 执行一个耗时子 agent（**前台与后台两种形态都要**），侧栏状态必须
+      保持「运行中」直到子 agent 真正结束；结束后 `native_session_id` 与标题不得被子会话的
+      prompt 覆盖。（需真人 + 真机）
+
+### 第九轮验收补充（R11 后台子 agent 不得让父会话误报完成，2026-11-06 真机二次反馈）
+
+上一轮（R10）修的是「子会话冒充父会话」。同一个症状还有第二个独立成因：主 agent 用
+`run_in_background: true` 派孩子时只负责交任务，打印完 agent id 就结束回合 ⇒ pi **正常**发
+`agent_settled` ⇒ 模板照常报完成 ⇒ 后端置位权威门 ⇒ 子 agent 的 spinner 帧再也推不动状态。
+
+- **R11.1 花名册**：模板必须订阅 `pi.events` 的 `subagents:started` / `subagents:completed` /
+  `subagents:failed`（实测自 `@tintinweb/pi-subagents@0.23.1`，载荷含 `id`），按 id 维护
+  「在跑的孩子」集合。
+- **R11.2 拖住完成**：`agent_settled` 时有孩子在跑 ⇒ 不上报 `turn_completed`，改为暂存，
+  孩子全部结束后补发。反过来必须补发：否则会话永久停在 `Running`。
+- **R11.3 空闲期孩子**：会话已判完成之后才起来的子 agent（定时任务 / ctrl+b 转后台）必须补发
+  `turn_started`，否则后端权威门让会话永久停在 `Ready`（字节推断再也推不动）。
+- **R11.4 新回合作废旧完成**：`agent_start` 必须作废暂存的完成，否则孩子清空时会把**正在跑**
+  的新回合判成完成（症状与本次 bug 同形）。
+- **R11.5 `turn_started` 只驱动状态**：不得进 `agent::chat::notify::event_keys`（那张表与
+  `NotificationClass` 一一对应，设置页按它生成清单，加进去就是永远不弹的死开关）。
+- [x] AC25 单测：`templates_hold_completion_while_background_children_run`（三条通道订阅 /
+      拖住判据 / 花名册删除 / `turn_started` 补发，锚点引用 Rust 侧常量本身）；
+      `turn_started_is_a_state_signal_not_a_notification`。
+- [x] AC26 单测：`turn_started_reopens_a_settled_session_against_output_activity` ——
+      完成后再开工必须回到 `Running`，且门保持置位（这期间 spinner 字节不得推回 `Ready`）。
+- [x] AC27 行为验证（真实模板正文 + 桩 `pi.events` / 桩 `fetch`）：前台子 agent 恰好 1 条；
+      **后台子 agent 在父会话 settle 后 0 条**、孩子结束后 1 条；空闲期孩子先
+      `turn_started` 再完成；孩子未清空时用户发新消息则孩子结束不报、新回合自己报；
+      同一 id 重复 `started` 不重复计数；旧版 pi 的 `agent_end` 回落仍报 1 条。
+- [x] AC28 变异验证：删拖住分支 / 花名册只加不减 / 删 `turn_started` 补发 → 三条全部会红；
+      「`agent_start` 作废」由行为场景覆盖（`contains` 表达不了时机），已如实标注。
