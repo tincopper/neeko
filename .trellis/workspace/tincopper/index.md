@@ -7,8 +7,8 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-8.md`
-- **Total Sessions**: 427
+- **Active File**: `journal-9.md`
+- **Total Sessions**: 428
 - **Last Active**: 2026-11-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1971 | Active |
+| `journal-9.md` | ~41 | Active |
+| `journal-8.md` | ~1971 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 428 | 2026-11-06 | 收尾：子 agent 完成态两轮修复归档 | `10580b80`, `846d7a44`, `5e903233`, `7457e16f` | `main` |
 | 427 | 2026-11-06 | 第 40 轮：后台子 agent 不得让父会话误报完成 | `d5772f7ffa422cbb0af6162d900f71a1b39c66e7` | `main` |
 | 426 | 2026-11-06 | 第 39 轮：子 agent 会话不得污染父会话状态 | `d5772f7ffa422cbb0af6162d900f71a1b39c66e7` | `main` |
 | 425 | 2026-11-06 | 第 36-37 轮：侧栏可见性与纯 shell 标题回归 | `8ee2c73db6dbd12c899a42855ccda1d032379543` | `main` |
