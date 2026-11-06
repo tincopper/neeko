@@ -33,7 +33,12 @@ pub const REPORT_SHIM: &str = include_str!("templates/neeko-report.mjs");
 /// V1 模板（`templates/neeko-opencode-status.js`，1.19.0 事件面）冻结存档，不再安装。
 pub const OPENCODE_TEMPLATE: &str = include_str!("templates/neeko-opencode-status-v2.js");
 
-/// pi 扩展模板（1.1.0 实测事件面：agent_end / tool_call(ask 类工具) / ui_prompt_start）。
+/// pi 扩展模板（1.5.0 实测事件面：agent_settled（旧版回落 agent_end）/ tool_call(ask 类工具)
+/// / ui_prompt_start）。
+///
+/// 两条判据各由一次实测事故定义：会话来源门（in-process 子 agent 会话复用本扩展，
+/// `NEEKO_SESSION_ID` 是进程级 env ⇒ 子会话完成事件会带着父会话 id 上报）与完成腿判据
+/// （`agent_end` 在重试 / 压缩 / 队列续跑时会先发一次）。
 pub const PI_TEMPLATE: &str = include_str!("templates/neeko-pi-status.ts");
 
 /// OMP 扩展模板 —— pi 模板的**派生变体**。
@@ -44,6 +49,9 @@ pub const PI_TEMPLATE: &str = include_str!("templates/neeko-pi-status.ts");
 /// `UIPromptStartEvent` / `UIPromptEndEvent`。OMP 有 `tool_call`（等待审批腿）与
 /// `agent_end`（完成腿），故变体 = pi 模板 **减去** `ui_prompt_start` 段。
 /// 变体是独立文件而非运行时 `if (isOmp)` 分支 —— 模板保持零 CLI 分支（红线 15 精神）。
+///
+/// 完成腿的**判据也不同**（omp 18.14.1 二进制实测：`agent_settled` 0 命中、`willContinue`
+/// 38 命中）：OMP 用 `agent_end.willContinue` 标非终态，pi 用 `agent_settled` 标稳定终点。
 pub const OMP_TEMPLATE: &str = include_str!("templates/neeko-omp-status.ts");
 
 #[cfg(test)]

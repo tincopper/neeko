@@ -6,7 +6,16 @@
 // （2026-10-16 实测：OMP 二进制内 withUIPrompt / emitUIPromptEvent / UIPromptStartEvent
 // 均 0 命中，而 pi 的 ExtensionEvent union 含 UIPromptStartEvent/UIPromptEndEvent）。
 // 故本变体 = pi 模板 **减去** ui_prompt_start 段，保留：
-//   agent_end（轮次完成）、tool_call（ask 类工具 → 等待审批）、session_start（会话身份）。
+//   agent_settled / agent_end（轮次完成，见下）、tool_call（ask 类工具 → 等待审批）、
+//   session_start（会话身份）。
+//
+// 完成腿与 pi 模板**判据不同**（实测 omp 18.14.1 二进制：`agent_settled` 0 命中，
+// `willContinue` 38 命中）：OMP 不发 `agent_settled`，而是用 `agent_end.willContinue` 标出
+// 「这一轮还会继续」（重试 / 压缩 / 队列续跑）。两条腿同时注册，`agent_settled` 一旦出现
+// 就永久让位 —— 与 pi 同形，但 OMP 上永远不会置位。
+//
+// 会话来源门与 pi 模板同因（in-process 子 agent 会话继承本扩展 + `NEEKO_SESSION_ID` 是
+// 进程级 env）：见 `isChildSession`。
 //
 // 为什么不写成一个模板 + 运行时分支：模板必须零 CLI 分支（红线 15 精神），
 // 差异靠「独立文件」承载（与 writers 的 Standalone 形态一致）。
@@ -131,6 +140,21 @@ function sessionIdOf(ctx) {
   return typeof id === "string" && id ? id : null;
 }
 
+// 子会话判定：与 pi 模板同一判据（同一个 pi 扩展 API，`sessionManager.getHeader()`
+// 的 `parentSession` 是唯一可靠来源）。为什么必须整条不上报见 pi 模板同名函数的注释：
+// `NEEKO_SESSION_ID` 是 **PTY 进程级** env，子会话的完成事件会把父会话判成已完成。
+// fail-open：判不出来就按根会话上报。
+function isChildSession(ctx) {
+  try {
+    const sm = ctx && ctx.sessionManager;
+    const header = sm && typeof sm.getHeader === "function" ? sm.getHeader() : null;
+    const parent = header && header.parentSession;
+    return typeof parent === "string" && parent.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 // 首条用户消息 -> 主题：message.content 可能是 string 或 (TextContent|ImageContent)[]，
 // 只取首个文本块的首个非空行（副标题是单行展示位）。
 function messageTopic(content) {
@@ -188,18 +212,44 @@ function isAskTool(toolName) {
 
 export default function (pi) {
   let lastSessionId = null;
+  // OMP 目前不发 `agent_settled`（二进制实测 0 命中），但保留该腿：新版若补上则自动生效。
+  let settledSupported = false;
 
-  pi.on("session_start", (_event, ctx) => {
+  // **唯一的注册入口**：子会话门只此一处（与 pi 模板同形，理由见 isChildSession 注释）。
+  // 逐个 handler 加门时，「第 N 个 handler 忘加」的表现是静默污染父会话。
+  function onStatus(name, handler) {
+    pi.on(name, (event, ctx) => {
+      if (isChildSession(ctx)) return;
+      return handler(event, ctx);
+    });
+  }
+
+  function postCompletion(ctx) {
+    void post("turn_completed", sessionIdOf(ctx) || lastSessionId, null, topicOf(ctx));
+  }
+
+  onStatus("session_start", (_event, ctx) => {
+    // 子会话不得改写 `lastSessionId`（身份兜底不能被子 agent 抢走）。
     lastSessionId = sessionIdOf(ctx) || lastSessionId;
   });
 
-  // 一轮结束（turn 完成）。
-  pi.on("agent_end", (_event, ctx) => {
-    void post("turn_completed", sessionIdOf(ctx) || lastSessionId, null, topicOf(ctx));
+  // 稳定终点（OMP 18.x 不发；旧版 / 未来版兼容腿）。
+  onStatus("agent_settled", (_event, ctx) => {
+    settledSupported = true;
+    postCompletion(ctx);
+  });
+
+  // 一轮结束：`willContinue === true` 是**非终态**（重试 / 压缩 / 队列续跑）。
+  // 不加这条判据时，子 agent 并行期间的主 agent 重试会先报一次完成 —— 与「只认 agent_end」
+  // 的 pi 事故同一形态。
+  onStatus("agent_end", (event, ctx) => {
+    if (settledSupported) return;
+    if (event && event.willContinue === true) return;
+    postCompletion(ctx);
   });
 
   // ask 类工具发起 = 等待用户行动。
-  pi.on("tool_call", (event, ctx) => {
+  onStatus("tool_call", (event, ctx) => {
     if (isAskTool(event && event.toolName)) {
       const question = event && event.input && event.input.question;
       void post(

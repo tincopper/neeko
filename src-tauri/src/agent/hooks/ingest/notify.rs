@@ -131,6 +131,19 @@ mod tests {
         assert!(project("pi", &event("session.idle"), &attribution()).is_none());
     }
 
+    /// `turn_started` 是**状态**信号，不是通知：它只被 `live_sessions::wiring::hooks` 消费。
+    ///
+    /// 这条断言防的是「顺手把它加进 `event_keys`」：那张表与 `NotificationClass` 一一对应，
+    /// 后端通知设置页按它生成清单 —— 加进去就会多出一个永远不弹的死开关。
+    #[test]
+    fn turn_started_is_a_state_signal_not_a_notification() {
+        use crate::live_sessions::wiring::hooks::EVENT_TURN_STARTED;
+        assert!(
+            project("pi", &event(EVENT_TURN_STARTED), &attribution()).is_none(),
+            "turn_started 不得投影成通知（它是状态腿，加进 event_keys 会造出死开关）"
+        );
+    }
+
     /// 会话异常事件的标签与类别：`session_failed` → Failed 类 + 「Agent session failed」文案。
     #[test]
     fn session_failed_maps_to_failed_class_with_label() {

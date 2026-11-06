@@ -391,8 +391,11 @@ fn structured_targets_declare_settings_file() {
 /// U1 回归钉子：OMP 变体**不注册** `ui_prompt_start`（OMP 无该事件），
 /// 但**保留** `agent_end` 与 `tool_call`（另两条腿）。
 ///
-/// 判据取**注册形态** `pi.on("ui_prompt_start"` 而非裸名 —— 头部注释需要说明
+/// 判据取**注册形态** `onStatus("ui_prompt_start"` 而非裸名 —— 头部注释需要说明
 /// 「为何删掉该腿」，裸名判据会把文档也判为违规（承重锚点与非承重文本混同）。
+///
+/// 注册形态自 2026-11-06 起统一为 `onStatus`（子会话门只此一处，见
+/// `templates/tests.rs::templates_gate_child_sessions_at_a_single_registration_point`）。
 ///
 /// 反证：把 OMP 的 template 换回 `PI_TEMPLATE`，本用例必红 —— 届时 OMP 会注册一个
 /// 它不认识的事件名（静默无效，但语义上错误）。
@@ -403,9 +406,9 @@ fn omp_variant_omits_ui_prompt_and_keeps_other_legs() {
         .find(|t| t.source == "omp")
         .expect("omp target");
     for kept in [
-        "pi.on(\"agent_end\"",
-        "pi.on(\"tool_call\"",
-        "pi.on(\"session_start\"",
+        "onStatus(\"agent_end\"",
+        "onStatus(\"tool_call\"",
+        "onStatus(\"session_start\"",
         "getSessionName",
         "/hook/omp",
     ] {
@@ -415,7 +418,10 @@ fn omp_variant_omits_ui_prompt_and_keeps_other_legs() {
         );
     }
     assert!(
-        !omp.template.contains("pi.on(\"ui_prompt_start\""),
+        // 取**注册形态**而非裸名：头部注释必须说明「为何删掉该腿」，裸名判据会把文档
+        // 也判为违规（承重锚点与非承重文本混同）。
+        !omp.template.contains("onStatus(\"ui_prompt_start\"")
+            && !omp.template.contains("pi.on(\"ui_prompt_start\""),
         "OMP 不支持 ui_prompt_start（spike U1），变体不得注册它"
     );
     assert!(

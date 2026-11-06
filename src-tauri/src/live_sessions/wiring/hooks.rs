@@ -47,6 +47,17 @@ use crate::live_sessions::registry::Registry;
 use crate::live_sessions::state::Signal;
 use crate::AppStateWrapper;
 
+/// 只被状态表消费的语义键（与 `event_keys` 那四个**通知类**键分开）。
+///
+/// 为什么不进 `agent::chat::notify::event_keys`：那张表是通知词汇表（设置页清单 + 节流
+/// 主键），与 `NotificationClass` 一一对应；「刚开始干活」不该弹通知，放进去就会造出一个
+/// 永远不弹的设置项。`ingest::notify::classify` 对未知键返回 `None`（fail-open）正是本键
+/// 能存活的前提 —— 它只驱动状态，不驱动通知。
+///
+/// 它仍是**双端契约**：模板侧写字面量 `"turn_started"`，一致性由
+/// `templates/tests.rs::templates_hold_completion_while_children_run` 钉住。
+pub(crate) const EVENT_TURN_STARTED: &str = "turn_started";
+
 /// 语义事件 → 权威状态信号。
 ///
 /// 这些事件来自 CLI 自己的生命周期，而不是对 PTY 字节流的推断：
@@ -62,6 +73,12 @@ use crate::AppStateWrapper;
 fn authoritative_signal(event_key: &str) -> Option<Signal> {
     match event_key {
         event_keys::TURN_COMPLETED => Some(Signal::TurnFinished),
+        // 「有活在飞」（后台子 agent 在会话已判完成后才起来，如定时任务 / ctrl+b 转后台）。
+        // 没有这条腿时该会话会**永久**停在 Ready：上一次的 `turn_completed` 已置位权威门，
+        // 字节推断（含子 agent 的 spinner 帧）再也推不动它，直到用户下一次提交输入。
+        // 本键把「还在干活」定成权威事实；门保持置位是有意的 —— 收尾由模板补发的那条
+        // `turn_completed` 负责（模板的花名册保证两边成对）。
+        EVENT_TURN_STARTED => Some(Signal::TurnStarted),
         event_keys::APPROVAL_REQUESTED | event_keys::INPUT_REQUESTED => {
             Some(Signal::ApprovalRequested)
         }
@@ -251,6 +268,39 @@ mod tests {
         assert_eq!(entry.state, SessionState::Ready);
 
         assert!(!registry.apply_activity("pty-1", crate::live_sessions::state::Signal::TurnStarted));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+    }
+
+    /// 后台子 agent 在会话已判完成后才起来（定时任务 / ctrl+b 转后台）：
+    /// 模板补发 `turn_started` 把「还在干活」定成权威事实。少了这条腿，上一次
+    /// `turn_completed` 置的门会让字节推断再也推不动它 —— 会话永久停在 Ready。
+    #[test]
+    fn turn_started_reopens_a_settled_session_against_output_activity() {
+        let registry = registry_with_terminal("pty-1");
+        assert!(project(
+            &registry,
+            &event(
+                event_keys::TURN_COMPLETED,
+                Some("pty-1"),
+                Some("跑后台任务")
+            )
+        ));
+        assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
+
+        assert!(project(
+            &registry,
+            &event(EVENT_TURN_STARTED, Some("pty-1"), None)
+        ));
+        let entry = &registry.snapshot()[0];
+        assert_eq!(entry.state, SessionState::Running);
+        // 收尾由模板在孩子清空后补发的 turn_completed 负责（成对），门保持置位是有意的：
+        // 这期间的 spinner 字节不该把状态推回 Ready。
+        assert!(entry.awaiting_user_activity);
+
+        assert!(project(
+            &registry,
+            &event(event_keys::TURN_COMPLETED, Some("pty-1"), None)
+        ));
         assert_eq!(registry.snapshot()[0].state, SessionState::Ready);
     }
 

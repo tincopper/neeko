@@ -129,6 +129,100 @@ fn embedded_templates_keep_contract_anchors() {
     }
 }
 
+/// 会话来源门 + 完成腿判据（两个模板都必须有）。
+///
+/// # 为什么这是承重锚点（2026-11-06 实测事故）
+///
+/// `pi-subagents` 用 `createAgentSession` + `bindExtensions` 在**同一个 pi 进程内**起子 agent，
+/// agent 定义默认 `extensions: true` ⇒ 本扩展被继承加载。而 `NEEKO_SESSION_ID` 由 Neeko 注入
+/// **PTY 进程级** env，子会话继承同一个值 ⇒ 子 agent 的完成事件带着**父会话 id**到达服务端，
+/// `report_authoritative` 把父会话判成 `Ready` 并置位权威门，之后的字节推断被永久吞掉。
+/// 表现：**子 agent 还在跑，侧栏已显示完成**；同时父行的 `native_session_id`（first-writer-wins）
+/// 与标题被写成子会话的。
+///
+/// 完成腿是同一形态的另一半：`agent_end` 在重试 / 压缩 / 队列续跑时会先发一次，只有
+/// `agent_settled`（pi）与 `agent_end.willContinue === true`（OMP）才是稳定判据。
+///
+/// # 为什么判据是「`pi.on` 只出现一次」而不是「每个 handler 都有门」
+///
+/// 初版写成每个 `pi.on` 自己加 `isChildSession` 门，变异验证立刻暴露问题：删掉任意一处门，
+/// 本用例仍全绿 —— `contains` 数不清「第 N 个 handler 漏了」。而「第 N 个 handler 忘加门」
+/// 的表现正是**静默污染父会话**（无报错、无日志），与本次事故同形。
+/// 收敛成单个 `onStatus` 包装后，漏门在模板里**根本表达不出来**：`pi.on` 只允许出现一次。
+///
+/// 反证：把任一模板里的 `onStatus("…"` 改回 `pi.on("…"`（或删掉 `isChildSession`），
+/// 本用例必红。
+#[test]
+fn templates_gate_child_sessions_at_a_single_registration_point() {
+    for source in ["pi", "omp"] {
+        let t = HOOK_TARGETS
+            .iter()
+            .find(|t| t.source == source)
+            .unwrap_or_else(|| panic!("{source} target"));
+        // ① 来源门：读 sessionManager 的 header.parentSession。
+        for anchor in ["getHeader", "parentSession", "onStatus"] {
+            assert!(
+                t.template.contains(anchor),
+                "{source} 模板缺少 {anchor:?}（子会话上报会污染父会话的状态与标题）"
+            );
+        }
+        // ①b 门必须**在包装器内**。取连续形态而非裸名：`isChildSession(ctx)` 也出现在
+        // 函数定义里，裸名会被「函数还在、门被删」的实现替身通过（变异实测：删掉门 0 红）。
+        assert!(
+            t.template
+                .contains("if (isChildSession(ctx)) return;\n      return handler(event, ctx);"),
+            "{source} 模板的 onStatus 包装器缺子会话门（子 agent 的完成事件会挂到父会话 id 上）"
+        );
+        // ② 门必须只在一处：`pi.on` 的注册点唯一（否则新加 handler 会绕过门）。
+        assert_eq!(
+            t.template.matches("pi.on(").count(),
+            1,
+            "{source} 模板出现多个 `pi.on(` 注册点（新 handler 会绕过子会话门；\
+             改用 onStatus 包装）"
+        );
+        // ③ 每个事件都经 onStatus 注册（判据取注册形态，不取裸事件名）。
+        for event in ["session_start", "agent_end", "tool_call"] {
+            let registered = format!("onStatus(\"{event}\"");
+            assert!(
+                t.template.contains(&registered),
+                "{source} 模板的 {event} 未经 onStatus 注册（子会话会上报该事件）"
+            );
+        }
+        // ④ 稳定终点：两个模板都注册 agent_settled，并把 agent_end 降为兼容腿。
+        // 取**连续形态**而非裸名：`settledSupported` 也在赋值处出现，裸名会被
+        // 「声明还在、早退被删」的实现替身通过（变异实测：删掉早退 0 红）。
+        assert!(
+            t.template.contains("onStatus(\"agent_settled\""),
+            "{source} 模板未注册 agent_settled（完成腿会在重试 / 压缩中途误报）"
+        );
+        assert!(
+            t.template.contains("    if (settledSupported) return;\n"),
+            "{source} 模板的 agent_end 未让位给 agent_settled（重试中间那次会先报完成）"
+        );
+    }
+    // pi 额外注册 ui_prompt_start；OMP 无此事件（spike U1）故不要求。
+    let pi = HOOK_TARGETS
+        .iter()
+        .find(|t| t.source == "pi")
+        .expect("pi target");
+    assert!(
+        pi.template.contains("onStatus(\"ui_prompt_start\""),
+        "pi 模板的 ui_prompt_start 未经 onStatus 注册（子会话会上报该事件）"
+    );
+    // OMP 无 agent_settled（18.14.1 二进制 0 命中），完成腿只能靠 willContinue。
+    // 取**连续形态**而非裸名：`willContinue` 也出现在注释里，裸名会被注释替身通过
+    // （变异实测：删掉判据 0 红）。
+    let omp = HOOK_TARGETS
+        .iter()
+        .find(|t| t.source == "omp")
+        .expect("omp target");
+    assert!(
+        omp.template
+            .contains("if (event && event.willContinue === true) return;"),
+        "OMP 模板缺 willContinue 判据（重试 / 压缩中间那次 agent_end 会先报完成）"
+    );
+}
+
 /// shim 契约锚点：坐标扫描 / fan-out / token / loopback / 永不非零退出。
 ///
 /// **T9 的核心不变量**：shim **不得**认识任何 CLI 原生事件名 ——
@@ -214,4 +308,67 @@ fn opencode_v1_template_stays_frozen() {
             "V1 模板被改动（冻结契约破坏）：缺少 {anchor:?}"
         );
     }
+}
+
+/// 后台子 agent 花名册：**根会话已 settle，孩子还在跑**时不得上报完成。
+///
+/// # 事故（2026-11-06 真机反馈，与上一轮是**两个不同**的根因）
+///
+/// 上一轮修的是「子会话冒充父会话」（`isChildSession`）。这次的现象同一个，
+/// 但机制完全不同：主 agent 用 `run_in_background: true` 派孩子时**只负责把任务交出去**，
+/// 打印完 agent id 就结束回合 ⇒ pi 正常发 `agent_settled`。模板照常上报 `turn_completed`
+/// ⇒ 后端置位权威门 ⇒ 子 agent 的 spinner 帧再也推不动状态 ⇒「侧栏显示已完成，实际还在跑」。
+///
+/// # 事实源（直读装在本机的包，不是推测）
+///
+/// `@tintinweb/pi-subagents@0.23.1` 的 `dist/index.js`：
+/// - `pi.events.emit("subagents:started", { id, type, description })`；
+/// - `pi.events.emit("subagents:completed" | "subagents:failed", buildEventData(record))`，
+///   载荷含 `id` / `status`；
+/// - 三条都先过 `isTopLevelAgent(record)` ⇒ nested / workflow 的孩子由各自 owner 报，不重复计数。
+///
+/// 反证：删掉 `activeChildren` 的增删或 `heldCompletion` 分支，`cargo test` 必红。
+#[test]
+fn templates_hold_completion_while_background_children_run() {
+    use crate::live_sessions::wiring::hooks::EVENT_TURN_STARTED;
+
+    let template = HOOK_TARGETS
+        .iter()
+        .find(|t| t.source == "pi")
+        .expect("pi target")
+        .template;
+
+    // ① 订阅三条实测通道（裸名锚点足够：通道名不可能出现在函数名里，且拼错就是静默失效）。
+    for channel in [
+        "subagents:started",
+        "subagents:completed",
+        "subagents:failed",
+    ] {
+        assert!(
+            template.contains(channel),
+            "pi 模板未订阅 {channel:?}（后台子 agent 的花名册整条失效）"
+        );
+    }
+
+    // ② 完成腿必须经「拖住」判据而非直发。
+    assert!(
+        template.contains("if (activeChildren.size > 0) {"),
+        "pi 模板的完成腿没有「有孩子在跑就拖住」的判据（主 agent 交完任务就报完成 = 本次 bug）"
+    );
+    assert!(
+        template.contains("heldCompletion"),
+        "pi 模板缺 heldCompletion（拖住的完成没有补发路径，会话会卡在 Running）"
+    );
+    assert!(
+        template.contains("activeChildren.delete(id)"),
+        "pi 模板只在 started 加、不在 finished 减（花名册永不清空 ⇒ 永远不报完成）"
+    );
+
+    // ③ 「空闲期孩子起来」必须补一条开工信号，否则后端权威门让会话永久停在 Ready。
+    //    锚点引用 Rust 侧常量本身：任一端改名都会静默失效，故双端必须同一份字面量。
+    let reopen = format!("post(\"{EVENT_TURN_STARTED}\"");
+    assert!(
+        template.contains(&reopen),
+        "pi 模板缺 {reopen:?}（空闲期冒出的子 agent 永远推不动会话状态）"
+    );
 }
