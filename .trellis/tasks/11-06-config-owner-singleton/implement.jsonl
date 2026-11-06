@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "唯一 owner 不变量与中心视图路由（§2 Context 分发层、§8）；本次把 config 所有权移出 feature 的直接依据（文件 >32KB，注入会截断，请整篇读）"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "hook 设计约定：区分有状态 owner hook 与只读消费 hook，避免每实例副作用"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "store 驱动弹窗的全局宿主判据 + 组件行数 ratchet（新增投影模块/护栏不得回涨）（文件 >32KB，注入会截断，请整篇读）"}
+{"file": ".trellis/spec/frontend/design-tokens.md", "reason": "主题 CSS 变量契约与唯一权威源；首帧前注入主题时不得绕过 token 分层（文件 >32KB，注入会截断，请整篇读）"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "app/bootstrap 与 features 的物理边界；owner 私有化落点依据"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量门禁分工：check:quick 只跑一次、TDD 红绿、依赖补丁与 Vite 缓存（文件 >32KB，注入会截断，请整篇读）"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "组件级一律 mock invoke 的策略；mount-invariance 助手的接入方式"}
+{"file": ".trellis/spec/unit-test/mutation-verification.md", "reason": "新增护栏的负例/变异验证：删掉 owner 唯一性或复制调用点必须判红"}

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "复核 config 只有一个 owner、投影只有一个写入点、AppContext 只读（文件 >32KB，注入会截断，请整篇读）"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "复核新护栏不违反组件规模 ratchet、全局宿主未被拆散（文件 >32KB，注入会截断，请整篇读）"}
+{"file": ".trellis/spec/frontend/design-tokens.md", "reason": "复核主题变量仍由唯一权威源驱动、首帧注入不引入第二套色值（文件 >32KB，注入会截断，请整篇读）"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "复核回归测试真实覆盖「挂载不产生全局副作用」且与实现细节解耦"}
+{"file": ".trellis/spec/unit-test/mutation-verification.md", "reason": "复核新护栏含负例自测，删保护条件后必须变红"}
