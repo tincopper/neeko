@@ -81,34 +81,25 @@ fn resolve_db_dir(override_value: Option<&str>, fallback: PathBuf) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// 平台无关的绝对路径夹具（红线 13）：`/tmp/…` 在 Windows 上无盘符前缀，`is_absolute()`
-    /// 恒 false，会让「覆写值生效」的断言退化成本地绿、Windows CI 红。
-    ///
-    /// 返回 `TempDir` 本身：调用方持有它，路径在断言期间保持存在（不是只要一个字符串）。
-    fn fixture(label: &str) -> (tempfile::TempDir, PathBuf) {
-        let dir = tempfile::tempdir().expect("fixture: tempdir");
-        let path = dir.path().join(label);
-        (dir, path)
-    }
+    use crate::common::testing::abs_fixture;
 
     #[test]
     fn db_dir_defaults_to_app_dir_when_override_is_absent() {
-        let (_tmp, fallback) = fixture("app-dir");
+        let (_tmp, fallback) = abs_fixture("app-dir");
         assert_eq!(resolve_db_dir(None, fallback.clone()), fallback);
     }
 
     #[test]
     fn db_dir_honours_absolute_override_and_trims_whitespace() {
-        let (_tmp, expected) = fixture("db-dev");
-        let (_fallback_tmp, fallback) = fixture("app-dir");
+        let (_tmp, expected) = abs_fixture("db-dev");
+        let (_fallback_tmp, fallback) = abs_fixture("app-dir");
         let padded = format!("  {}  ", expected.display());
         assert_eq!(resolve_db_dir(Some(&padded), fallback), expected);
     }
 
     #[test]
     fn db_dir_ignores_relative_and_blank_overrides() {
-        let (_tmp, fallback) = fixture("app-dir");
+        let (_tmp, fallback) = abs_fixture("app-dir");
         for bad in ["relative/dir", "", "   ", "."] {
             assert_eq!(
                 resolve_db_dir(Some(bad), fallback.clone()),

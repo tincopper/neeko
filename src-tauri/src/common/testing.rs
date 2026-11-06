@@ -97,3 +97,23 @@ pub fn symlink_dir(real: &std::path::Path, link: &std::path::Path) {
 pub fn symlink_dir(real: &std::path::Path, link: &std::path::Path) {
     std::os::windows::fs::symlink_dir(real, link).unwrap();
 }
+
+/// 平台绝对路径夹具：由 `tempdir()` 推导，**目录活着**，调用方持有它。
+///
+/// 红线 13 的正解不是「记住别写 `/tmp/...`」，而是**让安全写法更便宜**：想要一个
+/// 「平台绝对、不必存在」的路径时，一行 [`abs_fixture`] 就够，没有理由去写 POSIX 字面量。
+///
+/// 为什么返回 `TempDir` 而不是 `PathBuf`：只拿 `.path()` 的字符串、随即 drop，路径在断言
+/// 期间就不存在了 —— `canonicalize` / 存在性判定会在 Windows 与 macOS 上给出不同答案。
+///
+/// ```ignore
+/// let (_tmp, expected) = abs_fixture("db-dev");
+/// let padded = format!("  {}  ", expected.display());
+/// assert_eq!(resolve_db_dir(Some(&padded), fallback), expected);
+/// ```
+#[must_use]
+pub fn abs_fixture(label: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().expect("fixture: tempdir");
+    let path = dir.path().join(label);
+    (dir, path)
+}
