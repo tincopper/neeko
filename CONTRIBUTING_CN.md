@@ -143,7 +143,9 @@ pnpm tauri dev        # 启动开发模式（前端端口 1420）
 ### 规则
 
 - **Scope** 可选但鼓励（如 `feat(search): ...`）。
-- **Subject** 简短（≤ 50 字符）、祈使句、结尾无标点，中英文均可。
+- **Subject** 简短（≤ 50 字符）、祈使句、结尾无标点。
+- **语言：提交信息（subject / body / footer）一律英文**。中文留在代码注释、spec 文档与
+  journal 里，不进 commit message。commitlint 无法校验这一条，属评审项。
 - 复杂改动使用 **Body**：说明"为什么改"和"怎么改"。
 - 破坏性变更在 type 后加 `!`，并以 `BREAKING CHANGE:` 页脚标注。
 - 关联 Issue 写在页脚（如 `Closes #123`）。

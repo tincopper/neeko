@@ -39,14 +39,19 @@ version: 1.0.0
 
 | 类型 (Type) | 适用场景 | 示例 |
 | :--- | :--- | :--- |
-| **feat** | 引入新功能 / 新特性 | `feat(auth): 增加微信扫码登录功能` |
-| **fix** | 修复 Bug / 缺陷 | `fix(cart): 修复商品数量减少时未刷新价格的问题` |
-| **docs** | 仅修改文档、注释或 README | `docs(readme): 补充开发环境配置步骤` |
-| **style** | 纯格式调整（不影响代码运行逻辑，如空格、分号、格式化） | `style(user): 格式化用户服务文件` |
-| **refactor** | 代码重构（既不修复 Bug 也不添加新功能） | `refactor(db): 优化数据库连接池初始化逻辑` |
-| **perf** | 提升性能或运行效率的改动 | `perf(image): 引入懒加载减少首页白屏时间` |
-| **test** | 添加或修改测试用例 | `test(order): 增加订单支付成功路径的单元测试` |
-| **chore** | 构建流程、依赖管理、辅助工具变动（如更新 npm 包、修改 CI 脚本） | `chore(deps): 升级 spring-boot 至最新稳定版` |
+| **feat** | 引入新功能 / 新特性 | `feat(auth): add WeChat QR-code sign-in` |
+| **fix** | 修复 Bug / 缺陷 | `fix(cart): refresh the price when quantity drops` |
+| **docs** | 仅修改文档、注释或 README | `docs(readme): add dev environment setup steps` |
+| **style** | 纯格式调整（不影响代码运行逻辑，如空格、分号、格式化） | `style(user): format the user service module` |
+| **refactor** | 代码重构（既不修复 Bug 也不添加新功能） | `refactor(db): simplify pool initialization` |
+| **perf** | 提升性能或运行效率的改动 | `perf(image): lazy-load offscreen thumbnails` |
+| **test** | 添加或修改测试用例 | `test(order): cover the paid checkout path` |
+| **chore** | 构建流程、依赖管理、辅助工具变动（如更新 npm 包、修改 CI 脚本） | `chore(deps): bump spring-boot to the latest stable` |
+
+**语言（硬规则）**：subject / body / footer **一律英文**。本仓库历史上有大量中文提交
+（如 `fix(git): 归属判定改手写分量比较`），它们不符合现行约定；中文只允许出现在被引用的
+代码标识符、文件路径与 spec 文档名里。commitlint 不校验这条，由 `CONTRIBUTING.md`
+「Commit Message Guidelines → Rules」定义、评审把关。
 
 ### 2. 影响范围（Scope）
 * 必须使用半角小括号 `()` 包裹。
@@ -54,8 +59,8 @@ version: 1.0.0
 * 如果是全局或多处变动，可以省略。
 
 ### 3. 主题（Subject）
-* **简短扼要**：控制在 50 个字符以内。
-* **动词开头**：使用祈使句（如 `增加...`, `修复...`, `重构...`），不要随手写 `fix bug`。
+* **简短扼要**：控制在 50 个字符以内（本仓库实际多在 50-70，commitlint 上限 100）。
+* **动词开头**：使用祈使句（如 `add ...`, `fix ...`, `refactor ...`），不要随手写 `fix bug`。
 * **结尾无标点**：末尾不要加句号。
 
 ### 4. 正文与页脚（Body & Footer）- 条件触发
@@ -68,8 +73,9 @@ version: 1.0.0
 ## AI 执行准则与对比示例
 
 ### 🚫 错误的行为示范
-* **严禁**：一次性把涉及多个不相干功能的修改打包成一个 `feat: 搞定了一些需求` 的提交。
-* **严禁**：在 subject 里堆砌废话，如 `feat: 我今天写了这个文件的代码以支持功能`。
+* **严禁**：一次性把涉及多个不相干功能的修改打包成一个 `feat: wrap up a few things` 的提交。
+* **严禁**：在 subject 里堆砌废话，如 `feat: I wrote the code of this file today`。
+* **严禁**：用中文写提交信息（`fix(git): 归属判定改手写分量比较` —— 历史遗留形态，不要再新增）。
 
 ###  正确的行为示范
 * **原子化提交**：若发现用户代码同时包含了一个新功能和两个无关的 Bug 修复，应提示用户：“检测到多项不同性质的修改，建议拆分为 3 次独立提交”，并依次为用户生成。
@@ -78,20 +84,20 @@ version: 1.0.0
 
 **场景 A：修复了支付页面的一个空指针异常，并关联了 Issue #22**
 ```text
-fix(payment): 修复微信支付回调时的空指针异常
+fix(payment): guard the callback against a missing openid
 
-当微信回调数据中缺少 openid 字段时会引发 NullPointerException，
-本次修改增加了非空校验以及异常日志捕获。
+A WeChat callback without the openid field raised a NullPointerException.
+Validate the payload and log the rejection before dereferencing it.
 
 Closes #22
 ```
 
 **场景 B：修改了用户 API 的返回结构，属于不兼容的破坏性更新**
 ```text
-refactor(api)!: 重构用户详情接口的返回字段
+refactor(api)!: reshape the user detail response
 
-BREAKING CHANGE: 统一将返回结构中的 `user_name` 变更为 `username`，
-旧版前端需要同步更新字段映射。
+BREAKING CHANGE: `user_name` becomes `username` in the response body; the
+frontend has to map the new field.
 ```
 
 ---

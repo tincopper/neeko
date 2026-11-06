@@ -159,7 +159,9 @@ We follow **Conventional Commits 1.0.0**, enforced by commitlint:
 
 - **Scope** is optional but encouraged (`feat(search): ...`).
 - **Subject** is short (≤ 50 chars), imperative, no trailing period.
-  Subject may be in English or Chinese.
+- **Language**: the commit message (subject, body, footer) is written in **English**.
+  Chinese belongs in code comments, spec docs and journals — not in commit messages.
+  commitlint cannot check this, so it is a review item.
 - Use a **body** for complex changes: explain *why* and *how*.
 - Mark breaking changes with `!` after the type and a `BREAKING CHANGE:`
   footer.
