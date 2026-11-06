@@ -463,6 +463,24 @@ fs::create_dir_all(path).unwrap();
 let tmp = TempDir::new().unwrap();
 ```
 
+**路径敏感 API 的额外一刀（红线 13）**：夹具路径一旦进 `Path` / `PathBuf` 语义
+（`is_absolute()`、`canonicalize()`、存在性判定），`/tmp/…`、`/opt/…`、`/home/…` 这类字面量就变成
+平台相关的错误源：Windows 上无盘符前缀 ⇒ `is_absolute()` 恒 false，“绝对路径生效”的用例
+会静默走回退分支（本地绿、Windows CI 红）。夹具一律由 `tempdir()` 推导，且返回 `TempDir`
+本身让调用方持有 —— 只拿 `.path()` 的字符串、随即 drop，路径在断言期间就不存在了。
+
+```rust
+// 错误 —— Windows 上 `PathBuf::from("/tmp/db").is_absolute()` 为 false
+let dir = resolve_db_dir(Some("  /tmp/neeko-db-dev  "), fallback);
+
+// 正确 —— 平台绝对路径，且夹具活着
+let (tmp, expected) = fixture("db-dev");               // tmp.path().join("db-dev")
+let padded = format!("  {}  ", expected.display());
+assert_eq!(resolve_db_dir(Some(&padded), fallback), expected);
+```
+
+回归：`common::paths::tests`（`NEEKO_DB_DIR` 覆写）、`.trellis/spec/backend/dap-domain.md` 反例表。
+
 ### 2. 测试间存在依赖
 
 每个测试必须独立。不要依赖测试执行顺序或共享的可变状态。
