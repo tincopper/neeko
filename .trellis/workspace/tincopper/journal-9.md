@@ -121,3 +121,41 @@ unit_scope 归属判定不再借宿主 Path；NEEKO_DB_DIR 覆写夹具改由 te
 ### Next Steps
 
 - 推送后核对 windows-latest 的 backend-test job（unit_scope 修复的唯一红绿判据）
+
+
+## Session 431: 提交信息改为英文：重写本地未推送历史 + 落规范
+<!-- trellis-session: v=2 fp=ff21d1f4760acac5 -->
+
+**Date**: 2026-11-06
+**Task**: 提交信息改为英文：重写本地未推送历史 + 落规范
+**Branch**: `main`
+
+### Summary
+
+9 条中文提交信息改写为英文（filter-branch --msg-filter），并让 CONTRIBUTING / neeko-commit skill 明确要求英文
+
+### Main Changes
+
+- 改写 origin/main..HEAD 的 9 条中文 message；树内容零变更（git diff refs/original/refs/heads/main HEAD 为空）
+- 级联改号的引用同步：journal-8/9、index.md、10-31 归档 PRD 的 hash 与 Commit 表格 subject
+- CONTRIBUTING.md / CONTRIBUTING_CN.md 规则改为「message 一律英文」；neeko-commit skill 示例全改英文并列入禁止项
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f30f200a` | chore(journal): follow the reworded commit hashes and subjects |
+| `ca6638cc` | docs(contributing): require English commit messages |
+
+### Testing
+
+- [OK] git log origin/main..HEAD：23 条 subject 全部英文（非 ASCII 扫描 0 命中）
+- [OK] tree 等价性：预写前 HEAD 与新 HEAD 的 git diff 为空
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 推送后确认远端历史（force-with-lease；未推送历史重写不需要）
