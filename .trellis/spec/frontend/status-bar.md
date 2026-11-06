@@ -153,7 +153,7 @@ export function MyFeatureItem() {
    确认框或等待用户输入时，只调 store 动作，渲染点必须在应用级宿主（判据、宿主三件套、
    事故证据一律见 `component-guidelines.md`「store 驱动弹窗的全局宿主（强制）」，勿在此复述）。
    ❌ 反例（2026-10-01 事故）：`PromptsStatusSection` 的 `{{var}}` 表单由 `LibraryPanel` 渲染，
-   而 Library 面板首次进入 Library 才挂载 ⇒ 状态栏点下去毫无反应。
+   而当时 Library 面板首次进入 Library 才挂载（现已改为启动即常驻）⇒ 状态栏点下去毫无反应。
 
 ### 命名与归属
 

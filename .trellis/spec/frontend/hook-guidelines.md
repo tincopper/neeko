@@ -12,6 +12,33 @@ Hook 分两类：
 - **领域 Hook**：管理特定领域状态（项目、WSL、SSH、Worktree），放在 `src/features/<domain>/hooks/`
 - **编排 Hook**：横切逻辑（保存、Context 组装、视图状态回写），放在 `src/app/hooks/`（如 `useAppShellData` / `useAppStoreSync` / `useAppGlobalEffects`）；纯共享工具型 hook 在 `src/shared/hooks/`（如 `useKeyboardShortcuts` / `useTauriEvent`）
 
+#### Owner hook vs 只读消费 hook（强制）
+
+Hook 是**每组件实例一份**。凡持有应用级唯一状态或写全局环境的 hook（`useAppConfigOwner`、
+`data-theme` / CSS 变量投影、`load_config`、全局事件订阅），必须：① 只在一个组合根调用；
+② 不进任何 feature barrel（否则业务组件可误调出第二个 owner）；③ 全局写入集中到
+`app/bootstrap/` 的单一投影/清单模块。业务组件只能用 `useAppContext()` / `useConfig(selector)`
+这类只读 hook，且**挂载不得产生全局副作用**（`src/testing/mountInvariance.ts` 可断言）。
+`check_config_owner_singleton` 机器校验调用点数量。判例见 `state-management.md` §2。
+
+#### 一个 owner hook 只持有一类职责
+
+`useAppConfigOwner` 只管「config 从哪来、写到哪去」（IPC + 并发契约），把「config 如何生效到
+窗口」抽到 `useConfigProjection`（DOM 主题 / 字体 token / 终端主题 / agent 主题）。判据：
+
+- **IO + 并发**（load / save / 串行门 / 磁盘基线）与**投影**（DOM 写入 / 缓存回写）变更理由不同，
+  分开落点；
+- 投影 hook 必须接受「同一代快照」：owner 把 `theme` 与 `themeVars` 在同一次提交里写入，
+  投影 hook 不自己拉数据（否则两半主题会跨帧）；
+- 非 hook 的纯逻辑（解析 / 合并）放 `features/<domain>/api/`（公开面），不要塞进 `app/hooks/`。
+
+#### 清单型 owner 的实现要能编译期对齐
+
+`GLOBAL_OWNERS` 是声明式清单，但 React hooks 要求调用顺序静态，故 `reactHook` 形态不能
+遍历清单调 `o.hook()`。做法：清单只声明 `id`，实现在 `useAppGlobalEffects` 的
+`Record<ReactHookOwnerId, () => void>` 适配器表里 —— 清单增删一条而适配器漏改，`tsc` 直接报错。
+不要退回「清单 + 注释约定」（那是第二份表示点）。
+
 ---
 
 ## 自定义 Hook 模式

@@ -294,13 +294,27 @@ const LibraryDetail: React.FC = React.memo(() => {
 弹窗的开关来自 zustand store（`xxxOpen` / `pending` / `variableRequest` 等全局字段）⇒ 它是
 **应用级 UI**，渲染点必须在应用级常驻组件里：`src/app/AppModals.tsx`（或它挂载的 feature 宿主组件）。
 
-禁止把这类弹窗渲染进任何「按视图条件挂载」的容器：`AppCenter` 的 settings/library 分支、
-`DockZone` 的面板、tab 内容组件、懒挂载（`React.lazy` + 首次进入才 mount）的面板。
+禁止把这类弹窗渲染进任何「按视图条件挂载」的容器：`AppCenter` 的 settings 分支（会卸载整棵
+中心子树）、`DockZone` 的面板、tab 内容组件、懒挂载（`React.lazy` + 首次进入才 mount）的面板。
+Library 子树虽已改为启动即常驻，但仍属于「会被 settings 分支卸载」的中心视图，不是合法渲染点。
+
+### 常驻挂载 ≠ 可见（`VisibilityScope`）
+
+为了消除 `React.lazy` 挂载间隙造成的空帧，子树可能被改成「启动即挂载、只切 `hidden`」。此时
+**mount 副作用**（列表拉取 / 订阅）会从「用户真的打开它」提前到**应用启动**。规则：
+
+- 「可能隐藏但常驻」的子树由**挂载方**包一层 `VisibilityScope`（`src/shared/contexts/`）；
+- 子树内部用 `useVisible()` 门控 mount 拉取（每次可见刷新 or 首次可见一次，按语义选）；
+- 不要用 `display`/`hidden` 反推可见性，也不要让子树去猜自己是 dock 面板还是中心视图；
+- 无 Provider 时 `useVisible()` 恒为 `true`（dock 面板 / 单测行为不变）。
+
+判例：`AppCenter` 的 Library 子树 + `LibraryPanel` / `SkillContent` 的拉取门控。
 
 ### 为什么必须（两条独立失效）
 
 1. **静默不出现**：flag 翻起时没有渲染点，用户点了没反应、没有任何报错。
-   `AppCenter.tsx` 的 Library 面板首进才挂载 ⇒ 「本次会话没打开过 Library」是常态而非边角。
+   `AppCenter.tsx` 的 settings 分支整体卸载中心子树 ⇒ 停在设置页时触发状态栏动作，挂在中心视图
+   里的渲染点根本不存在（历史上 Library 面板还要等首进才挂载，问题更常发生）。
 2. **Promise 永久悬挂**：若流程 `await` 弹窗结算（`openVariableDialog` / `confirmAction`），
    无渲染点 = 无结算者 ⇒ 后续动作（计次、插入、关闭 tab）整条链静默丢失。
 

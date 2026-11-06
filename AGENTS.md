@@ -170,7 +170,7 @@ Tauri Event 字符串（如 `terminal-output-{id}`、`git-status-diff`）禁止�
 `task.py init-context` + `task.py add-context` → `task.py start` 激活上下文。
 
 **检查的频次（硬指令）**：`pnpm check:quick` **只在收尾跑一次**，不是「每改一个文件就跑一遍」——
-把一轮改动攒完再确认绿。它已含全部静态检查（eslint/tsc/fmt/clippy + 28 条护栏），所以开发中
+把一轮改动攒完再确认绿。它已含全部静态检查（eslint/tsc/fmt/clippy + 仓库护栏，清单即 `checks/` 目录），所以开发中
 不要再单独敲 `pnpm lint` / `pnpm test` / `pnpm check`：那些不是更细的检查，只是重做同一批工作。
 
 **唯一例外（红绿反馈，不是验证）**：TDD 要看到测试由红转绿时，可跑**单个**测试文件

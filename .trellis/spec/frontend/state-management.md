@@ -73,6 +73,38 @@ export function useAppShell() {
 > `<X>Context.tsx`）。领域**状态**一律进 store —— 曾经的 `SkillContext` 已迁到 feature store
 > （`@/features/skill/store` 的 `useSkillStore`），`ProjectStateContext` 已删除。
 
+#### config 所有权唯一化（L0–L4，2026-11）
+
+**事故**：`ViewSkillDialog`（`open=false` 也挂载）曾误调 `useAppConfig()`，成为第二个 config
+owner —— mount 时把 `data-theme` 重置为 `DEFAULT_CONFIG.theme`（dark），异步 `load_config`
+完成再改回用户主题（light）⇒ 整窗主题翻转，叠加卡片/按钮的 `transition-colors` 表现为
+「进入 Skills 闪一下黑/灰」。当时 owner 从 `@/features/settings` barrel 导出，看起来与普通
+feature hook 无异，任何组件都能再造一个 owner。
+
+**第一性原理**：① React 组件生命周期 ≠ 应用生命周期（hook 每实例一份）；② CSS 与 TS 是同一份
+config 的两个读者，投影者必须恰好一个；③ 「只挂一次」的注释不是接口，非法状态必须不可表达。
+
+| 层 | 契约 | 落点 |
+| --- | --- | --- |
+| L0 | 唯一 owner `useAppConfigOwner()`，**不进任何 barrel**，唯一调用点 `useAppShellData`；`AppConfig` → DOM/终端/agent 主题的写入全部集中到唯一投影点；领域纯逻辑（解析/合并）在 feature 的公开面 `api/` | `src/app/hooks/useAppConfigOwner.ts`、`src/app/hooks/useConfigProjection.ts`、`src/app/bootstrap/configProjection.ts`、`src/features/settings/api/` |
+| L1 | 机器判据：`check_config_owner_singleton` 钉死 owner 调用点 == 1、`data-theme` 只在投影模块写（`setAttribute` 与 `dataset.theme =` 两种写法都算）、settings barrel 不漏出 owner、hook 型全局 owner 接线点唯一；`expectNoGlobalSideEffectsOnMount` 提供挂载不变性断言 | `tools/guards/checks/`、`src/testing/mountInvariance.ts` |
+| L2 | 所有「恰好一次」owner 收进一张声明式清单，安装入口只有 `bootstrap()`；`GlobalOwner` 是判别联合（`preRender` 必带 `start`），`reactHook` 形态的实现由 `Record<ReactHookOwnerId, …>` 适配器表接线 —— 清单增删漏改由 tsc 判 | `src/app/bootstrap/globalOwners.ts`、`src/app/hooks/useAppGlobalEffects.ts` |
+| L3 | 主题首帧前注入：`themeHint` 同步缓存（localStorage）在 `createRoot().render()` 之前应用；`hydrated` 门控让投影不覆盖首帧 hint，splash 覆盖加载窗口（`load_config` 悬挂有 3s 兜底） | `src/app/bootstrap/themeHint.ts`、`configProjection.applyThemeHintBeforeRender` |
+| L4 | 读侧 `AppContextValue.config: Readonly<AppConfig>` + `useConfig(selector)`（浅只读：嵌套对象仍可写，写侧只有 `saveConfig`）；写侧仍只有 `saveConfig` 一个 action | `src/shared/contexts/AppContext.tsx` |
+
+**投影必须原子**：一次主题 = `data-theme` + 自定义主题的 CSS 变量表，两半必须同时生效。
+`projectTheme()` 只接受三种结果 —— 内置主题写属性、自定义主题变量就绪时写属性 + 应用变量、
+**变量未就绪时什么都不写**（返回 `false`，DOM 与 `themeHint` 都保留上一帧）。因此 owner 必须在
+**提交新主题之前**把变量解析完（`resolveCustomThemeVars`），`setThemeVars` 与 `setConfig` 同一 tick。
+把半套主题写进 `themeHint` 等于把「首帧错色」搬到下一次冷启动。
+
+**组件规则**：业务组件只读 `useAppContext()` / `useConfig()`，**不得**调用 `useAppConfigOwner()`；
+挂载组件必须是对全局状态观测纯的（不写 `document`、不发 `load_config`）。新增 `preRender` owner
+只需在 `GLOBAL_OWNERS` 增一行，`reactHook` owner 需「清单一行 + 适配器一行」（漏改由 tsc 报错）。
+回归用例：`ViewSkillDialog.test.tsx`、`LibraryPanel.test.tsx`（mount-invariance）、
+`useAppConfigOwner.test.tsx`（hydrated / 兜底超时 / 投影原子性）、
+`configProjection.test.tsx` / `themeHint.test.tsx` / `globalOwners.test.tsx`。
+
 ### 3. 组件本地状态
 
 仅与当前组件 UI 行为相关的状态保留在组件内部：
@@ -126,8 +158,20 @@ await saveSession(session);
 中心区域（`app/components/AppCenter.tsx`）只读 `useAppViewStore.appView` 决定渲染：
 
 - `settings`：条件渲染（切走即卸载）
-- `library`：首次进入后常驻（hidden 切换，见 `AppCenter`）；再次激活后台刷新
+- `library`：**启动即常驻**（hidden 切换，见 `AppCenter`）——首进不经过 `React.lazy` 挂载间隙，
+  避免与 `enterCenterView` 的左栏折叠重排叠加出一帧空绘制（闪黑）；再次激活后台刷新
 - `normal`：`ProjectView`（常驻）
+
+**常驻挂载 ≠ 可见**（2026-11）：常驻方案把子树的 mount 副作用从「用户真的打开它」提前到
+**应用启动**，从不使用该子树的用户白付 IPC。故「可能隐藏但常驻」的子树必须包在
+`VisibilityScope`（`src/shared/contexts/VisibilityScope.tsx`）里，子树自己用 `useVisible()` 门控
+拉取：
+
+- `LibraryPanel`：每次变为可见时刷新 prompts（替代原先 `AppCenter` 的激活刷新 —— 同一语义，
+  只有一个机制）；
+- `SkillContent`：首次可见才拉取 skills / tagGroups（`useRef` once，避免每次激活重拉）。
+
+无 Provider 时 `useVisible()` 恒为 `true`，故 dock 面板 / 单测的独立挂载行为不变。
 
 **写入方（禁止绕过）**：
 
