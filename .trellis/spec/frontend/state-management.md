@@ -98,12 +98,18 @@ config 的两个读者，投影者必须恰好一个；③ 「只挂一次」的
 **提交新主题之前**把变量解析完（`resolveCustomThemeVars`），`setThemeVars` 与 `setConfig` 同一 tick。
 把半套主题写进 `themeHint` 等于把「首帧错色」搬到下一次冷启动。
 
+**下游扇出同样要断言**：投影除 DOM 还驱动两个看不见的下游 —— 终端主题
+（`scheduleTerminalThemeRefresh` → `updateAllTerminalThemes`）与 agent 主题
+（`syncAgentThemeForKnownProjects` → IPC 扇出）。它们是「mock 了但没人断言」最容易漏的地方：
+`vi.mock(...)` 只让依赖不说话，不构成覆盖。判据：每个下游至少一条正例 + 一条负例
+（「未投影时下游不被惊动」），改动删掉调用必须变红（变异验证）。
+
 **组件规则**：业务组件只读 `useAppContext()` / `useConfig()`，**不得**调用 `useAppConfigOwner()`；
 挂载组件必须是对全局状态观测纯的（不写 `document`、不发 `load_config`）。新增 `preRender` owner
 只需在 `GLOBAL_OWNERS` 增一行，`reactHook` owner 需「清单一行 + 适配器一行」（漏改由 tsc 报错）。
 回归用例：`ViewSkillDialog.test.tsx`、`LibraryPanel.test.tsx`（mount-invariance）、
-`useAppConfigOwner.test.tsx`（hydrated / 兜底超时 / 投影原子性）、
-`configProjection.test.tsx` / `themeHint.test.tsx` / `globalOwners.test.tsx`。
+`useAppConfigOwner.test.ts`（hydrated / 兜底超时 / 投影原子性）、
+`configProjection.test.ts`（含终端 / agent 两个下游扇出）/ `themeHint.test.ts` / `globalOwners.test.ts`。
 
 ### 3. 组件本地状态
 
