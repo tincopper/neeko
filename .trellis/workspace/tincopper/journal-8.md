@@ -1717,3 +1717,53 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 422: config owner 审查修复：原子投影 / 公开面收口 / 可见性门控
+<!-- trellis-session: v=2 fp=aec26006bcf7755b -->
+
+**Date**: 2026-11-06
+**Task**: config owner 审查修复：原子投影 / 公开面收口 / 可见性门控
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+### 审核发现（neeko-check，增量 57 文件）
+
+- **Block** 自定义主题投影非原子：`setConfig` 先于 `await` 解析变量 ⇒ 一帧「主题名已换、变量未到」（旧实现同帧取缓存，属回归）；且该中间态被写进 `themeHint`，等于把首帧错色搬到下次冷启动。
+- **Warning** `GlobalOwner.start` 可选 ⇒ `preRender` 缺 `start` 静默跳过；`reactHook` 条目无执行语义，清单与 `useAppGlobalEffects` 靠命名巧合对应。
+- **Warning** `isBuiltinTheme` 经 settings barrel 导出（门面规则禁止导出内部工具）。
+- **Warning** 「启动即常驻」把 Library/Skill 子树 mount 拉取搬到冷启动；`libraryChunkPreload` 与常驻 lazy import 是同一目标的两个机制。
+- **Warning** splash 新增 `!hydrated` 门控但无超时（`load_config` 悬挂即永久卡住）。
+- **Warning** 护栏只认 `setAttribute('data-theme'`，`dataset.theme =` 可绕过。
+- **Warning** `app → features/settings/hooks/*` 反向深导（app 只该依赖公开面）。
+
+### 修复要点（第一性原理 → 实现）
+
+1. **投影原子化**：`projectTheme` 三态（内置 / 自定义+变量 / 自定义缺变量→不写并返回 false）；`themeHint` 只在投影成功后回写；owner 先 `resolveCustomThemeVars` 再同 tick 提交 `themeVars` + `config`。
+2. **owner 拆分**：新增 `useConfigProjection`（IO/并发 vs 投影，两个变更理由），owner 回到 ratchet 基线内（130 行）。
+3. **公开面收口**：`appConfigNormalize` / `appConfigSave` → `features/settings/api/`（`git/api/fileLineChange.ts` 已有先例）；`customThemeVars` → `app/bootstrap/`（投影的 DOM 写助手）；删 barrel 的 `isBuiltinTheme`。
+4. **清单类型即判据**：`GlobalOwner` 判别联合（`preRender` 必带 `start`）+ `ReactHookOwnerId` + `Record<…>` 适配器表 ⇒ 清单增删漏改由 tsc 报错；删 `libraryChunkPreload`、删永不执行的 HMR dispose。
+5. **常驻 ≠ 可见**：新增 `shared/contexts/VisibilityScope.tsx`；`LibraryPanel` 按可见性刷新、`SkillContent` 首次可见才拉取；删 `AppCenter` 激活刷新 effect（一个机制）。
+6. **兜底**：`load_config` 3s 未返回即退出加载态。
+7. **护栏加固**：`dataset.theme =` / 反引号写法也判违规；hook owner 判「接线点唯一」（调用 or 适配器值引用，import/export 不计），自测 12 条。
+
+### 验证
+
+- `pnpm check:quick` 全绿（37 条护栏 / eslint / tsc / clippy / 改动文件单测）。
+- 全量前端单测：737 文件 / 6852 用例全绿。
+- `check_config_owner_singleton` 自测 12/12；真实仓库扫描 owner 1 / 主题写入 2 / bridge 1。
+- 未提交代码（按规范），待用户决定 commit 时机。
+
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
