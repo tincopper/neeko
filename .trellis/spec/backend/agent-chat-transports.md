@@ -383,37 +383,45 @@ Claude Code / Codex 会把**任务标题**写进 OSC（`✳ Fix login bug`），
    且与行首的 agent 品牌图标重复一遍；
 2. **项目名也是冗余的**：会话行本身就挂在单元行下面，再写一遍项目名只是噪声。
 
-空标题是**「这条会话还没有名字」的唯一表示**，由视图解释成「先不列出来」，不是后端兜底一个假名字：
+空标题是**「这条会话还没有名字」的唯一表示**，不是后端兜底一个假名字。
 
-- 侧栏**不列出**无名会话，也不列出「还没人用过」的会话：前端 `isListedSession`
-  （`has_user_input` && 有标题）在 `sessionsByUnit` 里过滤，单元角标同源。
-- tab 回退到自己的占位标题（绑 agent 的 tab 是 agent 名，空白终端是 `Terminal N`），
-  会话有真标题后于渲染期换成它。
+- 侧栏列出**所有已输入的会话**，无名行画成「图标 + 相对时间 + 状态」的占位行
+  （`SessionList` 的无标题分支）。**「列出」只看 `has_user_input`**：
+  `isListedSession = session.hasUserInput`。
+- 曾经把「有名字」也当列出条件（`hasUserInput && isNamedSession`），靠的正是
+  「首条终端输入即命名」那条通道 —— 第 35 轮把它删掉后，无 hook 的 CLI 永远等不到名字，
+  终端会话会整条从侧栏消失（实测回归）。可见性与命名必须彻底解耦。
+- tab 是否用注册表标题是**另一条**判据：`resolveTabTitle` 要求
+  `isListedSession && isNamedSession`（tab 标题不能是空串，无名时回落创建期标题）。
 
 `has_user_input`（＝侧栏可见、tab 用会话标题）的置位点是**用户发出输入**，不是「打开 tab」：
 
 | 生产者 | 「用户发过东西」的信号 |
 | --- | --- |
 | chat | `agent_stream` 的第一条消息（登记时即 `has_user_input`） |
-| 终端 / WSL / SSH | 前端上报的每次用户提交（`set_live_session_title`，`source = prompt`）；首次非空行同时命名 |
+| 终端 / WSL / SSH | 前端 `report_live_session_activity(sessionId, line)`：置活动 + 清权威门；行文本只在**纯 shell** 当标题素材 |
 | 任意 CLI | hook 上报（`turn_completed` 等语义事件） |
 
-发送那一刻标题就已经拿到，用户就该在侧栏看到这条会话 —— **不等 agent 跑完**。
+发送那一刻会话就**可见**（`has_user_input`），但名字可以空着：agent 会话的标题要等 hook `topic` /
+conversation 缓存的 provider title / 用户改名到达；**纯 shell 则用首条输入行命名**（它没有
+其余通道，第 37 轮）。**可见性与命名是两件事** ——
+第 35 轮之前把它们绑在同一条 `set_live_session_title(prompt)` 上，才让 TUI 过滤词变成会话名。
 （曾经按「一轮跑完才可见」实现，实测反馈是「发完消息什么都不出现」，与 Codex 桌面端的
-心智不符：它也是发出第一条消息就建会话。）
+心智不符：它也是发出第一条消息就建会话 —— 这条可见性结论不变，变的只是命名时机。）
 
 `agent_chat_open` 的静默建连、终端 PTY 的创建都不置位（打开 tab ≠ 在用）；
 `agent_chat_resume` 恢复的是**已有历史**的对话，直接可见。
 
-# 五个写入原语（`Registry`），生产者只决定「何时写」
+# 六个写入原语（`Registry`），生产者只决定「何时写」
 
 | 原语 | 语义 | 谁用 |
 | --- | --- | --- |
 | `report(title, engage)` | 一次加锁内（可选）升级标题 +（可选）置位；真变化才 bump | CLI 纯信息事件（当前 `engage = false`） |
-| `report_user_input(title)` | 首次无真标题时写入 `Prompt`；每次提交清权威门、置位并回 `Running` | 终端 / WSL / SSH 用户提交 |
+| `report_user_input(title)` | 首次无真标题时写入 `Prompt`；每次提交清权威门、置位并回 `Running` | chat 注册的真实 `prompt` |
+| `report_terminal_input(line)` | 同上，但**只有纯 shell 会命名**：agent 终端的行可能是 TUI 面板输入（`agent_id` 是唯一判据） | 终端 / WSL / SSH 用户提交 |
 | `report_authoritative(title, signal)` | 合并标题、可见性、权威状态转移与输出推断门 | CLI hook |
 | `report_first(titles)` | 未置位 ⇒ 置位 + 按**升序**写候选；已置位但无真标题 ⇒ 只补标题；已有真标题 ⇒ 什么都不做 | chat 的首次 Engage（含 `Silent → Turn`） |
-| `set_title(source, text)` | 只升级标题，不碰可见性 | `set_live_session_title`（OSC / 显式上报） |
+| `set_title(source, text)` | 只升级标题，不碰可见性 | `rename_live_session`（恒 `User`）、hook / conversation 回落（`Native`） |
 
 准入（`admit`）+ 覆盖序（`should_upgrade`）+ 同值不写只有 `upgrade_title` 一份实现 ——
 它是标题的**唯一写路径**（`SessionEntry::new` 不接收标题）。
@@ -431,13 +439,20 @@ Claude Code / Codex 会把**任务标题**写进 OSC（`✳ Fix login bug`），
 （`placeholder_title_is_empty_until_the_cli_names_itself` /
 `plain_shell_terminal_also_has_no_placeholder_name` 钉住后端不编名字。）
 
-#### hook 上报是最权威的标题源（`NEEKO_SESSION_ID` 精确归因）
+#### hook 上报是最权威的标题源（`NEEKO_SESSION_ID` 精确归因；无 topic 时回落 conversation 缓存）
 
 CLI 的 hook 上报（`agent/hooks/ingest/event.rs::HookEvent`）里带着 **`title`** —— 模板
 （`agent/hooks/templates/`）已经判好优先级：CLI 自己的会话名（pi 的 `getSessionName`、
 claude 的 `session_title`）→ 首条用户消息；服务端 `HookEvent::topic()` 再过滤占位
 （opencode 的 `New session - <ISO>`）。这正是 Codex 那类桌面端显示在会话列表里的东西，
 因此投影为 [`TitleSource::Native`]（`live_sessions::wiring::hooks`）。
+
+**没有 `topic` 时回落 conversation 缓存**：`wiring/hooks.rs::project` 只在
+`event.topic()` 为 `None` **且 registry 尚无真标题**时，用 registry 条目的 `agent_id` +
+`event.agent_session_id` 调 `ConversationManager::cached_title_for_native`（纯内存、
+`user_title` 优先、空白返回 `None`），同样投影为 `Native`。缓存是扫描快照，只用来补空名，
+不得同级覆盖已有的 `hook topic` / `User` 标题。**不扫盘**（红线 3），缓存刷新由既有 scan
+链路负责；一次 hook 仍只写一次注册表、只 `emit_changed` 一次。
 
 **归因只认 `hints.neeko_session_id`**：会话 id 由 PTY 子进程的 env 下发 ——
 
@@ -457,10 +472,46 @@ cwd 在同一项目多会话时必然串号。env 是**唯一随进程树自动�
 猜错的表现是「另一个会话的标题被改写」，而标题是用户直接读的文字 —— 宁可空着（`has_user_input`
 这类可回收的低代价判断才允许粗归因）。
 
-#### 终端会话的标题：首条**用户**输入（判据必须在前端）
+#### OSC 标题不是标题源；终端行只对纯 shell 生效（第 35 / 37 轮，2026-11-06）
 
-终端会话的标题只有一个来源：**用户敲的第一行**。它在用户回车那一刻就写进注册表
-（`set_live_session_title(source = prompt)`），侧栏与 tab 标题**立即**出现，不等 agent 跑完。
+**事故**：用户在 CLI 的 `/model` 面板里敲过滤词 `deep`，侧栏与 tab 的会话名变成 `deep`。
+根因不是准入黑名单不够（`title::admit` 拦不住「看起来像正常词」的控件输入），而是
+`term.onData` 与 OSC `onTitleChange` 被接成了标题**生产者**。TUI 面板过滤词、状态栏帧
+（`π`、`✳ Claude ready`）、spinner、协议应答、cwd 都走这条通道，后端无从区分
+「用户敲的请求」与「CLI 反射到标题栏的文本」。
+
+**源隔离**（与 Orca 同形）：
+
+| 通道 | 本轮之后 |
+| --- | --- |
+| `term.onData` | `report_live_session_activity(sessionId, line)` —— 置 `has_user_input` / 清权威门；**行文本能否命名由后端按 `agent_id` 裁决**（第 37 轮） |
+| OSC 0/2 `onTitleChange` | **无 IPC**，本轮直接丢弃（仅作展示态） |
+| 用户改名 | `rename_live_session(sessionId, title)` —— 后端恒用 `TitleSource::User` |
+| CLI hook `topic` | `wiring/hooks.rs` → `Native`（权威） |
+| conversation 缓存 | hook 无 `topic` 时回落 `ConversationManager::cached_title_for_native` → `Native` |
+| chat 注册的真实 `prompt` / `topic` | `wiring/chat.rs` → `Prompt` / `Native` |
+
+**行文本的分流（第 37 轮）**：`Registry::report_terminal_input` 按登记时的 `agent_id` 决定 ——
+判据与 `agent_id` **同住**（注册表持有条目），命令层只转发；放在命令层就会变成
+「只有本域才懂规则的副本」，下一个调用方必然绕过去。
+
+| 会话 | 这行能不能当标题 | 理由 |
+| --- | --- | --- |
+| 纯 shell（`agent_id = None`） | **能**（`Prompt`） | 没有 hook / conversation 通道，这是唯一素材 |
+| agent 终端（`agent_id = Some`） | **不能** | 里面混着 `/model` 这类 TUI 面板的过滤词 |
+
+前端**不做**这套分流（字节形状无法区分真实请求与控件输入），只原样上报；`admit` 仍会
+拒掉斜杠命令 / 纯符号。
+
+**IPC 不可声明来源**：旧 `set_live_session_title(sessionId, title, source)` 的 `source` 由
+前端控制，等于给任意字节流开了「伪装成 provider title」的路。现在改名命令只收
+`(sessionId, title)`，来源由后端按生产者固定；`Native` / `Prompt` **没有 IPC 入口**，
+它们由 hook / conversation 回落 / 终端活动 / chat 的 prompt 直接写注册表。`TitleSource`
+枚举与 `should_upgrade` 顺序不变，`Registry::upgrade_title` 仍是唯一写入点。
+
+**不做的**：不新增 LLM 生成标题、不新增定时器 / 磁盘轮询、不把 OSC 做成低优先级权威源。
+关闭「首条 PTY 输入即时命名」后，CLI 会话在 hook topic / conversation title 到达前保持占位
+（空标题），这是有意的取舍。
 
 **为什么判据在前端**：`terminal-input-{id}` 同时承载两类写入 ——
 
@@ -469,9 +520,10 @@ cwd 在同一项目多会话时必然串号。env 是**唯一随进程树自动�
 
 而 `onData` **也不全是用户输入**：xterm 会把它**自己**对终端查询的应答从这里发出去 ——
 CLI 查前景色时回 `ESC ] 10 ; rgb:3838/3a3a/4242 ST`（OSC 10），查光标位置时回
-`ESC [ 12 ; 40 R`（DSR）。这些字节没有任何用户敲的字，混进来就会变成标题：实测侧栏出现
-`10;rgb:3838/3a3a/424211,…` 这种乱码。判据是 **ESC 转义序列整段丢弃**（用户打字与
-转义键同理不需要参与命名）；序列可能跨 `onData` 分块，必须保留不完整尾部而不是把尾段
+`ESC [ 12 ; 40 R`（DSR）。这些字节没有任何用户敲的字，混进来会凭空产生一次「用户提交」
+（旧实现还会把它们变成标题：实测侧栏出现
+`10;rgb:3838/3a3a/424211,…` 这种乱码）。判据是 **ESC 转义序列整段丢弃**；序列可能跨 `onData` 分块，
+必须保留不完整尾部而不是把尾段
 当正文。唯一例外是 bracketed paste：xterm 会把用户粘贴内容包在
 `ESC[200~ … ESC[201~` 中，标记必须剥离、内容仍按用户输入处理，且要支持跨 `onData`
 分块与结束标记后的同块按键。
@@ -479,28 +531,31 @@ CLI 查前景色时回 `ESC ] 10 ; rgb:3838/3a3a/4242 ST`（OSC 10），查光�
 后端收到的是同一串字节，**无从区分**。早期实现把解析放在后端，结果一创建 tab 就把自动启动
 命令当成首条用户输入 ⇒ 侧栏立刻冒出一条标题为 `pi --approve` 的会话。现在：前端
 `features/terminal/utils/inputTitle.ts::createUserInputActivityReporter` 只在 `sendInput`
-（= `onData`）路径解析。每次提交经 `set_live_session_title(source = 'prompt')` 上报：
-首次非空行写标题并标记 `has_user_input`，后续提交只清除 hook 权威门；单个数据块最多发一次
-活动 IPC，避免大段粘贴形成 IPC 风暴。
+（= `onData`）路径解析，每次提交只发一条 `report_live_session_activity(sessionId, line)`：
+置 `has_user_input`、清 hook 权威门，单个数据块最多一次活动 IPC。行文本随活动一起上行，
+**能否命名由后端 `report_terminal_input` 裁决**（纯 shell 可以，agent 终端不行）——
+前端一份命名判据都没有，只负责「这是一次真实提交」与「行原样传上去」。
 
 规则：除 bracketed paste 外的 ESC 序列整段丢弃（支持跨块）、粘贴起始/结束标记剥离后
-按用户输入处理、累积到回车才结算、控制字符不进标题、空回车不写标题但算一次用户提交、
-标题只取第一条非空行、超长截断
-（`inputTitle.test.ts` 覆盖 OSC 10 / DSR 应答、跨块粘贴与同块尾随按键；后端
-`reported_input` 用例钉住
-「`Native`/`User` 胜过 `Prompt`」「后续提交不改名」「空白 Prompt 清门但不命名」）。
+按用户输入处理、累积到回车才结算、控制字符不进缓冲区、空回车也算一次提交、超长截断
+（`sessionTitleReporter.test.ts` 用 `/model\r` + `deep\r` + OSC `deep` 钉住「没有任何标题
+IPC」；`inputTitle.test.ts` 覆盖 OSC 10 / DSR 应答、跨块粘贴与同块尾随按键）。
 
-#### OSC 0/2 标题**不再是标题来源**（2026-10-31）
+#### hook / conversation 是权威标题源（回落不扫盘）
 
-`term.onTitleChange` 拿到的多是 CLI 的**状态栏**：`pi` 会把自己的 logo `π` 设成终端标题，
-`claude` 用旋转符表示「正在想」。它是 `Native` 级别，会覆盖用户的首条输入 —— 侧栏因此出现
-一个 `π` 开头的会话名（实测反馈）。会话名必须来自真实内容：
+CLI hook 的 `topic` 是 provider 自己浓缩过的会话名，投影为 `Native`。**没有 `topic` 且
+registry 尚无真标题**时，`wiring/hooks.rs` 用 registry 条目的 `agent_id` + hook 的
+`agent_session_id` 回落 `ConversationManager::cached_title_for_native`：按
+`agent_id:native_session_id` 只读内存缓存（`user_title` 优先于 `title`，trim 后空白返回
+`None`）。该方法**不触发扫描、不读磁盘**（红线 3），缓存刷新仍由既有 conversation scan
+链路负责。缓存只补空名：已有 `Native` / `User` 标题时不查缓存，避免扫描快照覆盖事件时刻
+的名字。hook 投影一次写入 → 一次 `emit_changed`；`topic` 存在时不查缓存；`User` 改名由
+`should_upgrade` 保护，永不被回落改写。
 
-- 用户输入（`prompt`）—— 回车即生效；
-- CLI **自己命名的会话**（hook 上报的 `title`，`native`）—— 见上一节。
-
-`terminalTitle.ts`（OSC 订阅 + 去重）已随此决定删除；`set_live_session_title` 的
-`source` 参数保留，`native` 仍供 hook 侧使用。
+OSC 0/2 标题本轮**直接丢弃**（不再订阅、无 IPC）：它与状态栏、cwd、spinner、TUI 控件文本
+共用通道，`π` 与 `deep` 都是从这里进来的。历史：2026-10-31 曾因 `π` 覆盖首条输入而删掉整条
+OSC 来源，后来误以为「补上 `admit` 判据就能恢复」—— 第 35 轮的结论是判据挡不住控件输入，
+必须从生产者集合里移除。`terminalTitle.ts` / `createSessionTitleReporter` / `sendTitle` 已删除。
 
 `TitleSource` **不进 UI**：界面只表达结果（有真标题 / 占位），排名徽标是内部判据。
 标题也**不写回 tab store** —— 渲染期由 `resolveTabTitle(tab, session)` 派生，否则会出现

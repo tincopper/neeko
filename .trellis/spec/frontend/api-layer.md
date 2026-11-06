@@ -729,3 +729,90 @@ const url = resolveAssetUrl(src, basePath);                       // 同步可�
 const bytes = await readFileBytesAll(w, normalizeAssetPath(src), { base: basePath });
 const chunk = await readFileRange(w, filePath, { begin, end });    // 续读补齐，无常量耦合
 ```
+
+## 场景：live-sessions 标题源隔离的 IPC 契约（2026-11-06，第 35 轮）
+
+### 1. Scope / Trigger
+
+- Trigger：终端 TUI 控件输入被写进侧栏会话名 —— 用户在 CLI 的 `/model` 面板里敲过滤词
+  `deep`，侧栏 / tab 标题变成 `deep`。根因不是 `title::admit` 黑名单不够，而是 xterm
+  `onData` 与 OSC `onTitleChange` 被接成了标题生产者。
+- Scope：`src/features/live-sessions/api/liveSessionsApi.ts`、
+  `src/features/terminal/utils/sessionTitleReporter.ts`、`inputTitle.ts`、
+  `TerminalViewBase.tsx`，以及后端 `live_sessions/commands.rs` 的命令面。
+
+### 2. Signatures
+
+```typescript
+// features/live-sessions/api/liveSessionsApi.ts
+export function reportLiveSessionActivity(sessionId: string, line: string): Promise<boolean>;
+export function renameLiveSessionTitle(sessionId: string, title: string): Promise<boolean>;
+// `setLiveSessionTitle(sessionId, title, source)` 已删除 —— IPC 不再接受前端声明来源。
+
+// features/terminal/utils/sessionTitleReporter.ts
+export function installTerminalReporting(opts: {
+  getSessionId: () => string | null;
+}): { reportUserInput: (text: string) => void };
+// 不接收 `term`、不订阅 `term.onTitleChange`：没有任何订阅，就没有需要解绑的句柄。
+
+// features/terminal/utils/inputTitle.ts
+export function createUserInputActivityReporter(opts: {
+  getSessionId: () => string | null;
+  report: (sessionId: string, line: string) => void;   // 行文本随活动上报，命名权在后端
+}): (text: string) => void;
+```
+
+后端命令：`report_live_session_activity(sessionId, line)`、`rename_live_session(sessionId, title)`。
+两个命令体都只有「取状态 → 调注册表 → 真变化发版本号」：分流的判据要读 `agent_id`，因此它
+归 `Registry::report_terminal_input`（红线 6）；`Native` / `Prompt` **没有 IPC 入口**。
+
+### 3. Contracts
+
+1. **终端输入的分流在后端**。`term.onData` 只经 `createUserInputActivityReporter` 认出
+   「用户按了回车」，然后发一条 `report_live_session_activity(sessionId, line)`（注册表
+   `Registry::report_terminal_input` 按登记时的 `agent_id` 分流）：
+   - **纯 shell（`agent_id = None`）** ⇒ 首条输入成为 `Prompt` 标题（它没有 hook /
+     conversation 通道，这是唯一素材）；
+   - **agent 终端（`agent_id = Some`）** ⇒ 只置 `has_user_input` / 清权威门，不写标题
+     （这行可能是 `/model` 面板的过滤词）。
+   OSC 0/2 直接丢弃（无订阅、无 IPC）。**前端不做这套分流** —— 字节形状无法区分真实请求
+   与控件输入，只有后端的 `agent_id` 是可靠事实。
+2. **IPC 不可声明来源**。改名命令只收 `(sessionId, title)`，后端恒用 `TitleSource::User`；
+   `TitleSource` 枚举与 `should_upgrade` 质量序不变，`Registry::upgrade_title` 仍是唯一写入点。
+3. **权威源在后端**：CLI hook `topic` → `Native`；无 `topic` 时按 registry 条目的 `agent_id`
+   + `event.agent_session_id` 回落 `ConversationManager::cached_title_for_native`（纯内存、
+   不扫盘）→ `Native`；chat 注册的真实 `prompt` → `Prompt`；用户改名 → `User`（最高）。
+   hook 线程不做磁盘 I/O（红线 3），一次 hook 只 `emit_changed` 一次。
+4. **不新增能力**：无 LLM 命名、无定时器、无磁盘轮询、无新事件名。CLI 会话在权威标题
+   到达前保持空占位（R9.4）。
+5. `invoke` 只在 `api/`（改名 / 活动）；失败只 `console.warn` 或走
+   `reportFrontendError`，不影响终端运行。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 期望 | 风险 |
+|---|---|---|
+| `/model\r` → `deep\r` → OSC `deep` | **零**改名 IPC，恰好 2 条 activity IPC | 旧实现发 3 次标题 IPC，会话名变 `deep` |
+| 纯 shell 首条输入 `npm test` | 标题 = `npm test`（`Prompt`） | 无此分流时永远没有标题（只剩一个图标） |
+| 纯 shell 首条输入 `/model` | 不命名（`admit` 判负），但置可见性 | 斜杠命令不是主题 |
+| 无 `term.onTitleChange` 订阅 | `onTitleChange` 不被调用 | 状态栏帧再次污染标题 |
+| 会话 id 未就绪 | 连 activity 也不发 | 未知会话被凭空建条目 |
+| 改名传 `"π"` / `"/model"` | 写成 `User`（`admit(User)` 只要求非空白） | 若后端退回 `Native`/`Prompt` 会被判负 |
+| hook 无 topic + 缓存命中 | 写 `Native`；`topic` 存在时不查缓存 | 缓存覆盖 topic |
+| 用户改名后 hook 回落 | `User` 不被改写 | `should_upgrade` 回归 |
+
+### 5. Wrong vs Correct
+
+#### Wrong
+```typescript
+// 前端可控来源 ⇒ /model 面板过滤词伪装成 provider title
+await invoke('set_live_session_title', { sessionId, title: 'deep', source: 'native' });
+term.onTitleChange((t) => setLiveSessionTitle(sessionId, t, 'native'));
+```
+
+#### Correct
+```typescript
+// 终端只上报活动；改名只传 id + 文本，来源由后端固定
+void reportLiveSessionActivity(sessionId).catch(console.warn);
+void renameLiveSessionTitle(sessionId, title).catch(reportFrontendError);
+```

@@ -473,6 +473,35 @@ let light = has_visible_text(entry);        // 只回答「这条算不算一条
 两者都按「路径 / 命令 / pattern 优先，其余截断序列化」取值，各自的测试必须同步更新；
 新增工具名时**两边都要加**，否则侧边栏会退化成序列化预览。
 
+### 4.6.7 会话标题是 live-sessions 的权威源之一（纯内存回落）
+
+`ConversationMeta.title` / `user_title` 不只是 History 面板的展示数据，也是 live-sessions
+注册表的**权威标题源**：CLI hook 没带 `topic` 且 registry 尚无真标题时，
+`live_sessions::wiring::hooks` 会按 `agent_id:native_session_id` 读它，投影成
+`TitleSource::Native`。缓存只用来补空名，不覆盖已有的事件时刻标题。
+
+为此 `ConversationManager::cached_title_for_native(agent_id, native_session_id)` 提供一条
+**纯内存**读路径：按缓存键 `format!("{agent_id}:{native_session_id}")` 查 `self.cache`，
+`user_title` 优先于 `title`，trim 后空白 ⇒ `None`；锁错误与 `list_page` 同口径
+（`anyhow!("Cache lock poisoned: {e}")`）。
+
+三条硬约束：
+
+1. **不触发扫描、不读磁盘**（红线 3）：hook 跑在阻塞池线程上，`scan_*` / `hydrate_*`
+   一律不在这里调用。缓存新鲜度由既有 conversation scan 链路负责；没扫过就返回 `None`
+   （会话保持占位，不猜）。未命中记一条 `log::debug!`（`no cached title for
+   <agent>:<native>`）—— 回落是**机会性**的，排障时需分清「没命」与「没调」。
+   注意 ID 契约：这里的 `native_session_id` 必须与 hook 的
+   `HookEvent.agent_session_id` **同源同名**（同一 provider 的会话 uuid）。二者不等价时
+   回落会静默失效（表现为会话永远拿不到 provider 标题）——新增 adapter 必须确认这一点。
+2. **终端 I/O 不是通用标题源**（第 35 / 37 轮）：OSC `onTitleChange` 已整条断开；
+   `term.onData` 的行只对**纯 shell** 生效（`Registry::report_terminal_input` 按
+   `agent_id` 裁决）。agent 会话的标题只能来自用户改名、hook `topic`、这里的 provider
+   title、chat 真实 prompt。改名的 `User` 级别最高；`Native` 回落只在条目无真标题时生效，
+   避免扫描快照把已有的 `hook topic` / `User` 标题改回旧值。
+3. **不进 wire 契约**：该方法只被 hook 投影调用（Rust 内部），不暴露成 Tauri 命令，也
+   不新增事件 / 定时器 / 磁盘轮询。
+
 ### 4.7 删除能力三态与删除单元（强制）
 
 会话数据的**拥有者是各个 agent CLI**，Neeko 只有内存索引（§2.2）。所以删除必须由拥有者执行：

@@ -408,8 +408,8 @@ terminal（含纯 shell）一视同仁 —— 落盘的是**侧栏行**，不是
 
 - **`apply` / `apply_activity`**（chat 事件泵、PTY 活动推断，高频）：只在 **`turn_count` 变化**
   或 **新状态是终态** 时落盘；`Running` / `AwaitingApproval` 中间态**不写**。
-- **report 家族**（`report` / `report_first` / `report_user_input` / `report_authoritative` /
-  `set_title`，每回合或每次用户提交一次）：真变化就写穿 —— 否则标题、`has_user_input`、
+- **report 家族**（`report` / `report_first` / `report_user_input` / `report_terminal_input` /
+  `report_authoritative` / `set_title`，每回合或每次用户提交一次）：真变化就写穿 —— 否则标题、`has_user_input`、
   `native_session_id` 永远进不了库（而它们正是重启后侧栏行与 `--resume` 的依据）。
 
 `apply` 的调用点在 `agent_chat` 的 16ms 合帧 emit 闭包里（`tauri::async_runtime::spawn`
@@ -436,13 +436,17 @@ report 家族的调用频率本身是「一回合一次」，无需再压。
 | 名字 | 位置 | 回答的问题 |
 | --- | --- | --- |
 | **写门** `has_user_input` | `live_sessions::cursor::from_entry` | 这一行**该不该存在**（用户确实动过这条会话） |
-| **读门** `ResumeCursor::is_restorable` | `agent::chat::session_store`（与类型同住） | 这一行**能不能投影回侧栏**（有名字 + 能定位单元 + 不是损坏行） |
+| **读门** `ResumeCursor::is_restorable` | `agent::chat::session_store`（与类型同住） | 这一行**能不能投影回侧栏**（能定位单元 + 不是损坏行；**标题可以空**） |
 
-`SqliteSessionStore::list_restorable` 的 `WHERE project_id != '' AND title != ''` 只是**粗筛**
+`SqliteSessionStore::list_restorable` 的 `WHERE project_id != ''` 只是**粗筛**
 （性能），必须是读门的**超集**；真正的过滤在 Rust 侧 `filter(ResumeCursor::is_restorable)`。
 漏一行的代价是「重启后会话消失」，多放一行只是浪费一次投影 —— 所以判据只准往「漏」的方向
 收紧，且只能改上面那一处。测试替身（`RecordingStore`）同样调读门，不重写规则
 （`list_restorable_applies_the_rust_gate_on_top_of_the_sql_prefilter`）。
+
+**标题可以为空**（第 35 轮）：可见性与命名是两件事。终端首条输入不再产生标题，无 hook 的
+CLI 永远等不到名字；把 `title != ''` 当读门会让这些会话重启后整条消失。读门只拒绝
+「无单元」与「`Placeholder` 却带标题」（损坏）两种行。
 
 ### 4b.5 退出抑制：`Registry::begin_shutdown`
 
@@ -476,11 +480,16 @@ report 家族的调用频率本身是「一回合一次」，无需再压。
 两条都不是缺陷，但产品若要统一，先改 `natural_exit_deletes_the_row_while_an_explicit_close_keeps_it`
 这条用例再改实现。
 
-**③ 阻塞写的位置（红线 3）**：`set_live_session_title` / `adopt_live_session` 是**非 async** 的
-`#[tauri::command]`，其中的 SQLite 写在 IPC 线程上同步执行（`save_cursor` = SELECT + UPSERT）。
-当前体量（一次改名 / 一次恢复）可接受；若将来变慢，正确改法是
-`tauri::async_runtime::spawn_blocking`，**不要**加 `async` 关键字（那会把阻塞 IO 挪进异步
-执行器线程，正是红线 3 反对的方向）。
+**③ 阻塞写的位置（红线 3）**：`rename_live_session` / `report_live_session_activity` /
+`adopt_live_session` 是**非 async** 的 `#[tauri::command]`，其中的 SQLite 写在 IPC 线程上
+同步执行（`save_cursor` = SELECT + UPSERT）。当前体量（一次改名 / 一次活动 / 一次恢复）
+可接受；若将来变慢，正确改法是 `tauri::async_runtime::spawn_blocking`，**不要**加 `async`
+关键字（那会把阻塞 IO 挪进异步执行器线程，正是红线 3 反对的方向）。
+
+**④ hook 回落不扫盘、只补空名**：无 `topic` 且 registry 尚无真标题的 hook 才调
+`ConversationManager::cached_title_for_native`（纯内存缓存读），不触发 conversation scan /
+不读磁盘 —— hook 跑在阻塞池线程上也不能顺手加扫描；缓存新鲜度由既有 scan 链路负责。
+已有 `Native` / `User` 标题时不再查缓存，避免扫描快照把事件时刻的名字改回旧值。
 
 ## 5. 前端通用层（`src/shared/cache/`）
 

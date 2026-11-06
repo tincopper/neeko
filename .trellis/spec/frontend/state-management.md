@@ -2296,34 +2296,39 @@ agent 图标挤在同一段左内边距上，读起来像错位的装饰块）�
 两层同源；若中心前台与 dock 前台是两条不同会话，`UnitSessionList` 按 **refs 顺序**取第一条
 （中心优先），不让后端快照顺序决定「哪一行亮」。
 
-**侧栏只列「用户已经用过、且有名字」的会话**（`isListedSession` = `has_user_input` && `isNamedSession`）。
+**侧栏列出所有「用户已经用过」的会话**（`isListedSession` = `has_user_input`）。
 `has_user_input` 由后端在**用户发出第一条输入**时翻转（chat 的首次 `agent_stream`——含
 `agent_chat_open` 静默会话被用起来的那一步，见 `.trellis/spec/backend/agent-chat-transports.md`
-「五个写入原语」/ 终端用户提交 / CLI 的 hook 上报），**打开 tab 不翻转** —— 一创建 tab
+「六个写入原语」/ 终端用户提交 / CLI 的 hook 上报），**打开 tab 不翻转** —— 一创建 tab
 就冒出会话正是要消灭的形态。
-两个条件各挡一类假会话（2026-10-31 第三、四轮反馈）：
 
-1. **`has_user_input`（用户输入过）** —— 打开 agent tab 就会创建 PTY / 静默会话，而且 agent CLI 常常
-   一启动就自己发 OSC 标题。只看标题的话，侧栏会在用户还没敲一个字时冒出条目；Codex 那类
-   桌面端也是「发出第一条消息才建会话」。首条终端输入 / 首次 `agent_stream` 才置位。
-2. **`isNamedSession`（标题非占位且非空白）** —— 用户敲了东西但还没有标题时（纯 shell 不设
-   OSC 标题），列出来只是一行没有文字的图标；标题一到它自己出现。
+**唯一条件是 `has_user_input`（用户输入过）**：打开 agent tab 就会创建 PTY / 静默会话，只看
+别的信号的话，侧栏会在用户还没敲一个字时冒出条目；Codex 那类桌面端也是「发出第一条消息才
+建会话」。首条终端输入 / 首次 `agent_stream` 才置位。
+
+**「有名字」不再是列出条件**（第 35 轮修正，实测回归）：可见性与命名是两件事。第 35 轮把
+「首条终端输入即命名」从生产者集合里删掉后，无 hook 的 CLI 永远等不到标题 —— 旧条件
+（`has_user_input && isNamedSession`）会让这些终端会话整条从侧栏消失。无名行画成
+「图标 + 相对时间 + 状态」的占位行（`SessionList` 已有该分支），标题到手后自动换成真标题。
 
 单元角标与子列表同源（`sessionsByUnit` 是唯一分组入口，过滤在那里做），不会一个有一个没有。
 
-**tab 同样以 `has_user_input` 为门**：`resolveTabTitle(tab, session)` 只在会话已可见时才用注册表
-标题 —— 否则会出现「tab 已经改名、侧栏还没这条会话」的错觉。tab 的占位标题是
-**agent 名**（绑 agent 的 tab：`agent.name`）或 `Terminal N`（空白终端：
+**tab 是另一条判据**：`resolveTabTitle(tab, session)` 要求 `isListedSession && isNamedSession`
+—— tab 标题不能是空串，无名时回落创建期标题（否则会出现「tab 变成空串」的错觉）。tab 的
+占位标题是 **agent 名**（绑 agent 的 tab：`agent.name`）或 `Terminal N`（空白终端：
 `shared/utils/terminalTabTitle.ts`，两个建 tab 入口共用）。一旦会话有真标题，tab 标题在渲染期
 换成它 —— 不写回 `tab.title`，否则用户改名后 tab 会显示旧值。
 
 会话子列表**不画左侧竖线**，层级只靠缩进（`ml-7` 让会话图标对齐单元标签）——
 窄侧栏里那条线是持续噪声。
 
-**终端标题只从用户输入上行、不回读 OSC**：`createUserInputActivityReporter` 在每次提交时
-经薄命令 `set_live_session_title(source = prompt)` 上报（支持 bracketed paste，过滤协议应答 /
-转义键）。首次非空行才成为标题，后续提交只清权威门；升级判定在后端，前端不预判 —— 否则
-「后续输入不得覆盖用户改名」会出现两份规则。
+**终端 I/O 不是标题源（第 35 轮）**：`createUserInputActivityReporter` 在每次提交时发
+`report_live_session_activity(sessionId, line)`（支持 bracketed paste，过滤协议应答 / 转义键）；
+OSC `onTitleChange` 直接丢弃。**行文本的去向由后端按 `agent_id` 分流**（第 37 轮）：
+纯 shell 没有 hook / conversation 通道，首条输入成为 `Prompt` 标题；agent 终端一律不命名
+（`/model` 面板的过滤词就在这条通道里）。其余标题来源：用户改名、CLI hook `topic`、
+conversation 缓存的 provider title、chat 注册的真实 prompt —— 都在后端写注册表，IPC 不接受
+前端声明 `source`。见 `.trellis/spec/frontend/api-layer.md` 同名场景。
 
 **跨栈常量**：`SESSIONS_EVENT` 前端值必须与 `src-tauri/src/live_sessions/events.rs` 的声明
 **逐字相等**（`shared/__tests__/sessionsEventConstant.test.ts` 读后端源码取声明值比较，
