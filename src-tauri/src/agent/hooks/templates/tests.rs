@@ -12,6 +12,24 @@
 
 use crate::agent::hooks::targets::{InstallShape, HOOK_TARGETS};
 
+/// 模板正文的**行尾归一化视图**（`\r\n` → `\n`；已是 LF 时零拷贝）。
+///
+/// `include_str!` 嵌入的是**宿主工作区的字节**：Windows 上 `core.autocrlf=true` 的 checkout
+/// 把模板落成 CRLF，于是「跨行契约锚点」里的 `\n` 永远匹配不上 —— 本地（LF）绿、CI（CRLF）红。
+/// 2026-11-05 实测：`templates_gate_child_sessions_at_a_single_registration_point` 在
+/// `windows-latest` 报「pi 模板的 onStatus 包装器缺子会话门」，而模板正文一字不差。
+///
+/// 红线 11 的边界正是这条：断言**文本内容**可以，赌**工作区换行**不行。
+/// `.gitattributes` 同时把 `templates/` 钉成 `eol=lf`（嵌入二进制的字节三端一致）——
+/// 这里是第二道：断言不依赖 clone 的换行状态（旧 clone / 编辑器改写也能过）。
+fn template_text(template: &str) -> std::borrow::Cow<'_, str> {
+    if template.contains("\r\n") {
+        std::borrow::Cow::Owned(template.replace("\r\n", "\n"))
+    } else {
+        std::borrow::Cow::Borrowed(template)
+    }
+}
+
 /// 会话身份的 env 键是**双端契约**：PTY 侧注入（`live_sessions::SESSION_ID_ENV`）、
 /// 模板侧读取。任一侧改名都会让 hook 归因静默失效（表现是「侧栏标题不再跟随 CLI」），
 /// 故断言模板正文含**常量本身**而不是复写字面量。
@@ -159,23 +177,25 @@ fn templates_gate_child_sessions_at_a_single_registration_point() {
             .iter()
             .find(|t| t.source == source)
             .unwrap_or_else(|| panic!("{source} target"));
+        // 跨行锚点必须看归一化视图：工作区换行由 checkout 决定，不得进判据（红线 11）。
+        let template = template_text(t.template);
         // ① 来源门：读 sessionManager 的 header.parentSession。
         for anchor in ["getHeader", "parentSession", "onStatus"] {
             assert!(
-                t.template.contains(anchor),
+                template.contains(anchor),
                 "{source} 模板缺少 {anchor:?}（子会话上报会污染父会话的状态与标题）"
             );
         }
         // ①b 门必须**在包装器内**。取连续形态而非裸名：`isChildSession(ctx)` 也出现在
         // 函数定义里，裸名会被「函数还在、门被删」的实现替身通过（变异实测：删掉门 0 红）。
         assert!(
-            t.template
+            template
                 .contains("if (isChildSession(ctx)) return;\n      return handler(event, ctx);"),
             "{source} 模板的 onStatus 包装器缺子会话门（子 agent 的完成事件会挂到父会话 id 上）"
         );
         // ② 门必须只在一处：`pi.on` 的注册点唯一（否则新加 handler 会绕过门）。
         assert_eq!(
-            t.template.matches("pi.on(").count(),
+            template.matches("pi.on(").count(),
             1,
             "{source} 模板出现多个 `pi.on(` 注册点（新 handler 会绕过子会话门；\
              改用 onStatus 包装）"
@@ -184,7 +204,7 @@ fn templates_gate_child_sessions_at_a_single_registration_point() {
         for event in ["session_start", "agent_end", "tool_call"] {
             let registered = format!("onStatus(\"{event}\"");
             assert!(
-                t.template.contains(&registered),
+                template.contains(&registered),
                 "{source} 模板的 {event} 未经 onStatus 注册（子会话会上报该事件）"
             );
         }
@@ -192,11 +212,11 @@ fn templates_gate_child_sessions_at_a_single_registration_point() {
         // 取**连续形态**而非裸名：`settledSupported` 也在赋值处出现，裸名会被
         // 「声明还在、早退被删」的实现替身通过（变异实测：删掉早退 0 红）。
         assert!(
-            t.template.contains("onStatus(\"agent_settled\""),
+            template.contains("onStatus(\"agent_settled\""),
             "{source} 模板未注册 agent_settled（完成腿会在重试 / 压缩中途误报）"
         );
         assert!(
-            t.template.contains("    if (settledSupported) return;\n"),
+            template.contains("    if (settledSupported) return;\n"),
             "{source} 模板的 agent_end 未让位给 agent_settled（重试中间那次会先报完成）"
         );
     }
@@ -221,6 +241,46 @@ fn templates_gate_child_sessions_at_a_single_registration_point() {
             .contains("if (event && event.willContinue === true) return;"),
         "OMP 模板缺 willContinue 判据（重试 / 压缩中间那次 agent_end 会先报完成）"
     );
+}
+
+/// 行尾归一化本身就是判据（2026-11-05 Windows CI 事故的回归钉）。
+///
+/// 反证：把 `template_text` 改回直接读 `t.template`，下一个用例在 CRLF 形态下必红。
+#[test]
+fn template_text_normalises_a_crlf_materialisation() {
+    let crlf = "function onStatus() {\r\n      if (gate) return;\r\n    }\r\n";
+    assert!(
+        template_text(crlf).contains("if (gate) return;\n"),
+        "CRLF 形态必须被归一化成 LF（否则跨行锚点在 Windows 上永远匹配不上）"
+    );
+    assert!(!template_text(crlf).contains('\r'), "归一化后不得残留 CR");
+    // 已是 LF 时零拷贝，不引入新的分配
+    assert!(matches!(
+        template_text("a\nb"),
+        std::borrow::Cow::Borrowed(_)
+    ));
+}
+
+/// 反证：**同一份模板正文在 CRLF 形态下仍要通过跨行契约锚点**。
+///
+/// 这条用例是 CI 事故的本体：`include_str!` 嵌的是宿主工作区字节，Windows checkout
+/// 给的是 CRLF，而锚点里写的是 `\n`。归一化后两种形态同判，断言不再赌 clone 的换行状态
+/// （红线 11）。
+#[test]
+fn contract_anchors_hold_for_a_crlf_materialisation() {
+    for source in ["pi", "omp"] {
+        let t = HOOK_TARGETS
+            .iter()
+            .find(|t| t.source == source)
+            .unwrap_or_else(|| panic!("{source} target"));
+        // 先归一再转 CRLF：对已经是 CRLF 的正文直接再替一次会得到 CRCRLF（那是测试自己的 bug）。
+        let crlf = template_text(t.template).replace('\n', "\r\n");
+        assert!(
+            template_text(&crlf)
+                .contains("if (isChildSession(ctx)) return;\n      return handler(event, ctx);"),
+            "{source} 模板在 CRLF 形态下丢了子会话门锚点（断言不得依赖 checkout 换行）"
+        );
+    }
 }
 
 /// shim 契约锚点：坐标扫描 / fan-out / token / loopback / 永不非零退出。

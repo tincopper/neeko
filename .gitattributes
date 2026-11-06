@@ -7,3 +7,15 @@
 # picking either side (task state lives in task.json, not index.md). See
 # .trellis/spec/cli/backend/directory-structure.md for details.
 .trellis/workspace/*/journal-*.md merge=union
+
+# Files whose bytes are embedded into the binary via `include_str!` must be
+# platform-independent: with `core.autocrlf=true` a Windows checkout materialises
+# them as CRLF, which (a) puts platform-dependent line endings inside the binary
+# and (b) broke a multi-line contract anchor in CI (2026-11-05,
+# templates_gate_child_sessions_at_a_single_registration_point on windows-latest).
+# Red line 11: assertions may read text content, never the checkout's line endings.
+src-tauri/src/agent/hooks/templates/* text eol=lf
+src/shared/events.ts text eol=lf
+src/shared/types/notification.ts text eol=lf
+src/shared/utils/agentHookSources.ts text eol=lf
+src/features/notification/hooks/useNotificationReflow.ts text eol=lf
