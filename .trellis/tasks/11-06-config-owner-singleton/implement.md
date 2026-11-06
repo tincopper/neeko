@@ -97,6 +97,27 @@
       （调用 or 适配器值引用；import/export 不计）。自测 12 条含 3 条新负例 + 1 条适配器正例。
 - [x] 收尾：`pnpm check:quick` 全绿；`python3 tools/guards/run.py ... --source python` 35/35。
 
+## Step 10 · 归档前复核（2026-11，AC 逐条验）
+
+- [x] AC1–AC5 / AC7 机器复核：owner 调用点 1（`useAppShellData.ts:55`）、settings barrel 无 owner、
+      `data-theme` 只写于 `configProjection.ts`（第 94 / 114 行）、`Readonly<AppConfig>` +
+      `useConfig` 有消费者（`ViewSkillDialog.tsx:60`）、`globalOwners.test` 4 条。
+- [x] 门禁实跑（工作区干净时 `check:quick` 会跳过，故跑等价全量 lint 档）：
+      `guards --stage local --suite lint` **35/35**（含 `check_config_owner_singleton`，`scanned=1191`）；
+      `pnpm lint:fe` → eslint **0 error**（14 warning 均为既有其它文件）、tsc `No errors`；
+      相关 9 个测试文件 **79 passed**。
+- [x] **AC6 补缺**：原 `configProjection.test.ts` 只 `vi.mock` 了 `updateAllTerminalThemes` /
+      `syncAgentTheme`，**零断言**（终端主题与 agent 主题同步没有测试覆盖）→ 新增 4 条断言
+      （rAF 合并后终端刷新 1 次 / 本地项目带 `local_paths` 扇出 / WSL 按 distro 扇出 / 无项目不扇出），
+      并在「变量未就绪整体跳过」用例里加「下游不被惊动」两条否定断言。文件 8 → 12 例。
+- [x] **变异验证**：删掉 `projectTheme()` 末尾的 `scheduleTerminalThemeRefresh();` 与
+      `syncAgentThemeForKnownProjects(theme);` → 3 红（终端刷新 / 本地扇出 / WSL 扇出），
+      恢复后全绿 —— 断言真的钉在实现上，不是自我安慰。
+- [x] **AC8 对账**：净新增生产模块 6 个（上限 ≤5，超 1）。不改 AC，在 `prd.md` AC8 下写完成对账、
+      在 `design.md` §7 补三个 Extract 的逐项理由（`useConfigProjection` 避免 owner 突破 135 ratchet、
+      `customThemeResolver` 解析与写 DOM 是两个变更理由、`VisibilityScope` 是新增的「挂载≠可见」信号）。
+- [x] spec 教训沉淀：`state-management.md` 投影段落补「下游扇出必须断言」（mock 不是覆盖）。
+
 ## Review gates / 回滚点
 
 | 步骤 | gate | 回滚 |

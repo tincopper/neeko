@@ -50,6 +50,9 @@ L0–L4 全量（用户已确认），含上一轮的局部修复成果一并纳
   改前改后行为一致。
 - **AC7**：新增一个「恰好一次」owner 只需在 owner registry 增一行；存在能发现重复挂载的测试/护栏。
 - **AC8**：模块数量与接口面不膨胀：不新增 store 层 / 第三方依赖；新增**生产模块 ≤5**（测试、护栏自测、任务制品不计，文件数不是有效指标）；`AppContextValue` 只读化后读侧只多 `useConfig(selector)` 一个入口，写侧仍只有 `saveConfig`。
+  > **完成对账（2026-11-06）**：实际净新增生产模块 **6** 个，超上限 1 个（Round 2 审核修订抽出的
+  > `useConfigProjection` / `customThemeResolver` / `VisibilityScope`）。AC 不改写；逐项理由与
+  > 「拆出来的 / 为什么值得多一个文件」表见 `design.md` §7。本条以记录偏差方式关闭。
 
 ## 非目标
 

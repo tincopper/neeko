@@ -165,13 +165,29 @@ installGlobalOwners(): cleanup   // 只启动 phase='preRender'
 - L2 回滚：`bootstrap()` 恢复 4 个直接调用 + `useAppGlobalEffects` 恢复 3 个 effect。
 - 全局回滚点：`git diff` 全量丢弃（工作树当前未提交，含上一轮局部修复，勿误丢）。
 
-## 7. 文件清单（生产模块 ≤5）
+## 7. 文件清单（AC8 对账：生产模块 6 个，上限 ≤5 —— 超 1，理由见下）
 
-新增生产模块（4 个 + 1 个迁移）：`app/bootstrap/globalOwners.ts`、
+**Round 1 设计值**（4 个 + 1 个迁移）：`app/bootstrap/globalOwners.ts`、
 `app/bootstrap/configProjection.ts`、`app/bootstrap/themeHint.ts`、`src/testing/mountInvariance.ts`
 （测试基础设施）、`app/hooks/useAppConfigOwner.ts`（由 `features/settings/hooks/useAppConfig.ts`
 迁移，旧文件删除，净增 0）。`shared/contexts/AppContext.tsx` 内新增 `useConfig`（同文件）。
 护栏 + 自测 2 个；新增测试 3 个、迁移测试 1 个。接口面净增仅 `useConfig` 一个读入口。
+
+**Round 2 实际落地（本轮如实对账，不改 AC）**：净新增生产模块 **6** 个 ——
+`app/bootstrap/configProjection.ts`、`app/bootstrap/globalOwners.ts`、`app/bootstrap/themeHint.ts`、
+`app/hooks/useConfigProjection.ts`、`features/settings/api/customThemeResolver.ts`、
+`shared/contexts/VisibilityScope.tsx`（`app/hooks/useAppConfigOwner.ts` 为迁移，`useAppConfig.ts`
+已删，不计入）。相对 ≤5 上限**超 1 个**，超出的部分是 Round 2 审核修订的三个落点：
+
+| 模块 | 是从哪里拆出来的 | 为什么值得多一个文件 |
+| --- | --- | --- |
+| `useConfigProjection.ts`（49 行） | 原 `useAppConfigOwner` 的投影半边 | IO/并发 与 投影 的变更理由不同；合回去 owner 会涨到 ~180 行，突破 `check_component_size` 的 135 ratchet |
+| `customThemeResolver.ts`（41 行） | 原 `useAppConfig` 里的 ref 缓存 + `get_custom_theme` 调用 | 原子投影要求「先拿变量再提交主题」，解析（IO + 缓存）与写 DOM 不是一个变更理由 |
+| `VisibilityScope.tsx`（30 行） | 新增（原本不存在） | 常驻挂载把 mount 副作用提前到启动期，「挂载 ≠ 可见」需要显式信号，接在 `AppContext` 里会让两个 context 共用一行 |
+
+判断基准（`design.md` §1 第三条）：AC8 的本质是「不膨胀」——不新增 store 层 / 第三方依赖 /
+读入口，这几条都达成（读侧净增只有 `useConfig`，写侧仍只有 `saveConfig`）；文件数量本身
+在 AC8 里已声明「不是有效指标」，故本轮按**记录偏差**而非强行合并处理。
 
 ## 8. 审查修订（Round 2，2026-11）
 
