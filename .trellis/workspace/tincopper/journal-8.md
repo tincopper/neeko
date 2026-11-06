@@ -1767,3 +1767,53 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 423: config owner 审查修复：按功能分组提交（4 个提交）
+<!-- trellis-session: v=2 fp=b8d0c4c6ea1803d3 -->
+
+**Date**: 2026-11-06
+**Task**: config owner 审查修复：按功能分组提交（4 个提交）
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+### 提交分组（按功能）
+
+| 提交 | 内容 | 文件数 |
+| --- | --- | --- |
+| `refactor(config)` | config owner 唯一化 + 原子主题投影 + 中心视图常驻/可见性门控（同一次「Skills 闪黑」事故，同一 PRD） | 46 |
+| `feat(guards)` | `check_config_owner_singleton` 护栏 + 12 条自测 + 门禁计数簿记 | 4 |
+| `docs(spec)` | state-management L0–L4 契约 / hook-guidelines owner 职责 / component-guidelines VisibilityScope / ARCHITECTURE #15 | 8 |
+| `docs(task)` | 任务制品（PRD / design 含 Round 2 差异台账 / implement / jsonl） | 6 |
+
+### 分组约束（实测踩到）
+
+lefthook 的 pre-commit 会对**部分暂存**的文件取暂存快照（stash unstaged 部分），
+于是「同一个文件跨两个提交」会被 tsc 判成自相矛盾（`index.ts` 只导出了 `useConfig`，
+而工作区的 `AppCenter.tsx` 已经在 import `VisibilityScope`）。结论：分组边界必须落在
+**文件**上，不能落在同一文件的两个 hunk 上。
+
+### 验证
+
+- 提交前 `pnpm check`：40 条护栏全绿（含 `test_fe` 6852 用例 + `test_rust`）。
+- 提交后 HEAD 再跑一次 `pnpm check`：40 条护栏全绿，工作树干净。
+- 每个提交都过了 pre-commit（`--stage commit --staged`）与 commitlint。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `77272484` | refactor(config): single config owner, atomic theme projection |
+| `deb18392` | feat(guards): machine-check the config owner singleton and projection |
+| `cdae7ba0` | docs(spec): record config ownership, atomic projection, visibility gating |
+| `a7f051d6` | docs(task): record the config owner singleton task |
+
+### Status
+
+[OK] **Completed**

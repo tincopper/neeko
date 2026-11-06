@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 422
+- **Total Sessions**: 423
 - **Last Active**: 2026-11-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1769 | Active |
+| `journal-8.md` | ~1819 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 423 | 2026-11-06 | config owner 审查修复：按功能分组提交（4 个提交） | `77272484`, `deb18392`, `cdae7ba0`, `a7f051d6` | `main` |
 | 422 | 2026-11-06 | config owner 审查修复：原子投影 / 公开面收口 / 可见性门控 | - | `main` |
 | 416 | 2026-11-05 | git status：切项目后 Changes 冻结的修复（号段不得回退） | `efe9045b` | `main` |
 | 415 | 2026-11-05 | git status 可观测性收官：C3 日志降噪（76% 噪声源）+ 决策登记 | `cd731b40` | `main` |
