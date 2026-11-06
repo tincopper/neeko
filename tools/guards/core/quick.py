@@ -10,7 +10,7 @@
 | 轻量（本命令，实测 ~12s 暖缓存） | 重量（push / CI，`pnpm check`） |
 | --- | --- |
 | 静态检查：eslint + tsc + fmt + clippy | 集成测试 |
-| 仓库护栏（28 条进程内判据） | 全量单元测试（`test_fe` / `test_rust`） |
+| 仓库护栏（进程内判据，清单即 `checks/` 目录） | 全量单元测试（`test_fe` / `test_rust`） |
 | 改动文件的单元测试（`vitest related`） | `test:host` / 覆盖率地板 / 生产打包 |
 
 三个设计点：

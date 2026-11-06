@@ -367,7 +367,9 @@ class ContextCommandSetTest(unittest.TestCase):
         #   漏一个目录 = 该域跨域私有导入完全不受约束，见 quality-guidelines.md）
         # + check_frontend_resource_mirror（前端不得维护后端资源状态的影子副本 / 状态读
         #   不得渲染期裸调用，见 state-management.md「声明式 reconcile」场景）
-        self.assertEqual(self.in_process_count("local"), 34)
+        # + check_config_owner_singleton（config owner 恰好一个 / data-theme 唯一投影 /
+        #   hook 型全局 owner 恰好挂一次，见 state-management.md §2）
+        self.assertEqual(self.in_process_count("local"), 35)
 
     def test_coverage_entry_is_the_manual_stage(self):
         self.assertEqual(
@@ -393,7 +395,7 @@ class ContextCommandSetTest(unittest.TestCase):
         self.assertEqual(self.command_ids("ci", suite="lint", source="python"), [])
         # 与 local 档同源（同一批进程内判据）：新增一条就要同时改这里 ——
         # 这两个数字互不相等时，意味着某条护栏只在本地跑、对 PR 零约束力（历史事故）。
-        self.assertEqual(self.in_process_count("ci", suite="lint", source="python"), 34)
+        self.assertEqual(self.in_process_count("ci", suite="lint", source="python"), 35)
 
 
 if __name__ == "__main__":
