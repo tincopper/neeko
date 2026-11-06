@@ -1,0 +1,17 @@
+{
+  "note": "身份空间的比较/渲染层：只允许纯字符串（`/` 分量），禁止 std::path / std::fs。谁该被登记见 checks/check_identity_no_host_path.py 模块头；CheckoutPath::resolve 这类『宿主路径 → 身份』的铸造点不登记（它是宿主语义的合法归属地）。",
+  "modules": {
+    "src-tauri/src/common/git/unit_scope.rs": {
+      "kind": "identity-comparison",
+      "note": "单元归属：最深受控根判定（I4 === 比较不得借宿主 Path）"
+    },
+    "src-tauri/src/platform/path_identity/rules.rs": {
+      "kind": "identity-rendering",
+      "note": "两套形态规则（windows-shaped / posix-shaped）都是纯字符串函数，三端同判的前提"
+    },
+    "src-tauri/src/platform/path_identity/mod.rs": {
+      "kind": "identity-rendering",
+      "note": "渲染出口：只按宿主平台选规则，不做路径语义判断"
+    }
+  }
+}

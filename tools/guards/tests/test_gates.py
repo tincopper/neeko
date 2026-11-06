@@ -369,7 +369,11 @@ class ContextCommandSetTest(unittest.TestCase):
         #   不得渲染期裸调用，见 state-management.md「声明式 reconcile」场景）
         # + check_config_owner_singleton（config owner 恰好一个 / data-theme 唯一投影 /
         #   hook 型全局 owner 恰好挂一次，见 state-management.md §2）
-        self.assertEqual(self.in_process_count("local"), 35)
+        # + check_embedded_asset_eol（include_str! 编进二进制的文本资产必须钉 eol=lf：
+        #   Windows checkout 的 CRLF 会让跨行断言在 CI 红，见红线 11）
+        # + check_identity_no_host_path（身份比较/渲染模块禁 std::path / std::fs：
+        #   同一批路径在两端会得到两种归属，见 git-domain.md 的 I4）
+        self.assertEqual(self.in_process_count("local"), 37)
 
     def test_coverage_entry_is_the_manual_stage(self):
         self.assertEqual(
@@ -395,7 +399,7 @@ class ContextCommandSetTest(unittest.TestCase):
         self.assertEqual(self.command_ids("ci", suite="lint", source="python"), [])
         # 与 local 档同源（同一批进程内判据）：新增一条就要同时改这里 ——
         # 这两个数字互不相等时，意味着某条护栏只在本地跑、对 PR 零约束力（历史事故）。
-        self.assertEqual(self.in_process_count("ci", suite="lint", source="python"), 35)
+        self.assertEqual(self.in_process_count("ci", suite="lint", source="python"), 37)
 
 
 if __name__ == "__main__":

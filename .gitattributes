@@ -15,6 +15,8 @@
 # templates_gate_child_sessions_at_a_single_registration_point on windows-latest).
 # Red line 11: assertions may read text content, never the checkout's line endings.
 src-tauri/src/agent/hooks/templates/* text eol=lf
+src-tauri/src/**/*.rs text eol=lf
+src-tauri/src/browser/picker_script.js text eol=lf
 src/shared/events.ts text eol=lf
 src/shared/types/notification.ts text eol=lf
 src/shared/utils/agentHookSources.ts text eol=lf
