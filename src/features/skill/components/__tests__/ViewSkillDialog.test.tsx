@@ -1,11 +1,29 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render as rtlRender, screen, waitFor, fireEvent } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
+import { AppProvider } from '@/shared/contexts';
+import type { AppConfig } from '@/shared/types/settings';
+import { expectNoGlobalSideEffectsOnMount } from '@/testing/mountInvariance';
 import { invoke } from '@/testing/tauriCore';
 
 import { createManagedSkill } from '../../../../testing/factories';
 import { useSkillStore, initialSkillState } from '../../store';
 import ViewSkillDialog from '../ViewSkillDialog';
+
+// 真实组合根里该 dialog 恒在 AppProvider 内；测试必须同构，否则修成
+// useAppContext() 后会在这里假绿（抛 "must be used within AppProvider"）。
+const appValue = {
+  config: { theme: 'light' } as AppConfig,
+  customThemes: [],
+  agents: [],
+  agentInstalledMap: {},
+  loading: false,
+  ideCommandOverrides: {},
+  showToast: vi.fn(),
+  saveConfig: async () => {},
+};
+const render = (ui: ReactElement) => rtlRender(<AppProvider value={appValue}>{ui}</AppProvider>);
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -25,6 +43,7 @@ vi.mock('@/features/file/api/fileApi', () => ({
 
 beforeEach(() => {
   useSkillStore.setState(initialSkillState);
+  document.documentElement.setAttribute('data-theme', 'light');
   mockInvoke.mockReset();
   mockInvoke.mockImplementation(async (cmd: string) => {
     if (cmd === 'load_config') return {};
@@ -76,9 +95,23 @@ const createdSkill = createManagedSkill({
 });
 
 describe('ViewSkillDialog', () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-theme');
+  });
+
   it('open=false no render', () => {
     render(<ViewSkillDialog open={false} skill={null} onClose={vi.fn()} />);
     expect(screen.queryByText('View Skill')).not.toBeInTheDocument();
+  });
+
+  it('关闭态常驻不产生全局副作用：不创建第二个 config owner', () => {
+    // SkillContent 无条件挂载该 dialog（open=false）。若它自己调用旧 owner hook，
+    // mount effect 会把主题重置为 DEFAULT_CONFIG.theme='dark' 再异步改回用户主题
+    // ⇒ 整窗主题翻转（闪黑）。配置只有组合根一个 owner，dialog 只读不算。
+    expectNoGlobalSideEffectsOnMount(() => {
+      render(<ViewSkillDialog open={false} skill={null} onClose={vi.fn()} />);
+    });
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
   });
 
   it('loads document via store.getSkillDocument', async () => {

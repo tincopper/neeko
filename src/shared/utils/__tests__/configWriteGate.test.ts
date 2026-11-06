@@ -61,7 +61,7 @@ describe('configWriteGate', () => {
 
   it('嵌套入队会死锁 —— 故写点自带门时调用方不得再包一层', async () => {
     // 这条用例**钉住一个真实事故**（2026-10-16 审查后修复）：
-    // `useAppConfig.saveConfig` 内部进队以保证「读在临界区内」，
+    // `useAppConfigOwner.saveConfig` 内部进队以保证「读在临界区内」，
     // 而 `CliHooksSection` / `useHiddenAgentToggle` 当时又在外面包了一层
     // `runConfigWrite(() => saveConfig(...))` ⇒ 内层等待外层完成，外层等待内层，
     // 队列永久卡死（表现为「设置改了不保存、界面也不报错」）。

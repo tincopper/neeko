@@ -58,7 +58,7 @@ function SettingsView() {
   }, [setAppView]);
 
   /**
-   * config.json 的写入 → **交给唯一写点**（`useAppConfig.saveConfig`，它自带串行门与
+   * config.json 的写入 → **交给唯一写点**（`useAppConfigOwner.saveConfig`，它自带串行门与
    * 读盘合并）。此处不再包 `runConfigWrite`：那会在队列内二次入队，自我等待成死锁。
    *
    * 返回 Promise 给调用方（LspPanel 的失败提示依赖它）。

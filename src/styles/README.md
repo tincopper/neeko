@@ -201,7 +201,7 @@ worktree / LSP / toast / agents / CodeMirror 五处），放 `motion/`；
 shared/utils/themeVariables.ts   ← 契约（60 个变量名，按语义分组）
         │
         ├──► styles/themes/*.css                  校验：每个主题块必须定义全部变量
-        ├──► features/settings/customThemeVars.ts  自定义主题可覆盖清单
+        ├──► app/bootstrap/customThemeVars.ts  自定义主题可覆盖清单
         └──► shared/utils/__tests__/themeContract.test.ts   一致性断言
 ```
 

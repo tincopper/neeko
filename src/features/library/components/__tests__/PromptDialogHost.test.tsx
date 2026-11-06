@@ -57,8 +57,9 @@ function promptFixture(over: Partial<PromptResource> & { id: string }): PromptRe
 
 /**
  * 宿主存在的理由：三个 prompt 弹窗的开关是**全局 store 状态**，触发点却不只在 Library 视图
- * （状态栏 Prompts chip、命令面板）。渲染点一旦落在懒挂载的 `LibraryPanel` 里，flag 翻起时
- * 没有消费者 ⇒ 弹窗不出现、`openVariableDialog` 的 Promise 永久悬挂、插入静默丢失。
+ * （状态栏 Prompts chip、命令面板）。渲染点一旦落在中心视图子树里（settings 视图整体卸载、
+ * 历史上 Library 还要等首进才挂载），flag 翻起时没有消费者 ⇒ 弹窗不出现、
+ * `openVariableDialog` 的 Promise 永久悬挂、插入静默丢失。
  * 下列用例即该缺陷（store 驱动弹窗必须有应用级唯一渲染点）的回归守卫 —— 全部**不挂** LibraryPanel。
  */
 describe('PromptDialogHost — prompt 弹窗的唯一渲染点', () => {

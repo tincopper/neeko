@@ -37,7 +37,7 @@ import {
 
 /**
  * 设置边界解析：未知 / 缺字段一律回落 `auto`
- *（`#[serde(default)]` 语义的 TS 侧；`useAppConfig.mergeLspConfig` 经此接入）。
+ *（`#[serde(default)]` 语义的 TS 侧；`useAppConfigOwner` 经此接入）。
  */
 export function parseImportStrategy(v: unknown): LspImportStrategy {
   if (v === 'auto' || v === 'ask' || v === 'never') return v;
@@ -48,7 +48,7 @@ export function parseImportStrategy(v: unknown): LspImportStrategy {
  * 当前策略的模块级同步缓存（`languageMap.customExtMap` 同款模式）。
  *
  * 补全源跑在 CM6 回调里（无 React 上下文），只能同步读取。写入方唯一：
- * `useAppConfig`（启动加载 + 保存时同步，单写点）。默认 `auto` = 同步遗漏时
+ * `useAppConfigOwner`（启动加载 + 保存时同步，单写点）。默认 `auto` = 同步遗漏时
  * fail-open 到现状行为。
  */
 let currentStrategy: LspImportStrategy = 'auto';

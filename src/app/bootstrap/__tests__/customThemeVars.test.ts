@@ -1,11 +1,11 @@
 /**
- * 自定义主题 CSS 变量应用/清理的直测（从 useAppConfig 抽出的纯副作用模块）。
+ * 自定义主题 CSS 变量应用/清理的直测（`configProjection` 的 DOM 写助手）。
  *
  * 契约：应用新主题前必须清理上一次应用的键，否则未覆盖的旧变量会残留。
  */
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { applyCustomCssVars, clearCustomCssVars } from '@/features/settings/customThemeVars';
+import { applyCustomCssVars, clearCustomCssVars } from '../customThemeVars';
 
 describe('customThemeVars', () => {
   afterEach(() => {

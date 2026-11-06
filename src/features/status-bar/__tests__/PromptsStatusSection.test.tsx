@@ -251,8 +251,8 @@ describe('PromptsStatusSection', () => {
   });
 
   /**
-   * 缺陷回归守卫：弹窗开关是全局 store 状态，触发点在状态栏，而 Library 视图是**懒挂载**的
-   * （`AppCenter.tsx:38-44,61-73`，本次会话没进过 Library 就没有渲染点）。此前只断言
+   * 缺陷回归守卫：弹窗开关是全局 store 状态，触发点在状态栏，而中心视图是**按视图条件挂载**的
+   * （`AppCenter` 的 settings 分支整体卸载；历史上 Library 还要等首次进入才有渲染点）。此前只断言
    * `variableDialogOpen === true` ⇒ 弹窗没出现、Promise 永久悬挂、插入静默丢失，测试照样绿。
    * 这里渲染 chip + 全局宿主，走真实表单流程（全程不挂 LibraryPanel）。
    */

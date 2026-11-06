@@ -114,7 +114,7 @@ export interface LoadedAppConfig {
   needsCustomThemeVars: boolean;
 }
 
-/** `saveConfig` 接受的两种入参（见 `useAppConfig.saveConfig` 的文档）。 */
+/** `saveConfig` 接受的两种入参（见 `useAppConfigOwner.saveConfig` 的文档）。 */
 
 export function normalizeLoadedConfig(loaded: unknown): LoadedAppConfig {
   const saved: PartialLoadedConfig =

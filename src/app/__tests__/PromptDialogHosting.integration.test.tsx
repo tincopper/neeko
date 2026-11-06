@@ -8,7 +8,7 @@ import { AppProvider, TerminalInsertProvider } from '@/shared/contexts';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 
-// Center views stubbed: the test cares about「宿主是否随中心视图懒挂载」, not the views themselves.
+// Center views stubbed: the test cares about「宿主是否依赖中心视图提供渲染点」, not the views themselves.
 vi.mock('@/app/components/ProjectView', () => ({
   default: () => <div data-testid="view-workspace">Workspace</div>,
 }));
@@ -42,12 +42,13 @@ const NO_PROPS = {} as React.ComponentProps<typeof AppModals>;
 
 /**
  * Prompt 弹窗是「store 驱动 + 触发点在状态栏/命令面板」的全局浮层，其渲染点必须在
- * **与中心视图无关**的组合层（`AppShell` → `AppModals`）。历史缺陷：渲染点落在懒挂载的
- * Library 面板里 ⇒ 首次会话不进 Library 时 `variableRequest` 翻起却没有消费者，弹窗不出现、
- * Promise 永久悬挂、插入静默丢失（状态栏 Prompts 的 Fill Variables 正是这样漏掉的）。
+ * **与中心视图无关**的组合层（`AppShell` → `AppModals`）。历史缺陷：渲染点落在中心视图子树
+ * （当时首次进入 Library 才挂载）⇒ `variableRequest` 翻起却没有消费者，弹窗不出现、Promise
+ * 永久悬挂、插入静默丢失（状态栏 Prompts 的 Fill Variables 正是这样漏掉的）。
  *
  * 本文件把真宿主（`AppModals`）与真中心路由（`AppCenter`）放在同一棵树里，钉住两条不变量：
- * 1. Library 未挂载时弹窗照样渲染（`view-library` 缺席）；
+ * 1. 弹窗不依赖 Library 提供渲染点：normal 视图 Library 常驻但 hidden，settings 视图整棵
+ *    中心子树被卸载，两种情形下弹窗照样渲染；
  * 2. 弹窗经 portal 挂在 `document.body`，**不在任何中心视图子树内** —— 因此切到 `settings`
  *    （`AppCenter` 条件渲染、卸载 workspace / library）也不受影响（AC1/AC3）。
  */
@@ -70,8 +71,15 @@ describe('prompt 弹窗宿主与中心视图解耦', () => {
         </AppProvider>,
       );
 
-      // 前置：Library 面板确实没有挂载（首次会话从未进入 library 视图）。
-      expect(screen.queryByTestId('view-library')).not.toBeInTheDocument();
+      // 前置：normal 视图 Library 子树常驻但隐藏；settings 视图整体卸载中心子树。
+      // 两种情形都不允许弹窗依赖 Library 提供渲染点。
+      if (appView === 'normal') {
+        const library = await screen.findByTestId('view-library');
+        // eslint-disable-next-line testing-library/no-node-access
+        expect(library.parentElement?.classList.contains('hidden')).toBe(true);
+      } else {
+        expect(screen.queryByTestId('view-library')).not.toBeInTheDocument();
+      }
       const centerTestId = appView === 'settings' ? 'view-settings' : 'view-workspace';
       const centerView = screen.getByTestId(centerTestId);
       expect(centerView).toBeInTheDocument();

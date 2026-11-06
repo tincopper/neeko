@@ -205,7 +205,7 @@ export interface TypographyTokens {
 
 /**
  * 单一写入口：把生效字体栈 / 字号 / 行高写入 CSS 变量。
- * useAppConfig 是唯一调用方；CSS 消费者与 Tailwind `font-mono` 类自动跟随。
+ * `app/bootstrap/configProjection.projectTypography` 是唯一调用方；CSS 消费者与 Tailwind `font-mono` 类自动跟随。
  */
 export function syncTypographyTokens(tokens: TypographyTokens): void {
   const root = document.documentElement;

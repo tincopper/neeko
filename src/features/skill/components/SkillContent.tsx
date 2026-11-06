@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 
 import { useSkillStore } from '@/features/skill/store';
+import { useVisible } from '@/shared/contexts';
 
 import AgentSkillContent from './AgentSkillContent';
 import AssignTagGroupDialog from './AssignTagGroupDialog';
@@ -27,11 +28,15 @@ const SkillContent: React.FC<{ titleless?: boolean }> = React.memo(({ titleless 
   const addSkillToTagGroup = useSkillStore((s) => s.addSkillToTagGroup);
   const createTagGroup = useSkillStore((s) => s.createTagGroup);
 
+  // 常驻挂载但可能隐藏：首次可见才拉取（隐藏态不花启动期 IPC，见 `VisibilityScope`）
+  const visible = useVisible();
+  const fetchedRef = useRef(false);
   useEffect(() => {
+    if (!visible || fetchedRef.current) return;
+    fetchedRef.current = true;
     void refreshSkills();
     void refreshTagGroups();
-  }, [refreshSkills, refreshTagGroups]);
-
+  }, [visible, refreshSkills, refreshTagGroups]);
   const [dialog, setDialog] = useState<SkillDialogState>(null);
   const closeDialog = useCallback(() => setDialog(null), []);
 

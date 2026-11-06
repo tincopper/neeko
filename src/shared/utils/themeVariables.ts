@@ -8,7 +8,7 @@
  * | 位置 | 数量 | 用途 |
  * | --- | --- | --- |
  * | `styles/themes/*.css` 的 5 个主题文件 | 59 | CSS 定义 |
- * | `features/settings/customThemeVars.ts` 的 `CUSTOM_CSS_VARS` | **31** | 自定义主题可覆盖哪些 |
+ * | `app/bootstrap/customThemeVars.ts` 的 `CUSTOM_CSS_VARS` | **31** | 自定义主题可覆盖哪些 |
  * | `styles/__tests__/themeTokens.test.ts` | 若干 | 校验主题文件完整性 |
  *
  * 后果是实测出来的：用户做自定义主题后，**28 个变量无法覆盖** ——
@@ -165,7 +165,7 @@ export const CUSTOM_THEME_EXCLUDED: readonly string[] = [];
 /**
  * 自定义主题允许覆盖的变量 = 契约全集 − 排除项。
  *
- * 消费方：`features/settings/customThemeVars.ts`（写入 `documentElement`）。
+ * 消费方：`app/bootstrap/customThemeVars.ts`（写入 `documentElement`）。
  *
  * 注意 `--font-*` / `--line-height-*` 不在契约里：它们由 `syncTypographyTokens`
  * 在运行期写入，不属于「主题配色」范畴。

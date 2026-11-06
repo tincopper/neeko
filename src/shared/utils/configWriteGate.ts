@@ -20,14 +20,14 @@
  *
  * | 写入面 | 入口 | 排队处 | 读在哪 |
  * | --- | --- | --- | --- |
- * | 设置页各面板（外观 / 快捷键 / LSP …） | `useAppConfig.saveConfig` | 写点内部 | **临界区内** |
+ * | 设置页各面板（外观 / 快捷键 / LSP …） | `useAppConfigOwner.saveConfig` | 写点内部 | **临界区内** |
  * | CLI hook 逐项开关 | `CliHooksSection` → `patchConfig` | `patchConfig` 内部 | **临界区内** |
  * | 隐藏 agent 开关 | `useHiddenAgentToggle` → `saveConfig` | 写点内部 | **临界区内**（updater 形态） |
  * | 通知设置 | `notification_settings_set`（后端 RMW） | 本组件 | 后端一次 IPC 内 |
  * | 项目引导状态 | `onboardingApi.saveOnboardingState` | 模块内 | 临界区内 |
  * | AgentSelector 偏好 | `AgentSelector.saveConfigToBackend` | 模块内 | 临界区内 |
  *
- * **关键约定**：`useAppConfig.saveConfig` 是「整份 AppConfig」的唯一写点，它**自己**
+ * **关键约定**：`useAppConfigOwner.saveConfig` 是「整份 AppConfig」的唯一写点，它**自己**
  * 在队列内重新读盘并把增量盖在磁盘现值上。因此经它写入的调用方**不得**再包一层
  * `runConfigWrite` —— 那会在队列内二次入队，**自我等待成死锁**
  *（`__tests__/configWriteGate.test.ts` 有专门的死锁反证用例）。

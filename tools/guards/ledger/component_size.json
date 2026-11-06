@@ -4,6 +4,7 @@
   "baseline": {
     "src/app/components/ProjectView.tsx": 300,
     "src/app/hooks/buildAppShellValues.ts": 316,
+    "src/app/hooks/useAppConfigOwner.ts": 130,
     "src/app/hooks/useAppShellData.ts": 394,
     "src/features/agent-chat/hooks/useAgentChat.ts": 484,
     "src/features/agent-chat/hooks/useMockEventSchedule.ts": 367,
@@ -41,7 +42,6 @@
     "src/features/settings/components/SettingsView.tsx": 343,
     "src/features/settings/components/ShortcutPanel.tsx": 312,
     "src/features/settings/components/useSettingsPanelState.ts": 422,
-    "src/features/settings/hooks/useAppConfig.ts": 149,
     "src/features/skill/components/AgentSkillCard.tsx": 334,
     "src/features/skill/components/AgentSkillContent.tsx": 905,
     "src/features/skill/components/AssignTagGroupDialog.tsx": 335,

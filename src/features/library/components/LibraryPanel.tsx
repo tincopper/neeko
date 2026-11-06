@@ -3,6 +3,7 @@ import { usePanelRef, type Layout, type LayoutChangedMeta } from 'react-resizabl
 
 import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { ISLAND_SPLIT_GROUP_CLASS } from '@/layout/islands';
+import { useVisible } from '@/shared/contexts';
 import type { PromptInsertTarget, PromptResource } from '@/shared/types/library';
 import { ISLAND_CLASS } from '@/ui/Island';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/ui/Resizable';
@@ -26,10 +27,14 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
   const navSize = useLibraryStore((s) => s.navSize);
   const setNavSize = useLibraryStore((s) => s.setNavSize);
   const navPanelRef = usePanelRef();
+  const visible = useVisible();
 
+  // 常驻挂载但可能隐藏：拉取按可见性门控（隐藏态不花启动期的 IPC），
+  // 每次变为可见时刷新一次 —— 与「再次激活时后台刷新」同一语义，只有一个机制。
   useEffect(() => {
+    if (!visible) return;
     void refreshPrompts();
-  }, [refreshPrompts]);
+  }, [visible, refreshPrompts]);
 
   // ── Split persistence（与 DockLayout 同一标准：Group 级 onLayoutChanged pointer-up
   // 语义 + isUserInteraction 过滤程序性变化，store 写入不与拖动并发）──

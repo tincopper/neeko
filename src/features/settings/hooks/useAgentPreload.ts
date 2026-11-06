@@ -7,7 +7,7 @@ import { useAgentStore } from '@/shared/store/agentStore';
  *
  * # 为什么独立成 hook
  *
- * `useAppConfig` 受 `check_component_size` 的 ratchet 约束（只许缩小）。这段
+ * `useAppConfigOwner` 受 `check_component_size` 的 ratchet 约束（只许缩小）。这段
  * 逻辑与配置加载**互不依赖**：不 await、不读 `load_config` 的结果、失败也不
  * 中断启动。混在一起会让配置 hook 为一件无关的事增长。
  *

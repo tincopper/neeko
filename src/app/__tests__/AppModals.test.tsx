@@ -45,7 +45,8 @@ function renderModals() {
 /**
  * `AppModals` 是应用级浮层的唯一组合层（`AppShell.tsx:56`，常驻、与中心视图无关）。
  * 两组断言守同一条不变量：**store 驱动的弹窗必须在这里有渲染点**。渲染点一旦落到
- * 懒挂载的面板里，flag 翻起时就没有消费者 —— 弹窗不出现、Promise 永久悬挂、用户点了
+ * 「按视图条件挂载」的面板里（settings 分支会卸载整棵中心子树），flag 翻起时就没有消费者
+ * —— 弹窗不出现、Promise 永久悬挂、用户点了
  * 没反应（状态栏 Prompts 的「Fill Variables」正是这样漏掉的）。
  */
 describe('AppModals — 全局弹窗宿主', () => {

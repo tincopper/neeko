@@ -1,53 +1,34 @@
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense } from 'react';
 
 import ProjectView from '@/app/components/ProjectView';
-import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { SettingsView } from '@/features/settings';
-import { ISLAND_SPLIT_GROUP_CLASS } from '@/layout/islands';
 import { cn } from '@/lib/utils';
+import { VisibilityScope } from '@/shared/contexts';
 import { useAppViewStore } from '@/shared/store/appViewStore';
-import { ISLAND_CLASS, Island } from '@/ui/Island';
+import { Island } from '@/ui/Island';
 
 /** Lazy LibraryPanelWrapper — same chunk-splitting as the dock registry. */
 const LazyLibraryPanel = lazy(() => import('@/app/dock/wrappers/LibraryPanelWrapper'));
 
-/** 中心内容统一的外层容器类。 */
-const CENTER_WRAPPER_CLASS = 'flex-1 flex flex-col overflow-hidden';
-
-/** 首载骨架：与 Library 双岛同构，避免 Suspense 文本闪烁（空闲预载后几乎不可见）。 */
-function LibrarySkeleton() {
-  return (
-    <div className={`flex-1 min-h-0 flex ${ISLAND_SPLIT_GROUP_CLASS}`} aria-hidden>
-      <div className={`${ISLAND_CLASS} w-60 shrink-0 animate-pulse`} />
-      <div className={`${ISLAND_CLASS} flex-1 animate-pulse`} />
-    </div>
-  );
-}
+/** 中心内容统一的外层容器类。自带底色：任何空帧都不露出 WebView 暗底。 */
+const CENTER_WRAPPER_CLASS = 'flex-1 flex flex-col overflow-hidden bg-bg-primary';
 
 /**
  * 中心视图路由（单一数据源：appViewStore）。
  * - settings：条件渲染（切走即卸载）
  * - normal：ProjectView（常驻）
- * - library：首次进入后常驻（hidden 切换），消除重复挂载 + 数据回填的闪烁；
- *   再次激活时后台刷新（旧列表保持可见，新数据到达后更新）
+ * - library：**启动即常驻**（hidden 切换）。首进不再经过 React.lazy 挂载间隙，
+ *   而此时 enterCenterView 正在折叠左栏触发 ResizablePanel 重排 —— 二者叠加会留下
+ *   一帧没有任何内容绘制的中心区（闪黑）
  * - Skills/Prompts/MCP 统一收敛到 Library（activeKind 切换）
+ *
+ * 常驻的代价是「挂载 ≠ 可见」：子树的 mount 拉取必须按可见性门控，否则从不打开
+ * Library 的用户也在启动期付 IPC。故 Library 子树包在 `VisibilityScope` 里，
+ * 「再次激活时后台刷新」由子树自己按 `useVisible()` 完成（单一机制，不再有第二处）。
  */
 function AppCenter() {
   const appView = useAppViewStore((s) => s.appView);
   const libraryActive = appView === 'library';
-  const [libraryMounted, setLibraryMounted] = useState(
-    () => useAppViewStore.getState().appView === 'library',
-  );
-  if (libraryActive && !libraryMounted) {
-    // 首进后常驻（hidden 切换）：render 阶段派生，避免 effect 内同步 setState
-    setLibraryMounted(true);
-  }
-
-  useEffect(() => {
-    if (libraryActive) {
-      void useLibraryStore.getState().refreshPrompts();
-    }
-  }, [libraryActive]);
 
   let content: React.ReactNode;
   if (appView === 'settings') {
@@ -58,19 +39,20 @@ function AppCenter() {
         <Island className={cn('flex-1 h-full', libraryActive && 'hidden')}>
           <ProjectView />
         </Island>
-        {libraryMounted ? (
-          // Library 自带双岛 + 海面：裸挂（仅 hidden 切换的透明包装），禁止再套岛屿
+        {/* Library 自带双岛 + 海面：裸挂（仅 hidden 切换的透明包装），禁止再套岛屿。
+            启动即在隐藏态挂载 ⇒ chunk 提前解析完，点击只改 display，不产生首帧空绘制。 */}
+        <VisibilityScope visible={libraryActive}>
           <div
             className={cn(
               'flex-1 flex flex-col min-h-0 overflow-hidden',
               !libraryActive && 'hidden',
             )}
           >
-            <Suspense fallback={<LibrarySkeleton />}>
+            <Suspense fallback={null}>
               <LazyLibraryPanel />
             </Suspense>
           </div>
-        ) : null}
+        </VisibilityScope>
       </>
     );
   }

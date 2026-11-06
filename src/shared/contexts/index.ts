@@ -1,4 +1,4 @@
-export { AppProvider, useAppContext } from './AppContext';
+export { AppProvider, useAppContext, useConfig } from './AppContext';
 export { EditorProvider, useEditorContext } from './EditorContext';
 export type { EditorContextValue } from './EditorContext';
 export {
@@ -6,3 +6,4 @@ export {
   useTerminalInsert,
   type TerminalInsertApi,
 } from './TerminalInsertContext';
+export { VisibilityScope, useVisible } from './VisibilityScope';

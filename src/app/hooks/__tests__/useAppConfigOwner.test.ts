@@ -2,23 +2,42 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { getLspImportStrategy, setLspImportStrategy } from '@/features/lsp/api/lspImportStrategy';
-import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
+import { clearCustomThemeVarsCache } from '@/features/settings/api/customThemeResolver';
 import { invoke } from '@/testing/tauriCore';
+
+import { useAppConfigOwner } from '../useAppConfigOwner';
 
 const mockInvoke = vi.mocked(invoke);
 
-describe('useAppConfig', () => {
+describe('useAppConfigOwner', () => {
   beforeEach(() => {
     mockInvoke.mockReset();
+    // 变量表缓存是进程级的（owner 恰好一个后语义等价）：测试间必须显式清空
+    clearCustomThemeVarsCache();
   });
 
   afterEach(() => {
     setLspImportStrategy('auto');
   });
 
+  it('config 加载完成前 hydrated=false，完成后 true（splash 覆盖加载窗口）', async () => {
+    mockInvoke.mockResolvedValue({});
+    const { result } = renderHook(() => useAppConfigOwner());
+    expect(result.current.hydrated).toBe(false);
+    await waitFor(() => expect(result.current.hydrated).toBe(true));
+  });
+
+  it('load_config 失败也必须 hydrated=true（不能把窗口永久卡在 splash）', async () => {
+    mockInvoke.mockRejectedValue(new Error('load failed'));
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(() => useAppConfigOwner());
+    await waitFor(() => expect(result.current.hydrated).toBe(true));
+    spy.mockRestore();
+  });
+
   it('初始状态使用默认配置', () => {
     mockInvoke.mockResolvedValue({});
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     expect(result.current.config.appearanceFontSize).toBe(12);
     expect(result.current.config.editorFontSize).toBe(14);
@@ -43,7 +62,7 @@ describe('useAppConfig', () => {
       customAgents: [],
     });
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(result.current.config.appearanceFontSize).toBe(13);
@@ -60,7 +79,7 @@ describe('useAppConfig', () => {
   it('load_config 返回空对象时使用默认值', async () => {
     mockInvoke.mockResolvedValue({});
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(result.current.config.appearanceFontSize).toBe(12);
@@ -75,7 +94,7 @@ describe('useAppConfig', () => {
     mockInvoke.mockResolvedValue({
       editorGitChangeHighlight: null,
     });
-    const { result, rerender } = renderHook(() => useAppConfig());
+    const { result, rerender } = renderHook(() => useAppConfigOwner());
     await waitFor(() => {
       expect(result.current.config.editorGitChangeHighlight).toBe(true);
     });
@@ -89,7 +108,7 @@ describe('useAppConfig', () => {
 
   it('editorGitChangeHighlight 显式 false 被保留', async () => {
     mockInvoke.mockResolvedValue({ editorGitChangeHighlight: false });
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
     await waitFor(() => {
       expect(result.current.config.editorGitChangeHighlight).toBe(false);
     });
@@ -99,7 +118,7 @@ describe('useAppConfig', () => {
     mockInvoke.mockRejectedValue(new Error('load failed'));
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(spy).toHaveBeenCalled();
@@ -118,7 +137,7 @@ describe('useAppConfig', () => {
       shell: 123,
     });
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(result.current.config.appearanceFontSize).toBe(12); // 回退
@@ -135,7 +154,7 @@ describe('useAppConfig', () => {
       diffMode: 'unified',
     });
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(result.current.config.terminalFontSize).toBe(18); // 迁移
@@ -150,7 +169,7 @@ describe('useAppConfig', () => {
       terminalFontSize: 16, // 已有新字段
     });
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       // 已有 terminalFontSize，不应被旧 fontSize 覆盖
@@ -188,7 +207,7 @@ describe('useAppConfig', () => {
       return {} as never;
     });
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
     await waitFor(() => expect(result.current.config.appearanceFontSize).toBe(13));
 
     // 模拟用户在设置页改一个字号（走同一条保存链）。
@@ -208,7 +227,7 @@ describe('useAppConfig', () => {
   it('通过 invoke 保存配置', async () => {
     mockInvoke.mockResolvedValue(undefined);
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     const newConfig = {
       ...result.current.config,
@@ -226,7 +245,7 @@ describe('useAppConfig', () => {
     mockInvoke.mockRejectedValue(new Error('save failed'));
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await act(async () => {
       await expect(
@@ -247,7 +266,7 @@ describe('useAppConfig', () => {
       if (cmd === 'list_custom_themes') return [];
       return undefined;
     });
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     // Wait for initial load_config effect to settle
     await waitFor(() => {
@@ -286,7 +305,7 @@ describe('useAppConfig', () => {
   it('配置不变时浅比较避免重渲染', async () => {
     mockInvoke.mockResolvedValue({});
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     const before = result.current.config;
 
@@ -302,7 +321,7 @@ describe('useAppConfig', () => {
   it('appearanceFontSize 变化时同步 CSS 变量 --font-size', async () => {
     mockInvoke.mockResolvedValue({});
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(document.documentElement.style.getPropertyValue('--font-size')).toBe('12px');
@@ -319,7 +338,7 @@ describe('useAppConfig', () => {
   it('terminalFontSize 变化时同步 CSS 变量 --terminal-font-size', async () => {
     mockInvoke.mockResolvedValue({});
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(document.documentElement.style.getPropertyValue('--terminal-font-size')).toBe('14px');
@@ -338,7 +357,7 @@ describe('useAppConfig', () => {
       fontFamily: 'Fira Code',
     });
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(result.current.config.monoFontFamily).toBe('Fira Code');
@@ -349,7 +368,7 @@ describe('useAppConfig', () => {
   it('saveConfig 时 monoFontFamily 同步写回 fontFamily 保持向后兼容', async () => {
     mockInvoke.mockResolvedValue({});
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(result.current.config.monoFontFamily).toBe('');
@@ -381,7 +400,7 @@ describe('useAppConfig', () => {
       return undefined;
     });
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(result.current.config.lsp.autoStart).toBe('manual');
@@ -406,7 +425,7 @@ describe('useAppConfig', () => {
       return undefined;
     });
 
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(result.current.config.lsp.importStrategy).toBe('never');
@@ -420,7 +439,7 @@ describe('useAppConfig', () => {
       if (cmd === 'list_custom_themes') return [];
       return undefined;
     });
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
 
     await waitFor(() => {
       expect(result.current.config.lsp).toBeDefined();
@@ -452,7 +471,7 @@ describe('useAppConfig', () => {
 
   it('watcherExclude 缺字段时默认为空数组', async () => {
     mockInvoke.mockResolvedValue({});
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
     await waitFor(() => {
       expect(result.current.config.watcherExclude).toEqual([]);
     });
@@ -460,7 +479,7 @@ describe('useAppConfig', () => {
 
   it('watcherExclude 合法数组被保留', async () => {
     mockInvoke.mockResolvedValue({ watcherExclude: ['target/', '**/node_modules/**'] });
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
     await waitFor(() => {
       expect(result.current.config.watcherExclude).toEqual(['target/', '**/node_modules/**']);
     });
@@ -468,7 +487,7 @@ describe('useAppConfig', () => {
 
   it('watcherExclude 非数组时归一为空数组', async () => {
     mockInvoke.mockResolvedValue({ watcherExclude: 'target/' });
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
     await waitFor(() => {
       expect(result.current.config.watcherExclude).toEqual([]);
     });
@@ -476,9 +495,91 @@ describe('useAppConfig', () => {
 
   it('watcherExclude 非字符串项被过滤，合法项保序', async () => {
     mockInvoke.mockResolvedValue({ watcherExclude: [1, null, 'dist/', '**/target/**'] });
-    const { result } = renderHook(() => useAppConfig());
+    const { result } = renderHook(() => useAppConfigOwner());
     await waitFor(() => {
       expect(result.current.config.watcherExclude).toEqual(['dist/', '**/target/**']);
     });
+  });
+
+  /**
+   * 回归（2026-11 审查）：自定义主题的变量表是主题的另一半。若先提交主题名再等变量，
+   * 中间那一帧就是 `data-theme` 已换、CSS 变量还没写 —— 自定义主题的配色只存在于变量里，
+   * 那一帧等于无配色。
+   */
+  it('自定义主题：变量未到达前不得先换主题名（投影原子性）', async () => {
+    let releaseVars: (data: unknown) => void = () => {};
+    const varsGate = new Promise((resolve) => {
+      releaseVars = resolve;
+    });
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'load_config') return { theme: 'dark' } as never;
+      if (cmd === 'list_custom_themes') return [] as never;
+      if (cmd === 'get_custom_theme') return varsGate as never;
+      return undefined as never;
+    });
+
+    const { result } = renderHook(() => useAppConfigOwner());
+    await waitFor(() => expect(result.current.hydrated).toBe(true));
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+
+    let saving: Promise<void> = Promise.resolve();
+    act(() => {
+      saving = result.current.saveConfig({ ...result.current.config, theme: 'my-theme' });
+    });
+    // 变量还没回来：主题名必须原封不动（保留上一帧，而不是写半套主题）
+    await Promise.resolve();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+
+    releaseVars({ variables: { 'bg-primary': '#123456' } });
+    await act(async () => {
+      await saving;
+    });
+
+    expect(document.documentElement.getAttribute('data-theme')).toBe('my-theme');
+    expect(document.documentElement.style.getPropertyValue('--bg-primary')).toBe('#123456');
+  });
+
+  it('自定义主题变量拿不到时不写半套主题（DOM 保留上一帧 + 告警）', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'load_config') return { theme: 'dark' } as never;
+      if (cmd === 'list_custom_themes') return [] as never;
+      if (cmd === 'get_custom_theme') return null as never;
+      return undefined as never;
+    });
+
+    const { result } = renderHook(() => useAppConfigOwner());
+    await waitFor(() => expect(result.current.hydrated).toBe(true));
+
+    await act(async () => {
+      await result.current.saveConfig({ ...result.current.config, theme: 'missing-theme' });
+    });
+
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  /**
+   * 兜底：`load_config` 悬挂（后端卡死 / IPC 不返回）时窗口不能被永久卡在 splash。
+   * 这是 `initializing = sessionInitializing || !hydrated` 这条门控的必要配对条件。
+   */
+  it('load_config 悬挂时 3s 兜底退出加载态', () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockInvoke.mockImplementation(() => new Promise(() => {}) as never);
+
+    const { result } = renderHook(() => useAppConfigOwner());
+    expect(result.current.hydrated).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(result.current.hydrated).toBe(true);
+    expect(warn).toHaveBeenCalled();
+
+    warn.mockRestore();
+    vi.useRealTimers();
   });
 });

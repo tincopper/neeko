@@ -5,8 +5,8 @@ import {
   isBuiltinTheme,
   mergeLspConfig,
   normalizeLoadedConfig,
-} from '@/features/settings/hooks/appConfigNormalize';
-import { applyConfigSave, persistConfigSave } from '@/features/settings/hooks/appConfigSave';
+} from '@/features/settings/api/appConfigNormalize';
+import { applyConfigSave, persistConfigSave } from '@/features/settings/api/appConfigSave';
 import { __resetConfigWriteGateForTests } from '@/shared/utils/configWriteGate';
 
 describe('appConfigNormalize', () => {

@@ -17,7 +17,7 @@ import {
   useWorkspaceState,
 } from '@/features/project';
 import { useSessionBootstrap, useSessionPersistence } from '@/features/session';
-import { useAgentPreload, useAppConfig } from '@/features/settings';
+import { useAgentPreload } from '@/features/settings';
 import { useApplyProjectSkills } from '@/features/skill';
 import { CLOSE_TAB_EVENT } from '@/shared/events';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
@@ -29,6 +29,7 @@ import type { ToolbarFooterProps } from '../components/ToolbarFooter';
 
 import { type AppShellData } from './buildAppShellValues';
 import { closeActiveTabCommand } from './closeActiveTabCommand';
+import { useAppConfigOwner } from './useAppConfigOwner';
 import { useAppEntryAddRefresh } from './useAppEntryAddRefresh';
 import { useAppInitialGitRefresh } from './useAppInitialGitRefresh';
 import { useAppStoreSync } from './useAppStoreSync';
@@ -51,7 +52,7 @@ export interface UseAppShellDataResult extends AppShellData {
  * （无条件调用、注册时机不变）。
  */
 export function useAppShellData(): UseAppShellDataResult {
-  const { config, saveConfig, customThemes } = useAppConfig();
+  const { config, saveConfig, customThemes, hydrated } = useAppConfigOwner();
   // agent 配置缓存的启动期预热（终端在未命中时不启动 agent，见 agentStore）。
   useAgentPreload();
   // 与命令式 handler（app 层在 Provider 之外装配的入口）共用同一个映射 —— 不是第二份实现
@@ -176,10 +177,13 @@ export function useAppShellData(): UseAppShellDataResult {
 
   // 当前视图所在Workspace → 后端可见集合的唯一写者（声明式 reconcile，C4）
   useVisibleWorkspaces();
-  const { initializing } = useSessionBootstrap({
+  const { initializing: sessionInitializing } = useSessionBootstrap({
     loadProjects,
     restoreWorktreeState: session.restoreWorktreeState,
   });
+  // splash 覆盖 config 加载窗口：首帧主题 hint 与权威 config 在此期间对齐，
+  // 用户不会看到 DEFAULT_CONFIG → 已保存主题 的可见翻转（AC4）。
+  const initializing = sessionInitializing || !hydrated;
   useFileTabRefresh();
 
   // 启动完成后为缺失 git_info 的 WSL/远程项目补一轮 git 刷新（仅一次）

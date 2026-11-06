@@ -13,7 +13,7 @@ export type ToggleHiddenAgent = (agentId: string) => void;
  * 它是 `config.json` 的一个**独立写入面**，且需要「读-改-写」。把它从组合根里拿出来
  * 有两个效果：组合根只负责接线；本文件的契约有自己的落点，改它不必碰 400 行的文件。
  *
- * ## 并发契约（与 `useAppConfig.saveConfig` 的分工）
+ * ## 并发契约（与 `useAppConfigOwner.saveConfig` 的分工）
  *
  * - **串行化 + 读盘合并**由写点 `saveConfig` 负责（它在 `runConfigWrite` 内重新读盘，
  *   把增量盖在磁盘现值上）。故本 hook **不得**再包一层 `runConfigWrite` ——

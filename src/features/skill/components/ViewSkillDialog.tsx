@@ -12,10 +12,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 import { revealInFileManager } from '@/features/file/api/fileApi';
-import { useAppConfig } from '@/features/settings';
 import { getSkillDocumentAtPath } from '@/features/skill/api/skillApi';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
+import { useConfig } from '@/shared/contexts';
 import type { AgentDiskSkill, ManagedSkillDto } from '@/shared/types';
 import { Button, Badge } from '@/ui';
 import { MarkdownPreview } from '@/ui/MarkdownPreview';
@@ -57,7 +57,7 @@ function sourceTypeLabel(type: string) {
 
 const ViewSkillDialog: React.FC<ViewSkillDialogProps> = React.memo(
   ({ open, skill, diskSkill = null, onClose }) => {
-    const { config } = useAppConfig();
+    const theme = useConfig((c) => c.theme); // 只读；勿调旧 owner hook（第二个 owner 会翻转主题闪黑）
     const [content, setContent] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -304,7 +304,7 @@ const ViewSkillDialog: React.FC<ViewSkillDialogProps> = React.memo(
             </div>
           ) : (
             <div className="p-4">
-              <MarkdownPreview content={content} theme={config.theme} basePath={basePath} />
+              <MarkdownPreview content={content} theme={theme} basePath={basePath} />
             </div>
           )}
         </div>
