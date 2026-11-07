@@ -1201,3 +1201,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 438: Agent Team：分配 flow 图 + persona 角色库（v19）
+<!-- trellis-session: v=2 fp=4a94c6d5bde75653 -->
+
+**Date**: 2026-11-07
+**Task**: Agent Team：分配 flow 图 + persona 角色库（v19）
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `913717c4` | docs(spec): record center frame, surface layering and copy language rules |
+
+### Status
+
+[OK] **Completed**
