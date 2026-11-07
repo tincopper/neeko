@@ -281,3 +281,91 @@ unit_scope 归属判定不再借宿主 Path；NEEKO_DB_DIR 覆写夹具改由 te
 ### Next Steps
 
 - src-tauri/AGENTS.md 只剩 78 B 头寸（14,307 / 14,385），下次加规则须先删旧句
+
+
+## Session 435: 修复：.gitignore 规则变化后文件树灰显不刷新（TreeChangeMsg::FullRefresh）
+<!-- trellis-session: v=2 fp=a81105557e0df501 -->
+
+**Date**: 2026-11-07
+**Task**: 修复：.gitignore 规则变化后文件树灰显不刷新（TreeChangeMsg::FullRefresh）
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- callbacks.rs rules_changed 分支经 tree-debounce 发 TreeChangeMsg::FullRefresh（emit 空 dirs=前端全树兜底）；tree 通道改枚举消息，debounce 全量请求压过定向集合；新增回调层 2 条 + debounce 层 3 条测试
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test file::watcher 140 全绿（Red→Green）；pnpm check:quick 11/11 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- WSL/Remote 无本地 watcher，ignored 仍靠 30s TTL + 手动刷新；发现 invalidate_local_gitignore_cache 无生产调用点（注释声称 core.rs 驱动，疑似漂移），待核实
+
+
+## Session 436: 接回 invalidate_local_gitignore_cache 失效点（rules_changed 分支）+ 修 4 处漂移注释
+<!-- trellis-session: v=2 fp=c322927e50561f35 -->
+
+**Date**: 2026-11-07
+**Task**: 接回 invalidate_local_gitignore_cache 失效点（rules_changed 分支）+ 修 4 处漂移注释
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- rules_changed 分支接入读层过滤器缓存失效（200f6918 删 worktree 回调时断线的驱动者）；tree_read.rs 4 处注释修正（驱动者改指 rules_changed 分支；根不匹配分支前提已随 per-unit 挂载退役，登记不可达+防御性保留；未挂载窗口无事件源登记为已知边界）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 新测试 gitignore_change_invalidates_read_layer_filter_cache Red→Green；watcher 模块 141 全绿；check:quick 12/12
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 437: neeko-check 问题清单优化：消息吸收逻辑 3 处重复单点化 + 注释修正
+<!-- trellis-session: v=2 fp=49abf8825c319fb9 -->
+
+**Date**: 2026-11-07
+**Task**: neeko-check 问题清单优化：消息吸收逻辑 3 处重复单点化 + 注释修正
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- debounce.rs 抽象 absorb_tree_change（首条/drain/静默窗口三消费点唯一匹配点，新 variant 单点扩展）；callbacks.rs 注释去 commit hash 改引 spec W2；callback_tests 并发窗口量化分析落注释；文件头约束措辞修正
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] 重构后 watcher 141 全绿（行为不变），check:quick 12/12
+
+### Status
+
+[OK] **Completed**

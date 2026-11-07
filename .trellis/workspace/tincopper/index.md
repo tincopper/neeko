@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 434
-- **Last Active**: 2026-11-06
+- **Total Sessions**: 437
+- **Last Active**: 2026-11-07
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~283 | Active |
+| `journal-9.md` | ~371 | Active |
 | `journal-8.md` | ~1971 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,9 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 437 | 2026-11-07 | neeko-check 问题清单优化：消息吸收逻辑 3 处重复单点化 + 注释修正 | - | `main` |
+| 436 | 2026-11-07 | 接回 invalidate_local_gitignore_cache 失效点（rules_changed 分支）+ 修 4 处漂移注释 | - | `main` |
+| 435 | 2026-11-07 | 修复：.gitignore 规则变化后文件树灰显不刷新（TreeChangeMsg::FullRefresh） | - | `main` |
 | 434 | 2026-11-06 | 把平台无关性变成机器判据：2 条新护栏 + abs_fixture | `9b2aa0fd`, `b47bd2fb`, `53b8e6e2` | `main` |
 | 433 | 2026-11-06 | 修 Windows CI：hook 模板锚点不得赌 checkout 换行 | `347e962f`, `bafe46a5` | `main` |
 | 432 | 2026-11-06 | config-owner-singleton 归档前复核：补 AC6 断言 + AC8 对账 | `e57f57e5`, `70428cf6`, `a13e9a7d`, `806237cc` | `main` |
