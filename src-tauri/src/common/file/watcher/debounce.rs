@@ -164,13 +164,43 @@ fn push_parent_dir(dirs: &mut Vec<String>, path: &std::path::Path, project_root:
     }
 }
 
-/// 双窗口等待的路径收集版：窗口内持续吸收新路径并更新父目录集合。
+/// tree-debounce 通道消息。
+///
+/// 两条入口共用一个防抖线程：结构变更路径做定向刷新（S2-1：事件携带受影响
+/// 目录，前端只重载命中桶），全量刷新请求复用「空 dirs = 前端全树兜底」语义
+/// （与 watcher overflow 同款）。
+#[derive(Debug, PartialEq)]
+pub(super) enum TreeChangeMsg {
+    /// 结构变更路径（Create/Remove/Rename 目标的绝对路径）→ 聚合父目录定向刷新。
+    Path(PathBuf),
+    /// 全量刷新请求（gitignore 规则变化）：ignored 标注只活在读层快照里，
+    /// 一条根 `.gitignore` 规则可命中**任意深度**的已有节点，定向重载无法覆盖
+    /// → emit 时清空 dirs，前端退回全树刷新。
+    FullRefresh,
+}
+
+/// 单条消息如何更新聚合状态（父目录集合 / 全量标记）—— 首条、drain、静默窗口
+/// 三个消费点共用的**唯一匹配点**；新增 variant 只改这里 + emit 语义。
+fn absorb_tree_change(
+    msg: TreeChangeMsg,
+    dirs: &mut Vec<String>,
+    full_refresh: &mut bool,
+    project_root: &Path,
+) {
+    match msg {
+        TreeChangeMsg::Path(p) => push_parent_dir(dirs, &p, project_root),
+        TreeChangeMsg::FullRefresh => *full_refresh = true,
+    }
+}
+
+/// 双窗口等待的消息收集版：窗口内持续吸收新消息并更新父目录集合 / 全量标记。
 /// 返回 false 表示 channel 已断开。
 fn wait_quiet_window_collect_dirs(
-    rx: &mpsc::Receiver<PathBuf>,
+    rx: &mpsc::Receiver<TreeChangeMsg>,
     trailing_ms: u64,
     max_wait_ms: u64,
     dirs: &mut Vec<String>,
+    full_refresh: &mut bool,
     project_root: &Path,
 ) -> bool {
     let window_start = Instant::now();
@@ -182,9 +212,9 @@ fn wait_quiet_window_collect_dirs(
             return true;
         }
         match rx.recv_timeout(deadline.min(max_deadline) - now) {
-            Ok(path) => {
+            Ok(msg) => {
                 deadline = Instant::now() + Duration::from_millis(trailing_ms);
-                push_parent_dir(dirs, &path, project_root);
+                absorb_tree_change(msg, dirs, full_refresh, project_root);
             }
             Err(mpsc::RecvTimeoutError::Timeout) => return true,
             Err(mpsc::RecvTimeoutError::Disconnected) => return false,
@@ -200,50 +230,76 @@ const TREE_CHANGED_MAX_DIRS: usize = 64;
 
 // ── TreeChangeDebounceSender：文件树结构变更防抖（Create/Remove/Rename） ───────
 
-/// 收到变更路径后收集其父目录，双窗口结束后按目录集合 emit `file-tree-changed`
-/// （S2-1：事件携带受影响目录，前端只重载命中桶，不再全树重扫）。
+/// 收到变更消息后聚合（路径 → 父目录集合 / 全量标记），双窗口结束后按目录集合
+/// emit `file-tree-changed`（S2-1：事件携带受影响目录，前端只重载命中桶，
+/// 不再全树重扫）。
 pub(super) struct TreeChangeDebounceSender {
-    pub(super) tx: mpsc::Sender<PathBuf>,
+    pub(super) tx: mpsc::Sender<TreeChangeMsg>,
 }
 
 impl TreeChangeDebounceSender {
     pub(super) fn new(repo: WorkspaceRef, sink: Arc<dyn WatcherEventSink>) -> Self {
+        Self::spawn_with_windows(
+            repo,
+            sink,
+            TREE_CHANGED_TRAILING_MS,
+            TREE_CHANGED_MAX_WAIT_MS,
+        )
+    }
+
+    /// 窗口参数显式透传：生产走常量默认，测试注入短窗口避免 500ms 实时等待。
+    fn spawn_with_windows(
+        repo: WorkspaceRef,
+        sink: Arc<dyn WatcherEventSink>,
+        trailing_ms: u64,
+        max_wait_ms: u64,
+    ) -> Self {
         let project_id = repo.project_id().to_string();
         let workspace_key = repo.key();
         // 线程名不能用 key（含 NUL 分隔符 → `spawn()` 直接失败），只作诊断标签
         let thread_tag = repo.thread_tag();
         let project_root = repo.root_pathbuf();
-        let (tx, rx) = mpsc::channel::<PathBuf>();
+        let (tx, rx) = mpsc::channel::<TreeChangeMsg>();
 
         std::thread::Builder::new()
             .name(format!("tree-debounce-{thread_tag}"))
             .spawn(move || {
                 loop {
                     let first = match rx.recv() {
-                        Ok(p) => p,
+                        Ok(msg) => msg,
                         // channel 关闭，退出
                         Err(_) => return,
                     };
 
-                    // 收集首条 + 立即 drain 排队项的父目录
+                    // 收集首条 + 立即 drain 排队项
                     let mut dirs: Vec<String> = Vec::new();
-                    push_parent_dir(&mut dirs, &first, &project_root);
+                    let mut full_refresh = false;
+                    absorb_tree_change(first, &mut dirs, &mut full_refresh, &project_root);
                     while let Ok(more) = rx.try_recv() {
-                        push_parent_dir(&mut dirs, &more, &project_root);
+                        absorb_tree_change(more, &mut dirs, &mut full_refresh, &project_root);
                     }
 
-                    // 双窗口：窗口内继续吸收新路径（滑动 500ms + 最长等待 1.5s）
+                    // 双窗口：窗口内继续吸收新消息（滑动 500ms + 最长等待 1.5s）
                     if !wait_quiet_window_collect_dirs(
                         &rx,
-                        TREE_CHANGED_TRAILING_MS,
-                        TREE_CHANGED_MAX_WAIT_MS,
+                        trailing_ms,
+                        max_wait_ms,
                         &mut dirs,
+                        &mut full_refresh,
                         &project_root,
                     ) {
                         return;
                     }
 
-                    if dirs.len() > TREE_CHANGED_MAX_DIRS {
+                    // 全量请求压过定向集合：规则变化可能让任意深度的 ignored
+                    // 标注失效，定向重载无法覆盖 → emit 空 dirs（前端全树兜底）。
+                    if full_refresh {
+                        log::debug!(
+                            "[TreeDebounce:{}] Full refresh requested (gitignore rules changed)",
+                            project_id
+                        );
+                        dirs.clear();
+                    } else if dirs.len() > TREE_CHANGED_MAX_DIRS {
                         log::debug!(
                             "[TreeDebounce:{}] {} affected dirs exceed cap, sending full refresh",
                             project_id,
@@ -269,5 +325,134 @@ impl TreeChangeDebounceSender {
             .expect("Failed to spawn tree-debounce thread");
 
         Self { tx }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! tree-debounce 线程的 emit 语义：定向聚合 / 全量请求压过定向集合。
+    //! 窗口参数注入短值（30ms/100ms），断言前留足余量，单条 <300ms。
+
+    use super::*;
+    use crate::common::executor::factory::ExecTarget;
+    use std::sync::Mutex;
+    use std::thread::sleep;
+
+    /// 记录 TreeChanged 载荷的 sink（`CollectingSink` 只记事件名，这里要断言 dirs）。
+    struct TreeRecordingSink {
+        tree_events: Mutex<Vec<FileTreeChangedEvent>>,
+    }
+
+    impl TreeRecordingSink {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                tree_events: Mutex::new(Vec::new()),
+            })
+        }
+
+        fn tree_events(&self) -> Vec<FileTreeChangedEvent> {
+            self.tree_events
+                .lock()
+                .map(|e| e.clone())
+                .unwrap_or_default()
+        }
+    }
+
+    impl WatcherEventSink for TreeRecordingSink {
+        fn emit(&self, event: WatcherEvent<'_>) {
+            if let WatcherEvent::TreeChanged(e) = event {
+                if let Ok(mut events) = self.tree_events.lock() {
+                    events.push(e.clone());
+                }
+            }
+        }
+    }
+
+    fn sender_with_short_windows(
+        root: &Path,
+        sink: Arc<TreeRecordingSink>,
+    ) -> TreeChangeDebounceSender {
+        let repo = WorkspaceRef::resolve("p1", &root.to_string_lossy(), None, &ExecTarget::Local)
+            .expect("tempdir-derived unit path must resolve");
+        TreeChangeDebounceSender::spawn_with_windows(repo, sink, 30, 100)
+    }
+
+    /// 全量刷新请求必须 emit **空 dirs**（前端全树兜底），不得携带定向目录集。
+    #[test]
+    fn full_refresh_request_emits_tree_changed_with_empty_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let sink = TreeRecordingSink::new();
+        let sender = sender_with_short_windows(root, Arc::clone(&sink));
+
+        sender.tx.send(TreeChangeMsg::FullRefresh).unwrap();
+        sleep(Duration::from_millis(300));
+
+        let events = sink.tree_events();
+        assert_eq!(
+            events.len(),
+            1,
+            "必须恰好 emit 一次，实际 = {}",
+            events.len()
+        );
+        assert!(
+            events[0].dirs.is_empty(),
+            "全量请求必须清空 dirs（空 = 前端全树兜底），实际 = {:?}",
+            events[0].dirs
+        );
+    }
+
+    /// 同窗口内全量请求压过定向路径（checkout 风暴场景：.gitignore 与普通文件
+    /// 一起落地）——emit 仍必须是空 dirs，且合并为一次。
+    #[test]
+    fn full_refresh_wins_over_paths_in_same_window() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let sink = TreeRecordingSink::new();
+        let sender = sender_with_short_windows(root, Arc::clone(&sink));
+
+        let a = root.join("src").join("a.rs");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(&a, "").unwrap();
+        let a = a.canonicalize().unwrap();
+        sender.tx.send(TreeChangeMsg::Path(a)).unwrap();
+        sender.tx.send(TreeChangeMsg::FullRefresh).unwrap();
+        sleep(Duration::from_millis(300));
+
+        let events = sink.tree_events();
+        assert_eq!(events.len(), 1, "同窗口消息必须合并为一次 emit");
+        assert!(
+            events[0].dirs.is_empty(),
+            "全量请求必须压过定向集合，实际 = {:?}",
+            events[0].dirs
+        );
+    }
+
+    /// 回归钉子：纯路径消息的定向聚合语义不变（父目录集合 emit）。
+    #[test]
+    fn paths_only_still_aggregate_parent_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let sink = TreeRecordingSink::new();
+        let sender = sender_with_short_windows(root, Arc::clone(&sink));
+
+        // 真实文件 + 归一后喂入：macOS 的 tempdir 落在 /var → /private/var 符号
+        // 链接下，repo 内部已归一（resolve），喂给通道的路径也必须归一，
+        // 否则 `push_parent_dir` 的 strip_prefix 落空、dirs 全变 ""。
+        // 生产 notify 上报的就是 realpath，归一是忠实模拟，不是测试取巧。
+        let a = root.join("src").join("a.rs");
+        let b = root.join("src").join("b.rs");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(&a, "").unwrap();
+        std::fs::write(&b, "").unwrap();
+        let (a, b) = (a.canonicalize().unwrap(), b.canonicalize().unwrap());
+
+        sender.tx.send(TreeChangeMsg::Path(a)).unwrap();
+        sender.tx.send(TreeChangeMsg::Path(b)).unwrap();
+        sleep(Duration::from_millis(300));
+
+        let events = sink.tree_events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].dirs, vec!["src".to_string()]);
     }
 }

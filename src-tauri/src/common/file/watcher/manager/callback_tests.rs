@@ -6,14 +6,17 @@
 //! 三层异步，只为验证这一层的行为（实测代价：27 条并发流让 fseventsd 到 95%+）。
 //!
 //! **本文件的约束**：
-//! - 零 `std::thread::sleep` —— 同步调用回调，同步断言；
-//! - 不建任何 watcher / 不碰真实 git 仓库（`GitIgnoreFilter` 只需 tempdir 里的
-//!   `.gitignore` 文本，不建流）。
+//! - 零 `std::thread::sleep` —— 同步调用回调，同步断言（唯一例外：规则-缓存
+//!   联动用例是 `#[tokio::test]`，无 sleep）；
+//! - 不建任何 watcher / 不建真实 git 仓库（`GitIgnoreFilter` 只需 tempdir 里的
+//!   `.gitignore` 文本；规则-缓存联动用例额外需要 `.git` **目录标记**喂
+//!   `is_git_repo`、并经 `resolve_gitignore_filter` 预置读层缓存 —— 两者都不建流）。
 //!
 //! 需要验证「事件确实从内核到达」的用例不在本文件（那是 C 层，见 `lifecycle_tests`）。
 
 use super::callbacks::build_notify_callback;
 use crate::common::executor::factory::ExecTarget;
+use crate::common::file::watcher::debounce::TreeChangeMsg;
 use crate::common::file::watcher::gitignore::GitIgnoreFilter;
 use crate::common::file::watcher::registration::WatchMaintenance;
 use crate::common::file::watcher::sink::test_support::CollectingSink;
@@ -30,7 +33,7 @@ struct CallbackHarness {
     sink: Arc<CollectingSink>,
     maintenance_rx: mpsc::Receiver<WatchMaintenance>,
     debounce_rx: mpsc::Receiver<PathBuf>,
-    tree_rx: mpsc::Receiver<PathBuf>,
+    tree_rx: mpsc::Receiver<TreeChangeMsg>,
     scheduler_rx: mpsc::Receiver<()>,
 }
 
@@ -199,7 +202,7 @@ fn structure_event_keeps_ignored_root_boundary() {
 
     assert_eq!(
         h.tree_rx.try_recv().ok(),
-        Some(ignored_root),
+        Some(TreeChangeMsg::Path(ignored_root)),
         "ignored 根自身的边界事件必须保留（灰节点更新）"
     );
 }
@@ -255,6 +258,101 @@ fn gitignore_change_triggers_reload_all() {
         Ok(WatchMaintenance::ReloadAll) => {}
         other => panic!("`.gitignore` 变更必须投递 ReloadAll，实际 = {other:?}"),
     }
+}
+
+/// `.gitignore` 纯内容编辑不是结构事件、不会自发触发树刷新，而 ignored 灰显
+/// 只活在读层快照里（`FileNode.ignored` 在 loadDir/refreshTree 时计算一次）——
+/// 规则变化后必须主动请求**全量**树刷新，否则已展示节点的灰显停在旧值
+/// （一条根 `.gitignore` 规则可命中任意深度，定向重载单桶无法覆盖）。
+#[test]
+fn gitignore_content_change_requests_full_tree_refresh() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    write_gitignore(root, "");
+    let mut h = CallbackHarness::new(root, false);
+
+    h.feed(
+        EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+        &root.join(".gitignore"),
+    );
+
+    assert_eq!(
+        h.tree_rx.try_recv().ok(),
+        Some(TreeChangeMsg::FullRefresh),
+        "规则变化必须请求全量树刷新（空 dirs = 前端全树兜底）"
+    );
+}
+
+/// `.git/info/exclude` 同属规则源，必须走同一条全量刷新请求。
+#[test]
+fn info_exclude_change_also_requests_full_tree_refresh() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    write_gitignore(root, "");
+    std::fs::create_dir_all(root.join(".git").join("info")).unwrap();
+    let mut h = CallbackHarness::new(root, false);
+
+    h.feed(
+        EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+        &root.join(".git").join("info").join("exclude"),
+    );
+
+    assert_eq!(
+        h.tree_rx.try_recv().ok(),
+        Some(TreeChangeMsg::FullRefresh),
+        "exclude 规则变化必须同样请求全量树刷新"
+    );
+}
+
+/// 规则变化必须连**读层现场构建的过滤器缓存**（`LOCAL_GITIGNORE_CACHE`）一起失效。
+///
+/// 漂移复盘：该缓存原由「worktree 区域回调」失效（`a15f7fb9`），per-unit 重构
+/// （`200f6918`）删除该回调后失效点断线——缓存只在单元未挂载窗口被查询，但规则
+/// 可在该窗口外变化且无人清缓存。挂载单元的 rules_changed 分支是规则变化的唯一
+/// 权威观测点，必须顺带失效读层缓存。
+///
+/// 断言形态：预置缓存（未挂载读的同路径：existing=None → 现场构建入缓存）→ 喂
+/// `.gitignore` 内容事件 → 同 root 再解析必须**重建**（非 `Arc::ptr_eq`）。
+/// 无生产接线时本测试稳定红（缓存未清 → 命中缓存 → ptr_eq）。
+///
+/// 与 `services/tests/tree_read.rs` 的缓存测试共享全局缓存：干扰窗口仅为
+/// 「插入 → 查询」的连续同步段（中间无调度点，微秒级），且本测试失败方向单一
+/// （外来清空只会虚假变绿、不会偶发红；反向对彼测试是 ~10⁻⁷ 量级的理论红窗）
+/// —— 不值得为此加跨文件测试互斥锁。
+#[tokio::test]
+async fn gitignore_change_invalidates_read_layer_filter_cache() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join(".git")).unwrap();
+    std::fs::write(root.join(".gitignore"), "*.log\n").unwrap();
+
+    let first = crate::common::file::services::resolve_gitignore_filter(
+        &ExecTarget::Local,
+        None,
+        root,
+        &[],
+    )
+    .await
+    .expect("预置缓存：首次现场构建");
+
+    let mut h = CallbackHarness::new(root, false);
+    h.feed(
+        EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+        &root.join(".gitignore"),
+    );
+
+    let after = crate::common::file::services::resolve_gitignore_filter(
+        &ExecTarget::Local,
+        None,
+        root,
+        &[],
+    )
+    .await
+    .expect("事件后同 root 再解析");
+    assert!(
+        !Arc::ptr_eq(&first, &after),
+        "规则变化事件必须失效读层过滤器缓存（否则未挂载读命中旧规则）"
+    );
 }
 
 // ── git 元数据分类的「单元身份」边界 ──────────────────────────────────

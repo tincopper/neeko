@@ -3,6 +3,7 @@
 //! 闭包体从 `WatcherManager::watch` 抽离为独立构建函数，使组装编排保持精简；
 //! 全部依赖经参数显式注入（move 捕获语义与原实现一致）。
 
+use super::super::debounce::TreeChangeMsg;
 use super::super::git_meta::{dispatch_git_meta_event, GitMetaPaths};
 use super::super::gitignore::GitIgnoreFilter;
 use super::super::registration::WatchMaintenance;
@@ -20,7 +21,10 @@ use std::sync::{mpsc, Arc};
 /// - 错误事件（overflow 等）：无法保证目录缓存一致 → 发送空 `dirs` 的
 ///   tree-changed，前端退回全树刷新（orca 同款 overflow→full refresh 语义）；
 /// - `.gitignore` / `.git/info/exclude` 变更：热重载过滤规则 + 失效远程
-///   ignored 缓存 + 注册层全量重算；
+///   ignored 缓存 + 失效读层现场构建的过滤器缓存 + 注册层全量重算 +
+///   请求全量树刷新（`TreeChangeMsg::FullRefresh` 经 tree-debounce 合并——
+///   ignored 标注只活在读层快照里，规则可命中任意深度的已有节点，且纯内容
+///   编辑不是结构事件、不会自发触发树刷新）；
 /// - 内容事件：gitignore 过滤后投递 file-changed debounce、驱动 git worker；
 /// - 结构事件（Create/Remove/Rename）：ignored 根自身的边界事件保留（灰节点更新），
 ///   子树**内部**路径一律丢弃（监听层不订阅 ignored 内部），投递 tree-debounce
@@ -58,7 +62,7 @@ pub(super) fn build_notify_callback(
     gitignore_filter_for_notify: Option<Arc<GitIgnoreFilter>>,
     maintenance_tx_for_closure: mpsc::Sender<WatchMaintenance>,
     debounce_tx_for_notify: mpsc::Sender<PathBuf>,
-    tree_debounce_tx: mpsc::Sender<PathBuf>,
+    tree_debounce_tx: mpsc::Sender<TreeChangeMsg>,
     scheduler_tx: Option<mpsc::Sender<()>>,
     git_repo: bool,
     git_meta: Option<GitMetaCallbacks>,
@@ -122,8 +126,18 @@ pub(super) fn build_notify_callback(
             if rules_changed {
                 filter.reload();
                 crate::common::file::services::invalidate_remote_ignored_cache(&project_id);
+                // 读层现场构建的过滤器缓存（服务单元未挂载窗口的读）一并失效：
+                // rules_changed 分支是规则变化的唯一权威观测点 —— 旧驱动者
+                // （worktree 区域回调）已随 per-unit 重构退役，该缓存曾长期无人
+                // 失效（断线史与已知边界登记：.trellis/spec/backend/git-domain.md W2）。
+                crate::common::file::services::invalidate_local_gitignore_cache();
                 // S2：规则变化 → 注册层全量重算（独立线程执行，回调不 watch）
                 let _ = maintenance_tx_for_closure.send(WatchMaintenance::ReloadAll);
+                // ignored 灰显只活在读层快照里（FileNode.ignored 在读树时计算一次），
+                // 规则变化可能让任意深度的已有节点失效，且纯内容编辑不是结构事件、
+                // 不会自发触发树刷新 → 主动请求全量刷新（经 tree-debounce 合并风暴，
+                // 与 overflow 同一条「空 dirs = 前端全树兜底」语义）。
+                let _ = tree_debounce_tx.send(TreeChangeMsg::FullRefresh);
             }
         }
 
@@ -172,7 +186,7 @@ pub(super) fn build_notify_callback(
             let is_removal = matches!(event.kind, EventKind::Remove(_));
             let is_rename = matches!(event.kind, EventKind::Modify(ModifyKind::Name(_)));
             for p in &tree_paths {
-                let _ = tree_debounce_tx.send(p.clone());
+                let _ = tree_debounce_tx.send(TreeChangeMsg::Path(p.clone()));
             }
             // S2：目录级结构变化 → 注册维护（回调只投递消息，不做 fs 探测——
             // is_dir 判定由维护线程的 WatchManifest::compute/read_dir 自然过滤）。

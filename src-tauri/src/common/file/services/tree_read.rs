@@ -156,10 +156,13 @@ pub(super) fn build_find_tree_args(actual_path: &str, max_depth: u32) -> Vec<Str
 
 /// 读层现场构建的 gitignore 过滤器缓存（键 = 过滤器根）。
 ///
-/// 只缓存「现场构建」的过滤器：主项目读路径复用 watcher 共享过滤器（不进缓存），
-/// 本缓存服务 linked worktree 等根不匹配场景 —— 避免每次读树（含懒加载逐目录
-/// 展开）重复全树遍历构建。失效由 watcher 的 worktree 规则变更信号驱动
-/// （`invalidate_local_gitignore_cache`），规则变更后下次读树重建 → 规则最新。
+/// 只缓存「现场构建」的过滤器：主项目读路径复用 watcher 共享过滤器（不进缓存）。
+/// per-unit 挂载下共享过滤器根恒等于读取根，本缓存实际服务**单元未挂载窗口**
+/// 的读（首载与 watch 挂载的竞态、非激活单元被释放后）——避免该窗口内每次读树
+/// （含懒加载逐目录展开）重复全树遍历构建。失效由挂载单元回调的 rules_changed
+/// 分支驱动（`invalidate_local_gitignore_cache`）；**已知边界**：单元未挂载期间
+/// 的规则变化无事件源观测、缓存不失效，挂载后共享过滤器接管（竞态窗口内可能
+/// 读到旧值一次）。
 static LOCAL_GITIGNORE_CACHE: LazyLock<Mutex<HashMap<PathBuf, Arc<GitIgnoreFilter>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -169,8 +172,9 @@ fn local_gitignore_cache() -> &'static Mutex<HashMap<PathBuf, Arc<GitIgnoreFilte
 
 /// 清除读层现场构建的 gitignore 过滤器缓存。
 ///
-/// watcher 的 worktree 规则变更（`.gitignore` / `exclude`）时调用，避免 ignored
-/// 标记 / 剪枝 stale；主项目读路径复用 watcher 过滤器，不受影响。
+/// 挂载单元的规则变更（`.gitignore` / `exclude`）时由 watcher 回调的
+/// rules_changed 分支调用（`watcher/manager/callbacks.rs`），避免 ignored 标记 /
+/// 剪枝 stale；主项目读路径复用 watcher 过滤器，不受影响。
 pub fn invalidate_local_gitignore_cache() {
     if let Ok(mut cache) = local_gitignore_cache().lock() {
         cache.clear();
@@ -181,11 +185,11 @@ pub fn invalidate_local_gitignore_cache() {
 ///
 /// - watcher 已挂载且过滤器根 == 读取根 → 复用共享过滤器（与事件过滤 /
 ///   规则热重载同源），并携带热重载；
-/// - 读取根 ≠ 共享过滤器根（linked worktree 的 base 在主仓库之外；watcher
-///   过滤器根固定在主项目路径，`path.starts_with(level.dir)` 对 worktree 路径
-///   永不命中 → worktree 内 ignored 标注恒缺）→ 现场构建以读取根为根的过滤器，
-///   结果按 root 进读层缓存（`invalidate_local_gitignore_cache` 失效），避免
-///   懒加载逐目录展开时重复全树遍历构建；
+/// - 读取根 ≠ 共享过滤器根 → 现场构建以读取根为根的过滤器，结果按 root 进
+///   读层缓存，避免懒加载逐目录展开时重复全树遍历构建。（per-unit 挂载下
+///   `gitignore_for` 按单元定址、过滤器根恒等于读取根，此分支当前不可达，
+///   防御性保留；旧项目级 watcher「过滤器根固定在主项目路径」的前提已随
+///   per-unit 重构退役。）
 /// - watcher 未挂载（切换项目时前端 fire-and-forget 激活与文件树首载并发，
 ///   watch 尚未完成）且 Local 目标是 git 仓库 → 现场构建兜底，保证首屏
 ///   文件树即带 ignored 标注 —— 否则无标注的首载结果被前端目录缓存为
@@ -214,8 +218,8 @@ pub async fn resolve_gitignore_filter(
             return Some(filter);
         }
     }
-    // 读层缓存：同 root 的现场构建复用（worktree 场景每次读树全树遍历成本高）。
-    // 规则变更由 invalidate_local_gitignore_cache 清除（core.rs worktree 回调驱动）。
+    // 读层缓存：同 root 的现场构建复用（未挂载窗口每次读树全树遍历成本高）。
+    // 规则变更由 invalidate_local_gitignore_cache 清除（callbacks.rs rules_changed 分支驱动）。
     if let Ok(cache) = local_gitignore_cache().lock() {
         if let Some(cached) = cache.get(base) {
             return Some(Arc::clone(cached));
