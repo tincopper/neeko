@@ -968,7 +968,15 @@ R1 上界剪枝，ignored 子树内部不产生任何监听输入。这是**显�
 `WatchManifest.ignored_roots`，但排除集合是 ignore 规则的**派生值** —— 规则变化时必须重组流
 （`registration/maintenance.rs` 的 `ReloadAll` → `PlatformWatcher::set_exclusion_paths`），否则
 **撤销忽略**后新可见子树永不投递事件（违反本节的**下端界**）。新增能物理排除的后端必须复用同
-一重建落点。
+一重建落点。规则变化还必须向 tree-debounce 投递 `TreeChangeMsg::FullRefresh`（`manager/callbacks.rs`
+的 rules_changed 分支）：ignored 灰显只活在读层快照（`FileNode.ignored`，读树时计算一次），且纯
+内容编辑不是结构事件、不会自发触发树刷新 —— 不主动请求全量刷新（emit 空 dirs = 前端全树兜底），
+前端已展示节点的灰显会停在旧值（2026-11 修复；测试
+`gitignore_content_change_requests_full_tree_refresh` + `debounce::tests` 三条）。同一分支还必须
+失效**读层现场构建的过滤器缓存**（`LOCAL_GITIGNORE_CACHE`，服务单元未挂载窗口的读）——其原驱动者
+（worktree 区域回调）在 per-unit 重构中随流删除，缓存曾长期无人失效（2026-11 复盘接回，测试
+`gitignore_change_invalidates_read_layer_filter_cache`；已知边界：单元未挂载期间的规则变化无事件源
+观测，挂载后共享过滤器接管）。
 
 **已知例外之二（W2 物理排除 + `!` 重包含，勿当 bug 反复调查）**：macOS 的 exclusion 按**顶层
 ignored 根**整体置入（`FSEventStreamSetExclusionPaths` 无否定语义），因此对被排除子树**内部**
