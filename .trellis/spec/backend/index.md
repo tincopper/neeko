@@ -25,7 +25,7 @@
 | [会话适配器](./conversation-adapter.md) | Agent 会话管理、适配器模式、Tauri 命令 | 已填写 |
 | [ACP 模型选择](./agent-acp-model-selection.md) | ACP configOptions、模型发现三级定位、ModelInfo 形状、全量替换语义 | 已填写 |
 | [Agent Chat 传输层对照](./agent-chat-transports.md) | 四条传输（ACP/serve/jsonl/pi-rpc）的协议事实与陷阱；新增传输必改的四处；Pi `agent_settled` 判据；**opencode serve 1.x/2.x 双栈（能力探测、端点矩阵、四个「200 但没做」陷阱）** | 已填写 |
-| [窗口生命周期](./window-lifecycle.md) | 窗口关闭、Cmd+W 快捷键、跨平台事件交互 | 已填写 |
+| [窗口生命周期](./window-lifecycle.md) | 窗口关闭、Cmd+W 快捷键、跨平台事件交互、启动期最大化状态与平台配置合并语义 | 已填写 |
 | [项目 Skill 同步](./project-skill-sync.md) | Project Tag Group、target Agent、项目本地部署与解绑契约 | 已填写 |
 | [Git 域](./git-domain.md) | 历史展示范围（HEAD）、refs 分类、stash 查询、换行/路径契约、只读 git 语义单点注入、写后快照新鲜度 | 已填写 |
 | [DAP 域](./dap-domain.md) | 调试域分层、断点单锁仓储、语言身份归一、事件端口、路径不降级 | 已填写 |

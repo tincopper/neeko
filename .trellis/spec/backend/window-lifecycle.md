@@ -112,6 +112,35 @@ CloseRequested → prevent_close() + emit "close-window"
 
 ---
 
+## 启动期窗口状态：平台配置会整体替换 `app.windows` 数组
+
+Tauri CLI（`helpers/config.rs`）用 `json_patch::merge`（RFC 7396 JSON Merge Patch）合并
+`tauri.conf.json` 与 `tauri.<platform>.conf.json`：**对象深合并，数组整体替换**。
+`tauri.macos.conf.json` 为了原生标题栏 / 透明 / Overlay 声明了自己的 `app.windows`，
+于是主配置 `app.windows[0]` 中**没有在 macOS 配置里复写**的字段全部回落到 Tauri 默认值：
+`maximized: true` → `false`、`width/height: 1200x800` → 默认尺寸。
+
+**现象**：macOS 上应用冷启动 / 重启不是最大化；Windows / Linux 正常 —— 这两个平台配置
+没有 `app.windows`，主配置原样生效。排查时不要误判为 macOS 的窗口状态恢复（Saved
+Application State）：tao 未给窗口设置 `frameAutosaveName` / restoration class，不走
+AppKit 自动窗口恢复。
+
+**契约**（护栏 `check_tauri_platform_window_config` 只断言**合并后的有效配置**，
+不检查配置文件形状 —— 形状只是手段，应用最终拿到什么才是事实）：
+
+- 主配置 `app.windows` 是窗口集合与字段清单的唯一事实源；`maximized: true` 是唯一
+  硬编码的产品约束（`REQUIRED_STARTUP_STATE`）；
+- 护栏用纯函数 `merge_patch()` 复现 RFC 7396，算出 `merge_patch(main, platform_conf)`，
+  要求每个平台的有效窗口集合与主配置同长度，且逐字段等于
+  `主配置窗口 + PLATFORM_WINDOW_STATE[platform]`。缺字段、值漂移、`null` 删键、窗口
+  被删/多出、平台覆盖整段消失，都在这一处显形；
+- `PLATFORM_WINDOW_STATE` 是平台专属的**期望增量**（macOS 的 `title` / `decorations` /
+  `transparent` / `titleBarStyle`），不是「允许差异」的许可表；它同时保证有专属契约的
+  平台配置文件不得消失。新平台配置出现即自动纳入、默认继承主配置契约，新增显式窗口
+  字段无需改护栏。
+
+---
+
 ## 修改本逻辑时的检查清单
 
 - [ ] `app/close.rs` 中 `CloseRequested` 无条件 `prevent_close()`，判别走 `platform::close_tab`（平台差异不得回到业务文件）？

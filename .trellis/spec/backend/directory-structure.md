@@ -23,7 +23,7 @@ src-tauri/
 ├── scripts/
 │   └── macos-dev-bundle.sh   # dev .app 包装（UNUserNotificationCenter 要求 bundle 身份）
 ├── tauri.conf.json           # 主 Tauri 配置
-├── tauri.macos.conf.json     # macOS 特定的 bundle 配置
+├── tauri.macos.conf.json     # macOS 特定的 bundle + 窗口外观配置（会整体替换 app.windows，见 window-lifecycle.md）
 ├── tauri.linux.conf.json     # Linux 特定的 bundle 配置
 ├── tauri.windows.conf.json   # Windows 特定的 bundle 配置
 ├── capabilities/
