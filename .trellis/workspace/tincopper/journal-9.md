@@ -369,3 +369,70 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 442: 修复 macOS 冷启动/重启不最大化
+<!-- trellis-session: v=2 fp=03c79278e6a71694 -->
+
+**Date**: 2026-11-08
+**Task**: 修复 macOS 冷启动/重启不最大化
+**Branch**: `main`
+
+### Summary
+
+tauri.macos.conf.json 的 app.windows 数组被 JSON Merge Patch 整体替换，导致主配置的 maximized/width/height 在 macOS 上静默丢失；补齐字段并加护栏钉住契约。
+
+### Main Changes
+
+- src-tauri/tauri.macos.conf.json 复写主配置窗口全部字段（maximized: true / 1200x800 / resizable / fullscreen）
+- 新增护栏 check_tauri_platform_window_config + 13 个用例，并同步 test_gates.py 的进程内判据计数 37→38
+- 同步 .trellis/spec/backend/window-lifecycle.md、directory-structure.md、index.md 记录平台配置合并语义
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm check:quick 全绿（40 条护栏 / 802 个护栏单测）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 用户手动重启应用确认 macOS 窗口最大化；提交时带上本次未提交改动（另有一处既有的 migrations.rs LATEST_VERSION 改动非本次所为）
+
+
+## Session 443: 窗口配置护栏重构：断言合并后的有效配置
+<!-- trellis-session: v=2 fp=2633f3b90f226f47 -->
+
+**Date**: 2026-11-08
+**Task**: 窗口配置护栏重构：断言合并后的有效配置
+**Branch**: `main`
+
+### Summary
+
+按审核清单把护栏从「检查配置文件形状」改为「复现 RFC 7396 合并、断言有效配置契约」；消除计数耦合与手抄清单，spec 同步。
+
+### Main Changes
+
+- check_tauri_platform_window_config 用 merge_patch 纯函数计算有效配置，单张 PLATFORM_WINDOW_STATE 期望表覆盖 null 删键/窗口数变化/覆盖整段消失/新平台自动纳入
+- test_gates.py 以 id 集合比较替代硬编码 38，删除手抄的护栏清单注释；check() 从 77 行降到 43 行
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] Red→Green 实测：20+1 个新用例、4 个反例由 PASS 转 VIOLATION；pnpm check:quick 全绿（40 护栏 / 810 用例）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 重新构建 Tauri 应用验证 macOS 最大化；其余平台由 CI 三平台矩阵兜底

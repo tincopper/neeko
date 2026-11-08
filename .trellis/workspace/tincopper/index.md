@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 437
-- **Last Active**: 2026-11-07
+- **Total Sessions**: 443
+- **Last Active**: 2026-11-08
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~371 | Active |
+| `journal-9.md` | ~438 | Active |
 | `journal-8.md` | ~1971 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 443 | 2026-11-08 | 窗口配置护栏重构：断言合并后的有效配置 | - | `main` |
+| 442 | 2026-11-08 | 修复 macOS 冷启动/重启不最大化 | - | `main` |
 | 437 | 2026-11-07 | neeko-check 问题清单优化：消息吸收逻辑 3 处重复单点化 + 注释修正 | - | `main` |
 | 436 | 2026-11-07 | 接回 invalidate_local_gitignore_cache 失效点（rules_changed 分支）+ 修 4 处漂移注释 | - | `main` |
 | 435 | 2026-11-07 | 修复：.gitignore 规则变化后文件树灰显不刷新（TreeChangeMsg::FullRefresh） | - | `main` |
