@@ -30,6 +30,8 @@
 !skills/trellis-*/**
 !skills/ui-ux-pro-max/
 !skills/ui-ux-pro-max/**
+# Python 字节码不进仓库（后置规则压过上面的白名单，与 .agents/.gitignore 同一写法）
+skills/ui-ux-pro-max/scripts/__pycache__/
 !skills/xterm-js/
 !skills/xterm-js/**
 !skills/grill-me/
