@@ -325,8 +325,9 @@ class ContextCommandSetTest(unittest.TestCase):
     def command_ids(self, stage, suite="all", source="any"):
         return sorted(r.id for r in self.selected(stage, suite, source) if r.check is None)
 
-    def in_process_count(self, stage, suite="all", source="any"):
-        return sum(1 for r in self.selected(stage, suite, source) if r.check is not None)
+    def in_process_ids(self, stage, suite="all", source="any"):
+        """档位里的进程内判据 id 集合 —— 比计数更能抓「某条护栏只挂了一档」。"""
+        return {r.id for r in self.selected(stage, suite, source) if r.check is not None}
 
     def test_pnpm_lint_is_the_lint_suite_at_local(self):
         # 契约（CONTRIBUTING）：`pnpm lint` = **every** static check —— 含全目标口径的那条。
@@ -344,36 +345,10 @@ class ContextCommandSetTest(unittest.TestCase):
             self.command_ids("local"),
             ["lint_fe", "lint_rust_all_targets", "test_fe", "test_host", "test_rust"],
         )
-        # 16 条既有进程内判据 + check_nondeterministic_event_assertions + check_file_io_scope
-        # + check_platform_cfg_placement（测试域平台门控附着位置，L2 禁令）
-        # + check_workspace_session_addressing（git 命令按 WorkspaceSession 寻址）
-        # + check_terminal_key_mint（terminal 键唯一 mint）
-        # + check_terminal_run_root（终端/任务运行根按 Workspace 寻址）
-        # + check_terminal_foreground_arbitration（前台仲裁口径唯一 + 声明的 DOM 事件要有消费点）
-        # + check_notification_core_direction（notification 核心域业务无关，依赖方向单向）
-        # + check_conflict_read_contract（git 冲突读路径：index stages 唯一真值 / 缺失不归一 /
-        #   唯一封顶 / 前端不解析 marker）
-        # + check_server_no_business_dep（server/ 引擎零业务分支、零 Tauri，可纯 tokio 驱动）
-        # + check_agent_config_single_source（前端不得持有 agent 配置副本：读走 agentStore、
-        #   写只经 saveAgent/resetAgent、终端未加载要等而非放弃）
-        # + check_unit_tests_spawn_real_binaries（单测不得 spawn 本机真实 agent 二进制：
-        #   会留孤儿进程 + 判据失效；真实往返归 #[ignore] 集成用例）
-        # + check_ui_style_tokens（UI 样式层禁硬编码色 / 暗色假设 / 写死白字 / 无焦点环）
-        # + check_styles_layout（src/styles 目录与文件名规范，见 src/styles/README.md）
-        # + check_readme_claims（README 的版本/agent 清单/主题数/快捷键表/图片与代码一致）
-        # + check_asset_protocol_dotfiles（assetProtocol scope 必须允许点开头路径段，
-        #   否则点目录里的图片静默 403；见 .trellis/spec/frontend/api-layer.md）
-        # + check_feature_firewall_coverage（FEATURE_DIRS 必须等于 src/features 的目录集合：
-        #   漏一个目录 = 该域跨域私有导入完全不受约束，见 quality-guidelines.md）
-        # + check_frontend_resource_mirror（前端不得维护后端资源状态的影子副本 / 状态读
-        #   不得渲染期裸调用，见 state-management.md「声明式 reconcile」场景）
-        # + check_config_owner_singleton（config owner 恰好一个 / data-theme 唯一投影 /
-        #   hook 型全局 owner 恰好挂一次，见 state-management.md §2）
-        # + check_embedded_asset_eol（include_str! 编进二进制的文本资产必须钉 eol=lf：
-        #   Windows checkout 的 CRLF 会让跨行断言在 CI 红，见红线 11）
-        # + check_identity_no_host_path（身份比较/渲染模块禁 std::path / std::fs：
-        #   同一批路径在两端会得到两种归属，见 git-domain.md 的 I4）
-        self.assertEqual(self.in_process_count("local"), 37)
+        # 进程内判据清单 = tools/guards/checks/ 目录本身，本文件不维护第二份名字/计数
+        # （清单会被抄错、也会漏更新；见 core/registry.py）。只需确认集合非空，
+        # local 与 ci 是否同源由 test_ci_guards_job_stays_in_process_only 判定。
+        self.assertTrue(self.in_process_ids("local"))
 
     def test_coverage_entry_is_the_manual_stage(self):
         self.assertEqual(
@@ -397,9 +372,12 @@ class ContextCommandSetTest(unittest.TestCase):
 
     def test_ci_guards_job_stays_in_process_only(self):
         self.assertEqual(self.command_ids("ci", suite="lint", source="python"), [])
-        # 与 local 档同源（同一批进程内判据）：新增一条就要同时改这里 ——
-        # 这两个数字互不相等时，意味着某条护栏只在本地跑、对 PR 零约束力（历史事故）。
-        self.assertEqual(self.in_process_count("ci", suite="lint", source="python"), 37)
+        # 与 local 档同源（同一批进程内判据）：集合不等 = 某条护栏只在本地跑、
+        # 对 PR 零约束力（历史事故）。比较 id 集合而非硬编码数量，新增护栏无需改这里。
+        self.assertEqual(
+            self.in_process_ids("ci", suite="lint", source="python"),
+            self.in_process_ids("local"),
+        )
 
 
 if __name__ == "__main__":
