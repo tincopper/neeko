@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 439
+- **Total Sessions**: 440
 - **Last Active**: 2026-11-08
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1247 | Active |
+| `journal-8.md` | ~1269 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 440 | 2026-11-08 | Team：看板/分配图中央 tab（team-board kind）+ 岛屿底色 + role_hints 预设落实现 | `5677c6ba` | `multi-agent` |
 | 439 | 2026-11-08 | Agent Team：列表优先导航重排 + 成员位角色预设（v20）+ 品牌图标 | `85fcc506` | `multi-agent` |
 | 438 | 2026-11-07 | Agent Team：分配 flow 图 + persona 角色库（v19） | `913717c4` | `multi-agent` |
 | 421 | 2026-11-05 | 表面层叠判据改为自动发现（堵住三次同型事故的结构盲区） | `2cc58c64` | `multi-agent` |
