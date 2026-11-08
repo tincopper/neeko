@@ -1267,3 +1267,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 441: Team：清单跟随项目（project_id 过滤，v20）
+<!-- trellis-session: v=2 fp=4c9d33b438f1e996 -->
+
+**Date**: 2026-11-08
+**Task**: Team：清单跟随项目（project_id 过滤，v20）
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `47723ecf` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
