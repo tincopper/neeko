@@ -118,21 +118,17 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
   const initials = getProjectInitials(name);
 
   return (
-    // 项目之间不画分割线（2026-10-27 用户定案）：项目头本身已经是视觉单元
-    // （avatar + 粗体名称 + 计数），再加一条横杠是重复分隔，反而显脏。
-    // 原实现：`!isLast && 'border-b border-white/[0.04]'`（4% 白，亮色主题下还完全不可见）。
-    // 连带删除了 isLast 这条数据链（groupProjects → ProjectsPanel → ProjectItem →
-    // ConnectionProjectCard → ProjectGroup）—— 它唯一的消费者就是这条线。
+    // 项目卡是**岛式容器**（`bg-bg-secondary` 圆角块由调用方根节点负责，见
+    // `ProjectItem` / `ConnectionProjectCard`）；本组件负责岛内的行几何。
     //
-    // 项目头**也不铺行背景**（2026-11-03 用户定案；此前是 `hover:bg-bg-hover`）：
-    // 1. hover 反馈已由下面 local / worktree / 会话行承担（各自 `mx-1.5` 圆角块），
-    //    项目头再铺一层 = 同一件事强调两次，语义上也不该并排（父级容器 vs 子级单元）。
-    // 2. 这一层是**通栏**的：`reset.css` 的 `scrollbar-width: thin` 是经典滚动条
-    //    （占布局宽度、只占右侧），底只能铺到滚动容器的内容盒 —— 右侧会留下一条通高
-    //    竖条（本机 macOS 实测 ≈13px，宽度随平台 / 缩放变，别照抄这个数值）。
-    //    注：容器侧的对称性由 `ProjectsPanel` 的 `scrollbar-hidden` 负责（整条隐藏滚动条、
-    //    保留滚动），两者互不替代：前者答「要不要画底」，后者答「两边留白差多少」。
-    // 悬停仍然表达「可交互」：动作槽（IDE / Git / Trash / + / Chevron）在 hover 时浮现；
+    // 分割线史（2026-10-27 用户定案）：项目之间不画横杠 —— 原实现
+    // `border-b border-white/[0.04]`（4% 白，亮色主题下完全不可见），连带删除了为它
+    // 服务的 isLast 数据链。方案 C 落地后分隔职责由岛间距（`mb-1.5`）承担，结论不变。
+    //
+    // 项目头**重新铺 hover 底**（2026-11-08 方案 C 定案，废止 2026-11-03 的通栏定案）：
+    // 岛式布局里项目头是「岛内的第一行」，与单元行同一套 hover 反馈才一致；且头已随岛
+    // 内缩（`mx-1`），不再是通栏 —— 当年「经典滚动条占位留通高竖条」的前提消失。
+    // 悬停的完整表达：头铺淡底 + 计数 pill 淡出 + 动作胶囊淡入（三者同一时刻只说一件事）。
     // 键盘聚焦另有指示（`ring-inset`：外扩的环会被 Island 的 overflow-hidden 裁掉）。
     <div className="group/proj">
       <div
@@ -142,7 +138,7 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
         // 拖拽把手只在**项目头**（不是整张卡）：整卡可拖时，点会话行 / 工作树行时手一抖
         // 就变成「拖动了整个项目」，卡片会被抬起并跟手 —— 用户看到的是「项目块自己飘了」。
         {...dragHandleProps}
-        className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue"
+        className="flex items-center gap-2 mx-1 mt-1 px-1.5 py-[5px] rounded-md cursor-pointer relative hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue"
         onClick={actions.onToggle}
         onKeyDown={(e) => {
           // 折叠是本节点**唯一**的键盘语义：Enter/Space 展开/收起。
@@ -157,31 +153,37 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
         onContextMenu={actions.onContextMenu}
         data-testid="project-group-header"
       >
+        {/* 方案 C：20px 无描边色块（色彩身份留在 color + 淡底），字重降档 ——
+            旧 28px 描边方块是最重的「模板感」来源。 */}
         <span
           data-testid="project-group-avatar"
-          className="w-7 h-7 rounded-md flex items-center justify-center text-[0.95em] font-bold shrink-0 uppercase"
+          className="w-5 h-5 rounded-md flex items-center justify-center text-[0.75em] font-medium shrink-0 uppercase"
           style={{
             color: avatarStyle.color,
             backgroundColor: avatarStyle.backgroundColor,
-            border: `1.5px solid ${avatarStyle.color}`,
           }}
           aria-hidden="true"
         >
           {initials}
         </span>
-        <div className="flex-1 flex items-baseline gap-1.5 min-w-0">
-          <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">
-            {name}
-          </span>
-          <span className="text-[0.85em] text-text-muted">({sessionCount})</span>
-        </div>
+        <span className="flex-1 min-w-0 text-[var(--font-size)] font-medium text-text-primary truncate">
+          {name}
+        </span>
+        {/* 计数 pill：行尾对齐；hover 时让位给动作胶囊（同一位置只说一件事） */}
+        <span
+          data-testid="project-group-count"
+          className="shrink-0 font-mono text-[0.75em] leading-none text-text-muted bg-bg-tertiary rounded-full px-1.5 py-1 transition-opacity group-hover/proj:opacity-0"
+        >
+          {sessionCount}
+        </span>
 
-        {/* 按钮 overlay：hover 时出现，不消耗 flex 空间 */}
+        {/* 动作胶囊 overlay：hover 时出现，不消耗 flex 空间；自带底色，
+            压在项目名上时按钮仍可读（旧实现是散落的裸按钮） */}
         <div
           role="presentation"
           data-testid="project-group-actions"
           className={cn(
-            'absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-opacity',
+            'absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-md bg-bg-tertiary p-0.5 shadow-sm transition-opacity',
             forceShowActions
               ? 'opacity-100 pointer-events-auto'
               : 'opacity-0 pointer-events-none group-hover/proj:opacity-100 group-hover/proj:pointer-events-auto',
@@ -229,7 +231,8 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
           </HeaderActionButton>
         </div>
       </div>
-      {expanded && <div className="pb-1.5">{children}</div>}
+      {/* 展开区：岛内左右各缩 4px（行不再自带 `mx-1.5`，缩进由这里统一给） */}
+      {expanded && <div className="px-1 pb-1">{children}</div>}
     </div>
   );
 };

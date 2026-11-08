@@ -17,27 +17,35 @@ function setup(overrides: Partial<React.ComponentProps<typeof ProjectGroup>> = {
 }
 
 describe('ProjectGroup header', () => {
-  it('渲染项目名与会话数 (N)', () => {
+  /**
+   * 2026-11-08 方案 C 定案（用户选定原型 C「轻分组」）：计数改为行尾 pill，
+   * 不再是名字后面的 `(N)`。hover 期间 pill 淡出、动作胶囊淡入，两者不叠影。
+   */
+  it('会话数渲染为行尾 pill（不再是名字后的括号计数）', () => {
     setup({ sessionCount: 2 });
     expect(screen.getByText('neeko')).toBeInTheDocument();
-    expect(screen.getByText('(2)')).toBeInTheDocument();
+    const pill = screen.getByTestId('project-group-count');
+    expect(pill).toBeInTheDocument();
+    expect(pill).toHaveTextContent('2');
+    expect(pill).toHaveClass('group-hover/proj:opacity-0');
   });
 
-  it('渲染基于 name 派生的字母 avatar', () => {
+  it('渲染基于 name 派生的字母 avatar（方案 C：20px 无描边小方块）', () => {
     setup({ name: 'neeko' });
-    expect(screen.getByText('N')).toBeInTheDocument();
+    const avatar = screen.getByTestId('project-group-avatar');
+    expect(avatar).toHaveTextContent('N');
+    // 方案 C 几何：20px + 字重降档；去描边在 avatarColor 用例里钉（那里颜色确定）
+    expect(avatar).toHaveClass('w-5', 'font-medium');
   });
 
   /**
-   * 2026-11-03 用户定案：项目头**不铺行背景**。
-   *
-   * 通栏灰底（`hover:bg-bg-hover`）只能铺到滚动容器的内容盒，而经典滚动条占布局宽度 ——
-   * 右侧会留下一条通高空白（直抵面板圆角）。hover 反馈已由下面 local / worktree /
-   * 会话行承担，项目头只在 hover 时浮现动作槽。
+   * 2026-11-08 方案 C 定案：项目卡变成岛式容器（`bg-bg-secondary` 圆角块），
+   * 项目头随之成为「岛内的第一行」—— hover 铺底与单元行同一套反馈，
+   * 旧「通栏滚动条空白」异议随岛内缩（`mx-1`）消失，2026-11-03 的通栏定案就此废止。
    */
-  it('项目头不铺行背景，hover 的唯一视觉变化是动作槽浮现', () => {
+  it('项目头在岛内铺 hover 底，hover 的另一视觉变化是动作胶囊浮现', () => {
     setup();
-    expect(screen.getByTestId('project-group-header')).not.toHaveClass('hover:bg-bg-hover');
+    expect(screen.getByTestId('project-group-header')).toHaveClass('hover:bg-bg-hover');
     // 可交互仍成立：动作槽靠 group-hover/proj 浮现。
     expect(screen.getByTestId('project-group-actions')).toHaveClass('group-hover/proj:opacity-100');
   });
@@ -167,6 +175,8 @@ describe('ProjectGroup avatar color override', () => {
     const avatar = screen.getByTestId('project-group-avatar');
     expect(avatar).toBeInTheDocument();
     expect(avatar).toHaveStyle({ color: 'rgb(224, 108, 117)' });
+    // 去描边（方案 C）：旧 1.5px 彩色描边废止，色彩身份只留在 color + 淡底
+    expect(avatar).not.toHaveStyle({ border: '1.5px solid rgb(224, 108, 117)' });
   });
 
   it('avatarColor 缺省时走 hash 兜底（与同名稳定一致）', () => {

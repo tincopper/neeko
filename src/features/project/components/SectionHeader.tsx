@@ -41,12 +41,11 @@ const SectionActionButton: React.FC<SectionActionButtonProps> = ({
 );
 
 /**
- * 轻量 section header — WSL/SSH 外层 distro/server 头：
- * - 行高 22~24px；padding `px-3 pt-3 pb-1`
- * - Label `text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted`
- * - distro/server `text-[11px] text-text-secondary`
- * - 计数 `text-[10.5px] text-text-muted`
- * - hover 槽位：Add project / Remove server
+ * 轻量 section header — WSL/SSH 外层 distro/server 头（方案 C 轻量化）：
+ * - 行高 ~24px；padding `px-2 pt-2 pb-1`
+ * - 名称前置 `text-[0.9em] font-medium text-text-secondary`，环境类别作弱后缀 `· WSL/SSH`
+ * - 计数 `text-[0.82em] font-mono text-text-muted`
+ * - hover 槽位：Add project / Remove server（岛屿之间的分组行，自身不铺底）
  */
 interface SectionHeaderProps {
   iconSrc: string;
@@ -71,13 +70,11 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
   onAdd,
   onRemove,
 }) => (
-  <div className="group flex items-center gap-2 px-3 pt-3 pb-1 select-none">
-    <img src={iconSrc} className="w-3.5 h-3.5 shrink-0 opacity-80" alt={iconAlt ?? ''} />
-    <span className="text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted">
-      {kindLabel}
-    </span>
-    <span className="text-[11px] text-text-secondary truncate">· {name}</span>
-    <span className="text-[10.5px] text-text-muted">({count})</span>
+  <div className="group flex items-center gap-1.5 px-2 pt-2 pb-1 select-none">
+    <img src={iconSrc} className="w-3 h-3 shrink-0 opacity-80" alt={iconAlt ?? ''} />
+    <span className="text-[0.9em] font-medium text-text-secondary truncate">{name}</span>
+    <span className="shrink-0 text-[0.82em] text-text-muted">· {kindLabel}</span>
+    <span className="shrink-0 font-mono text-[0.82em] text-text-muted">{count}</span>
     <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
       <SectionActionButton title={addTitle} onClick={onAdd}>
         <PlusIcon size={12} />

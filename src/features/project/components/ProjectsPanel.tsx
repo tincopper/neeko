@@ -75,10 +75,11 @@ const ProjectsPanel: React.FC = () => {
   // 滚动记忆：Dock 面板互切（保活期引擎丢位置）与卸载重建都恢复列表位置。
   //
   // 滚动条**整条隐藏**（见容器 class 里的 `scrollbar-hidden`），因此不需要占位补偿：
-  // 经典滚动条是「占布局宽度、只占右侧」，本容器的内缩却由行自己用 `px-3` / `mx-1.5`
-  // 表达 —— 留着滚动条就会量出 0/13（项目头）与 6/19（会话行）这种左右不等。
-  // 补偿（`useScrollbarCompensation`）只适用于**要留滚动条**的面板；这里二选一，
-  // 选定的是「不要滚动条，但要滚动」——滚轮 / 触控板 / 键盘 / scrollIntoView 全不受影响。
+  // 经典滚动条是「占布局宽度、只占右侧」，而本容器的内缩是**双侧对称**的（方案 C 起
+  // 由面板 `px-1` + 岛式卡片表达；旧实现是行自己的 `px-3` / `mx-1.5`，机理相同）——
+  // 留着滚动条就会左右不等。补偿（`useScrollbarCompensation`）只适用于**要留滚动条**
+  // 的面板；这里二选一，选定的是「不要滚动条，但要滚动」——滚轮 / 触控板 / 键盘 /
+  // scrollIntoView 全不受影响。
   const scrollRef = useScrollMemory<HTMLDivElement>(buildScrollKey(SCROLL_SURFACE));
   const [remoteHomeDir, setRemoteHomeDir] = useState<string>('');
 
@@ -141,7 +142,7 @@ const ProjectsPanel: React.FC = () => {
     <>
       <div
         ref={scrollRef}
-        className="flex flex-col h-full overflow-y-auto scrollbar-hidden"
+        className="flex flex-col h-full overflow-y-auto scrollbar-hidden px-1 pt-1"
         data-testid="projects-scroll"
       >
         {isEmpty ? (

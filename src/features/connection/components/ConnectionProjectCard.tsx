@@ -173,7 +173,8 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
         ref={setNodeRef}
         style={style}
         className={cn(
-          'relative mb-0.5 rounded-md overflow-visible',
+          // 方案 C：与本地 `ProjectItem` 同一套岛式容器（岛内缩进由 `ProjectGroup` 给）
+          'relative mb-1.5 rounded-lg bg-bg-secondary overflow-visible',
           isDragging && 'opacity-50 scale-[1.02] shadow-lg shadow-black/20 z-50',
           !isDragging && 'cursor-grab',
         )}

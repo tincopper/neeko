@@ -116,40 +116,35 @@ const SessionRow: React.FC<SessionRowProps> = ({
   /** 只有子列表真的存在且展开时，子行才能接管父行的选中态。 */
   const childTakesSelection = hasChildren && expanded && childActive;
 
+  // 方案 C（2026-11-08 定案）：图标**裸用**，不再有 28px 方块 —— 三层各挂一个大图标块
+  // 是旧版「模板感」最重的来源。状态点随之从图标角落移到**行尾**（与 ↑N / 快捷键同一端）。
   const leading = (
     <span
       data-testid="unit-face"
       className={cn(
-        // 不再给图标方块上第二层底色：行已经表达选中，方块再加一层就是同一个选中被强调两次。
-        'relative w-7 h-7 rounded-md flex items-center justify-center shrink-0',
-        isActive ? 'text-text-primary' : 'text-text-muted',
+        'flex items-center justify-center w-[15px] h-[15px] shrink-0',
+        isActive || childActive ? 'text-text-primary' : 'text-text-muted',
       )}
     >
-      <Icon size={16} />
-      {status && (
-        /* 角标贴在图标右下角（原型 `.face-dot`）：底圈取面板面的颜色，把点从图标上摘下来 */
-        <span
-          className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-bg-primary grid place-items-center"
-          data-testid="unit-status-badge"
-        >
-          <SessionStatusIcon status={status} size={7} />
-        </span>
-      )}
+      <Icon size={15} />
     </span>
   );
 
+  // 单行结构：label 与 branch 同排基线对齐（旧版双行堆叠 ≈46px，是「行距太宽」的主因）。
+  // 字重降为 medium：项目头是唯一的 medium 主层，单元行靠颜色（primary vs secondary）分层。
   const labelBlock = (
-    <span className="flex-1 min-w-0">
+    <span data-testid="unit-label-line" className="flex-1 min-w-0 flex items-baseline gap-1.5">
       <span
-        className="block text-[var(--font-size)] font-semibold text-text-primary truncate"
+        className={cn(
+          'truncate text-[var(--font-size)] font-medium',
+          isActive || childActive ? 'text-text-primary' : 'text-text-secondary',
+        )}
         onDoubleClick={onLabelDoubleClick}
         title={labelTitle}
       >
         {label}
       </span>
-      {branch && (
-        <span className="block text-[0.85em] font-mono text-text-muted truncate">{branch}</span>
-      )}
+      {branch && <span className="truncate font-mono text-[0.85em] text-text-muted">{branch}</span>}
     </span>
   );
 
@@ -158,7 +153,9 @@ const SessionRow: React.FC<SessionRowProps> = ({
       <div
         data-testid="unit-row"
         className={cn(
-          'group flex items-center gap-2.5 pl-4 pr-3 py-2 mx-1.5 rounded-md transition-colors',
+          // 岛内几何（方案 C）：行自带左右 8px / 上下 5px 内距，不再有 `mx-1.5` ——
+          // 岛的左右缩进由 `ProjectGroup` 展开区统一给。
+          'group flex items-center gap-2 pl-2 pr-1.5 py-[5px] rounded-md transition-colors',
           deleting && 'wt-deleting',
           // 三态：子行被选中 ⇒ 父行不填充（把「当前」让给子行）；否则按单元是否当前填充。
           // 子行只有真的画出来时才接管选中态；折叠期间父行仍是唯一可见的「当前」。
@@ -208,12 +205,19 @@ const SessionRow: React.FC<SessionRowProps> = ({
               />
             </button>
           )}
+          {/* 状态点在行尾（方案 C）：图标裸用后不再有可叠角标的方块，
+              且 label 截断时行尾仍能读出单元状态。 */}
+          {status && (
+            <span data-testid="unit-status-badge" className="flex shrink-0 items-center">
+              <SessionStatusIcon status={status} size={7} />
+            </span>
+          )}
           {trailing}
         </div>
       </div>
-      {/* 子列表：不画竖线（窄侧栏里是持续噪声），只缩进一个「图标槽」——
+      {/* 子列表：不画竖线（窄侧栏里是持续噪声），只缩进约一个「图标槽」——
           看得从属关系，又不会把会话行推到面板中间。 */}
-      {hasChildren && expanded && <div className="ml-7 mr-1 mb-1">{children}</div>}
+      {hasChildren && expanded && <div className="ml-5 mr-0.5 mb-0.5">{children}</div>}
     </>
   );
 };

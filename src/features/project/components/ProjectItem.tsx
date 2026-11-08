@@ -118,7 +118,9 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
       ref={setNodeRef}
       style={style}
       className={cn(
-        'relative mb-0.5 rounded-md overflow-visible',
+        // 方案 C（2026-11-08 定案）：项目卡 = 岛式容器（淡起底的圆角块），岛间距 6px
+        // 承担项目分隔（旧 `mb-0.5` + 无底通栏卡废止）。岛内缩进由 `ProjectGroup` 给。
+        'relative mb-1.5 rounded-lg bg-bg-secondary overflow-visible',
         isDragging && 'opacity-50 scale-[1.02] shadow-lg shadow-black/20 z-50',
         !isDragging && 'cursor-grab',
       )}

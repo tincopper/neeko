@@ -4,10 +4,17 @@ import { describe, it, expect, vi } from 'vitest';
 import SessionRow from '@/shared/components/SessionRow';
 
 describe('SessionRow', () => {
-  it('渲染 label 与 branch 双行', () => {
+  /**
+   * 2026-11-08 方案 C 定案：单元行改**单行** —— branch 以等宽字体跟在 label 同排，
+   * 不再双行堆叠（行高从 ~46px 收到 ~28px）。
+   */
+  it('label 与 branch 单行同排（branch 为行内等宽次要文本）', () => {
     render(<SessionRow kind="local" label="local" branch="enhance/setting_panel" />);
-    expect(screen.getByText('local')).toBeInTheDocument();
-    expect(screen.getByText('enhance/setting_panel')).toBeInTheDocument();
+    const line = screen.getByTestId('unit-label-line');
+    expect(within(line).getByText('local')).toBeInTheDocument();
+    // 同一个基线弹性行容器（不是上下两块；旧双行堆叠废止）
+    expect(line).toHaveClass('items-baseline');
+    expect(within(line).getByText('enhance/setting_panel')).toHaveClass('font-mono');
   });
 
   it('点击触发 onClick', () => {
@@ -55,13 +62,21 @@ describe('SessionRow', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
-  it('status 给出时在图标右下角画角标（取 dominantState 的结果）', () => {
+  /**
+   * 2026-11-08 方案 C 定案：单元行去掉 28px 图标块，状态角标随之从图标角落
+   ** 移到行尾**（与 ↑N / 快捷键同一端），图标本身裸用。
+   */
+  it('status 给出时在行尾画状态点（不在图标上叠角标）', () => {
     render(<SessionRow kind="local" label="local" status="awaitingApproval" />);
     const badge = screen.getByTestId('unit-status-badge');
     expect(within(badge).getByRole('img')).toHaveAttribute(
       'data-session-state',
       'awaitingApproval',
     );
+    // 角标不在图标槽内（方案 C：图标裸用，无 28px 方块可叠）
+    expect(
+      within(screen.getByTestId('unit-face')).queryByTestId('unit-status-badge'),
+    ).not.toBeInTheDocument();
   });
 
   it('无子列表时行尾没有展开箭头', () => {
