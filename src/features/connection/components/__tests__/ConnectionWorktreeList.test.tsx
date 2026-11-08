@@ -58,10 +58,11 @@ describe('ConnectionWorktreeList — 待 push 提交数（与 local 行逐字同
     expect(screen.queryByText('↑0')).not.toBeInTheDocument();
   });
 
-  it('渲染 worktree 行（目录名 + 分支）', () => {
+  it('渲染 worktree 行（仅目录名；分支名不进侧栏行）', () => {
     render(<List />);
     expect(screen.getByText('feature-x')).toBeInTheDocument();
-    expect(screen.getByText('feature/x')).toBeInTheDocument();
+    // 2026-11-08 用户定案：分支名不再常驻行内（选中后在下方查看）
+    expect(screen.queryByText('feature/x')).not.toBeInTheDocument();
   });
 });
 

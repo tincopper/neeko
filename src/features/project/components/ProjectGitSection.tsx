@@ -56,7 +56,6 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
       <SessionRow
         kind="local"
         label="local"
-        branch={project.git_info?.current_branch}
         isActive={localActive}
         ahead={localActive ? aheadBehind?.ahead : undefined}
         shortcut={shortcut}

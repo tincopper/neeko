@@ -172,6 +172,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       <div
         ref={setNodeRef}
         style={style}
+        data-project-id={project.id}
         className={cn(
           // 方案 C：与本地 `ProjectItem` 同一套岛式容器（岛内缩进由 `ProjectGroup` 给）
           'relative mb-1.5 rounded-lg bg-bg-secondary overflow-visible',
@@ -198,7 +199,6 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
             <SessionRow
               kind="local"
               label="local"
-              branch={gitInfo?.current_branch}
               isActive={localActive}
               ahead={localActive ? aheadBehind?.ahead : undefined}
               title="Open primary terminal"

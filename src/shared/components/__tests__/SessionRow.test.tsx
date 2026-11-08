@@ -5,16 +5,14 @@ import SessionRow from '@/shared/components/SessionRow';
 
 describe('SessionRow', () => {
   /**
-   * 2026-11-08 方案 C 定案：单元行改**单行** —— branch 以等宽字体跟在 label 同排，
-   * 不再双行堆叠（行高从 ~46px 收到 ~28px）。
+   * 2026-11-08 用户定案：侧栏行不再常驻分支名 —— 行宽留给 label，分支信息
+   * 选中单元后在下方查看。`branch` prop 已整体删除（接口层面由 tsc 把关）。
    */
-  it('label 与 branch 单行同排（branch 为行内等宽次要文本）', () => {
-    render(<SessionRow kind="local" label="local" branch="enhance/setting_panel" />);
-    const line = screen.getByTestId('unit-label-line');
-    expect(within(line).getByText('local')).toBeInTheDocument();
-    // 同一个基线弹性行容器（不是上下两块；旧双行堆叠废止）
-    expect(line).toHaveClass('items-baseline');
-    expect(within(line).getByText('enhance/setting_panel')).toHaveClass('font-mono');
+  it('label 是行内唯一文本主体（分支名不进侧栏行）', () => {
+    render(<SessionRow kind="local" label="local" />);
+    const label = screen.getByText('local');
+    expect(label).toBeInTheDocument();
+    expect(label).toHaveClass('truncate', 'font-medium');
   });
 
   it('点击触发 onClick', () => {

@@ -3,6 +3,11 @@
 exports[`statusBarRegistry > 快照：side/order 保持稳定 1`] = `
 [
   {
+    "id": "project",
+    "order": 5,
+    "side": "left",
+  },
+  {
     "id": "branch",
     "order": 10,
     "side": "left",

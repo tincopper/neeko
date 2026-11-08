@@ -7,15 +7,17 @@ import { CursorItem } from './items/CursorItem';
 import { DebugItem } from './items/DebugItem';
 import { LspSlotItem } from './items/LspSlotItem';
 import { ProblemsItem } from './items/ProblemsItem';
+import { ProjectSwitcherItem } from './items/ProjectSwitcherItem';
 import { PromptsStatusSection } from './PromptsStatusSection';
 import type { StatusBarItemDef, StatusBarSide } from './types';
 
 /**
- * 静态 status-bar registry：左簇（branch、lsp 槽位、conflicts）+ 右簇 5 项。
+ * 静态 status-bar registry：左簇（project 切换器、branch、lsp 槽位、conflicts）+ 右簇 5 项。
  * lsp 槽位内部优先级互斥（install > sessions > profile），单组件直写——
  * 仅此一组互斥，不设通用认领机制。新增功能只需加 entry（无需改 StatusBar）。
  */
 export const STATUS_BAR_ITEMS: StatusBarItemDef[] = [
+  { id: 'project', side: 'left', order: 5, component: ProjectSwitcherItem },
   { id: 'branch', side: 'left', order: 10, component: BranchItem },
   { id: 'lsp', side: 'left', order: 20, component: LspSlotItem },
   { id: 'conflicts', side: 'left', order: 50, component: ConflictsItem },

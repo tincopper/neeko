@@ -129,8 +129,12 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
     // 岛式布局里项目头是「岛内的第一行」，与单元行同一套 hover 反馈才一致；且头已随岛
     // 内缩（`mx-1`），不再是通栏 —— 当年「经典滚动条占位留通高竖条」的前提消失。
     // 悬停的完整表达：头铺淡底 + 计数 pill 淡出 + 动作胶囊淡入（三者同一时刻只说一件事）。
+    //
+    // `group/proj` 挂在**项目头这一行**（2026-11-08 用户定案）：挂在整张卡外层时，
+    // hover 到展开的 local / 会话行也会命中命名组，于是「鼠标只是路过会话」项目工具栏
+    // 就冒出来。收窄到 header 行后，动作槽与 pill 的 hover 门只认项目头自己。
     // 键盘聚焦另有指示（`ring-inset`：外扩的环会被 Island 的 overflow-hidden 裁掉）。
-    <div className="group/proj">
+    <div data-testid="project-group-root">
       <div
         ref={dragHandleRef}
         role="button"
@@ -138,7 +142,7 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
         // 拖拽把手只在**项目头**（不是整张卡）：整卡可拖时，点会话行 / 工作树行时手一抖
         // 就变成「拖动了整个项目」，卡片会被抬起并跟手 —— 用户看到的是「项目块自己飘了」。
         {...dragHandleProps}
-        className="flex items-center gap-2 mx-1 mt-1 px-1.5 py-[5px] rounded-md cursor-pointer relative hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue"
+        className="group/proj flex items-center gap-2 mx-1 mt-1 px-1.5 py-[5px] rounded-md cursor-pointer relative hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue"
         onClick={actions.onToggle}
         onKeyDown={(e) => {
           // 折叠是本节点**唯一**的键盘语义：Enter/Space 展开/收起。

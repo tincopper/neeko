@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/core';
 import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import React, { useCallback, useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 
 import { ConnectionProjectCard } from '@/features/connection';
 import { CommitDialog } from '@/features/git';
@@ -16,6 +16,7 @@ import ProjectItem from '@/features/project/components/ProjectItem';
 import { SectionHeader } from '@/features/project/components/SectionHeader';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useGitConsoleActions } from '@/features/project/hooks/useGitConsoleActions';
+import { useScrollToActiveProject } from '@/features/project/hooks/useScrollToActiveProject';
 import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import GitDialog, { DialogState } from '@/shared/components/GitDialog';
 import { useAppContext } from '@/shared/contexts/AppContext';
@@ -81,6 +82,19 @@ const ProjectsPanel: React.FC = () => {
   // 的面板；这里二选一，选定的是「不要滚动条，但要滚动」——滚轮 / 触控板 / 键盘 /
   // scrollIntoView 全不受影响。
   const scrollRef = useScrollMemory<HTMLDivElement>(buildScrollKey(SCROLL_SURFACE));
+  // `useScrollMemory` 收的是 callback ref（内部把 node 存进 state，不暴露 object ref），
+  // 而定位 hook 需要一个 `RefObject` —— 用组合 ref 同时喂两者，不动公共 hook 的签名。
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const setContainerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      scrollRef(node);
+    },
+    [scrollRef],
+  );
+  // 项目切换（状态栏切换器 / 侧栏点击）→ 把目标项目滚入视野（只在 id 变化时跳，
+  // 初挂载仍归 useScrollMemory 恢复；见 useScrollToActiveProject 的职责边界注释）
+  useScrollToActiveProject(containerRef);
   const [remoteHomeDir, setRemoteHomeDir] = useState<string>('');
 
   const { commands } = useActiveProject();
@@ -141,7 +155,7 @@ const ProjectsPanel: React.FC = () => {
   return (
     <>
       <div
-        ref={scrollRef}
+        ref={setContainerRef}
         className="flex flex-col h-full overflow-y-auto scrollbar-hidden px-1 pt-1"
         data-testid="projects-scroll"
       >

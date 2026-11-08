@@ -11,7 +11,6 @@ type SessionKind = 'local' | 'worktree';
 interface SessionRowProps {
   kind: SessionKind;
   label: string;
-  branch?: string;
   isActive?: boolean;
   /**
    * 本单元的**最高优先级会话状态**（`dominantState`）。
@@ -82,7 +81,6 @@ interface SessionRowProps {
 const SessionRow: React.FC<SessionRowProps> = ({
   kind,
   label,
-  branch,
   isActive = false,
   status = null,
   ahead,
@@ -130,21 +128,19 @@ const SessionRow: React.FC<SessionRowProps> = ({
     </span>
   );
 
-  // 单行结构：label 与 branch 同排基线对齐（旧版双行堆叠 ≈46px，是「行距太宽」的主因）。
   // 字重降为 medium：项目头是唯一的 medium 主层，单元行靠颜色（primary vs secondary）分层。
+  // 分支名不再进侧栏行（2026-11-08 用户定案）：它常驻占行宽，而分支信息在选中单元后
+  // 下方即可查看 —— 方案 C 曾把它收成行内等宽次要文本，实测仍显冗余，整体删除。
   const labelBlock = (
-    <span data-testid="unit-label-line" className="flex-1 min-w-0 flex items-baseline gap-1.5">
-      <span
-        className={cn(
-          'truncate text-[var(--font-size)] font-medium',
-          isActive || childActive ? 'text-text-primary' : 'text-text-secondary',
-        )}
-        onDoubleClick={onLabelDoubleClick}
-        title={labelTitle}
-      >
-        {label}
-      </span>
-      {branch && <span className="truncate font-mono text-[0.85em] text-text-muted">{branch}</span>}
+    <span
+      className={cn(
+        'flex-1 min-w-0 truncate text-[var(--font-size)] font-medium',
+        isActive || childActive ? 'text-text-primary' : 'text-text-secondary',
+      )}
+      onDoubleClick={onLabelDoubleClick}
+      title={labelTitle}
+    >
+      {label}
     </span>
   );
 

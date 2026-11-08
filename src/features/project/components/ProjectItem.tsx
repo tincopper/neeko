@@ -117,6 +117,7 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
     <div
       ref={setNodeRef}
       style={style}
+      data-project-id={project.id}
       className={cn(
         // 方案 C（2026-11-08 定案）：项目卡 = 岛式容器（淡起底的圆角块），岛间距 6px
         // 承担项目分隔（旧 `mb-0.5` + 无底通栏卡废止）。岛内缩进由 `ProjectGroup` 给。

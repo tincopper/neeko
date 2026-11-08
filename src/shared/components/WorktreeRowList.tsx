@@ -97,7 +97,6 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
             key={wt.path}
             kind="worktree"
             label={getFileName(wt.path)}
-            branch={wt.branch}
             isActive={isActive}
             ahead={isActive ? activeAhead : undefined}
             title={`${wt.path}\nClick to open terminal`}

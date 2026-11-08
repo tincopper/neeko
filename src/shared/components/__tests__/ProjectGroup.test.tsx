@@ -39,6 +39,22 @@ describe('ProjectGroup header', () => {
   });
 
   /**
+   * 2026-11-08 用户定案：`group/proj` 必须在**项目头行**，不能在整张卡外层。
+   * 挂外层时 hover 到展开的 local / 会话行也会命中命名组，动作胶囊会在「鼠标只是
+   * 路过会话」时冒出来。收窄后，pill / 动作槽的 hover 门只认项目头自己。
+   */
+  it('命名 group 挂在项目头行（不是卡片外层），hover 子行不触发项目工具栏', () => {
+    setup();
+    const header = screen.getByTestId('project-group-header');
+    expect(header).toHaveClass('group/proj');
+    // 根容器不再带命名组：展开区是 header 的兄弟，不在 group 后代链上
+    expect(screen.getByTestId('project-group-root')).not.toHaveClass('group/proj');
+    // 依赖该组的两个视觉仍以 header 为祖先
+    expect(screen.getByTestId('project-group-actions')).toHaveClass('group-hover/proj:opacity-100');
+    expect(screen.getByTestId('project-group-count')).toHaveClass('group-hover/proj:opacity-0');
+  });
+
+  /**
    * 2026-11-08 方案 C 定案：项目卡变成岛式容器（`bg-bg-secondary` 圆角块），
    * 项目头随之成为「岛内的第一行」—— hover 铺底与单元行同一套反馈，
    * 旧「通栏滚动条空白」异议随岛内缩（`mx-1`）消失，2026-11-03 的通栏定案就此废止。
