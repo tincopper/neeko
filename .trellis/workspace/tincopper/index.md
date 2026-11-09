@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 443
-- **Last Active**: 2026-11-08
+- **Total Sessions**: 444
+- **Last Active**: 2026-11-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~438 | Active |
+| `journal-9.md` | ~471 | Active |
 | `journal-8.md` | ~1971 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 444 | 2026-11-09 | Unify agent icon rendering and fix cli.svg dark-theme contrast | `01d9f119`, `b47c05a8`, `b09d47d7`, `90eca059` | `main` |
 | 443 | 2026-11-08 | 窗口配置护栏重构：断言合并后的有效配置 | - | `main` |
 | 442 | 2026-11-08 | 修复 macOS 冷启动/重启不最大化 | - | `main` |
 | 437 | 2026-11-07 | neeko-check 问题清单优化：消息吸收逻辑 3 处重复单点化 + 注释修正 | - | `main` |

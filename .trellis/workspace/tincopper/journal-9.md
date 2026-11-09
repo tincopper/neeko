@@ -436,3 +436,36 @@ tauri.macos.conf.json 的 app.windows 数组被 JSON Merge Patch 整体替换，
 ### Next Steps
 
 - 重新构建 Tauri 应用验证 macOS 最大化；其余平台由 CI 三平台矩阵兜底
+
+
+## Session 444: Unify agent icon rendering and fix cli.svg dark-theme contrast
+<!-- trellis-session: v=2 fp=8ac397e940736bf8 -->
+
+**Date**: 2026-11-09
+**Task**: Unify agent icon rendering and fix cli.svg dark-theme contrast
+**Branch**: `main`
+
+### Summary
+
+把 14 个文件里 resolver + 裸 <img> 的 agent 图标渲染收编进单一 AgentIcon（shared/FallbackImage + features/agent 容器），ProjectSettingsDialog 改为注入式，cli.svg 加圆角底修复深色主题不可辨识。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `01d9f119` | refactor(agent-icon): unify agent icon rendering in one component |
+| `b47c05a8` | fix(agent-icon): keep the CLI fallback icon readable on dark themes |
+| `b09d47d7` | docs(spec): record the AgentIcon layering and injected dialog |
+| `90eca059` | docs(task): add the agent icon unification task artifacts |
+
+### Testing
+
+- [OK] pnpm test:fe 741 files / 6883 tests; pnpm test 810 guard tests; pnpm check:quick 40/40
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 无
