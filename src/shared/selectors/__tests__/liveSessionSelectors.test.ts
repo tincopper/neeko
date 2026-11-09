@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  dominantState,
   isBusySession,
   isLiveSession,
   isListedSession,
@@ -186,24 +185,6 @@ describe('isSameSession', () => {
     expect(isSameSession(terminal, null)).toBe(false);
     expect(isSameSession(undefined, terminal)).toBe(false);
     expect(isSameSession(null, null)).toBe(false);
-  });
-});
-
-describe('dominantState', () => {
-  it('空列表返回 null（无会话不画点）', () => {
-    expect(dominantState([])).toBeNull();
-  });
-
-  it.each<[SessionState[], SessionState]>([
-    [['stopped', 'ready', 'failed', 'running', 'awaitingApproval'], 'awaitingApproval'],
-    [['stopped', 'ready', 'failed', 'running'], 'running'],
-    [['stopped', 'ready', 'failed'], 'failed'],
-    [['stopped', 'ready'], 'ready'],
-    [['stopped'], 'stopped'],
-  ])('优先级 %j → %s', (states, expected) => {
-    expect(dominantState(states.map((state, i) => session({ sessionId: `s${i}`, state })))).toBe(
-      expected,
-    );
   });
 });
 

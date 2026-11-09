@@ -64,6 +64,13 @@ describe('ConnectionWorktreeList — 待 push 提交数（与 local 行逐字同
     // 2026-11-08 用户定案：分支名不再常驻行内（选中后在下方查看）
     expect(screen.queryByText('feature/x')).not.toBeInTheDocument();
   });
+
+  it('删除按钮在 hover 覆盖槽内，不固定占行宽', () => {
+    render(<List />);
+    const overlay = screen.getByTestId('unit-row-trailing');
+    expect(overlay).toContainElement(screen.getByTitle('Remove worktree and branch'));
+    expect(overlay).toHaveClass('absolute', 'bg-bg-hover', 'opacity-0', 'group-hover:opacity-100');
+  });
 });
 
 describe('ConnectionWorktreeList — 单元生命周期', () => {

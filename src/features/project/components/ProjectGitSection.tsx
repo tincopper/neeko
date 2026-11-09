@@ -4,7 +4,7 @@ import { UnitSessionList } from '@/features/live-sessions';
 import SessionRow from '@/shared/components/SessionRow';
 import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
 import { useUnitsWithActiveSession } from '@/shared/hooks/useUnitsWithActiveSession';
-import { NO_SESSIONS, dominantState } from '@/shared/selectors/liveSessionSelectors';
+import { NO_SESSIONS } from '@/shared/selectors/liveSessionSelectors';
 import { useGitStore } from '@/shared/store/gitStore';
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Project } from '@/shared/types';
@@ -60,7 +60,6 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
         ahead={localActive ? aheadBehind?.ahead : undefined}
         shortcut={shortcut}
         title="Open primary terminal"
-        status={dominantState(unitSessions)}
         childCount={unitSessions.length}
         childActive={childActive}
         onClick={(e) => {

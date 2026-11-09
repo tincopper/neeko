@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
 import SessionRow from '@/shared/components/SessionRow';
@@ -42,39 +42,63 @@ describe('SessionRow', () => {
     expect(screen.queryByText(/⌘|Ctrl\+/)).not.toBeInTheDocument();
   });
 
-  it('worktree kind 渲染 trailing 节点', () => {
+  it('worktree kind 的 trailing 是 hover 覆盖槽，不占 flex 宽度', () => {
     render(
       <SessionRow
         kind="worktree"
         label="feature-a"
-        branch="feature/a"
         trailing={<span data-testid="trailing">x</span>}
       />,
     );
-    expect(screen.getByTestId('trailing')).toBeInTheDocument();
+    const overlay = screen.getByTestId('unit-row-trailing');
+    expect(overlay).toContainElement(screen.getByTestId('trailing'));
+    expect(overlay).toHaveClass(
+      'absolute',
+      'right-1.5',
+      'bg-bg-hover',
+      'opacity-0',
+      'pointer-events-none',
+      'group-hover:opacity-100',
+      'group-hover:pointer-events-auto',
+      'focus-within:opacity-100',
+    );
+    expect(overlay).not.toHaveClass('bg-bg-tertiary');
+    expect(overlay).not.toHaveClass('rounded-md');
+    expect(overlay).not.toHaveClass('shadow-sm');
+    expect(screen.getByTestId('unit-row')).toHaveClass('relative', 'hover:bg-bg-hover');
   });
 
-  it('无会话（status 缺省）不画任何状态点', () => {
+  it('有子列表时覆盖槽让开行尾展开箭头', () => {
+    render(
+      <SessionRow
+        kind="worktree"
+        label="feature-a"
+        trailing={<span data-testid="trailing">x</span>}
+      >
+        <span>child</span>
+      </SessionRow>,
+    );
+    expect(screen.getByTestId('unit-row-trailing')).toHaveClass('right-7');
+  });
+
+  it('deleting 时覆盖槽强制可见（spinner 不依赖 hover）', () => {
+    render(
+      <SessionRow
+        kind="worktree"
+        label="feature-a"
+        deleting
+        trailing={<span data-testid="trailing">x</span>}
+      />,
+    );
+    const overlay = screen.getByTestId('unit-row-trailing');
+    expect(overlay).toHaveClass('opacity-100', 'pointer-events-auto');
+    expect(screen.getByTestId('unit-row')).toHaveClass('bg-bg-hover');
+  });
+
+  it('单元行不再画状态点（状态由展开后的子会话行表达）', () => {
     render(<SessionRow kind="local" label="local" />);
     expect(screen.queryByTestId('unit-status-badge')).not.toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
-  });
-
-  /**
-   * 2026-11-08 方案 C 定案：单元行去掉 28px 图标块，状态角标随之从图标角落
-   ** 移到行尾**（与 ↑N / 快捷键同一端），图标本身裸用。
-   */
-  it('status 给出时在行尾画状态点（不在图标上叠角标）', () => {
-    render(<SessionRow kind="local" label="local" status="awaitingApproval" />);
-    const badge = screen.getByTestId('unit-status-badge');
-    expect(within(badge).getByRole('img')).toHaveAttribute(
-      'data-session-state',
-      'awaitingApproval',
-    );
-    // 角标不在图标槽内（方案 C：图标裸用，无 28px 方块可叠）
-    expect(
-      within(screen.getByTestId('unit-face')).queryByTestId('unit-status-badge'),
-    ).not.toBeInTheDocument();
   });
 
   it('无子列表时行尾没有展开箭头', () => {

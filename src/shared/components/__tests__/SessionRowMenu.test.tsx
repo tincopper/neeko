@@ -34,4 +34,23 @@ describe('SessionRowMenu — 菜单项按能力渲染', () => {
     expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument();
   });
+
+  it('onOpenChange 上报菜单展开状态（供行覆盖槽保持可见）', () => {
+    const onOpenChange = vi.fn();
+    render(<SessionRowMenu sessionTitle="A" onRename={vi.fn()} onOpenChange={onOpenChange} />);
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Session actions: A' }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it('显隐由外层 HoverActionSlot 统一控制，触发按钮不再自带 opacity 门', () => {
+    render(<SessionRowMenu sessionTitle="A" onRename={vi.fn()} />);
+    const trigger = screen.getByRole('button', { name: 'Session actions: A' });
+
+    expect(trigger).not.toHaveClass('opacity-0');
+    expect(trigger).not.toHaveClass('group-hover/session:opacity-100');
+    expect(trigger).not.toHaveClass('focus-visible:opacity-100');
+    expect(trigger).not.toHaveClass('data-[state=open]:opacity-100');
+    expect(trigger).toHaveClass('focus-visible:outline-2');
+  });
 });

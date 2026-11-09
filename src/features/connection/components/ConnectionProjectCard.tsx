@@ -13,7 +13,7 @@ import ProjectSettingsDialog from '@/shared/components/ProjectSettingsDialog';
 import SessionRow from '@/shared/components/SessionRow';
 import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
 import { useUnitsWithActiveSession } from '@/shared/hooks/useUnitsWithActiveSession';
-import { NO_SESSIONS, dominantState } from '@/shared/selectors/liveSessionSelectors';
+import { NO_SESSIONS } from '@/shared/selectors/liveSessionSelectors';
 import { useGitStore } from '@/shared/store/gitStore';
 import {
   selectActiveCheckoutPath,
@@ -205,7 +205,6 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
               isActive={localActive}
               ahead={localActive ? aheadBehind?.ahead : undefined}
               title="Open primary terminal"
-              status={dominantState(mainUnitSessions)}
               childCount={mainUnitSessions.length}
               childActive={childActive}
               onClick={(e) => {
@@ -232,15 +231,15 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
           </div>
         </ProjectGroup>
 
-        {contextMenu && (
+        {contextMenu ? (
           <ContextMenu
             position={contextMenu}
             onClose={() => setContextMenu(null)}
             items={buildContextMenuItems()}
           />
-        )}
+        ) : null}
 
-        {settingsOpen && config && (
+        {settingsOpen && config ? (
           <ProjectSettingsDialog
             projectId={project.id}
             projectName={project.name}
@@ -259,7 +258,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
             onSaveAgents={setProjectAgents}
             onSaveIde={setProjectIde}
           />
-        )}
+        ) : null}
 
         <DeleteConfirmDialog
           pending={confirmRemove ? project : null}

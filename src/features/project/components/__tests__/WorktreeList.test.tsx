@@ -102,6 +102,17 @@ beforeEach(() => {
   );
 });
 
+describe('WorktreeList — 行尾工具栏', () => {
+  it('删除按钮在 hover 覆盖槽内，不固定占行宽', () => {
+    renderList();
+    const overlay = screen.getByTestId('unit-row-trailing');
+    const button = screen.getByTitle('Remove worktree and branch');
+    expect(overlay).toContainElement(button);
+    expect(overlay).toHaveClass('absolute', 'bg-bg-hover', 'opacity-0', 'group-hover:opacity-100');
+    expect(button).not.toHaveClass('opacity-0');
+  });
+});
+
 describe('WorktreeList — 待 push 提交数（与 local 行逐字同一条读取规则）', () => {
   it('激活的 worktree 行渲染 ↑N（键 = 该 worktree 单元）', async () => {
     seedActiveUnit();

@@ -6,8 +6,9 @@ import type { SessionState } from '@/shared/types/liveSessions';
 /**
  * 状态 → 视觉的**唯一映射表**。
  *
- * 三个投影（tab 前导点 / 侧栏会话行 / 单元角标）全部渲染本组件 —— 谁要是自己写
+ * 两个投影（tab 前导点 / 侧栏会话行）都复用本组件的映射表 —— 谁要是自己写
  * `state === 'running' ? 'bg-accent-green' : …`，就多出第二张表，两处迟早颜色不一致。
+ * 侧栏会话子行为了省窄行空间省略 ready / stopped（见 `SessionList`），tab 前导点仍按完整状态显示。
  *
  * 双通道表达（`<prototype.html>` 的「状态 → 视觉」）：
  * | 状态 | 形状 | 颜色 | 动 |

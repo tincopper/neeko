@@ -6,11 +6,7 @@ import InlineRenameInput from '@/shared/components/InlineRenameInput';
 import SessionRow from '@/shared/components/SessionRow';
 import { useUnitsWithActiveSession } from '@/shared/hooks/useUnitsWithActiveSession';
 import type { ConfirmDeleteState, WorktreeRowState } from '@/shared/hooks/useWorktreeRowState';
-import {
-  NO_SESSIONS,
-  dominantState,
-  sessionsByUnit,
-} from '@/shared/selectors/liveSessionSelectors';
+import { NO_SESSIONS, sessionsByUnit } from '@/shared/selectors/liveSessionSelectors';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useLiveSessionsStore } from '@/shared/store/liveSessionsStore';
 import { useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
@@ -118,7 +114,6 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
             onLabelDoubleClick={(e) => rowState.startRename(wt.path, e)}
             labelTitle="Double-click to rename"
             deleting={isDeleting}
-            status={dominantState(unitSessions)}
             childCount={unitSessions.length}
             childActive={childActiveUnits.has(unitKey)}
             trailing={
@@ -128,7 +123,7 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
                 <button
                   data-no-drag
                   type="button"
-                  className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-0.5 rounded flex items-center transition-all duration-150 hover:bg-bg-hover hover:!text-accent-red opacity-0 group-hover:opacity-100"
+                  className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-0.5 rounded flex items-center transition-colors hover:bg-bg-hover hover:!text-accent-red focus-visible:outline-2 focus-visible:outline-accent-blue"
                   onClick={(e) => rowState.handleRemove(wt.path, wt.branch, e)}
                   title="Remove worktree and branch"
                 >

@@ -18,16 +18,19 @@ function setup(overrides: Partial<React.ComponentProps<typeof ProjectGroup>> = {
 
 describe('ProjectGroup header', () => {
   /**
-   * 2026-11-08 方案 C 定案（用户选定原型 C「轻分组」）：计数改为行尾 pill，
-   * 不再是名字后面的 `(N)`。hover 期间 pill 淡出、动作胶囊淡入，两者不叠影。
+   * 2026-11-08 方案 C 定案（用户选定原型 C「轻分组」）：计数改为行尾文本，
+   * 不再是名字后面的 `(N)`，也不再画独立的浮动 pill 底色。
+   * hover 期间计数文本淡出、动作槽淡入，两者不叠影。
    */
-  it('会话数渲染为行尾 pill（不再是名字后的括号计数）', () => {
+  it('会话数渲染为行尾文本（无浮动底色块）', () => {
     setup({ sessionCount: 2 });
     expect(screen.getByText('neeko')).toBeInTheDocument();
-    const pill = screen.getByTestId('project-group-count');
-    expect(pill).toBeInTheDocument();
-    expect(pill).toHaveTextContent('2');
-    expect(pill).toHaveClass('group-hover/proj:opacity-0');
+    const count = screen.getByTestId('project-group-count');
+    expect(count).toBeInTheDocument();
+    expect(count).toHaveTextContent('2');
+    expect(count).toHaveClass('group-hover/proj:opacity-0');
+    expect(count).not.toHaveClass('bg-bg-tertiary');
+    expect(count).not.toHaveClass('rounded-full');
   });
 
   it('渲染基于 name 派生的字母 avatar（方案 C：20px 无描边小方块）', () => {
@@ -41,7 +44,7 @@ describe('ProjectGroup header', () => {
   /**
    * 2026-11-08 用户定案：`group/proj` 必须在**项目头行**，不能在整张卡外层。
    * 挂外层时 hover 到展开的 local / 会话行也会命中命名组，动作胶囊会在「鼠标只是
-   * 路过会话」时冒出来。收窄后，pill / 动作槽的 hover 门只认项目头自己。
+   * 路过会话」时冒出来。收窄后，计数 / 动作槽的 hover 门只认项目头自己。
    */
   it('命名 group 挂在项目头行（不是卡片外层），hover 子行不触发项目工具栏', () => {
     setup();
@@ -64,6 +67,29 @@ describe('ProjectGroup header', () => {
     expect(screen.getByTestId('project-group-header')).toHaveClass('hover:bg-bg-hover');
     // 可交互仍成立：动作槽靠 group-hover/proj 浮现。
     expect(screen.getByTestId('project-group-actions')).toHaveClass('group-hover/proj:opacity-100');
+  });
+
+  it('动作槽用与 header hover 一致的实底覆盖，不画浮动底色块', () => {
+    setup();
+    const header = screen.getByTestId('project-group-header');
+    const actions = screen.getByTestId('project-group-actions');
+
+    expect(header).toHaveClass('hover:bg-bg-hover');
+    expect(actions).toHaveClass('bg-bg-hover');
+    expect(actions).not.toHaveClass('bg-bg-tertiary');
+    expect(actions).not.toHaveClass('rounded-md');
+    expect(actions).not.toHaveClass('p-0.5');
+    expect(actions).not.toHaveClass('shadow-sm');
+  });
+
+  it('菜单展开强制显示时 header 同步铺 hover 实底，覆盖槽不出现色差', () => {
+    setup({ forceShowActions: true });
+    const header = screen.getByTestId('project-group-header');
+    const actions = screen.getByTestId('project-group-actions');
+
+    expect(header).toHaveClass('bg-bg-hover');
+    expect(actions).toHaveClass('bg-bg-hover');
+    expect(actions).toHaveClass('opacity-100', 'pointer-events-auto');
   });
 
   it('键盘聚焦仍有可见指示（鼠标 hover 底删掉后的替代）', () => {

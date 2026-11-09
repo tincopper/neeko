@@ -3,22 +3,18 @@ import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ChevronRightIcon, TerminalIcon, FolderGitIcon } from '@/shared/components/icons';
 import SessionChips from '@/shared/components/SessionChips';
-import SessionStatusIcon from '@/shared/components/SessionStatusIcon';
-import type { SessionState } from '@/shared/types/liveSessions';
+
+import HoverActionSlot from './HoverActionSlot';
 
 type SessionKind = 'local' | 'worktree';
+
+/** 28px = 展开箭头 20px（px-1 + 12px icon） + 右槽 gap-2 8px；覆盖槽让开箭头，避免重叠。 */
+const ACTION_OFFSET_WITH_CHEVRON = 'right-7';
 
 interface SessionRowProps {
   kind: SessionKind;
   label: string;
   isActive?: boolean;
-  /**
-   * 本单元的**最高优先级会话状态**（`dominantState`）。
-   *
-   * `undefined` / `null` = 该单元没有会话 ⇒ **不画点**（不是灰点：灰点会让人以为
-   * 「有个空闲会话」）。状态只有注册表一个来源，视图不推断。
-   */
-  status?: SessionState | null;
   /**
    * 单元下的会话子列表（`SessionList`）。给出时行尾出现展开箭头。
    *
@@ -65,7 +61,7 @@ interface SessionRowProps {
   labelTitle?: string;
   /** 删除中：整行播放淡出并把交互关掉（`wt-deleting`）。 */
   deleting?: boolean;
-  /** 行尾追加内容（如 worktree 的 trash 按钮 / loading spinner）；显示在 chip 区右侧 */
+  /** 行尾 hover 覆盖槽（worktree 的 trash 按钮 / spinner）；绝对定位，不占 flex 宽度。 */
   trailing?: React.ReactNode;
 }
 
@@ -82,7 +78,6 @@ const SessionRow: React.FC<SessionRowProps> = ({
   kind,
   label,
   isActive = false,
-  status = null,
   ahead,
   shortcut,
   title,
@@ -115,7 +110,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
   const childTakesSelection = hasChildren && expanded && childActive;
 
   // 方案 C（2026-11-08 定案）：图标**裸用**，不再有 28px 方块 —— 三层各挂一个大图标块
-  // 是旧版「模板感」最重的来源。状态点随之从图标角落移到**行尾**（与 ↑N / 快捷键同一端）。
+  // 是旧版「模板感」最重的来源。单元行也不再画状态角标：状态由展开后的子会话行表达。
   const leading = (
     <span
       data-testid="unit-face"
@@ -151,12 +146,13 @@ const SessionRow: React.FC<SessionRowProps> = ({
         className={cn(
           // 岛内几何（方案 C）：行自带左右 8px / 上下 5px 内距，不再有 `mx-1.5` ——
           // 岛的左右缩进由 `ProjectGroup` 展开区统一给。
-          'group flex items-center gap-2 pl-2 pr-1.5 py-[5px] rounded-md transition-colors',
+          'group relative flex items-center gap-2 pl-2 pr-1.5 py-[5px] rounded-md transition-colors',
+          'hover:bg-bg-hover',
           deleting && 'wt-deleting',
           // 三态：子行被选中 ⇒ 父行不填充（把「当前」让给子行）；否则按单元是否当前填充。
           // 子行只有真的画出来时才接管选中态；折叠期间父行仍是唯一可见的「当前」。
           isActive && !childTakesSelection && 'bg-bg-selected',
-          !isActive && 'hover:bg-bg-hover',
+          deleting && 'bg-bg-hover',
         )}
         title={title}
       >
@@ -176,13 +172,13 @@ const SessionRow: React.FC<SessionRowProps> = ({
           </button>
         )}
         <div className="flex items-center gap-2 shrink-0">
-          {isActive && ahead !== undefined && <SessionChips.Ahead ahead={ahead} />}
-          {shortcut && (
+          {isActive && ahead !== undefined ? <SessionChips.Ahead ahead={ahead} /> : null}
+          {shortcut ? (
             <span className="hidden group-hover:inline-flex">
               <SessionChips.Kbd>{shortcut}</SessionChips.Kbd>
             </span>
-          )}
-          {hasChildren && (
+          ) : null}
+          {hasChildren ? (
             <button
               type="button"
               data-no-drag
@@ -200,20 +196,23 @@ const SessionRow: React.FC<SessionRowProps> = ({
                 className={cn('transition-transform duration-150', expanded && 'rotate-90')}
               />
             </button>
-          )}
-          {/* 状态点在行尾（方案 C）：图标裸用后不再有可叠角标的方块，
-              且 label 截断时行尾仍能读出单元状态。 */}
-          {status && (
-            <span data-testid="unit-status-badge" className="flex shrink-0 items-center">
-              <SessionStatusIcon status={status} size={7} />
-            </span>
-          )}
-          {trailing}
+          ) : null}
         </div>
+        {trailing ? (
+          <HoverActionSlot
+            testId="unit-row-trailing"
+            group="plain"
+            forceShow={deleting}
+            rightClassName={hasChildren ? ACTION_OFFSET_WITH_CHEVRON : 'right-1.5'}
+            className="z-10"
+          >
+            {trailing}
+          </HoverActionSlot>
+        ) : null}
       </div>
       {/* 子列表：不画竖线（窄侧栏里是持续噪声），只缩进约一个「图标槽」——
           看得从属关系，又不会把会话行推到面板中间。 */}
-      {hasChildren && expanded && <div className="ml-5 mr-0.5 mb-0.5">{children}</div>}
+      {hasChildren && expanded ? <div className="ml-5 mr-0.5 mb-0.5">{children}</div> : null}
     </>
   );
 };

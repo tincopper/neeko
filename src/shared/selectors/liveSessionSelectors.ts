@@ -2,37 +2,15 @@
  * live-sessions 快照的**派生层**（纯函数，无 React / store 依赖）。
  *
  * 分层约定（`.trellis/spec/frontend/state-management.md`）：store 只存不派生，
- * 派生一律进 selector。三个投影（tab 标题 / 单元角标 / 侧栏会话列表）都从这里取，
+ * 派生一律进 selector。两个投影（tab 标题 / 侧栏会话列表）都从这里取，
  * 于是「同一份快照」这件事在代码里也只有一份实现。
  */
 
-import type {
-  SessionKind,
-  SessionState,
-  SessionRef,
-  SessionView,
-} from '@/shared/types/liveSessions';
+import type { SessionKind, SessionRef, SessionView } from '@/shared/types/liveSessions';
 import type { Tab } from '@/shared/types/tab';
 
 /** 稳定的空数组：无会话的单元每帧重新 `[]` 会让 memo 失效。 */
 export const NO_SESSIONS: readonly SessionView[] = [];
-
-/**
- * 状态优先级：**多会话单元里最需要注意的那一个**。
- *
- * `awaitingApproval > running > failed > ready > stopped` —— 顺序不是审美：
- * 等用户点一下的会话最该被看见，其次是还在动的，最后才是已终止的。
- *
- * 这是**唯一**的状态排序判据（后端刻意不给 `SessionState` 派生 `Ord`：状态之间没有
- * 大小关系，只有这条视图优先级）。
- */
-const STATE_RANK: Record<SessionState, number> = {
-  awaitingApproval: 4,
-  running: 3,
-  failed: 2,
-  ready: 1,
-  stopped: 0,
-};
 
 /** 会话身份的最小形状：只要有 `kind` + `sessionId` 就能判定「是不是同一条」。 */
 export type SessionIdentity = Pick<SessionView, 'kind' | 'sessionId'>;
@@ -187,15 +165,6 @@ export function selectLatestSessionForUnit(
     if (latest === null || session.startedAt > latest.startedAt) latest = session;
   }
   return latest;
-}
-
-/** 单元角标状态：多会话取最高优先级；**空列表返回 `null`**（无会话不画点）。 */
-export function dominantState(sessions: readonly SessionView[]): SessionState | null {
-  let best: SessionState | null = null;
-  for (const session of sessions) {
-    if (best === null || STATE_RANK[session.state] > STATE_RANK[best]) best = session.state;
-  }
-  return best;
 }
 
 /**

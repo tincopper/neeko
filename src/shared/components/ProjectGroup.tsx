@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 import { ChevronRightIcon, PlusIcon, TrashIcon, MoreVerticalIcon } from '@/shared/components/icons';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
 
+import HoverActionSlot, { META_FADE_GROUP_CLASSES } from './HoverActionSlot';
+
 interface ProjectGroupActions {
   /** 折叠/展开切换。点击 header 主体或 chevron 按钮均触发 */
   onToggle: () => void;
@@ -128,7 +130,8 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
     // 项目头**重新铺 hover 底**（2026-11-08 方案 C 定案，废止 2026-11-03 的通栏定案）：
     // 岛式布局里项目头是「岛内的第一行」，与单元行同一套 hover 反馈才一致；且头已随岛
     // 内缩（`mx-1`），不再是通栏 —— 当年「经典滚动条占位留通高竖条」的前提消失。
-    // 悬停的完整表达：头铺淡底 + 计数 pill 淡出 + 动作胶囊淡入（三者同一时刻只说一件事）。
+    // 悬停的完整表达：头铺 hover 实底 + 计数文本淡出 + 动作槽淡入（三者同一时刻只说一件事）。
+    // 菜单展开（forceShowActions）时也让 header 保持同一层实底，否则动作槽会变成孤立色块。
     //
     // `group/proj` 挂在**项目头这一行**（2026-11-08 用户定案）：挂在整张卡外层时，
     // hover 到展开的 local / 会话行也会命中命名组，于是「鼠标只是路过会话」项目工具栏
@@ -142,7 +145,10 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
         // 拖拽把手只在**项目头**（不是整张卡）：整卡可拖时，点会话行 / 工作树行时手一抖
         // 就变成「拖动了整个项目」，卡片会被抬起并跟手 —— 用户看到的是「项目块自己飘了」。
         {...dragHandleProps}
-        className="group/proj flex items-center gap-2 mx-1 mt-1 px-1.5 py-[5px] rounded-md cursor-pointer relative hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue"
+        className={cn(
+          'group/proj flex items-center gap-2 mx-1 mt-1 px-1.5 py-[5px] rounded-md cursor-pointer relative hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue',
+          forceShowActions && 'bg-bg-hover',
+        )}
         onClick={actions.onToggle}
         onKeyDown={(e) => {
           // 折叠是本节点**唯一**的键盘语义：Enter/Space 展开/收起。
@@ -173,28 +179,27 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
         <span className="flex-1 min-w-0 text-[var(--font-size)] font-medium text-text-primary truncate">
           {name}
         </span>
-        {/* 计数 pill：行尾对齐；hover 时让位给动作胶囊（同一位置只说一件事） */}
+        {/* 计数文本：行尾对齐；hover 时让位给动作槽（同一位置只说一件事） */}
         <span
           data-testid="project-group-count"
-          className="shrink-0 font-mono text-[0.75em] leading-none text-text-muted bg-bg-tertiary rounded-full px-1.5 py-1 transition-opacity group-hover/proj:opacity-0"
+          className={cn(
+            'shrink-0 px-1.5 py-1 font-mono text-[0.75em] leading-none text-text-muted transition-opacity',
+            META_FADE_GROUP_CLASSES.proj,
+          )}
         >
           {sessionCount}
         </span>
 
-        {/* 动作胶囊 overlay：hover 时出现，不消耗 flex 空间；自带底色，
-            压在项目名上时按钮仍可读（旧实现是散落的裸按钮） */}
-        <div
-          role="presentation"
-          data-testid="project-group-actions"
-          className={cn(
-            'absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-md bg-bg-tertiary p-0.5 shadow-sm transition-opacity',
-            forceShowActions
-              ? 'opacity-100 pointer-events-auto'
-              : 'opacity-0 pointer-events-none group-hover/proj:opacity-100 group-hover/proj:pointer-events-auto',
-          )}
-          onClick={(e) => e.stopPropagation()}
+        {/* 统一 HoverActionSlot：hover 时出现，不消耗 flex 空间；用与 header hover 一致的实底
+            压住项目名 / 计数，不画圆角、阴影或额外内边距，避免浮块 */}
+        <HoverActionSlot
+          testId="project-group-actions"
+          group="proj"
+          forceShow={forceShowActions}
+          rightClassName="right-2"
+          className="gap-0.5"
         >
-          {actions.onOpenIde && (
+          {actions.onOpenIde ? (
             <HeaderActionButton
               title="Open in IDE"
               onClick={actions.onOpenIde}
@@ -206,13 +211,13 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
                 <MoreVerticalIcon size={13} />
               )}
             </HeaderActionButton>
-          )}
-          {actions.onGitMenu && (
+          ) : null}
+          {actions.onGitMenu ? (
             <HeaderActionButton title="Git actions" onClick={actions.onGitMenu}>
               <MoreVerticalIcon size={13} />
             </HeaderActionButton>
-          )}
-          {actions.onRemove && (
+          ) : null}
+          {actions.onRemove ? (
             <HeaderActionButton
               title="Remove project"
               onClick={actions.onRemove}
@@ -220,23 +225,23 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
             >
               <TrashIcon size={13} />
             </HeaderActionButton>
-          )}
+          ) : null}
           {headerExtra}
-          {actions.onAddWorktree && (
+          {actions.onAddWorktree ? (
             <HeaderActionButton title="New Worktree" onClick={actions.onAddWorktree}>
               <PlusIcon size={15} />
             </HeaderActionButton>
-          )}
+          ) : null}
           <HeaderActionButton title={expanded ? 'Collapse' : 'Expand'} onClick={actions.onToggle}>
             <ChevronRightIcon
               size={15}
               className={cn('transition-transform duration-150', expanded && 'rotate-90')}
             />
           </HeaderActionButton>
-        </div>
+        </HoverActionSlot>
       </div>
       {/* 展开区：岛内左右各缩 4px（行不再自带 `mx-1.5`，缩进由这里统一给） */}
-      {expanded && <div className="px-1 pb-1">{children}</div>}
+      {expanded ? <div className="px-1 pb-1">{children}</div> : null}
     </div>
   );
 };

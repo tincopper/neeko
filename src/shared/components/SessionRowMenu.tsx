@@ -29,6 +29,8 @@ interface SessionRowMenuProps {
    */
   onRename?: () => void;
   onDelete?: () => void;
+  /** 菜单开合状态：调用方据此让 hover 覆盖槽在指针移开后仍保持可见。 */
+  onOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -37,15 +39,21 @@ interface SessionRowMenuProps {
  * ## 为什么是菜单而不是两个图标
  *
  * 侧栏只有 280px 宽，行尾已经有相对时间 + 状态点；再并排两个图标会把标题压到十几个字符。
- * 收进一个 `⋯` 之后，行宽只多占一个图标位，而菜单项有**文字**——删除这种不可撤销的动作
+ * 收进一个 `⋯` 之后，由调用方把它覆盖在「时间 + 状态点」上：交互时元信息淡出、菜单淡入，
+ * 行宽不再为工具栏预留任何一列；菜单项有**文字**——删除这种不可撤销的动作
  * 不该只靠一个垃圾桶图形去表达。
  *
  * ## 点击不能冒泡
  *
- * 整行是一个「点开会话」的按钮。菜单内部任何一次点击都必须 `stopPropagation`，
- * 否则「点删除」会先触发「切到这条会话」，用户看到的是先跳过去再问要不要删。
+ * 行的主要点击区是一个「点开会话」的按钮。菜单内部任何一次点击都保留 `stopPropagation`，
+ * 避免将来行级点击处理（或祖先容器）把「点删除」再解释成「切到这条会话」。
  */
-const SessionRowMenu: React.FC<SessionRowMenuProps> = ({ sessionTitle, onRename, onDelete }) => {
+const SessionRowMenu: React.FC<SessionRowMenuProps> = ({
+  sessionTitle,
+  onRename,
+  onDelete,
+  onOpenChange,
+}) => {
   // Radix 的 `onSelect` 给的是原生事件：拦掉它，行本身的 click 才不会跟着触发。
   const stopAndRun = useCallback(
     (action: () => void) => (e: Event) => {
@@ -56,12 +64,12 @@ const SessionRowMenu: React.FC<SessionRowMenuProps> = ({ sessionTitle, onRename,
   );
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          // 行尾按钮：默认透明，悬停 / 聚焦 / 菜单展开时才出现（窄侧栏里常驻就是噪声）。
-          className="shrink-0 rounded p-0.5 text-text-muted opacity-0 transition-opacity hover:bg-bg-hover hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-accent-blue group-hover/session:opacity-100 data-[state=open]:opacity-100"
+          // 行尾按钮：显隐由外层 HoverActionSlot 统一控制，这里只保留按钮自身样式与焦点环。
+          className="shrink-0 rounded p-0.5 text-text-muted hover:bg-bg-hover hover:text-text-primary focus-visible:outline-2 focus-visible:outline-accent-blue"
           aria-label={`Session actions: ${sessionTitle}`}
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
@@ -79,14 +87,16 @@ const SessionRowMenu: React.FC<SessionRowMenuProps> = ({ sessionTitle, onRename,
         className="min-w-[152px] rounded-lg border-border-subtle bg-popover p-1 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        {onRename && (
+        {onRename ? (
           <DropdownMenuItem className={ITEM_CLASS} onSelect={stopAndRun(onRename)}>
             <PencilIcon size={14} className="text-text-muted" />
             Rename
           </DropdownMenuItem>
-        )}
-        {onRename && onDelete && <DropdownMenuSeparator className="mx-1 my-1 bg-border-subtle" />}
-        {onDelete && (
+        ) : null}
+        {onRename && onDelete ? (
+          <DropdownMenuSeparator className="mx-1 my-1 bg-border-subtle" />
+        ) : null}
+        {onDelete ? (
           <DropdownMenuItem
             className={cn(ITEM_CLASS, 'text-accent-red')}
             onSelect={stopAndRun(onDelete)}
@@ -94,7 +104,7 @@ const SessionRowMenu: React.FC<SessionRowMenuProps> = ({ sessionTitle, onRename,
             <TrashIcon size={14} />
             Delete
           </DropdownMenuItem>
-        )}
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

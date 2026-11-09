@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -29,6 +29,9 @@ function agentIconSrc(container: HTMLElement): string | null {
   // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container
   return container.querySelector('img')?.getAttribute('src') ?? null;
 }
+
+const HIDDEN_SIDEBAR_STATES: SessionState[] = ['ready', 'stopped'];
+const VISIBLE_SIDEBAR_STATES: SessionState[] = ['running', 'awaitingApproval', 'failed'];
 
 describe('SessionList', () => {
   beforeEach(() => {
@@ -67,6 +70,37 @@ describe('SessionList', () => {
     expect(screen.getByRole('img')).toHaveAttribute('data-session-state', 'running');
     // agent 品牌图标：不是 kind 图标，也不是文字兜底
     expect(agentIconSrc(container)).toBeTruthy();
+  });
+
+  it.each(HIDDEN_SIDEBAR_STATES)('无需关注的状态（%s）省略状态点，只保留相对时间', (state) => {
+    render(<SessionList sessions={[session({ sessionId: 's1', state })]} />);
+    const meta = screen.getByTestId('session-row-meta');
+    expect(meta).toHaveTextContent('1m');
+    expect(within(meta).queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  it.each(VISIBLE_SIDEBAR_STATES)('需注意状态（%s）仍显示状态点', (state) => {
+    render(<SessionList sessions={[session({ sessionId: 's1', state })]} />);
+    expect(screen.getByRole('img')).toHaveAttribute('data-session-state', state);
+    expect(screen.getByTestId('session-row-meta')).toHaveTextContent('1m');
+  });
+
+  it('时间无法解析且无需关注状态 ⇒ 不渲染空的元信息槽', () => {
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', state: 'ready', updatedAt: 'not-a-date' })]}
+      />,
+    );
+    expect(screen.queryByTestId('session-row-meta')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('session-row-actions')).not.toBeInTheDocument();
+  });
+
+  it.each(VISIBLE_SIDEBAR_STATES)('时间无法解析但 %s ⇒ 状态点仍可见', (state) => {
+    render(
+      <SessionList sessions={[session({ sessionId: 's1', state, updatedAt: 'not-a-date' })]} />,
+    );
+    expect(screen.getByRole('img')).toHaveAttribute('data-session-state', state);
+    expect(screen.getByTestId('session-row-meta')).not.toHaveTextContent('1m');
   });
 
   it('纯 shell 会话（agentId=null）回落 cli.svg', () => {
@@ -198,10 +232,12 @@ describe('SessionList', () => {
       />,
     );
 
-    // 淡底画在**整行**（`role="listitem"` 的外层）上：行尾工具栏是按钮的兄弟节点，
+    // 淡底画在**整行**（`role="listitem"` 的外层）上：行尾工具栏是绝对覆盖的兄弟节点，
     // 底色若只给按钮，高亮就会在 `⋯` 前面断掉。`aria-current` 仍在按钮上 —— 那才是可交互元素。
     const shell = screen.getByRole('listitem');
     expect(shell).toHaveClass('row-current');
+    // 选中行 hover 时也切到与覆盖槽一致的实底，避免工具栏下方出现另一层颜色。
+    expect(shell).toHaveClass('hover:bg-bg-hover');
     // 中性选中底是父级（单元行）的通道，子行不能也用它
     expect(shell).not.toHaveClass('bg-bg-selected');
     expect(screen.getByRole('button', { name: /^A/ })).toHaveAttribute('aria-current', 'true');
@@ -390,6 +426,102 @@ describe('SessionList — 行工具栏（重命名 / 删除）', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /^A/ }));
     expect(onActivate).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1' }));
+  });
+});
+
+describe('SessionList — 行尾元信息与 hover 工具栏', () => {
+  it('时间 + 状态点靠行尾，hover 时淡出；工具栏绝对覆盖且不占额外 flex 列', () => {
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: '修复登录竞态' })]}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole('listitem');
+    const meta = screen.getByTestId('session-row-meta');
+    const actions = screen.getByTestId('session-row-actions');
+
+    expect(row).toHaveClass('relative', 'group/session');
+    expect(meta).toHaveTextContent('1m');
+    expect(meta).toContainElement(screen.getByRole('img'));
+    expect(meta).toHaveClass('transition-opacity', 'group-hover/session:opacity-0');
+    expect(actions).toHaveClass(
+      'absolute',
+      'right-1.5',
+      'top-1/2',
+      '-translate-y-1/2',
+      'opacity-0',
+      'pointer-events-none',
+      'group-hover/session:opacity-100',
+      'group-hover/session:pointer-events-auto',
+    );
+    // 覆盖槽用与行 hover 一致的实底遮住底下的长标题 / 元信息，但不画圆角、阴影或额外内边距。
+    expect(actions).toHaveClass('bg-bg-hover');
+    expect(actions).not.toHaveClass('bg-bg-tertiary');
+    expect(actions).not.toHaveClass('rounded-md');
+    expect(actions).not.toHaveClass('p-0.5');
+    expect(actions).not.toHaveClass('shadow-sm');
+    expect(row).toHaveClass('hover:bg-bg-hover');
+    expect(row).not.toHaveClass('bg-bg-hover');
+    // 覆盖槽是行按钮的兄弟节点，且靠 absolute 脱离 flex 流 —— 不再为工具栏留一列。
+    expect(row).toContainElement(actions);
+    expect(within(actions).getByRole('button', { name: /Session actions/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^修复登录竞态/ })).toHaveClass('flex-1');
+  });
+
+  it('菜单展开时动作槽保持可见，时间 + 状态点保持隐藏', async () => {
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: '修复登录竞态' })]}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    const row = screen.getByRole('listitem');
+    const trigger = screen.getByRole('button', { name: 'Session actions: 修复登录竞态' });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    await screen.findByRole('menuitem', { name: 'Rename' });
+
+    expect(screen.getByTestId('session-row-actions')).toHaveClass(
+      'opacity-100',
+      'pointer-events-auto',
+    );
+    expect(screen.getByTestId('session-row-meta')).toHaveClass('opacity-0');
+    expect(trigger).toHaveAttribute('data-state', 'open');
+    // 指针移开但菜单仍开时，行与覆盖槽同色，不留下孤立的浮块。
+    expect(row).toHaveClass('bg-bg-hover');
+  });
+
+  it('键盘聚焦工具栏时动作槽浮现、元信息隐藏；移开焦点后复位', () => {
+    render(
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: '修复登录竞态' })]}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    const row = screen.getByRole('listitem');
+    const trigger = screen.getByRole('button', { name: 'Session actions: 修复登录竞态' });
+    const actions = screen.getByTestId('session-row-actions');
+    const meta = screen.getByTestId('session-row-meta');
+
+    fireEvent.focusIn(trigger);
+    expect(actions).toHaveClass('opacity-100', 'pointer-events-auto');
+    expect(meta).toHaveClass('opacity-0');
+    expect(row).toHaveClass('bg-bg-hover');
+
+    fireEvent.focusOut(trigger);
+    expect(actions).toHaveClass('opacity-0', 'pointer-events-none');
+    expect(meta).not.toHaveClass('opacity-0');
+    expect(row).not.toHaveClass('bg-bg-hover');
+  });
+
+  it('无工具栏能力时不渲染覆盖槽（只读列表仍只有时间 + 状态点）', () => {
+    render(<SessionList sessions={[session({ sessionId: 's1', title: 'A' })]} />);
+    expect(screen.queryByTestId('session-row-actions')).not.toBeInTheDocument();
+    expect(screen.getByTestId('session-row-meta')).toBeInTheDocument();
   });
 });
 
