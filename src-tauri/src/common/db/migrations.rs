@@ -12,9 +12,12 @@
 use anyhow::{bail, Context, Result};
 use rusqlite::{Connection, TransactionBehavior};
 
-/// Current schema version. Bump this in the same commit as the migration
-/// that creates the change.
-pub const LATEST_VERSION: u32 = 13;
+/// Last implemented `migrate_step` input. Add a new match arm and bump this
+/// in the same commit as the migration SQL that creates the change.
+const LIBRARY_MIGRATION_LAST: u32 = 11;
+const CACHE_MIGRATION_STEP: u32 = LIBRARY_MIGRATION_LAST + 1;
+/// Current schema version = last implemented step + 1.
+pub const LATEST_VERSION: u32 = CACHE_MIGRATION_STEP + 1;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &mut Connection) -> Result<()> {
@@ -48,8 +51,8 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
 /// Dispatch one migration step to the domain that owns those tables.
 fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
     match from_version {
-        0..=11 => crate::library::migrations::step(conn, from_version),
-        12 => crate::common::cache::v12_to_v13(conn),
+        0..=LIBRARY_MIGRATION_LAST => crate::library::migrations::step(conn, from_version),
+        version if version == CACHE_MIGRATION_STEP => crate::common::cache::v12_to_v13(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -123,6 +126,13 @@ mod tests {
 
         let err = run_migrations(&mut conn).unwrap_err();
         assert!(err.to_string().contains("newer than this app supports"));
+    }
+
+    #[test]
+    fn no_migration_step_at_latest_version() {
+        let conn = Connection::open_in_memory().unwrap();
+        let err = migrate_step(&conn, LATEST_VERSION).unwrap_err();
+        assert!(err.to_string().contains("unknown migration version"));
     }
 }
 
