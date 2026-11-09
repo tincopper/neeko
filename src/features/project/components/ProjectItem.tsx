@@ -1,6 +1,8 @@
 import { useSortable } from '@dnd-kit/sortable';
 import React, { useMemo, useState } from 'react';
 
+import { AgentIcon } from '@/features/agent';
+import { setProjectAgents } from '@/features/agent/api/agentApi';
 import { cn } from '@/lib/utils';
 import DeleteConfirmDialog from '@/shared/components/DeleteConfirmDialog';
 import type { DialogType } from '@/shared/components/GitDialog';
@@ -10,7 +12,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';
 import { sortableCardStyle } from '@/shared/utils/sortableCardStyle';
 
-import { setProjectCollapsed as setProjectCollapsedApi } from '../api/projectApi';
+import { setProjectCollapsed as setProjectCollapsedApi, setProjectIde } from '../api/projectApi';
 
 import ContextMenu from './ContextMenu';
 import ProjectGitMenu from './ProjectGitMenu';
@@ -195,6 +197,11 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
             onSaveProjectSettings?.(project.id, agentId, ideCmd);
             setSettingsOpen(false);
           }}
+          renderAgentIcon={(icon, fallback) => (
+            <AgentIcon icon={icon} size={16} fallback={fallback} />
+          )}
+          onSaveAgents={setProjectAgents}
+          onSaveIde={setProjectIde}
         />
       )}
 

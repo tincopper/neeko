@@ -1,8 +1,7 @@
 import { Pencil } from 'lucide-react';
 import React, { useState } from 'react';
 
-import { AgentForm, CapabilityBadges } from '@/features/agent';
-import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
+import { AgentForm, AgentIcon, CapabilityBadges } from '@/features/agent';
 import { cn } from '@/lib/utils';
 import { FolderIcon, PlusIcon, TrashIcon } from '@/shared/components/icons';
 import { useAgentStore } from '@/shared/store/agentStore';
@@ -95,7 +94,6 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
       {customAgents.length > 0 && (
         <div className="w-full border border-border rounded overflow-hidden bg-bg-primary">
           {customAgents.map((agent) => {
-            const iconSrc = resolveAgentIconSrc(agent.icon);
             const skillPathValue = agent.skill_path ?? '';
             const hasSkillPath = !!skillPathValue;
             const isEditingSkillPath = skillPathEditingAgentId === agent.id;
@@ -112,18 +110,15 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
                     isEditing && 'bg-accent-blue/5 shadow-[inset_2px_0_0_0_var(--accent-blue)]',
                   )}
                 >
-                  {iconSrc ? (
-                    <img
-                      src={iconSrc}
-                      className={cn(
-                        'size-[18px] object-contain shrink-0',
-                        isDisabled && 'opacity-50',
-                      )}
-                      alt=""
-                    />
-                  ) : (
-                    <span className="size-[18px] shrink-0" />
-                  )}
+                  <AgentIcon
+                    icon={agent.icon}
+                    size={18}
+                    className={cn(
+                      'size-[18px] object-contain shrink-0',
+                      isDisabled && 'opacity-50',
+                    )}
+                    fallback={<span className="size-[18px] shrink-0" />}
+                  />
 
                   <span
                     className={cn(

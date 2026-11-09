@@ -14,7 +14,7 @@ import { transportOf } from '@/shared/types/agent';
 import { PRESET_AGENT_ICONS } from '@/shared/utils/agents';
 import { Button, Input } from '@/ui';
 
-import { importAgentIcon, resolveAgentIconSrc } from '../api/agentApi';
+import { importAgentIcon } from '../api/agentApi';
 
 import { buildChatLaunch } from './agentFormChat';
 import {
@@ -24,6 +24,7 @@ import {
   type ChatEnabledChoice,
   type FormState,
 } from './agentFormState';
+import AgentIcon from './AgentIcon';
 import { trimArgList } from './argList';
 import ArgListEditor from './ArgListEditor';
 import BuiltinChatSection from './BuiltinChatSection';
@@ -286,11 +287,7 @@ const AgentForm: React.FC<AgentFormProps> = ({ initial, onSaved, onCancel }) => 
                 onClick={() => set('icon', iconName)}
                 title={iconName}
               >
-                <img
-                  src={resolveAgentIconSrc(iconName) ?? undefined}
-                  className="size-3.5 object-contain"
-                  alt=""
-                />
+                <AgentIcon icon={iconName} size={14} className="size-3.5 object-contain" />
               </button>
             ))}
             <span className="text-text-muted mx-0.5 select-none">|</span>

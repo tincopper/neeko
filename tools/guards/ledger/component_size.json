@@ -1,6 +1,6 @@
 {
   "max_lines": 300,
-  "note": "基线由 tools/guards/checks/check_component_size.py 的模块 docstring 所述命令一次性生成；只许缩小。 例外记录（2026-10-27）：RemoteDialog 729→732 / WSLDialog 611→614 / ProjectSettingsDialog 351→356 —— 三处下拉项选中态的次级文字改用 optionSecondary(selected) 统一颜色（修 7 处「灰字压 accent 蓝底」的对比度缺陷）。行数增加**不是功能需要**，而是 <span> 在 24 空格缩进下加一个函数调用后超过 printWidth=100、prettier 拆成 3 行所致。 真正的修法是抽出选项行组件，但那会改 DOM 结构（本轮 AC0 禁止），故记账而非拆分。",
+  "note": "基线由 tools/guards/checks/check_component_size.py 的模块 docstring 所述命令一次性生成；只许缩小。 例外记录（2026-10-27）：RemoteDialog 729→732 / WSLDialog 611→614 / ProjectSettingsDialog 351→356 —— 三处下拉项选中态的次级文字改用 optionSecondary(selected) 统一颜色（修 7 处「灰字压 accent 蓝底」的对比度缺陷）。行数增加**不是功能需要**，而是 <span> 在 24 空格缩进下加一个函数调用后超过 printWidth=100、prettier 拆成 3 行所致。 真正的修法是抽出选项行组件，但那会改 DOM 结构（本轮 AC0 禁止），故记账而非拆分。 路径/行数变更（2026-11-08，agent-icon-unify）：`SessionList` 迁至 `features/live-sessions/components/`（252 行，未登记）；`ProjectSkillCard` 459→463、`ProjectSkillContent` 1448→1453 —— 两处均为「裸 <img> → AgentIcon」收编时，兜底内容（首字母 chip）从 if/else 分支改为 `fallback` prop 所致（ProjectSkillCard 2 处共 +4、ProjectSkillContent 3 处共 +5）；收编净删了 14 个文件里的重复渲染块，属结构性收益。",
   "baseline": {
     "src/app/components/ProjectView.tsx": 300,
     "src/app/hooks/buildAppShellValues.ts": 316,
@@ -48,8 +48,8 @@
     "src/features/skill/components/GitInstallDialog.tsx": 320,
     "src/features/skill/components/ImportToAgentDialog.tsx": 366,
     "src/features/skill/components/ImportToProjectDialog.tsx": 608,
-    "src/features/skill/components/ProjectSkillCard.tsx": 459,
-    "src/features/skill/components/ProjectSkillContent.tsx": 1448,
+    "src/features/skill/components/ProjectSkillCard.tsx": 463,
+    "src/features/skill/components/ProjectSkillContent.tsx": 1453,
     "src/features/skill/components/SkillCard.tsx": 464,
     "src/features/skill/components/SkillsPanel.tsx": 530,
     "src/features/skill/components/ViewSkillDialog.tsx": 325,
@@ -57,7 +57,7 @@
     "src/features/terminal/components/TerminalViewBase.tsx": 542,
     "src/features/terminal/components/terminalCache.ts": 555,
     "src/shared/components/GitDialog.tsx": 332,
-    "src/shared/components/ProjectSettingsDialog.tsx": 356,
+    "src/shared/components/ProjectSettingsDialog.tsx": 361,
     "src/shared/hooks/useConnectionProjects.ts": 357,
     "src/shared/hooks/useKeyboardShortcuts.ts": 348,
     "src/shared/hooks/useProjectActions.ts": 344

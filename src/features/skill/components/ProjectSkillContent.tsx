@@ -20,7 +20,8 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { resolveAgentIconSrc, setProjectAgents } from '@/features/agent/api/agentApi';
+import { AgentIcon } from '@/features/agent';
+import { setProjectAgents } from '@/features/agent/api/agentApi';
 import {
   getProjectSkills,
   getSkillsForTagGroup,
@@ -828,7 +829,6 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
               <>
                 {visibleAgentChips.map((a) => {
                   const selected = activeProject?.selected_agents?.includes(a.id) ?? false;
-                  const src = resolveAgentIconSrc(a.icon);
                   return (
                     <button
                       key={a.id}
@@ -842,13 +842,16 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                           : 'bg-bg-hover/50 border-border text-text-secondary hover:bg-bg-hover hover:text-text-primary',
                       )}
                     >
-                      {src ? (
-                        <img src={src} alt="" className="h-4 w-4 rounded-[3px]" />
-                      ) : (
-                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold">
-                          {a.name.slice(0, 1).toUpperCase()}
-                        </span>
-                      )}
+                      <AgentIcon
+                        icon={a.icon}
+                        size={16}
+                        className="h-4 w-4 rounded-[3px]"
+                        fallback={
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold">
+                            {a.name.slice(0, 1).toUpperCase()}
+                          </span>
+                        }
+                      />
                       <span className="truncate max-w-[5rem]">{a.name}</span>
                     </button>
                   );
@@ -1027,7 +1030,6 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
             </button>
             {agentsInProject.map((agent) => {
               const active = agentFilter === agent.id;
-              const iconSrc = resolveAgentIconSrc(agent.icon);
               return (
                 <button
                   key={agent.id}
@@ -1043,13 +1045,16 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                       : 'bg-bg-hover/50 border-border hover:bg-bg-hover',
                   )}
                 >
-                  {iconSrc ? (
-                    <img src={iconSrc} alt="" className="h-4 w-4 rounded-[3px]" />
-                  ) : (
-                    <span className="text-[10px] font-semibold text-text-muted">
-                      {agent.name.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
+                  <AgentIcon
+                    icon={agent.icon}
+                    size={16}
+                    className="h-4 w-4 rounded-[3px]"
+                    fallback={
+                      <span className="text-[10px] font-semibold text-text-muted">
+                        {agent.name.slice(0, 1).toUpperCase()}
+                      </span>
+                    }
+                  />
                 </button>
               );
             })}
@@ -1326,7 +1331,6 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                 <div className="flex items-center gap-1 shrink-0">
                   {(skill.agents ?? []).map((st) => {
                     const meta = agents.find((a) => a.id === st.agent_id);
-                    const src = resolveAgentIconSrc(meta?.icon ?? null);
                     return (
                       <button
                         key={st.agent_id}
@@ -1342,13 +1346,16 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                           !st.enabled && 'opacity-35 grayscale',
                         )}
                       >
-                        {src ? (
-                          <img src={src} alt="" className="w-4 h-4 rounded-[3px]" />
-                        ) : (
-                          <span className="inline-flex w-4 h-4 text-[9px] items-center justify-center bg-bg-hover rounded">
-                            {(meta?.name ?? st.agent_id).slice(0, 1).toUpperCase()}
-                          </span>
-                        )}
+                        <AgentIcon
+                          icon={meta?.icon ?? null}
+                          size={16}
+                          className="w-4 h-4 rounded-[3px]"
+                          fallback={
+                            <span className="inline-flex w-4 h-4 text-[9px] items-center justify-center bg-bg-hover rounded">
+                              {(meta?.name ?? st.agent_id).slice(0, 1).toUpperCase()}
+                            </span>
+                          }
+                        />
                       </button>
                     );
                   })}

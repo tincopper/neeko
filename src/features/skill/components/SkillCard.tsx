@@ -14,11 +14,11 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
+import { AgentIcon } from '@/features/agent';
 import { getSkillDocument } from '@/features/skill/api/skillApi';
 import { parseSkillDescription } from '@/features/skill/utils/parseSkillDescription';
 import { cn } from '@/lib/utils';
 import type { ManagedSkillDto } from '@/shared/types';
-import { getAgentIconSrc } from '@/shared/utils/agents';
 import { tagChipClass, tagGroupBadgeClass } from '@/shared/utils/tagColors';
 import {
   DropdownMenu,
@@ -399,22 +399,19 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
 
           <div className="flex items-center gap-1 shrink-0">
             {showAgentAssociations &&
-              showAgents.map((agent) => {
-                const src = getAgentIconSrc(agent.icon);
-                if (!src) return null;
-                return (
-                  <img
-                    key={agent.id}
-                    src={src}
-                    alt={agent.name}
-                    title={agent.name}
-                    className={cn(
-                      'w-4 h-4 rounded-[3px]',
-                      enabled ? 'opacity-100' : 'opacity-30 grayscale',
-                    )}
-                  />
-                );
-              })}
+              showAgents.map((agent) => (
+                <AgentIcon
+                  key={agent.id}
+                  icon={agent.icon}
+                  size={16}
+                  alt={agent.name}
+                  title={agent.name}
+                  className={cn(
+                    'w-4 h-4 rounded-[3px]',
+                    enabled ? 'opacity-100' : 'opacity-30 grayscale',
+                  )}
+                />
+              ))}
           </div>
 
           {onToggleEnabled ? (

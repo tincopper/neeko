@@ -10,11 +10,11 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
+import { AgentIcon } from '@/features/agent';
 import { getSkillDocument } from '@/features/skill/api/skillApi';
 import { parseSkillDescription } from '@/features/skill/utils/parseSkillDescription';
 import { cn } from '@/lib/utils';
 import type { AgentDiskSkill, ManagedSkillDto } from '@/shared/types';
-import { getAgentIconSrc } from '@/shared/utils/agents';
 import { tagChipClass } from '@/shared/utils/tagColors';
 import {
   DropdownMenu,
@@ -105,7 +105,6 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
     }, [librarySkill?.id, propDesc]);
 
     const displayDesc = resolvedDesc || 'No description';
-    const agentIconSrc = getAgentIconSrc(agentIcon);
     const canCheck = Boolean(onCheckedChange);
 
     const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -292,10 +291,11 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
             )}
           </div>
 
-          {agentIconSrc ? (
+          {agentIcon ? (
             <div className="flex items-center gap-1 shrink-0">
-              <img
-                src={agentIconSrc}
+              <AgentIcon
+                icon={agentIcon}
+                size={16}
                 alt={agentName ?? ''}
                 title={agentName}
                 className={cn('w-4 h-4 rounded-[3px]', libraryDisabled && 'opacity-40 grayscale')}

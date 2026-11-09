@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import AgentIcon from '@/shared/components/AgentIcon';
+import { AgentIcon } from '@/features/agent';
 import type { AgentConfig } from '@/shared/types';
 import { getPopoverPosition } from '@/shared/utils/popoverPosition';
 

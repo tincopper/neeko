@@ -1,7 +1,10 @@
 import { useSortable } from '@dnd-kit/sortable';
 import React, { useCallback, useMemo, useState } from 'react';
 
+import { AgentIcon } from '@/features/agent';
+import { setProjectAgents } from '@/features/agent/api/agentApi';
 import { UnitSessionList } from '@/features/live-sessions';
+import { setProjectIde } from '@/features/project/api/projectApi';
 import { cn } from '@/lib/utils';
 import ContextMenu, { type ContextMenuItem } from '@/shared/components/ContextMenu';
 import DeleteConfirmDialog from '@/shared/components/DeleteConfirmDialog';
@@ -250,6 +253,11 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
               onSaveProjectSettings?.(agentId, ideCmd);
               setSettingsOpen(false);
             }}
+            renderAgentIcon={(icon, fallback) => (
+              <AgentIcon icon={icon} size={16} fallback={fallback} />
+            )}
+            onSaveAgents={setProjectAgents}
+            onSaveIde={setProjectIde}
           />
         )}
 

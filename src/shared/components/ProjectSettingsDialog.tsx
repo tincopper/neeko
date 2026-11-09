@@ -1,18 +1,12 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
-import AgentIcon from '@/shared/components/AgentIcon';
 import type { AppConfig, AgentConfig } from '@/shared/types';
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from '@/shared/utils/idePresets';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
 import { optionSecondary } from '@/ui/selection';
-
-// eslint-disable-next-line import/no-restricted-paths -- ProjectSettingsDialog needs to call agent API for saving project agents
-import { setProjectAgents } from '../../features/agent/api/agentApi';
-// eslint-disable-next-line import/no-restricted-paths -- ProjectSettingsDialog needs to call project API for setting IDE
-import { setProjectIde } from '../../features/project/api/projectApi';
 
 interface ProjectSettingsDialogProps {
   projectId: ProjectId;
@@ -23,6 +17,18 @@ interface ProjectSettingsDialogProps {
   config: AppConfig;
   onClose: () => void;
   onSave: (agentId: string | null, ideCommand: string | null) => void;
+  /**
+   * 渲染 agent 图标 —— 由调用方注入。
+   *
+   * 解析图标需要 Tauri 边界（自定义上传图标走 `convertFileSrc`），而本组件住
+   * `shared/`（local / wsl / remote 三端共用），不能反向依赖 `features/`。
+   * 第二个参数是该处的兜底内容（与 `AgentIcon` 的 `fallback` 同语义）。
+   */
+  renderAgentIcon: (icon: string | null, fallback?: ReactNode) => ReactNode;
+  /** 持久化 agent 选择（注入而非直调 API，理由同上）。 */
+  onSaveAgents: (projectId: ProjectId, agentIds: string[]) => Promise<void>;
+  /** 持久化 IDE 命令（注入而非直调 API，理由同上）。 */
+  onSaveIde: (projectId: ProjectId, ideCommand: string | null) => Promise<void>;
 }
 function ProjectSettingsDialog({
   projectId,
@@ -33,6 +39,9 @@ function ProjectSettingsDialog({
   config,
   onClose,
   onSave,
+  renderAgentIcon,
+  onSaveAgents,
+  onSaveIde,
 }: ProjectSettingsDialogProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(currentAgent);
   const [selectedIdeId, setSelectedIdeId] = useState<string | null>(null);
@@ -98,19 +107,19 @@ function ProjectSettingsDialog({
     }
 
     try {
-      await setProjectAgents(projectId, selectedAgentId ? [selectedAgentId] : []);
+      await onSaveAgents(projectId, selectedAgentId ? [selectedAgentId] : []);
     } catch (e) {
       console.error('Failed to set agent:', e);
     }
     try {
-      await setProjectIde(projectId, ideCommand);
+      await onSaveIde(projectId, ideCommand);
     } catch (e) {
       console.error('Failed to set IDE:', e);
     }
 
     onSave(selectedAgentId, ideCommand);
     onClose();
-  }, [projectId, selectedAgentId, selectedIdeId, config, onSave, onClose]);
+  }, [projectId, selectedAgentId, selectedIdeId, config, onSave, onClose, onSaveAgents, onSaveIde]);
 
   const resolveIdeDisplay = (ideId: string | null): { icon: string; name: string } => {
     if (!ideId) return { icon: '', name: 'None' };
@@ -149,11 +158,7 @@ function ProjectSettingsDialog({
             className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
             onClick={() => setAgentOpen((v) => !v)}
           >
-            <AgentIcon
-              icon={agents.find((a) => a.id === selectedAgentId)?.icon ?? null}
-              size={16}
-              fallback="&#9889;"
-            />
+            {renderAgentIcon(agents.find((a) => a.id === selectedAgentId)?.icon ?? null, '⚡')}
             <span className="font-medium">
               {agents.find((a) => a.id === selectedAgentId)?.name ?? 'None'}
             </span>
@@ -181,7 +186,7 @@ function ProjectSettingsDialog({
                   }
                 }}
               >
-                <AgentIcon icon={null} size={16} fallback="&#9889;" />
+                {renderAgentIcon(null, '⚡')}
                 <span className="font-medium">None</span>
               </div>
               {agents
@@ -208,7 +213,7 @@ function ProjectSettingsDialog({
                       }
                     }}
                   >
-                    <AgentIcon icon={agent.icon} size={16} />
+                    {renderAgentIcon(agent.icon ?? null)}
                     <span className="font-medium">{agent.name}</span>
                     <span className={optionSecondary(selectedAgentId === agent.id)}>
                       {agent.command}

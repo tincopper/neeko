@@ -5,7 +5,7 @@ import CountLabel from '@/shared/components/nav/CountLabel';
 import NavRow from '@/shared/components/nav/NavRow';
 import type { AgentSkillGroup } from '@/shared/types';
 
-import { resolveAgentIconSrc } from '../api/agentApi';
+import AgentIcon from './AgentIcon';
 
 interface AgentRailRowProps {
   group: AgentSkillGroup;
@@ -19,22 +19,22 @@ interface AgentRailRowProps {
 /**
  * 左栏的 agent 行（Skills 面板与 MCP 导航面板共用）。
  * 两侧此前的实现逐字相同（仅 testId 有无之差），提取为单一实现；
- * 归属 agent feature：图标解析（resolveAgentIconSrc）本就属于此域。
+ * 归属 agent feature：图标解析（AgentIcon）本就属于此域。
  */
 const AgentRailRow: React.FC<AgentRailRowProps> = React.memo(
   ({ group, active, onSelect, testId }) => {
-    const icon = resolveAgentIconSrc(group.agent_icon);
     return (
       <NavRow
         active={active}
         onSelect={() => onSelect(group.agent_id)}
         testId={testId}
         leading={
-          icon ? (
-            <img src={icon} alt="" className="h-4 w-4 rounded shrink-0" />
-          ) : (
-            <Terminal className="h-3.5 w-3.5 shrink-0 opacity-50" />
-          )
+          <AgentIcon
+            icon={group.agent_icon}
+            size={16}
+            className="h-4 w-4 rounded shrink-0"
+            fallback={<Terminal className="h-3.5 w-3.5 shrink-0 opacity-50" />}
+          />
         }
       >
         <span className="truncate flex-1 font-medium">{group.agent_name}</span>

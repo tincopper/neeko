@@ -18,7 +18,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 // Cross-feature toast (same pattern as useLocalSkillActions / SkillsPanel)
-import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
+import { AgentIcon } from '@/features/agent';
 import {
   importDiscoveredSkill,
   importSkillToAgent,
@@ -421,7 +421,6 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
     );
   }
 
-  const icon = resolveAgentIconSrc(activeGroup.agent_icon);
   const total = activeGroup.skills.length;
   const pathLabel = homeTildePath(activeGroup.agent_skill_path);
   const canAdd = Boolean(activeGroup.agent_skill_path);
@@ -431,11 +430,12 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
       {/* Header: agent identity + path stats */}
       <div className="shrink-0 border-b border-border">
         <div className="flex items-center gap-2.5 h-11 px-4">
-          {icon ? (
-            <img src={icon} alt="" className="h-5 w-5 rounded shrink-0" />
-          ) : (
-            <Terminal className="h-4 w-4 text-text-secondary shrink-0" />
-          )}
+          <AgentIcon
+            icon={activeGroup.agent_icon}
+            size={20}
+            className="h-5 w-5 rounded shrink-0"
+            fallback={<Terminal className="h-4 w-4 text-text-secondary shrink-0" />}
+          />
           <h2 className="text-sm font-semibold text-text-primary truncate">
             {activeGroup.agent_name}
           </h2>

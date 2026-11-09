@@ -2,10 +2,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import SessionList from '@/shared/components/SessionList';
 import { useAgentStore } from '@/shared/store/agentStore';
 import type { SessionState, SessionView } from '@/shared/types/liveSessions';
 import { DEFAULT_AGENT_ICON, getAgentIconSrc } from '@/shared/utils/agents';
+
+import SessionList from '../SessionList';
 
 function session(overrides: Partial<SessionView> & { sessionId: string }): SessionView {
   return {

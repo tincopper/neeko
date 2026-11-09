@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
+import { AgentIcon } from '@/features/agent';
 import { cn } from '@/lib/utils';
-import AgentIcon from '@/shared/components/AgentIcon';
 import InlineRenameInput from '@/shared/components/InlineRenameInput';
 import SessionRowMenu from '@/shared/components/SessionRowMenu';
 import SessionStatusIcon from '@/shared/components/SessionStatusIcon';

@@ -1,7 +1,7 @@
 import { Box, Brain, Gem, Sparkles, Zap } from 'lucide-react';
-import { useState } from 'react';
 
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
+import FallbackImage from '@/shared/components/FallbackImage';
 import { modelVendorOf, type ModelVendor } from '@/shared/utils/modelVendor';
 
 /**
@@ -58,24 +58,19 @@ function fallbackIconFor(vendor: ModelVendor | null) {
 }
 
 function ModelBadge({ modelId, modelName }: { modelId: string; modelName?: string | null }) {
-  const [broken, setBroken] = useState(false);
   const vendor = modelVendorOf({ id: modelId, name: modelName });
   const preset = vendor ? VENDOR_ICON[vendor] : undefined;
   const src = preset ? resolveAgentIconSrc(preset) : null;
 
-  if (src && !broken) {
-    return (
-      <img
-        className="model-badge-img"
-        src={src}
-        width={14}
-        height={14}
-        alt={vendor ?? ''}
-        onError={() => setBroken(true)}
-      />
-    );
-  }
-  return <>{fallbackIconFor(vendor)}</>;
+  return (
+    <FallbackImage
+      src={src}
+      size={14}
+      className="model-badge-img"
+      alt={vendor ?? ''}
+      fallback={fallbackIconFor(vendor)}
+    />
+  );
 }
 
 export { ModelBadge };

@@ -1,9 +1,9 @@
 import { HardDrive, Loader2, Search, Store, X } from 'lucide-react';
 import React, { useCallback, useMemo, useState } from 'react';
 
+import { AgentIcon } from '@/features/agent';
 import { cn } from '@/lib/utils';
 import type { ManagedSkillDto } from '@/shared/types';
-import { getAgentIconSrc } from '@/shared/utils/agents';
 import { Button, Checkbox } from '@/ui';
 
 type SourceFilter = 'all' | 'local' | 'skillssh' | 'git';
@@ -110,7 +110,6 @@ const ImportToAgentDialog: React.FC<ImportToAgentDialogProps> = React.memo(
 
     if (!open) return null;
 
-    const icon = getAgentIconSrc(agentIcon);
     const count = selected.size;
 
     return (
@@ -142,7 +141,7 @@ const ImportToAgentDialog: React.FC<ImportToAgentDialogProps> = React.memo(
               <div className="mt-1.5 flex items-center gap-2 text-xs text-text-muted">
                 <span>Target</span>
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-bg-hover border border-border text-text-secondary">
-                  {icon ? <img src={icon} alt="" className="h-3.5 w-3.5 rounded" /> : null}
+                  <AgentIcon icon={agentIcon} size={14} className="h-3.5 w-3.5 rounded" />
                   <span className="font-medium text-text-primary">{agentName}</span>
                 </span>
               </div>

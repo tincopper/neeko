@@ -1,10 +1,10 @@
 import { Terminal, Bot, Layers, FilePlus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, memo } from 'react';
 
+import { AgentIcon } from '@/features/agent';
 import { resolveProjectTargetAgentIds, useBindProjectTagGroups } from '@/features/skill';
 import { useSkillStore } from '@/features/skill/store';
 import AgentChatIcon from '@/shared/components/AgentChatIcon';
-import AgentIcon from '@/shared/components/AgentIcon';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import type { AgentConfig } from '@/shared/types';
 import type { Step } from '@/shared/types/step';

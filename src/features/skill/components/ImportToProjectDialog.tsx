@@ -1,7 +1,7 @@
 import { Check, HardDrive, Loader2, Search, Store, X } from 'lucide-react';
 import React, { useCallback, useMemo, useState } from 'react';
 
-import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
+import { AgentIcon } from '@/features/agent';
 import { cn } from '@/lib/utils';
 import type { ManagedSkillDto, TagGroup } from '@/shared/types';
 import { Button, Checkbox } from '@/ui';
@@ -299,7 +299,6 @@ const ImportToProjectDialog: React.FC<ImportToProjectDialogProps> = React.memo(
                 <div className="flex flex-wrap gap-1.5">
                   {visibleAgents.map((agent) => {
                     const checked = selectedAgents.has(agent.id);
-                    const icon = resolveAgentIconSrc(agent.icon);
                     return (
                       <button
                         key={agent.id}
@@ -312,7 +311,7 @@ const ImportToProjectDialog: React.FC<ImportToProjectDialogProps> = React.memo(
                             : 'bg-bg-hover/50 text-text-secondary border-border hover:bg-bg-hover',
                         )}
                       >
-                        {icon ? <img src={icon} alt="" className="h-3.5 w-3.5 rounded" /> : null}
+                        <AgentIcon icon={agent.icon} size={14} className="h-3.5 w-3.5 rounded" />
                         <span className="truncate max-w-[100px]">{agent.name}</span>
                         {checked ? <Check className="h-3 w-3 shrink-0" strokeWidth={2.5} /> : null}
                       </button>

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
+import { AgentIcon } from '@/features/agent';
 import AgentChatIcon from '@/shared/components/AgentChatIcon';
 import {
   Terminal,
@@ -56,9 +56,9 @@ export function renderEditorTabLeading(
   const Icon = getTabIcon(tab.data.kind);
   const data = tab.data;
 
-  const agentIconSrc =
+  const agentIconName =
     data.kind === 'terminal' && data.agentId
-      ? resolveAgentIconSrc(agents.find((a) => a.id === data.agentId)?.icon)
+      ? (agents.find((a) => a.id === data.agentId)?.icon ?? null)
       : null;
   const fileIcon = data.kind === 'file' ? fileIconSrc(data.fileName) : null;
   const browserFavicon = data.kind === 'browser' ? data.favicon : null;
@@ -78,14 +78,12 @@ export function renderEditorTabLeading(
         />
       ) : data.kind === 'agent-chat' ? (
         <AgentChatIcon size={12} className="shrink-0 opacity-70" />
-      ) : agentIconSrc ? (
-        <img
-          data-testid="agent-icon"
-          src={agentIconSrc}
-          width={12}
-          height={12}
+      ) : agentIconName ? (
+        <AgentIcon
+          icon={agentIconName}
+          size={12}
           className="shrink-0 opacity-70"
-          alt=""
+          testId="agent-icon"
         />
       ) : fileIcon ? (
         <img src={fileIcon} width={12} height={12} className="shrink-0 opacity-70" alt="" />

@@ -1,11 +1,10 @@
 import { Pencil } from 'lucide-react';
 import React, { useState } from 'react';
 
-import { AgentForm, CapabilityBadges } from '@/features/agent';
+import { AgentForm, AgentIcon, CapabilityBadges } from '@/features/agent';
 import { cn } from '@/lib/utils';
 import { FolderIcon } from '@/shared/components/icons';
 import type { AgentConfig } from '@/shared/types';
-import { getAgentIconSrc } from '@/shared/utils/agents';
 import { Input, Switch } from '@/ui';
 
 interface BuiltInAgentsSectionProps {
@@ -67,7 +66,6 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
       <div className="w-full border border-border rounded overflow-hidden bg-bg-primary">
         {builtinAgents.map((agent) => {
           const effectiveAgent = getEffectiveAgent(agent);
-          const iconSrc = getAgentIconSrc(effectiveAgent.icon);
           const isOverridden = isAgentOverridden(agent);
           const skillPathValue = effectiveAgent.skill_path ?? '';
           const hasSkillPath = !!skillPathValue;
@@ -84,20 +82,19 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                   isEditing && 'bg-accent-blue/5 shadow-[inset_2px_0_0_0_var(--accent-blue)]',
                 )}
               >
-                {iconSrc ? (
-                  <img
-                    src={iconSrc}
-                    className={cn(
-                      'text-[var(--font-size)] size-[18px] object-contain',
-                      isDisabled && 'opacity-50',
-                    )}
-                    alt=""
-                  />
-                ) : (
-                  <span className="text-[0.93em] size-[18px] text-center shrink-0 object-contain">
-                    {''}
-                  </span>
-                )}
+                <AgentIcon
+                  icon={effectiveAgent.icon}
+                  size={18}
+                  className={cn(
+                    'text-[var(--font-size)] size-[18px] object-contain',
+                    isDisabled && 'opacity-50',
+                  )}
+                  fallback={
+                    <span className="text-[0.93em] size-[18px] text-center shrink-0 object-contain">
+                      {''}
+                    </span>
+                  }
+                />
 
                 <span
                   className={cn(

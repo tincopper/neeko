@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 
-import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
+import { AgentIcon } from '@/features/agent';
 import { cn } from '@/lib/utils';
 import type { ProjectDiskSkill } from '@/shared/types';
 import {
@@ -283,7 +283,6 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
           >
             {visible.map((st) => {
               const meta = agentMeta.get(st.agent_id);
-              const src = resolveAgentIconSrc(meta?.icon ?? null);
               const label = meta?.name ?? st.agent_id;
               const isTarget = targetAgentId != null && st.agent_id === targetAgentId;
               const isLinked = st.linked;
@@ -333,13 +332,16 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                     (toggling || !canToggle) && 'cursor-default',
                   )}
                 >
-                  {src ? (
-                    <img src={src} alt="" className="w-3.5 h-3.5 rounded-[3px] shrink-0" />
-                  ) : (
-                    <span className="inline-flex w-3.5 h-3.5 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold text-text-muted shrink-0">
-                      {label.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
+                  <AgentIcon
+                    icon={meta?.icon ?? null}
+                    size={14}
+                    className="w-3.5 h-3.5 rounded-[3px] shrink-0"
+                    fallback={
+                      <span className="inline-flex w-3.5 h-3.5 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold text-text-muted shrink-0">
+                        {label.slice(0, 1).toUpperCase()}
+                      </span>
+                    }
+                  />
                   {!isLinked ? (
                     <span className="absolute -bottom-0.5 -right-0.5 flex h-2 w-2 items-center justify-center rounded-full bg-bg-secondary border border-border">
                       <Plus className="h-2 w-2 text-text-muted" aria-hidden />
@@ -370,7 +372,6 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
             <div className="flex flex-wrap gap-1 mt-1 px-3.5 order-10 flex-none w-full">
               {agentRows.map((st) => {
                 const meta = agentMeta.get(st.agent_id);
-                const src = resolveAgentIconSrc(meta?.icon ?? null);
                 const label = meta?.name ?? st.agent_id;
                 const isTarget = targetAgentId != null && st.agent_id === targetAgentId;
                 const isLinked = st.linked;
@@ -396,13 +397,16 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                       (toggling || !canToggle) && 'cursor-default',
                     )}
                   >
-                    {src ? (
-                      <img src={src} alt="" className="w-4 h-4 rounded-[3px]" />
-                    ) : (
-                      <span className="inline-flex w-4 h-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold text-text-muted">
-                        {label.slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
+                    <AgentIcon
+                      icon={meta?.icon ?? null}
+                      size={16}
+                      className="w-4 h-4 rounded-[3px]"
+                      fallback={
+                        <span className="inline-flex w-4 h-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold text-text-muted">
+                          {label.slice(0, 1).toUpperCase()}
+                        </span>
+                      }
+                    />
                   </button>
                 );
               })}

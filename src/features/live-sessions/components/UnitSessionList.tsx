@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
 
-import SessionList from '@/shared/components/SessionList';
 import { useActiveSessionRefs } from '@/shared/hooks/useActiveSessionRefs';
 import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
 import { isSameSession, NO_SESSIONS } from '@/shared/selectors/liveSessionSelectors';
@@ -8,6 +7,8 @@ import type { SessionView } from '@/shared/types/liveSessions';
 
 import { useActivateSession } from '../hooks/useActivateSession';
 import { useSessionRowActions } from '../hooks/useSessionRowActions';
+
+import SessionList from './SessionList';
 
 interface UnitSessionListProps {
   /** 单元地址 key（`WorkspaceSession.key()`，与注册表快照同源）。 */
@@ -27,7 +28,7 @@ interface UnitSessionListProps {
  * 某单元的会话子列表（侧栏投影的**装配件**）。
  *
  * 只做三件装配：从快照里取本单元的会话、从**当前前台会话的唯一派生点**取高亮行、
- * 把点击接到 tab 激活。视觉与交互全在 `SessionList`（shared），本组件不重复任何一条。
+ * 把点击接到 tab 激活。视觉与交互全在 `SessionList`（同域），本组件不重复任何一条。
  *
  * 只在单元行**展开时**挂载（`SessionRow.children` 的折叠语义），因此这里的 store 订阅
  * 与按行订阅 agent 图标的成本都只发生在用户主动展开的单元上。
