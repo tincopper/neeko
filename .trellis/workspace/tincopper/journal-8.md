@@ -1289,3 +1289,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 445: Team：历史会话冷缓存兜底 + 已退出成员可查看记录（v21）
+<!-- trellis-session: v=2 fp=ffdc05ea0b4a2998 -->
+
+**Date**: 2026-11-09
+**Task**: Team：历史会话冷缓存兜底 + 已退出成员可查看记录（v21）
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0a253899` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
