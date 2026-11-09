@@ -1,6 +1,6 @@
 ---
 name: neeko-check
-description: Neeko code review — 代码审核器，判定代码是否符合项目规范（现行 15 条红线）、业界 React/Rust 最佳实践与架构设计。用于提交前审查、PR 审查、或对指定代码进行规范审核。
+description: Neeko code review — 代码审核器，判定代码是否符合项目规范（现行 17 条红线）、业界 React/Rust 最佳实践与架构设计。用于提交前审查、PR 审查、或对指定代码进行规范审核。
 disable-model-invocation: true
 ---
 
@@ -10,22 +10,25 @@ disable-model-invocation: true
 
 > **术语纪律（硬指令）**：本项目审查**只用「红线」**。旧 neeko-check「支柱 / Pillar」体系
 > （13/15 条、编号与本表不同）已**废止**（根 `AGENTS.md`「AI 代码审查红线」明文）。本 skill
-> 内一律按**现行 15 条红线编号**引用；不得再出现「支柱 / Pillar」作为规则名。
+> 内一律按**现行 17 条红线编号**引用；不得再出现「支柱 / Pillar」作为规则名。
 
 > **定位**：审核代码是否符合三层标准：
-> 1. **项目规范** —— 15 条红线（全文按代码物理边界分文件存放；根 `AGENTS.md` 的红线索引表是唯一台账）
+>
+> 1. **项目规范** —— 17 条红线（全文按代码物理边界分文件存放；根 `AGENTS.md` 的红线索引表是唯一台账）
 > 2. **业界最佳实践** —— `docs/best-practices/index.md`（React / Rust / 通用工程）
 > 3. **架构设计** —— 根 `AGENTS.md`「架构基本原则（强制）」
 
 > **按改动所在侧取红线全文，否则等于漏审**：
+>
 > - 跨栈红线 **4 / 5 / 14** 全文在根 `AGENTS.md`；
-> - 后端红线 **1、2、3、6、7、8、9、10、11、13、15** 全文在 `src-tauri/AGENTS.md`；
-> - 前端红线 **12** 全文在 `src/AGENTS.md`。
+> - 后端红线 **1、2、3、6、7、8、9、10、11、13、15、16** 全文在 `src-tauri/AGENTS.md`；
+> - 前端红线 **12、17** 全文在 `src/AGENTS.md`。
 >
 > 审核 `src-tauri/**` 前必须读 `src-tauri/AGENTS.md`；审核 `src/**` 前必须读 `src/AGENTS.md`。
 > 以**编号**定位规则，不要按标题文字猜。标准缺失时提示补到对应 `AGENTS.md`，不在本 skill 内新增规则。
 
 # 核心使命
+
 死守单机 OS 资源底线，捍卫多平台编译一致性，确保 Neeko 长期架构可维护性。
 
 ---
@@ -45,12 +48,12 @@ disable-model-invocation: true
 
 - 根 `AGENTS.md`：红线索引表 + 架构基本原则（强制）。
 - 改动涉及 `src-tauri/**` → 读 `src-tauri/AGENTS.md`（该侧全部红线全文）。
-- 改动涉及 `src/**` → 读 `src/AGENTS.md`（红线 12 全文 + 导入防火墙 / 状态管理）。
+- 改动涉及 `src/**` → 读 `src/AGENTS.md`（红线 12 / 17 全文 + 导入防火墙 / 状态管理）。
 - 需要机制依据时按需载入 `.trellis/spec/{backend,frontend,security,unit-test}/`。
 
-## Step 2：逐条核对 15 条红线
+## Step 2：逐条核对 17 条红线
 
-按下方「15 条红线导航表」定位相关红线，**回落到点文件读全文**再判定；缺审查项即等于漏审。
+按下方「17 条红线导航表」定位相关红线，**回落到点文件读全文**再判定；缺审查项即等于漏审。
 
 ## Step 3：架构与最佳实践
 
@@ -63,27 +66,29 @@ disable-model-invocation: true
 
 ---
 
-# 15 条红线导航表
+# 17 条红线导航表
 
 > 全文以 `AGENTS.md` 为准，本表只做**定位与摘要**（够用来识别并停止违规）。判据与例外一律回落到点文件。
 
-| # | 红线 | 必须 / 禁止（摘要） | 全文落点 |
-| --- | --- | --- | --- |
-| 1 | 统一命令执行接口（Local/WSL/SSH） | 命令只走 `core::exec` / `common::executor`，禁止直接用 `std::process::Command` | `src-tauri/AGENTS.md` |
-| 2 | 跨平台 shell 选择（`cmd /c` vs `sh -c`） | Local 按平台选 shell，禁止硬编码 `sh -c` / `bash -lc` | `src-tauri/AGENTS.md` |
-| 3 | 阻塞 I/O 隔离（`spawn_blocking`） | 异步中 `std::fs` / `std::process` / portable-pty 阻塞读写必须包 `spawn_blocking` | `src-tauri/AGENTS.md` |
-| 4 | IPC 大文本边界 | 单次 Command 返回 JSON ≤ 2MB；大载荷走二进制流 / 分页 | 根 `AGENTS.md` |
-| 5 | Event 名常量化 | Event 名双端只来自单一常量源，禁止各自硬编码 | 根 `AGENTS.md` |
-| 6 | Command 层保持极薄 | `#[tauri::command]` 只做参数校验 + 调度，核心逻辑落 manager/service | `src-tauri/AGENTS.md` |
-| 7 | `if let` 嵌套不超过 3 层 | ≥3 层连续解构拍平成 `match`；仅 1–2 条 happy path 才用 `if let` | `src-tauri/AGENTS.md` |
-| 8 | 路径安全校验（`canonicalize` + capabilities 白名单） | 前端传入路径消费前必须 `canonicalize`；capabilities 禁止 allow-all | `src-tauri/AGENTS.md` |
-| 9 | `mod.rs` 保持极薄 | `mod.rs` 只允许 `mod` 声明 + `pub use`，业务 `fn` / `impl` 抽同级文件 | `src-tauri/AGENTS.md` |
-| 10 | 平台代码规范化（Platform Adapter） | 平台差异与单平台代码必须落 `platform/<theme>/`，通用文件禁止平铺 `#[cfg]` | `src-tauri/AGENTS.md` |
-| 11 | 换行边界（Line-Ending Boundary） | 禁止注入 `core.autocrlf`；禁止对工作区换行做字节级断言 | `src-tauri/AGENTS.md` |
-| 12 | 路径身份唯一化（`FileRef`） | 同文件判定必须走 `FileRef`，禁止消费侧自造字符串归一 / 别名匹配 | `src/AGENTS.md` |
-| 13 | 测试夹具路径平台无关 | 夹具路径一律由 `tempdir()` 推导，禁止硬编码 POSIX 绝对路径 | `src-tauri/AGENTS.md` |
-| 14 | LSP 能力声明必须与实现一致 | 声明客户端能力前先确定消费点，同一 diff 内给出实现或删声明 | 根 `AGENTS.md` |
-| 15 | 语言差异必须落在插件数据 | 语言差异只允许作为 `LspPlugin` 字段，通用模块禁止 `language_id` 分支 | `src-tauri/AGENTS.md` |
+| #   | 红线                                                 | 必须 / 禁止（摘要）                                                              | 全文落点              |
+| --- | ---------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------- |
+| 1   | 统一命令执行接口（Local/WSL/SSH）                    | 命令只走 `core::exec` / `common::executor`，禁止直接用 `std::process::Command`   | `src-tauri/AGENTS.md` |
+| 2   | 跨平台 shell 选择（`cmd /c` vs `sh -c`）             | Local 按平台选 shell，禁止硬编码 `sh -c` / `bash -lc`                            | `src-tauri/AGENTS.md` |
+| 3   | 阻塞 I/O 隔离（`spawn_blocking`）                    | 异步中 `std::fs` / `std::process` / portable-pty 阻塞读写必须包 `spawn_blocking` | `src-tauri/AGENTS.md` |
+| 4   | IPC 大文本边界                                       | 单次 Command 返回 JSON ≤ 2MB；大载荷走二进制流 / 分页                            | 根 `AGENTS.md`        |
+| 5   | Event 名常量化                                       | Event 名双端只来自单一常量源，禁止各自硬编码                                     | 根 `AGENTS.md`        |
+| 6   | Command 层保持极薄                                   | `#[tauri::command]` 只做参数校验 + 调度，核心逻辑落 manager/service              | `src-tauri/AGENTS.md` |
+| 7   | `if let` 嵌套不超过 3 层                             | ≥3 层连续解构拍平成 `match`；仅 1–2 条 happy path 才用 `if let`                  | `src-tauri/AGENTS.md` |
+| 8   | 路径安全校验（`canonicalize` + capabilities 白名单） | 前端传入路径消费前必须 `canonicalize`；capabilities 禁止 allow-all               | `src-tauri/AGENTS.md` |
+| 9   | `mod.rs` 保持极薄                                    | `mod.rs` 只允许 `mod` 声明 + `pub use`，业务 `fn` / `impl` 抽同级文件            | `src-tauri/AGENTS.md` |
+| 10  | 平台代码规范化（Platform Adapter）                   | 平台差异与单平台代码必须落 `platform/<theme>/`，通用文件禁止平铺 `#[cfg]`        | `src-tauri/AGENTS.md` |
+| 11  | 换行边界（Line-Ending Boundary）                     | 禁止注入 `core.autocrlf`；禁止对工作区换行做字节级断言                           | `src-tauri/AGENTS.md` |
+| 12  | 路径身份唯一化（`FileRef`）                          | 同文件判定必须走 `FileRef`，禁止消费侧自造字符串归一 / 别名匹配                  | `src/AGENTS.md`       |
+| 13  | 测试夹具路径平台无关                                 | 夹具路径一律由 `tempdir()` 推导，禁止硬编码 POSIX 绝对路径                       | `src-tauri/AGENTS.md` |
+| 14  | LSP 能力声明必须与实现一致                           | 声明客户端能力前先确定消费点，同一 diff 内给出实现或删声明                       | 根 `AGENTS.md`        |
+| 15  | 语言差异必须落在插件数据                             | 语言差异只允许作为 `LspPlugin` 字段，通用模块禁止 `language_id` 分支             | `src-tauri/AGENTS.md` |
+| 16  | 资源稀缺不得进数据契约                               | 稀缺只影响调度顺序，禁止影响可观测集合（能否显示）                               | `src-tauri/AGENTS.md` |
+| 17  | 禁止影子副本                                         | 禁止维护对方资源/状态的镜像；要问就用对方的读接口                                | `src/AGENTS.md`       |
 
 ---
 
@@ -93,11 +98,13 @@ disable-model-invocation: true
 > 红线 2 / 10 / 13（必要时 15）。
 
 【路径信号】
+
 - 改动位于 `src-tauri/src/platform/**`（适配器目录）
 - 出现 `#[cfg(target_os)]` / `#[cfg(not(target_os))]` / `#[cfg(windows)]` 等条件编译
 - 涉及路径拼接、分隔符、`PathBuf` / `Path`、硬编码 `\\` 或 `/`
 
 【OS 原语信号】
+
 - PTY / 终端读写、SSH、WSL 分发
 - 进程启动 / 杀死（`std::process`、`Command`）、进程树、job object
 - 文件系统监控（watcher）、symlink、reveal（在文件管理器中显示）
@@ -106,6 +113,7 @@ disable-model-invocation: true
 - 文件 URL、git credential、devtools
 
 【前端信号】
+
 - 快捷键修饰键（Command vs Control）
 - 平台路径处理、`navigator.platform` / `@tauri-apps/api` 平台判断
 
@@ -123,15 +131,18 @@ disable-model-invocation: true
 
 # 架构与最佳实践核对（维度）
 
-## 维度 A：项目规范（15 条红线）
+## 维度 A：项目规范（17 条红线）
+
 见上方导航表；逐条回落到点文件核对。
 
 ## 维度 B：业界最佳实践（`docs/best-practices/index.md`）
+
 - **React**：类型安全（禁 `any`）、组件 ≤300 行、数据流收拢到 hooks / Zustand、副作用清理（`listen` 必须 `unlisten`）、渲染性能（`useMemo` / `useCallback` / `React.memo`）、key 稳定性、受控组件。
 - **Rust**：错误处理（`thiserror` + `?` 传导、禁吞错）、所有权与借用（避免滥用 `.clone()`）、命名与文档、并发（避免跨 `await` 持锁、阻塞 I/O 隔离）、类型驱动（`enum` + `match` 编译期分派）。
 - **通用**：可读性、魔法数字提取常量、DRY / KISS / YAGNI、无死代码。
 
 ## 维度 C：架构设计（根 `AGENTS.md` 架构基本原则）
+
 - 高内聚低耦合：模块职责单一，跨域经明确接口（API wrapper / `pub use` / props/context）通信，禁止跨域直接引用内部实现。
 - 开闭原则：新增功能通过新代码扩展（新 variant / 新 strategy / 新组件），而非改核心逻辑。
 - 前端 FDD / 后端 Domain 目录内聚；导入防火墙（`src/AGENTS.md`）。
