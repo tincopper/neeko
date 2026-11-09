@@ -255,10 +255,10 @@ export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
 | `features/connection/components/WSLDialog.tsx` | `connectionApi` |
 | `features/connection/components/RemoteDialog.tsx` | `connectionApi` |
 | `features/connection/components/RemoteAuthDialog.tsx` | `connectionApi` |
-| `features/connection/components/ConnectionProjectCard.tsx` | `gitApi` |
+| `features/connection/components/ConnectionProjectCard.tsx` | `gitApi`、`agentApi`、`projectApi`（后两者仅用于向 shared 弹窗注入保存回调） |
 | `features/project/components/ProjectsPanel.tsx` | `gitApi` |
-| `features/project/components/ProjectSettingsDialog.tsx` | `projectApi`、`agentApi` |
-| `features/project/components/ProjectItem.tsx` | `projectApi` |
+| `features/project/components/ProjectSettingsDialog.tsx` | 无（已注入化：`renderAgentIcon` / `onSaveAgents` / `onSaveIde` 由调用方传入） |
+| `features/project/components/ProjectItem.tsx` | `projectApi`、`agentApi`（后者仅用于向 shared 弹窗注入保存回调） |
 | `features/project/components/WorktreeList.tsx` | `gitApi`、`terminalApi` |
 | `features/editor/components/FileViewer.tsx` | `fileApi` |
 | `features/editor/components/HtmlPreview.tsx` | `fileApi` |

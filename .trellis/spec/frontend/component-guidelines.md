@@ -45,19 +45,23 @@ export default React.memo(MyComponent);
 **模式 A —— `React.FC` + 箭头函数**（适用于小/中型组件，首选）：
 
 ```tsx
-// src/shared/components/AgentIcon.tsx
+// src/features/agent/components/AgentIcon.tsx
 interface AgentIconProps {
   icon?: string | null;
   size?: number;
-  fallback?: string;
+  fallback?: React.ReactNode;
 }
 
-const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = 16, fallback = "🤖" }) => {
+const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = 16, fallback = null }) => {
   // ...
 };
 
 export default React.memo(AgentIcon);
 ```
+
+> **分层提示**：`AgentIcon` 的解析需要 Tauri 边界（自定义上传图标走 `convertFileSrc`），
+> 所以容器住 `features/agent`；纯展示的 `<img>` + 加载失败兼底收敛在
+> `shared/components/FallbackImage.tsx`。多 feature 消费的纯展示组件才住 shared。
 
 **模式 B —— 具名函数**（用于较大的组件）：
 
@@ -768,8 +772,9 @@ const [selectedAgentId, setSelectedAgentId] = useState<string | null>(currentAge
 const [selectedIdeId, setSelectedIdeId] = useState<string | null>(null);
 
 const handleSave = useCallback(async () => {
-  await setProjectAgents(projectId, selectedAgentId ? [selectedAgentId] : []);
-  await setProjectIde(projectId, ideCommand);
+  // 保存动作由调用方注入（shared 组件不直调 feature API）
+  await onSaveAgents(projectId, selectedAgentId ? [selectedAgentId] : []);
+  await onSaveIde(projectId, ideCommand);
   onSave(selectedAgentId, ideCommand);
   onClose();
 }, [...]);
