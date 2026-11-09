@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范索引：改 src/** 前的规则入口"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "组件归属与目录结构：SessionList/ProjectSettingsDialog 搬家、AgentIcon 归位 features/agent 的判据"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件规模 ≤300 行红线与 ratchet 基线：搬家后需重生成 component_size 基线键"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端测试层级与 renderHook/组件测试约定：FallbackImage/AgentIcon 单测"}

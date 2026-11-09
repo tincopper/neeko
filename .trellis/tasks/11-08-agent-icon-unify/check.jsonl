@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范索引：检查时的规则入口"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件规模红线：核对 ratchet 基线与新增组件行数"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量门禁清单：收尾 pnpm check:quick 的覆盖面与缺口"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "mock 策略：resolveAgentIconSrc 的既有 mock 点在迁移后是否仍生效"}
