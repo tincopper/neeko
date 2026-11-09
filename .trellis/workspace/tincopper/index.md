@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-8.md`
-- **Total Sessions**: 445
+- **Total Sessions**: 446
 - **Last Active**: 2026-11-09
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-8.md` | ~1313 | Active |
+| `journal-8.md` | ~1335 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -36,6 +36,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 446 | 2026-11-09 | Team：任务详情 tab 修复 + 队长先规划按角色配人 + flow 三层关系 | `61a3263e` | `multi-agent` |
 | 445 | 2026-11-09 | Team：历史会话冷缓存兜底 + 已退出成员可查看记录（v21） | `0a253899` | `multi-agent` |
 | 441 | 2026-11-08 | Team：清单跟随项目（project_id 过滤，v20） | `47723ecf` | `multi-agent` |
 | 440 | 2026-11-08 | Team：看板/分配图中央 tab（team-board kind）+ 岛屿底色 + role_hints 预设落实现 | `5677c6ba` | `multi-agent` |

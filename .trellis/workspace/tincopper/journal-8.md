@@ -1311,3 +1311,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 446: Team：任务详情 tab 修复 + 队长先规划按角色配人 + flow 三层关系
+<!-- trellis-session: v=2 fp=a89708d3ae12e642 -->
+
+**Date**: 2026-11-09
+**Task**: Team：任务详情 tab 修复 + 队长先规划按角色配人 + flow 三层关系
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `61a3263e` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
