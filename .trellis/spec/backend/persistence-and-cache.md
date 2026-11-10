@@ -545,6 +545,51 @@ namespace），加进通用层会让文件后端多一个无谓约束。正确�
 
 ---
 
+## 5b. 纯 shell 终端输出日志（`terminal_history/`，2026-11-10）
+
+与版本化 SQLite 库并列的**非版本化文件缓存**，按 `common/paths.rs::terminal_history_dir()`
+落在 `db_dir()/terminal_history/`。
+
+| 项 | 契约 |
+| --- | --- |
+| 单一所有者 | `common/terminal/history/store.rs::HistoryStore` 持有目录与全部文件 IO；目录**只在组合根** `app_state.rs` 解析一次，测试注入 `tempdir()`。`live_sessions` 域只依赖同目录 `contract.rs` 的 `SessionHistory` trait（依赖倒置），由组合根注入实现。 |
+| 文件 | `<session_id>.log`，文件头 `NEEKO-SHELL-LOG-v2\n` + 净化后的纯文本（无 ESC）；原子写用 `<id>.log.tmp` + rename。无头 = 旧格式，读回降级为空 |
+| 隔离 | 挂在 `db_dir()` 而非 `app_dir()`，所以 `NEEKO_DB_DIR` 覆写时日志随版本化库一起走 |
+| 上限 | 写入侧 `recorder::tail` 按 `min(256KB, 5000 行)` 取尾，字节截断落 UTF-8 边界、行截断落 `\n` 之后 |
+| 写线程 | `recorder::start_writer` 起独立 OS 线程；reader 侧 `try_send` 非阻塞，队列满丢最旧，**绝不反压 PTY 读泵**。生命周期靠 channel：reader 退出 → sender drop → 写线程 `finish()` + 最后落盘后退出 |
+| 范围 | 只有 `LiveTerminal::is_plain_shell()`（`agent_id` 为空）才落盘；agent TUI 全屏重绘帧不可回放 |
+| 回放准备 | `HistoryStore::prepare` 在 router 的 `run_blocking` 里执行（红线 3），返回 `HistoryPlan` —— 三端共用；`HistoryPlan::attach` 是「推进 drain + 起写线程」的**唯一接线接缝**，Local / WSL / SSH 共用。旧日志已读入内存，直接作新写线程初值，不再 `fs::copy`（少一次 IO、少一个竞态）。 |
+| 回收 | `HistoryStore` 实现 `SessionHistory` trait 的 `on_adopt` / `on_unregister`；`Registry` 通过注入端口通知，不认识 terminal 域。GC `prune` 归组合根 `app/boot.rs::on_setup`，**不在 `boot::restore` 里** —— `restore()` 是纯回填，曾被塞进 GC 导致单测删光真实用户日志（现有 `restore_never_touches_session_history_side_effects` 护栏钉住）。 |
+
+**为什么 `prepare` 是单点**：三端对称要求同一份回放决策，且所有阻塞 fs 必须在 async command 之外。`router::prepare_history` 是唯一调用点，`is_plain_shell` 单点裁决（前端不再自己判 `agentId`），`HistoryPlan::attach` 是唯一接线接缝。新增传输类型只需接 `attach`，无需复制历史逻辑。
+
+**为什么不进 `agent_sessions.db`**：日志无 schema 版本门禁，且是 256KB×N 的 BLOB，塞进会话库会撑大 WAL；独立文件让「没有 cursor 行」成为唯一孤儿判据。
+
+**为什么不回放原始 PTY 字节**：alt-screen / `2J` / 光标寻址使字节流不是稳定快照（回放只剩末帧），体积无界；净化文本可读、体积可控、不受控制序列影响。纯 shell 首帧实测零 `2J`/`3J`/`?1049h`（`research/current-state.md` §7）。
+
+**净化器是单行编辑器，不是逐字节过滤器**（2026-11-10 实测回归）：shell 的 prompt 重绘靠
+`\r` 光标归位 + `ESC[K`/`ESC[J` 擦除 + 覆盖写。zsh `PROMPT_SP` 会先输出「反显 `%` + 79 个补白 +
+`\r \r\r` + `ESC[J`」再写真 prompt。若把单独 `\r` 当换行、又保留本该被擦除的文本，回放会出现
+孤立 `%`、成片空白行、重复 prompt 与半截命令（`ttop`）。正确语义：
+
+| 输入 | 动作 |
+| --- | --- |
+| `\r` | 光标回行首（**不换行**），后续字符覆盖 |
+| `\n` | 提交当前行，去尾部补白，追加 CRLF |
+| `ESC[K` / `ESC[J` | 擦到行尾 / 清整行（参数 1/2 分别对应擦到光标 / 整行） |
+| `ESC[G/C/D/P/@/X/H` | 设列 / 前后移 / 删字符 / 插空格 / 擦字符 / 设光标 |
+| SGR / 私有模式 / OSC / DCS / charset | 忽略 |
+| TAB | 展开到 8 列边界，保证光标列与显示列一致 |
+
+没有 LF 的超长输出在内存里也按 `MAX_LOG_BYTES` 收敛，避免当前行无限增长。日志头带格式版本，
+旧格式（逐字节过滤时代）读回直接降级为空，不回放垃圾。钉住用例：
+`recorder::tests::zsh_prompt_sp_redraw_leaves_one_clean_prompt` /
+`repeated_prompt_redraws_do_not_duplicate_lines` / `legacy_log_without_magic_is_ignored`。
+
+**回放不走新 command**：`create_terminal_session(resumeFrom)` → router 一次 `prepare` → `HistoryPlan::attach(&drain, id)` 在 drain 创建后、reader 启动前 push 回放字节，复用二进制 `terminal_drain`。顺序由队列保证，不依赖前后端时序。`commands → router → manager → pipeline` 的启动参数收进 `terminal/launch.rs::TerminalLaunch` 值对象（IPC 边界保持扁平），新增字段只改一处。
+
+**目录职责**：`history/` 按单一职责拆分 —— `sanitizer.rs`（纯 ANSI 行编辑器，无 IO）、`store.rs`（格式 / 路径安全 / 生命周期）、`writer.rs`（独立写线程）、`contract.rs`（依赖倒置接口）、`tests.rs`。`mod.rs` 只做声明与 re-export（红线 9）。`MAX_LINE_CHARS` 与 `MAX_LOG_BYTES` 分开：前者限制 `Vec<char>` 当前行，后者限制落盘字节，避免中文 3 字节/字导致内存峰值 3×。
+
 ## 6. 常见坑（都实际踩过）
 
 | 坑 | 症状 | 正确做法 |

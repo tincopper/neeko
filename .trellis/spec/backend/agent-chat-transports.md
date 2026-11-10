@@ -396,6 +396,18 @@ Claude Code / Codex 会把**任务标题**写进 OSC（`✳ Fix login bug`），
   「单元 + native id」收敛成一行并删掉多余的持久化行；同时 `resumeFromSessionId` 改为
   一次性消费（`TerminalView` 的 `handleSessionCreated` 显式清），否则 PTY 重挂载会拿同一个
   `from` 反复 `adopt`，每次多留一行。
+- **纯 shell 终端恢复回放历史输出**（任务 `11-10-terminal-resume-history-replay`）：
+  `common/terminal/recorder.rs` 把 PTY 输出净化成纯文本（`Sanitizer` 剥 CSI / OSC / DCS /
+  charset，`\r`→`\r\n`），经 mpsc 旁路 + 独立写线程按 `min(256KB, 5000 行)` 取尾，
+  tmp+rename 原子写 `db_dir()/terminal_history/<session_id>.log`。**只有 `agent_id` 为空的
+  纯 shell 落盘**（`LiveTerminal::is_plain_shell`），agent TUI 输出几乎全是全屏重绘帧，不落盘。
+  恢复时 `create_terminal_session` 增可选 `resume_from`，`spawn_pty_pipeline` 在
+  `drains.insert`（`terminal/services.rs:160`）之后、`spawn_reader_thread`（`:202`）之前把
+  `replay_payload` push 进**新** drain：顺序由队列本身保证，复用现成二进制 `terminal_drain`，
+  零新 command、零前端 `term.write` 改动。日志生命周期随 cursor 行走：建 PTY 时
+  `copy_history(from, into)`，`adopt` 成功后 `remove(from)`，`unregister` / 用户删除时
+  `remove`，启动 `boot::restore` 后 `prune_orphans(live_ids)`。退出流程不删。
+  回放失败（无日志 / 读失败）一律降级为空终端，不阻断建 PTY。
 - tab 是否用注册表标题是**另一条**判据：`resolveTabTitle` 要求
   `hasUserInput && isNamedSession`（tab 标题不能是空串，无名时回落创建期标题）；
   不复用 `isListedSession`，否则 chat 首轮期间 tab 会一直停在占位名。
