@@ -860,3 +860,156 @@ cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / serv
 - **失败不清数据**：重取失败保留上一次的 `MemberDetail`，错误另起一条可见文字（闪空比旧数据更糟，
   同 `teamStore.refresh`）。
 
+
+## 9a. 成员位角色预设（role_hints，v20）与导航模型（前端）
+
+### 9a.1 role_hints：解析链多了一层「面板预设」
+
+面板的成员池每行一个角色下拉（池位 → persona 名），落库为 `team.role_hints`
+（JSON 数组，`[{agentId, persona}]`，v20）。spawn 的 persona 解析链变为：
+
+```text
+显式参数 > role_hint（按 agent_id 匹配）> default_persona > 无人设
+```
+
+- **「预设」由用户决定，不由模型自觉**：队长 spawn 时一字不提，后端也按预设注入
+  人设 —— 这正是它比「靠提示词让队长记得指派角色」强的地方。
+- role_hint 指向**已删除**的角色 ⇒ spawn 报可读 `NotFound`（列出可用名单），**不静默
+  落回缺省** —— 静默降级会让「预设了研究员的成员」悄悄变成无人设，花名册看不出。
+- 构造期校验（`bootstrap::validate_config`）：agent_id 不许重复（后条会静默覆盖前条）、
+  文本过控制字符判据；**存在性**留给 spawn 时判（角色库可编辑）。
+- 前端契约：`TeamConfig.roleHints` 镜像；面板草稿的投影规则 = 只投影「勾选中且选了
+  角色」的行（无人设 = 不设，落到 `default_persona`）。
+
+### 9a.6 队长必须**先规划、再按角色配人**（preamble 契约）
+
+用户报障：lead 收到需求后直接建一个任务就算完了 —— 既没有拆解，也没看队员池的角色。
+根因在队长 preamble 的工作顺序写着「先建任务、再 spawn」，且**从不告诉它有角色可选**。
+
+现在的顺序与判据（`the_lead_is_told_to_plan_first_and_match_personas`）：
+
+1. `team_status` 看花名册
+2. `team_options` 看池子（**每个 CLI 带 persona**，由 `spawnable_block` 渲染）
+3. **先规划**：每个交付物一个任务，需要顺序时用 `depends_on`（「一个含糊任务 = 失败的规划」）
+4. **按 persona 配人**：为每个任务 spawn 或复用「角色匹配」的成员；多个候选时显式传 `persona`
+5. `team_wait` 阻塞
+
+池位清单每行形如 `{id} (tier {档}, persona: {角色})`；没有预设的显式写
+`no preset persona`（「没按角色分工」必须在文本里可见，而不是留白）。
+
+`MAX_PREAMBLE_CHARS` 2000 → 3200：新增的规划规则是承重的，而 2000 的初衷只是
+「别顶掉用户第一句话」（3200 仍远低于该阈值）。
+
+### 9a.7 分配图的三层关系（前端）
+
+图不是「任务列表的另一画法」，而是**分工审核表**。布局（`flowLayout`）产三类边：
+
+| 边 | 含义 | 视觉 |
+| --- | --- | --- |
+| `create` | **lead 派发每个任务**（一个需求拆成哪些） | 点线，自顶部 lead 盒向下 |
+| `dep` | 任务间依赖（谁等谁） | 灰虚线 |
+| `claim` | 成员认领任务（谁在干） | 成员身份色实线 |
+
+成员行按**角色分组**（同 persona 相邻，无人设排后但不藏），每个成员节点第二行显示
+`{角色} · {任务数}` —— 「分工是否合理、谁没被用上」直接读得出来。
+
+### 9a.4 成员的「打开会话」有两条路（v21）
+
+`MemberStatusView` 同时带 `terminalId`（活的 PTY）与 `agentSessionId`（CLI 原生会话 id）：
+
+| 条件 | 动作 | UI 文案 |
+| --- | --- | --- |
+| `terminalId != null` | 接管那个 PTY（`openExistingTerminalTab`） | 打开会话 |
+| 否则 `agentSessionId != null` | 打开 `conversation` tab（`agentId:nativeId`） | 查看记录 |
+| 两者都空 | 置灰 + 可见理由 | 暂无会话 |
+
+- `agentSessionId` 由**观察者**从 hook 事件的 `agent_session_id` 记录
+  （`TeamManager::note_agent_session_id`：首次见到即写，成员已死也照写）。
+- 为什么必须分两条：`archive_member` 归档时清 `terminal_id`（不给死进程死按钮），
+  但会话文件仍在磁盘上 —— 塞进终端路径的症状正是用户报的「会话 id 找不到」。
+
+### 9a.5 历史会话的冷缓存（`conversation` 域）
+
+`conversation` 的 `cache` 只由扫描填充，而「打开历史会话」可以在扫描之前发生
+（重启后直接点开旧会话）。`session_file_path` 因此在缓存未命中时**按需重扫该 agent**
+（`scan_agent`）再取，而不是直接报 `Conversation not found in cache`；
+`get_messages` / `get_resume_command` 走同一个入口（一份判据，不许两处实现）。
+判据：`opening_a_conversation_with_a_cold_cache_scans_on_demand` /
+`a_missing_conversation_says_it_was_not_found_on_disk`。
+
+### 9a.3 团队清单跟随项目（project 过滤）
+
+面板的团队清单按 `activeProjectId` 过滤（`team_list` 命令的 `project_id` 参数 →
+`view::list_teams_scoped`）：**切项目 = 换一份清单**。判据：
+
+- 过滤在**截断之前**（先筛后取最近 50）—— 反过来会让第 51 个之后属于本项目的团队
+  永远消失（判据 `truncation_applies_after_the_project_filter`）。
+- 空 `project_id` 的行（v16 之前的旧队）**排除**：它们无法归属到任何项目，混进
+  「当前项目」的清单里会让用户误以为它们属于这里（判据
+  `list_teams_scopes_by_project_and_excludes_unattributed_legacy_rows`）。
+- MCP 工具 `team_list` 不传过滤（队长读全量 —— 它需要跨项目理解自己的队）。
+- 前端：`useTeamList` 内部订阅 `activeProjectId`，它在 `load` 的依赖里 ——
+  切项目自动重拉，不等脉冲。
+
+### 9a.2 导航模型（前端）：列表优先 + 视图推入
+
+旧的上下分栏（`TeamListPane` + `ResizablePanelGroup`，队长入口常驻首屏 | 列表在下半区）
+已退役。替代：**三个互斥视图**各占整面板 —— 列表态（主面，header 给「新建团队」常驻
+入口 + 状态过滤）、新建态（推入的创建流，← 返回 + 吸附 footer CTA + 实时摘要）、
+已打开态（打开某队后推入）。判据：
+
+- 视图是**导航**（TeamPanel 就近 state：`creating` + 既有 `browsingFrom`），不进
+  `teamStore` —— store 的 `teamId` 仍是唯一数据面（`null` = 列表/新建，非空 = 打开）。
+- 返回（退栈）**不清草稿**：导航 ≠ 放弃；创建草稿只在成功或刷新后消失。
+- `TeamListPane` / 分栏拖拽已删除；`TeamListSection`（region「已有团队」）保留为
+  列表态的行区。
+
+## 9. persona（角色库）与分配 flow 图（v19）
+
+### 9.1 persona 与授权是**两个维度**，不许合并
+
+`MemberRole(Lead | Worker)` 是**授权矩阵**的唯一输入维度（design §3.2）；persona 是
+「这个成员怎么干活」的**数据包**。persona 若能改变授权，spawn 就成了提权后门 ——
+所以 persona 是成员行上的数据（`team_member.persona`，JSON 快照），不是一个角色变体；
+授权代码一行都不读它。
+
+- **角色库**：`team_role` 表（v19），名字是主键。`TeamManager` 持镜像（`load` hydrate），
+  写入口 `save_role` / `delete_role`（校验：非空 / 名字 ≤64 / **persona ≤ `MAX_PERSONA_CHARS`**
+  / 控制字符 —— 超长**拒绝**不截断，用户手写的文本被砍短比被拒绝更难排查）。
+- **消费链**：`team_spawn` 的 `persona` 参数（或团队缺省 `team.default_persona`）→
+  决策层解析预设并把**快照**落到成员行（`Persona{name, preamble}`）→
+  执行层 `identity::with_persona` 把正文拼在角色 preamble **末尾**。
+- **快照不是引用**（§2.2「成员行携带执行所需的一切」）：spawn 之后角色库怎么改、预设
+  删除与否，都不影响这个成员「带着什么文本被拉起来」；`MemberStatusView.persona` 只回
+  名字（正文已进 argv，面板不需要再读）。
+- **覆盖链**：显式参数 > persona 预设 > 团队缺省（`approval_policy` / `workspace`
+  各自独立走这条链）。未知 persona ⇒ `NotFound` 并**列出可用名单**（与池子拒绝同一模式）。
+- **无人设 = 逐字节不变**：`persona: None` 时成员 argv 与 v19 之前完全一致
+  （判据 `a_member_with_a_persona_gets_it_in_its_preamble_argv` 的对照半句 +
+  `preamble::with_persona` 的空值判据）。persona 的预算从骨架让出来
+  （`the_persona_fits_inside_the_preamble_budget` 钉住拼完仍 ≤ 2000）。
+- `cli_preference` 只是**建议**（面板预选 / 队长参考），不是判据 —— 准入判据只在
+  `admission` 表（红线 15：persona 是数据，不是代码分支）。
+- 命令面：`team_role_list` / `team_role_save` / `team_role_delete`（本机用户入口，
+  无 principal、不碰授权矩阵，§8.4 分界）；`RolePreset` 已进 commands 的 camelCase
+  键集断言表。
+- **载荷有界**（红线 4，与 `MAX_LISTED_TEAMS` 同一纪律）：`team_role_list` 回
+  `RoleList { roles, truncated }`，行数截到 `MAX_LISTED_ROLES = 200`（`view.rs`）。
+  「单行有界」不等于「载荷有界」：单条预设已被 `validate_role` 限住长度，但行数是
+  用户自建、只增不减 —— 前端必须把 `truncated` 说出来（`RoleLibrarySection` 的
+  「只显示前 N 个预设」）。护栏测试 `the_role_list_is_bounded_and_flagged`。
+
+### 9.2 分配 flow 图：快照的投影，不是编排器
+
+前端「分配图」（`TeamFlowGraph` + `utils/flowLayout.ts`）把队长的分配画成
+lead → 任务 DAG（`dependsOn` 虚线）→ 成员（认领实线）。判据：
+
+- **零新增 IPC**：全部字段来自既有快照（`TaskCard.dependsOn` / `owner` / `state` /
+  `reclaimCount`，`view.rs` 早已在列路径上）。
+- **布局纯函数**（`flowLayout`）：任务层号 = 1 + 最深依赖层号。两个防御是必须的：
+  **缺失依赖**（截断板可能不含某个依赖 → 当作无依赖落第 0 层）与**环**
+  （`task_create` 不校验环，claim 时才被不变量 3 卡住 → 布局必须自兜，否则一个环 =
+  栈溢出白屏）。判据见 `flowLayout.test.ts` 的环 / 缺失依赖两条。
+- **边界**：「声明式 DAG 编排器」已迁出本任务（prd Non-goals，归 `07-26-unified-task-hub`
+  的 flow 执行方式）。图只回答「队长已经怎么分了」，编排决策仍只由 LLM 队长做 ——
+  谁想把图升级成编排输入，先回到那条 Non-goals 拍板。
