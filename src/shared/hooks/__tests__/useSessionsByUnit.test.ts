@@ -20,7 +20,8 @@ function session(sessionId: string, workspaceKey: string): SessionView {
     state: 'running',
     startedAt: '2026-10-31T10:00:00.000Z',
     updatedAt: '2026-10-31T10:00:00.000Z',
-    turnCount: 0,
+    // 侧栏列出要求「首轮已跑完」；本组用例测的是分组，不测可见性。
+    turnCount: 1,
     hasUserInput: true,
   };
 }

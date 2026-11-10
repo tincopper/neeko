@@ -1,4 +1,4 @@
-import { isListedSession, isNamedSession } from '@/shared/selectors/liveSessionSelectors';
+import { isNamedSession } from '@/shared/selectors/liveSessionSelectors';
 import type { SessionView } from '@/shared/types/liveSessions';
 import type { TabLike } from '@/shared/types/tab';
 
@@ -12,13 +12,14 @@ import type { TabLike } from '@/shared/types/tab';
  * 停在创建时」。渲染期派生保证只有一份真相（注册表），tab 的 `title` 只剩两个职责：
  * 创建期占位、用户改名。
  *
- * ## 为什么是 `isNamedSession` 而不是 `isListedSession`
+ * ## 为什么直接读 `hasUserInput` 而不是 `isListedSession`
  *
- * 「侧栏列不列它」与「tab 能不能用它当标题」是**两条**判据（第 35 轮修正）：
- * 侧栏只要求「用户用过」（`isListedSession`），而无 hook 的终端会话可能永远没有名字；
- * tab 标题不能是空串，所以必须额外要求**有名字**。两个条件在这里同时成立才回落到注册表。 */
+ * 「侧栏列不列它」与「tab 能不能用它当标题」是**两条**判据：chat 会话要等首轮跑完才进
+ * 侧栏，但 tab 从用户发出第一条消息起就应该显示会话标题 —— 拿侧栏的可见性当 tab 标题的
+ * 门槛，会让 chat 在整轮运行期间一直停在 `Agent Chat` 这个占位名上。
+ * 无 hook 的终端会话可能永远没有名字，tab 标题不能是空串，所以仍要 `isNamedSession`。 */
 export function resolveTabTitle(tab: TabLike, session?: SessionView | null): string {
   // 两条都成立才用注册表标题：用户确实用过（否则 tab 用创建期标题）+ 它已有名字。
-  if (!session || !isListedSession(session) || !isNamedSession(session)) return tab.title;
+  if (!session || !session.hasUserInput || !isNamedSession(session)) return tab.title;
   return session.title;
 }

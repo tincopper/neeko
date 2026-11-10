@@ -377,6 +377,23 @@ describe('editorStore.updateTab — terminal 字段是 `keep` 语义（与 agent
     const data = termData();
     expect(data.kind === 'terminal' && data.ptySessionId).toBe('pty-1');
   });
+
+  /** `resumeFromSessionId` 是一次性标记：不消费就会在 PTY 重建时重复 adopt，侧栏多出同名行。 */
+  it('恢复标记显式 undefined 会清除（`clear` 语义），其它 keep 字段不受影响', () => {
+    seedTerminalTab();
+    useEditorStore.getState().updateTab(SPACE, 'tt1', { resumeFromSessionId: 'pty-old' });
+    const seeded = termData();
+    expect(seeded.kind === 'terminal' && seeded.resumeFromSessionId).toBe('pty-old');
+
+    useEditorStore
+      .getState()
+      .updateTab(SPACE, 'tt1', { ptySessionId: 'pty-new', resumeFromSessionId: undefined });
+
+    const data = termData();
+    if (data.kind !== 'terminal') throw new Error('kind changed');
+    expect(data.resumeFromSessionId).toBeUndefined();
+    expect(data.ptySessionId).toBe('pty-new');
+  });
 });
 
 describe('editorStore.updateTab — agent-chat 字段落盘（mergeTabData 穷举白名单）', () => {

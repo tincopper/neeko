@@ -385,14 +385,20 @@ Claude Code / Codex 会把**任务标题**写进 OSC（`✳ Fix login bug`），
 
 空标题是**「这条会话还没有名字」的唯一表示**，不是后端兜底一个假名字。
 
-- 侧栏列出**所有已输入的会话**，无名行画成「图标 + 相对时间 + 状态」的占位行
-  （`SessionList` 的无标题分支）。**「列出」只看 `has_user_input`**：
-  `isListedSession = session.hasUserInput`。
-- 曾经把「有名字」也当列出条件（`hasUserInput && isNamedSession`），靠的正是
-  「首条终端输入即命名」那条通道 —— 第 35 轮把它删掉后，无 hook 的 CLI 永远等不到名字，
-  终端会话会整条从侧栏消失（实测回归）。可见性与命名必须彻底解耦。
+- 侧栏列出**跑完一轮且拿到真标题**的会话（chat / terminal 同一条规则，见
+  `.trellis/spec/frontend/state-management.md`）：`hasUserInput && isNamedSession &&
+  (titleSource ∈ {native, user} || turnCount > 0 || 终止态)`。agent 终端的首条输入恒被判负，
+  标题要等 hook `turn_completed` 的 `topic`；纯 shell 靠首行输入（`Prompt`）+ PTY 静默推断；
+  chat 靠首条 prompt + `TurnEnd`。**无标题行不再画占位行** —— 这是对第 35 轮「可见性与命名
+  解耦」的主动修订：用户明确要求「拿不到标题就不要出现在侧栏」。
+- 重复行：`--resume` 每次都造一个新 `session_id`，但 hook 上报的 `native_session_id` 相同，
+  而 `session_cursors` 主键只有 `session_id`。`cursor::dedupe_restorable` 在启动恢复时按
+  「单元 + native id」收敛成一行并删掉多余的持久化行；同时 `resumeFromSessionId` 改为
+  一次性消费（`TerminalView` 的 `handleSessionCreated` 显式清），否则 PTY 重挂载会拿同一个
+  `from` 反复 `adopt`，每次多留一行。
 - tab 是否用注册表标题是**另一条**判据：`resolveTabTitle` 要求
-  `isListedSession && isNamedSession`（tab 标题不能是空串，无名时回落创建期标题）。
+  `hasUserInput && isNamedSession`（tab 标题不能是空串，无名时回落创建期标题）；
+  不复用 `isListedSession`，否则 chat 首轮期间 tab 会一直停在占位名。
 
 `has_user_input`（＝侧栏可见、tab 用会话标题）的置位点是**用户发出输入**，不是「打开 tab」：
 

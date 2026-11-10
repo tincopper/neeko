@@ -51,7 +51,8 @@ export interface SessionView {
    * 用户是否已经在这个会话里**发出过输入**（Rust `SessionEntry::has_user_input`）。
    *
    * 打开 tab 就会创建 PTY / 静默会话，agent CLI 往往还会自己发 OSC 标题 —— 所以
-   * 「有标题」不等于「有人在用」。侧栏只列 `hasUserInput` 的会话（见 `isListedSession`）。
+   * 「有标题」不等于「有人在用」。这是侧栏列出的**必要而非充分**条件（见
+   * `isListedSession`：还要有真标题，且首轮已跑完或标题来自 CLI / 用户）。
    */
   hasUserInput: boolean;
 }

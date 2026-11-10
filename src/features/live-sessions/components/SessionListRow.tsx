@@ -21,8 +21,9 @@ import { useSessionRowOverlay } from '../hooks/useSessionRowOverlay';
  * - 图标 = **该会话的 agent 品牌图标**（不是 kind 图标）：扫一眼就知道哪个 agent 在跑；
  *   纯 shell / 未知 agent 回落 `cli.svg`（`AgentIcon` 自带兜底，本组件不另建映射表）。
  * - 标题：真标题用主色（**不画任何来源徽标** —— 标题来源是内部事实，见 design §10）。
- *   会话还没名字时**照样列出**（可见性 ≠ 命名，第 35 轮）：行只画 agent 图标 + 相对时间 +
- *   状态，不拿 agent 名或项目名编一个假标题。
+ *   `isListedSession` 已保证「没有名字的行不会进列表」（拿不到标题就先不显示），
+ *   下面的无标题分支只作为后端旧快照 / 竞态窗口的渲染兜底：只画图标 + 相对时间 + 状态，
+ *   不拿 agent 名或项目名编一个假标题。
  * - 相对时间取 `updatedAt`：terminal 全程 `running`，用「还在动」表达而不是伪造 Idle。
  * - 行尾默认显示相对时间；仅省略 ready / stopped 的状态点，其余状态仍常驻提醒。
  * - hover / 聚焦 / 菜单展开时由同一位置的 `⋯` 覆盖；实底与行 hover 同色遮住长标题/元信息，不画浮块、不预留额外列。

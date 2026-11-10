@@ -4,6 +4,7 @@ import { adoptLiveSession } from '@/features/live-sessions/api/liveSessionsApi';
 import { useEditorContext } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { AuthMethod } from '@/shared/types';
+import type { TerminalTabData } from '@/shared/types/tab';
 
 import { useTerminalStrategy } from '../strategies';
 
@@ -65,7 +66,12 @@ function TerminalView({ paneId, tabSpaceKey, remoteConfig }: TerminalViewProps) 
       const editor = useEditorStore.getState();
       const data = editor.tabs[tabSpaceKey]?.tabs.find((tab) => tab.id === activeTabId)?.data;
       const resumeFrom = data?.kind === 'terminal' ? data.resumeFromSessionId : undefined;
-      editor.updateTab(tabSpaceKey, activeTabId, { ptySessionId: sessionId });
+      // 一次性消费恢复标记：PTY 可能因缓存失效 / pane 切换 / 重挂载被重建，
+      // 留着它会拿同一个 from 反复 adopt，每次都在库里多留一行同 native id 的会话。
+      editor.updateTab(tabSpaceKey, activeTabId, {
+        ptySessionId: sessionId,
+        ...(resumeFrom ? { resumeFromSessionId: undefined } : {}),
+      } as Partial<TerminalTabData>);
       // 恢复出来的 PTY 是旧会话的**延续**：继承标题与「已使用」，旧条目退场。
       // 不继承的话，新会话要等用户敲第一条输入才会被侧栏列出 —— 那一行会先消失一次。
       if (resumeFrom) {

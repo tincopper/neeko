@@ -71,27 +71,46 @@ export function isNamedSession(session: SessionView): boolean {
 }
 
 /**
- * 是否该把这条会话列进侧栏：**用户已经在里面输入过**。
+ * 「首轮已经跑完」：一轮完成（`Signal::TurnFinished` 累计 `turnCount`）或会话已终止。
  *
- * 只有一个条件：`hasUserInput`。它挡住的是一类「假的会话」—— 打开 agent tab 就会创建
- * PTY / 静默会话，那时用户还没敲一个字（Codex 那样的桌面端也是「发出第一条消息后才建会话」）。
+ * 用 `turnCount` 而不是 `state === 'ready'`：新建会话的初始态就是 `Ready`，
+ * 用户刚敲完第一条消息、流还没起时也是 `Ready` —— 按状态判会在那一刻就放行。
+ * 失败 / 终止要单独算：终止态吸收迟到的 `TurnFinished`，`turnCount` 可能永远是 0。
+ */
+function hasFinishedFirstTurn(session: SessionView): boolean {
+  return session.turnCount > 0 || session.state === 'failed' || session.state === 'stopped';
+}
+
+/**
+ * 是否该把这条会话列进侧栏：**跑完一轮、且拿到了真标题**。
  *
- * **为什么不再要求「有名字」**（第 35 轮修正，实测回归）：可见性与命名是两件不同的事。
- * 第 35 轮把「首条终端输入 = 标题」从生产者集合里删掉后，没有 CLI hook 的终端会话
- * （纯 shell、未装 hook 的 agent）**永远等不到名字** —— 继续把「有名字」当列出条件，
- * 它们会整条从侧栏消失。旧实现之所以能成立，靠的是「首条输入即命名」那个已被删除的通道。
+ * 三条前提缺一不可：
+ * 1. `hasUserInput` —— 打开 agent tab 就会创建 PTY / 静默会话，那时用户还没敲一个字；
+ * 2. `isNamedSession` —— **没有标题就不显示**。agent 终端的首条输入被后端判负
+ *    （`report_terminal_input` 对 `agent_id = Some` 恒传空串，TUI 面板字节不是会话事实），
+ *    所以「一输入就冒出一条空行」正是这条挡掉的；标题只能等 CLI hook 的 `turn_completed`
+ *    带 `topic` 上报（`Native`），或 conversation 缓存回落后才到位；
+ * 3. `hasFinishedFirstTurn` —— 首轮没结束不显示。纯 shell 的「一轮结束」是 PTY 静默推断
+ *    的 `TurnFinished`，chat 是 `TurnEnd` 事件，agent 终端是 hook `turn_completed`。
  *
- * 无名字的行由视图解释成「图标 + 时间 + 状态」的占位行（`SessionList` 已有这个分支），
- * 不需要后端编一个假名字（`Placeholder` 恒为空串，`title::admit` 永不放行）。
+ * `Native` / `User` 标题直接放行：前者只在任务有实质进展的 hook 事件里写入（恢复的历史行
+ * 也是它），后者是用户主动改名 —— 两者都不该再等一轮。
+ *
+ * 注：这是对第 35 轮「可见性与命名彻底解耦」的**主动修订**。旧规则让无 hook 的终端以
+ * 「图标 + 时间 + 状态」占位行常驻，实测就是用户看到的空行；现在的取舍是「拿不到标题
+ * 宁可不显示」，与「一输入就列出」相比更符合会话列表的用途。
  */
 export function isListedSession(session: SessionView): boolean {
-  return session.hasUserInput;
+  if (!session.hasUserInput) return false;
+  if (!isNamedSession(session)) return false;
+  if (session.titleSource === 'native' || session.titleSource === 'user') return true;
+  return hasFinishedFirstTurn(session);
 }
 
 /**
  * 前台会话已实际列出的单元集合（父行据此让出选中态）。
  *
- * 父行不能只看 tab 身份：未输入的会话不会出现在子列表，
+ * 父行不能只看 tab 身份：未输入 / 无标题 / 首轮没跑完的会话不会出现在子列表，
  * 此时让出填充色会让「当前」在整个侧栏消失。判据与 `sessionsByUnit` 同源。
  */
 export function unitsWithListedActiveSession(
@@ -145,7 +164,7 @@ export function sessionsByUnit(sessions: readonly SessionView[]): Map<string, Se
  * 三条判据都不能少：
  * - `workspaceKey` 相等 —— 单元隔离（切项目不得接回别的单元的会话）；
  * - `kind` 相等 —— chat 与 terminal 的 id 空间互不相干（见 `isSameSession`）；
- * - `isListedSession` —— 与侧栏同一个「用户在用它」的判据：打开 tab 就会建静默会话，
+ * - `isListedSession` —— 与侧栏同一个判据：打开 tab 就会建静默会话，还要等首轮跑完 + 拿到标题，
  *   把那些当成「上次那一条」会让第一次点图标就接回一个空会话。
  *
  * 取 `startedAt` **最大值**而不是数组末位：快照顺序是**后端**的事（store 明确写了

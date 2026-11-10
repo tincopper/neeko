@@ -99,7 +99,10 @@ const TERMINAL_DATA_FIELDS: Record<Exclude<keyof TerminalTabData, 'kind'>, Merge
   taskCommand: 'keep',
   taskConfigId: 'keep',
   rebuildKey: 'keep',
-  resumeFromSessionId: 'keep',
+  // 一次性消费：`handleSessionCreated` 会显式传 `undefined` 把它清掉。
+  // 留着它的话，PTY 重挂载 / 缓存失效会拿同一个 from 再 adopt 一次，
+  // 侧栏就多出一条同名的重复会话。
+  resumeFromSessionId: 'clear',
   attachSessionId: 'keep',
 };
 

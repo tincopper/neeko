@@ -29,7 +29,8 @@ function session(overrides: Partial<SessionView> & { sessionId: string }): Sessi
     state: 'running' as SessionState,
     startedAt: '2026-10-31T10:00:00.000Z',
     updatedAt: '2026-10-31T10:00:00.000Z',
-    turnCount: 0,
+    // 夹具默认「已跑完一轮」：侧栏列出需要它，需要首轮未结束的场景显式覆盖 0。
+    turnCount: 1,
     hasUserInput: true,
     ...overrides,
   };
@@ -69,34 +70,137 @@ describe('isListedSession', () => {
     expect(isListedSession(startupTitle)).toBe(false);
   });
 
-  it('用户输入了但还没有标题 ⇒ **仍要列出**（可见性与命名是两件事）', () => {
-    // 第 35 轮把「首条终端输入 = 标题」删掉后，无 hook 的 CLI 永远等不到标题；
-    // 若继续把「有名字」当列出条件，终端会话会整条从侧栏消失（实测回归）。
+  it('用户输入了但还没有标题 ⇒ **不列出**（不画一条空行）', () => {
+    // agent 终端的首条输入被后端判负（TUI 面板字节不是会话事实），一输入就进侧栏
+    // 正是用户看到的空行。标题要等 CLI hook `turn_completed` 带 topic 上报。
     expect(
       isListedSession(
         session({ sessionId: 'a', title: '', titleSource: 'placeholder', hasUserInput: true }),
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it('已输入 + 有标题 ⇒ 列出', () => {
+  it('已输入 + 有标题 + 首轮跑完 ⇒ 列出', () => {
     expect(isListedSession(session({ sessionId: 'a', title: 'npm test' }))).toBe(true);
+  });
+
+  it('首轮没跑完就算有标题也不列出（纯 shell 的「一输入」）', () => {
+    expect(isListedSession(session({ sessionId: 'a', title: 'npm test', turnCount: 0 }))).toBe(
+      false,
+    );
+  });
+
+  it('hook `turn_completed` 带来的 native 标题 ⇒ 直接列出', () => {
+    expect(
+      isListedSession(
+        session({
+          sessionId: 'a',
+          kind: 'terminal',
+          agentId: 'pi',
+          title: '修复登录跳转',
+          titleSource: 'native',
+          turnCount: 0,
+        }),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('isListedSession — chat 等首轮跑完、拿到标题后才进侧栏', () => {
+  const chat = (overrides: Partial<SessionView> = {}): SessionView =>
+    session({
+      sessionId: 'chat-1',
+      kind: 'chat',
+      agentId: 'pi',
+      title: '修一下登录跳转',
+      titleSource: 'prompt',
+      state: 'running',
+      turnCount: 0,
+      ...overrides,
+    });
+
+  it('刚发出第一条消息、首轮还没跑完 ⇒ 不列出', () => {
+    expect(isListedSession(chat())).toBe(false);
+  });
+
+  it('首轮跑完（turnCount > 0）且有标题 ⇒ 列出', () => {
+    expect(isListedSession(chat({ turnCount: 1, state: 'ready' }))).toBe(true);
+  });
+
+  it('首轮跑完但仍没拿到标题 ⇒ 不列出（不画一条无标题行）', () => {
+    expect(
+      isListedSession(
+        chat({ turnCount: 1, state: 'ready', title: '', titleSource: 'placeholder' }),
+      ),
+    ).toBe(false);
+  });
+
+  it('首轮失败 / 会话终止也算「跑完了」 ⇒ 列出', () => {
+    expect(isListedSession(chat({ state: 'failed' }))).toBe(true);
+    expect(isListedSession(chat({ state: 'stopped' }))).toBe(true);
+  });
+
+  it('恢复的历史会话已有 CLI 标题 ⇒ 不必等新一轮，直接列出', () => {
+    expect(isListedSession(chat({ titleSource: 'native' }))).toBe(true);
+    expect(isListedSession(chat({ titleSource: 'user' }))).toBe(true);
+  });
+
+  it('chat 还没发过输入 ⇒ 不列出', () => {
+    expect(isListedSession(chat({ turnCount: 1, hasUserInput: false }))).toBe(false);
+  });
+
+  it('agent 终端同样要等：一输入（无标题 + 首轮未结束）⇒ 不列出', () => {
+    expect(
+      isListedSession(
+        session({
+          sessionId: 't1',
+          kind: 'terminal',
+          agentId: 'pi',
+          turnCount: 0,
+          state: 'running',
+          title: '',
+          titleSource: 'placeholder',
+        }),
+      ),
+    ).toBe(false);
   });
 });
 
 describe('sessionsByUnit', () => {
-  it('无名但已输入的会话**要**进分组（否则终端会话整条消失）', () => {
+  it('无标题的会话不进分组（不画空行）', () => {
     const list = [
       session({ sessionId: 'named', title: 'fix login', titleSource: 'prompt' }),
       session({ sessionId: 'unnamed', title: '', titleSource: 'placeholder' }),
     ];
     const byUnit = sessionsByUnit(list);
-    expect(byUnit.get(MAIN_KEY)?.map((s) => s.sessionId)).toEqual(['named', 'unnamed']);
+    expect(byUnit.get(MAIN_KEY)?.map((s) => s.sessionId)).toEqual(['named']);
   });
 
   it('未输入的会话不进分组（打开 tab ≠ 在用）', () => {
     const list = [session({ sessionId: 'opened', hasUserInput: false })];
     expect(sessionsByUnit(list).size).toBe(0);
+  });
+
+  it('chat 首轮未跑完不进分组，跑完才进', () => {
+    const running = session({
+      sessionId: 'running',
+      kind: 'chat',
+      title: '修一下登录跳转',
+      turnCount: 0,
+      state: 'running',
+    });
+    const finished = session({
+      sessionId: 'finished',
+      kind: 'chat',
+      title: '补上单测',
+      turnCount: 1,
+      state: 'ready',
+    });
+    expect(
+      sessionsByUnit([running, finished])
+        .get(MAIN_KEY)
+        ?.map((s) => s.sessionId),
+    ).toEqual(['finished']);
   });
 
   it('按 workspaceKey 分组，且保持后端顺序（不重排）', () => {
@@ -143,13 +247,13 @@ describe('unitsWithListedActiveSession', () => {
     ).toEqual(new Set());
   });
 
-  it('前台会话已输入但还没名字 ⇒ 子行仍会画出来，父行要让出选中底', () => {
+  it('前台会话还没名字 ⇒ 侧栏没有子行，父行不让出选中底', () => {
     const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'unnamed' }];
     expect(
       unitsWithListedActiveSession(refs, [
         session({ sessionId: 'unnamed', title: '', titleSource: 'placeholder' }),
       ]),
-    ).toEqual(new Set([MAIN_KEY]));
+    ).toEqual(new Set());
   });
 
   it('前台 tab 的会话在可见集合里 ⇒ 对应单元计入', () => {
@@ -304,14 +408,14 @@ describe('selectLatestSessionForUnit —— 点图标时该接回哪一条', () 
     );
   });
 
-  it('已输入但还没名字的会话**算**用过（无 hook 的终端永远等不到标题）', () => {
+  it('还没名字的会话不算「上次那一条」（没进过侧栏）', () => {
     const unnamed = session({
       sessionId: 'unnamed',
       startedAt: late,
       title: '',
       titleSource: 'placeholder',
     });
-    expect(selectLatestSessionForUnit([unnamed], MAIN_KEY, 'terminal')?.sessionId).toBe('unnamed');
+    expect(selectLatestSessionForUnit([unnamed], MAIN_KEY, 'terminal')).toBeNull();
   });
 
   it('无命中返回 null（注册表为空）', () => {

@@ -19,6 +19,7 @@ use std::time::Duration;
 use chrono::Utc;
 
 use crate::agent::chat::session_store::{ResumeCursor, SessionStore};
+use crate::live_sessions::cursor::dedupe_restorable;
 use crate::live_sessions::entry::{SessionEntry, SessionState, TitleSource};
 use crate::live_sessions::state::{reduce, Signal};
 use crate::live_sessions::title;
@@ -481,9 +482,16 @@ impl Registry {
     /// - 已在表里的会话**不覆盖**：本次运行拿到的是更新的事实，恢复不该把它退回停止态；
     /// - 不写回库（只读），且整批只 bump 一次（一次插入 = 一次快照变化）。
     pub fn restore_from_store(&self) -> usize {
-        let restored: Vec<SessionEntry> = self
-            .store
-            .list_restorable()
+        // 同一个原生会话被 `--resume` 多次会留下多行 cursor（每次一个新 session_id）。
+        // 先收敛再投影：只留每个「单元 + native id」最新的一行，其余从库里删掉，
+        // 否则侧栏会挂着一串同名的重复行，且每启动一次都不会自己变少。
+        let (cursors, stale) = dedupe_restorable(self.store.list_restorable());
+        for session_id in stale {
+            if let Err(e) = self.store.delete_cursor(&session_id) {
+                log::warn!("[live_sessions] failed to delete duplicate cursor {session_id}: {e}");
+            }
+        }
+        let restored: Vec<SessionEntry> = cursors
             .iter()
             .filter_map(ResumeCursor::into_entry)
             .collect();

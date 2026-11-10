@@ -80,4 +80,37 @@ mod tests {
         assert_eq!(restore(&registry), 0);
         assert!(registry.snapshot().is_empty());
     }
+
+    /// 同一条原生会话被 `--resume` 多次会留下多行 cursor：恢复时收敛成一行，
+    /// 并把多余的持久化行删掉（否则每次启动都还是一串同名行）。
+    #[test]
+    fn restore_collapses_duplicate_rows_for_one_native_session() {
+        let store = Arc::new(SqliteSessionStore::open_in_memory().expect("in-memory store"));
+        for (id, activity) in [
+            ("old", "2026-11-08T10:00:00Z"),
+            ("new", "2026-11-10T02:14:38Z"),
+        ] {
+            let mut entry = listed_terminal();
+            entry.session_id = id.into();
+            entry.native_session_id = Some("native-1".into());
+            let cursor = ResumeCursor {
+                last_activity: activity.into(),
+                ..ResumeCursor::from_entry(&entry).expect("listed entry")
+            };
+            store.save_cursor(&cursor).expect("seed cursor");
+        }
+        assert_eq!(store.list_restorable().len(), 2);
+
+        let registry = Registry::new(store.clone());
+        assert_eq!(restore(&registry), 1, "只回填一行");
+        let restored = registry.snapshot();
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].session_id, "new", "留 activity 最新的那条");
+        assert_eq!(
+            store.list_restorable().len(),
+            1,
+            "多余的持久化行必须被删掉，否则下次启动又出现"
+        );
+        assert_eq!(restore(&registry), 0, "重复恢复不产生重复条目");
+    }
 }

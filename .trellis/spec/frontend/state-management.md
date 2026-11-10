@@ -2302,25 +2302,40 @@ agent 图标挤在同一段左内边距上，读起来像错位的装饰块）�
 两层同源；若中心前台与 dock 前台是两条不同会话，`UnitSessionList` 按 **refs 顺序**取第一条
 （中心优先），不让后端快照顺序决定「哪一行亮」。
 
-**侧栏列出所有「用户已经用过」的会话**（`isListedSession` = `has_user_input`）。
-`has_user_input` 由后端在**用户发出第一条输入**时翻转（chat 的首次 `agent_stream`——含
-`agent_chat_open` 静默会话被用起来的那一步，见 `.trellis/spec/backend/agent-chat-transports.md`
-「六个写入原语」/ 终端用户提交 / CLI 的 hook 上报），**打开 tab 不翻转** —— 一创建 tab
-就冒出会话正是要消灭的形态。
+**侧栏只列「用户已经用过」的会话**：`has_user_input` 是共同前提。它由后端在**用户发出
+第一条输入**时翻转（chat 的首次 `agent_stream`——含 `agent_chat_open` 静默会话被用起来的
+那一步，见 `.trellis/spec/backend/agent-chat-transports.md`「六个写入原语」/ 终端用户提交 /
+CLI 的 hook 上报），**打开 tab 不翻转** —— 一创建 tab 就冒出会话正是要消灭的形态。
 
-**唯一条件是 `has_user_input`（用户输入过）**：打开 agent tab 就会创建 PTY / 静默会话，只看
-别的信号的话，侧栏会在用户还没敲一个字时冒出条目；Codex 那类桌面端也是「发出第一条消息才
-建会话」。首条终端输入 / 首次 `agent_stream` 才置位。
+**侧栏列出 = 跑完一轮 + 拿到真标题**（`isListedSession`，chat 与 terminal 同一条规则）：
 
-**「有名字」不再是列出条件**（第 35 轮修正，实测回归）：可见性与命名是两件事。第 35 轮把
-「首条终端输入即命名」从生产者集合里删掉后，无 hook 的 CLI 永远等不到标题 —— 旧条件
-（`has_user_input && isNamedSession`）会让这些终端会话整条从侧栏消失。无名行画成
-「图标 + 相对时间 + 状态」的占位行（`SessionList` 已有该分支），标题到手后自动换成真标题。
+```
+hasUserInput && isNamedSession &&
+  (titleSource ∈ {native, user} || hasFinishedFirstTurn)
+```
+
+`hasFinishedFirstTurn` = `turnCount > 0 || state ∈ {failed, stopped}`（`Signal::TurnFinished`
+累计 `turnCount`；终止态吸收迟到信号所以要单列）。**不能按 `state === 'ready'` 判**：
+新建会话与「刚敲完第一条消息、流还没起」都是 `Ready`。
+
+- **agent 终端**：首条输入被后端判负（`report_terminal_input` 对 `agent_id = Some` 恒传空串，
+  TUI 面板字节不是会话事实），所以「一输入就冒出一条空标题行」正是 `isNamedSession` 挡掉的。
+  标题只能等 CLI hook `turn_completed` 带 `topic` 上报（`Native`）或 conversation 缓存回落 ——
+  也就是用户说的「任务结束、收到 hook 结束回调」。纯 shell 没有 hook，首行输入即 `Prompt`
+  标题，其「一轮结束」是 PTY 静默推断的 `TurnFinished`。
+- **chat**：首条 prompt 是 `Prompt` 标题，但要等 `TurnEnd` 才显示。
+- `Native` / `User` 直接放行：前者只在任务有实质进展的 hook 事件里写入（恢复的历史行也是它），
+  后者是用户主动改名。
+
+这是对第 35 轮「可见性与命名彻底解耦」的**主动修订**：旧规则让无标题会话以「图标 + 时间
++ 状态」占位行常驻，实测就是用户反复反馈的空行；现在取舍为「拿不到标题宁可不显示」。
+无 hook 且始终没标题的会话不会进侧栏 —— 这是预期行为，不是回归。
 
 单元角标与子列表同源（`sessionsByUnit` 是唯一分组入口，过滤在那里做），不会一个有一个没有。
 
-**tab 是另一条判据**：`resolveTabTitle(tab, session)` 要求 `isListedSession && isNamedSession`
-—— tab 标题不能是空串，无名时回落创建期标题（否则会出现「tab 变成空串」的错觉）。tab 的
+**tab 是另一条判据**：`resolveTabTitle(tab, session)` 要求 `session.hasUserInput && isNamedSession`
+—— 直接用 `hasUserInput` 而不是 `isListedSession`，否则 chat 在首轮运行期间（侧栏还没列它）
+tab 会一直停在 `Agent Chat` 占位名上。tab 标题不能是空串，无名时回落创建期标题。tab 的
 占位标题是 **agent 名**（绑 agent 的 tab：`agent.name`）或 `Terminal N`（空白终端：
 `shared/utils/terminalTabTitle.ts`，两个建 tab 入口共用）。一旦会话有真标题，tab 标题在渲染期
 换成它 —— 不写回 `tab.title`，否则用户改名后 tab 会显示旧值。

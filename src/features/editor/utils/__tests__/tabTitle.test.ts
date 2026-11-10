@@ -50,6 +50,11 @@ describe('resolveTabTitle', () => {
     ).toBe('Agent Chat');
   });
 
+  it('chat 首轮还在跑（侧栏未列出）⇒ tab 仍用注册表标题', () => {
+    // 侧栏等首轮跑完才显示，但 tab 不该在整轮期间停在 `Agent Chat` 占位名上。
+    expect(resolveTabTitle(TAB, { ...session('修复登录跳转'), turnCount: 0 })).toBe('修复登录跳转');
+  });
+
   it('纯函数：同一输入两次结果相同，且不修改入参（派生不写回 store）', () => {
     const s = session('修复登录跳转');
     const before = { ...s };

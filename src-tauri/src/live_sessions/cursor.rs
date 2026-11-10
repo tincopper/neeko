@@ -10,6 +10,8 @@
 //! 「运行时词表 ⇄ 持久化词表」的映射与被映射的运行时词汇住在一起（`session_store`
 //! 不需要认识 `SessionState` / `TitleSource`），依赖方向保持 `live_sessions → agent::chat`。
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 
 use crate::agent::chat::adapter::AgentKind;
@@ -153,6 +155,57 @@ fn parse_rfc3339(raw: &str) -> Option<chrono::DateTime<Utc>> {
     DateTime::parse_from_rfc3339(raw)
         .ok()
         .map(|t| t.with_timezone(&Utc))
+}
+
+/// 启动恢复时的**去重**：同一条 CLI 原生会话被恢复多次，会留下多行 `ResumeCursor`
+/// （每次 `--resume` 都是一个新 `session_id`，但 hook 上报的 `native_session_id` 相同）。
+/// 侧栏只该有一行：按「单元地址 + native id」分组，留 `last_activity` 最新的那条，
+/// 其余的 id 交给调用方从库里删掉。
+///
+/// `native_session_id` 为空的行（纯 shell / 没装 hook 的 agent）没有可合并的标识，
+/// 它们本来就是彼此独立的会话，原样保留。`has_user_input = false` 的行同理不参与竞争。
+///
+/// 时间戳不可解析的旧行按 `DateTime::MIN_UTC` 处理：宁可被判为旧，也不能因为
+/// 解析失败就「永远最新」把真正在用的那条挤掉。
+pub(crate) fn dedupe_restorable(cursors: Vec<ResumeCursor>) -> (Vec<ResumeCursor>, Vec<String>) {
+    fn activity_of(cursor: &ResumeCursor) -> DateTime<Utc> {
+        parse_rfc3339(&cursor.last_activity).unwrap_or(DateTime::<Utc>::MIN_UTC)
+    }
+
+    let mut best: HashMap<(String, Option<String>, String), usize> = HashMap::new();
+    let mut kept: Vec<ResumeCursor> = Vec::new();
+    let mut stale: Vec<String> = Vec::new();
+
+    for cursor in cursors {
+        // 没列出过的行（`cursor::from_entry` 的写门）不该参与竞争：它们本来就不进侧栏，
+        // 若因 activity 更新而挤掉真正列出过的那条，重启后反而少了一行。
+        let Some(native) = cursor
+            .has_user_input
+            .then(|| cursor.native_session_id.clone())
+            .flatten()
+            .filter(|id| !id.trim().is_empty())
+        else {
+            kept.push(cursor);
+            continue;
+        };
+        let key = (
+            cursor.project_id.clone(),
+            cursor.worktree_path.clone(),
+            native,
+        );
+        match best.get(&key).copied() {
+            None => {
+                best.insert(key, kept.len());
+                kept.push(cursor);
+            }
+            Some(idx) if activity_of(&cursor) > activity_of(&kept[idx]) => {
+                let replaced = std::mem::replace(&mut kept[idx], cursor);
+                stale.push(replaced.session_id);
+            }
+            Some(_) => stale.push(cursor.session_id),
+        }
+    }
+    (kept, stale)
 }
 
 #[cfg(test)]
@@ -340,6 +393,77 @@ mod tests {
         };
         let restored = cursor.into_entry().expect("时间格式不影响可否恢复");
         assert_eq!(restored.started_at, restored.updated_at);
+    }
+
+    fn cursor(id: &str, native: Option<&str>, last_activity: &str) -> ResumeCursor {
+        let mut source = entry(SessionKind::Terminal, Some("pi"), SessionState::Stopped);
+        source.session_id = id.to_string();
+        source.title = "bug修复".into();
+        source.title_source = TitleSource::User;
+        source.native_session_id = native.map(str::to_string);
+        let base = ResumeCursor::from_entry(&source).expect("listed entry");
+        ResumeCursor {
+            last_activity: last_activity.to_string(),
+            ..base
+        }
+    }
+
+    /// 恢复同一条原生会话会留下多行 cursor：只留 activity 最新的那一行。
+    #[test]
+    fn dedupe_keeps_the_newest_row_per_native_session() {
+        let rows = vec![
+            cursor("old", Some("native-1"), "2026-11-08T10:00:00Z"),
+            cursor("new", Some("native-1"), "2026-11-10T02:14:38Z"),
+            cursor("middle", Some("native-1"), "2026-11-09T09:00:00Z"),
+        ];
+        let (kept, stale) = dedupe_restorable(rows);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].session_id, "new");
+        assert_eq!(stale.len(), 2);
+        assert!(stale.contains(&"old".to_string()));
+        assert!(stale.contains(&"middle".to_string()));
+    }
+
+    /// 不同单元 / 不同原生会话 / 无 native id 的行都是**独立会话**，不得合并。
+    #[test]
+    fn dedupe_does_not_merge_distinct_sessions() {
+        let mut other_unit = cursor("other-unit", Some("native-1"), "2026-11-10T03:00:00Z");
+        other_unit.project_id = "p2".into();
+        let rows = vec![
+            cursor("a", Some("native-1"), "2026-11-10T02:00:00Z"),
+            cursor("b", Some("native-2"), "2026-11-10T02:00:00Z"),
+            cursor("plain-1", None, "2026-11-10T02:00:00Z"),
+            cursor("plain-2", None, "2026-11-10T02:00:00Z"),
+            other_unit,
+        ];
+        let (kept, stale) = dedupe_restorable(rows);
+        assert_eq!(kept.len(), 5, "{kept:?}");
+        assert!(stale.is_empty());
+    }
+
+    /// 没列出过的行不得参与竞争（否则会把真正在侧栏的那条挤掉）。
+    #[test]
+    fn dedupe_ignores_unlisted_rows() {
+        let mut unlisted = cursor("unlisted", Some("native-1"), "2026-11-10T09:00:00Z");
+        unlisted.has_user_input = false;
+        let (kept, stale) = dedupe_restorable(vec![
+            cursor("listed", Some("native-1"), "2026-11-09T09:00:00Z"),
+            unlisted,
+        ]);
+        assert_eq!(kept.len(), 2, "unlisted 行原样保留");
+        assert!(stale.is_empty());
+    }
+
+    /// 时间戳不可解析的旧行不能因为退化值而被判为「永远最新」。
+    #[test]
+    fn dedupe_treats_unparseable_activity_as_oldest() {
+        let rows = vec![
+            cursor("legacy", Some("native-1"), "2026-11-10 02:00:00"),
+            cursor("rfc3339", Some("native-1"), "2026-11-09T02:00:00Z"),
+        ];
+        let (kept, _stale) = dedupe_restorable(rows);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].session_id, "rfc3339");
     }
 
     /// 状态投影穷举：运行时 5 态 → 持久化 4 态。
