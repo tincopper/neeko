@@ -43,6 +43,11 @@ export interface CreateTerminalOptions {
    * （`ChatLaunch::inprocess` 的教训）。live-sessions 的会话行图标与占位标题取自它。
    */
   agentId?: string | null;
+  /**
+   * 纯 shell 恢复时的旧 `sessionId`：后端据此读净化日志并在建 PTY 阶段回放。
+   * `null` = 新建会话 / agent TUI（后端不落盘、不回放）。
+   */
+  resumeFrom?: string | null;
 }
 
 /**
@@ -65,6 +70,7 @@ export function createTerminalSession(
     workingDir: options.workingDir ?? null,
     command: options.command ?? null,
     agentId: options.agentId ?? null,
+    resumeFrom: options.resumeFrom ?? null,
   });
 }
 

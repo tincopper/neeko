@@ -63,6 +63,8 @@ interface TerminalViewBaseProps {
   onSessionCreated?: (sessionId: string) => void;
   /** 已有且仍活着的 PTY 会话 id（关 tab 时选了「后台运行」）：接回它，不新建。 */
   attachSessionId?: string | null;
+  /** 纯 shell 恢复目标（旧 `sessionId`）；按 cacheKey 重建，不锁组件实例（切 tab 不串味）。 */
+  resumeFrom?: string | null;
 }
 
 export default React.memo(function TerminalViewBase({
@@ -73,6 +75,7 @@ export default React.memo(function TerminalViewBase({
   taskRebuildKey = 0,
   onSessionCreated,
   attachSessionId = null,
+  resumeFrom = null,
 }: TerminalViewBaseProps) {
   const { cacheKey, fontSize, fontFamily: fontFamilyProp } = strategy;
 
@@ -276,6 +279,7 @@ export default React.memo(function TerminalViewBase({
               command: taskCommand ?? undefined,
               configId: taskConfigId ?? undefined,
               agentId: tabAgentId,
+              resumeFrom: resumeFrom ?? undefined,
             }));
 
           if (currentKeyRef.current !== cacheKey) return;

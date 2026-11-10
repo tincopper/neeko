@@ -27,11 +27,6 @@ export interface TerminalViewProps {
 
 function TerminalView({ paneId, tabSpaceKey, remoteConfig }: TerminalViewProps) {
   const { activeTabId = null, tabs } = useEditorContext();
-  const strategy = useTerminalStrategy({
-    paneId,
-    remoteConfig,
-  });
-
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const tabAgentId = activeTab?.agentId ?? null;
 
@@ -53,6 +48,15 @@ function TerminalView({ paneId, tabSpaceKey, remoteConfig }: TerminalViewProps) 
    */
   const attachSessionId =
     fullTabData?.kind === 'terminal' ? (fullTabData.attachSessionId ?? null) : null;
+
+  /**
+   * 纯 shell 恢复目标。判据只有一处：tab data 上的 `resumeFromSessionId`
+   * （后端按 `agent_id` 单点裁决是否落盘，前端不再自己判「纯 shell」）。
+   */
+  const resumeFrom =
+    fullTabData?.kind === 'terminal' ? (fullTabData.resumeFromSessionId ?? null) : null;
+
+  const strategy = useTerminalStrategy({ paneId, remoteConfig });
 
   /**
    * PTY 创建成功 → 把后端铸造的 session id 写进 tab data。
@@ -92,6 +96,7 @@ function TerminalView({ paneId, tabSpaceKey, remoteConfig }: TerminalViewProps) 
       taskConfigId={taskConfigId}
       taskRebuildKey={taskRebuildKey}
       attachSessionId={attachSessionId}
+      resumeFrom={resumeFrom}
       onSessionCreated={handleSessionCreated}
     />
   );

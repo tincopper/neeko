@@ -86,6 +86,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
             shell: config.shell || null,
             command: payload?.command ?? null,
             agentId: payload?.agentId ?? null,
+            resumeFrom: payload?.resumeFrom ?? null,
           });
           return created.id;
         },
@@ -127,6 +128,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
           // WSL/SSH 不转发 command（行为不变），但 agent 身份必须下发（图标/标题靠它）
           const created = await createTerminalSession(session, cols, rows, {
             agentId: payload?.agentId ?? null,
+            resumeFrom: payload?.resumeFrom ?? null,
           });
           return created.id;
         },
@@ -164,6 +166,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         // 同 WSL：command 不转发（行为不变），agent 身份显式下发
         const created = await createTerminalSession(session, cols, rows, {
           agentId: payload?.agentId ?? null,
+          resumeFrom: payload?.resumeFrom ?? null,
         });
         return created.id;
       },

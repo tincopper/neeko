@@ -11,7 +11,12 @@ export interface StrategyOptions {
   createSession: (
     cols: number,
     rows: number,
-    payload?: { command?: string; configId?: string; agentId?: string | null },
+    payload?: {
+      command?: string;
+      configId?: string;
+      agentId?: string | null;
+      resumeFrom?: string | null;
+    },
   ) => Promise<string>;
   resize: (sessionId: string, cols: number, rows: number) => Promise<void>;
   closeSession: (sessionId: string) => Promise<void>;
