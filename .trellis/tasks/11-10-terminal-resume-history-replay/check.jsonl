@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/11-10-terminal-resume-history-replay/research/current-state.md", "reason": "核对实现是否绕开四个硬阻塞、是否违反既有设计决策"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "红线 4 / 6 的机器与人工判据"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端静态检查与组件规模基线"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "tab data 语义、侧栏可见性规则不得回归"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "测试独立性与覆盖率基线"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "drain / backpressure 与阻塞 I/O 隔离不得被回放破坏"}

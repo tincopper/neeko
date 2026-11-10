@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/11-10-terminal-resume-history-replay/research/current-state.md", "reason": "Phase 1 调研结论：终端输出链路、transcript 分页契约、四个硬阻塞（时序/native id/term.write/alt-screen）"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "红线 6 命令层保持极薄、红线 4 单次 JSON ≤2MB"}
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "transcript 分页上限与 adapter 读取契约"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "红线 9 mod.rs 极薄、平台代码规范化"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "TerminalViewBase 主 effect 依赖数组与 StrictMode 双挂载约束"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "新增 Tauri command 的前端 API wrapper 归位"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端测试层级与 mock 策略"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 命令层测试夹具与覆盖率基线"}
