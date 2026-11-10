@@ -136,6 +136,8 @@ pub fn plan_team(
         default_model: config.default_model.clone(),
         default_workspace: config.default_workspace.clone(),
         default_approval_policy: config.default_approval_policy,
+        default_persona: config.default_persona.clone(),
+        role_hints: config.role_hints.clone(),
         max_members: config.max_members,
     };
 
@@ -165,6 +167,10 @@ pub fn plan_team(
         // 空 hash ⇒ 不可认证；凭证由执行层 `issue_token` 取一次（模型上下文里永远没有明文）。
         token_hash: String::new(),
         joined_at: now,
+        // 队长没有 persona：人设是「成员怎么干活」的包，队长的行为由角色 preamble 定义。
+        persona: None,
+        // 原生会话 id 由观察者从 hook 事件记录（首次见到即写）。
+        agent_session_id: None,
     };
 
     Ok(TeamBootstrap { team, lead })
@@ -238,6 +244,42 @@ pub fn validate_config(config: &TeamConfig, team_root: &Path) -> Result<(), AppE
     // 判据复用执行层那一条（`execution::workspace_cwd`）—— 两份 `starts_with` 迟早会对
     // 「符号链接下的同一棵树」给出两个答案，而其中一个会放行越界的成员。
     crate::agent::team::execution::workspace_cwd(team_root, &config.default_workspace)?;
+
+    // 成员位角色预设（v20）：agent_id 不许重复（两条同名预设 = 面板状态损坏，后取者
+    // 会静默覆盖前者），文本过控制字符判据（persona 会进成员 argv）。**存在性**不在
+    // 这里判 —— 角色库可编辑，spawn 时解析不到会给出可读的 NotFound 并列出可用名单。
+    let mut hinted = Vec::new();
+    for hint in &config.role_hints {
+        if hint.agent_id.trim().is_empty() {
+            return Err(AppError::InvalidInput(
+                "role_hints must not contain an empty agent_id: an empty string matches no CLI"
+                    .to_string(),
+            ));
+        }
+        crate::agent::team::mcp::dispatch::reject_control_chars(
+            "start_team_session",
+            "role_hints[].agent_id",
+            &hint.agent_id,
+        )?;
+        if hint.persona.trim().is_empty() {
+            return Err(AppError::InvalidInput(format!(
+                "role_hints for `{}` must name a persona; omit the entry instead of hinting at nothing",
+                hint.agent_id
+            )));
+        }
+        crate::agent::team::mcp::dispatch::reject_control_chars(
+            "start_team_session",
+            "role_hints[].persona",
+            &hint.persona,
+        )?;
+        if hinted.contains(&hint.agent_id) {
+            return Err(AppError::InvalidInput(format!(
+                "role_hints contains two entries for `{}`: one agent has one role, and the later entry would silently overwrite the earlier one",
+                hint.agent_id
+            )));
+        }
+        hinted.push(hint.agent_id.clone());
+    }
     Ok(())
 }
 
@@ -522,6 +564,8 @@ mod tests {
             default_model: Some("haiku".into()),
             default_workspace: Workspace::ReadOnly,
             default_approval_policy: ApprovalPolicy::Bypass,
+            default_persona: Some("研究员".into()),
+            role_hints: Vec::new(),
             max_members: 2,
         };
         let TeamBootstrap { team, lead } = plan_team(
@@ -538,9 +582,46 @@ mod tests {
         assert_eq!(team.default_model, config.default_model);
         assert_eq!(team.default_workspace, Workspace::ReadOnly);
         assert_eq!(team.default_approval_policy, ApprovalPolicy::Bypass);
+        assert_eq!(team.default_persona, config.default_persona);
         assert_eq!(team.max_members, 2);
         // 队长自己的审批策略**不**跟团队默认值走（那是成员的缺省）。
         assert_eq!(lead.approval_policy, ApprovalPolicy::Queue);
+    }
+
+    /// role_hints（v20）：重复 agent_id / 空 persona / 控制字符在**建队时**拒绝 ——
+    /// 存在性（角色库里有没有这个名字）留给 spawn 时判，因为角色库可编辑。
+    #[test]
+    fn role_hints_are_validated_at_plan_time() {
+        let hint = |agent: &str, persona: &str| crate::agent::team::types::AgentRoleHint {
+            agent_id: agent.into(),
+            persona: persona.into(),
+        };
+        let config = |hints: Vec<crate::agent::team::types::AgentRoleHint>| TeamConfig {
+            role_hints: hints,
+            ..TeamConfig::default()
+        };
+
+        for (name, config) in [
+            ("empty persona", config(vec![hint("pi", "")])),
+            (
+                "control chars",
+                config(vec![hint(
+                    "pi",
+                    "研
+究员",
+                )]),
+            ),
+            (
+                "duplicate agent",
+                config(vec![hint("pi", "a"), hint("pi", "b")]),
+            ),
+        ] {
+            let err = validate_config(&config, Path::new(ROOT)).expect_err(name);
+            assert!(matches!(err, AppError::InvalidInput(_)), "{name}: {err:?}");
+        }
+        // 合法的一条要能过。
+        validate_config(&config(vec![hint("pi", "研究员")]), Path::new(ROOT))
+            .expect("合法的 role_hint 必须放行");
     }
 
     /// 构造期校验：池子里的每一项都必须**真能当成员**，否则拒绝并点名 id + 理由。

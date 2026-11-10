@@ -173,8 +173,12 @@ pub fn plan_member_spawn(
     // 「不知道自己是队长」正是团队跑不起来的那个故障）。成员清单只给队长版用，且必须与
     // `team_spawn` / `team_options` **同一份判据**：池内的可启动者（`options_for`），
     // 而不是全部可启动者 —— 向队长广告一个池外的 CLI，等于让它挑一个永远被拒的选项。
+    // persona（成员行上的快照）附加在骨架之后；`None` 时逐字节等于旧输出。
     let options = options_for(team, member_count);
-    let preamble = identity::preamble(member.role, team, member, &options.members);
+    let preamble = identity::with_persona(
+        identity::preamble(member.role, team, member, &options.members),
+        member.persona.as_ref().map(|p| p.preamble.as_str()),
+    );
     let ctx = RenderContext::new(
         mcp_config_json(mcp_url, token),
         mcp_url,
@@ -1082,7 +1086,8 @@ mod tests {
     use crate::agent::team::manager::TeamManager;
     use crate::agent::team::store::TeamStore;
     use crate::agent::team::types::{
-        MemberRole, MemberState, TaskRef, TeamMember, TeamState, TeamTask, TeamTaskState, Workspace,
+        MemberRole, MemberState, Persona, TaskRef, TeamMember, TeamState, TeamTask, TeamTaskState,
+        Workspace,
     };
 
     const TEAM: &str = "tm_1";
@@ -1542,6 +1547,31 @@ mod tests {
         assert_eq!(path_segment(""), "member");
         assert_eq!(path_segment("a b:c"), "a_b_c");
         assert_eq!(path_segment(&"x".repeat(200)).chars().count(), 96);
+    }
+
+    /// persona（v19）：快照文本附加在成员 argv 末尾的 preamble 里；
+    /// 无人设时 preamble 与旧输出**逐字节一致**（可选能力不得改变既有成员的启动参数）。
+    #[test]
+    fn a_member_with_a_persona_gets_it_in_its_preamble_argv() {
+        let tmp = tempdir();
+        let base_plan = plan_for(&tmp, &fixture_member(W1, TEAM)).expect("plan");
+        let base_preamble = base_plan.args.last().expect("preamble 在末尾").clone();
+
+        let member = TeamMember {
+            persona: Some(Persona {
+                name: "研究员".into(),
+                preamble: "Research only; never edit production code.".into(),
+            }),
+            ..fixture_member(W1, TEAM)
+        };
+        let plan = plan_for(&tmp, &member).expect("plan");
+        let preamble = plan.args.last().expect("preamble 在末尾");
+        assert!(
+            preamble.starts_with(base_preamble.as_str()),
+            "persona 必须附加在骨架之后：{preamble}"
+        );
+        assert!(preamble.contains("Research only"), "{preamble}");
+        assert!(preamble.contains("Your persona in this team"), "{preamble}");
     }
 
     /// worktree 成员：cwd 是该路径（已规范化），且必须落在团队根之内。

@@ -47,11 +47,13 @@ use tokio::sync::Notify;
 
 use crate::agent::team::completion::advance;
 use crate::agent::team::events::TeamNotifier;
+use crate::agent::team::identity::preamble::MAX_PERSONA_CHARS;
 use crate::agent::team::lease::{lease_expired, next_reclaim_count, should_auto_release};
+use crate::agent::team::mcp::dispatch::reject_control_chars;
 use crate::agent::team::store::{clamp_task_summary, TeamEventRecord, TeamStore};
 use crate::agent::team::types::{
-    DoneVerification, MemberRole, MemberSignal, MemberState, TaskRef, Team, TeamMember, TeamState,
-    TeamTask, TeamTaskState, Workspace,
+    DoneVerification, MemberRole, MemberSignal, MemberState, RolePreset, TaskRef, Team, TeamMember,
+    TeamState, TeamTask, TeamTaskState, Workspace,
 };
 use crate::common::error::AppError;
 
@@ -295,6 +297,8 @@ struct Inner {
     /// 「该成员是否有 `done` 任务」重新推导（[`TeamManager::derive_verification`]），
     /// 不需要第二份会漂移的持久化状态。
     verification: HashMap<String, DoneVerification>,
+    /// 角色库镜像（键 = 名字；真相源是 `team_role` 表，启动 hydrate，见 [`Self::load`]）。
+    roles: HashMap<String, RolePreset>,
 }
 
 impl TeamManager {
@@ -352,7 +356,7 @@ impl TeamManager {
         }
     }
 
-    /// 从库恢复（启动路径）：团队 / 成员 / 任务全部读进内存，取证按任务板推导。
+    /// 从库恢复（启动路径）：团队 / 成员 / 任务 / 角色库全部读进内存，取证按任务板推导。
     pub fn load(store: TeamStore) -> Result<Self, AppError> {
         let manager = Self::new(store);
         let teams = manager.store.list_teams()?;
@@ -362,6 +366,7 @@ impl TeamManager {
             members.extend(manager.store.list_members(&team.id)?);
             tasks.extend(manager.store.list_tasks(&team.id)?);
         }
+        let roles = manager.store.list_roles()?;
         {
             let mut inner = manager.inner.lock();
             for team in teams {
@@ -373,9 +378,70 @@ impl TeamManager {
             for task in tasks {
                 inner.tasks.insert(task.key(), task);
             }
+            for role in roles {
+                inner.roles.insert(role.name.clone(), role);
+            }
         }
         manager.recompute_all_verification();
         Ok(manager)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 角色库（persona 预设；真相源是 `team_role` 表，镜像与库在同一把锁内一起改）
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// 全部角色预设（按创建时间再按名字稳定排序；纯读，不唤醒等待者）。
+    #[must_use]
+    pub fn list_roles(&self) -> Vec<RolePreset> {
+        let mut roles: Vec<RolePreset> = self.inner.lock().roles.values().cloned().collect();
+        roles.sort_by(|a, b| (a.created_at, a.name.as_str()).cmp(&(b.created_at, b.name.as_str())));
+        roles
+    }
+
+    /// 按名字解析一条预设；不存在 ⇒ `NotFound` 并**列出可用名单** —— 与池子拒绝
+    /// 同一模式（只说「不行」不说「有谁」，队长只能靠试）。
+    pub fn resolve_role(&self, name: &str) -> Result<RolePreset, AppError> {
+        let inner = self.inner.lock();
+        inner.roles.get(name).cloned().ok_or_else(|| {
+            let mut names: Vec<&str> = inner.roles.keys().map(String::as_str).collect();
+            names.sort_unstable();
+            let available = if names.is_empty() {
+                "none saved yet".to_owned()
+            } else {
+                names.join(", ")
+            };
+            AppError::NotFound(format!(
+                "unknown persona `{name}`; saved personas: {available}"
+            ))
+        })
+    }
+
+    /// 保存（新增或编辑）一条预设：先校验，再**同一把锁内**写库 + 改镜像。
+    pub fn save_role(&self, mut role: RolePreset) -> Result<(), AppError> {
+        role.name = role.name.trim().to_owned();
+        role.preamble = role.preamble.trim().to_owned();
+        validate_role(&role)?;
+        {
+            let mut inner = self.lock_writing();
+            self.store.upsert_role(&role)?;
+            inner.roles.insert(role.name.clone(), role);
+        }
+        Ok(())
+    }
+
+    /// 删除一条预设；不存在 ⇒ `NotFound`（不合成假成功）。
+    pub fn delete_role(&self, name: &str) -> Result<(), AppError> {
+        {
+            let mut inner = self.lock_writing();
+            if !inner.roles.contains_key(name) {
+                return Err(AppError::NotFound(format!(
+                    "unknown persona `{name}`; nothing to delete"
+                )));
+            }
+            self.store.delete_role(name)?;
+            inner.roles.remove(name);
+        }
+        Ok(())
     }
 
     /// 共享库（供测试与组合根）。
@@ -1016,6 +1082,34 @@ impl TeamManager {
             return Ok(false);
         }
         member.last_seq = seq;
+        self.store.upsert_member(&member)?;
+        inner.members.insert(member.id.clone(), member);
+        Ok(true)
+    }
+
+    /// 记录成员的**原生会话 id**（hook 上报的 `agent_session_id`）。
+    ///
+    /// 只在首次见到时写（同一成员的 native id 稳定，重写无意义）；成员已死也照样记 ——
+    /// 它正是「已退出成员仍可打开历史会话」的依据。返回 `true` = 本次写入了新值。
+    pub fn note_agent_session_id(
+        &self,
+        member_id: &str,
+        native_session_id: &str,
+    ) -> Result<bool, AppError> {
+        let trimmed = native_session_id.trim();
+        if trimmed.is_empty() {
+            return Ok(false);
+        }
+        let mut inner = self.lock_writing();
+        let mut member = inner
+            .members
+            .get(member_id)
+            .cloned()
+            .ok_or_else(|| not_found(format!("member {member_id}")))?;
+        if member.agent_session_id.as_deref() == Some(trimmed) {
+            return Ok(false);
+        }
+        member.agent_session_id = Some(trimmed.to_owned());
         self.store.upsert_member(&member)?;
         inner.members.insert(member.id.clone(), member);
         Ok(true)
@@ -1668,6 +1762,45 @@ const fn invalid(message: String) -> AppError {
     AppError::InvalidInput(message)
 }
 
+/// 角色预设的**保存期**校验（`save_role` 的唯一判据）。
+///
+/// persona 正文会进成员 argv（`identity::with_persona`），所以控制字符判据与
+/// `model` / `name` 的同源（[`crate::agent::team::mcp::dispatch::reject_control_chars`]，
+/// §2.1「只有一个实现」）；长度上限在**这里**拒绝而不是截断 —— 用户手写的文本被
+/// 砍短比被拒绝更难排查。
+fn validate_role(role: &RolePreset) -> Result<(), AppError> {
+    const WIRE: &str = "team_role";
+    if role.name.is_empty() {
+        return Err(AppError::InvalidInput(
+            "`name` for team_role must not be empty".to_owned(),
+        ));
+    }
+    if role.name.chars().count() > 64 {
+        return Err(AppError::InvalidInput(format!(
+            "`name` for {WIRE} must be at most 64 characters; got `{}`",
+            role.name
+        )));
+    }
+    reject_control_chars(WIRE, "name", &role.name)?;
+    if role.preamble.is_empty() {
+        return Err(AppError::InvalidInput(
+            "`preamble` for team_role must not be empty (omit the preset instead)".to_owned(),
+        ));
+    }
+    let len = role.preamble.chars().count();
+    if len > MAX_PERSONA_CHARS {
+        return Err(AppError::InvalidInput(format!(
+            "`preamble` for {WIRE} is {len} characters; the budget for a persona is \
+             {MAX_PERSONA_CHARS} (the role preamble it is appended to already takes the rest)"
+        )));
+    }
+    reject_control_chars(WIRE, "preamble", &role.preamble)?;
+    if let Some(cli) = role.cli_preference.as_deref() {
+        reject_control_chars(WIRE, "cli_preference", cli)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1695,6 +1828,105 @@ mod tests {
             role,
             ..fixture_member(id, team_id)
         }
+    }
+
+    /// 角色库：save → list（稳定序）→ resolve；同名校 = 编辑。
+    #[test]
+    fn roles_save_list_and_resolve_through_the_manager() {
+        let manager = seeded();
+        for (name, created_at) in [("实现者", 2i64), ("研究员", 1i64)] {
+            manager
+                .save_role(RolePreset {
+                    name: name.into(),
+                    preamble: format!("{name} preamble."),
+                    cli_preference: None,
+                    approval_policy: None,
+                    default_workspace: None,
+                    created_at,
+                })
+                .unwrap();
+        }
+        // 稳定序：created_at 再 name（面板两次读到两个顺序会让 diff 变成噪音）。
+        let names: Vec<String> = manager
+            .list_roles()
+            .iter()
+            .map(|r| r.name.clone())
+            .collect();
+        assert_eq!(names, vec!["研究员", "实现者"]);
+
+        let resolved = manager.resolve_role("研究员").unwrap();
+        assert_eq!(resolved.preamble, "研究员 preamble.");
+
+        // 同名 = 编辑（列表长度不变）。
+        manager
+            .save_role(RolePreset {
+                name: "研究员".into(),
+                preamble: "Edited.".into(),
+                cli_preference: None,
+                approval_policy: None,
+                default_workspace: None,
+                created_at: 1,
+            })
+            .unwrap();
+        assert_eq!(manager.list_roles().len(), 2);
+        assert_eq!(manager.resolve_role("研究员").unwrap().preamble, "Edited.");
+    }
+
+    /// 校验在**保存时**拒绝：空名 / 空正文 / 超长正文 / 控制字符（persona 会进 argv）。
+    #[test]
+    fn a_role_that_fails_validation_is_refused_at_save() {
+        let manager = seeded();
+        let base = |name: &str, preamble: &str| RolePreset {
+            name: name.into(),
+            preamble: preamble.into(),
+            cli_preference: None,
+            approval_policy: None,
+            default_workspace: None,
+            created_at: 1,
+        };
+        for role in [
+            base("", "p"),
+            base(
+                "研
+究员",
+                "p",
+            ),
+            base("研究员", ""),
+            base(
+                "研究员",
+                &"x".repeat(crate::agent::team::identity::MAX_PERSONA_CHARS + 1),
+            ),
+            base(
+                "研究员",
+                "p
+Q",
+            ),
+        ] {
+            let err = manager.save_role(role).unwrap_err();
+            assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        }
+        assert!(manager.list_roles().is_empty(), "被拒的保存不得落库");
+    }
+
+    /// 删除未知角色 ⇒ `NotFound`（不合成假成功）；删掉后 resolve 也 NotFound。
+    #[test]
+    fn deleting_an_unknown_role_is_not_found() {
+        let manager = seeded();
+        let err = manager.delete_role("研究员").unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+
+        manager
+            .save_role(RolePreset {
+                name: "研究员".into(),
+                preamble: "R".into(),
+                cli_preference: None,
+                approval_policy: None,
+                default_workspace: None,
+                created_at: 1,
+            })
+            .unwrap();
+        manager.delete_role("研究员").unwrap();
+        assert!(manager.resolve_role("研究员").is_err());
     }
 
     fn task(id: &str) -> TeamTask {
@@ -3159,5 +3391,76 @@ mod tests {
             1,
             "库里仍然只有那一个未删除的队"
         );
+    }
+
+    // ── note_agent_session_id（成员原生会话 id）────────────────────────
+    //
+    // 它是「已退出成员仍能打开历史 transcript」的唯一依据（`archive_member` 清
+    // terminalId，但会话文件还在磁盘上）。四条分支各钉一条：
+    // 首见写库 / 空串跳过 / 同值跳过 / 未知成员 NotFound。
+
+    /// 首见写入：镜像与库同时落地（返回 `true`）。
+    #[test]
+    fn note_agent_session_id_records_the_first_value_in_mirror_and_store() {
+        let manager = seeded();
+        assert!(manager.note_agent_session_id(W1, "native-new").unwrap());
+
+        let member = manager.member(W1).expect("member");
+        assert_eq!(member.agent_session_id.as_deref(), Some("native-new"));
+        // 库也要有（不是只改镜像 —— 重启后要能读回来）
+        let stored = manager
+            .store()
+            .list_members(TEAM)
+            .expect("members")
+            .into_iter()
+            .find(|m| m.id == W1)
+            .expect("w1 in store");
+        assert_eq!(stored.agent_session_id.as_deref(), Some("native-new"));
+    }
+
+    /// 空串 / 纯空白：跳过（返回 `false`，不写、不报错）。
+    ///
+    /// 夹具成员自带 `native-w1`（`fixtures.rs`），所以这里断言的是「值**保持不变**」——
+    /// 空白上报既不能写入也不得清空已有的值。
+    #[test]
+    fn note_agent_session_id_ignores_blank_values() {
+        let manager = seeded();
+        assert!(!manager.note_agent_session_id(W1, "").unwrap());
+        assert!(!manager.note_agent_session_id(W1, "   \n\t ").unwrap());
+        assert_eq!(
+            manager
+                .member(W1)
+                .expect("member")
+                .agent_session_id
+                .as_deref(),
+            Some("native-w1")
+        );
+    }
+
+    /// 同值重复上报：不重写（返回 `false`），值不变。
+    ///
+    /// 夹具成员的 native id 就是 `native-w1`，所以「同值」= 再报一次 `native-w1`。
+    #[test]
+    fn note_agent_session_id_is_idempotent_for_the_same_value() {
+        let manager = seeded();
+        assert!(!manager.note_agent_session_id(W1, "native-w1").unwrap());
+        assert_eq!(
+            manager
+                .member(W1)
+                .expect("member")
+                .agent_session_id
+                .as_deref(),
+            Some("native-w1")
+        );
+    }
+
+    /// 未知成员 ⇒ `NotFound`（不静默忽略：调用链上游是观察者，它要知道信号对不上）。
+    #[test]
+    fn note_agent_session_id_on_an_unknown_member_is_not_found() {
+        let manager = seeded();
+        let err = manager
+            .note_agent_session_id("ghost@tm_1", "native-1")
+            .unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
     }
 }

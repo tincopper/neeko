@@ -14,7 +14,7 @@ use rusqlite::{Connection, TransactionBehavior};
 
 /// Current schema version. Bump this in the same commit as the migration
 /// that creates the change.
-pub const LATEST_VERSION: u32 = 18;
+pub const LATEST_VERSION: u32 = 21;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &mut Connection) -> Result<()> {
@@ -55,6 +55,9 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
         15 => crate::agent::team::store::v15_to_v16(conn),
         16 => crate::agent::team::store::v16_to_v17(conn),
         17 => crate::work_items::store::v17_to_v18(conn),
+        18 => crate::agent::team::store::v18_to_v19(conn),
+        19 => crate::agent::team::store::v19_to_v20(conn),
+        20 => crate::agent::team::store::v20_to_v21(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -107,6 +110,7 @@ mod tests {
             "team_member",
             "team_task",
             "team_event",
+            "team_role",
             "work_item",
             "work_item_run",
         ] {

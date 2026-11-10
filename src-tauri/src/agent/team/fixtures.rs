@@ -66,6 +66,8 @@ pub(crate) fn fixture_team(id: &str) -> Team {
         default_model: None,
         default_workspace: Workspace::default(),
         default_approval_policy: ApprovalPolicy::default(),
+        default_persona: None,
+        role_hints: Vec::new(),
         max_members: crate::agent::team::types::DEFAULT_MAX_MEMBERS,
     }
 }
@@ -80,6 +82,8 @@ pub(crate) fn fixture_team_configured(id: &str, config: &TeamConfig) -> Team {
         default_model: config.default_model.clone(),
         default_workspace: config.default_workspace.clone(),
         default_approval_policy: config.default_approval_policy,
+        default_persona: config.default_persona.clone(),
+        role_hints: config.role_hints.clone(),
         max_members: config.max_members,
         ..fixture_team(id)
     }
@@ -118,6 +122,8 @@ pub(crate) fn fixture_member(id: &str, team_id: &str) -> TeamMember {
         state: MemberState::Spawned,
         token_hash: "sha256:x".into(),
         joined_at: 1,
+        persona: None,
+        agent_session_id: Some("native-w1".into()),
     }
 }
 
@@ -178,6 +184,8 @@ pub(crate) fn fixture_member_status(member_id: &str) -> crate::agent::team::view
         agent_id: member.agent_id,
         terminal_id: member.terminal_id,
         workspace: member.workspace,
+        agent_session_id: member.agent_session_id.clone(),
+        persona: member.persona.as_ref().map(|p| p.name.clone()),
         channel: member.channel,
         tier: member.tier,
     }

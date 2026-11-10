@@ -25,8 +25,8 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 use crate::agent::team::types::{
-    Artifact, MemberRole, MemberState, TaskRef, Team, TeamMember, TeamTask, TeamTaskState,
-    Workspace, DEFAULT_MAX_MEMBERS,
+    Artifact, MemberRole, MemberState, Persona, RolePreset, TaskRef, Team, TeamMember, TeamTask,
+    TeamTaskState, Workspace, DEFAULT_MAX_MEMBERS,
 };
 use crate::common::db::DbPool;
 /// `TeamTask.summary` 的硬上限（字节）。红线 4：进度摘要会进团队事件通道，
@@ -141,16 +141,28 @@ pub fn v13_to_v14(conn: &Connection) -> Result<()> {
 /// 列默认值的字面量必须与 `text_of` 的裸 snake_case 口径一致：`Workspace::Shared` 存成
 /// `shared`、`ApprovalPolicy::Queue` 存成 `queue`（不是带引号的 JSON）。
 pub fn v14_to_v15(conn: &Connection) -> Result<()> {
-    add_column_if_missing(conn, "allowed_agent_ids", "TEXT NOT NULL DEFAULT '[]'")?;
-    add_column_if_missing(conn, "default_model", "TEXT")?;
-    add_column_if_missing(conn, "default_workspace", "TEXT NOT NULL DEFAULT 'shared'")?;
     add_column_if_missing(
         conn,
+        "team",
+        "allowed_agent_ids",
+        "TEXT NOT NULL DEFAULT '[]'",
+    )?;
+    add_column_if_missing(conn, "team", "default_model", "TEXT")?;
+    add_column_if_missing(
+        conn,
+        "team",
+        "default_workspace",
+        "TEXT NOT NULL DEFAULT 'shared'",
+    )?;
+    add_column_if_missing(
+        conn,
+        "team",
         "default_approval_policy",
         "TEXT NOT NULL DEFAULT 'queue'",
     )?;
     add_column_if_missing(
         conn,
+        "team",
         "max_members",
         &format!("INTEGER NOT NULL DEFAULT {DEFAULT_MAX_MEMBERS}"),
     )?;
@@ -180,7 +192,7 @@ pub fn v14_to_v15(conn: &Connection) -> Result<()> {
 /// 默认值存在的理由与 v14→v15 同源：升级路径上唯一存在的数据就是**已建的团队行**，
 /// NOT NULL 却没有 DEFAULT 会让 `ALTER TABLE` 在第一个旧行上失败。
 pub fn v15_to_v16(conn: &Connection) -> Result<()> {
-    add_column_if_missing(conn, "project_id", "TEXT NOT NULL DEFAULT ''")
+    add_column_if_missing(conn, "team", "project_id", "TEXT NOT NULL DEFAULT ''")
 }
 
 /// v16 -> v17：`team_task` 的主键从 `id` 改成复合主键 `(team_id, id)`。
@@ -280,13 +292,65 @@ fn task_primary_key_is_team_first(conn: &Connection) -> Result<bool> {
     Ok(ordinal("team_id") == Some(1) && ordinal("id") == Some(2))
 }
 
-/// `team` 表加一列（已存在则跳过）。
+/// v20→v21：成员的原生会话 id（`team_member.agent_session_id`）。
 ///
-/// 表名是调用方写的字面量（不是外部输入），列名走绑定参数 —— DDL 里不能绑位置参数，
-/// 所以声明串只能拼；能拼进来的东西全部来自本文件的常量。
-fn add_column_if_missing(conn: &Connection, column: &str, declaration: &str) -> Result<()> {
+/// 成员退出后按它打开历史 transcript（「已退出」不等于「看不到它干过什么」）；
+/// 由观察者从 hook 事件的 `agent_session_id` 首次见到时写入。
+///
+/// 与 v14→v15 / v15→v16 同一形状（`ADD COLUMN` 先查再改，半迁移后的手工重放安全）。
+pub fn v20_to_v21(conn: &Connection) -> Result<()> {
+    add_column_if_missing(conn, "team_member", "agent_session_id", "TEXT")
+}
+
+/// v19→v20：成员位角色预设（`team.role_hints`，JSON 数组列）。
+///
+/// 与 v14→v15 同形状（`ADD COLUMN` 先查再改，半迁移后手工重放安全）。列接线
+/// （SELECT / INSERT / map）与迁移同一个 diff —— 漏一处就是「新库能写、旧库读不出」。
+pub fn v19_to_v20(conn: &Connection) -> Result<()> {
+    add_column_if_missing(conn, "team", "role_hints", "TEXT NOT NULL DEFAULT '[]'")
+}
+
+/// v18→v19：角色库（`team_role`）+ 团队缺省角色（`team.default_persona`）+
+/// 成员人设快照（`team_member.persona`）。
+///
+/// 与 v14→v15 同形状（`CREATE TABLE IF NOT EXISTS` + `ADD COLUMN`，先查再改），
+/// 半迁移后的手工重放安全（判据：`v19_step_is_idempotent` 同族）。三处列接线
+/// （SELECT / INSERT / map）在本文件里与迁移同一个 diff。
+pub fn v18_to_v19(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        -- 角色库：persona 预设，全局共享（不隶属任何队，无 CASCADE）。
+        -- 名字是主键：spawn 传名字、成员行快照名字；改名 = 删旧建新（成员行的
+        -- 快照不受影响 —— 它记的是 spawn 那一刻的事实）。
+        CREATE TABLE IF NOT EXISTS team_role (
+            name             TEXT PRIMARY KEY,
+            preamble         TEXT NOT NULL,
+            cli_preference   TEXT,
+            approval_policy  TEXT,
+            default_workspace TEXT,
+            created_at       INTEGER NOT NULL
+        );
+        ",
+    )?;
+    add_column_if_missing(conn, "team", "default_persona", "TEXT")?;
+    // 成员行上的是**快照**（`Persona` JSON）：spawn 时刻解析角色库并落行，
+    // 之后库里的预设怎么改都不影响这个成员「带着什么文本被拉起来」。
+    add_column_if_missing(conn, "team_member", "persona", "TEXT")?;
+    Ok(())
+}
+
+/// 给一张表加一列（已存在则跳过）。
+///
+/// 表名与列名都是调用方写的字面量（不是外部输入），声明串只能拼（DDL 不能绑
+/// 位置参数）；能拼进来的东西全部来自本文件的常量。
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    declaration: &str,
+) -> Result<()> {
     let existing: i64 = conn.query_row(
-        "SELECT count(*) FROM pragma_table_info('team') WHERE name = ?1",
+        &format!("SELECT count(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
         params![column],
         |row| row.get(0),
     )?;
@@ -294,7 +358,7 @@ fn add_column_if_missing(conn: &Connection, column: &str, declaration: &str) -> 
         return Ok(());
     }
     conn.execute_batch(&format!(
-        "ALTER TABLE team ADD COLUMN {column} {declaration};"
+        "ALTER TABLE {table} ADD COLUMN {column} {declaration};"
     ))?;
     Ok(())
 }
@@ -385,8 +449,8 @@ impl TeamStore {
         conn.execute(
             "INSERT INTO team (id, name, lead_session_id, lead_agent_id, project_path,
              project_id, created_at, closed_at, state, allowed_agent_ids, default_model,
-             default_workspace, default_approval_policy, max_members)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             default_workspace, default_approval_policy, max_members, default_persona, role_hints)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 lead_session_id = excluded.lead_session_id,
@@ -400,7 +464,9 @@ impl TeamStore {
                 default_model = excluded.default_model,
                 default_workspace = excluded.default_workspace,
                 default_approval_policy = excluded.default_approval_policy,
-                max_members = excluded.max_members",
+                max_members = excluded.max_members,
+                default_persona = excluded.default_persona,
+                role_hints = excluded.role_hints",
             params![
                 team.id,
                 team.name,
@@ -419,6 +485,8 @@ impl TeamStore {
                     "team.default_approval_policy"
                 )?,
                 i64::from(team.max_members),
+                team.default_persona,
+                text_of(&team.role_hints, "team.role_hints")?,
             ],
         )?;
         Ok(())
@@ -471,8 +539,8 @@ impl TeamStore {
         conn.execute(
             "INSERT INTO team_member (id, team_id, name, role, agent_id, model, session_id,
              terminal_id, workspace, channel, result_channel, tier, approval_policy,
-             mcp_injection, last_seq, state, token_hash, joined_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+             mcp_injection, last_seq, state, token_hash, joined_at, persona, agent_session_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 role = excluded.role,
@@ -489,7 +557,9 @@ impl TeamStore {
                 last_seq = excluded.last_seq,
                 state = excluded.state,
                 token_hash = excluded.token_hash,
-                joined_at = excluded.joined_at",
+                joined_at = excluded.joined_at,
+                persona = excluded.persona,
+                agent_session_id = excluded.agent_session_id",
             params![
                 member.id,
                 member.team_id,
@@ -509,6 +579,12 @@ impl TeamStore {
                 text_of(&member.state, "team_member.state")?,
                 member.token_hash,
                 member.joined_at,
+                member
+                    .persona
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
+                member.agent_session_id,
             ],
         )?;
         Ok(())
@@ -530,6 +606,64 @@ impl TeamStore {
         ))?;
         let rows = stmt.query_map(params![team_id], map_member_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // team_role（角色库，全局共享；v19）
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// 读全部角色预设（按创建时间再按名字稳定排序）。
+    pub fn list_roles(&self) -> Result<Vec<RolePreset>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(&format!("{SELECT_ROLE} ORDER BY created_at, name"))?;
+        let rows = stmt.query_map([], map_role_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// 按名字读一条预设。
+    pub fn get_role(&self, name: &str) -> Result<Option<RolePreset>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(&format!("{SELECT_ROLE} WHERE name = ?1"))?;
+        let mut rows = stmt.query_map(params![name], map_role_row)?;
+        rows.next().transpose().map_err(Into::into)
+    }
+
+    /// 插入或覆盖一条预设（名字是主键：同名校 = 编辑）。
+    pub fn upsert_role(&self, role: &RolePreset) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO team_role (name, preamble, cli_preference, approval_policy,
+             default_workspace, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(name) DO UPDATE SET
+                preamble = excluded.preamble,
+                cli_preference = excluded.cli_preference,
+                approval_policy = excluded.approval_policy,
+                default_workspace = excluded.default_workspace,
+                created_at = excluded.created_at",
+            params![
+                role.name,
+                role.preamble,
+                role.cli_preference,
+                role.approval_policy
+                    .as_ref()
+                    .map(|p| text_of(p, "team_role.approval_policy"))
+                    .transpose()?,
+                role.default_workspace
+                    .as_ref()
+                    .map(|w| text_of(w, "team_role.default_workspace"))
+                    .transpose()?,
+                role.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 删除一条预设；返回是否真的删了行（`NotFound` 的裁决在 manager 的镜像上）。
+    pub fn delete_role(&self, name: &str) -> Result<bool> {
+        let conn = self.conn()?;
+        let n = conn.execute("DELETE FROM team_role WHERE name = ?1", params![name])?;
+        Ok(n > 0)
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -772,11 +906,14 @@ pub struct TeamEventRecord {
 
 const SELECT_TEAM: &str = "SELECT id, name, lead_session_id, lead_agent_id, project_path,
     project_id, created_at, closed_at, state, allowed_agent_ids, default_model,
-    default_workspace, default_approval_policy, max_members FROM team";
+    default_workspace, default_approval_policy, max_members, default_persona, role_hints FROM team";
 
 const SELECT_MEMBER: &str = "SELECT id, team_id, name, role, agent_id, model, session_id,
     terminal_id, workspace, channel, result_channel, tier, approval_policy, mcp_injection,
-    last_seq, state, token_hash, joined_at FROM team_member";
+    last_seq, state, token_hash, joined_at, persona, agent_session_id FROM team_member";
+
+const SELECT_ROLE: &str = "SELECT name, preamble, cli_preference, approval_policy,
+    default_workspace, created_at FROM team_role";
 
 const SELECT_TASK: &str = "SELECT id, team_id, title, body, state, owner, workspace,
     depends_on, claimed_at, lease_ttl, summary, summary_truncated, artifacts, reclaim_count
@@ -804,6 +941,8 @@ fn map_team_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Team> {
         )?,
         max_members: u32::try_from(max_members)
             .map_err(|_| conversion_failure("team.max_members", "out of range"))?,
+        default_persona: row.get(14)?,
+        role_hints: column_json(row.get::<_, String>(15)?, "team.role_hints")?,
     })
 }
 
@@ -829,6 +968,33 @@ fn map_member_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TeamMember> {
         state: column_json::<MemberState>(row.get::<_, String>(15)?, "team_member.state")?,
         token_hash: row.get(16)?,
         joined_at: row.get(17)?,
+        persona: row
+            .get::<_, Option<String>>(18)?
+            .map(|raw| column_json::<Persona>(raw, "team_member.persona"))
+            .transpose()?,
+        agent_session_id: row.get(19)?,
+    })
+}
+
+fn map_role_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RolePreset> {
+    Ok(RolePreset {
+        name: row.get(0)?,
+        preamble: row.get(1)?,
+        cli_preference: row.get(2)?,
+        approval_policy: row
+            .get::<_, Option<String>>(3)?
+            .map(|raw| {
+                column_json::<crate::agent::team::types::ApprovalPolicy>(
+                    raw,
+                    "team_role.approval_policy",
+                )
+            })
+            .transpose()?,
+        default_workspace: row
+            .get::<_, Option<String>>(4)?
+            .map(|raw| column_json::<Workspace>(raw, "team_role.default_workspace"))
+            .transpose()?,
+        created_at: row.get(5)?,
     })
 }
 
@@ -929,10 +1095,16 @@ mod tests {
             state: TeamState::Active,
             // 配置五列同样**每列都偏离默认值**：空池 / `None` / `shared` / `queue` / 4
             // 是默认值，用它们打底会让「配置列根本没写进库」这类缺陷变绿。
+            // `default_persona` 同理取非空（v19 列）。
             allowed_agent_ids: vec!["claude".into(), "pi".into()],
             default_model: Some("sonnet".into()),
             default_workspace: Workspace::ReadOnly,
             default_approval_policy: ApprovalPolicy::Bypass,
+            default_persona: Some("研究员".into()),
+            role_hints: vec![crate::agent::team::types::AgentRoleHint {
+                agent_id: "pi".into(),
+                persona: "实现者".into(),
+            }],
             max_members: 3,
         }
     }
@@ -964,6 +1136,11 @@ mod tests {
             state: MemberState::Running,
             token_hash: "sha256:abc".into(),
             joined_at: 1_700_000_000_001,
+            persona: Some(Persona {
+                name: "研究员".into(),
+                preamble: "Research only; never edit production code.".into(),
+            }),
+            agent_session_id: Some("native-w1".into()),
         }
     }
 
@@ -1017,6 +1194,7 @@ mod tests {
             "team_member",
             "team_task",
             "team_event",
+            "team_role",
             "idx_team_member_team",
             "idx_team_member_state",
             "idx_team_task_team",
@@ -1040,6 +1218,11 @@ mod tests {
         // v16 同理（同一形状的 ADD COLUMN + 同一个 `add_column_if_missing`）。
         v15_to_v16(&conn).unwrap();
         v15_to_v16(&conn).unwrap();
+        // v19 / v20 同理：建表 IF NOT EXISTS + ADD COLUMN 都先查再改。
+        v18_to_v19(&conn).unwrap();
+        v18_to_v19(&conn).unwrap();
+        v19_to_v20(&conn).unwrap();
+        v19_to_v20(&conn).unwrap();
     }
 
     /// `team_task` 的主键必须是 **`(team_id, id)` 且队在前**。
@@ -1403,6 +1586,75 @@ mod tests {
         let store = store();
         assert!(store.upsert_member(&sample_member()).is_err());
         assert!(store.upsert_task(&sample_task()).is_err());
+    }
+
+    /// v19：persona 列为 NULL 的行（v18 的旧行）读回 `None`，不报错。
+    ///
+    /// 写路径绑定的是 `Option`，但「旧行是 NULL」只有迁移路径能造 —— 用裸 SQL
+    /// 插一行不带 persona 的成员（迁移后列已存在），NULL 必须映射成 `None`。
+    #[test]
+    fn a_member_row_without_a_persona_reads_back_none() {
+        let store = store();
+        {
+            let conn = store.conn().unwrap();
+            conn.execute(
+                "INSERT INTO team (id, name, lead_session_id, lead_agent_id, project_path,
+                 project_id, created_at, closed_at, state, allowed_agent_ids, default_model,
+                 default_workspace, default_approval_policy, max_members, default_persona)
+                 VALUES ('tm_1', 'T', 'sess', 'claude-code', ?1, 'p', 1, NULL, 'active', '[]',
+                 NULL, 'shared', 'queue', 4, NULL)",
+                params![env!("CARGO_MANIFEST_DIR")],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO team_member (id, team_id, name, role, agent_id, model, session_id,
+                 terminal_id, workspace, channel, result_channel, tier, approval_policy,
+                 mcp_injection, last_seq, state, token_hash, joined_at, persona)
+                 VALUES ('w1@tm_1', 'tm_1', 'w1', 'worker', 'claude-code', NULL, NULL, NULL,
+                 'shared', 'pty', 'mcp', 'a', 'queue', 'argv', 0, 'spawned', 'sha256:x', 1,
+                 NULL)",
+                [],
+            )
+            .unwrap();
+        }
+        // 连接在这里已归还池子：后续的 store 读路径各自再借。
+
+        let member = store.get_member("w1@tm_1").unwrap().unwrap();
+        assert_eq!(member.persona, None, "NULL 列必须读回 None，不能报错");
+        let team = store.get_team("tm_1").unwrap().unwrap();
+        assert_eq!(team.default_persona, None);
+    }
+
+    /// 角色库 round-trip：全部列（含两个可空枚举）原样回来；同名 = 编辑；删除真的删行。
+    #[test]
+    fn a_role_preset_round_trips_and_deletes() {
+        let store = store();
+        let role = RolePreset {
+            name: "研究员".into(),
+            preamble: "Research only; never edit production code.".into(),
+            cli_preference: Some("claude-code".into()),
+            approval_policy: Some(ApprovalPolicy::Queue),
+            default_workspace: Some(Workspace::ReadOnly),
+            created_at: 42,
+        };
+        store.upsert_role(&role).unwrap();
+        assert_eq!(store.get_role("研究员").unwrap(), Some(role.clone()));
+        assert_eq!(store.list_roles().unwrap(), vec![role.clone()]);
+
+        // 同名 = 编辑：所有列都被覆盖（漏一列就会出现「改了正文、策略还是旧的」）。
+        let edited = RolePreset {
+            preamble: "Changed.".into(),
+            cli_preference: None,
+            approval_policy: None,
+            default_workspace: None,
+            ..role
+        };
+        store.upsert_role(&edited).unwrap();
+        assert_eq!(store.list_roles().unwrap(), vec![edited]);
+
+        assert!(store.delete_role("研究员").unwrap());
+        assert_eq!(store.get_role("研究员").unwrap(), None);
+        assert!(!store.delete_role("研究员").unwrap());
     }
 
     /// 红线 14 / design §4.4：能力声明字段（channel / result_channel / tier /

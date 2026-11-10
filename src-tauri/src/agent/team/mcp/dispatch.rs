@@ -61,8 +61,8 @@ use crate::agent::team::manager::{now_millis, TeamManager};
 use crate::agent::team::mcp::schema::{self, spec_for, ToolName, UPDATABLE_STATES};
 use crate::agent::team::options::{options_for, TeamOptions};
 use crate::agent::team::types::{
-    AdmissionTier, ApprovalPolicy, MemberRole, MemberState, TaskRef, Team, TeamMember,
-    TeamPrincipal, TeamState, TeamTask, TeamTaskState, WorkerChannel, Workspace,
+    AdmissionTier, ApprovalPolicy, MemberRole, MemberState, Persona, RolePreset, TaskRef, Team,
+    TeamMember, TeamPrincipal, TeamState, TeamTask, TeamTaskState, WorkerChannel, Workspace,
 };
 use crate::agent::team::view::{self, team_status_view, TeamStatusView};
 use crate::agent::team::wait::{WaitOutcome, WaitTargets, WaitUntil};
@@ -531,9 +531,18 @@ fn spawn(
     }
 
     let name = member_name(wire, required_str(wire, args, "name")?)?;
-    // 三个缺省值的来源都是**团队列**（不是常量，见函数的「缺省值 ≠ 常量」）。
-    let workspace = spawn_workspace(wire, args)?.unwrap_or_else(|| team.default_workspace.clone());
-    let approval_policy = spawn_approval_policy(wire, args, &team)?;
+    // persona：显式参数 > 团队缺省（`default_persona`）；名字必须在角色库里，
+    // 未知 ⇒ `NotFound` 并列出可用名单（与池子拒绝同一模式：只说「不行」不说「有谁」，
+    // 队长只能靠试）。解析成**快照**落到成员行 —— 之后角色库怎么改都不影响这个成员
+    // 「带着什么文本被拉起来」（`team-domain.md` §2.2：执行参数从成员行推导）。
+    let persona = resolve_persona(manager, wire, args, &team, &agent_id)?;
+    // 三个缺省值的来源都是**团队列**（不是常量，见函数的「缺省值 ≠ 常量」）；
+    // persona 的 `approval_policy` / `default_workspace` 插在「显式参数」与「团队缺省」
+    // 之间 —— 它是用户给这个角色的预设，比团队泛用缺省更具体。
+    let workspace = spawn_workspace(wire, args)?
+        .or_else(|| persona.as_ref().and_then(|p| p.default_workspace.clone()))
+        .unwrap_or_else(|| team.default_workspace.clone());
+    let approval_policy = spawn_approval_policy(wire, args, &team, persona.as_ref())?;
     let model = spawn_model(wire, args, &team)?;
 
     let member_id = format!("{name}@{}", principal.team_id);
@@ -562,6 +571,12 @@ fn spawn(
         // 明文因此永远不经过模型上下文（见 `ToolReply::MemberCreated` 的文档）。
         token_hash: String::new(),
         joined_at: now_millis(),
+        persona: persona.map(|p| Persona {
+            name: p.name,
+            preamble: p.preamble,
+        }),
+        // 原生会话 id 由观察者从 hook 事件记录（首次见到即写）。
+        agent_session_id: None,
     };
     // 重名 / 团队不存在都由 `add_member` 报（成员 id 唯一性只在一处裁决）。
     manager.add_member(member)?;
@@ -1256,12 +1271,51 @@ fn spawn_workspace(wire: &str, args: &serde_json::Value) -> Result<Option<Worksp
 /// 走 serde 而不是手写 `match`：枚举的 wire 字面量只有一个源（
 /// `types::tests::enum_wire_names_are_the_documented_snake_case` 钉着），手写一份
 /// 字符串匹配就是给同一个闭集造第二个名字。
+/// 生效的 persona：入参优先，缺省取团队的 `default_persona`；名字必须在角色库里。
+///
+/// 空白串拒绝（与 `model` 同一判据：避免把拼错当成「没给」）；未知 ⇒ `NotFound` 并
+/// 列出可用名单（同池子拒绝）。`None` = 无人设，成员拿到的 argv 与旧版本逐字节一致。
+fn resolve_persona(
+    manager: &TeamManager,
+    wire: &str,
+    args: &serde_json::Value,
+    team: &Team,
+    agent_id: &str,
+) -> Result<Option<RolePreset>, AppError> {
+    let requested = match optional_str(wire, args, "persona")? {
+        None => {
+            // 成员位预设（面板池位下拉）：该 agent 的 role_hint 优先于团队缺省 ——
+            // 它比「给全队的缺省」更具体。队长不传 persona 时预设自动生效。
+            team.role_hints
+                .iter()
+                .find(|hint| hint.agent_id == agent_id)
+                .map(|hint| hint.persona.as_str())
+                .or(team.default_persona.as_deref())
+        }
+        Some(raw) if raw.trim().is_empty() => {
+            return Err(AppError::InvalidInput(format!(
+                "`persona` for {wire} must not be empty (omit it to use the team default)"
+            )));
+        }
+        Some(raw) => Some(raw.trim()),
+    };
+    match requested {
+        None => Ok(None),
+        Some(name) => manager.resolve_role(name).map(Some),
+    }
+}
+
 fn spawn_approval_policy(
     wire: &str,
     args: &serde_json::Value,
     team: &Team,
+    persona: Option<&RolePreset>,
 ) -> Result<ApprovalPolicy, AppError> {
     let Some(raw) = optional_str(wire, args, "approval_policy")? else {
+        // persona 的预设比团队泛用缺省更具体：显式参数缺位时先问它。
+        if let Some(policy) = persona.and_then(|p| p.approval_policy) {
+            return Ok(policy);
+        }
         return Ok(team.default_approval_policy);
     };
     serde_json::from_value::<ApprovalPolicy>(serde_json::Value::String(raw.to_owned())).map_err(
@@ -1839,10 +1893,12 @@ mod tests {
             member_keys,
             vec![
                 "agentId",
+                "agentSessionId",
                 "channel",
                 "leaseRemainingSecs",
                 "memberId",
                 "name",
+                "persona",
                 "role",
                 "state",
                 "terminalId",
@@ -2927,6 +2983,224 @@ mod tests {
         assert_eq!(stored.model.as_deref(), Some("explicit-model"));
         assert_eq!(stored.workspace, Workspace::Shared);
         assert_eq!(stored.approval_policy, ApprovalPolicy::Interactive);
+    }
+
+    /// persona（v19）：团队缺省角色 → 成员行携带**快照**，且 persona 的审批/工作区
+    /// 预设插在「显式参数」与「团队缺省」之间（比团队泛用缺省更具体）。
+    #[test]
+    fn the_team_default_persona_becomes_a_snapshot_on_the_member_row() {
+        let manager = configured_team(&TeamConfig {
+            default_persona: Some("研究员".into()),
+            default_approval_policy: ApprovalPolicy::Bypass,
+            default_workspace: Workspace::ReadOnly,
+            ..TeamConfig::default()
+        });
+        manager
+            .save_role(RolePreset {
+                name: "研究员".into(),
+                preamble: "Research only; never edit production code.".into(),
+                cli_preference: None,
+                approval_policy: Some(ApprovalPolicy::Queue),
+                default_workspace: Some(Workspace::Shared),
+                created_at: 1,
+            })
+            .unwrap();
+
+        let spawned = spawn_ok(
+            &manager,
+            &lead(),
+            &json!({"agent_id": "claude-code", "name": "w9"}),
+        );
+        let stored = manager
+            .store()
+            .get_member(&spawned.member_id)
+            .unwrap()
+            .expect("成员必须已落库");
+        let persona = stored.persona.expect("缺省角色必须落成快照");
+        assert_eq!(persona.name, "研究员");
+        assert_eq!(
+            persona.preamble,
+            "Research only; never edit production code."
+        );
+        // persona 的预设压过团队缺省：审批 Queue（不是 Bypass）、工作区 Shared（不是 ReadOnly）。
+        assert_eq!(stored.approval_policy, ApprovalPolicy::Queue);
+        assert_eq!(stored.workspace, Workspace::Shared);
+    }
+
+    /// 显式参数 > persona > 团队缺省：队长的显式选择压过角色预设。
+    #[test]
+    fn explicit_arguments_win_over_the_persona_overrides() {
+        let manager = configured_team(&TeamConfig {
+            default_persona: Some("研究员".into()),
+            ..TeamConfig::default()
+        });
+        manager
+            .save_role(RolePreset {
+                name: "研究员".into(),
+                preamble: "R".into(),
+                cli_preference: None,
+                approval_policy: Some(ApprovalPolicy::Queue),
+                default_workspace: Some(Workspace::Shared),
+                created_at: 1,
+            })
+            .unwrap();
+        let spawned = spawn_ok(
+            &manager,
+            &lead(),
+            &json!({
+                "agent_id": "claude-code",
+                "name": "w9",
+                "approval_policy": "bypass",
+                "workspace": {"kind": "read_only"},
+            }),
+        );
+        let stored = manager
+            .store()
+            .get_member(&spawned.member_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.approval_policy, ApprovalPolicy::Bypass);
+        assert_eq!(stored.workspace, Workspace::ReadOnly);
+        // persona 仍然落行：它决定「怎么干活」，与审批/工作区覆盖是两件事。
+        assert_eq!(stored.persona.unwrap().name, "研究员");
+    }
+
+    /// 显式 persona 压过团队缺省（两个都给时用显式的）。
+    #[test]
+    fn an_explicit_persona_wins_over_the_team_default() {
+        let manager = configured_team(&TeamConfig {
+            default_persona: Some("研究员".into()),
+            ..TeamConfig::default()
+        });
+        for (name, preamble) in [("研究员", "Research."), ("实现者", "Implement.")] {
+            manager
+                .save_role(RolePreset {
+                    name: name.into(),
+                    preamble: preamble.into(),
+                    cli_preference: None,
+                    approval_policy: None,
+                    default_workspace: None,
+                    created_at: 1,
+                })
+                .unwrap();
+        }
+        let spawned = spawn_ok(
+            &manager,
+            &lead(),
+            &json!({"agent_id": "claude-code", "name": "w9", "persona": "实现者"}),
+        );
+        let stored = manager
+            .store()
+            .get_member(&spawned.member_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.persona.unwrap().name, "实现者");
+    }
+
+    /// 成员位角色预设（v20）：spawn 不传 persona 时，该 agent 的 role_hint 自动生效 ——
+    /// 「预设」由用户决定，不由模型自觉（队长一字不提，后端照样注入人设）。
+    #[test]
+    fn the_pool_role_hint_applies_when_spawn_omits_persona() {
+        let manager = configured_team(&TeamConfig {
+            role_hints: vec![crate::agent::team::types::AgentRoleHint {
+                agent_id: "pi".into(),
+                persona: "研究员".into(),
+            }],
+            ..TeamConfig::default()
+        });
+        manager
+            .save_role(RolePreset {
+                name: "研究员".into(),
+                preamble: "Research only.".into(),
+                cli_preference: None,
+                approval_policy: None,
+                default_workspace: None,
+                created_at: 1,
+            })
+            .unwrap();
+        let spawned = spawn_ok(&manager, &lead(), &json!({"agent_id": "pi", "name": "w9"}));
+        let stored = manager
+            .store()
+            .get_member(&spawned.member_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.persona.unwrap().name, "研究员");
+    }
+
+    /// 显式参数仍然压过 role_hint（队长点名 > 面板预设）。
+    #[test]
+    fn an_explicit_persona_beats_the_role_hint() {
+        let manager = configured_team(&TeamConfig {
+            role_hints: vec![crate::agent::team::types::AgentRoleHint {
+                agent_id: "pi".into(),
+                persona: "研究员".into(),
+            }],
+            ..TeamConfig::default()
+        });
+        manager
+            .save_role(RolePreset {
+                name: "研究员".into(),
+                preamble: "R".into(),
+                cli_preference: None,
+                approval_policy: None,
+                default_workspace: None,
+                created_at: 1,
+            })
+            .unwrap();
+        manager
+            .save_role(RolePreset {
+                name: "实现者".into(),
+                preamble: "I".into(),
+                cli_preference: None,
+                approval_policy: None,
+                default_workspace: None,
+                created_at: 2,
+            })
+            .unwrap();
+        let spawned = spawn_ok(
+            &manager,
+            &lead(),
+            &json!({"agent_id": "pi", "name": "w9", "persona": "实现者"}),
+        );
+        let stored = manager
+            .store()
+            .get_member(&spawned.member_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.persona.unwrap().name, "实现者");
+    }
+
+    /// 未知 persona ⇒ `NotFound` 并**列出可用名单**（与池子拒绝同一模式）。
+    #[test]
+    fn an_unknown_persona_is_refused_with_the_available_list() {
+        let manager = configured_team(&TeamConfig::default());
+        manager
+            .save_role(RolePreset {
+                name: "研究员".into(),
+                preamble: "R".into(),
+                cli_preference: None,
+                approval_policy: None,
+                default_workspace: None,
+                created_at: 1,
+            })
+            .unwrap();
+        let err = call(
+            &manager,
+            &lead(),
+            "team_spawn",
+            &json!({"agent_id": "claude-code", "name": "w9", "persona": "不存在的"}),
+        )
+        .unwrap_err();
+        match err {
+            AppError::NotFound(message) => {
+                assert!(message.contains("unknown persona"), "{message}");
+                assert!(message.contains("不存在的"), "{message}");
+                assert!(message.contains("研究员"), "必须列出可用名单：{message}");
+            }
+            other => panic!("必须是 NotFound，实际 {other:?}"),
+        }
+        // 被拒的 spawn 不得落库（成员行不存在）。
+        assert!(manager.member("w9@tm_1").is_none());
     }
 
     /// 团队默认 model 也会进 argv：控制字符必须在这里被拒（不是等执行层 panic）。

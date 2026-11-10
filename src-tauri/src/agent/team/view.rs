@@ -57,6 +57,24 @@ pub const MAX_MEMBER_EVENTS: usize = 50;
 /// 超出时**不报错、不静默丢**：置 [`TeamList::truncated`]，面板能说「只显示了最近 50 个」。
 pub const MAX_LISTED_TEAMS: usize = 50;
 
+/// 角色库的硬上限（[`RoleList::roles`] 至多这么多条）。
+///
+/// 与 [`MAX_LISTED_TEAMS`] **同一条红线 4 纪律**（单次载荷不许无界）：单条预设已被
+/// `validate_role` 限住（name ≤64 chars、preamble ≤350 chars），但**行数**是用户自建、
+/// 只增不减 —— 「单行有界」不等于「载荷有界」，2000 条就够 2MB。角色库和团队清单是
+/// 同性质的低频管理面，上界也应同形：超出时置 [`RoleList::truncated`]，不静默丢。
+pub const MAX_LISTED_ROLES: usize = 200;
+
+/// 角色库列表（`team_role_list` 的载荷）：预设行 + 是否被 [`MAX_LISTED_ROLES`] 截断。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleList {
+    /// 按创建时间再按名字排序的预设（稳定序，见 `TeamManager::list_roles`）。
+    pub roles: Vec<crate::agent::team::types::RolePreset>,
+    /// 是否还有更多预设没被列出。
+    pub truncated: bool,
+}
+
 /// 团队列表的一条（`team_list` 工具 / `team_list` 命令的同一份载荷）。
 ///
 /// # 为什么没有花名册与任务行
@@ -177,6 +195,15 @@ pub struct MemberStatusView {
     pub terminal_id: Option<String>,
     /// 它在哪个工作区干活（共享团队根 / 独立 worktree / 只读）。
     pub workspace: Workspace,
+    /// CLI 的**原生会话 id**（`conversation` 域用它拼 `agent_id:native_id`）。
+    ///
+    /// 前端据此在成员**退出后**仍能打开历史 transcript：`terminalId` 已清空，
+    /// 但会话记录还在磁盘上，这两件事不是一回事。
+    pub agent_session_id: Option<String>,
+    /// 人设名（spawn 时刻从角色库快照到成员行上的；`None` = 无人设）。
+    ///
+    /// 只有名字，不携带正文 —— 正文已经进了那个成员的 argv，面板不需要再读它。
+    pub persona: Option<String>,
     /// 怎么**发**消息给它（CLI 成员恒为 `Pty`，见 design §4.4）。
     pub channel: WorkerChannel,
     /// 准入档位（A/B/C）—— 能力缺口的唯一出处（红线 14）。
@@ -252,7 +279,18 @@ pub struct TaskDetail {
     pub card: TaskCard,
     /// 派活正文（长度无上限 —— 这就是它不在列路径里的原因）。
     pub body: String,
+    /// 这个任务的**步骤轨迹**（`team_event.subject = 任务 id` 的审计行，最新在前）。
+    ///
+    /// 「开工文档」与「完成回报」是两个不同字段（`body` / `summary`），但用户要看的
+    /// 是**中间发生了什么**：claim / update / 信号 / 回收……每一步都在审计里。有界
+    /// （`MAX_TASK_EVENTS`）+ 截断标记，与成员详情的读法同一纪律。
+    pub events: Vec<MemberEventView>,
+    /// 还有更早的步骤没取回（读取上界 [`MAX_TASK_EVENTS`]）。
+    pub events_truncated: bool,
 }
+
+/// 任务步骤轨迹的读取上界（与 `MAX_MEMBER_EVENTS` 同一量级）。
+pub const MAX_TASK_EVENTS: usize = 50;
 
 /// 一条审计记录的**成员详情视图**（**不**带 `id` / `team_id`：抽屉已经知道它在看谁）。
 ///
@@ -377,10 +415,36 @@ pub fn team_snapshot(manager: &TeamManager, team_id: &str) -> Result<TeamSnapsho
 /// # 排序与截断
 ///
 /// `created_at` 倒序（最近的队在最上面），同毫秒按 `id` 升序。截断到
+/// 角色库列表：截到 [`MAX_LISTED_ROLES`] 并置 `truncated`（与 [`list_teams`] 同一纪律）。
+///
+/// 排序由 `TeamManager::list_roles` 保证（创建时间再按名字，稳定），这里不改序 ——
+/// 截断取的是**最早创建**的前 N 条；超出部分面板可提示用户「只显示了前 200 个」。
+#[must_use]
+pub fn list_roles(manager: &TeamManager) -> RoleList {
+    let roles = manager.list_roles();
+    let truncated = roles.len() > MAX_LISTED_ROLES;
+    RoleList {
+        roles: roles.into_iter().take(MAX_LISTED_ROLES).collect(),
+        truncated,
+    }
+}
+
 /// [`MAX_LISTED_TEAMS`] 并置 `truncated`（不是分页：面板只需要「最近的那些」）。
 #[must_use]
 pub fn list_teams(manager: &TeamManager) -> TeamList {
+    list_teams_scoped(manager, None)
+}
+
+/// 带可选项目过滤的清单（面板的本地入口按 `activeProjectId` 调；MCP 面传 `None`）。
+///
+/// 过滤在**截断之前**：先在全部团队上筛，再取最近 50 —— 反过来（先截断后筛）会让
+/// 第 51 个之后属于本项目的团队永远消失。空 `project_id` 的行（v16 之前建的旧队）
+/// 无法归属到任何项目，过滤时**排除** —— 「跟随项目」的语义就是只显示属于它的。
+pub fn list_teams_scoped(manager: &TeamManager, project_id: Option<&str>) -> TeamList {
     let mut teams: Vec<Team> = manager.teams();
+    if let Some(project) = project_id {
+        teams.retain(|team| team.project_id == project);
+    }
     teams.sort_by(|a, b| {
         b.created_at
             .cmp(&a.created_at)
@@ -426,9 +490,28 @@ pub fn task_detail(manager: &TeamManager, key: &TaskRef) -> Result<TaskDetail, A
     let task = manager
         .task(key)
         .ok_or_else(|| AppError::NotFound(format!("task `{key}` is not loaded")))?;
+    // 步骤轨迹：`member_events` 的过滤是 `actor = ? OR subject = ?` —— 任务 id 作
+    // 第二参数恰好取出「以它为对象」的审计行（claim / update / 信号 / 回收都是
+    // 以任务为 subject）。这不是巧合当 API 用：那正是这张表的主读法之一。
+    let (events, truncated) =
+        manager
+            .store()
+            .member_events(&task.team_id, &task.id, MAX_TASK_EVENTS)?;
+    let events = events
+        .into_iter()
+        .map(|record| MemberEventView {
+            at: record.at,
+            kind: record.kind,
+            actor: record.actor,
+            subject: record.subject,
+            detail: record.detail,
+        })
+        .collect();
     Ok(TaskDetail {
         body: task.body.clone(),
         card: TaskCard::from_task(&task),
+        events,
+        events_truncated: truncated,
     })
 }
 
@@ -558,6 +641,8 @@ fn member_status_view(
         agent_id: member.agent_id.clone(),
         terminal_id: member.terminal_id.clone(),
         workspace: member.workspace.clone(),
+        agent_session_id: member.agent_session_id.clone(),
+        persona: member.persona.as_ref().map(|p| p.name.clone()),
         channel: member.channel,
         tier: member.tier,
         member_id: member.id,
@@ -607,6 +692,92 @@ mod tests {
 
     const LEAD: &str = "lead@tm_1";
     const W2: &str = "w2@tm_1";
+
+    /// 任务详情的**步骤轨迹**：body 与 summary 并存（开工文档不被完成内容覆盖），
+    /// 事件按 subject = 任务 id 取出（claim → update → 信号的顺序即步骤）。
+    #[test]
+    fn task_detail_keeps_body_summary_and_step_events() {
+        let manager = seeded();
+        let key = TaskRef::new(TEAM, "t1");
+        manager
+            .create_task(TeamTask {
+                id: "t1".into(),
+                team_id: TEAM.into(),
+                title: "do it".into(),
+                body: "# 开工文档\n\n先写失败测试".into(),
+                state: TeamTaskState::Pending,
+                owner: None,
+                workspace: Workspace::Shared,
+                depends_on: vec![],
+                claimed_at: None,
+                lease_ttl: 1800,
+                summary: None,
+                summary_truncated: false,
+                artifacts: vec![],
+                reclaim_count: 0,
+            })
+            .unwrap();
+        // seeded() 已带 w1/w2（成员夹具）；claim 只需要成员在场。
+        manager.claim_task(&key, W1, 900).unwrap();
+        manager
+            .update_task(
+                &key,
+                W1,
+                TeamTaskState::Done,
+                Some("完成回报：全部通过"),
+                1_000,
+            )
+            .unwrap();
+
+        let detail = task_detail(&manager, &key).unwrap();
+        // body（开工文档）与 summary（完成回报）**并存** —— 完成不覆盖开始。
+        assert!(detail.body.contains("开工文档"), "{:?}", detail.body);
+        assert_eq!(detail.card.summary.as_deref(), Some("完成回报：全部通过"));
+        // 步骤轨迹：claim 与 update（done）都在审计里，最新在前。
+        let kinds: Vec<&str> = detail.events.iter().map(|e| e.kind.as_str()).collect();
+        assert!(kinds.contains(&"claim"), "{kinds:?}");
+        assert!(
+            kinds.contains(&crate::agent::team::manager::EVENT_UPDATE),
+            "{kinds:?}"
+        );
+        assert!(detail.events.len() >= 2);
+        assert!(!detail.events_truncated);
+    }
+
+    /// 项目过滤（跟随项目）：匹配的留下，空 `project_id` 的旧行（v16 之前）排除。
+    #[test]
+    fn list_teams_scopes_by_project_and_excludes_unattributed_legacy_rows() {
+        let manager = seeded();
+        let mut legacy = fixture_team("tm_legacy");
+        legacy.project_id = String::new(); // v16 之前的旧行：无法归属到任何项目
+        manager.create_team(legacy).unwrap();
+        let mut other = fixture_team("tm_other");
+        other.project_id = "p-other".into();
+        manager.create_team(other).unwrap();
+
+        let scoped = list_teams_scoped(&manager, Some("p1"));
+        assert_eq!(scoped.teams.len(), 1, "只留 p1 的那一支");
+        assert_eq!(scoped.teams[0].team_id, TEAM);
+        // 不过滤 = 全部（含旧行与别项目的队）
+        assert_eq!(list_teams(&manager).teams.len(), 3);
+    }
+
+    /// 截断在**过滤之后**：先取最近 50 再筛，会让第 51 个之后属于本项目的团队永远消失。
+    #[test]
+    fn truncation_applies_after_the_project_filter() {
+        let manager = seeded();
+        for i in 0..51 {
+            let mut t = fixture_team(&format!("tm_f{i}"));
+            t.name = format!("f{i}");
+            t.project_id = "p1".into();
+            t.created_at = 2_000_000_000_000 + i;
+            manager.create_team(t).unwrap();
+        }
+
+        let scoped = list_teams_scoped(&manager, Some("p1"));
+        assert_eq!(scoped.teams.len(), 50, "过滤后按 MAX_LISTED_TEAMS 截断");
+        assert!(scoped.truncated, "52 支 p1 队 > 50 ⇒ 必须置截断标记");
+    }
 
     fn seeded() -> TeamManager {
         let manager = TeamManager::new(TeamStore::open_in_memory().expect("in-memory store"));
@@ -1372,6 +1543,56 @@ mod tests {
             list.teams[MAX_LISTED_TEAMS - 1].team_id,
             format!("tm_{:03}", over - MAX_LISTED_TEAMS)
         );
+    }
+
+    /// 红线 4：角色库同样必须有界 —— 行数超过 [`MAX_LISTED_ROLES`] 时截断并置 `truncated`。
+    ///
+    /// 「单行有界」不等于「载荷有界」：单条预设已被 `validate_role` 限住长度，但行数由
+    /// 用户自建、只增不减。变异验证：删掉 `take(MAX_LISTED_ROLES)` 或 `truncated` 的计算
+    /// 时本用例变红。
+    #[test]
+    fn the_role_list_is_bounded_and_flagged() {
+        let manager = seeded();
+        let over = MAX_LISTED_ROLES + 5;
+        for index in 0..over {
+            manager
+                .save_role(crate::agent::team::types::RolePreset {
+                    name: format!("role-{index:03}"),
+                    preamble: "p".into(),
+                    cli_preference: None,
+                    approval_policy: None,
+                    default_workspace: None,
+                    created_at: i64::try_from(index).expect("测试用的角色数远小于 i64::MAX"),
+                })
+                .expect("seed role");
+        }
+
+        let list = list_roles(&manager);
+        assert_eq!(list.roles.len(), MAX_LISTED_ROLES);
+        assert!(list.truncated, "被截断时必须能说出来");
+        // 截断保留的是**最早创建**的前 N 条（manager 的稳定序：created_at 再 name）。
+        assert_eq!(list.roles[0].name, "role-000");
+        assert_eq!(list.roles[MAX_LISTED_ROLES - 1].name, "role-199");
+    }
+
+    /// 未截断时 `truncated` 为 false（不能恒 true：那会让提示永远挂着）。
+    #[test]
+    fn a_small_role_list_is_not_flagged_as_truncated() {
+        let manager = seeded();
+        manager
+            .save_role(crate::agent::team::types::RolePreset {
+                name: "研究员".into(),
+                preamble: "R".into(),
+                cli_preference: None,
+                approval_policy: None,
+                default_workspace: None,
+                created_at: 1,
+            })
+            .expect("seed role");
+
+        let list = list_roles(&manager);
+        assert_eq!(list.roles.len(), 1);
+        assert!(!list.truncated);
     }
 
     /// 一条摘要的字段口径：成员数**不含队长、含已 `Dead` 的成员**；任务三计数同板视图。

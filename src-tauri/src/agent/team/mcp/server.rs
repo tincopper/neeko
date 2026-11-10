@@ -1153,6 +1153,8 @@ mod tests {
                         "agentId",
                         "terminalId",
                         "workspace",
+                        "agentSessionId",
+                        "persona",
                         "channel",
                         "tier"
                     ]

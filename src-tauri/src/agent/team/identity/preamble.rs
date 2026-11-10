@@ -28,13 +28,37 @@
 
 use crate::agent::team::admission::{admission_for, tier_of, LaunchableAgent};
 use crate::agent::team::mcp::schema::{known_wires, spec_for, ToolName};
-use crate::agent::team::types::{MemberRole, Team, TeamMember};
+use crate::agent::team::types::{AgentRoleHint, MemberRole, Team, TeamMember};
 
 /// 整段 preamble 的字符上限。
 ///
 /// 两个理由都要它：argv 有长度上限；而这段文本会进 CLI 的会话上下文，过长会顶掉
 /// 用户真正的第一句话。判据是 [`tests::the_preamble_stays_within_the_argv_budget`]。
-pub const MAX_PREAMBLE_CHARS: usize = 2000;
+pub const MAX_PREAMBLE_CHARS: usize = 3200;
+
+/// persona 正文的字符上限（[`RolePreset::preamble`](crate::agent::team::types::RolePreset)）。
+///
+/// persona 是**附加**在角色 preamble 之后的：成员版骨架已占 ~1600 字符，
+/// persona 的余量以「拼完仍 ≤ [`MAX_PREAMBLE_CHARS`]」反推得出（判据：
+/// [`tests::the_persona_fits_inside_the_preamble_budget`]）。超长在**保存时**拒绝
+/// （manager 校验），不静默截断 —— 用户手写的文本被砍短比被拒绝更难排查。
+pub const MAX_PERSONA_CHARS: usize = 350;
+
+/// 把 persona 正文附加在角色 preamble 之后（成员行携带的快照；`None` / 空白 = 原样返回）。
+///
+/// 拼接点在**末尾**：前面的工具面、调用顺序、硬规则是每个成员相同的骨架，persona 是
+/// 「这个人设在这个骨架上怎么干活」的补充。判据（同上）：拼完仍 ≤ [`MAX_PREAMBLE_CHARS`]。
+#[must_use]
+pub fn with_persona(base: String, persona: Option<&str>) -> String {
+    let Some(text) = persona.map(str::trim).filter(|t| !t.is_empty()) else {
+        return base;
+    };
+    let mut out = base;
+    out.push_str("\nYour persona in this team (set by the human):\n");
+    out.push_str(text);
+    out.push('\n');
+    out
+}
 
 /// 生成注入给队长 / 成员的**角色 preamble**。
 ///
@@ -65,23 +89,26 @@ pub fn preamble(
 
 /// 队长版：工具面 → 调用顺序 → 硬规则 → 可 spawn 的 CLI → 第一步。
 fn lead_preamble(team: &Team, member: &TeamMember, members: &[LaunchableAgent]) -> String {
+    // 池位角色预设（面板上每个成员位挑好的 persona）：队长据此**按角色匹配**，
+    // 而 `team_spawn` 不传 `persona` 时也会自动套用它（`resolve_persona` 的解析链）。
+    let hints = &team.role_hints;
     let mut out = identity_block("the lead", team, member);
     out.push_str(
         "You coordinate a team of CLI agents. You do not do the work yourself; your members do.\n\n",
     );
     out.push_str(&tool_block());
     out.push_str(&format!(
-        "\nOrder of work:\n\
-         1. `{}` - read the roster and the board before acting.\n\
-         2. `{}` - read the allowed CLIs, the free slots and the spawn defaults.\n\
-         3. `{}` - write each unit of work as a task; the body is the brief a member reads.\n\
-         4. `{}` - add a worker when you need hands (agent_id and name; the rest defaults).\n\
-         5. `{}` - block until the members or tasks you named settle. A timeout is a result, \
-         not an error.\n\n",
+        "\nOrder of work (plan -> staff by persona -> assign; never skip 2):\n\
+         1. `{}` - read the roster: who is here, what they hold.\n\
+         2. `{}` - read the pool: allowed CLIs, free slots, **each CLI's persona**.\n\
+         3. **Plan first**: write every deliverable as its own task with `{}`, using \
+         `depends_on` when one needs another's output. One vague task is a failed plan.\n\
+         4. **Staff to the plan**: for each task spawn (or reuse an idle member with) the \
+         persona that fits - pass `persona` explicitly when several candidates match.\n\
+         5. `{}` - block until the named members or tasks settle; a timeout is a result.\n\n",
         wire(ToolName::TeamStatus),
         wire(ToolName::TeamOptions),
         wire(ToolName::TaskCreate),
-        wire(ToolName::TeamSpawn),
         wire(ToolName::TeamWait),
     ));
     out.push_str(
@@ -107,10 +134,17 @@ fn lead_preamble(team: &Team, member: &TeamMember, members: &[LaunchableAgent]) 
         "` fails with `target_blocked` when that member is waiting for a human; surface that \
          instead of guessing.\n\n",
     );
-    out.push_str(&spawnable_block(members));
+    out.push_str(
+        "Planning rules:\n\
+         - A request is not a task: split it into separately reviewable units, each with an \
+         explicit done criterion in its body.\n\
+         - Match persona to work (research / implementation / review). If no persona fits, say so.\n\
+         - Do not let one member take everything; parallelize where the plan allows.\n\n",
+    );
+    out.push_str(&spawnable_block(members, hints));
     out.push_str(&format!(
-        "\nStart here: `{}`, then `{}` for the first slice of work, then `{}` one member for it, \
-         then `{}`.\n",
+        "\nStart here: `{}` to see the roster and the pool, then `{}` to write the plan down as \
+         tasks, then `{}` (or reuse an idle member) matched to each task, then `{}`.\n",
         wire(ToolName::TeamStatus),
         wire(ToolName::TaskCreate),
         wire(ToolName::TeamSpawn),
@@ -197,13 +231,24 @@ fn tool_block() -> String {
 }
 
 /// 队长版独有：**这个队**允许 spawn 的 CLI（`refusal` 非空的一律不列）。
-fn spawnable_block(members: &[LaunchableAgent]) -> String {
+fn spawnable_block(members: &[LaunchableAgent], hints: &[AgentRoleHint]) -> String {
+    // 每一行都带**角色**（池位预设）：队长的「按角色挑人」需要看得见角色，
+    // 否则 `team_spawn(persona=…)` 的参数只能靠猜。没有预设的显式说 none。
     let roster = members
         .iter()
         .filter(|row| row.refusal.is_none())
         .filter_map(|row| {
-            admission_for(&row.agent_id)
-                .map(|admission| format!("{} (tier {:?})", row.agent_id, tier_of(admission)))
+            admission_for(&row.agent_id).map(|admission| {
+                let persona = hints
+                    .iter()
+                    .find(|hint| hint.agent_id == row.agent_id)
+                    .map_or("no preset persona", |hint| hint.persona.as_str());
+                format!(
+                    "{} (tier {:?}, persona: {persona})",
+                    row.agent_id,
+                    tier_of(admission)
+                )
+            })
         })
         .collect::<Vec<_>>();
     if roster.is_empty() {
@@ -347,6 +392,37 @@ mod tests {
         assert!(claim < update, "claim 必须出现在 update 之前：{worker}");
     }
 
+    /// 队长必须先**规划**再派人，并且知道每个 CLI 的角色（用户报障：lead 直接派一个
+    /// 任务、不看角色池）。
+    ///
+    /// 判据不是「文本里有没有 plan 这个词」，而是三条承重句子都在：
+    /// ① 计划先行且一个交付一个任务；② 按 persona 匹配；③ 池位清单带 persona。
+    #[test]
+    fn the_lead_is_told_to_plan_first_and_match_personas() {
+        let lead = lead_text();
+        assert!(
+            lead.contains("Plan first"),
+            "队长版必须要求先规划再委派：{lead}"
+        );
+        assert!(
+            lead.contains("One vague task is a failed plan"),
+            "必须把「一个含糊任务 = 失败的规划」说清楚：{lead}"
+        );
+        assert!(
+            lead.contains("Staff to the plan"),
+            "必须要求按计划配人（而不是抓第一个空闲的人）：{lead}"
+        );
+        assert!(
+            lead.contains("persona that fits"),
+            "必须要求把 persona 与任务类型匹配：{lead}"
+        );
+        // 池位清单里每个可用 CLI 都带 persona（没有预设的显式写 none）。
+        assert!(
+            lead.contains("persona: no preset persona"),
+            "没有角色预设的 CLI 也要显式说明，不能让队长以为漏了：{lead}"
+        );
+    }
+
     /// 整段 ≤ [`MAX_PREAMBLE_CHARS`]：argv 有长度上限，且这段会顶掉用户的真实指令。
     ///
     /// 用一个**很深的**项目根一起断言：路径是唯一随环境变长的字段，只测短路径等于没测
@@ -439,8 +515,9 @@ mod tests {
             }
         }
         // 具体形状：名字 + 档位（档位来自准入表的推导，不是这里手写的）。
-        assert!(lead.contains("claude-code (tier A)"), "{lead}");
-        assert!(lead.contains("pi (tier A)"), "{lead}");
+        // 格式是 `{id} (tier {档}, persona: {角色})` —— 角色是「按角色挑人」的前提。
+        assert!(lead.contains("claude-code (tier A, persona: "), "{lead}");
+        assert!(lead.contains("pi (tier A, persona: "), "{lead}");
         // 成员版没有这份清单：它的世界里只有任务板。
         assert!(!worker_text().contains("Worker CLIs you can spawn"));
         // 空清单也要说话（而不是渲染成一句半截话）。
@@ -462,7 +539,7 @@ mod tests {
             let Some(admission) = admission_for(&row.agent_id) else {
                 continue;
             };
-            let expected = format!("{} (tier {:?})", row.agent_id, tier_of(admission));
+            let expected = format!("{} (tier {:?}, persona: ", row.agent_id, tier_of(admission));
             if row.refusal.is_none() {
                 assert!(lead.contains(&expected), "档位必须与准入表一致：{expected}");
             }
@@ -471,6 +548,53 @@ mod tests {
         assert!(
             !lead.contains(&format!("omp (tier {:?})", AdmissionTier::B)),
             "{lead}"
+        );
+    }
+
+    /// persona 附加在角色 preamble **之后**；`None` 与空白都原样返回（逐字节不变）。
+    ///
+    /// 保护的不变量：persona 是可选能力 —— 无人设的成员拿到的文本必须与旧版本
+    /// **逐字节一致**，否则「加了 persona 层」就悄悄改变了所有既有成员的启动 argv。
+    #[test]
+    fn a_persona_is_appended_after_the_role_preamble() {
+        let base = worker_text();
+        assert_eq!(
+            with_persona(base.clone(), None),
+            base,
+            "无人设必须逐字节不变"
+        );
+        assert_eq!(
+            with_persona(base.clone(), Some("  ")),
+            base,
+            "空白等同无人设"
+        );
+        let with = with_persona(
+            base.clone(),
+            Some("Focus on research; never edit production code."),
+        );
+        assert!(
+            with.starts_with(&base),
+            "persona 必须附加在骨架之后：{with}"
+        );
+        assert!(
+            with.contains("Your persona in this team"),
+            "persona 段要有可识别的头：{with}"
+        );
+        assert!(with.contains("Focus on research"));
+    }
+
+    /// 拼上**最长合法**的 persona 后仍 ≤ [`MAX_PREAMBLE_CHARS`]：persona 的余量是
+    /// 从角色 preamble 的预算里让出来的，超了就在保存时拒，不在 spawn 时爆。
+    #[test]
+    fn the_persona_fits_inside_the_preamble_budget() {
+        let base = worker_text();
+        let longest = "x".repeat(MAX_PERSONA_CHARS);
+        let combined = with_persona(base, Some(&longest));
+        let len = combined.chars().count();
+        assert!(
+            len <= MAX_PREAMBLE_CHARS,
+            "骨架 + 最长 persona = {len} 字符，超出 {MAX_PREAMBLE_CHARS} 的预算 —— \
+             先调 MAX_PERSONA_CHARS 或瘦身骨架，不要放宽断言"
         );
     }
 }

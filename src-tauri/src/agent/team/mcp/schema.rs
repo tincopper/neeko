@@ -111,7 +111,7 @@ pub static TOOLS: &[ToolSpec] = &[
         name: ToolName::TeamSpawn,
         wire: "team_spawn",
         summary: "Add one worker member (lead only). Returns the new member id, its derived admission tier and any capability that is still unverified.",
-        input_schema: r#"{"type":"object","properties":{"agent_id":{"type":"string","minLength":1},"name":{"type":"string","minLength":1},"workspace":{"type":"object","properties":{"kind":{"type":"string","enum":["shared","read_only","worktree"]},"path":{"type":"string","minLength":1}},"required":["kind"],"additionalProperties":false},"approval_policy":{"type":"string","enum":["interactive","queue","bypass"]},"model":{"type":"string","minLength":1}},"required":["agent_id","name"],"additionalProperties":false}"#,
+        input_schema: r#"{"type":"object","properties":{"agent_id":{"type":"string","minLength":1},"name":{"type":"string","minLength":1},"workspace":{"type":"object","properties":{"kind":{"type":"string","enum":["shared","read_only","worktree"]},"path":{"type":"string","minLength":1}},"required":["kind"],"additionalProperties":false},"approval_policy":{"type":"string","enum":["interactive","queue","bypass"]},"model":{"type":"string","minLength":1},"persona":{"type":"string","minLength":1}},"required":["agent_id","name"],"additionalProperties":false}"#,
     },
     ToolSpec {
         name: ToolName::TeamSend,
@@ -334,10 +334,17 @@ mod tests {
             .expect("team_spawn 必须有 properties");
         let mut declared: Vec<&str> = properties.keys().map(String::as_str).collect();
         declared.sort_unstable();
-        // 只有这 5 个参数：多一个都是「传了也没用」的声明。
+        // 只有这 6 个参数：多一个都是「传了也没用」的声明。
         assert_eq!(
             declared,
-            ["agent_id", "approval_policy", "model", "name", "workspace"]
+            [
+                "agent_id",
+                "approval_policy",
+                "model",
+                "name",
+                "persona",
+                "workspace"
+            ]
         );
 
         assert_eq!(

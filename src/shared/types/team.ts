@@ -153,6 +153,8 @@ export interface TeamDefaults {
   defaultWorkspace: Workspace;
   /** 缺省审批策略。 */
   defaultApprovalPolicy: ApprovalPolicy;
+  /** 缺省角色名（`null` = 无人设；存在性由 spawn 时的后端判 —— 角色库可编辑）。 */
+  defaultPersona: string | null;
   /** 成员上限（不含队长）。 */
   maxMembers: number;
   /** 当前成员数（**不含队长**）。 */
@@ -192,8 +194,25 @@ export interface TeamConfig {
   defaultWorkspace?: Workspace;
   /** 缺省审批策略。 */
   defaultApprovalPolicy?: ApprovalPolicy;
+  /** 缺省角色名（必须是角色库里已有的名字；省略 = 无人设）。 */
+  defaultPersona?: string | null;
+  /**
+   * 成员位的角色预设（面板池位下拉）：agent_id → persona 名。
+   *
+   * 后端解析链：队长显式参数 > **roleHints** > `defaultPersona` > 无人设 ——
+   * 面板给每个池位挑好角色，队长 spawn 时一字不提，后端也按预设注入人设。
+   */
+  roleHints?: AgentRoleHint[];
   /** 成员上限（不含队长），`1..=8`。 */
   maxMembers?: number;
+}
+
+/** 一条成员位角色预设（`types.rs::AgentRoleHint`，v20）。 */
+export interface AgentRoleHint {
+  /** 哪个 CLI（`AgentConfig.id`）。 */
+  agentId: string;
+  /** 用哪个角色（角色库 `RolePreset.name`）。 */
+  persona: string;
 }
 
 /**
@@ -244,10 +263,58 @@ export interface MemberStatusView {
   terminalId: string | null;
   /** 它在哪个工作区干活（共享团队根 / 独立 worktree / 只读）。 */
   workspace: Workspace;
+  /**
+   * CLI 的**原生会话 id**（`conversation` 域拼 `agentId:nativeId` 用）。
+   *
+   * 与 `terminalId` 是两件事：`terminalId` 是**活的 PTY**（成员退出即清空），
+   * `agentSessionId` 是磁盘上的**会话记录**（退出后仍在）—— 「已退出」的成员
+   * 因此仍能打开历史 transcript。
+   */
+  agentSessionId: string | null;
+  /**
+   * 人设名（spawn 时刻从角色库快照到成员行上的；`null` = 无人设）。
+   *
+   * 只有名字：正文已经进了那个成员的启动 argv，前端不需要也不该再读它。
+   */
+  persona: string | null;
   /** 怎么给它发消息（CLI 成员恒为 `pty`）。 */
   channel: WorkerChannel;
   /** 准入档位（`c` 档必须带可见的「sentinel only」警告）。 */
   tier: AdmissionTier;
+}
+
+/**
+ * 角色库里的一条预设（`types.rs::RolePreset`，`team_role` 表；v19）。
+ *
+ * `approvalPolicy` / `defaultWorkspace` 是 spawn 时刻的**缺省覆盖**（显式参数 >
+ * persona > 团队缺省）；`cliPreference` 只是建议，不是判据 —— 准入判据只在后端
+ * 准入表里。persona 与授权（`MemberRole` 的 lead/worker）严格无关。
+ */
+export interface RolePreset {
+  /** 角色名（主键；`team_spawn` 传这个名字，成员行快照这个名字）。 */
+  name: string;
+  /** 人设正文（进成员启动参数的英文文本）。 */
+  preamble: string;
+  /** 建议用哪个 CLI 当这个角色；`null` = 不建议。 */
+  cliPreference: string | null;
+  /** spawn 时未显式传审批策略时的覆盖；`null` = 落回团队缺省。 */
+  approvalPolicy: ApprovalPolicy | null;
+  /** spawn 时未显式传工作区时的覆盖；`null` = 落回团队缺省。 */
+  defaultWorkspace: Workspace | null;
+  /** 创建时间（epoch 毫秒；排序用）。 */
+  createdAt: number;
+}
+
+/**
+ * 角色库列表（`view.rs::RoleList`，`team_role_list` 的载荷）。
+ *
+ * 行数有界（`MAX_LISTED_ROLES`）：单行有界不等于载荷有界 —— 角色库只增不减，与
+ * `TeamList` 同一条红线 4 纪律。`truncated` 必须被 UI 说出来（否则看起来像「就只有这些」）。
+ */
+export interface RoleList {
+  roles: RolePreset[];
+  /** 是否还有更多预设没被列出。 */
+  truncated: boolean;
 }
 
 /**
@@ -289,6 +356,15 @@ export interface TaskCard {
 export interface TaskDetail extends TaskCard {
   /** 派活正文（长度无上限 —— 这就是它不在列路径里的原因）。 */
   body: string;
+  /**
+   * 这个任务的**步骤轨迹**（subject = 任务 id 的审计行，最新在前）。
+   *
+   * 「开工文档」(`body`) 与「完成回报」(`summary`) 并存、互不覆盖；中间发生了什么
+   * 看 steps。上界 50（`MAX_TASK_EVENTS`），`stepsTruncated` = 还有更早的。
+   */
+  steps: MemberEventView[];
+  /** 还有更早的步骤没取回。 */
+  stepsTruncated: boolean;
 }
 
 /**
@@ -490,4 +566,11 @@ export interface TeamSession {
   terminalId: string | null;
   /** 队员 MCP 配置里要连的端点（与执行层同源，便于排查）。 */
   endpointUrl: string;
+  /**
+   * 队长的 agent（`AgentConfig.id`）。
+   *
+   * **随建队响应一起回**（不从快照里找）：队长 tab 的图标不能依赖「快照先落地」这个
+   * 时序 —— 否则第一帧永远是通用终端图标。
+   */
+  leadAgentId: string;
 }

@@ -140,6 +140,13 @@ pub fn observe(
         }
     }
 
+    // 原生会话 id：每条上报都带着它，第一次见到就记下来 —— 「已退出的成员」
+    // 之后要按它打开历史 transcript（见 `TeamMember::agent_session_id`）。
+    if let Err(err) = manager.note_agent_session_id(&member_id, &event.agent_session_id) {
+        // fail-open：记 id 失败不能拖累状态迁移与上报链路（本模块的头号纪律）。
+        log::warn!("team::observe could not record native session id for {member_id}: {err}");
+    }
+
     manager.observe_signal(&member_id, signal, now_millis())?;
     Ok(ObserveOutcome::Applied { member_id })
 }

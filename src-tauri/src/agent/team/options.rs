@@ -80,6 +80,9 @@ pub struct TeamDefaults {
     pub default_workspace: Workspace,
     /// 成员未传 `approval_policy` 时的缺省。
     pub default_approval_policy: ApprovalPolicy,
+    /// 成员未传 `persona` 时的缺省角色名（`None` = 无人设；存在性在 spawn 时判 ——
+    /// 角色库是可编辑的，这里只表达团队行的**意图**）。
+    pub default_persona: Option<String>,
     /// 成员上限（不含队长）。
     pub max_members: u32,
     /// 当前已有成员数（**不含队长**）：队长据此算「还能加几个」。
@@ -106,6 +109,8 @@ impl TeamConfig {
             default_model: team.default_model.clone(),
             default_workspace: team.default_workspace.clone(),
             default_approval_policy: team.default_approval_policy,
+            default_persona: team.default_persona.clone(),
+            role_hints: team.role_hints.clone(),
             max_members: team.max_members,
         }
     }
@@ -151,6 +156,7 @@ fn resolve(config: &TeamConfig, member_count: u32) -> TeamOptions {
             default_model: config.default_model.clone(),
             default_workspace: config.default_workspace.clone(),
             default_approval_policy: config.default_approval_policy,
+            default_persona: config.default_persona.clone(),
             max_members: config.max_members,
             member_count,
         },
@@ -322,6 +328,8 @@ mod tests {
             default_model: Some("pi-default".into()),
             default_workspace: Workspace::ReadOnly,
             default_approval_policy: ApprovalPolicy::Bypass,
+            default_persona: Some("研究员".into()),
+            role_hints: Vec::new(),
             max_members: 2,
         };
         let options = options_for(&fixture_team_configured(TEAM, &config), 1);
@@ -335,6 +343,7 @@ mod tests {
             options.defaults.default_approval_policy,
             ApprovalPolicy::Bypass
         );
+        assert_eq!(options.defaults.default_persona.as_deref(), Some("研究员"));
         assert_eq!(options.defaults.max_members, 2);
         assert_eq!(options.defaults.member_count, 1);
         assert_eq!(options.defaults.remaining(), 1, "还能加一个");
@@ -367,6 +376,7 @@ mod tests {
             default_model: None,
             default_workspace: Workspace::Shared,
             default_approval_policy: ApprovalPolicy::Queue,
+            default_persona: None,
             max_members: 2,
             member_count: 2,
         };
@@ -404,6 +414,7 @@ mod tests {
                 "allowedAgentIds",
                 "defaultApprovalPolicy",
                 "defaultModel",
+                "defaultPersona",
                 "defaultWorkspace",
                 "maxMembers",
                 "memberCount",

@@ -75,7 +75,7 @@ use crate::agent::team::bootstrap::{self, new_team_id, plan_team};
 use crate::agent::team::execution;
 use crate::agent::team::manager::now_millis;
 use crate::agent::team::options::{self, TeamOptions};
-use crate::agent::team::types::{MemberRole, TaskRef, TeamConfig, TeamState};
+use crate::agent::team::types::{MemberRole, RolePreset, TaskRef, TeamConfig, TeamState};
 use crate::agent::team::view::{self, MemberDetail, TaskDetail, TeamSnapshot};
 use crate::common::error::AppError;
 use crate::common::runtime::run_blocking_result;
@@ -100,6 +100,11 @@ pub struct TeamSession {
     pub terminal_id: Option<String>,
     /// 队员 MCP 配置里要连的端点（与执行层同源，便于排查）。
     pub endpoint_url: String,
+    /// 队长的 agent（`AgentConfig.id`）。
+    ///
+    /// **随建队响应一起回**，前端 tab 栏据此显示品牌图标 —— 从快照里找会让图标
+    /// 依赖一个时序（快照拉回来之前 tab 已经画出来了，那一帧是通用终端图标）。
+    pub lead_agent_id: String,
 }
 
 /// 以队长身份开一个会话（建队 + 起队长 PTY）。
@@ -196,6 +201,7 @@ pub async fn start_team_session(
         member_id: plan.lead.id,
         terminal_id,
         endpoint_url: surface.endpoint_url,
+        lead_agent_id: plan.lead.agent_id,
     })
 }
 
@@ -447,8 +453,60 @@ pub fn team_options(
 /// 它回答的是「这台机器上有哪些队」，不是「我所在的队」。与 MCP 工具 `team_list` 同源
 /// （同一个 [`view::list_teams`]）。
 #[tauri::command]
-pub fn team_list(state: tauri::State<'_, AppStateWrapper>) -> Result<view::TeamList, AppError> {
-    Ok(view::list_teams(&state.team_manager))
+// project_id = 项目过滤（面板按 `activeProjectId` 传）；`None` = 不过滤（全部团队）。
+pub fn team_list(
+    state: tauri::State<'_, AppStateWrapper>,
+    project_id: Option<String>,
+) -> Result<view::TeamList, AppError> {
+    Ok(view::list_teams_scoped(
+        &state.team_manager,
+        project_id.as_deref(),
+    ))
+}
+
+// ── 角色库（persona 预设；v19）───────────────────────────────────────
+//
+// 三条都是**本机用户**的入口（无 principal，不碰授权矩阵 —— 与 `team_snapshot` 同一
+// 分界，见 `team-domain.md` §8.4）。校验与镜像/库的一致性都在 `TeamManager`（唯一写
+// 入口），命令层只做接收与转发（红线 6）。
+//
+// # 为什么是同步命令（与 `team_list` 同一理由）
+//
+// 读写都走 `TeamManager` 的镜像 + 锁内的库调用；它们是低频的用户动作（编辑角色库），
+// 不是每帧都走的读路径。与 `team_list` 同步形态保持一致，不进阻塞池。
+
+/// 全部角色预设（建队配置的「缺省角色」下拉与角色库管理面的数据源）。
+///
+/// 载荷有界（[`view::MAX_LISTED_ROLES`] + `truncated`），与 `team_list` 同一红线 4 纪律：
+/// 单行有界不等于载荷有界（行数只增不减）。
+#[tauri::command]
+pub fn team_role_list(
+    state: tauri::State<'_, AppStateWrapper>,
+) -> Result<view::RoleList, AppError> {
+    Ok(view::list_roles(&state.team_manager))
+}
+
+/// 保存（新增或编辑）一条角色预设。名字是主键：同名校 = 编辑。
+///
+/// 校验（非空 / 长度 / 控制字符）在 `TeamManager::save_role` —— persona 正文会进成员
+/// argv，拒绝在保存时发生，不静默截断。
+#[tauri::command]
+pub fn team_role_save(
+    state: tauri::State<'_, AppStateWrapper>,
+    role: RolePreset,
+) -> Result<(), AppError> {
+    state.team_manager.save_role(role)
+}
+
+/// 删除一条角色预设；未知名字 → `NotFound`。
+///
+/// 已 spawn 的成员**不受影响**：它们的人设是成员行上的快照（`Persona`），不是引用。
+#[tauri::command]
+pub fn team_role_delete(
+    state: tauri::State<'_, AppStateWrapper>,
+    name: String,
+) -> Result<(), AppError> {
+    state.team_manager.delete_role(name.trim())
 }
 
 /// 团队快照（面板的数据源）。
@@ -739,6 +797,7 @@ mod tests {
             member_id: "lead@tm_1".into(),
             terminal_id: Some("term-1".into()),
             endpoint_url: "http://127.0.0.1:1/team/mcp".into(),
+            lead_agent_id: "claude-code".into(),
         };
         let launchable = LaunchableAgent {
             agent_id: "pi".into(),
@@ -776,8 +835,19 @@ mod tests {
             events_truncated: true,
         };
 
+        // 角色库命令的载荷（v19）：`team_role_list` 的行形态。
+        let role = RolePreset {
+            name: "研究员".into(),
+            preamble: "Research only.".into(),
+            cli_preference: Some("claude-code".into()),
+            approval_policy: Some(crate::agent::team::types::ApprovalPolicy::Queue),
+            default_workspace: Some(crate::agent::team::types::Workspace::ReadOnly),
+            created_at: 1,
+        };
+
         let payloads = [
             ("TeamSession", serde_json::to_value(&session).unwrap()),
+            ("RolePreset", serde_json::to_value(&role).unwrap()),
             (
                 "LaunchableAgent",
                 serde_json::to_value(&launchable).unwrap(),
@@ -826,8 +896,14 @@ mod tests {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["endpointUrl", "memberId", "teamId", "terminalId"],
-            "前端的 TeamSession 镜像依赖这四个键"
+            vec![
+                "endpointUrl",
+                "leadAgentId",
+                "memberId",
+                "teamId",
+                "terminalId"
+            ],
+            "前端的 TeamSession 镜像依赖这五个键"
         );
     }
 

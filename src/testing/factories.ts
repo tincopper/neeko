@@ -163,6 +163,8 @@ export function createMemberStatus(
     agentId: 'pi',
     terminalId: 'term-w1',
     workspace: 'shared',
+    persona: null,
+    agentSessionId: null,
     channel: 'pty',
     tier: 'a',
     ...overrides,
@@ -197,7 +199,13 @@ export function createTaskCard(overrides: Partial<TaskCard> & Pick<TaskCard, 'id
 export function createTaskDetail(
   overrides: Partial<TaskDetail> & Pick<TaskDetail, 'id'>,
 ): TaskDetail {
-  return { ...createTaskCard(overrides), body: '派活正文', ...overrides };
+  return {
+    ...createTaskCard(overrides),
+    body: '派活正文',
+    steps: [],
+    stepsTruncated: false,
+    ...overrides,
+  };
 }
 
 /** 团队行夹具。 */
@@ -247,6 +255,7 @@ export function createTeamSession(overrides?: Partial<TeamSession>): TeamSession
     memberId: 'lead@tm_1',
     terminalId: 'sess-lead',
     endpointUrl: 'http://127.0.0.1:0/mcp',
+    leadAgentId: 'claude-code',
     ...overrides,
   };
 }
@@ -308,6 +317,7 @@ export function createTeamDefaults(overrides?: Partial<TeamDefaults>): TeamDefau
     defaultModel: null,
     defaultWorkspace: 'shared',
     defaultApprovalPolicy: 'queue',
+    defaultPersona: null,
     maxMembers: 4,
     memberCount: 0,
   };

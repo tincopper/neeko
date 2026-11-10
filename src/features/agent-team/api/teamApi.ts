@@ -6,6 +6,8 @@ import type {
   ClosedReply,
   LaunchableAgent,
   MemberDetail,
+  RoleList,
+  RolePreset,
   TaskDetail,
   TeamConfig,
   TeamList,
@@ -123,8 +125,8 @@ export function fetchTeamOptions(teamId?: string | null): Promise<TeamOptions> {
  * 它只读 `TeamManager` 的内存镜像（app 启动时 hydrate），因此**不会**因为某个团队已经
  * 关掉而没有行：已关闭的队照样列出来（面板照 `state` 决定「能重开」还是「只读」）。
  */
-export function fetchTeamList(): Promise<TeamList> {
-  return invoke<TeamList>('team_list');
+export function fetchTeamList(projectId?: string | null): Promise<TeamList> {
+  return invoke<TeamList>('team_list', { projectId: projectId ?? null });
 }
 
 /**
@@ -195,6 +197,38 @@ export function fetchTaskDetail(teamId: string, taskId: string): Promise<TaskDet
  */
 export function fetchMemberDetail(memberId: string): Promise<MemberDetail> {
   return invoke<MemberDetail>('team_member_detail', { memberId });
+}
+
+/**
+ * 角色库（`team_role` 表；v19）：persona 预设的**全局**清单。
+ *
+ * 角色库不隶属任何团队，也不是团队状态 —— 它**不发脉冲**（脉冲只在团队的写路径上发），
+ * 所以消费侧（[`../hooks/useTeamRoles.ts`]) 自己管理刷新：挂载拉一次、save/delete 成功后
+ * 本地重取，不借脉冲。
+ */
+export function fetchTeamRoles(): Promise<RoleList> {
+  return invoke<RoleList>('team_role_list');
+}
+
+/**
+ * 保存（新增或**同名编辑**）一条预设。
+ *
+ * 校验（非空 / 长度 / 控制字符）在后端 `TeamManager::save_role`；persona 正文会进成员的
+ * 启动 argv，所以超长是**拒绝**而不是截断。前端只做「别把一眼就非法的输入发出去」的
+ * 预检（非空），判据不在这边。
+ */
+export function saveTeamRole(role: RolePreset): Promise<void> {
+  return invoke<void>('team_role_save', { role });
+}
+
+/**
+ * 删除一条预设；未知名字 → 后端 `NotFound`。
+ *
+ * 已 spawn 的成员**不受影响**：它们的人设是成员行上的快照（`MemberStatusView.persona`），
+ * 不是这条库行的引用。
+ */
+export function deleteTeamRole(name: string): Promise<void> {
+  return invoke<void>('team_role_delete', { name });
 }
 
 /**

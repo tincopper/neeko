@@ -71,6 +71,20 @@ pub struct Team {
     /// 成员未传 `approval_policy` 时的缺省（缺省 = 进待批队列，R0b.3）。
     #[serde(default)]
     pub default_approval_policy: ApprovalPolicy,
+    /// 成员 `team_spawn` 未传 `persona` 时的缺省角色名；`None` = 无人设。
+    ///
+    /// 存**名字**而不是快照：角色库是可编辑的，spawn 那一刻才把名字解析成
+    /// `Persona` 快照落到成员行上（「成员行携带执行所需的一切」，
+    /// `team-domain.md` §2.2）。这里只表达团队的**意图**。
+    #[serde(default)]
+    pub default_persona: Option<String>,
+    /// 成员位的角色预设（面板池位下拉；agent_id → persona 名）。
+    ///
+    /// 解析链（`mcp::dispatch::spawn`）：显式参数 > **role_hint** > `default_persona` >
+    /// 无人设。面板给每个池位挑好角色，队长 spawn 时即使一字不提，后端也按预设
+    /// 注入人设 —— 「预设」由用户决定，不由模型自觉。
+    #[serde(default)]
+    pub role_hints: Vec<AgentRoleHint>,
     /// 成员上限（**不含队长**）。缺省 [`DEFAULT_MAX_MEMBERS`]，合法区间 [`1`, [`MAX_MEMBERS_LIMIT`]]。
     #[serde(default = "default_max_members")]
     pub max_members: u32,
@@ -120,6 +134,12 @@ pub struct TeamConfig {
     /// 成员未传 `approval_policy` 时的缺省。
     #[serde(default)]
     pub default_approval_policy: ApprovalPolicy,
+    /// 成员未传 `persona` 时的缺省角色名（必须在角色库里；`None` = 无人设）。
+    #[serde(default)]
+    pub default_persona: Option<String>,
+    /// 成员位的角色预设（池位下拉；与 `Team::role_hints` 同名同义）。
+    #[serde(default)]
+    pub role_hints: Vec<AgentRoleHint>,
     /// 成员上限（不含队长）。
     #[serde(default = "default_max_members")]
     pub max_members: u32,
@@ -132,6 +152,8 @@ impl Default for TeamConfig {
             default_model: None,
             default_workspace: Workspace::default(),
             default_approval_policy: ApprovalPolicy::default(),
+            default_persona: None,
+            role_hints: Vec::new(),
             max_members: DEFAULT_MAX_MEMBERS,
         }
     }
@@ -170,6 +192,13 @@ pub struct TeamMember {
     pub model: Option<String>,
     /// 预留：接 Chat 成员时才用（design §7.4）。本期恒 `None`。
     pub session_id: Option<String>,
+    /// CLI 的**原生会话 id**（hook 上报的 `agent_session_id`）。
+    ///
+    /// 用途只有一个：成员退出后还能按它打开**历史 transcript**（`conversation` 域的
+    /// `agent_id:native_id`）—— 「已退出的成员」没有活的 PTY，但它的会话记录还在磁盘上。
+    /// 由观察者从 hook 事件里记录（第一次见到就写，之后不变：同一成员的 native id 稳定）。
+    #[serde(default)]
+    pub agent_session_id: Option<String>,
     /// 本期唯一：关联的 PTY 会话 id（CLI 成员）。
     pub terminal_id: Option<String>,
     /// 成员的 cwd（`Shared` = 团队根，`Worktree{path}` = 独立 worktree）。
@@ -192,6 +221,60 @@ pub struct TeamMember {
     pub token_hash: String,
     /// 入队时间（epoch 毫秒）。
     pub joined_at: i64,
+    /// 人设快照（spawn 那一刻从角色库解析并落行；`None` = 无人设）。
+    ///
+    /// 快照而不是引用：preamble 文本在 spawn 时进 argv，之后角色库怎么改都不影响
+    /// 这个成员「是带着什么文本被拉起来的」——那是可复现的事实。名字用于花名册
+    /// 展示与审计；正文由执行层拼进角色 preamble（`identity::with_persona`）。
+    #[serde(default)]
+    pub persona: Option<Persona>,
+}
+
+/// 成员的人设快照（[`TeamMember::persona`]）。
+///
+/// 与 [`MemberRole`] 严格分开：`MemberRole(Lead | Worker)` 是**授权矩阵**的唯一输入
+/// 维度（design §3.2），persona 是「这个成员怎么干活」的文本包 —— 它永远不能改变
+/// 授权判定，所以它是成员行上的**数据**，不是一个角色变体。
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Persona {
+    /// 角色名（角色库 [`RolePreset::name`] 在 spawn 时刻的快照）。
+    pub name: String,
+    /// 人设正文（进 argv 的那段文本；长度上限 = [`crate::agent::team::identity::preamble::MAX_PERSONA_CHARS`]）。
+    pub preamble: String,
+}
+
+/// 角色库里的一条预设（`team_role` 表，全局共享，不隶属任何队）。
+///
+/// `approval_policy` / `default_workspace` 是 spawn 时刻的**缺省覆盖**：显式参数 >
+/// persona > 团队缺省（三层，见 `mcp::dispatch::spawn`）。`cli_preference` 只是
+/// **建议**（面板预选 / 队长读 `team_options` 时参考），不是判据 —— 准入判据仍然
+/// 只在 `admission` 表里（红线 15：persona 是数据，不是代码分支）。
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRoleHint {
+    /// 哪个 CLI（`AgentConfig.id`）。
+    pub agent_id: String,
+    /// 用哪个角色（角色库 [`RolePreset::name`]）。
+    pub persona: String,
+}
+
+/// 角色库里的一条预设（`team_role` 表，全局共享，不隶属任何队）。
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RolePreset {
+    /// 角色名（主键；spawn 传这个名字，成员行快照这个名字）。
+    pub name: String,
+    /// 人设正文（进成员 argv 的那段；**英文**，与角色 preamble 同一读者）。
+    pub preamble: String,
+    /// 建议用哪个 CLI 当这个角色（`AgentConfig.id`；`None` = 不建议）。
+    pub cli_preference: Option<String>,
+    /// spawn 时未显式传 `approval_policy` 时的覆盖；`None` = 落回团队缺省。
+    pub approval_policy: Option<ApprovalPolicy>,
+    /// spawn 时未显式传 `workspace` 时的覆盖；`None` = 落回团队缺省。
+    pub default_workspace: Option<Workspace>,
+    /// 创建时间（epoch 毫秒；排序用）。
+    pub created_at: i64,
 }
 
 /// 成员角色。决定授权矩阵（design §3.2）。
@@ -785,6 +868,8 @@ mod tests {
             default_model: Some("m".into()),
             default_workspace: Workspace::Shared,
             default_approval_policy: ApprovalPolicy::Queue,
+            default_persona: Some("研究员".into()),
+            role_hints: Vec::new(),
             max_members: 2,
         };
         let json = serde_json::to_value(&team).unwrap();
@@ -803,6 +888,7 @@ mod tests {
                 "createdAt",
                 "defaultApprovalPolicy",
                 "defaultModel",
+                "defaultPersona",
                 "defaultWorkspace",
                 "id",
                 "leadAgentId",
@@ -811,6 +897,7 @@ mod tests {
                 "name",
                 "projectId",
                 "projectPath",
+                "roleHints",
                 "state",
             ]
         );
