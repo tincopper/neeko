@@ -19,7 +19,15 @@ use super::writer::Recorder;
 const LOG_MAGIC: &[u8] = b"NEEKO-SHELL-LOG-v2\n";
 
 /// 历史与本次会话之间的可见分界（纯文本，不含 ESC）。
-const REPLAY_SEPARATOR: &[u8] = b"\r\n\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 \xe4\xbb\xa5\xe4\xb8\x8a\xe4\xb8\xba\xe5\x8e\x86\xe5\x8f\xb2\xe5\x9b\x9e\xe6\x94\xbe \xc2\xb7 \xe4\xbb\xa5\xe4\xb8\x8b\xe4\xb8\xba\xe6\x9c\xac\xe6\xac\xa1\xe4\xbc\x9a\xe8\xaf\x9d \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\r\n\r\n";
+///
+/// **英文**：它是终端里用户直接读到的输出，与日志 / 错误信息同一条规则
+/// （根 `AGENTS.md`「错误消息和日志字符串使用英文」）。中文还会在等宽终端里
+/// 按 2 列/字计宽，遇到窄终端或非 CJK 字体时整行折行、把分界框撑断。
+///
+/// 语义：上方是历史回放，下方是本次会话。`pub(super)` 只为让测试引用同一个
+/// 常量 —— 文案在断言里再抄一遍，改一处就会留一处假绿。
+pub(super) const REPLAY_SEPARATOR: &[u8] =
+    b"\r\n\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 end of previous output \xc2\xb7 this session starts below \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\r\n\r\n";
 
 /// 一次会话创建所需的全部历史决策。**在 `run_blocking` 里算好**，让三端 pipeline
 /// 只做纯内存操作（`drain.push` + 起写线程），彻底把阻塞 fs 移出 async command 链（红线 3）。

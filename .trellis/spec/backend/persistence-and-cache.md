@@ -561,6 +561,11 @@ namespace），加进通用层会让文件后端多一个无谓约束。正确�
 | 回放准备 | `HistoryStore::prepare` 在 router 的 `run_blocking` 里执行（红线 3），返回 `HistoryPlan` —— 三端共用；`HistoryPlan::attach` 是「推进 drain + 起写线程」的**唯一接线接缝**，Local / WSL / SSH 共用。旧日志已读入内存，直接作新写线程初值，不再 `fs::copy`（少一次 IO、少一个竞态）。 |
 | 回收 | `HistoryStore` 实现 `SessionHistory` trait 的 `on_adopt` / `on_unregister`；`Registry` 通过注入端口通知，不认识 terminal 域。GC `prune` 归组合根 `app/boot.rs::on_setup`，**不在 `boot::restore` 里** —— `restore()` 是纯回填，曾被塞进 GC 导致单测删光真实用户日志（现有 `restore_never_touches_session_history_side_effects` 护栏钉住）。 |
 
+**回放分界文案**：`store.rs::REPLAY_SEPARATOR`（`pub(super)`，测试引用同一个常量，不在断言里
+抄第二份）。它是**用户直接读到的终端输出**，所以用英文 —— 与「错误消息 / 日志字符串用英文」
+同一条规则；中文在等宽终端里按 2 列/字计宽，窄终端或非 CJK 字体下会折行把分界框撑断。
+格式：`\r\n─── end of previous output · this session starts below ───\r\n\r\n`，纯文本、不含 ESC。
+
 **为什么 `prepare` 是单点**：三端对称要求同一份回放决策，且所有阻塞 fs 必须在 async command 之外。`router::prepare_history` 是唯一调用点，`is_plain_shell` 单点裁决（前端不再自己判 `agentId`），`HistoryPlan::attach` 是唯一接线接缝。新增传输类型只需接 `attach`，无需复制历史逻辑。
 
 **为什么不进 `agent_sessions.db`**：日志无 schema 版本门禁，且是 256KB×N 的 BLOB，塞进会话库会撑大 WAL；独立文件让「没有 cursor 行」成为唯一孤儿判据。

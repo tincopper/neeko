@@ -64,6 +64,17 @@ src-tauri/src/app/boot.rs  on_setup 里调 HistoryStore::prune（GC 归组合根
 - agent TUI 终端输出落盘（全屏重绘帧不可回放）；读取 CLI transcript（前一版方案）。
 - 回放原始 PTY 字节；独立只读历史分栏；让已结束进程复活。
 
+## 5b. 收尾期修订（2026-11-10）
+
+- **回放分界文案改英文**（用户要求）：`store.rs::REPLAY_SEPARATOR` 从
+  `─── 以上为历史回放 · 以下为本次会话 ───` 改为
+  `─── end of previous output · this session starts below ───`。
+  理由：它是终端里用户直接读到的输出，与「错误/日志用英文」同一条规则；中文按 2 列/字计宽，
+  窄终端或非 CJK 字体下会折行把分界框撑断。
+- 常量改为 `pub(super)`，两处测试断言引用同一常量（原先在断言里抄了中文文案，改一处会留一处假绿）；
+  另加一条「分界不得含 CJK」的护栏断言，挡住改回中文的回归。
+- `.trellis/spec/backend/persistence-and-cache.md` §5b 增加「回放分界文案」条目。
+
 ## 6. 收尾约定
 
 `pnpm check:quick` 只在收尾跑一次（已完成）→ spec 已同步（`.trellis/spec/backend/persistence-and-cache.md` §5b）→ 不主动提交代码。

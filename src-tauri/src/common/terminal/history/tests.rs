@@ -10,7 +10,9 @@ use crate::common::terminal::history::contract::SessionHistory;
 use crate::common::terminal::history::sanitizer::{
     sanitize, Sanitizer, MAX_LOG_BYTES, MAX_LOG_LINES, MAX_PENDING_ESCAPE,
 };
-use crate::common::terminal::history::store::{replay_payload, tail, HistoryStore};
+use crate::common::terminal::history::store::{
+    replay_payload, tail, HistoryStore, REPLAY_SEPARATOR,
+};
 
 // ── sanitize / Sanitizer ───────────────────────────────────────────────
 
@@ -231,7 +233,16 @@ fn replay_payload_appends_separator_on_a_new_line() {
     let got = replay_payload(b"cmd\r\noutput");
     let text = String::from_utf8(got).unwrap();
     assert!(text.starts_with("cmd\r\noutput\r\n"), "{text:?}");
-    assert!(text.contains("以上为历史回放"), "{text:?}");
+    // 分界文案从常量取（不在断言里抄第二份，避免改一处留一处假绿）
+    let separator = std::str::from_utf8(REPLAY_SEPARATOR).expect("separator is ascii + box chars");
+    assert!(text.contains(separator.trim()), "{text:?}");
+    // 用户可见输出用英文（根 AGENTS.md）；顺带挡住「又改回中文」的回归。
+    assert!(
+        !separator
+            .chars()
+            .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c)),
+        "回放分界必须是英文（用户可见输出），当前含中文：{separator:?}"
+    );
     assert!(text.ends_with("\r\n\r\n"), "{text:?}");
     assert!(!text.contains('\u{1b}'), "回放不得含 ESC");
 }
@@ -396,7 +407,10 @@ fn replay_bytes_precede_reader_output_in_one_drain() {
     let first = drain.take_and_rearm(|| {});
     let text = String::from_utf8(first).unwrap();
     assert!(text.starts_with("$ echo hi"), "{text:?}");
-    let sep = text.find("以上为历史回放").expect("分隔线缺失");
+    let marker = std::str::from_utf8(REPLAY_SEPARATOR)
+        .expect("separator utf8")
+        .trim();
+    let sep = text.find(marker).expect("分隔线缺失");
     let shell = text.find("new-shell").expect("reader 输出缺失");
     assert!(sep < shell, "回放必须排在 reader 之前：{text:?}");
 
