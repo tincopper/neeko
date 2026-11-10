@@ -469,3 +469,25 @@ tauri.macos.conf.json 的 app.windows 数组被 JSON Merge Patch 整体替换，
 ### Next Steps
 
 - 无
+
+
+## Session 448: resume replay separator in English
+<!-- trellis-session: v=2 fp=567dd85741a09224 -->
+
+**Date**: 2026-11-10
+**Task**: resume replay separator in English
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `834c4de5` | fix(terminal): make the resume replay separator English |
+
+### Status
+
+[OK] **Completed**
