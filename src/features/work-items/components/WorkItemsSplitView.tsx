@@ -32,7 +32,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/ui/Resiz
  * 判据是「谁拥有存储格式」（`component-guidelines.md` 的变体节）。`workItemsStore` 是
  * 「这个项目的工作项集合」，且会随 `reset()` 清空（切项目时清）。把布局比例塞进去，会让
  * 「切项目后回到默认宽度」变成一条无解释的行为 —— 用户没有要求重置面板宽度。
- * 而团队域的同款选择（`TeamListPane`）已经踩过这个坑，这里照抄。
+ * 而团队域的同款选择（团队列表与创建流同为「列表优先 + 视图推入」）已经踩过这个坑，这里照抄。
  *
  * `onlySaveAfterUserInteractions: true` **不能省**：不传的默认是「每次布局提交都存」
  * （含首次布局与窗口 resize），那样注释里这句「只存用户拖动」就是假的。

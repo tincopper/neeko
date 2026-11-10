@@ -23,3 +23,4 @@ export { default as ConversationMsg } from './components/ConversationMessage';
 
 // Utils
 export { conversationTabTitle } from './utils/conversationTabTitle';
+export { conversationIdOf, parseConversationId } from './utils/conversationId';

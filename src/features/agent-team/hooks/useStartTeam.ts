@@ -25,7 +25,12 @@ import { useTeamStore } from '../store/teamStore';
 export interface StartTeamOptions {
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
   /** 把队长 PTY 接进 dock 终端（跨域动作，由 app 层实现）。 */
-  onOpenLeaderTerminal?: (session: TeamSession, title: string) => void;
+  onOpenLeaderTerminal?: (
+    session: TeamSession,
+    title: string,
+    /** 队长的 agent（tab 栏品牌图标用；快照在 openTeam 之后可查）。 */
+    agentId: string | undefined,
+  ) => void;
 }
 
 export interface StartTeamState {
@@ -74,7 +79,9 @@ export function useStartTeam(options: StartTeamOptions = {}): StartTeamState {
         const teamName = useTeamStore.getState().snapshot?.team.name ?? session.teamId;
 
         if (session.terminalId) {
-          onOpenLeaderTerminal?.(session, leaderTerminalTitle(teamName));
+          // 队长的 agent 随建队响应回来（`leadAgentId`）—— 不从快照里找：
+          // 那会让 tab 图标依赖「快照先落地」这个时序，第一帧是通用终端图标。
+          onOpenLeaderTerminal?.(session, leaderTerminalTitle(teamName), session.leadAgentId);
           onShowToast?.(`团队「${teamName}」已建立，队长会话已打开`, 'info');
         } else {
           onShowToast?.(

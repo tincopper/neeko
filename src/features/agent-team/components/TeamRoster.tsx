@@ -23,13 +23,15 @@ import RosterRow from './RosterRow';
 interface TeamRosterProps {
   members: readonly MemberStatusView[];
   /** 打开某个成员的 PTY 终端（透传给每行）。 */
-  onOpenTerminal: (terminalId: string, title: string) => void;
-  /** 打开某个成员的详情抽屉（点行的主体区域；与「打开终端」是两个动作）。 */
+  onOpenTerminal: (terminalId: string, title: string, agentId: string | undefined) => void;
+  /** 打开已退出成员的历史会话（`conversation` tab）。 */
+  onOpenHistory?: (agentId: string, agentSessionId: string, title: string) => void;
+  /** 打开某个成员的详情抽屉（点行的主体区域；与「打开会话」是两个动作）。 */
   onOpenMember: (memberId: string) => void;
 }
 
 const TeamRoster: React.FC<TeamRosterProps> = React.memo(
-  ({ members, onOpenTerminal, onOpenMember }) => {
+  ({ members, onOpenTerminal, onOpenMember, onOpenHistory }) => {
     const hasSentinelOnly = members.some((member) => member.tier === 'c');
 
     return (
@@ -55,6 +57,7 @@ const TeamRoster: React.FC<TeamRosterProps> = React.memo(
                 member={member}
                 onOpenTerminal={onOpenTerminal}
                 onOpenMember={onOpenMember}
+                onOpenHistory={onOpenHistory}
               />
             ))}
           </ul>

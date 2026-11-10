@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-import type { TaskDetail, TeamSnapshot } from '@/shared/types/team';
+import type { TeamSnapshot } from '@/shared/types/team';
 
 import { useTeamStore } from '../store/teamStore';
 
@@ -12,7 +12,6 @@ import { usePulseRefresh } from './usePulseRefresh';
 export interface TeamPanelState {
   teamId: string | null;
   snapshot: TeamSnapshot | null;
-  detail: TaskDetail | null;
   loading: boolean;
   error: string | null;
 }
@@ -34,7 +33,6 @@ export interface TeamPanelState {
 export function useTeamPanel(): TeamPanelState {
   const teamId = useTeamStore((s) => s.teamId);
   const snapshot = useTeamStore((s) => s.snapshot);
-  const detail = useTeamStore((s) => s.detail);
   const loading = useTeamStore((s) => s.loading);
   const error = useTeamStore((s) => s.error);
 
@@ -47,5 +45,5 @@ export function useTeamPanel(): TeamPanelState {
   // ② 脉冲 → 合并刷新（订阅/去重都不在这里，见本文件头）。
   usePulseRefresh(useTeamStore.getState().refresh, { enabled: teamId !== null });
 
-  return { teamId, snapshot, detail, loading, error };
+  return { teamId, snapshot, loading, error };
 }

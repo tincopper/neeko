@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -106,6 +106,8 @@ function mockBackend(script: BackendScript = {}): void {
     }
     if (cmd === 'start_team_session') return createTeamSession();
     if (cmd === 'team_snapshot') return createTeamSnapshot();
+    // 角色库（v19）：面板挂载时拉一次；这些用例不关心它，回空清单即可。
+    if (cmd === 'team_role_list') return { roles: [], truncated: false };
     return undefined;
   });
 }
@@ -159,7 +161,7 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     setActiveProject();
   });
 
-  it('被拒的 CLI 禁用、理由作为可见文字渲染，点击不触发 start_team_session', async () => {
+  it('被拒的 CLI 默认不占页面：折叠行点开后才是禁用行 + 可见理由；点击不发请求', async () => {
     mockBackend({
       agents: [
         createLaunchableAgent({ agentId: 'claude-code' }),
@@ -170,19 +172,30 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     render(<TeamLaunchPanel />);
     await waitForPanelReady();
 
-    // 行本身仍然渲染出来 —— 静默隐藏会让用户以为「不支持」，实际是「我们没说」。
-    const piRow = screen.getByRole('button', { name: /Pi/ });
+    // 产品裁决（2026-11-07）：错误不占页面 —— 默认视图没有理由文本，
+    // 但**不是静默隐藏**：折叠行常驻（数量 + 名字预览，键盘可达）。
+    expect(screen.queryByText(PI_REFUSAL)).not.toBeInTheDocument();
+    const disclosure = screen.getByRole('button', { name: /1 个 CLI 不可用于团队/ });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(disclosure).toHaveAttribute('aria-controls', 'team-refused-list');
+
+    fireEvent.click(disclosure);
+
+    // 展开后：行渲染出来（不是「不支持」而是「不可用 + 理由」）。
+    // 在折叠列表内查询 —— 折叠行的名字预览里也含 "Pi"，不能按裸名字查。
+    const refusedList = screen.getByRole('list', { name: '不可用的 CLI' });
+    const piRow = within(refusedList).getByRole('button', { name: /Pi/ });
     expect(piRow).toBeDisabled();
     expect(piRow).toHaveAttribute('aria-disabled', 'true');
 
-    // 理由必须是**可见文字**（不是 title / aria-label 这种看不见的容器）。
+    // 理由是**可见文字**（不是 title / aria-label 这种看不见的容器）。
     const reason = screen.getByText(PI_REFUSAL);
     expect(reason).toBeVisible();
     expect(piRow).not.toHaveAttribute('title');
     // 读屏也能把它挂在控件上（description 与可见文字是同一份）。
     expect(piRow).toHaveAttribute('aria-describedby', reason.id);
 
-    // 可启动的那一行正常可选。
+    // 可启动的那一行正常可选（不受折叠影响）。
     expect(screen.getByRole('button', { name: /Claude Code/ })).toBeEnabled();
 
     // 点击被拒的行：不发任何新请求（两次挂载读命令已发生过，不重复）。
@@ -298,6 +311,7 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
       }
       if (cmd === 'team_options') return createTeamOptions();
       if (cmd === 'team_snapshot') return createTeamSnapshot();
+      if (cmd === 'team_role_list') return { roles: [], truncated: false };
       return createTeamSession();
     });
 
@@ -397,10 +411,11 @@ describe('TeamLaunchPanel — 团队配置（team_options）', () => {
     expect(piBox).toBeDisabled();
     expect(piBox).not.toBeChecked();
 
-    // 理由必须是可见文字（不是 title），并挂在控件上供读屏。
-    const reason = screen.getByText(PI_REFUSAL);
-    expect(reason).toBeVisible();
-    expect(piBox).toHaveAttribute('aria-describedby', reason.id);
+    // 成员池只给「不可用」这个事实（徽标可见）；理由统一收在队长选择区的折叠行里，
+    // 不在这里重复（用户裁决：错误不占页面）。
+    expect(screen.getByText('不可用')).toBeVisible();
+    expect(screen.queryByText(PI_REFUSAL)).not.toBeInTheDocument();
+    expect(piBox).not.toHaveAttribute('aria-describedby');
   });
 
   it('一个成员都不选：主按钮禁用 + 有说明，点击不发请求', async () => {
@@ -522,6 +537,7 @@ describe('TeamLaunchPanel — 团队配置（team_options）', () => {
         return options;
       }
       if (cmd === 'team_snapshot') return createTeamSnapshot();
+      if (cmd === 'team_role_list') return { roles: [], truncated: false };
       return createTeamSession();
     });
 

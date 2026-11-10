@@ -19,7 +19,7 @@ import TeamPanel from '../TeamPanel';
  *
  * 两条判据：
  *
- * 1. **每个成员都能被看见地打开**：`terminalId != null` → 一行一个「打开终端」，
+ * 1. **每个成员都能被看见地打开**：`terminalId != null` → 一行一个「打开会话」，
  *    回调参数精确等于**这一行**的 id 与名字；`null` → 置灰 + 可见理由 + **零调用**。
  * 2. **一眼能回答三件事**：这是谁（agentId / 档位）、它在哪干活（工作区）、它在等什么
  *    （六态 + 租约 / 未声明）。头像色按 `memberId` 派生，重排不漂移。
@@ -33,7 +33,8 @@ const MEMBERS = [
     role: 'lead',
     state: 'running',
     terminalId: 'term-lead',
-    agentId: 'claude-code',
+    // 无官方品牌图标的 CLI：头像走「首字母 + 派生色」回退路径（品牌图标的判据单独钉）。
+    agentId: 'omp',
     leaseRemainingSecs: 1374,
   }),
   createMemberStatus({
@@ -51,7 +52,7 @@ const MEMBERS = [
     name: 'backend',
     state: 'awaiting',
     terminalId: null,
-    agentId: 'codex',
+    agentId: 'qoder',
     workspace: 'read_only',
     tier: 'c',
     leaseRemainingSecs: null,
@@ -78,8 +79,9 @@ function renderWithSnapshot(snapshot = createTeamSnapshot({ members: MEMBERS }))
   useTeamStore.setState({ teamId: 'tm_1', snapshot });
   mockInvoke.mockResolvedValue(snapshot);
   const onOpenTerminal = vi.fn();
-  const view = render(<TeamPanel onOpenTerminal={onOpenTerminal} />);
-  return { ...view, onOpenTerminal };
+  const onOpenHistory = vi.fn();
+  const view = render(<TeamPanel onOpenTerminal={onOpenTerminal} onOpenHistory={onOpenHistory} />);
+  return { ...view, onOpenTerminal, onOpenHistory };
 }
 
 function roster(): HTMLElement {
@@ -107,41 +109,65 @@ describe('花名册 — 打开成员终端', () => {
   it('点行内按钮 → 回调拿到**这一行**的 terminalId 与名字（标题用成员名）', () => {
     const { onOpenTerminal } = renderWithSnapshot();
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开终端：frontend' }));
+    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
 
     expect(onOpenTerminal).toHaveBeenCalledTimes(1);
     // 第三个参数是**这个团队的** projectId（`snapshot.team.projectId`）：宿主据此落终端
     // tab，用激活项目顶替会在切换项目后把 tab 登记到另一棵树下面（F3）。
-    expect(onOpenTerminal).toHaveBeenCalledWith('term-w1', 'frontend', 'p1');
+    expect(onOpenTerminal).toHaveBeenCalledWith('term-w1', 'frontend', 'qoder', 'p1');
   });
 
   it('队长行同样能开（role: lead 不特殊对待 —— 它的进程也在自己的 PTY 里）', () => {
     const { onOpenTerminal } = renderWithSnapshot();
 
-    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: '打开终端：lead' }));
+    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: '打开会话：lead' }));
 
-    expect(onOpenTerminal).toHaveBeenCalledWith('term-lead', 'lead', 'p1');
+    expect(onOpenTerminal).toHaveBeenCalledWith('term-lead', 'lead', 'omp', 'p1');
   });
 
   it('两个成员各开各的（参数不许串行 / 不许落到别人身上）', () => {
     const { onOpenTerminal } = renderWithSnapshot();
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开终端：frontend' }));
-    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: '打开终端：lead' }));
+    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
+    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: '打开会话：lead' }));
 
     expect(onOpenTerminal.mock.calls).toEqual([
-      ['term-w1', 'frontend', 'p1'],
-      ['term-lead', 'lead', 'p1'],
+      ['term-w1', 'frontend', 'qoder', 'p1'],
+      ['term-lead', 'lead', 'omp', 'p1'],
     ]);
   });
 
-  it('terminalId 为 null：按钮置灰 + 可见理由「暂无终端」+ **零调用**', () => {
+  it('已退出但有原生会话 id：按钮可点，走历史记录（不是 PTY 接管）', () => {
+    const { onOpenTerminal, onOpenHistory } = renderWithSnapshot(
+      createTeamSnapshot({
+        members: [
+          createMemberStatus({
+            memberId: 'gone@tm_1',
+            name: 'gone',
+            state: 'dead',
+            terminalId: null, // 归档时清空（不给死进程一个死按钮）
+            agentSessionId: 'native-gone', // 但会话记录还在磁盘上
+            agentId: 'pi',
+          }),
+        ],
+      }),
+    );
+    // 按钮文案区分「活进程」与「历史记录」：后者叫「查看记录」。
+    fireEvent.click(within(rowOf('gone')).getByRole('button', { name: /查看记录/ }));
+
+    // 分派到历史路径（agentId, nativeId, 名字, 团队 projectId），**不**碰 PTY 接管。
+    // 第四个参数与「打开会话」同口径：历史会话 tab 也按团队自己的项目落键。
+    expect(onOpenHistory).toHaveBeenCalledWith('pi', 'native-gone', 'gone', 'p1');
+    expect(onOpenTerminal).not.toHaveBeenCalled();
+  });
+
+  it('terminalId 为 null：按钮置灰 + 可见理由「暂无会话」+ **零调用**', () => {
     const { onOpenTerminal } = renderWithSnapshot();
-    const button = within(rowOf('backend')).getByRole('button', { name: '打开终端：backend' });
+    const button = within(rowOf('backend')).getByRole('button', { name: '打开会话：backend' });
 
     expect(button).toBeDisabled();
     // 理由必须是**可见文字**，不能只进 title（disabled 元素不可聚焦，等于没有理由）
-    expect(within(rowOf('backend')).getByText('暂无终端')).toBeInTheDocument();
+    expect(within(rowOf('backend')).getByText('暂无会话')).toBeInTheDocument();
 
     fireEvent.click(button);
     expect(onOpenTerminal).not.toHaveBeenCalled();
@@ -208,6 +234,37 @@ describe('花名册 — 信息密度（谁 / 在哪 / 在等什么）', () => {
     for (const member of reordered) {
       expect(tintOf(member)).toBe(before.get(member.memberId));
     }
+  });
+
+  it('成员头像显示对应 agent 的品牌图标（claude-code → Claude 官方路径）；无品牌的回退首字母', () => {
+    renderWithSnapshot(
+      createTeamSnapshot({
+        members: [
+          createMemberStatus({
+            memberId: 'b1@tm_1',
+            name: 'brand',
+            agentId: 'claude-code',
+            state: 'running',
+          }),
+          createMemberStatus({
+            memberId: 'b2@tm_1',
+            name: 'plain',
+            agentId: 'omp',
+            state: 'idle',
+          }),
+        ],
+      }),
+    );
+
+    // 品牌路径：图标带可访问名（读屏听到「哪个 agent」），不再是首字母文本
+    const brandRow = rowOf('brand');
+    expect(within(brandRow).getByRole('img', { name: 'claude-code' })).toBeInTheDocument();
+    expect(within(brandRow).queryByText('B')).not.toBeInTheDocument();
+    // 无品牌的 CLI 走「首字母 + 派生色」回退（没有 img 角色）
+    const plainRow = rowOf('plain');
+    expect(within(plainRow).queryByRole('img', { name: 'omp' })).not.toBeInTheDocument();
+    // 回退字形来自**名字**首字母（memberInitial），不是 agentId
+    expect(within(plainRow).getByText('P')).toBeInTheDocument();
   });
 });
 

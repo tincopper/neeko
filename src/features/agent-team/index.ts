@@ -5,4 +5,8 @@
  * `@/features/agent-team/store/teamStore`（与 `src/AGENTS.md` 的导入防火墙一致）。
  */
 export { default as TeamPanel } from './components/TeamPanel';
+export { default as TeamBoardCenterView } from './components/TeamBoardCenterView';
+export { default as TeamTaskCenterView } from './components/TeamTaskCenterView';
 export { useTeamPanel } from './hooks/useTeamPanel';
+export { useTeamBoardTab } from './hooks/useTeamBoardTab';
+export { useTeamTaskTab } from './hooks/useTeamTaskTab';

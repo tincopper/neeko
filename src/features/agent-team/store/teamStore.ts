@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 
-import type { TaskDetail, TeamSnapshot } from '@/shared/types/team';
+import type { TeamSnapshot } from '@/shared/types/team';
 import { invokeErrorMessage } from '@/shared/utils/invokeError';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
-import { fetchTaskDetail, fetchTeamSnapshot, subscribeTeamPulse } from '../api/teamApi';
+import { fetchTeamSnapshot, subscribeTeamPulse } from '../api/teamApi';
 
 /**
  * 团队面板状态（`snapshot` 是**唯一**渲染真相）。
@@ -53,19 +53,17 @@ let generation = 0;
 let pulseSubscription: Promise<unknown> | null = null;
 
 /**
- * 详情请求的代数守卫：抽屉可能已经被关掉或换了一张卡片，迟到的响应**不许**把抽屉又打开。
+ * 快照请求的代数守卫：切队 / 关闭后，迟到的快照响应**不许**把界面又拉回旧队。
  *
- * 与快照守卫分开的原因：两者生命周期不同 —— 快照随团队变，详情随一次点击变。
+ * （任务详情已改为「点开才拉」的中央 tab，不再有 store 里的 detail 与其守卫。）
  */
-let detailRequest = 0;
 
 export interface TeamStoreState {
   /** 当前盯着的团队；`null` = 面板空态（显示队长入口）。 */
   teamId: string | null;
   /** 面板唯一数据源。 */
   snapshot: TeamSnapshot | null;
-  /** 点开的任务详情（含正文）；`null` = 抽屉关闭。 */
-  detail: TaskDetail | null;
+
   loading: boolean;
   /** 最近一次失败的可读原因（`AppError` 的原文）。 */
   error: string | null;
@@ -77,15 +75,6 @@ export interface TeamStoreState {
   closeTeam: () => void;
   /** 重取快照（脉冲 / 手动刷新共用）。 */
   refresh: () => Promise<void>;
-  /**
-   * 点开任务详情（**只有这里**会走 `team_task_detail`）。
-   *
-   * 两个参数都必填：任务 id 只在队内唯一（每个队的板都从 `t1` 开始），
-   * 而详情请求的后端签名就是 `(team_id, task_id)`。调用点从 `TaskCard` 上取两列。
-   */
-  openTaskDetail: (teamId: string, taskId: string) => Promise<void>;
-  /** 关闭详情抽屉（清掉正文，不留残影）。 */
-  closeTaskDetail: () => void;
   /**
    * 应用一条脉冲代数。
    *
@@ -102,7 +91,6 @@ export interface TeamStoreState {
 const EMPTY = {
   teamId: null,
   snapshot: null,
-  detail: null,
   loading: false,
   error: null,
   lastRev: 0,
@@ -118,14 +106,12 @@ export const useTeamStore = create<TeamStoreState>((set, get) => ({
     }
     // 换队作废在飞响应：新团队的快照绝不能被上一个团队的响应覆盖。
     generation += 1;
-    detailRequest += 1;
     set({ ...EMPTY, teamId, loading: true });
     await get().refresh();
   },
 
   closeTeam: () => {
     generation += 1;
-    detailRequest += 1;
     set({ ...EMPTY });
   },
 
@@ -143,24 +129,6 @@ export const useTeamStore = create<TeamStoreState>((set, get) => ({
       // 失败**不清空** snapshot：脉冲/瞬时故障之后闪白会让面板看起来像团队没了。
       set({ loading: false, error: invokeErrorMessage(err, 'Could not load the team snapshot') });
     }
-  },
-
-  openTaskDetail: async (teamId, taskId) => {
-    const mine = ++detailRequest;
-    try {
-      const detail = await fetchTaskDetail(teamId, taskId);
-      // 期间可能已经关闭了抽屉 / 换了团队 / 点了另一张卡片：不在这些情形下把正文塞回去。
-      if (mine !== detailRequest || get().teamId === null) return;
-      set({ detail });
-    } catch (err) {
-      if (mine !== detailRequest) return;
-      set({ error: invokeErrorMessage(err, `Could not load task ${taskId}`) });
-    }
-  },
-
-  closeTaskDetail: () => {
-    detailRequest += 1;
-    set({ detail: null });
   },
 
   applyPulse: (rev) => {

@@ -48,7 +48,7 @@ const MemberDetailTasks: React.FC<MemberDetailTasksProps> = React.memo(
               <li
                 key={task.id}
                 data-task-id={task.id}
-                className="rounded border border-border bg-bg-secondary px-1.5 py-1"
+                className="rounded border border-border bg-bg-primary px-1.5 py-1"
               >
                 <div className="flex items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-meta text-text-primary">

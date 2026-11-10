@@ -43,6 +43,15 @@ function hash32(text: string): number {
   return hash >>> 0;
 }
 
+/** tone → token class 的唯一映射（MemberAvatar / AgentIcon 共用，不许各抄一份）。 */
+export const MEMBER_TINT_CLASS: Record<MemberTintTone, string> = {
+  blue: 'bg-accent-blue/20 text-accent-blue',
+  green: 'bg-accent-green/20 text-accent-green',
+  orange: 'bg-accent-orange/20 text-accent-orange',
+  brick: 'bg-accent-brick/20 text-accent-brick',
+  yellow: 'bg-accent-yellow/20 text-accent-yellow',
+};
+
 /** 头像色：**只**由 `memberId` 决定（同一 id 恒同色，重排后不变）。 */
 export function memberTint(memberId: string): MemberTintTone {
   if (memberId.length === 0) return MEMBER_TINT_TONES[0];

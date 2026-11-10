@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TaskDetail, TeamSnapshot } from '@/shared/types/team';
-import { createTaskDetail, createTeam, createTeamSnapshot } from '@/testing/factories';
+import type { TeamSnapshot } from '@/shared/types/team';
+import { createTeam, createTeamSnapshot } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
 import { __resetTeamGenerationForTests, useTeamStore } from '../teamStore';
@@ -93,39 +93,6 @@ describe('teamStore', () => {
   it('没有 teamId 时 refresh 不发 invoke', async () => {
     await useTeamStore.getState().refresh();
     expect(mockInvoke).not.toHaveBeenCalled();
-  });
-
-  it('openTaskDetail 才拉正文，closeTaskDetail 清掉它', async () => {
-    const detail = createTaskDetail({ id: 't1', body: '派活正文：只在这里出现' });
-    useTeamStore.setState({ ...EMPTY, teamId: 'tm_1' });
-    mockInvoke.mockImplementation(async (cmd) => (cmd === 'team_task_detail' ? detail : undefined));
-
-    await useTeamStore.getState().openTaskDetail('tm_1', 't1');
-
-    // **判据 6**：两个参数都必须上线 —— 任务 id 只在队内唯一，缺了 `teamId` 就无从知道
-    // 用户点的是哪个队的 `t1`（把这条改成只传 `taskId` 时本断言变红）。
-    expect(mockInvoke).toHaveBeenCalledWith('team_task_detail', {
-      teamId: 'tm_1',
-      taskId: 't1',
-    });
-    expect(useTeamStore.getState().detail?.body).toBe('派活正文：只在这里出现');
-
-    useTeamStore.getState().closeTaskDetail();
-    expect(useTeamStore.getState().detail).toBeNull();
-  });
-
-  it('关闭抽屉后迟到的详情响应不会把抽屉又打开', async () => {
-    const slow = deferred<TaskDetail>();
-    useTeamStore.setState({ ...EMPTY, teamId: 'tm_1' });
-    mockInvoke.mockImplementation(() => slow.promise);
-
-    const pending = useTeamStore.getState().openTaskDetail('tm_1', 't1');
-    // 用户在响应回来之前关掉了抽屉
-    useTeamStore.getState().closeTaskDetail();
-    slow.resolve(createTaskDetail({ id: 't1', body: '迟到的正文' }));
-    await pending;
-
-    expect(useTeamStore.getState().detail).toBeNull();
   });
 
   it('closeTeam 回到空态（面板据此显示队长入口）', async () => {

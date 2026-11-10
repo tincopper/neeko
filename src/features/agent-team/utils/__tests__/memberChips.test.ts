@@ -10,6 +10,7 @@ import { memberChips } from '../memberChips';
  */
 const base = {
   agentId: 'pi',
+  persona: null,
   channel: 'pty' as const,
   workspace: 'shared' as const,
   tier: 'a' as const,
@@ -20,13 +21,27 @@ function chip(member: typeof base, key: string) {
 }
 
 describe('memberChips — 谁 / 在哪 / 能力边界', () => {
-  it('四枚 chip 的顺序固定：身份 → 通道 → 工作区 → 档位', () => {
+  it('无 persona 时四枚 chip 的顺序固定：身份 → 通道 → 工作区 → 档位', () => {
     expect(memberChips(base).map((row) => row.key)).toEqual([
       'agent',
       'channel',
       'workspace',
       'tier',
     ]);
+  });
+
+  it('有 persona 时多一枚角色 chip，落在身份之后（v19）；`null` = 不渲染', () => {
+    const withPersona = { ...base, persona: '研究员' };
+    expect(memberChips(withPersona).map((row) => row.key)).toEqual([
+      'agent',
+      'persona',
+      'channel',
+      'workspace',
+      'tier',
+    ]);
+    const row = memberChips(withPersona).find((item) => item.key === 'persona');
+    expect(row?.text).toBe('研究员');
+    expect(row?.title).toContain('与权限无关');
   });
 
   it('agentId 原样出现在 chip 上（不翻译、不缩写）', () => {

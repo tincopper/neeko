@@ -49,6 +49,10 @@ export interface TeamConfigValues {
   approvalPolicy: ApprovalPolicy;
   /** 缺省模型；空串 = 用各 CLI 自己的默认。 */
   model: string;
+  /** 缺省角色名（角色库里的名字）；空串 = 无人设。 */
+  persona: string;
+  /** 每个成员位的角色（agentId → persona 名；空串 = 用缺省）。 */
+  roleByAgent: Record<string, string>;
 }
 
 export interface TeamConfigDraft {
@@ -59,6 +63,9 @@ export interface TeamConfigDraft {
   setWorkspace: (next: LaunchWorkspace) => void;
   setApprovalPolicy: (next: ApprovalPolicy) => void;
   setModel: (next: string) => void;
+  setPersona: (next: string) => void;
+  /** 给某个成员位设角色（空串 = 用缺省）。 */
+  setRoleFor: (agentId: string, persona: string) => void;
   /** 上限输入的即时错误（`null` = 合法）。 */
   maxMembersError: string | null;
   /** 只含**非缺省**字段的 `start_team_session` 入参。 */
@@ -82,6 +89,9 @@ function seedValues(defaults: TeamDefaults): TeamConfigValues {
     workspace: defaults.defaultWorkspace === 'read_only' ? 'read_only' : 'shared',
     approvalPolicy: defaults.defaultApprovalPolicy,
     model: defaults.defaultModel ?? '',
+    persona: defaults.defaultPersona ?? '',
+    // 角色预设不播种（建队前的目录没有 per-CLI 事实）—— 用户在池位上现挑。
+    roleByAgent: {},
   };
 }
 
@@ -153,6 +163,15 @@ export function useTeamConfigDraft(options: TeamOptions | null): TeamConfigDraft
     (next: string) => update((prev) => ({ ...prev, model: next })),
     [update],
   );
+  const setPersona = useCallback(
+    (next: string) => update((prev) => ({ ...prev, persona: next })),
+    [update],
+  );
+  const setRoleFor = useCallback(
+    (agentId: string, persona: string) =>
+      update((prev) => ({ ...prev, roleByAgent: { ...prev.roleByAgent, [agentId]: persona } })),
+    [update],
+  );
 
   const maxMembersError = useMemo(
     () => (values === null ? null : validateMaxMembers(values.maxMembers)),
@@ -171,6 +190,14 @@ export function useTeamConfigDraft(options: TeamOptions | null): TeamConfigDraft
     if (values.approvalPolicy !== defaults.defaultApprovalPolicy) {
       next.defaultApprovalPolicy = values.approvalPolicy;
     }
+    if (values.persona !== '' && values.persona !== (defaults.defaultPersona ?? '')) {
+      next.defaultPersona = values.persona;
+    }
+    // 成员位角色预设：只投影「勾选中且选了角色」的行（无人设 = 不设，落到缺省）。
+    const hints = values.selectedIds
+      .map((agentId) => ({ agentId, persona: values.roleByAgent[agentId] ?? '' }))
+      .filter((hint) => hint.persona !== '');
+    if (hints.length > 0) next.roleHints = hints;
     // 越界不发：`valid` 已经挡住提交，这里再挡一次是为了让 `config` 在任何时刻都是
     // 「可以原样发给后端」的载荷（不会因为半句非法输入而整体失败）。
     if (maxMembersError === null && Number(values.maxMembers) !== defaults.maxMembers) {
@@ -192,6 +219,8 @@ export function useTeamConfigDraft(options: TeamOptions | null): TeamConfigDraft
     setWorkspace,
     setApprovalPolicy,
     setModel,
+    setPersona,
+    setRoleFor,
     maxMembersError,
     config,
     valid,

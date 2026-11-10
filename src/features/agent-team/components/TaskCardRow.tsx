@@ -37,13 +37,13 @@ interface TaskCardRowProps {
    * 任务 id 只在队内唯一，所以「打开 t1」不是一个完整的动作 —— 卡片自己带着 `task.teamId`，
    * 调用点不必知道当前在哪个队。
    */
-  onOpen: (teamId: string, taskId: string) => void;
+  onOpen: (teamId: string, taskId: string, title: string) => void;
 }
 
 const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(({ task, owner, now, onOpen }) => {
   const handleClick = useCallback(
-    () => onOpen(task.teamId, task.id),
-    [onOpen, task.teamId, task.id],
+    () => onOpen(task.teamId, task.id, task.title),
+    [onOpen, task.teamId, task.id, task.title],
   );
   const lease = useMemo(() => taskLease(task, now), [task, now]);
   const ownerBadge = owner ? memberBadge(owner) : null;

@@ -27,8 +27,8 @@ interface MemberApprovalQueueProps {
   /** AC5 队列（后端已经按 `state === awaiting_approval` 且 `owner === 该成员` 过滤）。 */
   tasks: readonly TaskCard[];
   /** 成员行 —— 「去终端处理」的可用性与理由都从它派生（`openTerminalAction`）。 */
-  member: Pick<MemberStatusView, 'terminalId' | 'name'>;
-  onOpenTerminal: (terminalId: string, title: string) => void;
+  member: Pick<MemberStatusView, 'terminalId' | 'name' | 'agentId' | 'agentSessionId'>;
+  onOpenTerminal: (terminalId: string, title: string, agentId: string | undefined) => void;
 }
 
 const MemberApprovalQueue: React.FC<MemberApprovalQueueProps> = React.memo(
@@ -39,7 +39,7 @@ const MemberApprovalQueue: React.FC<MemberApprovalQueueProps> = React.memo(
     const handleOpen = useCallback(() => {
       // 置灰是 UI，**零调用**是行为：没有进程时连回调都不碰（与花名册行同一条判据）。
       if (terminalId === null) return;
-      onOpenTerminal(terminalId, member.name);
+      onOpenTerminal(terminalId, member.name, member.agentId);
     }, [member.name, onOpenTerminal, terminalId]);
 
     // 空队列 → 什么都不画（见文件头「空队列不渲染」）。

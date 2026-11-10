@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { cn } from '@/lib/utils';
-import type { ApprovalPolicy, TeamOptions } from '@/shared/types/team';
+import type { ApprovalPolicy, RolePreset, TeamOptions } from '@/shared/types/team';
 import { Input, Radio } from '@/ui';
 
 import {
@@ -12,6 +12,7 @@ import {
 } from '../hooks/useTeamConfigDraft';
 
 import ErrorNotice from './ErrorNotice';
+import TeamMemberPool from './TeamMemberPool';
 
 /**
  * 建队面板的**团队配置区**：成员池 / 上限 / 三个缺省值。
@@ -49,6 +50,17 @@ interface TeamConfigSectionProps {
   draft: TeamConfigDraft;
   /** `agentId` → 显示名（唯一的显示名来源是 agent 快照，由面板注入）。 */
   nameOf: (agentId: string) => string;
+  /** 角色库（缺省角色下拉的数据源）；`null` = 还没拿到（下拉只留「无人设」）。 */
+  roles: RolePreset[] | null;
+  /**
+   * pick-or-create 的保存回调（面板包一层 `teamRoles.saveRole`）。
+   * `undefined` = 角色库不可用（下拉里没有「＋ 新建角色…」入口）。
+   */
+  onCreateRole?: (input: {
+    name: string;
+    preamble: string;
+    cliPreference: string | null;
+  }) => Promise<RolePreset | null>;
 }
 
 /** 工作区两选的文案。**含义写清**：两个词本身不解释任何事。 */
@@ -68,7 +80,7 @@ const APPROVAL_ORDER: ApprovalPolicy[] = ['queue', 'interactive', 'bypass'];
 const WORKSPACE_ORDER: LaunchWorkspace[] = ['shared', 'read_only'];
 
 const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
-  ({ options, loading, error, onRetry, draft, nameOf }) => {
+  ({ options, loading, error, onRetry, draft, nameOf, roles, onCreateRole }) => {
     const values = draft.values;
 
     return (
@@ -101,46 +113,16 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
                   后端没有返回任何可当成员的 CLI —— 空池意味着一个成员都加不进来。
                 </p>
               ) : (
-                <ul aria-label="成员池" className="flex flex-col gap-1">
-                  {options.members.map((row) => {
-                    const launchable = row.refusal === null;
-                    const refusalId = `team-config-refusal-${row.agentId}`;
-                    return (
-                      <li key={row.agentId} className="flex flex-col gap-0.5">
-                        <label
-                          className={cn(
-                            'flex items-center gap-2',
-                            launchable
-                              ? 'cursor-pointer text-text-primary'
-                              : 'cursor-not-allowed text-text-muted',
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            className="size-3.5 shrink-0 accent-[var(--accent-blue,#4a9eff)] disabled:cursor-not-allowed"
-                            checked={launchable && values.selectedIds.includes(row.agentId)}
-                            disabled={!launchable}
-                            aria-describedby={launchable ? undefined : refusalId}
-                            onChange={(e) => draft.toggleMember(row.agentId, e.target.checked)}
-                          />
-                          <span className="truncate">{nameOf(row.agentId)}</span>
-                        </label>
-                        <span className="pl-5 font-mono text-micro text-text-muted">
-                          {row.agentId}
-                        </span>
-                        {row.refusal ? (
-                          // 可见文字，不是 `title`（同队长选择行）。
-                          <p
-                            id={refusalId}
-                            className="pl-5 whitespace-pre-wrap break-words text-micro text-text-muted"
-                          >
-                            {row.refusal}
-                          </p>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
+                <TeamMemberPool
+                  members={options.members}
+                  roleByAgent={values.roleByAgent}
+                  selectedIds={values.selectedIds}
+                  roles={roles}
+                  onCreateRole={onCreateRole}
+                  onToggleMember={draft.toggleMember}
+                  onSetRole={draft.setRoleFor}
+                  nameOf={nameOf}
+                />
               )}
               {values.selectedIds.length === 0 ? (
                 <p className="text-micro text-accent-red">
@@ -149,11 +131,13 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
               ) : null}
             </div>
 
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <label htmlFor="team-config-max-members" className="text-meta text-text-secondary">
-                  成员上限（不含队长）
-                </label>
+            {/* 上限 / 工作区 / 审批：三个「一键决策」排成紧凑组 —— 默认值来自
+                team_options，多数用户一项都不用改，所以它们不配占满首屏。 */}
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor="team-config-max-members" className="text-micro text-text-muted">
+                成员上限（不含队长）
+              </label>
+              <div className="flex flex-col items-end">
                 <Input
                   id="team-config-max-members"
                   type="number"
@@ -165,54 +149,104 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
                   onChange={(e) => draft.setMaxMembers(e.target.value)}
                   aria-invalid={draft.maxMembersError !== null}
                 />
+                {draft.maxMembersError ? (
+                  <p className="text-micro text-accent-red">{draft.maxMembersError}</p>
+                ) : null}
               </div>
-              {draft.maxMembersError ? (
-                <p className="text-micro text-accent-red">{draft.maxMembersError}</p>
-              ) : null}
             </div>
 
             <fieldset className="flex flex-col gap-1">
               <legend className="text-micro text-text-muted">
                 默认工作区（成员没指定时用哪个）
               </legend>
-              {WORKSPACE_ORDER.map((workspace) => (
-                <Radio
-                  key={workspace}
-                  name="team-default-workspace"
-                  checked={values.workspace === workspace}
-                  onChange={() => draft.setWorkspace(workspace)}
-                >
-                  {WORKSPACE_LABEL[workspace]}
-                </Radio>
-              ))}
+              <div className="grid grid-cols-2 gap-1.5">
+                {WORKSPACE_ORDER.map((workspace) => (
+                  <div
+                    key={workspace}
+                    className={cn(
+                      'rounded-md border px-2 py-1 transition-colors',
+                      values.workspace === workspace
+                        ? 'border-accent-blue bg-accent-blue/5'
+                        : 'border-border bg-bg-primary',
+                    )}
+                  >
+                    <Radio
+                      name="team-default-workspace"
+                      checked={values.workspace === workspace}
+                      onChange={() => draft.setWorkspace(workspace)}
+                      className="w-full"
+                    >
+                      {WORKSPACE_LABEL[workspace]}
+                    </Radio>
+                  </div>
+                ))}
+              </div>
             </fieldset>
 
             <fieldset className="flex flex-col gap-1">
               <legend className="text-micro text-text-muted">默认审批（成员写盘前怎么确认）</legend>
-              {APPROVAL_ORDER.map((policy) => (
-                <Radio
-                  key={policy}
-                  name="team-default-approval"
-                  checked={values.approvalPolicy === policy}
-                  onChange={() => draft.setApprovalPolicy(policy)}
-                >
-                  {APPROVAL_LABEL[policy]}
-                </Radio>
-              ))}
+              <div className="grid grid-cols-3 gap-1.5">
+                {APPROVAL_ORDER.map((policy) => (
+                  <div
+                    key={policy}
+                    className={cn(
+                      'rounded-md border px-2 py-1 transition-colors',
+                      values.approvalPolicy === policy
+                        ? 'border-accent-blue bg-accent-blue/5'
+                        : 'border-border bg-bg-primary',
+                    )}
+                  >
+                    <Radio
+                      name="team-default-approval"
+                      checked={values.approvalPolicy === policy}
+                      onChange={() => draft.setApprovalPolicy(policy)}
+                      className="w-full"
+                    >
+                      {APPROVAL_LABEL[policy]}
+                    </Radio>
+                  </div>
+                ))}
+              </div>
             </fieldset>
 
-            <div className="flex flex-col gap-1">
-              <label htmlFor="team-config-default-model" className="text-micro text-text-muted">
-                默认模型
-              </label>
-              <Input
-                id="team-config-default-model"
-                size="sm"
-                value={values.model}
-                placeholder="留空 = 用该 CLI 自己的默认"
-                onChange={(e) => draft.setModel(e.target.value)}
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="team-config-default-model" className="text-micro text-text-muted">
+                  默认模型
+                </label>
+                <Input
+                  id="team-config-default-model"
+                  size="sm"
+                  value={values.model}
+                  placeholder="CLI 自己的默认"
+                  onChange={(e) => draft.setModel(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="team-config-default-persona" className="text-micro text-text-muted">
+                  缺省角色
+                </label>
+                <select
+                  id="team-config-default-persona"
+                  size={1}
+                  value={values.persona}
+                  onChange={(e) => draft.setPersona(e.target.value)}
+                  className="h-7 rounded-md border border-border bg-bg-primary px-2 text-meta text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+                >
+                  <option value="">无人设</option>
+                  {(roles ?? []).map((role) => (
+                    <option key={role.name} value={role.name}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
+            {roles !== null && roles.length === 0 ? (
+              <p className="text-micro text-text-muted">
+                角色库还没有预设 —— 展开下方「角色库」加一个，就能在这里给成员默认人设。
+              </p>
+            ) : null}
           </>
         )}
 

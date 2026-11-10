@@ -101,18 +101,23 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
   it('点成员的「打开终端」→ openExistingTerminalTab(激活项目, 成员 terminalId, 成员名)', () => {
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开终端：frontend' }));
+    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
 
     expect(openExistingTerminalTab).toHaveBeenCalledTimes(1);
-    expect(openExistingTerminalTab).toHaveBeenCalledWith(PROJECT_ID, 'term-w1', 'frontend');
+    expect(openExistingTerminalTab).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'term-w1',
+      'frontend',
+      'qoder',
+    );
   });
 
   it('队长行走同一条接线（拿的是它自己的 terminalId，不是「队长特供」的另一条路）', () => {
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: '打开终端：lead' }));
+    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: '打开会话：lead' }));
 
-    expect(openExistingTerminalTab).toHaveBeenCalledWith(PROJECT_ID, 'term-lead', 'lead');
+    expect(openExistingTerminalTab).toHaveBeenCalledWith(PROJECT_ID, 'term-lead', 'lead', 'pi');
   });
 
   it('切到另一个项目后打开成员终端：仍然用**这个团队的** projectId（F3 判据）', () => {
@@ -123,9 +128,14 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
     });
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开终端：frontend' }));
+    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
 
-    expect(openExistingTerminalTab).toHaveBeenCalledWith(PROJECT_ID, 'term-w1', 'frontend');
+    expect(openExistingTerminalTab).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'term-w1',
+      'frontend',
+      'qoder',
+    );
     expect(openExistingTerminalTab).not.toHaveBeenCalledWith(
       'p2',
       expect.anything(),
@@ -137,9 +147,14 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
     useProjectStore.setState({ activeProjectId: null, activeProject: null });
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开终端：frontend' }));
+    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
 
-    expect(openExistingTerminalTab).toHaveBeenCalledWith(PROJECT_ID, 'term-w1', 'frontend');
+    expect(openExistingTerminalTab).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'term-w1',
+      'frontend',
+      'qoder',
+    );
   });
 
   it('v16 之前的行（`projectId` 为空）才回落到激活项目（历史行的兜底，不猜就什么都不做）', () => {
@@ -155,14 +170,19 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
     });
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开终端：frontend' }));
+    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
 
-    expect(openExistingTerminalTab).toHaveBeenCalledWith(PROJECT_ID, 'term-w1', 'frontend');
+    expect(openExistingTerminalTab).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'term-w1',
+      'frontend',
+      'qoder',
+    );
   });
 
   it('无进程的成员在这里也不会被开（判据在花名册，不在这里重复判）', () => {
     render(<TeamPanelWrapper />);
-    const button = within(rowOf('backend')).getByRole('button', { name: '打开终端：backend' });
+    const button = within(rowOf('backend')).getByRole('button', { name: '打开会话：backend' });
 
     expect(button).toBeDisabled();
     fireEvent.click(button);

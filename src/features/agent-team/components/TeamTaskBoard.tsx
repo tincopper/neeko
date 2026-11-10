@@ -32,7 +32,7 @@ interface TeamTaskBoardProps {
   /** 后端置位：任务行超过列载荷上界被截断。 */
   tasksTruncated: boolean;
   /** 打开任务详情（`teamId` 在前：任务 id 只在队内唯一）。 */
-  onOpenTask: (teamId: string, taskId: string) => void;
+  onOpenTask: (teamId: string, taskId: string, title: string) => void;
 }
 
 const TeamTaskBoard: React.FC<TeamTaskBoardProps> = React.memo(
@@ -67,7 +67,7 @@ const TeamTaskBoard: React.FC<TeamTaskBoardProps> = React.memo(
               // （文案会随语言改，`data-column` 是稳定的机器标识）。
               role="group"
               aria-label={column.label}
-              className="flex flex-col gap-1 rounded-md border border-border bg-bg-secondary p-1"
+              className="flex flex-col gap-1 rounded-md border border-border bg-bg-primary p-1"
             >
               <div className="flex items-center gap-1.5 px-1">
                 <span className="text-micro font-semibold text-text-secondary">{column.label}</span>

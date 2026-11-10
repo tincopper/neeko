@@ -1,3 +1,4 @@
+import { ArrowLeft } from 'lucide-react';
 import React, { useCallback, useMemo, useState } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -10,10 +11,14 @@ import { useLaunchableAgents } from '../hooks/useLaunchableAgents';
 import { useStartTeam } from '../hooks/useStartTeam';
 import { useTeamConfigDraft } from '../hooks/useTeamConfigDraft';
 import { useTeamOptions } from '../hooks/useTeamOptions';
+import { useTeamRoles } from '../hooks/useTeamRoles';
 import { convergeAgentId, isLaunchable, launchGate, startableAgentIds } from '../utils/launchGate';
 
-import ErrorNotice from './ErrorNotice';
+import LeadPickerSection from './LeadPickerSection';
+import RoleLibraryBlock, { TeamRootRow } from './RoleLibraryBlock';
+import StepHead from './StepHead';
 import TeamConfigSection from './TeamConfigSection';
+import TeamLaunchFooter from './TeamLaunchFooter';
 
 /**
  * 队长入口（面板空态）：选 CLI → 以队长身份开会话。
@@ -22,47 +27,45 @@ import TeamConfigSection from './TeamConfigSection';
  *
  * 谁能当队长**不是**前端能回答的问题：它是后端 `admission.rs` 的那份判据
  * （技能面 × MCP 注入档 × 凭证路），与 `start_team_session` / `team_spawn` 的拒绝
- * 共用同一个纯函数。此前这里筛的是「`enabled` 且 `command` 非空」—— 看上去最无害的
- * 那种前端判据，结果是把 `pi` 这类**注入方式未实现**的 CLI 一起放行，用户点下去才在
- * 后端吃到 `Unsupported: … injects MCP via Subcommand …`（prd R0.4 的反面）。
- *
- * 所以本组件对候选**只做呈现，不做筛选**：清单里每一行都渲染出来，能不能起由
- * `refusal` 决定，理由原样显示。
- *
- * # 能力缺口必须**看得见**，不是悬停才看见
- *
- * `refusal` 是该行下方的可见文字（不是 `title`）：tooltip 在触屏 / 键盘（禁用的按钮
- * 根本不可聚焦）上永远拿不到，而这句话正是用户唯一需要的解释（「缺的是哪个事实」）。
+ * 共用同一个纯函数。本组件对候选**只做呈现，不做筛选**（呈现层的两类分流见
+ * [`LeadPickerSection`]）。
  *
  * # 四条「不要自己发明」的边界
  *
- * 1. **准入**：见上。理由文字由后端给（人读句，已含注入方式），这里不改写、不归纳。
+ * 1. **准入**：理由文字由后端给（人读句，已含注入方式），这里不改写、不归纳。
  * 2. **团队根**：走既有单一派生 [`useActiveWorkspaceRoot`]（≡ `workspaceRootOf` 作用在
- *    激活单元 key 上）。自己用 `project.path` 当根会让 worktree 视图下团队开在主仓，
- *    而成员 cwd 与用户在看的树不是同一棵。
- * 3. **团队的项目**：那个根所属的**项目**是 `activeProjectId`，不是从路径反推出来的。
- *    执行环境按项目 id 查表（工作树按设计在项目目录之外，用路径前缀永远对不上），
- *    所以没有激活项目时主按钮不可用，且理由是**可见文字**（禁用按钮不可聚焦）。
- * 4. **起进程之后的动作**：终端接管由 app 层注入（`onOpenLeaderTerminal`），团队域
- *    不认识终端域。
+ *    激活单元 key 上）。自己用 `project.path` 当根会让 worktree 视图下团队开在主仓。
+ * 3. **团队的项目**：那个根所属的**项目**是 `activeProjectId`，不是从路径反推的。
+ *    执行环境按项目 id 查表，所以没有激活项目时主按钮不可用，理由是**可见文字**。
+ * 4. **起进程之后的动作**：终端接管由 app 层注入（`onOpenLeaderTerminal`）。
  *
- * # 团队配置：默认值的唯一来源是 `team_options(null)`
+ * # footer 与角色库
  *
- * 成员池 / 上限 / 三个缺省值全部由 [`TeamConfigSection`] 呈现，初值来自后端的
- * `TeamDefaults`（见 [`useTeamConfigDraft`]）—— 本组件里没有第二份默认值。
- * 缺省值拿不到（`options === null`）时主按钮**必须**不可用：不知道缺省值就替用户决定，
- * 等于把后端的默认值抄成了前端常量。
+ * 主按钮吸附在 footer（见 [`TeamLaunchFooter`]）：提交动作永远在场。
+ * 角色库是**管理面**（编辑 persona 预设），不是建队路径上的必经项 —— 建队只消费
+ * 它的「缺省角色」一个下拉（在配置区里），所以默认折叠，`N` 计数让它不藏没影。
  */
-
 interface TeamLaunchPanelProps {
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
-  onOpenLeaderTerminal?: (session: TeamSession, title: string) => void;
+  onOpenLeaderTerminal?: (
+    session: TeamSession,
+    title: string,
+    /** 队长的 agent（tab 栏品牌图标用；取自建队响应，不依赖快照时序）。 */
+    agentId: string | undefined,
+  ) => void;
+  /**
+   * 返回列表（列表优先 + 视图推入的「退栈」）。
+   *
+   * 由宿主注入 —— 本组件不认识导航。`undefined` = 作为独立面板使用（测试 / 未来
+   * 的独立入口），此时不渲染返回钮。
+   */
+  onBack?: () => void;
 }
 
 const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
-  ({ onShowToast, onOpenLeaderTerminal }) => {
+  ({ onShowToast, onOpenLeaderTerminal, onBack }) => {
     // agent 快照只用于**显示名**（`claude-code` → `Claude Code`）。它不参与「谁能起」
-    // 的判断 —— 那件事的唯一判据在 `launchable` 里，混进来就会重新长出一套前端准入表。
+    // 的判断 —— 那件事的唯一判据在 `launchable` 里。
     const agents = useAgentStore((s) => s.agents);
     const activeProjectId = useProjectStore((s) => s.activeProjectId);
     const projectPath = useProjectStore((s) => s.activeProject?.path);
@@ -80,10 +83,17 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
     } = useTeamOptions(null);
     // 配置草稿：局部 state（不进 zustand），初值全部来自上面的 `teamOptions.defaults`。
     const draft = useTeamConfigDraft(teamOptions);
+    // 角色库（persona 预设）：缺省角色下拉与库管理区共用一份。不接脉冲（它不是团队状态）。
+    const teamRoles = useTeamRoles();
 
     const rows = useMemo(() => launchable ?? [], [launchable]);
+    /** 角色库「建议 CLI」的候选（只要真的可启动的；折叠块的展开态不在这里）。 */
+    const launchableAgentIds = useMemo(
+      () => rows.filter((row) => isLaunchable(row)).map((row) => row.agentId),
+      [rows],
+    );
 
-    /** 用户**点过**的那个 CLI；真正用于提交的 id 由它 + 当前候选派生（见下）。 */
+    /** 用户**点过**的那个 CLI；真正用于提交的 id 由它 + 当前候选派生。 */
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
     // 可启动清单（唯一判据 `startableAgentIds`，`launchGate` 内部用的是同一个函数）。
@@ -121,142 +131,157 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
       void start(activeProjectId, agentId, workspaceRoot, teamConfig);
     }, [activeProjectId, agentId, startableIds, workspaceRoot, busy, start, teamConfig]);
 
+    /**
+     * pick-or-create 的保存回调（面板包一层 `teamRoles.saveRole`）。
+     *
+     * 失败**抛出**可读原因（创建卡捕获显示）；成功后 hook 自己重取清单（新角色进所有
+     * 下拉），并把预设回给调用方指派。错误原文来自 `saveRole` 的返回值 —— 回读
+     * `mutationError` state 会拿到闭包旧值（setState 异步），那是「保存失败却显示兜底
+     * 文案」的成因。
+     *
+     * `roles === null` = 角色库不可用（还没拿到 / 失败），此时不注入，下拉里没有
+     * 「＋ 新建角色…」入口（与 `TeamConfigSection` 的契约一致）。
+     */
+    const handleCreateRole = useCallback(
+      async (input: { name: string; preamble: string; cliPreference: string | null }) => {
+        const result = await teamRoles.saveRole({
+          name: input.name,
+          preamble: input.preamble,
+          cliPreference: input.cliPreference,
+          approvalPolicy: null,
+          defaultWorkspace: null,
+          createdAt: Date.now(),
+        });
+        if (!result.ok) {
+          throw new Error(result.error ?? '保存角色失败');
+        }
+        return {
+          ...input,
+          approvalPolicy: null,
+          defaultWorkspace: null,
+          createdAt: Date.now(),
+        };
+      },
+      [teamRoles],
+    );
+
+    /** 角色库可用（拿到清单）时才注入保存回调；否则下拉里没有「＋ 新建角色…」入口。 */
+    const createRoleProp = teamRoles.roles === null ? undefined : handleCreateRole;
+
     const nameOf = useCallback(
       (id: string): string => agents?.find((agent) => agent.id === id)?.name ?? id,
       [agents],
     );
 
+    /**
+     * footer 的**实时摘要**：这支队伍按下去之后长什么样，一句话说完。
+     *
+     * 派生自草稿（渲染期，不进 state）—— 草稿变它就变，没有任何一处需要「记得刷新」。
+     * 角色名用**预设名**（不是成员位名）：摘要回答「谁带什么人设」。
+     */
+    const createSummary = useMemo(() => {
+      const values = draft.values;
+      if (!values) return null;
+      const parts: string[] = [];
+      // 成员段：先汇总成一行，再整体 push —— 逐个 push 会让第二个成员之后的名字
+      // 重复出现在摘要里（「2 名成员（A / B） · B · …」）。
+      if (values.selectedIds.length > 0) {
+        const staffed = values.selectedIds
+          .map((agentId) => {
+            const persona = values.roleByAgent[agentId];
+            const label = nameOf(agentId);
+            return persona ? `${label}→${persona}` : label;
+          })
+          .join(' / ');
+        parts.push(`${values.selectedIds.length} 名成员（${staffed}）`);
+      }
+      if (values.persona) parts.push(`缺省角色 ${values.persona}`);
+      parts.push(values.workspace === 'read_only' ? '只读' : '共享工作区');
+      parts.push(
+        values.approvalPolicy === 'queue'
+          ? '队列审批'
+          : values.approvalPolicy === 'interactive'
+            ? '交互审批'
+            : '旁路审批',
+      );
+      return parts.join(' · ');
+    }, [draft.values, nameOf]);
+
     return (
-      <section aria-label="队长入口" className="flex flex-col gap-3 overflow-auto p-3">
-        <header className="flex flex-col gap-0.5">
-          <h2 className="text-ui font-semibold text-text-primary">Agent Team</h2>
-          <p className="text-meta text-text-secondary">
-            还没有打开的团队。以队长身份开一个会话，队长就能建成员、派活并盯着共享任务板。
-          </p>
+      <section aria-label="新建团队" className="flex min-h-0 flex-1 flex-col">
+        {/* 返回头：列表优先 + 视图推入的「退栈」。返回是导航（不清草稿 —— 用户只是
+            去列表看一眼，回来草稿还在）；清草稿是刷新/成功后的事。 */}
+        <header className="flex items-center gap-2 border-b border-border px-2 py-2">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="返回团队列表"
+              className={cn(
+                'grid size-7 shrink-0 place-items-center rounded-md text-text-secondary',
+                'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
+              )}
+            >
+              <ArrowLeft size={15} aria-hidden="true" />
+            </button>
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <div className="text-ui font-semibold text-text-primary">新建团队</div>
+            <div className="text-micro text-text-muted">三步：队长 → 成员与角色 → 默认值</div>
+          </div>
         </header>
 
-        <div className="flex flex-col gap-1">
-          <h3 className="text-meta font-semibold text-text-secondary">队长用哪个 CLI</h3>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
+          {/* 步骤 1 */}
+          <StepHead n={1} title="队长用哪个 CLI" hint="启动后它拿到工具面与任务板" />
 
-          {launchable === null ? (
-            loading ? (
-              <p className="text-meta text-text-muted">正在检查各 CLI 的启动能力…</p>
-            ) : (
-              // 从没拿到过清单：错误由下方 `role="alert"` 原文显示，这里只说明后果。
-              <p className="text-meta text-text-muted">拿不到可启动清单，所以现在还开不了团队。</p>
-            )
-          ) : rows.length === 0 ? (
-            // 后端确实一个 CLI 都没有 —— 不是空下拉，也不是「加载中」。
-            <p className="text-meta text-text-muted">
-              后端没有返回任何可选的 CLI——清单为空（这不是「加载中」）。先确认 agent 配置已加载。
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-1" aria-label="可选的 CLI">
-              {rows.map((row) => {
-                const launchableRow = isLaunchable(row);
-                const selected = launchableRow && row.agentId === agentId;
-                const refusalId = `team-launch-refusal-${row.agentId}`;
-                return (
-                  <li key={row.agentId} className="flex flex-col gap-0.5">
-                    <button
-                      type="button"
-                      // 被拒的行不可选中：选中一个起不来的 CLI 只会让主按钮变成必然失败。
-                      onClick={launchableRow ? () => setSelectedAgentId(row.agentId) : undefined}
-                      disabled={!launchableRow}
-                      aria-disabled={!launchableRow}
-                      aria-pressed={launchableRow ? selected : undefined}
-                      aria-describedby={launchableRow ? undefined : refusalId}
-                      className={cn(
-                        'flex w-full items-center gap-2 rounded-md border px-2 py-1 text-left',
-                        'focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
-                        !launchableRow
-                          ? 'cursor-not-allowed border-border bg-bg-secondary'
-                          : selected
-                            ? 'border-accent-blue bg-bg-selected'
-                            : 'border-border bg-bg-secondary hover:bg-bg-hover',
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'min-w-0 flex-1 truncate text-meta',
-                          launchableRow ? 'text-text-primary' : 'text-text-muted',
-                        )}
-                      >
-                        {nameOf(row.agentId)}
-                      </span>
-                      <span className="shrink-0 font-mono text-micro text-text-muted">
-                        {row.agentId}
-                      </span>
-                    </button>
-                    {row.refusal ? (
-                      // 可见文字，不是 `title`：禁用的按钮不可聚焦，触屏也没有悬停。
-                      <p
-                        id={refusalId}
-                        className="whitespace-pre-wrap break-words text-micro text-text-muted"
-                      >
-                        {row.refusal}
-                      </p>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <LeadPickerSection
+            launchable={launchable}
+            loading={loading}
+            error={launchError}
+            onRetry={reload}
+            agentId={agentId}
+            onSelect={setSelectedAgentId}
+            nameOf={nameOf}
+          />
 
-          {/* 后端原文 + 重试（重试入口只看错误，不看有没有拿到过清单）。
-              这块的形态与团队配置 / 团队列表共用 `ErrorNotice`：三处不许各写一份。 */}
-          <ErrorNotice message={launchError} retryLabel="重新检查" onRetry={reload} />
+          {/* 步骤 2 */}
+          <StepHead n={2} title="成员与角色" hint="每个成员位可预设 persona" />
+          <TeamConfigSection
+            options={teamOptions}
+            loading={optionsLoading}
+            error={optionsError}
+            onRetry={reloadOptions}
+            draft={draft}
+            nameOf={nameOf}
+            roles={teamRoles.roles}
+            onCreateRole={createRoleProp}
+          />
+
+          {/* 角色库：管理面默认折叠（计数让它可被找到，不藏没影）。
+              展开态在本组件的就近 state 里，面板不持有该字段。 */}
+          <RoleLibraryBlock
+            roles={teamRoles}
+            nameOf={nameOf}
+            agentIds={launchableAgentIds}
+            onShowToast={onShowToast}
+          />
+
+          {/* 步骤 3 */}
+          <StepHead n={3} title="默认值与团队根" hint="全部可不改" />
+          <TeamRootRow workspaceRoot={workspaceRoot} />
         </div>
 
-        <TeamConfigSection
-          options={teamOptions}
-          loading={optionsLoading}
-          error={optionsError}
-          onRetry={reloadOptions}
-          draft={draft}
-          nameOf={nameOf}
+        {/* 吸附 footer：CTA 永远在场；警示与理由随行（后果必须在按下去之前可见） */}
+        <TeamLaunchFooter
+          busy={busy}
+          canStart={canStart}
+          error={error}
+          bypassSelected={draft.values?.approvalPolicy === 'bypass'}
+          blockedReason={blockedReason}
+          summary={createSummary}
+          onStart={handleStart}
         />
-
-        <div className="flex flex-col gap-1">
-          <h3 className="text-meta font-semibold text-text-secondary">团队根</h3>
-          <p className="break-all font-mono text-micro text-text-muted">
-            {workspaceRoot ?? '没有活动项目（先选择一个项目）'}
-          </p>
-        </div>
-
-        {error ? (
-          // 后端拒绝原因原文：准入失败的理由只有后端知道，改写会把唯一有用的信息丢掉。
-          <p role="alert" className="whitespace-pre-wrap text-meta text-accent-red">
-            {error}
-          </p>
-        ) : null}
-
-        {draft.values?.approvalPolicy === 'bypass' ? (
-          // 旁路审批的后果**不隐蔽**：它就在主按钮上方，且出现在按下去之前。
-          <p role="note" className="text-micro text-accent-orange">
-            ⚠ 已选「旁路审批」：成员写盘前不会有人确认。只在完全信任这个队的成员时使用。
-          </p>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={handleStart}
-          disabled={!canStart}
-          className={cn(
-            'rounded-md px-3 py-1.5 text-meta font-medium',
-            'focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
-            canStart
-              ? 'bg-accent-blue text-text-on-accent hover:brightness-110'
-              : 'cursor-not-allowed bg-bg-tertiary text-text-muted',
-          )}
-        >
-          {busy ? '正在建立团队…' : '以队长身份开会话'}
-        </button>
-
-        {blockedReason ? (
-          // 灰按钮 + 原因：只禁用不解释，用户会以为面板坏了。
-          <p className="text-micro text-text-muted">{blockedReason}</p>
-        ) : null}
       </section>
     );
   },

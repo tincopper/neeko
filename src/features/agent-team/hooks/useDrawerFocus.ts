@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react';
  *
  * # 为什么必须做
  *
- * 两个抽屉（`MemberDetailDrawer` / `TaskDetailDrawer`）都是 `absolute … z-10` 的覆盖层，
+ * 抽屉（`MemberDetailDrawer`；任务详情已改为中央 tab）都是 `absolute … z-10` 的覆盖层，
  * 触发它们的按钮**还在 DOM 里**（只是被盖住）。没有焦点管理时，键盘用户 Tab 一次就进到
  * 看不见的内容里：看不见焦点环、也不知道自己在哪一层。
  *

@@ -96,3 +96,94 @@ describe('useTeamConfigDraft — 空勾选的语义是「不限制」', () => {
     expect(result.current.config).toEqual({});
   });
 });
+
+/**
+ * persona / roleHints 的投影（v19/v20）。
+ *
+ * 两条都是「只投影真的改过的字段」纪律的延伸：
+ * - `persona` 只在非空且不等于后端缺省时才写（空串 = 无人设，不覆盖缺省）；
+ * - `roleHints` 只收「已勾选且选了角色」的行（无人设 = 不设，落到缺省）。
+ *
+ * 投影错了不会报错，只会让成员拿到错的人设 —— 所以这里逐个字段钉住。
+ */
+describe('useTeamConfigDraft — persona 与 roleHints 的投影', () => {
+  function roleOptions(): TeamOptions {
+    return createTeamOptions({
+      members: [
+        createLaunchableAgent({ agentId: 'claude-code' }),
+        createLaunchableAgent({ agentId: 'qoder' }),
+      ],
+      defaults: createTeamDefaults({
+        allowedAgentIds: ['claude-code', 'qoder'],
+        maxMembers: 4,
+        defaultPersona: null,
+      }),
+    });
+  }
+
+  it('缺省角色：非空且不同于后端缺省时投影到 `defaultPersona`', () => {
+    const opts = roleOptions();
+    const { result } = renderHook(() => useTeamConfigDraft(opts));
+
+    act(() => result.current.setPersona('研究员'));
+    expect(result.current.config.defaultPersona).toBe('研究员');
+
+    // 改回空 = 无人设（不覆盖后端缺省）→ 字段整体不出现在载荷里
+    act(() => result.current.setPersona(''));
+    expect(result.current.config).not.toHaveProperty('defaultPersona');
+  });
+
+  it('缺省角色等于后端缺省 ⇒ 不投影（不把默认值抄成前端常量）', () => {
+    const opts = createTeamOptions({
+      members: [createLaunchableAgent({ agentId: 'claude-code' })],
+      defaults: createTeamDefaults({
+        allowedAgentIds: ['claude-code'],
+        defaultPersona: '研究员',
+      }),
+    });
+    const { result } = renderHook(() => useTeamConfigDraft(opts));
+
+    // 播种值 = 缺省；原样提交不应出现该字段
+    expect(result.current.config).not.toHaveProperty('defaultPersona');
+  });
+
+  it('roleHints：只收「已勾选且选了角色」的行', () => {
+    const opts = roleOptions();
+    const { result } = renderHook(() => useTeamConfigDraft(opts));
+
+    act(() => result.current.setRoleFor('claude-code', '研究员'));
+    expect(result.current.config.roleHints).toEqual([
+      { agentId: 'claude-code', persona: '研究员' },
+    ]);
+
+    // 第二个成员位也选角色 → 两条都在
+    act(() => result.current.setRoleFor('qoder', '评审'));
+    expect(result.current.config.roleHints).toEqual([
+      { agentId: 'claude-code', persona: '研究员' },
+      { agentId: 'qoder', persona: '评审' },
+    ]);
+  });
+
+  it('roleHints：未勾选的成员位即使有角色也不投影（只对没准入的人设无意义）', () => {
+    const opts = roleOptions();
+    const { result } = renderHook(() => useTeamConfigDraft(opts));
+
+    act(() => result.current.toggleMember('qoder', false));
+    act(() => result.current.setRoleFor('qoder', '评审'));
+
+    expect(result.current.config.roleHints ?? []).not.toContainEqual({
+      agentId: 'qoder',
+      persona: '评审',
+    });
+  });
+
+  it('roleHints：全部清空 ⇒ 字段不出现（空数组不是「清空所有角色」的载荷）', () => {
+    const opts = roleOptions();
+    const { result } = renderHook(() => useTeamConfigDraft(opts));
+
+    act(() => result.current.setRoleFor('claude-code', '研究员'));
+    act(() => result.current.setRoleFor('claude-code', ''));
+
+    expect(result.current.config).not.toHaveProperty('roleHints');
+  });
+});

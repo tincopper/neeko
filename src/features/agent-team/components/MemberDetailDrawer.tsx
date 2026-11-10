@@ -64,12 +64,14 @@ interface MemberDetailDrawerProps {
   /** 要看的成员 id。 */
   memberId: string;
   /** 打开它的那个终端（跨域动作，由 app 层 wrapper 注入）。 */
-  onOpenTerminal: (terminalId: string, title: string) => void;
+  onOpenTerminal: (terminalId: string, title: string, agentId: string | undefined) => void;
+  /** 打开已退出成员的历史会话（`conversation` tab）。 */
+  onOpenHistory?: (agentId: string, agentSessionId: string, title: string) => void;
   onClose: () => void;
 }
 
 const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
-  ({ memberId, onOpenTerminal, onClose }) => {
+  ({ memberId, onOpenTerminal, onClose, onOpenHistory }) => {
     const { detail, loading, error, reload } = useMemberDetail(memberId);
     // 焦点管理（移焦 / 陷阱 / Esc / 归还）只有一份实现：两个抽屉共用 `useDrawerFocus`。
     const drawerRef = useDrawerFocus<HTMLElement>(onClose);
@@ -91,10 +93,17 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
 
     const handleOpenTerminal = useCallback(() => {
       if (member === null || action === null || !action.enabled) return;
+      // 两条路（与花名册同一判据）：活进程 → PTY 接管；已退出 → 历史记录。
+      if (action.kind === 'archive') {
+        if (member.agentSessionId !== null && member.agentId !== undefined) {
+          onOpenHistory?.(member.agentId, member.agentSessionId, member.name);
+        }
+        return;
+      }
       const terminalId = member.terminalId;
       if (terminalId === null) return;
-      onOpenTerminal(terminalId, member.name);
-    }, [action, member, onOpenTerminal]);
+      onOpenTerminal(terminalId, member.name, member.agentId);
+    }, [action, member, onOpenTerminal, onOpenHistory]);
 
     return (
       <aside
@@ -104,11 +113,11 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
         aria-label={`成员详情 ${title}`}
         // 里面一个可聚焦元素都没有（加载中）时，焦点仍要有落点，否则 Tab 从背后继续走。
         tabIndex={-1}
-        className="absolute inset-y-0 right-0 z-10 flex w-[85%] max-w-[20rem] flex-col border-l border-border bg-bg-primary shadow-lg focus:outline-none"
+        className="absolute inset-y-0 right-0 z-10 flex w-[85%] max-w-[20rem] flex-col border-l border-border bg-bg-secondary shadow-lg focus:outline-none"
       >
         <header className="flex flex-col gap-1 border-b border-border px-2 py-1.5">
           <div className="flex items-center gap-1.5">
-            <MemberAvatar memberId={memberId} name={title} />
+            <MemberAvatar memberId={memberId} name={title} agentId={member?.agentId} />
             <span className="min-w-0 flex-1 truncate text-ui font-semibold text-text-primary">
               {title}
             </span>
@@ -143,7 +152,7 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
                 type="button"
                 onClick={handleOpenTerminal}
                 disabled={action === null || !action.enabled}
-                aria-label={`打开终端：${title}`}
+                aria-label={`打开会话：${title}`}
                 className={cn(
                   'shrink-0 rounded px-1.5 py-0.5 text-micro font-semibold',
                   'text-accent-blue hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',

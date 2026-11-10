@@ -119,7 +119,7 @@ describe('成员详情抽屉 — 打开与关闭', () => {
     expect(await screen.findByRole('dialog', { name: '成员详情 frontend' })).toBeVisible();
   });
 
-  it('抽屉头部的「打开终端」递的是成员自己的 terminalId，且点行**不**开终端', async () => {
+  it('抽屉头部的「打开会话」递的是成员自己的 terminalId，且点行**不**开终端', async () => {
     const onOpenTerminal = vi.fn();
     renderPanel(async () => createMemberDetail(), onOpenTerminal);
 
@@ -128,8 +128,8 @@ describe('成员详情抽屉 — 打开与关闭', () => {
     // 两个动作不合并：点行只看详情
     expect(onOpenTerminal).not.toHaveBeenCalled();
 
-    fireEvent.click(within(drawer()).getByRole('button', { name: '打开终端：frontend' }));
-    expect(onOpenTerminal).toHaveBeenCalledWith('term-w1', 'frontend', 'p1');
+    fireEvent.click(within(drawer()).getByRole('button', { name: '打开会话：frontend' }));
+    expect(onOpenTerminal).toHaveBeenCalledWith('term-w1', 'frontend', 'pi', 'p1');
   });
 
   it('成员没有进程时抽屉里的按钮置灰，理由以**可见文字**给出且零调用', async () => {
@@ -145,10 +145,10 @@ describe('成员详情抽屉 — 打开与关闭', () => {
     fireEvent.click(openDetailButton('frontend'));
     await screen.findByRole('dialog', { name: '成员详情 frontend' });
 
-    const button = within(drawer()).getByRole('button', { name: '打开终端：frontend' });
+    const button = within(drawer()).getByRole('button', { name: '打开会话：frontend' });
     expect(button).toBeDisabled();
     // `disabled` 元素不可聚焦 ⇒ 理由不能只进 title
-    expect(within(drawer()).getByText('暂无终端')).toBeInTheDocument();
+    expect(within(drawer()).getByText('暂无会话')).toBeInTheDocument();
     fireEvent.click(button);
     expect(onOpenTerminal).not.toHaveBeenCalled();
   });

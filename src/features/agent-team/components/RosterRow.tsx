@@ -28,7 +28,7 @@ import MemberStateBadge from './MemberStateBadge';
  * | 动作 | 目标 |
  * | --- | --- |
  * | 点行（主体那块） | 打开**成员详情抽屉**（`onOpenMember`）|
- * | 点「打开终端」 | 直接接管它那个 PTY（`onOpenTerminal`）|
+ * | 点「打开会话」 | 直接接管它那个 PTY（`onOpenTerminal`）|
  *
  * 合并成一个动作就得选一个：只看详情 = 每次都要多点一次才能看到它在干什么；只开终端 =
  * 用户得自己在终端里翻 `team_task_list` 才知道它在等审批。两者是不同的问题。
@@ -42,13 +42,13 @@ import MemberStateBadge from './MemberStateBadge';
  *
  * # 「打不开」必须带可见理由
  *
- * `terminalId === null` 时按钮置灰，并把理由作为**可见文字**放在按钮旁边（`暂无终端`）。
+ * `terminalId === null` 时按钮置灰，并把理由作为**可见文字**放在按钮旁边（`暂无会话`）。
  * 只放 `title` 等于没有理由 —— `disabled` 元素不可聚焦，键盘与读屏用户拿不到它。
  * 判据同时作为点击守卫：置灰只是 UI，**零调用**是行为（[`openTerminalAction`]）。
  *
  * # 队长行不特殊对待
  *
- * 队长也是成员、也跑在自己的 PTY 里，所以打开终端的路径和成员完全一致，只多一枚「队长」
+ * 队长也是成员、也跑在自己的 PTY 里，所以打开会话的路径和成员完全一致，只多一枚「队长」
  * 标记（角色决定授权矩阵，不决定「能不能看它的终端」）。
  *
  * # 一行是一个有名的分组
@@ -63,23 +63,36 @@ interface RosterRowProps {
    *
    * 参数是**成员的** terminalId 与名字：标题用成员名，用户才能在 tab 上认出是谁。
    */
-  onOpenTerminal: (terminalId: string, title: string) => void;
+  onOpenTerminal: (terminalId: string, title: string, agentId: string | undefined) => void;
+  /**
+   * 打开**已退出成员的历史会话**（`conversation` tab，按 `agentId:nativeId`）。
+   * 与 `onOpenTerminal` 是两条路：一个接管活进程，一个读磁盘记录。
+   */
+  onOpenHistory?: (agentId: string, agentSessionId: string, title: string) => void;
   /** 打开这个成员的详情抽屉（点行的主体区域）。 */
   onOpenMember: (memberId: string) => void;
 }
 
 const RosterRow: React.FC<RosterRowProps> = React.memo(
-  ({ member, onOpenTerminal, onOpenMember }) => {
+  ({ member, onOpenTerminal, onOpenMember, onOpenHistory }) => {
     const action = openTerminalAction(member);
     const chips = memberChips(member);
     const isLead = member.role === 'lead';
     const terminalId = member.terminalId;
 
     const handleOpenTerminal = useCallback(() => {
+      if (!action.enabled) return;
+      // 两条路：活进程 → 接管 PTY；已退出 → 读历史记录（见 `openTerminalAction`）。
+      if (action.kind === 'archive') {
+        if (member.agentSessionId !== null && member.agentId !== undefined) {
+          onOpenHistory?.(member.agentId, member.agentSessionId, member.name);
+        }
+        return;
+      }
       // 置灰是 UI，**零调用**是行为：`null` 时连回调都不碰（否则宿主会去开一个不存在的会话）。
       if (terminalId === null) return;
-      onOpenTerminal(terminalId, member.name);
-    }, [onOpenTerminal, terminalId, member.name]);
+      onOpenTerminal(terminalId, member.name, member.agentId);
+    }, [action, onOpenTerminal, onOpenHistory, member, terminalId]);
 
     const handleOpenDetail = useCallback(() => {
       onOpenMember(member.memberId);
@@ -91,7 +104,7 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
           role="group"
           aria-label={`成员 ${member.name}`}
           className={cn(
-            'flex items-start gap-1.5 rounded-md border bg-bg-secondary',
+            'flex items-start gap-1.5 rounded-md border bg-bg-primary',
             isLead ? 'border-accent-blue/40' : 'border-border',
           )}
         >
@@ -103,7 +116,11 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
             className="flex min-w-0 flex-1 flex-col gap-1 rounded-md px-2 py-1.5 text-left hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
             <div className="flex items-center gap-1.5">
-              <MemberAvatar memberId={member.memberId} name={member.name} />
+              <MemberAvatar
+                memberId={member.memberId}
+                name={member.name}
+                agentId={member.agentId}
+              />
               <span className="min-w-0 flex-1 truncate text-ui font-semibold text-text-primary">
                 {member.name}
               </span>

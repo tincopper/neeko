@@ -132,7 +132,14 @@ export function useTerminalTabs() {
    * 本 hook 只做终端域内的事，不去改项目/工作区激活态。
    */
   const openExistingTerminalTab = useCallback(
-    (projectId: ProjectId, sessionId: string, title: string): TerminalTab | null => {
+    (
+      projectId: ProjectId,
+      sessionId: string,
+      title: string,
+      /** 会话所属的 agent（`AgentConfig.id`）：tab 栏据此显示品牌图标 —— 团队成员
+       *  的会话由此能看出「是哪个 agent 在跑」，而不是一枚无身份的裸终端。 */
+      agentId?: string | null,
+    ): TerminalTab | null => {
       if (!sessionId) return null;
 
       const already = findTabTakingOver(sessionId);
@@ -141,7 +148,11 @@ export function useTerminalTabs() {
         return tabToTerminalTab(already.tab as Tab & { data: TerminalTabData });
       }
 
-      return openTab(projectId, { title, existingSessionId: sessionId });
+      return openTab(projectId, {
+        title,
+        existingSessionId: sessionId,
+        agentId: agentId ?? null,
+      });
     },
     [openTab],
   );

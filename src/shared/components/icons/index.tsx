@@ -26,7 +26,10 @@ export {
   MoreVertical as MoreVerticalIcon,
   Server as ServerIcon,
   ListChecks as ListChecksIcon,
+  Columns3 as BoardIcon,
 } from 'lucide-react';
+
+export { Columns3, ListChecks } from 'lucide-react';
 
 // ─── Re-export everything so all lucide icons importable from one path ───
 export * from 'lucide-react';

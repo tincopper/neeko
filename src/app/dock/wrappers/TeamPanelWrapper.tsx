@@ -1,9 +1,13 @@
 import React, { useCallback } from 'react';
 
-import { TeamPanel } from '@/features/agent-team';
+import { TeamPanel, useTeamBoardTab, useTeamTaskTab } from '@/features/agent-team';
+import { conversationIdOf, conversationTabTitle } from '@/features/conversation';
 import { useTerminalTabs } from '@/features/terminal';
 import { useAppContext } from '@/shared/contexts';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
+import type { Tab } from '@/shared/types/tab';
 import type { TeamSession } from '@/shared/types/team';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
@@ -40,9 +44,10 @@ const TeamPanelWrapper: React.FC = React.memo(() => {
   const { openExistingTerminalTab } = useTerminalTabs();
 
   const handleOpenLeaderTerminal = useCallback(
-    (session: TeamSession, title: string) => {
+    (session: TeamSession, title: string, agentId: string | undefined) => {
       if (!projectId || !session.terminalId) return;
-      openExistingTerminalTab(projectId, session.terminalId, title);
+      // agentId 由面板从快照解析后传入 —— tab 栏据此显示品牌图标。
+      openExistingTerminalTab(projectId, session.terminalId, title, agentId);
     },
     [projectId, openExistingTerminalTab],
   );
@@ -55,13 +60,76 @@ const TeamPanelWrapper: React.FC = React.memo(() => {
    * 而两处一旦漂移，症状是「按钮能点但什么都不发生」。
    */
   const handleOpenTerminal = useCallback(
-    (terminalId: string, title: string, teamProjectId: ProjectId | null) => {
+    (
+      terminalId: string,
+      title: string,
+      agentId: string | undefined,
+      teamProjectId: ProjectId | null,
+    ) => {
       // 团队的 id 优先；`null`（快照未到 / v16 之前建的行）才回落到激活项目。
       const target = teamProjectId ?? projectId;
       if (!target) return;
-      openExistingTerminalTab(target, terminalId, title);
+      openExistingTerminalTab(target, terminalId, title, agentId);
     },
     [projectId, openExistingTerminalTab],
+  );
+
+  /** 看板 / 分配图 → 中央 tab（projectId 回落与终端同一口径）。 */
+  const { openBoardTab } = useTeamBoardTab();
+  const handleOpenBoard = useCallback(
+    (teamId: string, teamName: string, teamProjectId: ProjectId | null, view: 'board' | 'flow') => {
+      const target = teamProjectId ?? projectId;
+      if (!target) return;
+      openBoardTab({ teamId, teamName, projectId: target, view });
+    },
+    [projectId, openBoardTab],
+  );
+
+  /**
+   * 已退出成员的**历史会话** → `conversation` tab。
+   *
+   * 与「打开会话」（接管活 PTY）是两条路：`archive_member` 归档时清掉了 terminalId，
+   * 但 CLI 的会话文件仍在磁盘上 —— 用观察者记下的 `agentSessionId` 拼出
+   * `conversation` 域的 `agentId:nativeId` 即可打开（后端对冷缓存也会按需重扫，见
+   * `manager::session_file_path`）。
+   *
+   * 复合键走 [`conversationIdOf`]（唯一铸造点）—— 格式的权威在 Rust
+   * `parse_conversation_id`，裸模板串会让格式变更时静默失联。
+   *
+   * `teamProjectId` 优先（与终端 / 看板 / 任务同一口径）：历史会话 tab 也按
+   * `(projectId, 工作区)` 落键，用激活项目顶替会把 tab 登记到另一棵树。
+   */
+  const handleOpenMemberHistory = useCallback(
+    (agentId: string, agentSessionId: string, title: string, teamProjectId: ProjectId | null) => {
+      const target = teamProjectId ?? projectId;
+      if (!target) return;
+      const session = activeWorkspaceSession(target);
+      const tabId = `tab_${crypto.randomUUID()}`;
+      const tab: Tab = {
+        id: tabId,
+        scope: { kind: 'workspace', session },
+        title: conversationTabTitle({ title, agentId }),
+        data: {
+          kind: 'conversation',
+          conversationId: conversationIdOf(agentId, agentSessionId),
+          agentId,
+        },
+      };
+      useEditorStore.getState().addTab(tab);
+      useEditorStore.getState().activateTab(session.key, tabId);
+    },
+    [projectId],
+  );
+
+  /** 任务详情 → 中央 tab（markdown + 步骤轨迹；projectId 落键同上）。 */
+  const { openTaskTab } = useTeamTaskTab();
+  const handleOpenTaskTab = useCallback(
+    (teamId: string, taskId: string, title: string, teamProjectId: ProjectId | null) => {
+      const target = teamProjectId ?? projectId;
+      if (!target) return;
+      openTaskTab({ teamId, taskId, title, projectId: target });
+    },
+    [projectId, openTaskTab],
   );
 
   return (
@@ -69,6 +137,9 @@ const TeamPanelWrapper: React.FC = React.memo(() => {
       onShowToast={showToast}
       onOpenLeaderTerminal={handleOpenLeaderTerminal}
       onOpenTerminal={handleOpenTerminal}
+      onOpenBoard={handleOpenBoard}
+      onOpenTaskTab={handleOpenTaskTab}
+      onOpenHistory={handleOpenMemberHistory}
     />
   );
 });

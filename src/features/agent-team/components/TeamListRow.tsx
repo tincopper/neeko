@@ -66,7 +66,7 @@ const TeamListRow: React.FC<TeamListRowProps> = React.memo(
     return (
       <li
         data-team-id={teamId}
-        className="flex flex-col gap-1 rounded-md border border-border bg-bg-secondary px-2 py-1.5"
+        className="flex flex-col gap-1 rounded-md border border-border bg-bg-primary px-2 py-1.5"
       >
         <div className="flex items-center gap-1.5">
           <span className="min-w-0 flex-1 truncate text-ui font-medium text-text-primary">

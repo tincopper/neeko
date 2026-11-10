@@ -1,9 +1,11 @@
+import { Maximize2 } from 'lucide-react';
 import React, { useCallback, useState } from 'react';
 
-import type { TaskDetail, TeamRef, TeamSnapshot } from '@/shared/types/team';
+import { cn } from '@/lib/utils';
+import type { TeamRef, TeamSnapshot } from '@/shared/types/team';
 
 import MemberDetailDrawer from './MemberDetailDrawer';
-import TaskDetailDrawer from './TaskDetailDrawer';
+import TeamFlowGraph from './TeamFlowGraph';
 import TeamHeader from './TeamHeader';
 import TeamRoster from './TeamRoster';
 import TeamTaskBoard from './TeamTaskBoard';
@@ -40,8 +42,6 @@ interface TeamViewProps {
   loading: boolean;
   /** `team_snapshot` 的失败原文。 */
   error: string | null;
-  /** 点开的任务详情（`null` = 抽屉关闭）。 */
-  detail: TaskDetail | null;
   /** 有关闭请求在飞（按钮置灰，避免连点）。 */
   closing: boolean;
   onRefresh: () => void;
@@ -50,10 +50,19 @@ interface TeamViewProps {
   /** 请求关闭（二次确认由宿主弹）。 */
   onRequestClose: (team: TeamRef) => void;
   /** 打开某个成员的 PTY 终端（跨域动作，由 app 层 wrapper 注入）。 */
-  onOpenTerminal: (terminalId: string, title: string) => void;
-  /** 打开任务详情（`teamId` 在前：任务 id 只在队内唯一）。 */
-  onOpenTask: (teamId: string, taskId: string) => void;
-  onCloseTaskDetail: () => void;
+  onOpenTerminal: (terminalId: string, title: string, agentId: string | undefined) => void;
+  /**
+   * 打开任务详情 = **中央 tab**（markdown 渲染；替代旧的底部抽屉）。
+   * 三参（teamId, taskId, title）一起给 —— 标题用于 tab 标题（建 tab 时快照）。
+   */
+  onOpenTask: (teamId: string, taskId: string, title: string) => void;
+  /**
+   * 把当前任务视图（看板 / 分配图）作为**中央 tab**打开（300px 列装不下整张板）。
+   * `undefined` = 宿主未注入跨域连线（按钮不渲染）。
+   */
+  onOpenBoard?: (view: 'board' | 'flow') => void;
+  /** 打开已退出成员的历史会话（`conversation` tab）。 */
+  onOpenHistory?: (agentId: string, agentSessionId: string, title: string) => void;
 }
 
 const TeamView: React.FC<TeamViewProps> = React.memo(
@@ -62,28 +71,30 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
     snapshot,
     loading,
     error,
-    detail,
     closing,
     onRefresh,
     onBack,
     onRequestClose,
     onOpenTerminal,
     onOpenTask,
-    onCloseTaskDetail,
+    onOpenBoard,
+    onOpenHistory,
   }) => {
     const teamName = snapshot?.team.name ?? teamId;
     /**
      * 正在看详情的成员（`null` = 抽屉关闭）。
      *
-     * 与 `detail`（任务详情，在 store 里）的差别是**数据的归属**：任务正文是「点开一张卡片」
-     * 的产物但面板要在换队时作废它，所以当初把它放进了 store；而成员详情自带
-     * `memberId` 守卫（`useMemberDetail`），留在本组件更简单：卸载即消失。
-     *
+     * （任务详情已改为中央 tab：点卡片 → `onOpenTask`，不再有 store 里的 detail。）
      * 存的是 `{ teamId, memberId }` 而不是单独一个 id：换队时抽屉自动失效（下面的
      * `showingMemberId`）。**不从 `memberId` 反解队** —— id 里虽然带 `@team` 后缀，
      * 但那是身份而不是导航事实（红线 12：不许从字符串拼/反解身份）。
      */
     const [openMember, setOpenMember] = useState<{ teamId: string; memberId: string } | null>(null);
+
+    // 任务区的两种读法（看板 = 按状态分组；分配图 = 按 dependsOn 拓扑）。
+    // 是**导航**（就近 state，不进 store）：它不改变快照，只改变同一份快照怎么画；
+    // 换队时回到看板（两种读法对任何一个队都同样成立，没有「记住」的价值）。
+    const [taskView, setTaskView] = useState<'board' | 'flow'>('board');
 
     // 一个回调两处用（头部与横幅）：`TeamHeader` 是 memo 组件，内联箭头会让它每次重渲染。
     const handleRequestClose = useCallback(() => {
@@ -92,13 +103,10 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
 
     const handleOpenMember = useCallback(
       (memberId: string) => {
-        // 一次只开一个抽屉：任务详情是底部面板、成员详情是右侧面板，两者同时开会在同一个
-        // 坐标区重叠（窄的 dock 列里右面板会遮住底部面板的操作区）。开成员详情意味着
-        // 用户换了关注对象，不是要两个一起看。
-        onCloseTaskDetail();
+        // 任务详情已改为中央 tab（不再有底部抽屉与它抢坐标区）。
         setOpenMember({ teamId, memberId });
       },
-      [onCloseTaskDetail, teamId],
+      [teamId],
     );
 
     const handleCloseMember = useCallback(() => {
@@ -154,17 +162,64 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
             members={snapshot?.members ?? []}
             onOpenTerminal={onOpenTerminal}
             onOpenMember={handleOpenMember}
+            onOpenHistory={onOpenHistory}
           />
           <div className="border-t border-border" />
-          <TeamTaskBoard
-            tasks={snapshot?.tasks ?? []}
-            members={snapshot?.members ?? []}
-            tasksTruncated={snapshot?.tasksTruncated ?? false}
-            onOpenTask={onOpenTask}
-          />
+          <div className="flex items-center gap-1 px-2 pt-2">
+            <span className="sr-only">任务区视图</span>
+            {onOpenBoard ? (
+              <button
+                type="button"
+                onClick={() => onOpenBoard(taskView)}
+                aria-label="在中间区域打开任务视图"
+                title="在中间区域打开（完整宽度）"
+                className={cn(
+                  'mr-auto grid size-5 place-items-center rounded text-text-muted',
+                  'hover:bg-bg-hover hover:text-text-primary',
+                  'focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
+                )}
+              >
+                <Maximize2 size={12} aria-hidden="true" />
+              </button>
+            ) : null}
+            {(
+              [
+                ['board', '看板'],
+                ['flow', '分配图'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={taskView === value}
+                onClick={() => setTaskView(value)}
+                className={cn(
+                  'rounded px-1.5 py-0.5 text-micro font-semibold',
+                  taskView === value
+                    ? 'bg-bg-selected text-accent-blue'
+                    : 'text-text-muted hover:bg-bg-hover',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {taskView === 'board' ? (
+            <TeamTaskBoard
+              tasks={snapshot?.tasks ?? []}
+              members={snapshot?.members ?? []}
+              tasksTruncated={snapshot?.tasksTruncated ?? false}
+              onOpenTask={onOpenTask}
+            />
+          ) : (
+            <TeamFlowGraph
+              tasks={snapshot?.tasks ?? []}
+              members={snapshot?.members ?? []}
+              onOpenTask={onOpenTask}
+            />
+          )}
         </div>
 
-        {detail ? <TaskDetailDrawer detail={detail} onClose={onCloseTaskDetail} /> : null}
         {showingMemberId === null ? null : (
           <MemberDetailDrawer
             memberId={showingMemberId}

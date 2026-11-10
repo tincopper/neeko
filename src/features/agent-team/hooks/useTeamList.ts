@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { TeamList } from '@/shared/types/team';
 import { invokeErrorMessage } from '@/shared/utils/invokeError';
 
@@ -16,6 +17,13 @@ import { usePulseRefresh } from './usePulseRefresh';
  * 任何入口能把它们重新打开 —— 用户看到的是一块空面板，仿佛团队都没了。清单是那条入口的
  * 数据面，与「当前打开哪个队」是两件事，所以状态也分开：清单成功/失败**不能**清掉
  * `teamStore.snapshot`（那是另一个队的事实）。
+ *
+ * # 跟随项目（2026-11-08 用户裁决）
+ *
+ * 清单按 `activeProjectId` 过滤（后端 `list_teams_scoped`）：切项目 = 换一份清单。
+ * `projectId` 在 `load` 的依赖里 —— 换项目自动重拉，不需要等脉冲。空 `project_id`
+ * 的旧行（v16 之前）被后端排除 —— 它们无法归属到任何项目，显示在「全部」里反而
+ * 让用户以为它们属于当前项目。
  *
  * # 三态分离（与 `useTeamOptions` 同一条纪律）
  *
@@ -44,6 +52,9 @@ export interface TeamListState {
 }
 
 export function useTeamList(): TeamListState {
+  // 「跟随项目」：清单只显示激活项目下的团队。projectId 变化 = 失效源之一
+  // （load 的依赖里有它 → 重拉；切项目后第一次脉冲前就是新项目的清单）。
+  const projectId = useProjectStore((s) => s.activeProjectId);
   const [list, setList] = useState<TeamList | null>(null);
   /** 初值 `true`：本 hook 挂载即拉，第一帧事实上就在加载中（理由同 `useLaunchableAgents`）。 */
   const [loading, setLoading] = useState(true);
@@ -63,7 +74,7 @@ export function useTeamList(): TeamListState {
     const mine = ++generation.current;
     setLoading(true);
     try {
-      const next = await fetchTeamList();
+      const next = await fetchTeamList(projectId);
       if (mine !== generation.current) return;
       setList(next);
       setError(null);
@@ -74,7 +85,7 @@ export function useTeamList(): TeamListState {
     } finally {
       if (mine === generation.current) setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
   const reload = useCallback(() => {
     // 按钮 / 宿主的入口只要「开始拉」，不关心落地（`onSettled` 之类的回调链不 await 它）。

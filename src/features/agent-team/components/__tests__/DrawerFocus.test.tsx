@@ -157,27 +157,3 @@ describe('抽屉焦点 — 成员详情', () => {
     expect(trigger).toHaveFocus();
   });
 });
-
-describe('抽屉焦点 — 任务详情', () => {
-  beforeEach(() => {
-    resetStores();
-    mockInvoke.mockReset();
-  });
-
-  it('打开：焦点进入抽屉；Esc 关闭后回到那张卡片', async () => {
-    renderPanel();
-    const card = screen.getByRole('button', { name: /打开任务 t1/ });
-    focusAndClick(card);
-
-    const dialog = await screen.findByRole('dialog', { name: '任务详情 t1' });
-    expect(dialog).toHaveAttribute('aria-modal', 'true');
-    expect(within(dialog).getByRole('button', { name: '关闭任务详情' })).toHaveFocus();
-
-    fireEvent.keyDown(document, { key: 'Escape' });
-
-    await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: '任务详情 t1' })).not.toBeInTheDocument(),
-    );
-    expect(card).toHaveFocus();
-  });
-});

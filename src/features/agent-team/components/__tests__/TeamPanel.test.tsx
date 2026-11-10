@@ -12,7 +12,6 @@ import {
   createMemberStatus,
   createProject,
   createTaskCard,
-  createTaskDetail,
   createTeam,
   createTeamList,
   createTeamOptions,
@@ -86,6 +85,7 @@ describe('TeamPanel — 空态队长入口', () => {
     const snapshot = createTeamSnapshot();
     mockInvoke.mockImplementation(async (cmd) => {
       // 面板空态 = 队长入口 + **已有团队**列表（`team_list`）；这里没有历史团队。
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return createTeamList({ teams: [] });
       // 候选清单由后端给（`team_launchable_agents`）—— 面板不再自己筛 agent 配置。
       if (cmd === 'team_launchable_agents')
@@ -109,6 +109,9 @@ describe('TeamPanel — 空态队长入口', () => {
     const onShowToast = vi.fn();
     const onOpenLeaderTerminal = vi.fn();
     render(<TeamPanel onShowToast={onShowToast} onOpenLeaderTerminal={onOpenLeaderTerminal} />);
+
+    // 列表态是主面；创建流由「新建团队」按钮推入（导航重排，2026-11-08）。
+    fireEvent.click(screen.getByRole('button', { name: '新建团队' }));
 
     // 候选只来自后端清单：`agentStore` 里那个禁用且不在清单里的 agent 不会出现在面板上。
     await screen.findByRole('button', { name: /Claude Code/ });
@@ -140,7 +143,8 @@ describe('TeamPanel — 空态队长入口', () => {
       expect(mockInvoke).toHaveBeenCalledWith('team_snapshot', { teamId: 'tm_1' }),
     );
     await waitFor(() =>
-      expect(onOpenLeaderTerminal).toHaveBeenCalledWith(session, '队长 · refactor'),
+      // 队长 tab 的图标来源：随建队响应回来的 `leadAgentId`（不从快照里找）。
+      expect(onOpenLeaderTerminal).toHaveBeenCalledWith(session, '队长 · refactor', 'claude-code'),
     );
     expect(onShowToast).toHaveBeenCalled();
     expect(await screen.findByText('refactor')).toBeInTheDocument();
@@ -149,6 +153,7 @@ describe('TeamPanel — 空态队长入口', () => {
   it('失败时显示后端拒绝原因原文（不改写、不吞掉）', async () => {
     setActiveProject();
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return createTeamList({ teams: [] });
       if (cmd === 'team_launchable_agents') return [createLaunchableAgent({ agentId: 'gemini' })];
       if (cmd === 'team_options')
@@ -160,6 +165,8 @@ describe('TeamPanel — 空态队长入口', () => {
     });
 
     render(<TeamPanel />);
+    // 创建流在推入视图里：先按「新建团队」（导航重排，2026-11-08）。
+    fireEvent.click(screen.getByRole('button', { name: '新建团队' }));
     await screen.findByRole('button', { name: /Gemini|gemini/ });
     fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
 
@@ -325,46 +332,30 @@ describe('TeamPanel — 任务详情（红线 4：点开才拉）', () => {
     mockInvoke.mockReset();
   });
 
-  it('初始渲染不调 team_task_detail；点卡片才拉正文', async () => {
+  it('初始渲染不调 team_task_detail；点卡片 → onOpenTaskTab（中央 tab，点 tab 才拉）', async () => {
     const snapshot = createTeamSnapshot({
       tasks: [
         createTaskCard({ id: 't1', teamId: 'tm_1', title: '登录页骨架', state: 'in_progress' }),
       ],
       team: createTeam({ id: 'tm_1' }),
     });
-    const detail = createTaskDetail({
-      id: 't1',
-      title: '登录页骨架',
-      body: '派活正文：独占这一段',
-    });
     mockInvoke.mockImplementation(async (cmd) => {
       if (cmd === 'team_snapshot') return snapshot;
-      if (cmd === 'team_task_detail') return detail;
       return undefined;
     });
 
     useTeamStore.setState({ teamId: 'tm_1', snapshot });
-    render(<TeamPanel />);
+    const onOpenTaskTab = vi.fn();
+    render(<TeamPanel onOpenTaskTab={onOpenTaskTab} />);
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('team_snapshot', { teamId: 'tm_1' }),
     );
-    // 初始渲染**不得**拉正文
+    // 面板**不发** team_task_detail：详情的读取移进了中央 tab（挂载时才拉）。
     expect(mockInvoke.mock.calls.some(([cmd]) => cmd === 'team_task_detail')).toBe(false);
-    expect(screen.queryByText('派活正文：独占这一段')).not.toBeInTheDocument();
 
+    // 点卡片 → 打开中央 tab：三参（teamId, taskId, title）+ projectId 落键。
     fireEvent.click(screen.getByRole('button', { name: /打开任务 t1/ }));
-    // **判据 6**：请求必须带上 `(teamId, taskId)` 两个值 —— 任务 id 只在队内唯一，
-    // 只传 `taskId` 时本断言变红（后端也无从判断点的是哪个队的 `t1`）。
-    await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith('team_task_detail', {
-        teamId: 'tm_1',
-        taskId: 't1',
-      }),
-    );
-    expect(await screen.findByText('派活正文：独占这一段')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: '关闭任务详情' }));
-    expect(screen.queryByText('派活正文：独占这一段')).not.toBeInTheDocument();
+    expect(onOpenTaskTab).toHaveBeenCalledWith('tm_1', 't1', '登录页骨架', 'p1');
   });
 });

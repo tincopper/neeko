@@ -19,7 +19,7 @@ export type MemberChipTone = 'default' | 'outline' | 'accent' | 'warn';
 
 export interface MemberChip {
   /** 稳定机器键（文案会变，key 不会 —— 测试与将来做筛选用它）。 */
-  key: 'agent' | 'channel' | 'workspace' | 'tier';
+  key: 'agent' | 'persona' | 'channel' | 'workspace' | 'tier';
   text: string;
   tone: MemberChipTone;
   /** 完整理由（视觉文案太短，悬停 / 读屏拿「为什么」）。 */
@@ -50,14 +50,23 @@ const TIER: Record<AdmissionTier, { text: string; tone: MemberChipTone; title: s
   },
 };
 
-/** 花名册一行的整排 chip（顺序固定：身份 → 通道 → 工作区 → 档位）。 */
+/** 花名册一行的整排 chip（顺序固定：身份 → persona → 通道 → 工作区 → 档位）。 */
 export function memberChips(
-  member: Pick<MemberStatusView, 'agentId' | 'channel' | 'workspace' | 'tier'>,
+  member: Pick<MemberStatusView, 'agentId' | 'persona' | 'channel' | 'workspace' | 'tier'>,
 ): MemberChip[] {
   return [
     { key: 'agent', text: member.agentId, tone: 'default', title: `CLI：${member.agentId}` },
+    // persona 只有名字（正文在成员的启动 argv 里，面板不需要）：`null` = 无人设，不渲染。
+    member.persona === null
+      ? null
+      : {
+          key: 'persona',
+          text: member.persona,
+          tone: 'accent',
+          title: `角色 persona：${member.persona}（spawn 时注入的人设，与权限无关）`,
+        },
     { key: 'channel', ...CHANNEL[member.channel], tone: 'outline' },
     { key: 'workspace', text: workspaceLabel(member.workspace), tone: 'default', title: '工作区' },
     { key: 'tier', ...TIER[member.tier] },
-  ];
+  ].filter((chip): chip is MemberChip => chip !== null);
 }

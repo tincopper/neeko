@@ -135,6 +135,7 @@ describe('TeamPanel — 团队列表', () => {
       ],
     });
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return list;
       return emptyLaunchSurface(cmd);
     });
@@ -165,6 +166,7 @@ describe('TeamPanel — 团队列表', () => {
 
   it('行上的成员数 / 任务 open-total / 项目根末段 / 创建时间来自载荷', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
         return createTeamList({
           teams: [
@@ -199,6 +201,7 @@ describe('TeamPanel — 团队列表', () => {
 
   it('truncated → 列表底部说明只显示了最近 50 个', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
         return createTeamList({ teams: [createTeamSummary({ teamId: 'tm_1' })], truncated: true });
       return emptyLaunchSurface(cmd);
@@ -212,6 +215,7 @@ describe('TeamPanel — 团队列表', () => {
 
   it('未截断时不显示截断提示（否则提示永远亮着，等于没有提示）', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return createTeamList({ truncated: false });
       return emptyLaunchSurface(cmd);
     });
@@ -225,6 +229,7 @@ describe('TeamPanel — 团队列表', () => {
   it('「打开」= openTeam(teamId)：随后的 team_snapshot 用的就是这个 id', async () => {
     const snapshot = createTeamSnapshot({ team: createTeam({ id: 'tm_2', name: 'beta' }) });
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
         return createTeamList({
           teams: [
@@ -250,6 +255,7 @@ describe('TeamPanel — 团队列表', () => {
 
   it('closed 行只读：没有「关闭」按钮，只有「查看」', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
         return createTeamList({
           teams: [
@@ -293,6 +299,7 @@ describe('TeamPanel — 列表的失效源（F1）', () => {
   it('列表态（没有打开的队）收到脉冲 → team_list 被重取；返列表看到的是最新清单', async () => {
     let teams = [createTeamSummary({ teamId: 'tm_1', name: 'alpha' })];
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return createTeamList({ teams });
       return emptyLaunchSurface(cmd);
     });
@@ -316,6 +323,7 @@ describe('TeamPanel — 列表的失效源（F1）', () => {
 
   it('列表页有明确的「刷新」按钮（不只在出错时才有）', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return createTeamList({ teams: [] });
       return emptyLaunchSurface(cmd);
     });
@@ -333,6 +341,7 @@ describe('TeamPanel — 列表的失效源（F1）', () => {
 
   it('同一个队的成员数：列表行与面板头是同一个数（后端口径，不含队长）', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') {
         return createTeamList({
           teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor', memberCount: 2 })],
@@ -375,6 +384,7 @@ describe('TeamPanel — 空态 / 加载 / 失败', () => {
 
   it('空列表：说明「还没有团队，先以队长身份开一个」', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return createTeamList({ teams: [] });
       return emptyLaunchSurface(cmd);
     });
@@ -386,6 +396,7 @@ describe('TeamPanel — 空态 / 加载 / 失败', () => {
 
   it('加载中不显示空态（「还没问到」不是「一个都没有」）', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return new Promise(() => undefined);
       return emptyLaunchSurface(cmd);
     });
@@ -400,6 +411,7 @@ describe('TeamPanel — 空态 / 加载 / 失败', () => {
   it('加载失败：显示后端原文 + 重试能重新拉取成功', async () => {
     let failing = true;
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') {
         if (failing) throw 'Failed to open the team database';
         return createTeamList({ teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor' })] });
@@ -442,6 +454,7 @@ describe('TeamPanel — 关闭团队', () => {
 
   it('二次确认后才调 team_close；成功后清空 store 并重取列表', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return OPEN_TEAM_LIST;
       if (cmd === 'team_snapshot') return createTeamSnapshot();
       if (cmd === 'team_close') return createClosedReply();
@@ -481,6 +494,7 @@ describe('TeamPanel — 关闭团队', () => {
     let closeFailing = true;
     let snapshot = createTeamSnapshot();
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return OPEN_TEAM_LIST;
       if (cmd === 'team_snapshot') return snapshot;
       if (cmd === 'team_close') {
@@ -528,6 +542,7 @@ describe('TeamPanel — 关闭团队', () => {
       snapshot: createTeamSnapshot({ team: createTeam({ id: 'tm_1', state: 'closing' }) }),
     });
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return OPEN_TEAM_LIST;
       if (cmd === 'team_snapshot')
         return createTeamSnapshot({ team: createTeam({ id: 'tm_1', state: 'closing' }) });
@@ -543,6 +558,7 @@ describe('TeamPanel — 关闭团队', () => {
   it('active 快照没有 closing 横幅（否则横幅等于永久装饰）', async () => {
     useTeamStore.setState({ teamId: 'tm_1', snapshot: createTeamSnapshot() });
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return OPEN_TEAM_LIST;
       if (cmd === 'team_snapshot') return createTeamSnapshot();
       return emptyLaunchSurface(cmd);
@@ -562,6 +578,7 @@ describe('TeamPanel — 关闭团队', () => {
       }),
     });
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return OPEN_TEAM_LIST;
       if (cmd === 'team_snapshot') return createTeamSnapshot();
       return emptyLaunchSurface(cmd);
@@ -598,6 +615,7 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
 
   it('只有 closed 行有「删除」；active 行只有「关闭」（两者互斥）', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return TWO_TEAMS;
       return emptyLaunchSurface(cmd);
     });
@@ -626,6 +644,7 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
   it('二次确认后才调 team_delete；文案说清不可撤销，成功后重取列表', async () => {
     let teams = TWO_TEAMS.teams;
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return createTeamList({ teams });
       if (cmd === 'team_delete') {
         teams = teams.filter((team) => team.teamId !== 'tm_closed');
@@ -661,6 +680,7 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
 
   it('删除失败：显示后端原文，且**不**清掉 store 里打开着的队', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return TWO_TEAMS;
       if (cmd === 'team_snapshot') return createTeamSnapshot();
       if (cmd === 'team_delete')
@@ -695,6 +715,7 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
     ];
     let releaseDelete: (() => void) | null = null;
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return createTeamList({ teams });
       if (cmd === 'team_delete')
         return new Promise<void>((resolve) => {
@@ -723,6 +744,7 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
 
   it('删掉的正**是**当前打开的那个队 ⇒ 清 store（否则下一次脉冲会拉一个不存在的快照）', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
         return createTeamList({
           teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor', state: 'closed' })],
@@ -754,8 +776,9 @@ describe('TeamPanel — 列表页的上下分栏（队长入口 | 已有团队�
     setActiveProject();
   });
 
-  it('两区之间有可拖的分隔条（而不是一个把列表顶出去的滚动容器）', async () => {
+  it('列表态是主面：「新建团队」推入创建态，返回退栈（导航模型，替代旧上下分栏）', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19/v20）
       if (cmd === 'team_list') return createTeamList({ teams: [] });
       return emptyLaunchSurface(cmd);
     });
@@ -763,21 +786,21 @@ describe('TeamPanel — 列表页的上下分栏（队长入口 | 已有团队�
     render(<TeamPanel />);
     await screen.findByRole('region', { name: '已有团队' });
 
-    // 分隔条是 react-resizable-panels 的 Separator（role=separator）：用户可拖、可键盘调。
-    // 修之前没有它 —— 列表页只有一个 overflow-auto，入口块把「已有团队」顶到下面看不见。
-    expect(screen.getByRole('separator')).toBeInTheDocument();
+    // 列表态是主面：创建是一个**按钮**（旧的上下分栏把建队表单常驻首屏，已退役）。
+    fireEvent.click(screen.getByRole('button', { name: '新建团队' }));
 
-    // 两区各自挂稳定的面板 id（尺寸持久化与布局锚点；拼错会直接破坏布局）。
-    expect(screen.getByTestId('team-launch')).toBeInTheDocument();
-    expect(screen.getByTestId('team-list')).toBeInTheDocument();
+    // 推入创建态：队长选择在场，列表退场 —— 两个视图互斥，不再上下并存。
+    expect(await screen.findByRole('region', { name: '新建团队' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '已有团队' })).not.toBeInTheDocument();
 
-    // 两个 region 同时可见（上下并存），不是「滚到下面才看得见第二个」
-    expect(screen.getByRole('region', { name: '队长入口' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '已有团队' })).toBeInTheDocument();
+    // ← 返回 = 退栈回列表（导航，不清任何数据）。
+    fireEvent.click(screen.getByRole('button', { name: '返回团队列表' }));
+    expect(await screen.findByRole('region', { name: '已有团队' })).toBeInTheDocument();
   });
 
   it('列表区自己滚动：标题与刷新按钮留在原地（行区才是滚动容器）', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
         return createTeamList({
           teams: Array.from({ length: 12 }, (_, i) =>
@@ -825,6 +848,7 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
 
   it('从**列表行**关闭失败（从未打开该队）⇒ 后端原文必须看得见', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return TEAM_LIST;
       if (cmd === 'team_close') throw 'Conflict: `w1@tm_1`: the pty did not exit';
       return emptyLaunchSurface(cmd);
@@ -843,6 +867,7 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
 
   it('删除失败的错误贴在列表区（不是面板顶部通栏），且不给「重试」按钮', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
         return createTeamList({
           teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor', state: 'closed' })],
@@ -869,6 +894,7 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
     // 两个队：一个还开着（可关闭，关闭会失败）、一个已关闭（可删除，删除会失败）。
     // 同一行不可能是这两个动作的入口 —— 它们在行上互斥（见 `TeamListRow`）。
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
         return createTeamList({
           teams: [
