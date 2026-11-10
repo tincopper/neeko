@@ -84,6 +84,9 @@ pub(super) fn spawn_pty_pipeline(
     sessions: &Arc<Mutex<HashMap<String, crate::common::terminal::types::TerminalSession>>>,
     pty_handles: &Arc<Mutex<HashMap<String, PtyHandle>>>,
     drains: &SessionDrainMap,
+    // 会话创建前算好的历史计划（已在 `run_blocking` 里完成所有阻塞 fs）。
+    // `None` = 不落盘不回放。
+    history: Option<crate::common::terminal::history::HistoryPlan>,
     live: Option<crate::live_sessions::wiring::pty::LiveTerminal<'_>>,
     app_handle: &tauri::AppHandle,
 ) -> Result<crate::common::terminal::types::TerminalSession> {
@@ -152,13 +155,15 @@ pub(super) fn spawn_pty_pipeline(
         .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?
         .insert(id.to_string(), session.clone());
 
+    let drain = Arc::new(crate::common::terminal::drain::SessionDrain::default());
     drains
         .lock()
         .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?
-        .insert(
-            id.to_string(),
-            Arc::new(crate::common::terminal::drain::SessionDrain::default()),
-        );
+        .insert(id.to_string(), Arc::clone(&drain));
+
+    // 历史决策全部由 router 算好，接线用单一接缝，与 SSH 端完全同形。
+    // 顺序由队列保证，且必须在 reader 启动之前。无阻塞 fs（红线 3）。
+    let recorder = history.as_ref().and_then(|plan| plan.attach(&drain, id));
 
     let input_listener_id = spawn_writer_listener(id, writer, app_handle, config.prefix);
 
@@ -205,9 +210,9 @@ pub(super) fn spawn_pty_pipeline(
         app_handle,
     )?;
     #[cfg(unix)]
-    spawn_reader_thread(id, reader, config, drains, activity, master_fd)?;
+    spawn_reader_thread(id, reader, config, drains, activity, recorder, master_fd)?;
     #[cfg(not(unix))]
-    spawn_reader_thread(id, reader, config, drains, activity)?;
+    spawn_reader_thread(id, reader, config, drains, activity, recorder)?;
 
     log_info(&format!("{} Session {} ready", config.prefix, &id[..8]));
     Ok(session)
@@ -430,6 +435,7 @@ fn spawn_reader_thread(
     config: &PipelineConfig,
     drains: &crate::common::terminal::drain::SessionDrainMap,
     activity: crate::live_sessions::wiring::pty::OutputActivity,
+    recorder: Option<crate::common::terminal::history::Recorder>,
     #[cfg(unix)] master_fd: Option<std::os::fd::RawFd>,
 ) -> Result<()> {
     let read_id = id.to_string();
@@ -457,6 +463,10 @@ fn spawn_reader_thread(
             let flush = |data: &[u8]| {
                 // 活动打点 + CLI 自报状态扫描（自报优先于静默推断，见 wiring::pty 模块注释）。
                 activity.observe(data);
+                // 旁路落盘：非阻塞 try_send，队列满直接丢，绝不反压读泵。
+                if let Some(rec) = &recorder {
+                    rec.record(data);
+                }
                 session_drain.push(data, || session_drain.notify_one())
             };
             #[cfg(unix)]

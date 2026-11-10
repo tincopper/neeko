@@ -19,6 +19,11 @@
 use crate::live_sessions::registry::Registry;
 
 /// 把持久化的侧栏行回填注册表，返回新插入的行数（`0` = 没有可恢复的记录）。
+///
+/// **纯函数**：只动注册表，没有任何文件系统副作用。附属资源的 GC 属于组合根
+/// （`app/boot.rs::on_setup` 在 restore 之后调用 `HistoryStore::prune`）——
+/// 曾把 GC 塞进这里，导致三个单测直接删掉真实用户 `~/.neeko/terminal_history/`
+/// 下的日志。职责单一也让「回填」可脱离磁盘直测。
 pub fn restore(registry: &Registry) -> usize {
     let restored = registry.restore_from_store();
     if restored > 0 {
@@ -79,6 +84,33 @@ mod tests {
         let registry = Registry::new(store);
         assert_eq!(restore(&registry), 0);
         assert!(registry.snapshot().is_empty());
+    }
+
+    /// Block 级回归护栏：`restore()` 是纯回填，**绝不**触发附属资源的生命周期事件。
+    /// 曾把 `prune_orphans(terminal_history_dir())` 塞进这里，跑单测直接删光真实用户
+    /// `~/.neeko/terminal_history/` 下的日志。用计数 spy 结构性钉住「零副作用」。
+    #[test]
+    fn restore_never_touches_session_history_side_effects() {
+        struct CountingHistory(std::sync::atomic::AtomicUsize);
+        impl crate::common::terminal::history::SessionHistory for CountingHistory {
+            fn on_adopt(&self, _: &str, _: &str) {
+                self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+            fn on_unregister(&self, _: &str) {
+                self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+
+        let store = Arc::new(SqliteSessionStore::open_in_memory().expect("in-memory store"));
+        let spy = Arc::new(CountingHistory(std::sync::atomic::AtomicUsize::new(0)));
+        let registry = Registry::new(store)
+            .with_history(Arc::clone(&spy) as crate::common::terminal::history::SharedHistory);
+        assert_eq!(restore(&registry), 0);
+        assert_eq!(
+            spy.0.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "restore 不得触发任何附属资源副作用；GC 归组合根"
+        );
     }
 
     /// 同一条原生会话被 `--resume` 多次会留下多行 cursor：恢复时收敛成一行，

@@ -71,8 +71,8 @@ impl RemoteTerminalManager {
         auth: &AuthMethod,
         workspace_root: &str,
         cwd: &str,
-        cols: u16,
-        rows: u16,
+        launch: &crate::terminal::launch::TerminalLaunch,
+        history: Option<crate::common::terminal::history::HistoryPlan>,
         live: Option<crate::live_sessions::wiring::pty::LiveTerminal<'_>>,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
@@ -99,8 +99,8 @@ impl RemoteTerminalManager {
             .request_pty(
                 false,
                 "xterm-256color",
-                u32::from(cols),
-                u32::from(rows),
+                u32::from(launch.cols),
+                u32::from(launch.rows),
                 0,
                 0,
                 &[],
@@ -130,6 +130,14 @@ impl RemoteTerminalManager {
             .insert(id.clone(), terminal_session.clone());
 
         crate::common::terminal::drain::insert_drain(&self.drains, &id);
+
+        // 与 Local / WSL 共用 `HistoryPlan::attach` 单一接缝：drain 建好后、
+        // IO 线程启动前推进回放字节，顺序由队列保证。
+        let session_drain = crate::common::terminal::drain::get_drain(&self.drains, &id)
+            .ok_or_else(|| anyhow::anyhow!("Drain queue missing for session {id}"))?;
+        let recorder = history
+            .as_ref()
+            .and_then(|plan| plan.attach(&session_drain, &id));
 
         // live-sessions 登记：会话已在两张表里就绪，而退出信号的唯一生产者（IO 线程）
         // 尚未启动 —— 顺序不变量见 `live_sessions::wiring::pty` 模块注释。
@@ -175,9 +183,6 @@ impl RemoteTerminalManager {
             },
         );
 
-        let session_drain = crate::common::terminal::drain::get_drain(&self.drains, &id)
-            .ok_or_else(|| anyhow::anyhow!("Drain queue missing for session {id}"))?;
-
         // 用 make_writer() 分离读写端，避免 select! 中的可变借用冲突
         let mut writer = channel.make_writer();
 
@@ -208,6 +213,7 @@ impl RemoteTerminalManager {
                 };
                 let io_drain = session_drain.clone();
                 let io_activity = io_activity;
+                let io_recorder = recorder;
                 rt.block_on(async move {
                     log_info(&format!("[SSH-IO] Thread started for {}", &io_id[..8]));
                     // 250ms 分辨率足够表达「在跑 / 静默」，又不会让 select 空转。
@@ -244,6 +250,10 @@ impl RemoteTerminalManager {
                                     Some(ChannelMsg::Data { data }) => {
                                         // 活动打点 + CLI 自报状态扫描（判据见 wiring::pty）。
                                         io_activity.observe(&data);
+                                        // 旁路落盘：非阻塞 try_send，绝不反压 IO 循环。
+                                        if let Some(rec) = &io_recorder {
+                                            rec.record(&data);
+                                        }
                                         // 内存治理：写入有界 drain 队列，前端经
                                         // terminal_drain(_wait) 拉二进制块（默认
                                         // long-poll 挂起式 drain，VITE_TERMINAL_DRAIN_POLL=1

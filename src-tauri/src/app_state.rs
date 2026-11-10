@@ -38,6 +38,10 @@ pub struct AppStateWrapper {
     /// 与 `agent_chat_manager` 共存而非合并：chat 管理器只管「页面 → agent 请求路由」，
     /// 而注册表还要登记终端会话。写穿共用同一个 `session_store` 实例（同一张 cursor 表）。
     pub live_sessions: Arc<crate::live_sessions::Registry>,
+    /// 纯 shell 终端历史日志的**单一所有者**。目录只在 `at_default_dir()` 解析一次，
+    /// 注入 Registry（生命周期通知）与 TerminalRouter（回放准备）。
+    /// 组合根持有它只是为了在 `on_setup` 做一次孤儿 GC。
+    pub terminal_history: crate::common::terminal::history::SharedHistoryStore,
     /// Session and config file persistence.
     pub storage_manager: StorageManager,
     /// Currently active project ID, if any.
@@ -387,9 +391,18 @@ impl AppStateWrapper {
             }),
         );
 
+        // 纯 shell 终端历史日志的单一所有者。目录在这里解析一次，之后所有域都通过
+        // 注入的 `Arc` 访问，不再各自调 `terminal_history_dir()`。
+        let terminal_history =
+            Arc::new(crate::common::terminal::history::HistoryStore::at_default_dir());
+
         // Live session registry：与 `AgentChatManager` 共用同一个 store 实例（同一张 cursor 表）。
         // 它在组合根组装、被两个生产者（chat 事件流 / 终端 PTY）与三条命令共享。
-        let live_sessions = Arc::new(crate::live_sessions::Registry::new(session_store.clone()));
+        let live_sessions = Arc::new(
+            crate::live_sessions::Registry::new(session_store.clone())
+                .with_history(Arc::clone(&terminal_history)
+                    as crate::common::terminal::history::SharedHistory),
+        );
 
         // 装配 DAP 语言编排后端：Java 需要 lsp 域的两个端口（能力探测 / 断点源路径翻译）。
         // 组合根只组装一次 —— 不把端口暴露为 AppStateWrapper 字段（§9.4 方案 C）。
@@ -420,13 +433,15 @@ impl AppStateWrapper {
         Self {
             runtime,
             project_manager: Mutex::new(ProjectManager::new(persist)),
-            terminal_router: TerminalRouter::with_live_sessions(Arc::clone(&live_sessions)),
+            terminal_router: TerminalRouter::with_live_sessions(Arc::clone(&live_sessions))
+                .with_history(Arc::clone(&terminal_history)),
             agent_manager: Mutex::new(agent_manager_with_overrides(&storage_manager)),
             agent_chat_manager: Arc::new(
                 crate::agent::chat::manager::AgentChatManager::with_store(session_store.clone()),
             ),
             session_store,
             live_sessions,
+            terminal_history,
             storage_manager,
             active_project_id: Mutex::new(None),
             project_clone: Mutex::new(None),

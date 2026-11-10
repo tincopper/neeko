@@ -99,14 +99,11 @@ impl TerminalManager {
     ///
     /// 运行根由调用方（router，再上溯终端命令层）从 Workspace 身份派生；本层不再有
     /// 「可选 working_dir + 项目路径缺省」的 fail-open 形态（缺省静默回落主仓已退役）。
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_session(
         &self,
         cwd: &str,
-        cols: u16,
-        rows: u16,
-        shell_override: Option<String>,
-        command: Option<String>,
+        launch: &crate::terminal::launch::TerminalLaunch,
+        history: Option<crate::common::terminal::history::HistoryPlan>,
         registration: Option<crate::live_sessions::wiring::pty::LiveTerminal<'_>>,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
@@ -118,10 +115,13 @@ impl TerminalManager {
             return Err(anyhow::anyhow!("Working directory does not exist: {}", cwd));
         }
 
-        let pair = crate::terminal::services::create_pty(cols, rows)?;
-        crate::terminal::services::log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));
+        let pair = crate::terminal::services::create_pty(launch.cols, launch.rows)?;
+        crate::terminal::services::log_info(&format!(
+            "[PTY] PTY opened ({}x{})",
+            launch.cols, launch.rows
+        ));
 
-        let mut cmd = if let Some(task_command) = &command {
+        let mut cmd = if let Some(task_command) = &launch.command {
             crate::terminal::services::log_info(&format!(
                 "[PTY] Task command mode: {}",
                 task_command
@@ -129,7 +129,7 @@ impl TerminalManager {
             // 平台差异(Windows cmd /c vs Unix sh -c)集中化于 crate::platform::shell_launch。
             crate::platform::shell_launch::build_task_command(task_command)
         } else {
-            crate::terminal::services::build_local_shell_cmd(&shell_override)
+            crate::terminal::services::build_local_shell_cmd(&launch.shell)
         };
 
         cmd.env("TERM", "xterm-256color");
@@ -151,6 +151,7 @@ impl TerminalManager {
             &self.sessions,
             &self.pty_handles,
             &self.drains,
+            history,
             registration,
             &app_handle,
         )
@@ -158,13 +159,12 @@ impl TerminalManager {
 
     /// Creates a new WSL terminal session at the resolved run root `cwd`.
     #[cfg(target_os = "windows")]
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_wsl_session(
         &self,
         distro: &str,
         cwd: &str,
-        cols: u16,
-        rows: u16,
+        launch: &crate::terminal::launch::TerminalLaunch,
+        history: Option<crate::common::terminal::history::HistoryPlan>,
         registration: Option<crate::live_sessions::wiring::pty::LiveTerminal<'_>>,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
@@ -173,8 +173,11 @@ impl TerminalManager {
         crate::terminal::services::log_info(&format!("[WSL] Distro: {}", distro));
         crate::terminal::services::log_info(&format!("[WSL] Working Dir: {}", cwd));
 
-        let pair = crate::terminal::services::create_pty(cols, rows)?;
-        crate::terminal::services::log_info(&format!("[WSL] PTY opened ({}x{})", cols, rows));
+        let pair = crate::terminal::services::create_pty(launch.cols, launch.rows)?;
+        crate::terminal::services::log_info(&format!(
+            "[WSL] PTY opened ({}x{})",
+            launch.cols, launch.rows
+        ));
 
         let mut cmd = CommandBuilder::new("wsl.exe");
         cmd.arg("-d");
@@ -205,6 +208,7 @@ impl TerminalManager {
             &self.sessions,
             &self.pty_handles,
             &self.drains,
+            history,
             registration,
             &app_handle,
         )

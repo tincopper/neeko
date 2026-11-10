@@ -24,6 +24,9 @@ pub async fn create_terminal_session(
     working_dir: Option<String>,
     command: Option<String>,
     agent_id: Option<String>,
+    // 纯 shell 会话恢复时的旧 `session_id`：后端读它的历史日志并在建 PTY 阶段回放。
+    // 不传（含 agent TUI / 新建会话）即行为不变。
+    resume_from: Option<String>,
     state: State<'_, AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<TerminalSession, AppError> {
@@ -52,10 +55,13 @@ pub async fn create_terminal_session(
             &environment,
             &registration,
             workspace_root,
-            cols,
-            rows,
-            shell,
-            command,
+            crate::terminal::launch::TerminalLaunch {
+                cols,
+                rows,
+                shell,
+                command,
+                resume_from,
+            },
             app_handle,
         )
         .await

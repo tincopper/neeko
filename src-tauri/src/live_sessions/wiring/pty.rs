@@ -122,6 +122,18 @@ impl<'a> LiveTerminal<'a> {
         crate::agent::cli_status::channel_for(self.registration.agent_id.as_deref())
     }
 
+    /// 是否是纯 shell 终端（没绑 agent CLI）。
+    ///
+    /// 只有这类会话的输出是可回放的：agent TUI 的输出几乎全是全屏重绘帧。
+    /// 判据就是登记事实里的 `agent_id`，不另造一份。
+    #[must_use]
+    pub(crate) fn is_plain_shell(&self) -> bool {
+        self.registration
+            .agent_id
+            .as_deref()
+            .is_none_or(|id| id.trim().is_empty())
+    }
+
     /// 供 watcher / io 线程持有的注册表句柄（跨线程需要 `'static`）。
     pub(crate) fn shared_registry(&self) -> Arc<Registry> {
         Arc::clone(self.registry)

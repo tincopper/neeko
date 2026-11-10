@@ -101,6 +101,11 @@ fn on_setup(app: &tauri::App) {
     // 进程恢复发生在用户点击那一行之后（`useActivateSession`）。不 emit：前端尚未挂载，
     // `useLiveSessionsBridge` 挂载即拉快照。失败只降级为「空列表」（注册表仍是本次运行的事实）。
     crate::live_sessions::boot::restore(&state.live_sessions);
+    // 附属资源 GC 归组合根：`restore()` 是纯回填，磁盘清理在这里显式做一次。
+    // 崩溃 / 强杀会留下没有 cursor 行的日志，按本次恢复出的活跃 id 集合收敛。
+    state
+        .terminal_history
+        .prune(&state.live_sessions.live_ids());
 
     if let Some(active_id) =
         crate::session::boot::restore_workspace(&state.storage_manager, &state.project_manager)

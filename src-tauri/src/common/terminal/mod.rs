@@ -2,6 +2,7 @@
 
 pub mod drain;
 pub mod events;
+pub mod history;
 pub mod locks;
 pub mod types;
 

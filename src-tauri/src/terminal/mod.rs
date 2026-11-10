@@ -1,6 +1,8 @@
 //! Terminal session and PTY management.
 
 pub mod commands;
+/// 终端启动参数值对象（收拢 commands → router → manager → pipeline 的参数雪崩）。
+pub mod launch;
 pub mod manager;
 /// Process-tree reaping for PTY sessions (Unix).
 pub mod process_reaper;

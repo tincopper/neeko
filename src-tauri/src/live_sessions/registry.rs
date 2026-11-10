@@ -47,6 +47,9 @@ pub struct Registry {
     /// 快照去覆盖（用户改名 / 原生 id 回退，只在重启后暴露）。闸门内**重新**投影一次，
     /// 写入顺序就与内存顺序一致（全量快照，最后一次写必然包含此前全部变更）。
     persist_gate: Mutex<()>,
+    /// 附属资源（终端历史日志等）的生命周期通知端口。组合根注入；未注入时是空操作，
+    /// 让纯注册表单测**零文件系统副作用**（依赖倒置：本域不认识 terminal 域）。
+    history: crate::common::terminal::history::SharedHistory,
 }
 
 impl Registry {
@@ -60,7 +63,27 @@ impl Registry {
             changed: tokio::sync::Notify::new(),
             store,
             persist_gate: Mutex::new(()),
+            history: std::sync::Arc::new(crate::common::terminal::history::NoopHistory),
         }
+    }
+
+    /// 注入附属资源的生命周期端口（组合根专用 builder）。
+    ///
+    /// 默认空操作，因此未接线的单测零文件系统副作用 —— 这正是「依赖倒置」的收益：
+    /// 本域只依赖 [`crate::common::terminal::history::SessionHistory`] 这个抽象。
+    #[must_use]
+    pub fn with_history(
+        mut self,
+        history: crate::common::terminal::history::SharedHistory,
+    ) -> Self {
+        self.history = history;
+        self
+    }
+
+    /// 当前活跃会话 id 集合，供组合根做附属资源 GC（不在 `restore()` 里做 IO）。
+    #[must_use]
+    pub fn live_ids(&self) -> std::collections::HashSet<String> {
+        self.guard().keys().cloned().collect()
     }
 
     /// 当前版本号。
@@ -370,6 +393,8 @@ impl Registry {
         if let Err(e) = self.store.delete_cursor(from_session_id) {
             log::warn!("[live_sessions] failed to delete adopted cursor {from_session_id}: {e}");
         }
+        // 附属资源回收走注入端口；adopt 失败时上面已提前 return，旧资源仍在。
+        self.history.on_adopt(from_session_id, into_session_id);
         true
     }
 
@@ -465,6 +490,8 @@ impl Registry {
         if self.shutting_down.load(Ordering::SeqCst) {
             return true;
         }
+        // 退出流程不回收附属资源：下次启动还能恢复。
+        self.history.on_unregister(session_id);
         // 锁外落盘：失败只 warn（会话已经不可见了，不该因为库里写失败而卡住注销）。
         // 与 `persist_entry` 共用闸门：已摘掉内存条目的写者拿到闸门后会重读到 `None`，
         // 不会把刚删的行又写回去（“删完又被一个在途旧快照复活”）。

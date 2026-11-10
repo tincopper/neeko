@@ -60,6 +60,15 @@ pub fn agent_sessions_db_path() -> PathBuf {
     db_dir().join("agent_sessions.db")
 }
 
+/// 纯 shell 终端输出日志目录。与版本化库同属 `db_dir()` 的隔离单位，
+/// 所以 `NEEKO_DB_DIR` 覆写时日志会跟着走，不会散落到默认目录。
+///
+/// 日志无 schema 版本门禁（净化后的纯文本），不参与 `user_version` 迁移链。
+#[must_use]
+pub fn terminal_history_dir() -> PathBuf {
+    db_dir().join("terminal_history")
+}
+
 /// [`db_dir`] 的纯函数内核：脱离进程环境直测（`env::set_var` 在测试里是全局副作用）。
 #[must_use]
 fn resolve_db_dir(override_value: Option<&str>, fallback: PathBuf) -> PathBuf {
@@ -115,6 +124,27 @@ mod tests {
             library_db_path().parent(),
             agent_sessions_db_path().parent(),
             "两个版本化库必须同目录：隔离单位是目录，不是单个文件"
+        );
+    }
+
+    #[test]
+    fn terminal_history_dir_follows_the_isolated_db_dir() {
+        let (_tmp, isolated) = abs_fixture("db-dev");
+        let (_fallback_tmp, fallback) = abs_fixture("app-dir");
+        let isolated_str = isolated.display().to_string();
+        let dir = resolve_db_dir(Some(&isolated_str), fallback.clone());
+        assert_eq!(
+            dir.join("terminal_history"),
+            isolated.join("terminal_history")
+        );
+        assert_eq!(
+            resolve_db_dir(Some("relative/path"), fallback.clone()).join("terminal_history"),
+            fallback.join("terminal_history"),
+            "相对覆写被忽略时日志目录必须随库目录一起回退"
+        );
+        assert_eq!(
+            terminal_history_dir().file_name().unwrap(),
+            "terminal_history"
         );
     }
 }

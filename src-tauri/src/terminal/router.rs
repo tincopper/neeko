@@ -52,6 +52,8 @@ pub struct TerminalRouter {
     owners: Mutex<HashMap<String, SessionOwner>>,
     /// live-sessions 注册表（未注入时终端照常工作，只是侧栏看不到会话）。
     live_sessions: Option<std::sync::Arc<Registry>>,
+    /// 纯 shell 终端历史日志的单一所有者，由组合根注入。三端共用一份 `prepare` 结果。
+    history: Option<crate::common::terminal::history::SharedHistoryStore>,
 }
 
 impl Default for TerminalRouter {
@@ -69,7 +71,19 @@ impl TerminalRouter {
             remote: RemoteTerminalManager::new(),
             owners: Mutex::new(HashMap::new()),
             live_sessions: None,
+            history: None,
         }
+    }
+
+    /// 注入终端历史日志所有者（组合根专用 builder）。未注入 = 不落盘不回放，
+    /// 测试与「非纯 shell」路径零磁盘副作用。
+    #[must_use]
+    pub fn with_history(
+        mut self,
+        history: crate::common::terminal::history::SharedHistoryStore,
+    ) -> Self {
+        self.history = Some(history);
+        self
     }
 
     /// 接上 live-sessions 注册表：会话创建 / 关闭与两个后端的进程退出都会同步登记。
@@ -83,7 +97,25 @@ impl TerminalRouter {
             remote: RemoteTerminalManager::new(),
             owners: Mutex::new(HashMap::new()),
             live_sessions: Some(live_sessions),
+            history: None,
         }
+    }
+
+    /// 会话创建前的唯一历史决策点。三端共用这个方法，天然保证 Local / WSL / SSH
+    /// 落盘与回放行为完全一致；`run_blocking` 把阻塞 fs 移出 async command 链（红线 3）。
+    async fn prepare_history(
+        &self,
+        resume_from: Option<String>,
+        plain_shell: bool,
+    ) -> Result<Option<crate::common::terminal::history::HistoryPlan>, AppError> {
+        let Some(store) = self.history.as_ref() else {
+            return Ok(None);
+        };
+        if !plain_shell {
+            return Ok(None);
+        }
+        let store = std::sync::Arc::clone(store);
+        crate::common::runtime::run_blocking(move || store.prepare(resume_from.as_deref())).await
     }
 
     /// 本地 / WSL PTY 后端（需直连后端语义的调用方使用，如任务终端的 input 写入）。
@@ -152,21 +184,18 @@ impl TerminalRouter {
     /// 的权威落点；`cwd` 是**进程运行目录**（根，或 Workspace 内子目录覆盖）——
     /// 三个传输分支统一承接同一个 `cwd`（环境是传输维度，红线 10）。
     /// `command` 有值表示这是**任务终端**（由 task 域创建）—— 主题准备据此跳过。
-    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn create_session(
         &self,
         env: &ProjectEnvironment,
         registration: &TerminalRegistration,
         workspace_root: &str,
-        cols: u16,
-        rows: u16,
-        shell: Option<String>,
-        command: Option<String>,
+        launch: crate::terminal::launch::TerminalLaunch,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession, AppError> {
         // 主题产物属主题域，由该域按环境准备（见 `theme::service::prepare_project_theme`）。
         // 项目级配置落在 Workspace 根，**不**随语言 runner 的模块子目录覆盖漂移。
-        crate::theme::service::prepare_project_theme(env, workspace_root, command.is_some()).await;
+        crate::theme::service::prepare_project_theme(env, workspace_root, launch.command.is_some())
+            .await;
 
         // 原生事实（地址 + 运行根 + agent + 展示名）由命令层一次成型传进来；router 只转发。
         // 登记本身发生在进程创建处（PTY pipeline / SSH 建连内），**不**在这里 —— 否则退出
@@ -175,11 +204,19 @@ impl TerminalRouter {
         let cwd = registration.cwd.as_str();
         let live = LiveTerminal::new(self.live_sessions.as_ref(), Some(registration));
 
+        // 终端历史：**唯一**的会话创建前决策点。三端（Local / WSL / SSH）共用同一份
+        // `HistoryPlan`，且所有阻塞 fs 都在这一个 `run_blocking` 里完成（红线 3）。
+        // `is_plain_shell` 单点裁决，前后端、三端不再各判一次。
+        let plain_shell = live.is_some_and(|l| l.is_plain_shell());
+        let history = self
+            .prepare_history(launch.resume_from.clone(), plain_shell)
+            .await?;
+
         let session = match env {
             ProjectEnvironment::Local => {
                 let session = self
                     .local
-                    .create_session(cwd, cols, rows, shell, command, live, app_handle)
+                    .create_session(cwd, &launch, history, live, app_handle)
                     .map_err(AppError::from)?;
                 self.register(&session.id, SessionOwner::Pty);
                 session
@@ -188,7 +225,7 @@ impl TerminalRouter {
             ProjectEnvironment::Wsl { distro } => {
                 let session = self
                     .local
-                    .create_wsl_session(distro, cwd, cols, rows, live, app_handle)
+                    .create_wsl_session(distro, cwd, &launch, history, live, app_handle)
                     .map_err(AppError::from)?;
                 self.register(&session.id, SessionOwner::Pty);
                 session
@@ -208,8 +245,8 @@ impl TerminalRouter {
                         auth,
                         workspace_root,
                         cwd,
-                        cols,
-                        rows,
+                        &launch,
+                        history,
                         live,
                         app_handle,
                     )
@@ -324,6 +361,51 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+
+    /// 三端对称护栏：`prepare_history` 是唯一入口，未注入 history / agent TUI 都降级为
+    /// 「不落盘不回放」。这样 Local / WSL / SSH 不可能出现「前端传了 resumeFrom、
+    /// 后端静默忽略」的不一致。
+    #[tokio::test]
+    async fn prepare_history_is_single_gate_for_all_three_transports() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Arc::new(crate::common::terminal::history::HistoryStore::new(
+            tmp.path().to_path_buf(),
+        ));
+        // 先落一份旧日志，验证同一份计划可被三端共用。
+        let writer = store
+            .start_writer("old", b"$ pwd\r\n/neeko\r\n".to_vec())
+            .unwrap();
+        writer.record(b"\r\n");
+        drop(writer);
+        for _ in 0..50 {
+            if store.read_tail("old").ends_with(b"/neeko\r\n") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let router = TerminalRouter::new().with_history(Arc::clone(&store));
+
+        // 纯 shell + 有旧历史 ⇒ 有回放；agent TUI ⇒ None（单点裁决）。
+        let plan = router
+            .prepare_history(Some("old".into()), true)
+            .await
+            .unwrap()
+            .expect("纯 shell 必须有计划");
+        assert!(plan.replay().starts_with(b"$ pwd"));
+        assert!(router
+            .prepare_history(Some("old".into()), false)
+            .await
+            .unwrap()
+            .is_none());
+
+        // 未注入 history 的 router（测试默认）⇒ 三端一律 None，零磁盘副作用。
+        let bare = TerminalRouter::new();
+        assert!(bare
+            .prepare_history(Some("old".into()), true)
+            .await
+            .unwrap()
+            .is_none());
+    }
 
     /// 超时钳制：低于下限抬到 1s、高于上限压到 30s、区间内原样。
     #[test]
