@@ -1333,3 +1333,23 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 447: 修复 neeko-check 审核问题：5 个功能 bug + 身份口径统一 + 测试补齐
+<!-- trellis-session: v=2 fp=a6390d9c93d32390 -->
+
+**Date**: 2026-11-10
+**Task**: 修复 neeko-check 审核问题：5 个功能 bug + 身份口径统一 + 测试补齐
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
