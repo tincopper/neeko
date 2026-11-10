@@ -684,16 +684,72 @@ impl ConversationManager {
         Ok(messages)
     }
 
-    /// 会话正文对应的原生文件路径（缓存未命中时的解析入口）。
+    /// 会话正文对应的原生文件路径。
+    ///
+    /// # 缓存未命中时**重新扫描该 agent 的目录**（不是直接报错）
+    ///
+    /// 缓存（`cache`）只由扫描填充，而「打开历史会话」可以在扫描之前发生：
+    /// Histor 列表来自上一次扫描 / 磁盘索引，用户重启 app 后立刻点开一条旧会话时，
+    /// 缓存里还没有它 —— 旧实现直接 `Conversation not found in cache`，用户看到
+    /// 「会话 id 找不到」而文件其实**就在磁盘上**。
+    ///
+    /// 兜底只扫**这一个 agent**（`scan_agent` 会填满缓存），代价与该 agent 的会话数成正比；
+    /// 命中后把路径回填缓存、再取一次。失败信息要说清两件事：id 无效、以及「扫描过仍没有」。
     fn session_file_path(&self, conversation_id: &str) -> Result<std::path::PathBuf> {
+        if let Some(path) = self.cached_file_path(conversation_id)? {
+            return Ok(path);
+        }
+        let (agent_id, _native_id) = parse_conversation_id(conversation_id)
+            .with_context(|| format!("Invalid conversation ID format: {conversation_id}"))?;
+        // 只扫这个 agent：没有 adapter 时给出可读原因（与 `get_messages` 同一判据）。
+        self.scan_agent(agent_id, None).with_context(|| {
+            format!("Failed to scan agent `{agent_id}` while opening {conversation_id}")
+        })?;
+        self.cached_file_path(conversation_id)?.with_context(|| {
+            format!(
+                "Conversation {conversation_id} was not found on disk after scanning agent `{agent_id}`: \
+                 the session file may have been moved or deleted"
+            )
+        })
+    }
+
+    /// 缓存里的会话元数据；未命中时先扫描该 agent 再取一次（历史会话的读路径兜底）。
+    ///
+    /// 返回 `Ok(None)` 表示「扫描过、磁盘上确实没有」；`Err` 只留给扫描本身失败。
+    fn conversation_meta(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<crate::conversation::types::ConversationMeta>> {
+        if let Some(meta) = self.cached_meta(conversation_id)? {
+            return Ok(Some(meta));
+        }
+        let (agent_id, _native_id) = parse_conversation_id(conversation_id)
+            .with_context(|| format!("Invalid conversation ID format: {conversation_id}"))?;
+        self.scan_agent(agent_id, None).with_context(|| {
+            format!("Failed to scan agent `{agent_id}` while opening {conversation_id}")
+        })?;
+        self.cached_meta(conversation_id)
+    }
+
+    /// 缓存里那一条的元数据（`None` = 缓存未命中，不代表会话不存在）。
+    fn cached_meta(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<crate::conversation::types::ConversationMeta>> {
         let cache = self
             .cache
             .lock()
             .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
-        cache
-            .get(conversation_id)
-            .map(|m| m.file_path.clone())
-            .context("Conversation not found in cache")
+        Ok(cache.get(conversation_id).cloned())
+    }
+
+    /// 缓存里那一条的文件路径（`None` = 缓存未命中，不代表会话不存在）。
+    fn cached_file_path(&self, conversation_id: &str) -> Result<Option<std::path::PathBuf>> {
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
+        Ok(cache.get(conversation_id).map(|m| m.file_path.clone()))
     }
 
     /// 获取会话的完整消息列表
@@ -707,14 +763,9 @@ impl ConversationManager {
             .with_context(|| format!("Adapter not found for agent: {agent_id}"))?;
 
         let file_path = {
-            let cache = self
-                .cache
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
-            cache
-                .get(conversation_id)
-                .map(|m| m.file_path.clone())
-                .context("Conversation not found in cache")?
+            // 与 `session_file_path` 同一个解析入口：缓存未命中时重新扫描该 agent，
+            // 而不是在这里再写一份「只在缓存里找」的第二判据（两份必然漂移）。
+            self.session_file_path(conversation_id)?
         };
 
         let parsed: Vec<ParsedMessage> = adapter.parse_messages(&file_path)?;
@@ -802,13 +853,13 @@ impl ConversationManager {
             .with_context(|| format!("Adapter not found for agent: {agent_id}"))?;
 
         let (native_session_id, project_path, file_path) = {
-            let cache = self
-                .cache
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
-            let meta = cache
-                .get(conversation_id)
-                .context("Conversation not found in cache")?;
+            // 缓存未命中 → 先扫这个 agent（与 `session_file_path` 同一条兜底）：
+            // 历史会话的「恢复」与「打开正文」是同一类读路径，不能只有一半能自愈。
+            let meta = self
+                .conversation_meta(conversation_id)?
+                .with_context(|| {
+                    format!("Conversation {conversation_id} was not found after scanning agent `{agent_id}`")
+                })?;
             (
                 meta.native_session_id.clone(),
                 meta.project_path.clone(),
@@ -1353,6 +1404,49 @@ mod tests {
                 native_session_id.to_string(),
             ])
         }
+    }
+
+    /// **冷缓存也能打开历史会话**（本次修复的真实故障）。
+    ///
+    /// Histor 列表来自上一次扫描 / 磁盘索引；用户重启后立刻点开一条旧会话时，
+    /// 缓存里还没有它。旧实现直接 `Conversation not found in cache` —— 用户看到
+    /// 「会话 id 找不到」，而文件就躺在磁盘上。判据：**不先 scan**，直接取正文页。
+    #[test]
+    fn opening_a_conversation_with_a_cold_cache_scans_on_demand() {
+        let dir = TempDir::new().unwrap();
+        create_fixture(&dir, "session-cold.jsonl", Some("/projects/test"));
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+
+        // 刻意**不**调用 scan_all：缓存为空，模拟重启后直接点开历史会话。
+        let id = "test-agent:session-cold";
+        let page = manager
+            .get_messages_page(id, 0)
+            .expect("cold cache must rescan the agent instead of failing");
+        assert_eq!(page.total, 3, "文件里有三条消息");
+        assert!(!page.items.is_empty());
+
+        // 兜底是**按需**的：扫描后缓存命中，第二次读不再重新解析。
+        let again = manager.get_messages_page(id, 0).expect("second read");
+        assert_eq!(again.total, page.total);
+    }
+
+    /// 扫描过仍找不到 ⇒ 报错要**说清两件事**（id 无效 / 文件可能被移走），
+    /// 而不是让调用方拿着 "not found in cache" 去猜是不是缓存问题。
+    #[test]
+    fn a_missing_conversation_says_it_was_not_found_on_disk() {
+        let dir = TempDir::new().unwrap();
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+
+        let err = manager
+            .get_messages_page("test-agent:does-not-exist", 0)
+            .expect_err("不存在的会话必须报错");
+        let message = err.to_string();
+        assert!(
+            message.contains("not found on disk") || message.contains("moved or deleted"),
+            "错误必须说明「扫描过、磁盘上确实没有」：{message}"
+        );
     }
 
     fn create_fixture(dir: &TempDir, name: &str, project_path: Option<&str>) -> PathBuf {
