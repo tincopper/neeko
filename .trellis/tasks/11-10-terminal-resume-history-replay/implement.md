@@ -1,74 +1,69 @@
-# 执行计划：终端恢复的历史回放
+# 执行计划：纯 shell 终端输出落盘与回放
 
-> 复杂任务。TDD（Red → Green → Refactor），`pnpm check:quick` **只在收尾跑一次**。
-> 前置：PRD / design.md 已评审通过，`task.py start` 已执行（Phase 2）。
+> 状态（2026-11-10）：实现完成，`cargo test --lib` 2675 通过、`pnpm check:quick` 27/27、
+> `cargo check --target x86_64-pc-windows-gnu`（WSL 分支）通过。
+> 本文记录**最终实现形态**；初版按 transcript 方案写的 planning artifacts 已作废。
 
-## 顺序与检查点
+## 1. 第一性原理与最终结构
 
-### 0. A0 spike（方案级风险，必须先做）
+日志是「会话身份」的附属资源 —— 它的目录、格式、写入、迁移、回收必须只有一处知道。
+初版把这些职责散在 `terminal/services`、`live_sessions/registry`、`live_sessions/boot` 三个域，
+导致反向依赖、纯函数被塞磁盘 GC、三端不对称。最终结构：
 
-- [ ] 用真实 pi / claude-code `--resume` 启动，抓首帧字节，确认清屏序列是 `ESC[2J` / `ESC[3J` / `ESC[?1049h` 中的哪一种；手工往 xterm 写若干行后再灌该序列，验证 scrollback 能否回看。
-- [ ] **Gate**：若目标 CLI 会 `ESC[3J` 清 scrollback，方案 A 不成立 —— **停下回报用户**，回到 A/B 选择，不继续写代码。
-- [ ] 顺带确认 `hydrate_from_disk_index_if_empty` 在「刚启动、Histor 从未打开」时能否凭 `(agent_id, native_id)` 命中 transcript。
-- [ ] 把结论追加进 `research/current-state.md` §4 B4 与 design.md §8。
+```
+src-tauri/src/common/terminal/history/     ← 资源单一所有者
+  mod.rs        只做 mod 声明 + pub use（红线 9）
+  contract.rs   SessionHistory trait（依赖倒置端口）+ NoopHistory 安全默认
+  sanitizer.rs  纯 ANSI 单行编辑器（无 IO）：Sanitizer / sanitize / parse_csi
+  store.rs      HistoryStore：目录、格式、路径安全、生命周期、HistoryPlan
+  writer.rs     Recorder + 独立写线程
+  tests.rs      30 条测试，夹具全由 tempdir() 推导（红线 13）
 
-### 1. 后端：新增 `terminal_replay_history`
+src-tauri/src/terminal/
+  launch.rs     TerminalLaunch 值对象（收拢 commands → router → manager → pipeline 参数雪崩）
+  router.rs     prepare_history（唯一决策点，run_blocking 隔离阻塞 fs，红线 3）
+  services.rs / manager.rs / remote.rs 都只调 HistoryPlan::attach（唯一接线接缝）
 
-- [ ] **Red**：在 `src-tauri/src/terminal/commands.rs` 的测试里写用例 —— 无 native id → 空 blocks + `NoNativeId`；有 native id 但 transcript 缺失 → 空 blocks + `NoTranscript`；少于 50 条 → 全量有序返回、`omitted = 0`；**超过 50 条 → 只回最近 50 条且 `omitted = total - 50`（AC4）**；单条超长文本受 `REPLAY_CHAR_LIMIT` 截断；`thinking` / `toolResult` 不进 blocks、`tool` 只留一行摘要（AC5）。确认红。
-- [ ] 定义 `TerminalReplay` / `ReplayBlock` / `ReplayUnavailable` DTO（放 domain 的 types 文件，遵守红线 9：`mod.rs` 只做声明 + re-export）。
-- [ ] Green：command 只做参数校验 + 调度（红线 6）；`Registry::entry` 取身份；conversation 侧先尝试 `hydrate_from_disk_index_if_empty` + `get_messages_page_from_end`，失败再走 direct file lookup。
-- [ ] 投影纯文本块，双闸截断，**注意 `get_messages_page_from_end` 是「跳过末尾 N 条」**（`research/current-state.md` §2）。
-- [ ] 注册进 `src-tauri/src/lib.rs` 的 `neeko_invoke_handler!`。
-- [ ] 单次返回 JSON 明显低于 2MB（红线 4）；大 transcript 走已有分页，不整体序列化。
-- [ ] 前端镜像类型放 `src/shared/types/`（按域分文件）；API wrapper 放对应 feature 的 `api/`。
+src-tauri/src/live_sessions/
+  registry.rs   只依赖 SessionHistory trait，由组合根注入
+  boot.rs       restore() 纯回填，零 IO
+src-tauri/src/app/boot.rs  on_setup 里调 HistoryStore::prune（GC 归组合根）
+```
 
-### 2. 前端：回放数据下发
+## 2. 关键决策（为什么这样）
 
-- [ ] `TerminalView.tsx`：用 `useRef` 锁住首次读到的 `resumeFromSessionId`，作为**稳定** `replaySessionId` prop 下传。陷阱：`handleSessionCreated`（`:73`）会清掉 tab data 上的该字段，若 prop 进 effect 依赖会导致 cleanup + PTY 重建。
-- [ ] `TerminalViewBase.tsx`：新增可选 prop；**不进主 effect 依赖数组**，用 ref 读取。
-- [ ] `fetchTerminalReplay(sessionId)` 一律 catch 成空回放（失败降级，design.md §5.4）。
-
-### 3. 前端：写入顺序与渲染
-
-- [ ] **Red**：抽出纯函数 `renderReplayText(replay): string`（放 `src/features/terminal/utils/`），写测试覆盖：role 前缀、分隔线、空回放返回空串、长行折叠、`omitted > 0` 才写「已省略 N 条」、`omitted = 0` 不写、末尾空行数。确认红。
-- [ ] Green：实现纯函数（role 只归一化，不引入 chat 组件依赖）。
-- [ ] `TerminalViewBase` effect 内，在 `term.open(wrapper)` 之后、`await createSessionVal(...)` 之前插入 `await loadReplay()` + `term.write(...)`；**回放失败不得跳过建 PTY**（try/finally 或独立 catch）。
-- [ ] 历史行数 + 分隔线 + 空行使内容滚进 scrollback（design.md §5.1）。
-- [ ] 不改 `fitAddon` 调用点、不改 DOM 结构（AC3 / AC6）。
-
-### 4. 补测试
-
-- [ ] Rust：command 的正常 / 边界 / 错误路径；DTO 序列化形状（camelCase）。
-- [ ] 前端：`renderReplayText` 全部边界；`TerminalView` 的 `replaySessionId` 稳定性（清掉 `resumeFromSessionId` 后 prop 不变、不重建 PTY）。
-- [ ] 组件关键交互：恢复一条有历史的会话，断言 `term.write` 的调用顺序（回放先于首个 drain chunk）；恢复纯 shell 会话不发起 `fetchTerminalReplay`。
-
-### 5. 收尾
-
-- [ ] 只跑**一次** `pnpm check:quick`（含 eslint / tsc / fmt / clippy / 仓库护栏 / 改动文件单测）。
-- [ ] 改 `.rs` 时 `check:quick` 不跑 `cargo test`：本地直测 `cargo test --lib terminal::` 与 `live_sessions::`。
-- [ ] 同步必要 spec：`spec/backend/agent-chat-transports.md`（终端恢复小节）、`spec/backend/conversation-adapter.md`（若新增按 native id 读取口）、`spec/frontend/state-management.md`（若动到 tab data 语义）。
-- [ ] 人工验收 AC1–AC7（尤其 AC1 的滚动回看、AC3 的纯 shell 行为、AC4 的 50 条上限与「已省略 N 条」、AC7 的回放先于首帧）。
-
-## 风险文件
-
-| 文件 | 风险 |
+| 决策 | 理由 |
 | --- | --- |
-| `src/features/terminal/components/TerminalViewBase.tsx` | 主 effect 依赖数组极敏感；多插一个依赖就会重建 PTY / 泄漏进程。已有 StrictMode 双挂载与 `cancelled` 门的先例，改前通读 effect 全文。 |
-| `src/features/terminal/components/TerminalView.tsx` | `resumeFromSessionId` 一次性消费与回放取值时序冲突。 |
-| `src-tauri/src/terminal/commands.rs` / `src-tauri/src/lib.rs` | 新 command 注册；命令层必须薄。 |
-| `src-tauri/src/conversation/manager.rs` | hydrate / 分页语义（`from_end` 是「跳过末尾 N 条」），别用反。 |
-| `src/features/terminal/api/taskTerminal.ts` | `taskCommand` 生成链不动，只读对照。 |
+| `HistoryStore` 单一所有者 + 目录注入 | 消除跨域反向依赖；测试传 `tempdir()`，杜绝单测碰真实 `~/.neeko/`。曾因 `restore()` 里直接 `prune_orphans(terminal_history_dir())`，跑单测删光用户日志（现有 `restore_never_touches_session_history_side_effects` 与 `store_never_touches_the_real_user_directory` 两条护栏钉住）。 |
+| 删 `copy_history`，旧日志读入内存直接作新写线程初值 | 少一次 `fs::copy`、少一个「copy 成功但 adopt 失败」竞态；`adopt` 失败时旧文件还在，可再次恢复。 |
+| `HistoryPlan::attach` 单一接缝 | 「推进 drain + 起写线程」的顺序契约只在一处，Local / WSL / SSH 三端共用 → 不可能漏掉某一端；测试可直测顺序而不起真实 PTY。 |
+| `router::prepare_history` 唯一决策点 | 三端对称 + `is_plain_shell` 单点裁决（前端不再自己判 `agentId`）。所有阻塞 fs 在 `run_blocking` 里完成，pipeline 只做纯内存操作（红线 3）。 |
+| `SessionHistory` trait + 组合根注入 | 依赖倒置：`live_sessions` 不认识 `terminal` 域；`NoopHistory` 让未接线的单测零副作用。 |
+| `MAX_LINE_CHARS` 与 `MAX_LOG_BYTES` 分离 | `Vec<char>` 按字符限、落盘按字节限；中文 3 字节/字，混用会让内存峰值达 3×。 |
 
-## 回滚点
+## 3. 验证记录
 
-- 回滚点 1（spike 失败）：未写任何代码，直接回报用户改选 B。
-- 回滚点 2（后端完成、前端未接）：command 无调用方，摘除注册与函数体即可。
-- 回滚点 3（前端已接）：不传 `replaySessionId` prop 即回到现状；再删 `term.write(replay)` 调用。
-- 无 DB 迁移、无 wire 形状变更，回滚不留残留。
+- `cargo test --lib`：2675 passed / 9 ignored。
+- `pnpm check:quick`：27/27 护栏全绿（含 eslint / tsc / fmt / clippy / 组件规模 ratchet）。
+- `cargo check --lib --target x86_64-pc-windows-gnu`：WSL 分支编译通过；Linux 由 CI 三平台矩阵兜底。
+- 真实 zsh 572 字节会话固化回归钉子：`real_zsh_session_replays_as_clean_commands_and_output`。
+- 哨兵实证：在 `~/.neeko/terminal_history/` 放文件 → 跑全量单测 → 文件仍在。
+- 变异验证：临时破坏 ANSI 剥离 / 字节上限，对应用例变红（曾做，恢复后绿）。
 
-## 不做
+## 4. 风险与回滚
 
-- 不落盘 PTY 字节、不做字节回放。
-- 不改 chat 恢复链路、不改侧栏可见性规则、不改 drain / backpressure。
-- 不引入 `@xterm/addon-serialize` 等新依赖。
-- 不主动提交代码（根 `AGENTS.md` 收尾约定）。
+| 风险 | 兜底 |
+| --- | --- |
+| 切 tab 串味 | `resumeFrom` 按 `cacheKey` 重建（不锁组件实例）；`replayFromRef` 已删除。 |
+| 回放载荷撑爆 drain / xterm stall | `min(256KB, 5000 行)` 取尾；`replay_payload_fits_the_drain_capacity` 钉住。256KB 的 stall 边界仍待真机长会话确认。 |
+| 旧格式日志 | 文件头 `NEEKO-SHELL-LOG-v2`，无头降级为空。 |
+| 回滚 | `HistoryPlan` 不接线即回到「纯新 PTY」；删 `history/` 与 `launch.rs` 即完全回滚，无 DB 迁移、无 wire 形状变更。 |
+
+## 5. 不做
+
+- agent TUI 终端输出落盘（全屏重绘帧不可回放）；读取 CLI transcript（前一版方案）。
+- 回放原始 PTY 字节；独立只读历史分栏；让已结束进程复活。
+
+## 6. 收尾约定
+
+`pnpm check:quick` 只在收尾跑一次（已完成）→ spec 已同步（`.trellis/spec/backend/persistence-and-cache.md` §5b）→ 不主动提交代码。
