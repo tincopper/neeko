@@ -8,7 +8,7 @@
 //!   ▼
 //! Registry（内存唯一事实，写穿 SessionStore）
 //!   ├─ state.rs   纯转移 reduce(state, Signal)
-//!   ├─ title.rs   纯判据 admit（准入）/ should_upgrade（覆盖序）
+//!   ├─ (title)    纯判据已上移到 common::agent::title
 //!   └─ wiring/{chat,pty}.rs  原生信号 → Signal
 //!   │
 //!   ▼
@@ -31,11 +31,14 @@ mod events;
 pub mod lifecycle;
 mod registry;
 mod state;
-mod title;
 mod view;
 pub(crate) mod wiring;
 
-pub use entry::{SessionEntry, SessionKind, SessionState, TitleSource};
+// 标题域已上移到 `common::agent::title`（`conversation` 也要用同一份判据，
+// 而 conversation 不能反向依赖 live_sessions）；这里 re-export 保持既有调用路径。
+pub use crate::common::agent::title;
+pub use crate::common::agent::title::TitleSource;
+pub use entry::{SessionEntry, SessionKind, SessionState};
 pub use env::SESSION_ID_ENV;
 pub use events::{emit_changed, notify_if_changed, SESSIONS_EVENT};
 pub use registry::Registry;

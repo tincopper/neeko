@@ -225,6 +225,27 @@ fn claude_compat_sources_share_one_entries_table() {
     }
 }
 
+/// 身份脊柱护栏：hook 表与 descriptor 表的 `hook_source` 必须**双向一致**。
+///
+/// 两侧各有用途且都不能省：`HOOK_TARGETS` 决定安装/路由，`AGENTS` 决定转录根与配置根。
+/// 但它们描述的是同一个事实（这个 CLI 叫什么、往哪儿报），所以任一侧多出/少了条目都是缺陷：
+/// - 只在 descriptor 里：hook 装不上 ⇒ 实时标题永远缺（正是本次要修的症状）；
+/// - 只在 HOOK_TARGETS 里：转录根无处可查 ⇒ History 扫 0 条且静默。
+#[test]
+fn hook_targets_and_descriptors_agree_on_hook_sources() {
+    use crate::common::agent::descriptor::AGENTS;
+
+    let mut table_sources: Vec<&str> = HOOK_TARGETS.iter().map(|t| t.source).collect();
+    let mut descriptor_sources: Vec<&str> =
+        AGENTS.iter().filter_map(|row| row.hook_source).collect();
+    table_sources.sort_unstable();
+    descriptor_sources.sort_unstable();
+    assert_eq!(
+        table_sources, descriptor_sources,
+        "HOOK_TARGETS 与 AGENTS[*].hook_source 必须一一对应"
+    );
+}
+
 /// AC2 的另一半：三个 Claude 兼容源共用同一份 **shim 模板**（含 Codex 之外的 Structured 行）。
 #[test]
 fn claude_compat_sources_share_one_shim_template() {

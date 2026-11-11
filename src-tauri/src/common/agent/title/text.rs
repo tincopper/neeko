@@ -2,7 +2,12 @@
 //!
 //! 三个来源都经这里 —— 标题的长度语义只有一份实现。
 
-use super::MAX_TITLE_CHARS;
+/// 标题字符上界（按**字符**而不是字节：中文标题不该被切半个字）。
+///
+/// 它是 title 模块的**公开契约**（写入侧截断到这么长），由 [`budgeted`] 派生扫描预算、
+/// 由判据直接消费 —— 只此一处。声明在本文件而不是 `mod.rs`：红线 9 要求模块根只放
+/// `mod` + `pub use`，契约本身属于「文本长度」这一件事。
+pub const MAX_TITLE_CHARS: usize = 80;
 
 /// 判据与折叠只看这段前缀。
 ///
@@ -10,12 +15,21 @@ use super::MAX_TITLE_CHARS;
 /// 吸收缩进/换行 —— 先按 [`MAX_TITLE_CHARS`] 硬切会把「80 个空格 + 正文」整条切掉。
 pub(super) const TITLE_SCAN_BUDGET_CHARS: usize = MAX_TITLE_CHARS * 8;
 
+/// 净化（`clean`）的输入窗口 —— 比判据预算宽 8 倍。
+///
+/// 为什么不能直接用 [`TITLE_SCAN_BUDGET_CHARS`]：净化要**跨过**隐藏块才能删掉它。一个
+/// `<system-reminder>` 常达数千字符（Claude Code 实测），若在 640 字符处截断，块就没有
+/// 终止符、`strip_hidden_blocks`（按设计）原样保留，标题会变成 `<system-reminder>…`。
+/// 5120 字符是「覆盖真实注入块」与「不复制 200KB 粘贴」之间的分界：超出这段的块仍可能
+/// 漏出，那是有意的分配上界（判据随后只取前 [`TITLE_SCAN_BUDGET_CHARS`]）。
+pub(super) const TITLE_CLEAN_BUDGET_CHARS: usize = TITLE_SCAN_BUDGET_CHARS * 8;
+
 /// 截断补齐用的省略号（占 1 个字符预算）。
 pub(super) const ELLIPSIS: char = '…';
 
-/// 零分配取前缀：超出预算时在**字符边界**切片，不 `collect`、不 `to_string`。
-pub(super) fn budgeted(text: &str) -> &str {
-    match text.char_indices().nth(TITLE_SCAN_BUDGET_CHARS) {
+/// 零分配取前缀：超出 `max_chars` 时在**字符边界**切片，不 `collect`、不 `to_string`。
+pub(super) fn budgeted(text: &str, max_chars: usize) -> &str {
+    match text.char_indices().nth(max_chars) {
         Some((byte_idx, _)) => &text[..byte_idx],
         None => text,
     }

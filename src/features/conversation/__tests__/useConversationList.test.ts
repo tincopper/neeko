@@ -2,7 +2,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { useConversationList } from '@/features/conversation/hooks/useConversationList';
-import type { ConversationMeta } from '@/features/conversation/types';
+import type { ConversationMeta, ScanReport } from '@/features/conversation/types';
 import { invoke } from '@/testing/tauriCore';
 
 const mockInvoke = vi.mocked(invoke);
@@ -21,6 +21,18 @@ function createMeta(id: string, overrides: Partial<ConversationMeta> = {}): Conv
     projectPath: '/tmp/project',
     userTitle: null,
     tags: [],
+    ...overrides,
+  };
+}
+
+/** 扫描报告：wire 是 camelCase（Rust `#[serde(rename_all = "camelCase")]`）。 */
+function scanReport(overrides: Partial<ScanReport> = {}): ScanReport {
+  return {
+    agentId: 'claude-code',
+    sessionsFound: 0,
+    errors: [],
+    transcriptRoot: '/home/u/.claude/projects',
+    rootExists: true,
     ...overrides,
   };
 }
@@ -81,7 +93,7 @@ describe('useConversationList', () => {
       }
       if (cmd === 'scan_conversations') {
         await scanPromise;
-        return [{ agent_id: 'claude-code', sessions_found: 1, errors: [] }];
+        return [scanReport({ sessionsFound: 1 })];
       }
       return undefined;
     });
@@ -103,7 +115,7 @@ describe('useConversationList', () => {
     expect(firstList).toBeGreaterThanOrEqual(0);
     expect(firstScan).toBeGreaterThan(firstList);
 
-    resolveScan([{ agent_id: 'claude-code', sessions_found: 1, errors: [] }]);
+    resolveScan([scanReport({ sessionsFound: 1 })]);
 
     await waitFor(() => {
       expect(result.current.refreshing).toBe(false);

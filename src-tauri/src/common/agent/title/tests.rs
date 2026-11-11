@@ -3,9 +3,9 @@
 //! **每个判据都要有「放行」与「判负」两侧**：只断言判负会让判据退化成"什么都拒"
 //! 也能通过的假绿。
 
-use super::text::{truncate, ELLIPSIS, TITLE_SCAN_BUDGET_CHARS};
+use super::text::{truncate, ELLIPSIS, TITLE_CLEAN_BUDGET_CHARS, TITLE_SCAN_BUDGET_CHARS};
+use super::TitleSource::{Native, Placeholder, Prompt, User};
 use super::*;
-use crate::live_sessions::entry::TitleSource::{Native, Placeholder, Prompt, User};
 
 // ── 覆盖序 ──────────────────────────────────────────────────────────────
 
@@ -37,8 +37,9 @@ fn user_title_is_never_overridden_by_automatic_sources() {
 
 /// 占位不是标题 —— 即使给了非空文本也不放行。
 ///
-/// 这条不变量是 `title_source == Placeholder ⟺ title.is_empty()` 的来源，
-/// 后端的 `has_real_title` 与前端的 `isNamedSession` 都靠它退化成「非空」。
+/// 这条不变量是 `title_source == Placeholder ⟺ title.is_empty()` 的来源（持久化形态）。
+/// 后端的 `has_real_title` 靠它退化成「非空」；**wire 层不是**：`SessionView.title` 会被
+/// 身份标签补齐（`placeholder_label`），前端因此看 `titleSource` 而不是空串。
 #[test]
 fn placeholder_never_admits_a_title() {
     assert_eq!(admit(Placeholder, "", None), None);
@@ -244,6 +245,49 @@ fn admit_only_scans_the_budget_prefix() {
     let title = admit(Prompt, &long, None).expect("前缀里的 a 是有效素材");
     assert_eq!(title.chars().count(), MAX_TITLE_CHARS);
     assert!(!title.contains("尾部标记"), "预算之外的正文不该被扫到");
+}
+
+/// **预算在净化之前**：一次 1MB 的粘贴只应由前缀决定标题（净化不对全量输入分配），
+/// 且不得 panic。
+#[test]
+fn admit_handles_a_paste_sized_prompt() {
+    let pasted = format!("修复登录跳转的竞态\n{}", "x".repeat(1_000_000));
+    let title = admit(Prompt, &pasted, None).expect("首行是有效素材");
+    assert!(
+        title.starts_with("修复登录跳转的竞态"),
+        "标题应取自前缀：{title:?}"
+    );
+    assert!(title.chars().count() <= MAX_TITLE_CHARS);
+}
+
+/// **净化窗口必须宽到跨过一个真实隐藏块**：Claude 的 `<system-reminder>` 常达数千字符，
+/// 若在判据预算（640）处截断，块没有终止符、按设计不删，标题会变成 `<system-reminder>…`。
+#[test]
+fn admit_removes_a_hidden_block_longer_than_the_judging_budget() {
+    let block = format!("<system-reminder>{}</system-reminder>", "x".repeat(2_000));
+    let prompt = format!("{block} 修复登录跳转的竞态");
+    assert!(prompt.chars().count() < TITLE_CLEAN_BUDGET_CHARS);
+
+    let title = admit(Prompt, &prompt, None).expect("块后面的正文是有效素材");
+    assert_eq!(title, "修复登录跳转的竞态");
+}
+
+/// 净化是 `admit` 的第一步（不是调用方的事）：隐藏块与图片引用都不得进标题。
+#[test]
+fn admit_cleans_before_judging_for_every_source() {
+    assert_eq!(
+        admit(Prompt, "修 <system-reminder>x</system-reminder> 登录", None).as_deref(),
+        Some("修 登录")
+    );
+    assert_eq!(
+        admit(
+            Native,
+            "✳ [[Image #1]](file:///a.png) 修登录",
+            Some("claude-code")
+        )
+        .as_deref(),
+        Some("修登录")
+    );
 }
 
 /// 预算必须落在字符边界：多字节字符不会 panic，也不会被切成半个。

@@ -178,6 +178,13 @@ pub struct ScanReport {
     pub sessions_found: u32,
     /// Errors encountered during scan.
     pub errors: Vec<String>,
+    /// 该 agent 的转录根（绝对路径）。
+    ///
+    /// **扫到 0 条时最需要看见的一条事实**：历史上 `qoder` 指向一个不存在的目录，
+    /// 结果是「0 条会话 + 0 条错误」——一个合法却完全错误的形态，半年无人发现。
+    pub transcript_root: String,
+    /// 转录根是否存在（`false` ⇒ 本机没装该 CLI，或路径声明过期）。
+    pub root_exists: bool,
 }
 
 /// 会话列表的**范围**（IPC 入参）。

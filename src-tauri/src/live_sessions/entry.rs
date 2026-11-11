@@ -6,8 +6,12 @@
 //! （`cursor::from_entry`）—— 否则「加一个 UI 状态」就要改数据库语义。
 
 use chrono::{DateTime, Utc};
+
 use serde::{Deserialize, Serialize};
 
+// 词表本体在 `common::agent::title`（conversation 也要用同一份判据）；
+// 这里 `pub use` 保持 `entry::TitleSource` 的既有路径可用。
+pub use crate::common::agent::title::TitleSource;
 use crate::common::git::WorkspaceSession;
 
 /// 会话种类。
@@ -50,27 +54,6 @@ impl SessionState {
     pub const fn is_terminal(self) -> bool {
         matches!(self, Self::Failed | Self::Stopped)
     }
-}
-
-/// 标题来源。**`Ord` 即质量顺序**（靠前者弱、靠后者强）：
-/// `Placeholder < Prompt < Native < User`。
-///
-/// 它决定「谁可以覆盖谁」（由 [`crate::live_sessions::title::should_upgrade`] 消费），
-/// **不进 UI** —— 界面只表达结果（有真标题 / 占位斜体）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TitleSource {
-    /// 创建期占位（agent 名 / `Terminal`）。
-    Placeholder,
-    /// 真实用户消息：chat 注册时的 prompt，或**纯 shell** 终端的首条输入。
-    ///
-    /// agent 终端的字节流不是标题源（TUI 面板过滤词也在里面，见第 35 轮）。
-    Prompt,
-    /// agent 原生标题（CLI hook topic、conversation 缓存里的 provider title）。
-    /// OSC 0/2 仅作展示态，不再是生产者。
-    Native,
-    /// 用户改名（自动来源永不覆盖）。
-    User,
 }
 
 /// 一条 live session 条目（注册表的 value）。
@@ -177,7 +160,11 @@ impl SessionEntry {
     ///
     /// 退化为「非空」是因为 [`title::admit`](crate::live_sessions::title::admit) 对
     /// `Placeholder` 恒返回 `None`：于是 `title_source == Placeholder ⟺ title.is_empty()`
-    /// 恒成立。这条不变量同时让前端的 `isNamedSession` 退化成同一个判据。
+    /// 恒成立（持久化不变量）。
+    ///
+    /// **只适用于 `SessionEntry`**：wire 上的 `SessionView.title` 永远非空（视图层用
+    /// [`SessionView::placeholder_label`] 补齐），所以前端 `isNamedSession` 看的是
+    /// `titleSource`，不是空串 —— 两处判据不同，别互相"化简"。
     #[must_use]
     pub const fn has_real_title(&self) -> bool {
         !self.title.is_empty()

@@ -2,6 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
 
+use crate::common::agent::title::TitleCandidate;
 use crate::conversation::types::MessageBlock;
 
 /// 删除能力三态（不是 bool）。
@@ -58,6 +59,27 @@ pub struct ParsedMeta {
     pub message_count: u32,
     /// Optional project path for this session.
     pub project_path: Option<String>,
+}
+
+impl ParsedMeta {
+    /// 标题**候选**（按质量序：CLI 自述 → 首条用户消息），未经任何判决。
+    ///
+    /// 适配器只填原始字段（`title` / `first_user_message`），**不决定**哪条算标题 ——
+    /// 判决只有一套（`common::agent::title::admit`），由 `manager::resolve_title` 调用。
+    /// 历史列表与实时侧栏因此共享同一份判据：否则 `claude` / `Terminal 3` 这类字符串
+    /// 会在其中一条路径上被当成真标题。
+    #[must_use]
+    pub fn title_candidates(&self) -> Vec<TitleCandidate<'_>> {
+        [
+            self.title.as_deref().map(TitleCandidate::CliNative),
+            self.first_user_message
+                .as_deref()
+                .map(TitleCandidate::Prompt),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    }
 }
 
 /// 解析后的单条消息（parse_messages 返回值）

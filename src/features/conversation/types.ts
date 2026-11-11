@@ -46,10 +46,14 @@ export interface ConversationSearchHit {
   snippet: string;
 }
 
+/** 扫描报告（Rust `ScanReport`，wire 是 camelCase）。 */
 export interface ScanReport {
-  agent_id: string;
-  sessions_found: number;
+  agentId: string;
+  sessionsFound: number;
   errors: string[];
+  /** 该 agent 的转录根：`sessionsFound === 0` 时先看这两个字段。 */
+  transcriptRoot: string;
+  rootExists: boolean;
 }
 
 /**

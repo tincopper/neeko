@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+use crate::common::agent::descriptor;
+use crate::common::agent::transcript_noise::strip_image_references;
 use crate::conversation::adapter::{
     AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
 };
@@ -10,7 +12,7 @@ use crate::conversation::adapters::{
     linearize_tree_entries, message_role, parse_timestamp, read_jsonl, CONVERSATION_ROLES,
 };
 use crate::conversation::normalize::recent_messages_from_rev;
-use crate::conversation::text::{strip_ansi, strip_image_references};
+use crate::conversation::text::strip_ansi;
 
 /// Pi CLI 会话适配器
 ///
@@ -27,11 +29,9 @@ impl AgentSessionAdapter for PiAdapter {
     }
 
     fn session_root(&self) -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("~"))
-            .join(".pi")
-            .join("agent")
-            .join("sessions")
+        // 路径事实的唯一来源：`common::agent::descriptor`（同一行里也声明着 hook 配置根，
+        // 两处无法互相漂移）。
+        descriptor::transcript_root(self.agent_id())
     }
 
     fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<std::path::PathBuf>> {
@@ -43,7 +43,7 @@ impl AgentSessionAdapter for PiAdapter {
     }
 
     fn file_pattern(&self) -> &str {
-        "*.jsonl"
+        descriptor::file_pattern(self.agent_id())
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -311,8 +311,7 @@ mod tests {
 
         let meta = adapter.parse_meta(&path).unwrap();
         let title = crate::conversation::manager::resolve_title(
-            meta.title.as_deref(),
-            meta.first_user_message.as_deref(),
+            &meta.title_candidates(),
             adapter.agent_id(),
             &meta.native_session_id,
         );

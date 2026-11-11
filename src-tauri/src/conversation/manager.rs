@@ -8,10 +8,11 @@ use chrono::DateTime;
 use regex::Regex;
 use walkdir::WalkDir;
 
+use crate::common::agent::title::{admit_candidates, TitleCandidate};
 use crate::common::git::UnitScope;
 use crate::conversation::adapter::{is_owned_path, AgentSessionAdapter, ParsedMessage};
 use crate::conversation::adapters::saturating_count;
-use crate::conversation::normalize::{build_preview_messages, normalize_session_text, NormTarget};
+use crate::conversation::normalize::build_preview_messages;
 use crate::conversation::types::{
     ConversationListPage, ConversationMessage, ConversationMessagePage, ConversationMeta,
     ConversationSearchHit, ConversationStats, ScanReport, ToolCallRef,
@@ -33,23 +34,28 @@ pub enum ListScope<'a> {
     Unit(&'a UnitScope),
 }
 
-/// 会话标题三优先级解析（供 `scan` 循环与单测复用）。
+/// 会话标题解析（供 `scan` 循环与单测复用）。
 ///
-/// - P2：AI 生成标题（`title`）
-/// - P3：首条用户消息（`first_user_message`）
-/// - 兜底：`<agent_id> <native_session_id 前 8 位>`
+/// 阶梯（候选顺序即质量序，`ParsedMeta::title_candidates` 负责给出）：
+/// CLI 自述（`aiTitle` / `session_title` / hook topic）→ 首条用户意图行 → 兜底串。
+///
+/// **判决统一走 `title::admit`**（`admit_candidates`），与实时侧栏同一份判据。
+/// 历史列表曾用 `normalize_session_text` 自己挑，与侧栏的两套判据长期分叉 ——
+/// 同一台机器上侧栏拒绝 `claude` 当标题，历史列表却把两条会话显示成 `claude`。
+///
+/// 兜底串 `<agent_id> <native_session_id 前 8 位>` 是**最后手段**：它保证
+/// `ConversationMeta.title` 非空（wire 契约），不参与「配不配当标题」的判定。
 pub(crate) fn resolve_title(
-    title: Option<&str>,
-    first_user_message: Option<&str>,
+    candidates: &[TitleCandidate<'_>],
     agent_id: &str,
     native_session_id: &str,
 ) -> String {
-    normalize_session_text(title.unwrap_or(""), NormTarget::Title)
-        .or_else(|| normalize_session_text(first_user_message.unwrap_or(""), NormTarget::Title))
-        .unwrap_or_else(|| {
-            let short = &native_session_id[..native_session_id.len().min(8)];
-            format!("{} {}", agent_id, short)
-        })
+    admit_candidates(candidates.iter().copied(), Some(agent_id)).unwrap_or_else(|| {
+        // 兜底串**不是**第二个判据：它复用身份标签的唯一产出点（`agent + 短 id` 是
+        // `placeholder_label` 在没有 cwd 时的形态）。自己再切一次 `[..8]` 会造出第二份
+        // 规则 —— 且那份是字节切片，多字节 id 会在第 8 字节越界。
+        crate::common::agent::title::placeholder_label(Some(agent_id), "", native_session_id)
+    })
 }
 
 /// 内存缓存 + 扫描编排
@@ -368,11 +374,12 @@ impl ConversationManager {
                 sessions_found += 1;
             }
 
-            return Ok(ScanReport {
-                agent_id: agent_id.to_string(),
+            return Ok(Self::scan_report(
+                agent_id,
+                &adapter.session_root(),
                 sessions_found,
                 errors,
-            });
+            ));
         }
 
         // 默认逐文件扫描（可被 discovery_roots 收窄到项目目录）
@@ -380,21 +387,24 @@ impl ConversationManager {
         let walk_roots: Vec<std::path::PathBuf> = match adapter.discovery_roots(project_path) {
             // Adapter opted into scoped discovery for this project.
             Some(roots) if roots.is_empty() => {
-                return Ok(ScanReport {
-                    agent_id: agent_id.to_string(),
-                    sessions_found: 0,
-                    errors: Vec::new(),
-                });
+                // 单元级扫描：该项目下没有该 agent 的编码目录（正常形态，不是缺陷）。
+                return Ok(Self::scan_report(agent_id, &session_root, 0, Vec::new()));
             }
             Some(roots) => roots,
             // Unscoped / unsupported: full session_root walk.
             None => {
                 if !session_root.exists() {
-                    return Ok(ScanReport {
-                        agent_id: agent_id.to_string(),
-                        sessions_found: 0,
-                        errors: Vec::new(),
-                    });
+                    // **报错级别的事实**：路径声明过期 / CLI 未安装。此前这里安静返回 0 条，
+                    // 于是「adapter 指向一个从未存在的目录」可以永久存活（qoder 半年）。
+                    return Ok(Self::scan_report(
+                        agent_id,
+                        &session_root,
+                        0,
+                        vec![format!(
+                            "scan root does not exist for {agent_id}: {}",
+                            session_root.display()
+                        )],
+                    ));
                 }
                 vec![session_root.clone()]
             }
@@ -508,11 +518,39 @@ impl ConversationManager {
             errors.push(msg);
         }
 
-        Ok(ScanReport {
+        Ok(Self::scan_report(
+            agent_id,
+            &session_root,
+            sessions_found,
+            errors,
+        ))
+    }
+
+    /// 扫描报告（统一构造点：五个返回分支都必须带上「转录根 + 是否存在」）。
+    ///
+    /// 为什么把根塞进每一条报告：`sessions_found == 0` 有两种完全不同的含义 ——
+    /// 「用户没用过」与「我们读错了地方」。没有根就无法区分，而后者正是 qoder 丢失
+    /// 全部历史时的形态（`~/.qodercli/projects` 不存在，安静地返回 0 条）。
+    fn scan_report(
+        agent_id: &str,
+        session_root: &std::path::Path,
+        sessions_found: u32,
+        errors: Vec<String>,
+    ) -> ScanReport {
+        let root_exists = session_root.exists();
+        if !root_exists {
+            log::warn!(
+                "[conversation] {agent_id}: transcript root does not exist: {}",
+                session_root.display()
+            );
+        }
+        ScanReport {
             agent_id: agent_id.to_string(),
             sessions_found,
             errors,
-        })
+            transcript_root: session_root.display().to_string(),
+            root_exists,
+        }
     }
 
     /// 列出缓存的会话（全量，兼容旧调用方 / 测试）。
@@ -1240,14 +1278,10 @@ fn build_conversation_meta(
     meta: crate::conversation::adapter::ParsedMeta,
     file_path: std::path::PathBuf,
 ) -> ConversationMeta {
+    // 先算标题（借用候选），再搬走字段：`title_candidates()` 要借 `meta`。
+    let resolved_title = resolve_title(&meta.title_candidates(), agent_id, &meta.native_session_id);
     let native_session_id = meta.native_session_id;
     let id = format!("{agent_id}:{native_session_id}");
-    let resolved_title = resolve_title(
-        meta.title.as_deref(),
-        meta.first_user_message.as_deref(),
-        agent_id,
-        &native_session_id,
-    );
     let resolved_preview = build_preview_messages(&meta.recent_messages);
     let supports_resume = adapter
         .resume_command_for_file(
@@ -1949,18 +1983,29 @@ mod tests {
         assert!(md.contains("### assistant"));
     }
 
+    /// 根不存在必须**说出来**，而不是安静返回 0 条。
+    ///
+    /// 变异验证：把 `scan_report` 的 `root_exists` / 错误记录去掉，本用例必红 ——
+    /// 那正是 qoder 半年无人发现的形态（`~/.qodercli/projects` 从未存在过）。
     #[test]
-    fn should_scan_nonexistent_directory() {
+    fn should_report_a_missing_scan_root_instead_of_failing_silently() {
         let dir = TempDir::new().unwrap();
         // Use a subdirectory that doesn't exist
         let nonexistent = dir.path().join("nonexistent");
 
-        let adapter = TestAdapter::new("test-agent", nonexistent);
+        let adapter = TestAdapter::new("test-agent", nonexistent.clone());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
 
         let reports = manager.scan_all(None).unwrap();
-        assert_eq!(reports[0].sessions_found, 0);
-        assert!(reports[0].errors.is_empty());
+        let report = &reports[0];
+        assert_eq!(report.sessions_found, 0);
+        assert!(!report.root_exists, "根不存在必须体现在报告里");
+        assert_eq!(report.transcript_root, nonexistent.display().to_string());
+        assert!(
+            report.errors.iter().any(|e| e.contains("does not exist")),
+            "缺失的根必须进 errors（这是唯一能被设置页 / 日志看见的信号）: {:?}",
+            report.errors
+        );
     }
 
     // ─── L0: file_pattern nested scan contract ───
@@ -2423,12 +2468,7 @@ mod tests {
             Some("raw user request"),
         );
         assert_eq!(
-            resolve_title(
-                meta.title.as_deref(),
-                meta.first_user_message.as_deref(),
-                "claude-code",
-                "sess9876abcd"
-            ),
+            resolve_title(&meta.title_candidates(), "claude-code", "sess9876abcd"),
             "AI Summary Title"
         );
     }
@@ -2441,13 +2481,10 @@ mod tests {
             Some("  help me fix the <system-reminder>secret</system-reminder> bug  "),
         );
         assert_eq!(
-            resolve_title(
-                meta.title.as_deref(),
-                meta.first_user_message.as_deref(),
-                "claude-code",
-                "sess9876abcd"
-            ),
-            "help me fix the bug"
+            resolve_title(&meta.title_candidates(), "claude-code", "sess9876abcd"),
+            // 单一判据的 `Prompt` 策略会剥掉客套包装（`help me …` → `…`），与实时侧栏一致；
+            // 旧实现（`normalize_session_text`）不剥，这正是两条路径分叉的例子之一。
+            "fix the bug"
         );
     }
 
@@ -2455,12 +2492,7 @@ mod tests {
     fn resolve_title_falls_back_to_agent_and_session_id() {
         let meta = meta_with("sess9876abcd", None, None);
         assert_eq!(
-            resolve_title(
-                meta.title.as_deref(),
-                meta.first_user_message.as_deref(),
-                "opencode",
-                "sess9876abcd"
-            ),
+            resolve_title(&meta.title_candidates(), "opencode", "sess9876abcd"),
             "opencode sess9876"
         );
     }
@@ -3190,19 +3222,24 @@ mod tests {
     }
 
     /// 回归：首条用户消息带图片引用时，标题不得退化成图片 blob URI 或 `[Image #N]` 占位符。
+    ///
+    /// 判据侧（`admit` → `clean`）负责剥离图片引用；这里钉住的是**历史列表这条路径**
+    /// 也走同一份判据（否则实时侧栏干净、History 里却是一串 `file://`）。
     #[test]
     fn should_not_leak_image_reference_into_title() {
         let placeholder = resolve_title(
-            None,
-            Some("[Image #1] \n\n历史会话中显示的不是标题而是一串ID"),
+            &[TitleCandidate::Prompt(
+                "[Image #1] \n\n历史会话中显示的不是标题而是一串ID",
+            )],
             "pi",
             "01a187b7-f5da",
         );
         assert_eq!(placeholder, "历史会话中显示的不是标题而是一串ID");
 
         let expanded = resolve_title(
-            None,
-            Some("[[Image #1]](file:///Users/t/.pi/agent/image-view/blobs/32b9.png)\n\n同一个问题"),
+            &[TitleCandidate::Prompt(
+                "[[Image #1]](file:///Users/t/.pi/agent/image-view/blobs/32b9.png)\n\n同一个问题",
+            )],
             "pi",
             "01a187b7-f5da",
         );
@@ -3213,8 +3250,37 @@ mod tests {
     /// 回归：纯图片回合不能作为标题素材，必须继续落到兜底。
     #[test]
     fn should_fall_back_when_first_message_is_image_only() {
-        let title = resolve_title(None, Some("[Image #1]"), "pi", "01a187b7-f5da");
+        let title = resolve_title(
+            &[TitleCandidate::Prompt("[Image #1]")],
+            "pi",
+            "01a187b7-f5da",
+        );
         assert_eq!(title, "pi 01a187b7");
+    }
+
+    /// **两条路径同一份判据**：实时侧栏判负的字符串，历史列表也必须判负。
+    ///
+    /// 反证：把 `resolve_title` 改回 `normalize_session_text` 自挑，本用例立刻红 ——
+    /// 那正是「同一台机器上侧栏拒绝 `claude`、历史列表显示 `claude`」的成因。
+    #[test]
+    fn history_and_live_paths_share_one_verdict() {
+        for raw in ["claude", "Terminal 3", "/Users/x/neeko", "ready"] {
+            let via_history =
+                resolve_title(&[TitleCandidate::CliNative(raw)], "claude-code", "abcdef12");
+            assert_eq!(
+                via_history, "claude-code abcdef12",
+                "{raw:?} 在历史列表被当成了标题（应与实时侧栏一致：判负后落兜底）"
+            );
+            assert_eq!(
+                crate::common::agent::title::admit(
+                    crate::common::agent::title::TitleSource::Native,
+                    raw,
+                    Some("claude-code")
+                ),
+                None,
+                "{raw:?} 在实时侧栏必须判负"
+            );
+        }
     }
 
     // ── delete（三态删除能力）────────────────────────────────────────────────
