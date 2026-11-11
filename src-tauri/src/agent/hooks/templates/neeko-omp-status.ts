@@ -144,12 +144,21 @@ function sessionIdOf(ctx) {
 // 的 `parentSession` 是唯一可靠来源）。为什么必须整条不上报见 pi 模板同名函数的注释：
 // `NEEKO_SESSION_ID` 是 **PTY 进程级** env，子会话的完成事件会把父会话判成已完成。
 // fail-open：判不出来就按根会话上报。
+//
+// 第二条判据（`getSessionFile`，与 pi 模板同步）：拿不到 `parentSession` 的进程内子会话
+// （`SessionManager.inMemory`，见 pi 模板的完整推导）只能用「没有会话文件」来判。
+// 能力检测不可省：不暴露该 API 的 CLI 会因「无文件」恒成立把根会话当子会话 ⇒ 永不上报。
 function isChildSession(ctx) {
   try {
     const sm = ctx && ctx.sessionManager;
+    if (!sm) return false;
     const header = sm && typeof sm.getHeader === "function" ? sm.getHeader() : null;
     const parent = header && header.parentSession;
-    return typeof parent === "string" && parent.length > 0;
+    if (typeof parent === "string" && parent.length > 0) return true;
+    if (typeof sm.getSessionFile === "function") {
+      return !sm.getSessionFile();
+    }
+    return false;
   } catch {
     return false;
   }

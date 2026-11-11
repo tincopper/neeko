@@ -141,14 +141,27 @@ function sessionIdOf(ctx) {
 // 同一条通道还污染了父行的 `native_session_id`（first-writer-wins，指到子会话 transcript）
 // 与标题（子 agent 的 prompt）。子会话自己的状态属于父会话的 `Running`，不该有独立上报。
 //
-// fail-open：判不出来（旧 pi 无 `getHeader`）就按根会话上报 —— 宁多报不丢事件，
+// fail-open：判不出来（旧 pi 无 `getHeader` / `getSessionFile`）就按根会话上报 —— 宁多报不丢事件，
 // 与整个 hook 的 fail-open 取向一致。
+//
+// 第二条判据（`getSessionFile`）：`pi-subagents` 的 `persistSession = nested ? false :
+// rememberAgents`，为 false 时子会话走 `SessionManager.inMemory(cwd)`（**不传 options**）
+// ⇒ header 里没有 `parentSession`，而 `isTopLevelAgent`（`parentAgentId !== undefined`）
+// 又把 nested 孩子从花名册滤掉 ⇒ 前两道防线同时失效。inMemory 会话没有会话文件，
+// 而 Neeko 用 `pi --mode rpc` 启动（不带 `--no-session`），用户可见的根会话必有文件。
+// 能力检测不可省：不暴露 `getSessionFile` 的 CLI 会因「无文件」恒成立把**根会话**当子会话，
+// 症状从「误判完成」变成「永不上报」（会话永久停在 Running）。
 function isChildSession(ctx) {
   try {
     const sm = ctx && ctx.sessionManager;
+    if (!sm) return false;
     const header = sm && typeof sm.getHeader === "function" ? sm.getHeader() : null;
     const parent = header && header.parentSession;
-    return typeof parent === "string" && parent.length > 0;
+    if (typeof parent === "string" && parent.length > 0) return true;
+    if (typeof sm.getSessionFile === "function") {
+      return !sm.getSessionFile();
+    }
+    return false;
   } catch {
     return false;
   }
