@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 452
+- **Total Sessions**: 455
 - **Last Active**: 2026-11-11
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~616 | Active |
+| `journal-9.md` | ~669 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 455 | 2026-11-11 | 团队会话恢复 S1：身份与进程资源分家（v22） | - | `feat-team` |
+| 454 | 2026-11-11 | 修复任务详情 tab 白屏：TaskDetail 跨栈字段名漂移（steps → events） | - | `feat-team` |
 | 452 | 2026-11-11 | multi-agent merge into feat-team archived | `6979d429` | `feat-team` |
 | 451 | 2026-11-11 | merge multi-agent into feat-team with mainline as the baseline | `ca2861bf` | `feat-team` |
 | 450 | 2026-11-11 | Service-layer suites without OS watchers | `783793a6` | `main` |

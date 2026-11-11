@@ -614,3 +614,56 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 454: 修复任务详情 tab 白屏：TaskDetail 跨栈字段名漂移（steps → events）
+<!-- trellis-session: v=2 fp=02b3039d0e58019a -->
+
+**Date**: 2026-11-11
+**Task**: 修复任务详情 tab 白屏：TaskDetail 跨栈字段名漂移（steps → events）
+**Branch**: `feat-team`
+
+### Summary
+
+后端 view.rs::TaskDetail 发 events/eventsTruncated，前端类型与组件读 steps/stepsTruncated，用户点开任务即 TypeError；以后端线上契约为准改前端 3 处，并补双份契约锚点测试。
+
+### Main Changes
+
+- 前端 TaskDetail 类型/组件/夹具改用 events、eventsTruncated（与 MemberDetail 同名字段同义）
+- 新增 TeamTaskCenterView.test.tsx：手写电线载荷（不依赖夹具）+ 空态/错误/重试
+- view.rs 新增 the_task_detail_json_matches_the_frontend_type：TaskDetail 序列化键集逐字钉住
+- team-domain.md §8.2 记下「TS 镜像必须与 serde 输出逐字一致」的判据与事故形态
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] vitest run TeamTaskCenterView.test.tsx：4 passed（修复前同一行 154 抛 TypeError，Red 已复现）
+- [OK] cargo test --lib agent::team::view::tests: 29 passed
+- [OK] pnpm check:quick：27 条护栏全通过
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 455: 团队会话恢复 S1：身份与进程资源分家（v22）
+<!-- trellis-session: v=2 fp=192d20814766cc97 -->
+
+**Date**: 2026-11-11
+**Task**: 团队会话恢复 S1：身份与进程资源分家（v22）
+**Branch**: `feat-team`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**

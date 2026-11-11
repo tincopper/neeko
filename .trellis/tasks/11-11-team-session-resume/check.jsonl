@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/11-11-team-session-resume/prd.md", "reason": "验收判据 AC-1..AC-12 必须逐条可验证"}
+{"file": ".trellis/tasks/11-11-team-session-resume/design.md", "reason": "不变量 I1..I5 与反方案表：任何偏离都要在此文档里反驳，不能在代码里悄悄改"}
+{"file": ".trellis/tasks/11-11-team-session-resume/implement.md", "reason": "阶段门与 review gate（grep 判据）逐条执行"}
+{"file": ".trellis/spec/backend/team-domain.md", "reason": "红线合规：view 构造唯一落点、载荷上界、状态迁移的写入点唯一"}
+{"file": "AGENTS.md", "reason": "17 条红线的判据原文（12 路径身份、15 语言差异落插件、16 资源不进契约、17 禁止影子副本）"}
