@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 451
+- **Total Sessions**: 452
 - **Last Active**: 2026-11-11
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~594 | Active |
+| `journal-9.md` | ~616 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 452 | 2026-11-11 | multi-agent merge into feat-team archived | `6979d429` | `feat-team` |
 | 451 | 2026-11-11 | merge multi-agent into feat-team with mainline as the baseline | `ca2861bf` | `feat-team` |
 | 450 | 2026-11-11 | Service-layer suites without OS watchers | `783793a6` | `main` |
 | 449 | 2026-11-11 | Event observation attribution: keyed sink waits | `c8c50d5d`, `f9a65860` | `main` |
