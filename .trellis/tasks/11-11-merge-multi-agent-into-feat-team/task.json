@@ -22,5 +22,8 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "merge.parents": "f3dfe0d1 685cd26d",
+    "merge.commit": "ca2861bf"
+  }
 }
