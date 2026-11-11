@@ -454,10 +454,20 @@ let light = has_visible_text(entry);        // 只回答「这条算不算一条
 
 事故背景：修复前单命令返回全量正文，最大会话 4293 条消息序列化 8.7MB。
 
-### 4.6.5 标题素材的净化
+### 4.6.5 标题素材的净化（2026-11-10 起归标题域）
 
-图片引用（`[Image #1]`、`[[Image #1]](file:///…/blobs/<sha>.png)`）不是标题素材，
-由 `normalize`（Title / Preview 目标）统一剥离；适配器只提供原文，不做展示决策。
+图片引用（`[Image #1]`、`[[Image #1]](file:///…/blobs/<sha>.png)`）、隐藏块
+（`<system-reminder>` 等）、HTML 注释、harness 套话前缀都不是语义文本，由
+**`common::agent::transcript_noise`** 统一剥离（词表 + 实现各一份）。两个消费者共用它：
+`title::clean`（标题，`admit` 的第一步）与 `normalize`（预览）。标题特有的那一步（前导
+markdown 标记）留在 `clean`。适配器只提供原文，不做展示决策。
+
+**不要**在这里再写一份隐藏块/图片词表：两份手抄曾各自漂移，其中一份手写扫描器把
+`to_lowercase()` 的字节偏移用在原文上，遇到 `İ` / `ẞ`（小写展开改变字节数）会 panic
+或静默吃掉正文（2026-11-10 实测，已由正则实现取代）。
+
+`conversation::normalize` 现在只剩 **Preview** 目标（列表预览用）：Title 目标已删除，
+避免「同一份文本两套净化管线」（旧 Title 目标会把 markdown 标记剥掉、Preview 不剥）。
 
 **fixture 必须与真实磁盘格式一致**：用字符串写 `content` 夹具会让「只兼容字符串」的实现全绿，
 从而掩盖真实格式缺陷（Pi 曾因此把标题退化成 `pi <id8>`、正文解析成 0 条消息）。
