@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 456
+- **Total Sessions**: 457
 - **Last Active**: 2026-11-11
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~689 | Active |
+| `journal-9.md` | ~709 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 457 | 2026-11-11 | S3 历史按身份归属：ProjectScope + team workspace_worktree(v23) | - | `feat-team` |
 | 456 | 2026-11-11 | S2 团队会话恢复：resume argv + team_resume + 五态入口 | - | `feat-team` |
 | 455 | 2026-11-11 | 团队会话恢复 S1：身份与进程资源分家（v22） | - | `feat-team` |
 | 454 | 2026-11-11 | 修复任务详情 tab 白屏：TaskDetail 跨栈字段名漂移（steps → events） | - | `feat-team` |

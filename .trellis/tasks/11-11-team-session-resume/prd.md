@@ -82,32 +82,34 @@ lead 与成员按各自的**原生会话 id**续接原来的对话，任务板�
 
 ### S1
 
-- [ ] AC-1 `team_member` 表不再有 `terminal_id` / `agent_session_id` 列；v22 迁移把
+- [x] AC-1 `team_member` 表不再有 `terminal_id`、`team` 表不再有 `lead_session_id`；v22 迁移把
       `state='dead'` 映射成 `offline`、`team.state` 的 `active/closed` 映射成 `open/sealed`。
-- [ ] AC-2 lead 只发过 `session_started`（非 4 种信号键之一）也能拿到 `nativeSessionId`
+      **实施修正**：`team_member.agent_session_id` **保留** —— `live_sessions` 在自然退出时整行
+      删除，它不能当持久 id 的主人；成员行是这份身份的唯一持有者（`team-domain.md` §5a）。
+- [x] AC-2 lead 只发过 `session_started`（非 4 种信号键之一）也能拿到 `nativeSessionId`
       （回归测试：门控被删）。
-- [ ] AC-3 关掉 app（进程全部消失）再启动：`team_snapshot` 里每个成员 `live=false`、
+- [x] AC-3 关掉 app（进程全部消失）再启动：`team_snapshot` 里每个成员 `live=false`、
       `state=offline`，团队 state 仍是 `open`；`team_send` 返回明确错误。
-- [ ] AC-4 重启后 `token_hash` 全为空 ⇒ 端点启动时组装出的 principal 表为空
+- [x] AC-4 重启后 `token_hash` 全为空 ⇒ 端点启动时组装出的 principal 表为空
       （旧 token 不能再用）。
-- [ ] AC-5 花名册的「打开会话 / 查看记录 / 离线可恢复 / 无任何会话」四态各有测试，
+- [x] AC-5 花名册的「打开会话 / 查看记录 / 离线可恢复 / 无任何会话」四态各有测试，
       且判据只有一处（`openTerminalAction`）。
 
 ### S2
 
-- [ ] AC-6 `team_resume` 后 lead 的 `nativeSessionId` 未变，且新 PTY 的 argv 含 resume 片段
+- [x] AC-6 `team_resume` 后 lead 的 `nativeSessionId` 未变，且新 PTY 的 argv 含 resume 片段
       （逐 CLI：claude `--resume`、pi `--session`、codex `resume` 子命令、gemini/qoder 拒绝恢复）。
-- [ ] AC-7 对同一个已恢复团队再调一次 `team_resume` 是幂等的（已 `live` 的成员跳过）。
-- [ ] AC-8 没有原生 id 的成员在 `team_resume` 的返回里被点名，UI 显示「只能新开」，
+- [x] AC-7 对同一个已恢复团队再调一次 `team_resume` 是幂等的（已 `live` 的成员跳过）。
+- [x] AC-8 没有原生 id 的成员在 `team_resume` 的返回里被点名，UI 显示「只能新开」，
       不显示为可恢复。
-- [ ] AC-9 `sealed` 团队与 `sealed` 成员不可恢复（明确错误），与「离线」区分。
+- [x] AC-9 `sealed` 团队与 `sealed` 成员不可恢复（明确错误），与「离线」区分。
 
 ### S3
 
-- [ ] AC-10 团队的根在 `~/.neeko/worktrees/<name>`（项目根之外）时，lead 的 transcript
+- [x] AC-10 团队的根在 `~/.neeko/worktrees/<name>`（项目根之外）时，lead 的 transcript
       出现在 History 面板的该项目下。
-- [ ] AC-11 同一项目多个工作区的会话都归属于该项目，且侧栏按真正的工作区分组。
-- [ ] AC-12 路径→项目身份的解析只经注册事实（不得出现新的字符串前缀匹配）。
+- [x] AC-11 同一项目多个工作区的会话都归属于该项目，且侧栏按真正的工作区分组。
+- [x] AC-12 路径→项目身份的解析只经注册事实（不得出现新的字符串前缀匹配）。
 
 ## Constraints
 

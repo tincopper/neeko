@@ -281,27 +281,27 @@ args = resume 片段 ++ mcp_argv(渲染后) ++ prompt_argv(渲染后) ++ bypass_
 
 ### S3.1 团队记录工作区身份
 
-- [ ] `team` 行加 `workspace_worktree`（v22 已加列）；`start_team_session` 增参
+- [x] `team` 行加 `workspace_worktree`（v22 已加列）；`start_team_session` 增参
       （前端传 `activeWorkspace`）；`TeamLaunchPanel` 不再只传 `projectPath`。
-- [ ] `team_executor` 的 `TerminalRegistration.workspace` 改用团队行的 workspace_ref
+- [x] `team_executor` 的 `TerminalRegistration.workspace` 改用团队行的 workspace_ref
       （修掉「注册丢 worktree 维度」这条偏差）。
-- [ ] Red：建队后 `session_cursors.workspace_key` 与团队行一致。
+- [x] Red：建队后 `session_cursors.workspace_key` 与团队行一致。
 
 ### S3.2 scope 从路径到身份
 
-- [ ] `ConversationListScope::Project { path }` → `Project { project_id, paths }`
+- [x] `ConversationListScope::Project { path }` → `Project { project_id, paths }`
       （`paths` 由项目/工作树域解析后传入；conversation 域不拼接）。
-- [ ] 项目域提供「项目全部工作区根」的读接口（worktree 枚举既有能力：
+- [x] 项目域提供「项目全部工作区根」的读接口（worktree 枚举既有能力：
       `git/operations/worktree.rs`），失败时降级为「项目根 + 团队行记录的 worktree」。
-- [ ] `scope.rs` 的目录编码函数保持纯函数，输入变 `&[PathBuf]`。
-- [ ] Red（红线 13：夹具路径由 `tempdir()` 推导）：项目根 + 外部工作树两组路径的会话
+- [x] `scope.rs` 的目录编码函数保持纯函数，输入变 `&[PathBuf]`。
+- [x] Red（红线 13：夹具路径由 `tempdir()` 推导）：项目根 + 外部工作树两组路径的会话
       都被列出；未注册的路径仍然不进（不得变成"什么都收"）。
 
 ### S3.3 前端
 
-- [ ] `ConversationsPanelWrapper` 传 `projectId + workspace`，不再 `worktreePath ?? project.path`。
-- [ ] 侧栏分组看 `workspaceKey`（后端已修注册，无需前端改判据）。
-- [ ] Red：History 在两个工作区之间切换时，会话集合按项目聚合、侧栏按工作区分组。
+- [x] `ConversationsPanelWrapper` 传 `projectId + workspace`，不再 `worktreePath ?? project.path`。
+- [x] 侧栏分组看 `workspaceKey`（后端已修注册，无需前端改判据）。
+- [x] Red：History 在两个工作区之间切换时，会话集合按项目聚合、侧栏按工作区分组。
 
 ### S3.4 阶段门
 
@@ -312,9 +312,60 @@ pnpm vitest run src/features/conversation src/features/agent-team
 pnpm check:quick
 ```
 
-- Review gate（红线 12）：`grep -rn "starts_with" src-tauri/src/conversation/ | grep -v test`
-  必须只剩「已注册根集合上的匹配」，不再有「从路径反推项目」的新代码。
-- Review gate：`grep -rn "worktreePath ??" src/` 结果为空。
+- Review gate（红线 12）：`matches_project_path` 已删除；`src-tauri/src/conversation/` 里不再有
+  「用路径反推项目」的判据（归属只剩 `ProjectScope::owns` 一处）。
+- Review gate：`grep -rn "worktreePath ??" src/` **仍有两处**（`FilesPanelWrapper` /
+  `SearchPanelWrapper`）—— 它们是**执行根**（在哪个目录跑），不是历史身份；本任务的 gate 只覆盖
+  `ConversationsPanelWrapper`（已归零）。
+
+---
+
+
+#### S3 实施记录（2026-11-11 完成）
+
+验收数字：`cargo test --lib` **3284 passed / 0 failed / 11 ignored**（+16）；
+`cargo test`（集成）120 passed；`npx vitest run` **7537 passed / 813 files**；
+`pnpm check:quick` **29/29 护栏通过**。
+
+**改动形状（四处，每处都只有一个判据）**
+
+1. **`common/git/project_scope.rs`（新）**：`ProjectScope::{resolve, owns, roots}`。
+   `roots()` 是**登记时的原始串**（发现期编码输入，禁止 canonicalize）；`owns()` 用身份渲染 +
+   `deepest_root`（与 `UnitScope` 同一规则体）+ 构造期补的 canonical 形态。git 失败 ⇒ 只少
+   worktree 一份 + warn，**不**降级成「什么都收」。
+2. **`ConversationListScope::Project { projectId }`**：命令层用
+   `AppStateWrapper::project_scope(id)` 解析（项目根 + `git worktree list` + 团队记录过的
+   `workspace_worktree`）。`matches_project_path` 及其测试**删除**；`ListScope::Project` 收
+   `&ProjectScope`。同一个 scope 的 `roots()` 喂 `scan_conversations(agentId?, projectId?)`，
+   适配器 `discovery_roots(roots: Option<&[PathBuf]>)` 逐根编码取并集（只改过滤不改发现，
+   会得到「有的 CLI 能搜到、有的不能」的不对称症状）。
+3. **v23 迁移**：`team.workspace_worktree TEXT`（`add_column_if_missing`，幂等，append-only）。
+   写入路径：`start_team_session(..., workspace_worktree)` 先
+   `resolve_workspace_target(WorkspaceSession::of(project_id, worktree))`（worktree 归属的唯一
+   校验入口）再断言规范化团队根 `== repo.root()`。登记地址随之修正：
+   `app::team_executor` 用 `(team.project_id, team.workspace_worktree)`，不再是硬编码主仓。
+4. **前端**：`ConversationsPanelWrapper` 不再派生 `worktreePath ?? project.path`，只传
+   `projectId`；列表 key = `projectId`（同一项目切工作区**不重拉**列表 —— AC-11 的 UI 形态）；
+   `useTeamWorkspaceAddress` 从**同一个激活单元**同时给出 `projectPath`（执行落点）与
+   `workspaceWorktree`（身份），两者分开就是「团队跑在 A、记录说 B」。
+
+**偏差（都记了理由）**
+
+- **A：`workspace_worktree` 没有加进 v13 的 `CREATE TABLE team` 串**。那段是已发布的迁移步骤；
+  改它会让「造一个 v22 库再升级」不可复现（升级用例变成自证）。新库照样经过 step 22，列一样有。
+- **B：`owns` 同时匹配词法根与 canonical 根**。`git worktree list` 给的是 canonical 形态，而项目
+  /团队登记的是用户写法（macOS `/var` ↔ `/private/var`）。只在**构造期**付一次 canonicalize，
+  不在每个会话上做 fs（红线 3）。
+- **C：`manager.list` 收 `ListScope`**（删掉裸路径入口），`plan_team` 8 参 ⇒ 就地
+  `#[allow(clippy::too_many_arguments)]` + 理由。
+- **D：`ConversationPanel` 的 `projectPath` prop 直接删除**（不是改名）：它已有 `projectId`，
+  两个 prop 表达同一个身份就是第二个派生点。
+- **E：`TeamLaunchPanel` 抽出 `useTeamWorkspaceAddress`**（行数红线 300）。
+
+**变异验证（5 条）**：去掉 linked worktree ⇒ 「项目每个工作区都属于项目」红；`owns` 恒真 ⇒
+兄弟项目目录 / 兄弟项目扫描两条红；忽略 `recorded` ⇒ 「git 忘掉的工作树仍归属」红；只编码第一个根 ⇒
+`discovery_roots_cover_every_root_of_the_project` + 工作区扫描红；前端把 scope 绑回
+`projectId+activeWorkspaceKey` ⇒ 三条 wrapper 用例红。
 
 ---
 
