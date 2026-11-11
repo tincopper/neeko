@@ -1,0 +1,11 @@
+{"file": ".trellis/tasks/11-11-merge-multi-agent-into-feat-team/prd.md", "reason": "验收标准 AC1–AC7 与 R1–R6：任何解冲突决定都要能对到一条需求"}
+{"file": ".trellis/tasks/11-11-merge-multi-agent-into-feat-team/design.md", "reason": "D1–D9 决策本体：ours-first 顺序、extra_env 扩展、strip_ansi 三处并存、HookSink 广播、迁移常量、attachSessionId、CenterViewFrame 边界"}
+{"file": ".trellis/tasks/11-11-merge-multi-agent-into-feat-team/implement.md", "reason": "分组清单与 Pass 顺序、自动合并 30 文件的审计表、验证命令"}
+{"file": "AGENTS.md", "reason": "跨栈红线索引与 17 条判据摘要：解冲突时哪些改动属 Block 级"}
+{"file": "src-tauri/AGENTS.md", "reason": "Rust 侧红线全文（命令层极薄、spawn_blocking、mod.rs 极薄、平台代码归位、夹具路径）"}
+{"file": "src/AGENTS.md", "reason": "前端侧红线全文（导入防火墙、FileRef 路径身份、禁影子副本）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "后端域划分与模块落位：agent/team、work_items、app/team_executor 的位置判据"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "feature 边界与导入防火墙：agent-team / work-items 目录与新 tab kind 的落位"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "tab data 判别式联合的扩展方式（TeamBoardTabData / TeamTaskTabData）"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "解冲突后测试的调整边界：允许加用例，禁止为让代码通过改既有断言"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "迁移与 team 消费者的用例形态要求（真实库、临时目录、变异验证）"}

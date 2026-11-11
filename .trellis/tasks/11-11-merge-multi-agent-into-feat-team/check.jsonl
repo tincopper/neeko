@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/11-11-merge-multi-agent-into-feat-team/prd.md", "reason": "逐条核对 AC1–AC7，尤其是 AC5 的四面结构断言与 AC2 的冲突标记归零"}
+{"file": ".trellis/tasks/11-11-merge-multi-agent-into-feat-team/design.md", "reason": "核对实现是否守住 D1–D9；越界改主线即为 Block"}
+{"file": ".trellis/tasks/11-11-merge-multi-agent-into-feat-team/implement.md", "reason": "核对分组清单是否全部执行、自动合并 30 文件审计表是否逐条有决定与理由"}
+{"file": "AGENTS.md", "reason": "17 条红线判据：合并引入的代码不得踩线（红线 4/5/6/9/12/17 是本任务高发区）"}
+{"file": "src-tauri/AGENTS.md", "reason": "Rust 侧红线全文核对"}
+{"file": "src/AGENTS.md", "reason": "前端侧红线全文核对"}
