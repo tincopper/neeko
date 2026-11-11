@@ -243,6 +243,50 @@ fn templates_gate_child_sessions_at_a_single_registration_point() {
     );
 }
 
+/// 子会话门的**第二条判据**：拿不到 `parentSession` 的进程内子会话也不得冒充父会话。
+///
+/// # 事故形态（第 39 轮的残留口子）
+///
+/// `@tintinweb/pi-subagents@0.23.2` 的 `agent-runner.js`：
+/// `persistSession = agentConfig?.persistSession ?? (options.nested ? false : rememberAgents)`，
+/// 而 `nested: options.parentAgentId !== undefined`（`agent-manager.js` 的 spawn 入参）。
+/// 为 false 时子会话走 `SessionManager.inMemory(cwd)` —— **不传 options**，所以 header 里
+/// 没有 `parentSession`（header 的该字段只在 `create` / `forkFrom` 的 options 里取值），
+/// 第一条判据因此失明；同一条记录又被 `isTopLevelAgent`（`parentAgentId !== undefined`）
+/// 从花名册里滤掉 ⇒ **两道防线同时失效**，子 agent 的 `agent_settled` 直接落到父会话
+/// ⇒ `report_authoritative` 把父会话判成 `Ready` 并置位权威门 ⇒「主 agent 还在跑，侧栏已退出」。
+///
+/// inMemory 的会话**没有会话文件**，这是唯一还剩下的可判事实：Neeko 以 `pi --mode rpc`
+/// 启动（`pi_rpc/process.rs::launch_args`，不带 `--no-session`），用户可见的根会话必有文件。
+///
+/// # 为什么判据必须带能力检测
+///
+/// OMP / 旧 CLI 的 `sessionManager` 未必暴露 `getSessionFile`。此时「无文件」恒成立会把
+/// **根会话**判成子会话 ⇒ 整条上报消失 ⇒ 会话永远停在 Running。所以能力缺失时退回第一条
+/// 判据（`false`），宁可漏挡也不误挡。
+///
+/// 反证：删掉能力检测段，或改成无条件的 `return !sm.getSessionFile()`，本用例必红。
+#[test]
+fn templates_treat_a_fileless_session_as_a_child() {
+    for source in ["pi", "omp"] {
+        let t = HOOK_TARGETS
+            .iter()
+            .find(|t| t.source == source)
+            .unwrap_or_else(|| panic!("{source} target"));
+        let template = template_text(t.template);
+        // 取连续三行形态：`getSessionFile` 也出现在注释里，裸名会被「注释还在、判据被删」
+        // 的实现替身通过（与本文件其它锚点同一取向）。
+        assert!(
+            template.contains(
+                "    if (typeof sm.getSessionFile === \"function\") {\n      return !sm.getSessionFile();\n    }"
+            ),
+            "{source} 模板缺「无会话文件 ⇒ 子会话」判据：nested 子会话\
+             （`persistSession: false` ⇒ `SessionManager.inMemory`）没有 parentSession，\
+             会让子 agent 的完成事件把父会话判成 Ready"
+        );
+    }
+}
+
 /// 行尾归一化本身就是判据（2026-11-05 Windows CI 事故的回归钉）。
 ///
 /// 反证：把 `template_text` 改回直接读 `t.template`，下一个用例在 CRLF 形态下必红。
