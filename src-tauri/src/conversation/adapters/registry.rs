@@ -82,7 +82,7 @@ mod tests {
     /// adapter → 本用例红。
     #[test]
     fn should_declare_delete_support_for_every_registered_adapter() {
-        use SessionDeleteSupport::{Native, Storage, Unsupported};
+        use SessionDeleteSupport::{Native, Storage};
 
         let expected: &[(&str, SessionDeleteSupport)] = &[
             // 委派 CLI：CLI 维护的就是 Neeko 列出的那处存储。
@@ -93,11 +93,10 @@ mod tests {
             ("pi", Storage),
             ("gemini", Storage),
             ("qoder", Storage),
+            ("codebuddy", Storage),
             ("omp", Storage),
             ("grok", Storage),
             ("reasonix", Storage),
-            // 未实测到安全删除单元 → 不提供入口（fail-closed）。
-            ("codebuddy", Unsupported),
         ];
 
         let adapters = all_adapters();
@@ -117,6 +116,76 @@ mod tests {
             actual, want,
             "delete support table drifted from all_adapters(); 新增 adapter 必须在此表态"
         );
+    }
+
+    /// **真实样本探针**：三方实测落盘各存一份（截断正文、保留形态），断言仍然解析出
+    /// 人类可读的标题。
+    ///
+    /// 这是唯一能抓住「CLI 改了存储布局」的机器判据 —— 我们自己写的合成夹具会连同
+    /// 假设一起通过（qoder / codebuddy 就是这样在测试全绿的情况下静默丢了标题）。
+    ///
+    /// 断言口径遵循 `unit-test/real-source-determinism.md`：只断言「存在一条真标题」
+    /// （`≥`），不断言标题的具体文字（那是 CLI 的产出，会随模型变化）。
+    #[test]
+    fn real_transcripts_still_resolve_a_human_title() {
+        use crate::conversation::manager::resolve_title;
+
+        let cases: &[(&str, &str)] = &[
+            ("qoder", include_str!("fixtures/qoder-real.jsonl")),
+            ("codebuddy", include_str!("fixtures/codebuddy-real.jsonl")),
+            ("claude-code", include_str!("fixtures/claude-real.jsonl")),
+        ];
+
+        for (agent_id, sample) in cases {
+            // 夹具路径由 tempdir 推导（红线 13）
+            let dir = tempfile::TempDir::new().expect("tempdir");
+            let path = dir.path().join("session.jsonl");
+            std::fs::write(&path, sample).expect("write fixture");
+
+            let adapter = all_adapters()
+                .into_iter()
+                .find(|a| a.agent_id() == *agent_id)
+                .unwrap_or_else(|| panic!("{agent_id} 未注册"));
+            let meta = adapter
+                .parse_meta(&path)
+                .unwrap_or_else(|e| panic!("{agent_id} 解析真实样本失败: {e:#}"));
+
+            let title = resolve_title(&meta.title_candidates(), agent_id, &meta.native_session_id);
+            let fallback_prefix = format!("{agent_id} ");
+            assert!(
+                !title.starts_with(&fallback_prefix),
+                "{agent_id} 退化成兜底串（说明真实布局又漂了）: {title:?}"
+            );
+            assert!(
+                !title.contains("local-command") && !title.contains("system-reminder"),
+                "{agent_id} 把 harness 注入当成了标题: {title:?}"
+            );
+        }
+    }
+
+    /// 身份脊柱护栏：**每个注册的 adapter 都必须在 `common::agent::descriptor` 里有一行**，
+    /// 且转录根与 glob 都非空。
+    ///
+    /// 为什么是「没表态就红」而不是运行时兜底：路径事实缺失时的表现是「扫到 0 个会话」——
+    /// 一个合法结果，没人会发现（qoder 曾这样静默丢了全部历史）。这里把「声明缺失」
+    /// 变成编译期后第一步就能看见的红灯，与删除能力台账同一个形态。
+    #[test]
+    fn every_adapter_has_a_descriptor_row() {
+        for adapter in all_adapters() {
+            let id = adapter.agent_id();
+            assert!(
+                crate::common::agent::descriptor::descriptor(id).is_some(),
+                "{id} 缺少 descriptor 行（见 common/agent/descriptor.rs 的 AGENTS 表）"
+            );
+            assert!(
+                !adapter.file_pattern().is_empty(),
+                "{id} 的 file_pattern 为空（descriptor 未声明 pattern？）"
+            );
+            assert!(
+                !adapter.session_root().as_os_str().is_empty(),
+                "{id} 的 session_root 为空（descriptor 未声明转录根？）"
+            );
+        }
     }
 
     /// 自洽性护栏（同 `capability_probe` 的判据）：

@@ -4,11 +4,13 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
+use crate::common::agent::descriptor;
 use crate::conversation::adapter::{
     AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
 };
 use crate::conversation::adapters::content_blocks::extract_message_content;
 use crate::conversation::adapters::{parse_timestamp, read_jsonl};
+use crate::conversation::normalize::is_harness_injected_user_turn;
 use crate::conversation::normalize::recent_messages_from;
 use crate::conversation::text::strip_ansi;
 
@@ -31,10 +33,9 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
     }
 
     fn session_root(&self) -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("~"))
-            .join(".claude")
-            .join("projects")
+        // 路径事实的唯一来源：`common::agent::descriptor`（同一行里也声明着 hook 配置根，
+        // 两处无法互相漂移）。
+        descriptor::transcript_root(self.agent_id())
     }
 
     fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<std::path::PathBuf>> {
@@ -46,7 +47,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
     }
 
     fn file_pattern(&self) -> &str {
-        "**/*.jsonl"
+        descriptor::file_pattern(self.agent_id())
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -91,10 +92,17 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
             })
             .map(|s| s.to_string());
 
-        // 首条 user 消息
-        let first_user_msg = entries
-            .iter()
-            .find(|e| e.get("type").and_then(|v| v.as_str()) == Some("user"));
+        // 首条**真实** user 消息：harness 注入的伪用户回合（`<local-command-caveat>`、
+        // `<command-name>`、`<system-reminder>`…）不是用户意图，跳过顺延到下一条。
+        //
+        // 为什么必须在这里过滤（而不是只在展示层）：这条记录同时喂 P3 标题与
+        // `project_path`。注入行带着 CLI 自己的 `cwd`，把它当首条消息会让标题变成
+        // 一串注入文本（真实索引里 161 条 claude 会话有 11 条长这样）。
+        // 判负词表复用 `normalize::is_harness_injected_user_turn` —— 单一实现。
+        let first_user_msg = entries.iter().find(|e| {
+            e.get("type").and_then(|v| v.as_str()) == Some("user")
+                && !is_harness_injected_user_turn(&extract_message_content(e).text)
+        });
 
         // 标题优先级（对齐 orca primary-parsers.ts）：
         // P1: custom-title/customTitle（用户自定义）
@@ -177,7 +185,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
                     .parent()
                     .and_then(|p| p.file_name())
                     .and_then(|s| s.to_str())
-                    .map(unsanitize_claude_path)
+                    .map(crate::conversation::adapters::unsanitize_project_dir)
             });
 
         Ok(ParsedMeta {
@@ -260,14 +268,6 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
 }
 
 /// 反向 Claude Code 路径编码：`-Users-tomgs-proj` → `/Users/tomgs/proj`
-fn unsanitize_claude_path(sanitized: &str) -> String {
-    if sanitized.starts_with('-') {
-        sanitized.replacen('-', "/", 1).replace('-', "/")
-    } else {
-        format!("/{}", sanitized.replace('-', "/"))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -486,11 +486,16 @@ mod tests {
     }
 
     #[test]
-    fn should_unsanitize_claude_path() {
+    fn should_unsanitize_the_project_dir() {
         assert_eq!(
-            unsanitize_claude_path("-Users-tomgs-RustroverProjects-neeko"),
+            crate::conversation::adapters::unsanitize_project_dir(
+                "-Users-tomgs-RustroverProjects-neeko"
+            ),
             "/Users/tomgs/RustroverProjects/neeko"
         );
-        assert_eq!(unsanitize_claude_path("simple-path"), "/simple/path");
+        assert_eq!(
+            crate::conversation::adapters::unsanitize_project_dir("simple-path"),
+            "/simple/path"
+        );
     }
 }

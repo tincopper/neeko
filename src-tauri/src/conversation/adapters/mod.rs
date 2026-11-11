@@ -44,5 +44,5 @@ pub use reasonix::ReasonixAdapter;
 pub use registry::all_adapters;
 pub(crate) use shared::{
     linearize_tree_entries, message_role, parse_timestamp, read_jsonl, saturating_count,
-    CONVERSATION_ROLES,
+    unsanitize_project_dir, CONVERSATION_ROLES,
 };

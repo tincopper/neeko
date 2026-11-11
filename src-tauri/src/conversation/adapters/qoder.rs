@@ -1,21 +1,29 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
+use crate::common::agent::descriptor;
 use crate::conversation::adapter::{
     AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
 };
-use crate::conversation::adapters::{parse_timestamp, read_jsonl};
-use crate::conversation::normalize::recent_messages_from;
-use crate::conversation::text::strip_ansi;
+use crate::conversation::adapters::claude_code::ClaudeCodeAdapter;
 
-/// Qoder CLI 会话适配器
+/// Qoder CLI 会话适配器。
 ///
-/// 会话格式：`~/.qodercli/projects/<project>/*.jsonl`
-/// - JSONL 格式，会话由 UUID 标识
-/// - 首行可能包含 session 元数据
-/// - 消息行包含 context、tool calls、user/assistant 消息
-/// - 不支持原生 CLI 恢复（仅 TUI 内的 /resume 命令）
+/// 会话格式：`~/.qoder/projects/<sanitized-cwd>/<uuid>.jsonl`
+///
+/// **它就是 Claude Code 格式的 fork**（2026-11-10 实测）：行形态是
+/// `{"type":"user"|"assistant","message":{…},"timestamp":…,"sessionId":…,"cwd":…}`，
+/// 另有 `ai-title`（`aiTitle` 字段，与 Claude 同名）、`workspace-directories`、
+/// `runtime-config`、`worktree-state`、`active-leaf` 等元数据行。
+///
+/// 所以这里**不复制一份解析**，而是委派给 [`ClaudeCodeAdapter`] —— 与 hooks 域
+/// 「claude / codebuddy / qoder 共用 `CLAUDE_COMPAT_ENTRIES` 一张表」同一个判断：
+/// 同一种格式只允许有一份实现，否则两边会各自漂移（本 adapter 的历史缺陷正是如此：
+/// 它指向 `~/.qodercli/projects`，而 CLI 早就在写 `~/.qoder/projects`，于是 qoder
+/// 在 History 里**一条会话都没有**，标题自然也就无从谈起）。
+///
+/// 不支持原生 CLI 恢复（仅 TUI 内的 `/resume`），删除按存储单元（单个 jsonl）。
 pub struct QoderAdapter;
 
 impl AgentSessionAdapter for QoderAdapter {
@@ -24,210 +32,42 @@ impl AgentSessionAdapter for QoderAdapter {
     }
 
     fn session_root(&self) -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("~"))
-            .join(".qodercli")
-            .join("projects")
+        // 路径事实的唯一来源：`common::agent::descriptor`（同一行里也声明着 hook 配置根，
+        // 两处无法互相漂移）。
+        descriptor::transcript_root(self.agent_id())
     }
 
+    /// 与 Claude 同形：`projects/<sanitized>/<uuid>.jsonl`，嵌套仍需 `**/`。
     fn file_pattern(&self) -> &str {
-        "*.jsonl"
+        descriptor::file_pattern(self.agent_id())
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     fn parse_meta(&self, file_path: &Path) -> Result<ParsedMeta> {
-        let entries = read_jsonl(file_path)?;
-        let first = entries.first().context("Qoder session file is empty")?;
-
-        let native_session_id = first
-            .get("sessionId")
-            .or_else(|| first.get("session_id"))
-            .or_else(|| first.get("id"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                file_path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown")
-                    .to_string()
-            });
-
-        let title = first
-            .get("title")
-            .or_else(|| first.get("name"))
-            .or_else(|| first.get("description"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        let started_at = first
-            .get("timestamp")
-            .or_else(|| first.get("createdAt"))
-            .or_else(|| first.get("startedAt"))
-            .and_then(parse_timestamp)
-            .unwrap_or(0);
-
-        let updated_at = entries
-            .last()
-            .and_then(|e| e.get("timestamp"))
-            .or_else(|| entries.last().and_then(|e| e.get("time")))
-            .and_then(parse_timestamp)
-            .unwrap_or(started_at);
-
-        // 消息数：过滤 message/chat 类型的行
-        let message_count = entries
-            .iter()
-            .filter(|e| {
-                let entry_type = e.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                entry_type == "message"
-                    || entry_type == "chat"
-                    || entry_type == "user"
-                    || entry_type == "assistant"
-                    || e.get("role").is_some()
-            })
-            .count() as u32;
-
-        // 预览/首条用户消息：第一条用户消息（净化交给 manager）
-        let first_user_raw = entries
-            .iter()
-            .find(|e| {
-                e.get("role").and_then(|v| v.as_str()) == Some("user")
-                    || e.get("type").and_then(|v| v.as_str()) == Some("user")
-            })
-            .or_else(|| {
-                entries.iter().find(|e| {
-                    e.get("type").and_then(|v| v.as_str()) == Some("message")
-                        && e.get("role").and_then(|v| v.as_str()) == Some("user")
-                })
-            })
-            .and_then(|e| {
-                e.get("content")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| e.get("text").and_then(|v| v.as_str()))
-            })
-            .map(|s| s.to_string());
-
-        // 最近消息缓冲（剔除 harness 注入噪声），供 manager 构建预览
-        let recent_pairs: Vec<(String, String)> = entries
-            .iter()
-            .filter_map(|e| {
-                let role = e
-                    .get("role")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| e.get("type").and_then(|v| v.as_str()))
-                    .unwrap_or("user")
-                    .to_string();
-                let text = e
-                    .get("content")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| e.get("text").and_then(|v| v.as_str()))?;
-                let t = text.trim().to_string();
-                if t.is_empty() {
-                    return None;
-                }
-                Some((role, t))
-            })
-            .collect();
-        let recent_messages = recent_messages_from(recent_pairs);
-
-        // 项目路径：从文件路径推断
-        let project_path = file_path
-            .parent()
-            .and_then(|p| p.file_name())
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_string());
-
-        Ok(ParsedMeta {
-            native_session_id,
-            title,
-            first_user_message: first_user_raw,
-            recent_messages,
-            model: None,
-            started_at,
-            updated_at,
-            message_count,
-            project_path,
-        })
+        let meta = ClaudeCodeAdapter.parse_meta(file_path)?;
+        // 会话 id 必须是 uuid 文件名（会话恢复 / hook 归因 / 删除都靠它），
+        // 而 Claude 侧允许从 `mode` 行取 id —— Qoder 不写 `mode`，这里统一用文件名的
+        // 语义由 Claude 侧的文件名兜底分支保证；显式断言避免「取到别的字段」的静默错配。
+        anyhow::ensure!(
+            !meta.native_session_id.is_empty(),
+            "Qoder session file has no session id"
+        );
+        Ok(meta)
     }
 
     fn parse_messages(&self, file_path: &Path) -> Result<Vec<ParsedMessage>> {
-        let entries = read_jsonl(file_path)?;
-        let mut messages: Vec<ParsedMessage> = Vec::new();
-        let mut seq = 0u32;
-
-        for entry in &entries {
-            let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
-
-            // 跳过 context/tool 类型的行（这些没有 role）
-            if entry_type == "context" || entry_type == "tool_call" || entry_type == "tool_result" {
-                continue;
-            }
-
-            // 尝试从 role 或 type 确定角色
-            let role = match entry.get("role").and_then(|v| v.as_str()) {
-                Some(r) => r,
-                None => match entry_type {
-                    "user" | "chat" => "user",
-                    "assistant" | "ai" => "assistant",
-                    _ => continue,
-                },
-            };
-
-            let content = entry
-                .get("content")
-                .and_then(|v| v.as_str())
-                .or_else(|| entry.get("text").and_then(|v| v.as_str()))
-                .or_else(|| entry.get("message").and_then(|v| v.as_str()))
-                .unwrap_or("");
-
-            let cleaned = strip_ansi(content);
-            if cleaned.is_empty() {
-                continue;
-            }
-
-            let timestamp = entry
-                .get("timestamp")
-                .or_else(|| entry.get("time"))
-                .and_then(parse_timestamp)
-                .unwrap_or(0);
-
-            // 去重：如果上一条消息角色相同且时间接近，追加内容
-            if let Some(last) = messages.last_mut() {
-                if last.role == role && (timestamp == 0 || last.timestamp == timestamp) {
-                    last.content.push(' ');
-                    last.content.push_str(&cleaned);
-                    continue;
-                }
-            }
-
-            messages.push(ParsedMessage {
-                role: role.to_string(),
-                content: cleaned,
-                blocks: Vec::new(),
-                model: None,
-                timestamp,
-                seq,
-            });
-            seq += 1;
-        }
-
-        Ok(messages)
+        ClaudeCodeAdapter.parse_messages(file_path)
     }
 
     fn extract_session_id(&self, file_path: &Path) -> Option<String> {
-        file_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_string())
+        ClaudeCodeAdapter.extract_session_id(file_path)
     }
 
     fn resume_command(&self, _native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         None
     }
 
-    /// **不委派** `qoder --delete-session <index>`：它删的是 `~/.qoder/` 库，
-    /// 而 Neeko 读 `~/.qodercli/projects/` —— 委派会删错数据；且该命令按索引寻址，
-    /// 索引随删除漂移。所以这里删 Neeko 实际读取的那个 jsonl。
+    /// **不委派** `qoder --delete-session <index>`：它按索引寻址（删除后索引漂移），
+    /// 且目标库与 Neeko 读取的不是同一处。删 Neeko 实际读取的那个 jsonl。
     fn delete_support(&self) -> SessionDeleteSupport {
         SessionDeleteSupport::Storage
     }
@@ -238,79 +78,100 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// 与真实 Qoder 落盘同形（2026-11-10 取自 `~/.qoder/projects/<proj>/<uuid>.jsonl`）：
+    /// 头部是元数据行（无 message），随后是 Claude 同形的 user / assistant 行，
+    /// 主题来自 `ai-title` 行的 `aiTitle`。
     fn create_qoder_fixture(dir: &TempDir, name: &str) -> PathBuf {
         let path = dir.path().join(name);
-        let mut content = String::new();
-
-        // session info line
-        content.push_str(
-            r#"{"type":"session","sessionId":"qoder-session-001","title":"Debug database connection","timestamp":"2025-01-15T10:00:00Z"}"#,
+        let content = concat!(
+            r#"{"type":"workspace-directories","sessionId":"029cf86c-2e3e-4c07-a469-b447d411bc2e","directories":["/Users/tomgs/RustroverProjects/neeko"]}"#,
+            "\n",
+            r#"{"type":"runtime-config","sessionId":"029cf86c-2e3e-4c07-a469-b447d411bc2e","model":"qfmodel","timestamp":1790692897349}"#,
+            "\n",
+            r#"{"type":"worktree-state","sessionId":"029cf86c-2e3e-4c07-a469-b447d411bc2e","worktreeSession":null}"#,
+            "\n",
+            r#"{"type":"user","uuid":"u1","timestamp":"2026-09-29T14:41:42.319Z","message":{"role":"user","content":"帮我修一下登录跳转的竞态"},"cwd":"/Users/tomgs/RustroverProjects/neeko","sessionId":"029cf86c-2e3e-4c07-a469-b447d411bc2e"}"#,
+            "\n",
+            r#"{"type":"assistant","uuid":"a1","timestamp":"2026-09-29T14:42:25.952Z","message":{"role":"assistant","model":"qmodel_38max","content":[{"type":"text","text":"先看 SessionStore 的写入点"}]},"cwd":"/Users/tomgs/RustroverProjects/neeko"}"#,
+            "\n",
+            r#"{"type":"ai-title","sessionId":"029cf86c-2e3e-4c07-a469-b447d411bc2e","aiTitle":"修复登录跳转竞态"}"#,
+            "\n",
         );
-        content.push('\n');
-
-        // user message
-        content.push_str(
-            r#"{"type":"message","role":"user","content":"I'm having trouble connecting to the database","timestamp":"2025-01-15T10:00:01Z"}"#,
-        );
-        content.push('\n');
-
-        // assistant message
-        content.push_str(
-            r#"{"type":"message","role":"assistant","content":"Let me check your database configuration. Is the server running?","timestamp":"2025-01-15T10:00:02Z"}"#,
-        );
-        content.push('\n');
-
-        // context (should be skipped)
-        content.push_str(
-            r#"{"type":"context","content":"project context: web app with PostgreSQL","timestamp":"2025-01-15T10:00:00Z"}"#,
-        );
-        content.push('\n');
-
-        // user follow-up
-        content.push_str(
-            r#"{"type":"message","role":"user","content":"Yes, it's running but getting connection refused","timestamp":"2025-01-15T10:00:03Z"}"#,
-        );
-        content.push('\n');
-
         std::fs::write(&path, content).expect("Failed to write fixture");
         path
     }
 
     #[test]
-    fn should_parse_meta() {
-        let dir = TempDir::new().unwrap();
-        let path = create_qoder_fixture(&dir, "qoder-session.jsonl");
-        let adapter = QoderAdapter;
+    fn should_read_the_real_qoder_layout() {
+        let root = QoderAdapter.session_root();
+        assert!(
+            root.ends_with(".qoder/projects"),
+            "Qoder CLI 实际写在 ~/.qoder/projects（旧实现指向 ~/.qodercli/projects，扫到 0 条）：{root:?}"
+        );
+        assert_eq!(QoderAdapter.file_pattern(), "**/*.jsonl");
+    }
 
-        let meta = adapter.parse_meta(&path).unwrap();
-        assert_eq!(meta.native_session_id, "qoder-session-001");
-        assert_eq!(meta.title.as_deref(), Some("Debug database connection"));
-        assert_eq!(meta.message_count, 3); // only user/assistant, not context
-        assert!(meta
-            .recent_messages
-            .iter()
-            .any(|(_, t)| t.contains("database")));
+    /// 标题优先取 CLI 自己的 `aiTitle`，退化为首条用户消息 —— 与 Claude 同一条阶梯。
+    #[test]
+    fn should_parse_meta_with_the_cli_title() {
+        let dir = TempDir::new().unwrap();
+        let path = create_qoder_fixture(&dir, "029cf86c-2e3e-4c07-a469-b447d411bc2e.jsonl");
+        let meta = QoderAdapter.parse_meta(&path).unwrap();
+
+        assert_eq!(
+            meta.native_session_id,
+            "029cf86c-2e3e-4c07-a469-b447d411bc2e"
+        );
+        assert_eq!(meta.title.as_deref(), Some("修复登录跳转竞态"));
+        assert_eq!(meta.message_count, 2);
+        assert_eq!(
+            meta.project_path.as_deref(),
+            Some("/Users/tomgs/RustroverProjects/neeko")
+        );
+        assert_eq!(meta.started_at, 1_790_692_902_319);
     }
 
     #[test]
-    fn should_parse_messages() {
+    fn should_parse_messages_and_skip_metadata_rows() {
         let dir = TempDir::new().unwrap();
-        let path = create_qoder_fixture(&dir, "qoder-session.jsonl");
-        let adapter = QoderAdapter;
+        let path = create_qoder_fixture(&dir, "029cf86c-2e3e-4c07-a469-b447d411bc2e.jsonl");
+        let messages = QoderAdapter.parse_messages(&path).unwrap();
 
-        let messages = adapter.parse_messages(&path).unwrap();
-        assert_eq!(messages.len(), 3);
+        assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "user");
-        assert!(messages[0].content.contains("database"));
+        assert!(messages[0].content.contains("登录跳转"));
         assert_eq!(messages[1].role, "assistant");
-        assert_eq!(messages[2].role, "user");
-        assert!(messages[2].content.contains("connection refused"));
+    }
+
+    /// 首条 user 若是 harness 注入（`<local-command-caveat>` 等），标题必须顺延到
+    /// 下一条真实发言 —— 否则侧栏会显示一串注入文本（实测 Claude 侧出现过 11 条）。
+    #[test]
+    fn should_skip_harness_injected_first_turn() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("s.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"type":"user","timestamp":"2026-09-29T14:41:42.319Z","message":{"role":"user","content":"<local-command-caveat>Caveat: The messages below were generated by the user…</local-command-caveat>"}}"#,
+                "\n",
+                r#"{"type":"user","timestamp":"2026-09-29T14:41:50.000Z","message":{"role":"user","content":"真实的问题：登录页跳转偶发 404"}}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+
+        let meta = QoderAdapter.parse_meta(&path).unwrap();
+        assert_eq!(
+            meta.first_user_message.as_deref(),
+            Some("真实的问题：登录页跳转偶发 404")
+        );
     }
 
     #[test]
     fn should_resume_command_return_none() {
-        let cmd = QoderAdapter.resume_command("test-id", "/projects/test");
-        assert!(cmd.is_none());
+        assert!(QoderAdapter
+            .resume_command("test-id", "/projects/test")
+            .is_none());
     }
 
     #[test]
@@ -318,8 +179,6 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("empty.jsonl");
         std::fs::write(&path, "").expect("Failed to write");
-
-        let result = QoderAdapter.parse_meta(&path);
-        assert!(result.is_err());
+        assert!(QoderAdapter.parse_meta(&path).is_err());
     }
 }

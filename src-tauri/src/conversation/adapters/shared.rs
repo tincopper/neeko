@@ -26,6 +26,19 @@ pub(crate) fn saturating_count(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
+/// 反解 Claude 系的项目目录编码（`/Users/me/proj` ⇄ `-Users-me-proj`）。
+///
+/// 只用于**没有 `cwd` 行**的旧转录：真实路径优先。Claude 系（claude / qoder /
+/// codebuddy）用同一条编码规则，因此实现只有这一份 —— 各 adapter 抄一遍的后果是
+/// 「改一处、另一处继续反解错路径」。
+pub(crate) fn unsanitize_project_dir(sanitized: &str) -> String {
+    if sanitized.starts_with('-') {
+        sanitized.replacen('-', "/", 1).replace('-', "/")
+    } else {
+        format!("/{}", sanitized.replace('-', "/"))
+    }
+}
+
 /// 解析常见时间戳格式为 Unix 毫秒时间戳
 ///
 /// 支持：

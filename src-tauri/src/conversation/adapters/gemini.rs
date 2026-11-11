@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+use crate::common::agent::descriptor;
 use crate::conversation::adapter::{
     AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
 };
@@ -23,14 +24,13 @@ impl AgentSessionAdapter for GeminiAdapter {
     }
 
     fn session_root(&self) -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("~"))
-            .join(".gemini")
-            .join("tmp")
+        // 路径事实的唯一来源：`common::agent::descriptor`（同一行里也声明着 hook 配置根，
+        // 两处无法互相漂移）。
+        descriptor::transcript_root(self.agent_id())
     }
 
     fn file_pattern(&self) -> &str {
-        "*.json"
+        descriptor::file_pattern(self.agent_id())
     }
 
     #[allow(clippy::cast_possible_truncation)]

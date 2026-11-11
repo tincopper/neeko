@@ -8,6 +8,7 @@ use std::time::SystemTime;
 use anyhow::{Context, Result};
 use regex::Regex;
 
+use crate::common::agent::descriptor;
 use crate::conversation::adapter::{
     AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
 };
@@ -101,11 +102,13 @@ impl AgentSessionAdapter for CodexAdapter {
     }
 
     fn session_root(&self) -> PathBuf {
-        codex_home_dir().join("sessions")
+        // 路径事实的唯一来源：`common::agent::descriptor`（同一行里也声明着 hook 配置根，
+        // 两处无法互相漂移）。
+        descriptor::transcript_root(self.agent_id())
     }
 
     fn file_pattern(&self) -> &str {
-        "rollout-*.jsonl"
+        descriptor::file_pattern(self.agent_id())
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -589,19 +592,6 @@ fn collect_chat_text_pairs(entries: &[serde_json::Value]) -> Vec<(String, String
     }
 
     pairs
-}
-
-/// Codex home: `$CODEX_HOME` when set, else `~/.codex`.
-fn codex_home_dir() -> PathBuf {
-    if let Ok(home) = std::env::var("CODEX_HOME") {
-        let trimmed = home.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
-        }
-    }
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("~"))
-        .join(".codex")
 }
 
 /// Walk up from a rollout path to the parent of a `sessions` directory (= codex home).

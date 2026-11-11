@@ -28,6 +28,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
+use crate::common::agent::descriptor;
 use crate::conversation::adapter::{
     AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
 };
@@ -70,20 +71,6 @@ pub(crate) fn is_main_reasonix_session(file_path: &Path) -> bool {
     comps.contains(&"sessions")
 }
 
-/// Best-effort reverse of path sanitization (`/` → `-`, leading `/` dropped).
-fn unsanitize_project_dir(name: &str) -> Option<String> {
-    if name.is_empty() {
-        return None;
-    }
-    // Common pattern: `-Users-tomgs-RustroverProjects-neeko` → `/Users/tomgs/...`
-    if name.starts_with('-') {
-        let restored = name.replacen('-', "/", 1).replace('-', "/");
-        // Over-replaces hyphens inside folder names; acceptable best-effort for filter/display.
-        return Some(restored);
-    }
-    Some(name.replace('-', "/"))
-}
-
 fn project_path_from_file(file_path: &Path) -> Option<String> {
     // .../projects/<sanitized>/sessions/<file>
     let mut comps: Vec<&std::ffi::OsStr> = file_path.iter().collect();
@@ -95,7 +82,13 @@ fn project_path_from_file(file_path: &Path) -> Option<String> {
         comps.pop();
     }
     let sanitized = comps.last()?.to_str()?;
-    unsanitize_project_dir(sanitized)
+    if sanitized.is_empty() {
+        return None;
+    }
+    // 编码规则与 claude / qoder / codebuddy 同一条：实现只有一份（`shared`）。
+    Some(crate::conversation::adapters::unsanitize_project_dir(
+        sanitized,
+    ))
 }
 
 fn meta_path_for(jsonl: &Path) -> PathBuf {
@@ -264,10 +257,9 @@ impl AgentSessionAdapter for ReasonixAdapter {
     }
 
     fn session_root(&self) -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("~"))
-            .join(".reasonix")
-            .join("projects")
+        // 路径事实的唯一来源：`common::agent::descriptor`（同一行里也声明着 hook 配置根，
+        // 两处无法互相漂移）。
+        descriptor::transcript_root(self.agent_id())
     }
 
     fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<std::path::PathBuf>> {
@@ -279,8 +271,7 @@ impl AgentSessionAdapter for ReasonixAdapter {
     }
 
     fn file_pattern(&self) -> &str {
-        // Nested under projects/<sanitized>/sessions/
-        "**/sessions/*.jsonl"
+        descriptor::file_pattern(self.agent_id())
     }
 
     #[allow(clippy::cast_possible_truncation)]

@@ -15,6 +15,8 @@
 # templates_gate_child_sessions_at_a_single_registration_point on windows-latest).
 # Red line 11: assertions may read text content, never the checkout's line endings.
 src-tauri/src/agent/hooks/templates/* text eol=lf
+# 真实样本夹具（include_str! 进测试）：跨行内容断言要求 LF，Windows checkout 落 CRLF 会让探针挂
+src-tauri/src/conversation/adapters/fixtures/* text eol=lf
 src-tauri/src/**/*.rs text eol=lf
 src-tauri/src/browser/picker_script.js text eol=lf
 src/shared/events.ts text eol=lf

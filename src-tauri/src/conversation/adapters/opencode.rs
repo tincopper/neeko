@@ -14,6 +14,7 @@ use anyhow::{Context, Result};
 use self::common::{matches_db_pattern, split_synthetic_path, SYNTHETIC_SEP};
 use self::store::Store;
 use self::v1::{parse_messages_v1, parse_opencode_db, parse_opencode_session};
+use crate::common::agent::descriptor;
 use crate::conversation::adapter::{
     AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
 };
@@ -25,9 +26,6 @@ mod v2;
 
 #[cfg(test)]
 mod tests;
-
-/// Pattern for OpenCode SQLite database filenames
-const DB_PATTERN: &str = "opencode*.db";
 
 /// SQLite 侧文件：WAL 模式下的提交先落在这里（参与扫描指纹）。
 const SQLITE_SIDECARS: &[&str] = &["-wal"];
@@ -48,27 +46,13 @@ impl AgentSessionAdapter for OpenCodeAdapter {
     }
 
     fn session_root(&self) -> PathBuf {
-        // OpenCode uses XDG ~/.local/share/opencode/ on all platforms
-        // (including macOS and Windows) via the xdg-basedir npm package.
-        // Override: OPENCODE_CONFIG_DIR env var.
-        if let Ok(dir) = std::env::var("OPENCODE_CONFIG_DIR") {
-            let trimmed = dir.trim().to_string();
-            if !trimmed.is_empty() {
-                let path = PathBuf::from(&trimmed);
-                if path.is_absolute() {
-                    return path;
-                }
-            }
-        }
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("~"))
-            .join(".local")
-            .join("share")
-            .join("opencode")
+        // 路径事实的唯一来源：`common::agent::descriptor`（同一行里也声明着 hook 配置根，
+        // 两处无法互相漂移）。
+        descriptor::transcript_root(self.agent_id())
     }
 
     fn file_pattern(&self) -> &str {
-        DB_PATTERN
+        descriptor::file_pattern(self.agent_id())
     }
 
     fn parse_all_metas(&self) -> Option<Result<Vec<(ParsedMeta, PathBuf)>>> {

@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 
+use crate::common::agent::descriptor;
 use crate::conversation::adapter::{
     AgentSessionAdapter, ParsedMessage, ParsedMeta, SessionDeleteSupport,
 };
@@ -73,14 +74,11 @@ impl AgentSessionAdapter for OmpAdapter {
     }
 
     fn session_root(&self) -> PathBuf {
+        // 测试可注入根（夹具）；生产走 descriptor —— 路径事实不在这里再写一遍。
         if let Some(root) = &self.root_override {
             return root.clone();
         }
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("~"))
-            .join(".omp")
-            .join("agent")
-            .join("sessions")
+        descriptor::transcript_root(self.agent_id())
     }
 
     fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<std::path::PathBuf>> {
@@ -92,8 +90,7 @@ impl AgentSessionAdapter for OmpAdapter {
     }
 
     fn file_pattern(&self) -> &str {
-        // Basename-only; Manager prefixes `**/`. Main-session depth filter in parse_meta.
-        "*.jsonl"
+        descriptor::file_pattern(self.agent_id())
     }
 
     #[allow(clippy::cast_possible_truncation)]
