@@ -570,3 +570,25 @@ The watcher event source became a composition-root construction parameter, so se
 ### Status
 
 [OK] **Completed**
+
+
+## Session 453: fileless sub-session gate for agent hook status
+<!-- trellis-session: v=2 fp=c79c937a538c2549 -->
+
+**Date**: 2026-11-11
+**Task**: fileless sub-session gate for agent hook status
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d9d839dc` | docs(spec): record the fileless child-session gate |
+
+### Status
+
+[OK] **Completed**
