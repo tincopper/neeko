@@ -534,3 +534,39 @@ Attribution became a first-class field of the watcher event port; un-keyed queri
 
 - Watch the Windows backend-test job: declaring_two_units_mounts_both should stay green
 - Consider giving src-tauri/Cargo.toml profile.dev tweak its own commit (left uncommitted)
+
+
+## Session 450: Service-layer suites without OS watchers
+<!-- trellis-session: v=2 fp=ba85a266486ff13c -->
+
+**Date**: 2026-11-11
+**Task**: Service-layer suites without OS watchers
+**Branch**: `main`
+
+### Summary
+
+The watcher event source became a composition-root construction parameter, so service-layer tests stop creating kernel streams they never assert on.
+
+### Main Changes
+
+- Extracted AppStateWrapper::assemble; production and test-only constructors differ only in the injected WatcherManager
+- WatcherManager::without_real_fs raised to pub(crate) (still cfg(test)) so the shared fixture can inject it
+- common/testing: isolated_storage helper + isolated_state_without_os_watch / plain_project_state_without_os_watch
+- git/services/status.rs switched to the no-OS fixture; no assertion changed
+- Spec: recorded the seam in the injection-seam table of real-source-determinism.md
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `783793a6` | test(watcher): run the service-layer suites without OS watchers |
+
+### Testing
+
+- [OK] cargo test --lib -- git::services: 17 passed in 0.31s (was ~18-23s)
+- [OK] cargo test --lib -- common::file::watcher: 143 passed
+- [OK] pnpm check:quick + clippy --all-targets: green
+
+### Status
+
+[OK] **Completed**
