@@ -875,6 +875,20 @@ Conversations 面板支持删除历史会话：Native 委派 CLI（codex --force
 ### Main Changes
 
 - conversation/adapter.rs 三态 SessionDeleteSupport + delete_command/delete_targets；manager.delete 执行链与路径防线；delete_conversation 薄命令；ConversationMeta.deleteSupport；ConversationItem 删除入口 + useConversationDeleteAction 编排 + confirmStore 复用；ConfirmDialog 确认按钮只调 onConfirm
+## Session 392: Work items MVP: Local provider, Tasks panel, run-single
+<!-- trellis-session: v=2 fp=a92dbfb43aa70f05 -->
+
+**Date**: 2026-11-03
+**Task**: Work items MVP: Local provider, Tasks panel, run-single
+**Branch**: `multi-agent`
+
+### Summary
+
+统一任务中心的 MVP 前半：后端 work_items 域（v18 建表 + 8 条薄命令）、前端 store/hooks/面板（Board/List/详情/快捷键/右键移动/撤销/执行区）、run-single 链路，以及跨栈契约进 spec。
+
+### Main Changes
+
+- Rust: src-tauri/src/work_items/**, 迁移 v17→v18, lib.rs/app_state.rs 接线; FE: features/work-items/**, dock 接线, terminal port 返回 tab id; spec: work-items-domain.md + state-management 异步纪律
 
 ### Git Commits
 
@@ -886,6 +900,19 @@ Conversations 面板支持删除历史会话：Native 委派 CLI（codex --force
 ### Testing
 
 - [OK] cargo test --lib 2360 passed；vitest 相关套件 3010 passed；check:quick 35/35；真机验收 pi / claude-code / omp / codex 四条删除路径
+| `6ae67611` | refactor(terminal): return the created tab id from createTaskTerminal |
+| `2fb4d532` | feat(work-items): add the work item store and IPC layer |
+| `7e7ca0ae` | feat(work-items): add the Tasks panel with board, list and detail views |
+| `fae1ff01` | feat(work-items): expose the Tasks panel in the dock |
+| `c5492a14` | chore(lint): register work-items in the import firewall |
+| `752993cb` | test(work-items): pin coverage floors for the new modules |
+| `6122a2c1` | docs(work-items): settle the MVP scope and the execution ladder |
+| `08a888ff` | docs(agent-team): hand the declarative flow executor over to work items |
+| `5ceae855` | docs(spec): capture the work items domain and store contracts |
+
+### Testing
+
+- [OK] cargo test 全绿（59 work_item）; vitest 全量 6643 passed / 723 files; pnpm check 38/39（test_fe 撞 300s 预算，实测 381s，预算问题非代码问题）
 
 ### Status
 
@@ -974,6 +1001,23 @@ PiRpcAdapter 实现 resume/supports_chat_resume，前端入口按 chat 侧能力
 ### Main Changes
 
 - 无代码改动（仅任务产物 AC 勾验与复核记录）
+- provider-github-pr（MVP 最后一块）; 另需独立处理 test_fe 300s 预算
+
+
+## Session 399: Work items MVP complete: GitHub PR provider + test_env hygiene
+<!-- trellis-session: v=2 fp=79f28a4e3e8065b8 -->
+
+**Date**: 2026-11-03
+**Task**: Work items MVP complete: GitHub PR provider + test_env hygiene
+**Branch**: `multi-agent`
+
+### Summary
+
+GitHub PR 作为第二个（只读）provider 落地：TaskItem 视图模型不污染 DTO、PR 状态按语义映射到 Review/Done、开关默认关且 gh 不可用时给行内原因；8 个无 DOM 测试迁到 node 环境；maxWorkers 二次实测证明 6↔10 无收益并写回 spec。MVP 3/3 完成。
+
+### Main Changes
+
+- FE: features/work-items/{viewModel,providers,hooks,components,utils}/** + dock wrapper；spec: frontend-testing 记录 maxWorkers 实测；docs: implement.md 进度与剩余范围
 
 ### Git Commits
 
@@ -985,6 +1029,13 @@ PiRpcAdapter 实现 resume/supports_chat_resume，前端入口按 chat 侧能力
 ### Testing
 
 - [OK] cargo test --lib 2391 passed；真机 opencode 库探针（跑完删除）
+| `47c4b8cf` | feat(work-items): surface GitHub pull requests as a read-only provider |
+| `9486b8e8` | test(work-items): run DOM-free tests in the node environment |
+| `28de1b18` | docs(work-items): record the provider milestone and what is left |
+
+### Testing
+
+- [OK] pnpm check 39/39 通过（test_fe 166.7s）；全量 vitest 728 文件 / 6689 测试绿；pnpm check:quick 通过
 
 ### Status
 
@@ -1174,6 +1225,15 @@ Turned the execution address into the single identity for agent-chat and session
 **Date**: 2026-11-02
 **Task**: live-sessions 复审收敛：DB 版本回滚、通知收尾上提、删除编排入组合根、键盘拖拽声明与实现一致
 **Branch**: `main`
+- 剩余属后续里程碑：GitHub Issue、GitLab、Linear/Jira、Integrations 页、run-team/run-flow、PR 写操作；test_fe 预算（300s vs 实测 154-167s）待决策
+
+
+## Session 400: Tasks 面板岛屿布局重构（design §4.2b）
+<!-- trellis-session: v=2 fp=b9cb0b5dd103b055 -->
+
+**Date**: 2026-11-03
+**Task**: Tasks 面板岛屿布局重构（design §4.2b）
+**Branch**: `multi-agent`
 
 ### Summary
 
@@ -1182,6 +1242,9 @@ Session summary was not supplied.
 ### Git Commits
 
 (No commits - planning session)
+| Hash | Message |
+|------|---------|
+| `8b9f14ba` | chore: record journal |
 
 ### Status
 
@@ -1404,6 +1467,16 @@ Session summary was not supplied.
 ### Main Changes
 
 - shared/dock（types/viewKey/placement/panelMeta 能力位）+ dockStore v6（migrate/sanitize）+ DockBarDnd 两栏单 DndContext + editorStore.dockTab 原子迁移 + features/dock-tabs 宿主复用 EditorGroupPane(chrome=dock) + app 层 tabSurfacePolicy 单槽注册表 + useDockBarOpenTab 委派 useActivateSession
+## Session 402: Tasks 只占中间区 + 左侧 Projects 打开本项目 Tasks
+<!-- trellis-session: v=2 fp=3683b27c01da6f42 -->
+
+**Date**: 2026-11-04
+**Task**: Tasks 只占中间区 + 左侧 Projects 打开本项目 Tasks
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
 
 ### Git Commits
 
@@ -1417,6 +1490,7 @@ Session summary was not supplied.
 ### Testing
 
 - [OK] pnpm check:quick 全绿（pre-commit 13/12 条栏杆）；聚焦用例 8 文件 157 例；三处修复的红证据各已复现（禁用即失败）
+| `83659c55` | chore: record journal |
 
 ### Status
 
@@ -1633,6 +1707,17 @@ P4–P6 以两个英文提交落地：中心区形态不再数 tab 注册表；d
 - fix(dock): keep the guide page when a tab docks right（hasCenterTabs + ProjectView）
 - fix(dock): derive dock zone visibility from content（zone.ts 单一派生点 / 布局按内容收起 / 宿主零布局写入 / 揭示走 app 层计数）
 
+## Session 403: Tasks 内容区改为一座内容岛承接所有状态
+<!-- trellis-session: v=2 fp=69e3e4455060d7e1 -->
+
+**Date**: 2026-11-04
+**Task**: Tasks 内容区改为一座内容岛承接所有状态
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
 ### Git Commits
 
 | Hash | Message |
@@ -1643,6 +1728,7 @@ P4–P6 以两个英文提交落地：中心区形态不再数 tab 注册表；d
 ### Testing
 
 - [OK] 每条提交的 pre-commit 门禁绿（护栏 + tsc + commitlint）
+| `6517174c` | chore: record journal |
 
 ### Status
 
@@ -1660,6 +1746,101 @@ P4–P6 以两个英文提交落地：中心区形态不再数 tab 注册表；d
 **Task**: git status 可观测性：C1/C2/C4 落地（读与挂载解耦、排他移除、热集合 reconcile）
 **Branch**: `main`
 
+## Session 404: Tasks 面板层级修正：一座主岛承载 header+content
+<!-- trellis-session: v=2 fp=5f986ae7c2ede7d4 -->
+
+**Date**: 2026-11-04
+**Task**: Tasks 面板层级修正：一座主岛承载 header+content
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fb11b5a5` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 405: Tasks 岛屿可见性根因：缺海面 + 同色叠同色
+<!-- trellis-session: v=2 fp=bd8afc4ead7e4101 -->
+
+**Date**: 2026-11-04
+**Task**: Tasks 岛屿可见性根因：缺海面 + 同色叠同色
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b112a524` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 412: 中心视图几何统一到 CenterViewFrame
+<!-- trellis-session: v=2 fp=a34d5357dd83210b -->
+
+**Date**: 2026-11-04
+**Task**: 中心视图几何统一到 CenterViewFrame
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d273c146` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 413: Tasks 表面阶梯适配主题（卡片/header/空态）
+<!-- trellis-session: v=2 fp=e3477ae5e175f3ca -->
+
+**Date**: 2026-11-04
+**Task**: Tasks 表面阶梯适配主题（卡片/header/空态）
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e6572a2a` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 417: 内容卡片岛同源几何 + 呼吸感
+<!-- trellis-session: v=2 fp=0303a792ab995c4e -->
+
+**Date**: 2026-11-05
+**Task**: 内容卡片岛同源几何 + 呼吸感
+**Branch**: `multi-agent`
+
 ### Summary
 
 Session summary was not supplied.
@@ -1669,6 +1850,7 @@ Session summary was not supplied.
 | Hash | Message |
 |------|---------|
 | `a9aec393` | refactor(git): make the hot set the only mount declaration |
+| `7de84ce5` | chore: record journal |
 
 ### Status
 
@@ -1681,6 +1863,12 @@ Session summary was not supplied.
 **Date**: 2026-11-05
 **Task**: git status 可观测性收官：C3 日志降噪（76% 噪声源）+ 决策登记
 **Branch**: `main`
+## Session 418: 参考图落地：列变圆角块 + 卡片自适配底层
+<!-- trellis-session: v=2 fp=2c647ebf884ee538 -->
+
+**Date**: 2026-11-05
+**Task**: 参考图落地：列变圆角块 + 卡片自适配底层
+**Branch**: `multi-agent`
 
 ### Summary
 
@@ -1691,6 +1879,7 @@ Session summary was not supplied.
 | Hash | Message |
 |------|---------|
 | `cd731b40` | fix(logger): keep third-party traversal noise out of the log file |
+| `64375892` | chore: record journal |
 
 ### Status
 
@@ -1703,6 +1892,12 @@ Session summary was not supplied.
 **Date**: 2026-11-05
 **Task**: git status：切项目后 Changes 冻结的修复（号段不得回退）
 **Branch**: `main`
+## Session 419: Tasks 工具栏优化：三分区 + lucide 图标 + 搜索清空
+<!-- trellis-session: v=2 fp=ec71307fa1f7c39c -->
+
+**Date**: 2026-11-05
+**Task**: Tasks 工具栏优化：三分区 + lucide 图标 + 搜索清空
+**Branch**: `multi-agent`
 
 ### Summary
 
@@ -1713,6 +1908,7 @@ Session summary was not supplied.
 | Hash | Message |
 |------|---------|
 | `efe9045b` | fix(git): release must never move a version floor backwards |
+| `d086955e` | chore: record journal |
 
 ### Status
 
@@ -1725,6 +1921,12 @@ Session summary was not supplied.
 **Date**: 2026-11-06
 **Task**: config owner 审查修复：原子投影 / 公开面收口 / 可见性门控
 **Branch**: `main`
+## Session 420: Tasks 面板：圆角块/工具栏/英文文案 + check 复审修 4 类缺陷
+<!-- trellis-session: v=2 fp=874f07e7cf44f958 -->
+
+**Date**: 2026-11-05
+**Task**: Tasks 面板：圆角块/工具栏/英文文案 + check 复审修 4 类缺陷
+**Branch**: `multi-agent`
 
 ### Summary
 
@@ -1759,6 +1961,181 @@ Session summary was not supplied.
 - `check_config_owner_singleton` 自测 12/12；真实仓库扫描 owner 1 / 主题写入 2 / bridge 1。
 - 未提交代码（按规范），待用户决定 commit 时机。
 
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `98554a06` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 421: 表面层叠判据改为自动发现（堵住三次同型事故的结构盲区）
+<!-- trellis-session: v=2 fp=84ebcecd0092d158 -->
+
+**Date**: 2026-11-05
+**Task**: 表面层叠判据改为自动发现（堵住三次同型事故的结构盲区）
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2cc58c64` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 438: Agent Team：分配 flow 图 + persona 角色库（v19）
+<!-- trellis-session: v=2 fp=4a94c6d5bde75653 -->
+
+**Date**: 2026-11-07
+**Task**: Agent Team：分配 flow 图 + persona 角色库（v19）
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `913717c4` | docs(spec): record center frame, surface layering and copy language rules |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 439: Agent Team：列表优先导航重排 + 成员位角色预设（v20）+ 品牌图标
+<!-- trellis-session: v=2 fp=4fbc807d17d09b86 -->
+
+**Date**: 2026-11-08
+**Task**: Agent Team：列表优先导航重排 + 成员位角色预设（v20）+ 品牌图标
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `85fcc506` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 440: Team：看板/分配图中央 tab（team-board kind）+ 岛屿底色 + role_hints 预设落实现
+<!-- trellis-session: v=2 fp=93fd2238ea05ea60 -->
+
+**Date**: 2026-11-08
+**Task**: Team：看板/分配图中央 tab（team-board kind）+ 岛屿底色 + role_hints 预设落实现
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5677c6ba` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 441: Team：清单跟随项目（project_id 过滤，v20）
+<!-- trellis-session: v=2 fp=4c9d33b438f1e996 -->
+
+**Date**: 2026-11-08
+**Task**: Team：清单跟随项目（project_id 过滤，v20）
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `47723ecf` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 445: Team：历史会话冷缓存兜底 + 已退出成员可查看记录（v21）
+<!-- trellis-session: v=2 fp=ffdc05ea0b4a2998 -->
+
+**Date**: 2026-11-09
+**Task**: Team：历史会话冷缓存兜底 + 已退出成员可查看记录（v21）
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0a253899` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 446: Team：任务详情 tab 修复 + 队长先规划按角色配人 + flow 三层关系
+<!-- trellis-session: v=2 fp=a89708d3ae12e642 -->
+
+**Date**: 2026-11-09
+**Task**: Team：任务详情 tab 修复 + 队长先规划按角色配人 + flow 三层关系
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `61a3263e` | chore: record journal |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 447: 修复 neeko-check 审核问题：5 个功能 bug + 身份口径统一 + 测试补齐
+<!-- trellis-session: v=2 fp=a6390d9c93d32390 -->
+
+**Date**: 2026-11-10
+**Task**: 修复 neeko-check 审核问题：5 个功能 bug + 身份口径统一 + 测试补齐
+**Branch**: `multi-agent`
+
+### Summary
+
+Session summary was not supplied.
 
 ### Git Commits
 

@@ -11,4 +11,5 @@ export * from './skill';
 export * from './split';
 export * from './tab';
 export * from './task';
+export * from './team';
 export * from './terminal';

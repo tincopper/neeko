@@ -145,11 +145,17 @@ fn on_setup(app: &tauri::App) {
     // 见 agent/hooks/install/config/settings.rs）。读盘失败时传 `Null` = 「无覆盖项」→ 各 CLI 跟随主开关，
     // 与「成功但无该键」的退化行为一致；失败本身已由 `best_effort` 记 warn。
     //
-    // 消费者表在本层装配（不是 agent 域里硬编码引用）：通知域 + live-sessions 注册表。
-    // 新增消费者 = 在自己的域里写投影 + 在这里加一行 —— ingest 层不知道谁在消费。
+    // 消费者表在本层装配（不是 agent 域里硬编码引用）：通知域 + live-sessions 注册表 +
+    // 团队观察者。新增消费者 = 在自己的域里写投影 + 在这里加一行 —— ingest 层不知道谁在消费。
+    //
+    // 团队观察者是这条广播的第三个 sink，**不是**一个单独的注入槽：`deliver::observe` 的签名
+    // `(&AppHandle, &str, &HookEvent)` 与 `HookSink` 天然对齐，函数指针直接进表即可。
+    // 三条 sink 由 `via_blocking_pool` 在**同一次**阻塞任务里按序投递（红线 3）。
+    // 排最后 = 通知与 live-sessions 的既有投递顺序不变。
     let hook_sinks = vec![
         crate::agent::hooks::ingest::dispatch::notification_sink(),
         crate::live_sessions::wiring::hooks::sink(),
+        std::sync::Arc::new(crate::agent::team::deliver::observe),
     ];
     let http_handle = crate::agent::hooks::boot::boot(
         app.handle().clone(),
@@ -162,6 +168,44 @@ fn on_setup(app: &tauri::App) {
     if let Some(handle) = http_handle {
         state.set_http_server(handle);
     }
+
+    // 团队域的前端事件端口（失效脉冲）：**在端点 boot 之前**绑定。
+    //
+    // 顺序不是风格问题：端点一起，成员进程就可能开始写团队状态，而写路径靠 `WriteGuard::drop`
+    // 里的端口发脉冲 —— 晚绑定一次，那段时间内的变化就永远不会被面板看到（面板没有别的
+    // 自愈机制，只有「下一次写」）。晚绑定本身存在的理由是 hydrate：启动期从库重建内存镜像时
+    // 还没有窗口在听，那一刻的写不该发事件（见 `TeamManager::set_notifier` 的文档）。
+    state
+        .team_manager
+        .set_notifier(Arc::new(super::team_notifier::TauriTeamNotifier::new(
+            app.handle().clone(),
+        )));
+
+    // 团队 MCP 端点：与 hooks 分开的**独立 loopback listener**（design §3.1b —— 共用一个
+    // 端口会让成员 token 能 `POST /hook/{source}` 伪造队友上报）。起不来只记日志：
+    // 团队功能不可用，但 hooks 那条常开路径与整个应用不该跟着受影响。
+    // 执行者：`team_spawn` 的决策层回 `MemberCreated` 之后，由它起 PTY（两相位的执行一半）。
+    let executor: Arc<dyn crate::agent::team::MemberExecutor> = Arc::new(
+        super::team_executor::PtyMemberExecutor::new(app.handle().clone()),
+    );
+    match crate::agent::team::boot_endpoint(&state.runtime, &state.team_manager, executor) {
+        Ok(server) => {
+            log::info!("[agent-team] mcp endpoint at {}", server.endpoint_url());
+            state.set_team_server(server);
+        }
+        Err(err) => log::warn!("[agent-team] boot mcp endpoint failed: {err}"),
+    }
+
+    // 租约回收器：**时间推移本身就是输入**（AC3）。与端点分开启动 —— 端点可能起不来，
+    // 而租约与 MCP 面无关：成员进程死了，任务该回收就回收。
+    // 不依赖端点还有第二个理由：`team_wait` 的阻塞发生在 MCP 工具调用里，而它等的那个
+    // 「成员死了」信号正是由这里产生的（惰性 sweep 在没人调命令时永远不会触发）。
+    let reaper = crate::agent::team::TeamReaper::start(
+        state.runtime.clone(),
+        state.team_manager.clone(),
+        crate::agent::team::REAP_INTERVAL,
+    );
+    state.set_team_reaper(reaper);
 }
 
 /// 注入主窗口句柄：菜单/事件统一从 AppState 取，避免运行时查找依赖 Tauri 内部
@@ -184,5 +228,92 @@ fn best_effort<T, E: std::fmt::Display>(step: &str, result: Result<T, E>) -> Opt
             log::warn!("[boot] {step} failed: {e}");
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::common::testing::{enclosed_body, strip_line_comments};
+
+    /// **接线判据**：团队观察者是 hook 端点的**第三个 sink**。
+    ///
+    /// # 为什么只能读源码
+    ///
+    /// 这条边就是「谁接到谁」本身。把它换成 no-op 之后，两端的行为测试**全绿**：
+    /// hooks 侧证明「sink 被调用」（它注入自己的闭包）、团队侧证明「喂一条事件就
+    /// 推进成员」（它直接调 `observe_in`）—— 各自的接缝都写着 observe，唯独**组合根**
+    /// 那几行没人看。2026-11-03 的独立审计正是这样做的：把闭包体换成 `{}`，
+    /// 2761 条测试一条不红。
+    ///
+    /// 所以判据落在两处，缺一不可：
+    ///
+    /// 1. `hook_sinks` 表里出现 `crate::agent::team::deliver::observe`
+    ///    （空壳、别的 `observe`、被注释掉的调用都过不去 —— 注释先被剥掉）；
+    /// 2. 同一个值出现在 `hooks::boot::boot(…)` 的**实参表**里 —— 表写得再对，
+    ///    没交给端点等于没接。
+    ///
+    /// `concat!` 是必需的：`include_str!` 会把本用例自己也读进来，裸字面量会匹配到断言本身。
+    #[test]
+    fn the_team_observer_is_a_hook_sink() {
+        let source = strip_line_comments(include_str!("boot.rs"));
+
+        // ① 消费者表必须真的包含团队投递入口（函数指针与 `HookSink` 签名天然对齐）。
+        let anchor = concat!("let hook_", "sinks = vec![");
+        let at = source
+            .find(anchor)
+            .unwrap_or_else(|| panic!("boot.rs 里找不到 `{anchor}`：消费者表没了"));
+        let open = at
+            + source[at..]
+                .find('[')
+                .unwrap_or_else(|| panic!("`{anchor}` 后面没有表字面量"));
+        let table = enclosed_body(&source, open);
+        let call = concat!("crate::agent::team::deliver::", "observe");
+        assert!(
+            table.contains(call),
+            "`{anchor}` 里没有 `{call}` —— 团队观察者没被挂上去：成员状态只会停在 \
+             `spawned`，`team_wait` 只能超时，而两端的行为测试仍然全绿（这正是本判据存在的理由）"
+        );
+
+        // ② 同一张表必须被交给 hooks 端点。
+        let boot = concat!("crate::agent::hooks::boot::", "boot(");
+        let boot_at = source
+            .find(boot)
+            .unwrap_or_else(|| panic!("boot.rs 里找不到 `{boot}`：hooks 端点入口没了"));
+        let args_open = boot_at + source[boot_at..].find('(').expect("`{boot}` 后面是实参表");
+        let args = enclosed_body(&source, args_open);
+        assert!(
+            args.contains("hook_sinks"),
+            "`{boot}` 的实参表里没有 `hook_sinks` —— 团队观察者没接到 hook 端点（表本身\
+             写得对也没用：没有任何一条上报会走到它）"
+        );
+    }
+
+    /// **端到端骨架（`#[ignore]`）**：从 `/hook/{source}` 的 HTTP 入口发一条
+    /// `turn_completed`，断言成员从 `Spawned` 走到 `Idle`。
+    ///
+    /// # 为什么 `cargo test` 里跑不了
+    ///
+    /// 入口是 `handlers::route_group(app: AppHandle, …)`，第一个实参是**真实** `AppHandle`；
+    /// 本仓 `tauri` 未开 `test` feature（全仓无 `tauri::test` 先例），单测/集成测试都造不出
+    /// `AppHandle`。可达的那一段（模板形状的 envelope → `validation::validate` → 团队观察者
+    /// → 成员 `Idle`）已由 `agent::team::deliver::tests::a_template_shaped_envelope_advances_the_member`
+    /// 真跑；不可达的那一跳（`AppHandle` → `try_state` → `observe_in`，共三行）由上面那条
+    /// 源码级判据盯着。
+    ///
+    /// 骨架保留的目的：等 `tauri::test` / e2e harness 可用时，把 `panic!` 换成下面四步即可 ——
+    /// 判据内容已经写在 panic 消息里（不接受「先写个空壳再补」：空体会静默通过，那正是要防的）。
+    #[test]
+    #[ignore = "需要真实 `tauri::AppHandle`（本仓未开 tauri 的 `test` feature）；请在 e2e harness 里启用"]
+    fn the_hook_endpoint_advances_a_member_through_the_team_observer() {
+        // `todo!` / `unimplemented!` 在本 crate 是 deny（`clippy::todo`）：骨架用 `panic!`
+        // 表达「跑起来就必须失败」，语义同样是「绝不由空体冒充通过」。
+        panic!(
+            "e2e 骨架：① `isolated_state(&tmp)` + `create_team` / `add_member`（成员初始 Spawned）\
+             ② 用 boot.rs 的同一段接线构造 ExtraConsumer（`app.handle()` 换成 harness 给的真实 \
+             AppHandle）③ `handlers::route_group(handle, runtime, team_consumer)` 起真端点，POST \
+             `{{\"agent_session_id\":\"agent-1\",\"event\":\"turn_completed\",\
+             \"hints\":{{\"team_id\":…,\"team_member_id\":…}}}}`（不写 `seq`：模板不发它）④ 断言 \
+             `state.team_manager.member(W1).state == MemberState::Idle`"
+        )
     }
 }

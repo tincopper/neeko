@@ -18,6 +18,13 @@ export interface ProjectItemActions {
   onOpenSettings?: () => void;
   onRefresh?: (projectId: ProjectId) => void;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
+  /**
+   * 打开**这个项目**的 Tasks（design §4.2c）。
+   *
+   * 语义是「先选中这个项目，再进 Tasks」—— 不是「进 Tasks 然后自己找项目」：
+   * 工作项按项目存，看错项目就是看错数据。所以调用方负责先切项目。
+   */
+  onOpenTasks?: (projectId: ProjectId) => void;
   onSaveProjectSettings?: (
     projectId: ProjectId,
     agentId: string | null,

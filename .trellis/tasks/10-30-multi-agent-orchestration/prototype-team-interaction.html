@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · Agent Team 交互原型（行动面重设计）</title>
+<style>
+/* ============================================================================
+   这份是 **交互原型**，不是实现。它是 prototype-agent-team.html 的姊妹篇：
+
+   旧原型锁定的是「观察契约」：六态徽标、CLI 准入三档、租约与完成判定。
+   本原型锁定的是「行动契约」——调研（research/05-team-ui-interaction-survey.md）
+   的结论是：面板骨架（两级布局/快照驱动/徽标）与业界一致，「怪」来自行动面缺失。
+   所以本原型只改信息架构与行动入口，不改观察语义：
+
+   ① 新主面 —— 团队面板改「成员 / 审批 / 任务」三页签（板退为页签）；成员的时间线
+      以中央 tab 与终端并列（照 Claude Code teams 的 agent panel：选中 → 查看 transcript）。
+   ② 审批收件箱 —— 卡片可操作（批准 / 拒绝 / 总是允许 + 批量）；不冒泡、不散落弹窗
+      （Claude Code teams 反例 #26479）。
+   ③ 插话双通道 —— 排队是默认、打断是显式（Enter 排队 / Ctrl+Enter 立即 / Esc 打断）；
+      目标 Awaiting 时拒投（target_blocked，后端 R2.7 语义已有）。
+   ④ 换人重做与关停 —— respawn（重启）/ 重新派发（新 attempt）/ 优雅关停 vs 强杀分离。
+
+   两处 ⚠ 裁决（视图⑤）：A 主面隐喻；B UI 代行队长职权的边界。本原型按推荐项绘制。
+
+   它**不**演示：真实 xterm 渲染、真实 diff/产物视图（依赖 P4 worktree）、主题切换、
+   Chat 成员（二期）、真实 MCP 往返。
+   ============================================================================ */
+
+:root, :root[data-theme="dark"] {
+  --bg-primary: oklch(0.178 0 0);
+  --bg-secondary: oklch(0.205 0 0);
+  --bg-tertiary: oklch(0.269 0 0);
+  --bg-hover: oklch(0.3 0 0);
+  --bg-selected: oklch(0.35 0 0);
+  --text-primary: oklch(0.985 0 0);
+  --text-secondary: oklch(0.85 0 0);
+  --text-muted: oklch(0.708 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --border-strong: oklch(1 0 0 / 20%);
+  --accent: oklch(0.7 0.1 250);
+  --accent-soft: oklch(0.7 0.1 250 / 14%);
+  --text-on-accent: oklch(0.205 0 0);
+  --success: oklch(0.72 0.15 152);
+  --success-soft: oklch(0.72 0.15 152 / 14%);
+  --warning: oklch(0.82 0.15 88);
+  --warning-soft: oklch(0.82 0.15 88 / 14%);
+  --danger: oklch(0.68 0.19 22);
+  --danger-soft: oklch(0.68 0.19 22 / 14%);
+  --purple: oklch(0.72 0.13 300);
+  --purple-soft: oklch(0.72 0.13 300 / 14%);
+  --page-bg: oklch(0.14 0 0);
+  --shadow: 0 16px 40px oklch(0 0 0 / 45%);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--page-bg); color: var(--text-primary);
+  font-size: 12px; line-height: 1.45; height: 100vh; display: flex; flex-direction: column;
+  overflow: hidden;
+}
+button, input, select { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; font-variant-ligatures: none; }
+.muted { color: var(--text-muted); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 原型专用顶栏（真实实现里不存在这一条）──────────────────────────── */
+.proto-bar {
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  background: var(--bg-primary); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.proto-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--warning); background: var(--warning-soft); border-radius: 4px; padding: 2px 6px;
+}
+.tab {
+  padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tab[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+.proto-bar .spacer { margin-left: auto; }
+.btn {
+  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg-secondary); font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.btn-primary { background: var(--accent); color: var(--text-on-accent); border-color: transparent; }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-danger { color: var(--danger); border-color: var(--danger); }
+.btn-danger:hover { background: var(--danger-soft); }
+.btn-mini { padding: 2px 7px; font-size: 10px; border-radius: 5px; }
+.step-hint {
+  font-size: 10px; color: var(--warning); max-width: 380px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── App shell（照真实 Neeko dock 布局）────────────────────────────── */
+.app { display: flex; flex: 1; min-height: 0; gap: 6px; padding: 6px; }
+.dock-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 4px; width: 44px; flex-shrink: 0; }
+.dock-btn {
+  width: 34px; height: 34px; border-radius: 6px; display: grid; place-items: center;
+  color: var(--text-secondary); font-size: 10px; font-weight: 700;
+}
+.dock-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.dock-btn[aria-current="true"] { background: var(--bg-selected); color: var(--accent); }
+
+.views { flex: 1; min-width: 0; display: flex; }
+.view { flex: 1; min-width: 0; display: none; gap: 6px; }
+.view[data-active="true"] { display: flex; }
+.col { display: flex; flex-direction: column; min-height: 0; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.col-head {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border); background: var(--bg-secondary); flex-shrink: 0;
+}
+.col-title { font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.col-body { flex: 1; min-height: 0; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+.pill { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-muted); }
+.pill-warn { color: var(--warning); background: var(--warning-soft); }
+.pill-danger { color: var(--danger); background: var(--danger-soft); }
+
+/* ── 状态徽标（沿用旧原型的视觉契约：一个都不能合并）───────────────── */
+.st { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 999px; white-space: nowrap; }
+.st::before { content: ""; width: 5px; height: 5px; border-radius: 999px; background: currentColor; flex-shrink: 0; }
+.st-running   { color: var(--accent);  background: var(--accent-soft); }
+.st-running::before { animation: pulse 1.4s ease-in-out infinite; }
+.st-idle      { color: var(--text-muted); background: var(--bg-tertiary); }
+.st-awaiting  { color: var(--warning); background: var(--warning-soft); }
+.st-done      { color: var(--success); background: var(--success-soft); }
+.st-unverified{ color: var(--warning); background: transparent; border: 1px dashed var(--warning); }
+.st-unverified::before { background: transparent; border: 1px solid currentColor; }
+.st-stalled   { color: var(--purple); background: var(--purple-soft); }
+.st-dead      { color: var(--danger); background: var(--danger-soft); }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+
+/* attention：需要人的信号（照 Warp 的 tab attention + 收件箱计数） */
+.attn { width: 7px; height: 7px; border-radius: 999px; background: var(--warning); flex-shrink: 0; display: none; }
+.member[data-attn="true"] .attn, .ctab[data-attn="true"] .attn { display: block; animation: pulse 1.4s ease-in-out infinite; }
+.attn[data-danger="true"] { background: var(--danger); }
+
+/* ── 成员行 ─────────────────────────────────────────────────────── */
+.member { border: 1px solid var(--border); border-radius: 7px; padding: 7px 8px; background: var(--bg-secondary); cursor: pointer; }
+.member:hover { border-color: var(--border-strong); }
+.member[data-selected="true"] { border-color: var(--accent); }
+.member[data-lead="true"] { background: linear-gradient(180deg, var(--accent-soft), var(--bg-secondary) 60%); }
+.member-row1 { display: flex; align-items: center; gap: 6px; }
+.avatar { width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center; font-size: 9px; font-weight: 800; color: oklch(0.18 0 0); flex-shrink: 0; }
+.m-name { font-weight: 700; font-size: 11px; }
+.m-row1-right { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+.m-meta { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+.chip {
+  font-size: 9px; padding: 1px 5px; border-radius: 4px;
+  background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid transparent;
+}
+.chip-path { background: transparent; border-color: var(--border-strong); color: var(--text-muted); }
+.chip-warn { background: transparent; border-color: var(--warning); color: var(--warning); }
+.chip-task { color: var(--accent); }
+.chip-dead { background: transparent; border-color: var(--danger); color: var(--danger); }
+/* 成员行内联动作（hover 浮现；照 Warp：行动入口跟着对象走） */
+.m-actions { display: none; gap: 4px; margin-top: 6px; }
+.member:hover .m-actions, .member[data-selected="true"] .m-actions { display: flex; }
+
+/* ── 面板页签（成员 / 审批 / 任务）────────────────────────────────── */
+.ptabs { display: flex; gap: 2px; padding: 5px 6px 0; background: var(--bg-secondary); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ptab {
+  padding: 4px 9px; font-size: 10.5px; font-weight: 700; color: var(--text-muted);
+  border-radius: 6px 6px 0 0; border: 1px solid transparent; border-bottom: none;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.ptab:hover { color: var(--text-primary); background: var(--bg-hover); }
+.ptab[aria-selected="true"] { color: var(--accent); background: var(--bg-primary); border-color: var(--border); }
+.page { display: none; }
+.page[data-active="true"] { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+/* ── 审批收件箱 ─────────────────────────────────────────────────── */
+.acard { border: 1px solid var(--warning); border-radius: 7px; background: var(--bg-secondary); overflow: hidden; }
+.acard[data-resolved="allow"] { border-color: var(--success); opacity: .75; }
+.acard[data-resolved="deny"]  { border-color: var(--danger); opacity: .75; }
+.acard-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--warning-soft); }
+.acard-cmd { padding: 6px 8px 2px; font-size: 10.5px; }
+.acard-meta { padding: 0 8px 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.acard-foot { display: flex; gap: 4px; padding: 6px 8px; border-top: 1px solid var(--border); }
+.inbox-bar { display: flex; align-items: center; gap: 4px; padding: 4px 2px; }
+.rule-chip {
+  font-size: 9px; padding: 1px 5px; border-radius: 4px;
+  background: var(--success-soft); color: var(--success); border: 1px dashed var(--success);
+}
+
+/* ── 任务板（降级为页签：横向滚动，列收窄）──────────────────────── */
+.board { display: grid; grid-template-columns: repeat(5, minmax(96px, 1fr)); gap: 5px; flex: 1; min-height: 0; padding: 6px; }
+.bcol { display: flex; flex-direction: column; min-height: 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 7px; }
+.bcol-head { padding: 4px 6px; border-bottom: 1px solid var(--border); font-size: 9.5px; font-weight: 700; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+.bcol-body { flex: 1; min-height: 0; overflow: auto; padding: 4px; display: flex; flex-direction: column; gap: 4px; }
+.tcard { border: 1px solid var(--border); border-radius: 6px; padding: 5px 6px; background: var(--bg-primary); }
+.tcard[data-hot="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+.tcard-title { font-size: 10.5px; font-weight: 600; }
+.tcard-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 4px; }
+.attempt { font-size: 9px; font-weight: 700; color: var(--purple); background: var(--purple-soft); padding: 1px 4px; border-radius: 3px; }
+
+/* ── 中央区：终端 tab 与成员时间线并列 ───────────────────────────── */
+.center-col { flex: 1; min-width: 0; }
+.ctabs { display: flex; align-items: center; gap: 2px; padding: 4px 6px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); flex-shrink: 0; overflow-x: auto; }
+.ctab {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px;
+  font-size: 10.5px; font-weight: 600; color: var(--text-secondary); white-space: nowrap;
+}
+.ctab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ctab[aria-selected="true"] { background: var(--bg-selected); color: var(--accent); }
+.ctab .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.center-body { flex: 1; min-height: 0; display: none; flex-direction: column; }
+.center-body[data-active="true"] { display: flex; }
+
+/* 终端 mock（不演示真实 xterm） */
+.term {
+  flex: 1; min-height: 0; background: oklch(0.13 0 0); padding: 8px 10px; overflow: auto;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; font-size: 10.5px; line-height: 1.6;
+}
+.term .p { color: var(--success); }
+.term .dim { color: var(--text-muted); }
+.term .amber { color: var(--warning); }
+
+/* 成员时间线（turn 制：任务体 / 思考 / 工具 / 等人 / 消息）*/
+.stream { flex: 1; min-height: 0; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 7px; }
+.ev { display: grid; grid-template-columns: 52px 1fr; gap: 8px; align-items: start; }
+.ev-time { font-size: 9px; color: var(--text-muted); padding-top: 2px; text-align: right; font-family: "JetBrains Mono", ui-monospace, monospace; }
+.ev-body { min-width: 0; }
+.ev-who { font-size: 9px; font-weight: 700; color: var(--text-muted); letter-spacing: .03em; margin-bottom: 2px; }
+.bubble { border-radius: 7px; padding: 6px 8px; font-size: 11px; background: var(--bg-secondary); border: 1px solid var(--border); }
+.bubble-user { background: var(--accent-soft); border-color: transparent; }
+.bubble-task { border-style: dashed; }
+.tool-call { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); overflow: hidden; }
+.tool-head { display: flex; align-items: center; gap: 5px; padding: 4px 7px; background: var(--bg-tertiary); font-size: 10px; font-weight: 700; }
+.tool-head .ok { color: var(--success); margin-left: auto; }
+.tool-head .run { color: var(--accent); margin-left: auto; }
+.tool-body { padding: 5px 7px; font-size: 10px; color: var(--text-secondary); }
+.thinking { border: 1px dashed var(--border); border-radius: 6px; padding: 4px 8px; font-size: 10px; color: var(--text-muted); cursor: pointer; }
+.thinking[aria-expanded="true"] { border-style: solid; color: var(--text-secondary); background: var(--bg-secondary); }
+.thinking .th-body { display: none; margin-top: 4px; }
+.thinking[aria-expanded="true"] .th-body { display: block; }
+.ev-await { border: 1px solid var(--warning); border-radius: 6px; background: var(--warning-soft); padding: 6px 8px; font-size: 10.5px; color: var(--warning); }
+.ev-sys { font-size: 10px; color: var(--text-muted); padding: 2px 0; }
+.ev-sys b { color: var(--text-secondary); }
+
+/* 插话 composer（排队是默认）*/
+.composer { border-top: 1px solid var(--border); background: var(--bg-secondary); padding: 6px 8px; flex-shrink: 0; }
+.queued { display: flex; flex-direction: column; gap: 3px; margin-bottom: 5px; }
+.qmsg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--text-muted); background: var(--bg-primary); border: 1px dashed var(--border-strong); border-radius: 6px; padding: 3px 7px; }
+.qmsg .q-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-x { color: var(--text-muted); font-size: 10px; padding: 0 3px; border-radius: 3px; }
+.q-x:hover { color: var(--danger); background: var(--danger-soft); }
+.composer-row { display: flex; gap: 5px; align-items: center; }
+.composer input {
+  flex: 1; min-width: 0; background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px; font-size: 11px; cursor: text;
+}
+.composer input:focus { outline: none; border-color: var(--accent); }
+.composer-hint { margin-top: 4px; font-size: 9px; color: var(--text-muted); display: flex; gap: 8px; }
+.composer-hint kbd {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 8.5px;
+  background: var(--bg-tertiary); border: 1px solid var(--border-strong); border-radius: 3px; padding: 0 3px;
+}
+.composer[data-blocked="true"] input { border-color: var(--warning); }
+.composer .blocked-note {
+  display: none; align-items: center; gap: 6px; margin-top: 5px; padding: 4px 7px; border-radius: 6px;
+  background: var(--warning-soft); border: 1px solid var(--warning); font-size: 10px; color: var(--warning);
+}
+.composer[data-blocked="true"] .blocked-note { display: flex; }
+
+/* toast */
+#toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(8px);
+  background: var(--bg-tertiary); border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 7px 14px; font-size: 11px; box-shadow: var(--shadow); opacity: 0; pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease; max-width: 70vw; z-index: 99;
+}
+#toast[data-show="true"] { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast[data-tone="warn"] { border-color: var(--warning); color: var(--warning); }
+#toast[data-tone="ok"] { border-color: var(--success); color: var(--success); }
+
+/* ── 视图⑥：flow 图（SVG 投影）────────────────────────────────── */
+.flow-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 10px; align-items: start; margin-bottom: 10px; }
+#flow-svg { width: 100%; height: auto; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; display: block; }
+.fnode { cursor: pointer; }
+.fnode > rect { fill: var(--bg-primary); stroke: var(--border-strong); rx: 7; }
+.fnode text { fill: var(--text-secondary); font-size: 10px; font-family: inherit; }
+.fnode text.sm { font-size: 8.5px; fill: var(--text-muted); }
+.fnode[data-on="true"] > rect { stroke: var(--accent); stroke-width: 1.6; }
+.fnode[data-dim="true"] { opacity: .22; }
+.fedge { stroke: var(--border-strong); fill: none; stroke-width: 1.1; }
+.fedge[data-kind="dep"] { stroke-dasharray: 4 3; }
+.fedge[data-kind="claim"] { stroke-width: 1.7; }
+.fedge[data-kind="recycle"] { stroke-dasharray: 2 3; stroke: var(--danger); }
+.fedge[data-dim="true"] { opacity: .1; }
+.flow-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 9.5px; color: var(--text-muted); margin-bottom: 8px; }
+.flow-legend .lg { display: inline-flex; align-items: center; gap: 4px; }
+.flow-legend .ln { width: 18px; height: 0; border-top: 2px solid var(--border-strong); }
+.flow-legend .ln.dash { border-top-style: dashed; }
+.flow-legend .ln.claim { border-top-width: 2.5px; }
+#flow-detail { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary); padding: 9px 10px; font-size: 10.5px; }
+#flow-detail h5 { font-size: 11px; margin-bottom: 5px; }
+#flow-detail .kv { margin-bottom: 0; }
+.role-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary); padding: 9px 11px; margin-bottom: 8px; max-width: 96ch; }
+.role-card h4 { font-size: 11.5px; display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.role-card .kv { font-size: 10px; }
+.role-card p { margin: 4px 0 0; font-size: 10.5px; color: var(--text-secondary); }
+
+/* ── 文档视图（②③④⑤）─────────────────────────────────────────── */
+.doc { flex: 1; min-width: 0; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; overflow: auto; padding: 14px 16px; }
+.doc h2 { font-size: 13px; margin-bottom: 4px; }
+.doc h3 { font-size: 11px; margin: 16px 0 6px; color: var(--text-secondary); letter-spacing: .02em; }
+.doc p { font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; max-width: 96ch; }
+.doc ul { margin: 0 0 8px 16px; font-size: 11px; color: var(--text-secondary); }
+.doc li { margin-bottom: 3px; }
+.doc code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px; color: var(--text-primary); }
+table { border-collapse: collapse; width: 100%; font-size: 10.5px; margin-bottom: 8px; }
+th, td { text-align: left; padding: 5px 7px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--text-muted); font-weight: 700; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; }
+td.src { color: var(--text-muted); font-size: 10px; }
+.decision { border: 1px solid var(--warning); border-radius: 8px; padding: 10px 12px; margin: 10px 0; background: var(--bg-secondary); max-width: 96ch; }
+.decision h4 { font-size: 11px; color: var(--warning); margin-bottom: 6px; }
+.opt { display: flex; gap: 8px; padding: 5px 0; font-size: 11px; align-items: baseline; }
+.opt .tag { font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 999px; flex-shrink: 0; }
+.opt .tag-rec { background: var(--accent); color: var(--text-on-accent); }
+.opt .tag-alt { background: var(--bg-tertiary); color: var(--text-muted); }
+.hr { height: 1px; background: var(--border); margin: 14px 0; }
+.seq { display: flex; flex-direction: column; gap: 0; max-width: 72ch; }
+.seq-step { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding-bottom: 12px; position: relative; }
+.seq-step:not(:last-child)::before { content: ""; position: absolute; left: 10px; top: 22px; bottom: 0; width: 1px; background: var(--border); }
+.seq-dot { width: 21px; height: 21px; border-radius: 999px; display: grid; place-items: center; font-size: 9px; font-weight: 800; background: var(--bg-tertiary); color: var(--text-secondary); z-index: 1; }
+.seq-body { padding-top: 1px; }
+.seq-t { font-size: 11px; font-weight: 700; }
+.seq-d { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.card2 { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary); padding: 10px 12px; margin-bottom: 10px; max-width: 96ch; }
+.card2 h4 { font-size: 11.5px; margin-bottom: 5px; }
+.demo-row { display: flex; gap: 5px; margin-top: 7px; align-items: center; flex-wrap: wrap; }
+.footnote { font-size: 9.5px; color: var(--text-muted); margin-top: 4px; }
+.demo-stage { border: 1px dashed var(--border-strong); border-radius: 8px; padding: 8px; margin-top: 8px; background: var(--bg-primary); }
+</style>
+</head>
+<body>
+
+<div class="proto-bar">
+  <span class="proto-tag">原型 · 非实现</span>
+  <button class="tab" role="tab" aria-selected="true"  data-view="1">① 新主面</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="2">② 审批收件箱</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="3">③ 插话与接管</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="4">④ 换人重做与关停</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="5">⑤ 改动对照与裁决</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="6">⑥ 分配 flow 与角色</button>
+  <span class="spacer"></span>
+  <span class="step-hint" id="step-hint">按「推进演示」走一遍行动闭环：审批 → 插话 → 重启 → 换人重做</span>
+  <button class="btn btn-primary" id="advance">推进演示 →</button>
+</div>
+
+<div class="app">
+  <nav class="dock-bar" aria-label="Activity">
+    <button class="dock-btn" title="Projects">PJ</button>
+    <button class="dock-btn" title="Agent Chat">AC</button>
+    <button class="dock-btn" aria-current="true" title="Agent Team">TM</button>
+    <button class="dock-btn" title="Tasks">TK</button>
+    <button class="dock-btn" title="Launch">LN</button>
+    <button class="dock-btn" title="Git">GT</button>
+  </nav>
+
+  <div class="views">
+
+    <!-- ══════════ 视图 1：新主面 ══════════ -->
+    <section class="view" data-active="true" data-id="1">
+
+      <!-- 中央区：终端 tab 与成员时间线并列 -->
+      <div class="col center-col">
+        <div class="ctabs" role="tablist" aria-label="中央区">
+          <button class="ctab" role="tab" aria-selected="true"  data-ctab="term-lead"><span class="dot" style="color:var(--accent)"></span>lead · claude-code</button>
+          <button class="ctab" role="tab" aria-selected="false" data-ctab="term-researcher"><span class="dot" style="color:var(--success)"></span>researcher · PTY</button>
+          <button class="ctab" role="tab" aria-selected="false" data-ctab="tl-researcher"><span class="dot" style="color:var(--success)"></span>researcher · 时间线<span class="attn"></span></button>
+          <button class="ctab" role="tab" aria-selected="false" data-ctab="tl-writer"><span class="dot" style="color:var(--warning)"></span>writer · 时间线<span class="attn"></span></button>
+          <span class="muted" style="font-size:10px;padding:0 4px">＋</span>
+        </div>
+
+        <!-- lead 终端 -->
+        <div class="center-body" data-active="true" data-id="term-lead">
+          <div class="term">
+            <div><span class="p">❯</span> claude-code</div>
+            <div class="dim">▲ 队长 preamble 已注入：你是 refactor 团队的队长…</div>
+            <div>&gt; 把登录模块的重构拆成任务派下去，注意 api.ts 与 auth/ 的改动要分开</div>
+            <div class="dim">⏺ task_create(t1: 重构 api.ts 公共类型) …</div>
+            <div class="dim">⏺ team_spawn(researcher, workspace=shared) …</div>
+            <div class="amber">⏺ team_wait(until=any, timeout=1800s) — 阻塞中，工具不返回回合就不会结束</div>
+            <div class="dim">_</div>
+          </div>
+        </div>
+
+        <!-- researcher 终端 -->
+        <div class="center-body" data-id="term-researcher">
+          <div class="term">
+            <div><span class="p">❯</span> claude-code <span class="dim">(env: NEEKO_TEAM_ID / NEEKO_TEAM_MEMBER_ID)</span></div>
+            <div>&gt; [任务 t2] 重构 api.ts 公共类型，产物写到 summary</div>
+            <div class="dim">⏺ 正在编辑 src/api/types.ts …</div>
+            <div class="dim">_</div>
+          </div>
+        </div>
+
+        <!-- researcher 时间线 -->
+        <div class="center-body" data-id="tl-researcher">
+          <div class="stream" id="stream-researcher">
+            <div class="ev"><div class="ev-time">14:02</div><div class="ev-body">
+              <div class="ev-who">任务体 · t2</div>
+              <div class="bubble bubble-task">重构 api.ts 公共类型；nonce 7f3a；产物写 summary，不重复协议文本</div>
+            </div></div>
+            <div class="ev"><div class="ev-time">14:02</div><div class="ev-body">
+              <div class="thinking" aria-expanded="false" tabindex="0">Thinking…（点击展开）
+                <div class="th-body">先读现有类型定义，找重复形状；公共类型抽到 types.ts，调用方逐个改导入…</div>
+              </div>
+            </div></div>
+            <div class="ev"><div class="ev-time">14:04</div><div class="ev-body">
+              <div class="tool-call">
+                <div class="tool-head">⏺ run_command · npm test<span class="ok">✓ 3.2s</span></div>
+                <div class="tool-body">47 passed · 0 failed · 2 skipped</div>
+              </div>
+            </div></div>
+            <div class="ev"><div class="ev-time">14:05</div><div class="ev-body">
+              <div class="ev-who">researcher</div>
+              <div class="bubble">公共类型已抽出（11 个），api.ts 瘦了 240 行；测试全绿。剩调用方导入路径清理。</div>
+            </div></div>
+          </div>
+          <div class="composer" id="composer-researcher">
+            <div class="queued" id="queued-researcher"></div>
+            <div class="composer-row">
+              <input id="input-researcher" type="text" placeholder="对 researcher 插话…" aria-label="对 researcher 插话" />
+              <button class="btn btn-mini" data-send="researcher">发送</button>
+            </div>
+            <div class="composer-hint">
+              <span><kbd>Enter</kbd> 排队（默认）</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> 立即发送</span><span><kbd>Esc</kbd> 打断当前 turn（写入 ^C）</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- writer 时间线（初始：Awaiting → composer 被拒） -->
+        <div class="center-body" data-id="tl-writer">
+          <div class="stream" id="stream-writer">
+            <div class="ev"><div class="ev-time">14:01</div><div class="ev-body">
+              <div class="ev-who">任务体 · t1</div>
+              <div class="bubble bubble-task">重构 auth/ 鉴权中间件；nonce 91cc；workspace=shared</div>
+            </div></div>
+            <div class="ev"><div class="ev-time">14:06</div><div class="ev-body">
+              <div class="ev-await">⚑ 等待审批 · codex 请求执行 <b>npm run deploy -- --prod</b> —— 已进收件箱，这里不写字节</div>
+            </div></div>
+          </div>
+          <div class="composer" id="composer-writer" data-blocked="true">
+            <div class="queued" id="queued-writer"></div>
+            <div class="composer-row">
+              <input id="input-writer" type="text" placeholder="对 writer 插话…" aria-label="对 writer 插话" disabled />
+              <button class="btn btn-mini" data-send="writer" disabled>发送</button>
+            </div>
+            <div class="blocked-note">⚑ target_blocked：成员在等待审批，发送会拒绝投递、<b>不写入任何字节</b>（R2.7 / AC14）——先去审批页签处理</div>
+            <div class="composer-hint">
+              <span><kbd>Enter</kbd> 排队（默认）</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> 立即发送</span><span><kbd>Esc</kbd> 打断当前 turn（写入 ^C）</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 团队面板：三页签 -->
+      <div class="col" style="width: 316px; flex-shrink: 0;">
+        <div class="col-head">
+          <span class="col-title">refactor</span>
+          <span class="pill">4 成员</span>
+          <span style="margin-left:auto"></span>
+          <span class="pill pill-warn" id="pill-inbox"><span id="inbox-total">1</span> 待批</span>
+        </div>
+        <div class="ptabs" role="tablist" aria-label="面板页签">
+          <button class="ptab" role="tab" aria-selected="true"  data-ptab="members">成员</button>
+          <button class="ptab" role="tab" aria-selected="false" data-ptab="inbox">审批 <span class="pill pill-warn" id="tab-inbox-n">1</span></button>
+          <button class="ptab" role="tab" aria-selected="false" data-ptab="board">任务</button>
+        </div>
+
+        <!-- 页签：成员 -->
+        <div class="page" data-active="true" data-id="members">
+          <div class="col-body" id="roster">
+            <div class="member" data-lead="true" data-member="lead" data-selected="false">
+              <div class="member-row1">
+                <div class="avatar" style="background:var(--accent)">L</div>
+                <span class="m-name">lead</span>
+                <div class="m-row1-right"><span class="st st-running">运行中</span></div>
+              </div>
+              <div class="m-meta"><span class="chip">claude-code</span><span class="chip">队长 · MCP 工具面</span><span class="chip chip-path">共享工作区</span></div>
+              <div class="m-actions">
+                <button class="btn btn-mini" data-open-term="term-lead">终端</button>
+                <span class="footnote">插话 lead = 聚焦其终端（队长是 CLI，无独立收件箱）</span>
+              </div>
+            </div>
+            <div class="member" data-member="researcher" data-selected="true">
+              <div class="member-row1">
+                <div class="avatar" style="background:var(--success)">R</div>
+                <span class="m-name">researcher</span>
+                <div class="m-row1-right"><span class="attn"></span><span class="st st-running" id="st-researcher">运行中</span></div>
+              </div>
+              <div class="m-meta"><span class="chip">claude-code</span><span class="chip" style="color:var(--success)">角色 · 研究员</span><span class="chip">A 档 · hook+MCP</span><span class="chip chip-task">t2 · 租约 24:51</span></div>
+              <div class="m-actions">
+                <button class="btn btn-mini" data-open-term="tl-researcher">时间线</button>
+                <button class="btn btn-mini" data-open-term="term-researcher">终端</button>
+                <button class="btn btn-mini" data-interrupt="researcher">打断</button>
+                <button class="btn btn-mini" data-menu="researcher">⋯</button>
+              </div>
+            </div>
+            <div class="member" data-member="writer" data-attn="true">
+              <div class="member-row1">
+                <div class="avatar" style="background:var(--warning)">W</div>
+                <span class="m-name">writer</span>
+                <div class="m-row1-right"><span class="attn"></span><span class="st st-awaiting" id="st-writer">待审批</span></div>
+              </div>
+              <div class="m-meta"><span class="chip">codex</span><span class="chip" style="color:var(--warning)">角色 · 实现者</span><span class="chip">A 档 · hook+MCP</span><span class="chip chip-task">t1 · 租约 18:03</span></div>
+              <div class="m-actions">
+                <button class="btn btn-mini" data-open-term="tl-writer">时间线</button>
+                <button class="btn btn-mini" data-goto-inbox="writer">待批 →</button>
+                <button class="btn btn-mini" data-menu="writer">⋯</button>
+              </div>
+            </div>
+            <div class="member" data-member="cody" id="member-cody">
+              <div class="member-row1">
+                <div class="avatar" style="background:var(--purple)">C</div>
+                <span class="m-name">cody</span>
+                <div class="m-row1-right"><span class="st st-idle">空闲</span></div>
+              </div>
+              <div class="m-meta"><span class="chip">pi</span><span class="chip" style="color:var(--purple)">角色 · 实现者</span><span class="chip">A 档 · hook+MCP</span><span class="chip chip-path">共享工作区</span></div>
+              <div class="m-actions">
+                <button class="btn btn-mini" data-menu="cody">⋯</button>
+                <span class="footnote">空闲 30s 后折叠为「1 空闲成员」（照 Claude Code teams）</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 页签：审批收件箱 -->
+        <div class="page" data-id="inbox">
+          <div class="col-body">
+            <div class="inbox-bar">
+              <span class="footnote">队列不冒泡进队长对话 · 批准写入成员 PTY</span>
+              <span style="margin-left:auto"></span>
+              <button class="btn btn-mini" id="approve-all">全部批准</button>
+            </div>
+            <div id="inbox-cards">
+              <div class="acard" data-acard="w1" data-member="writer">
+                <div class="acard-head">
+                  <div class="avatar" style="background:var(--warning)">W</div>
+                  <b style="font-size:11px">writer · codex</b>
+                  <span class="pill">Queue</span>
+                  <span style="margin-left:auto" class="footnote mono">14:06</span>
+                </div>
+                <div class="acard-cmd mono">$ npm run deploy -- --prod</div>
+                <div class="acard-meta"><span class="chip chip-task">t1</span><span class="footnote">来自成员 PTY 的 approval_requested（hook）</span></div>
+                <div class="acard-foot">
+                  <button class="btn btn-mini btn-primary" data-approve="w1">批准</button>
+                  <button class="btn btn-mini" data-always="w1">总是允许…</button>
+                  <button class="btn btn-mini btn-danger" data-deny="w1">拒绝</button>
+                  <span style="margin-left:auto"></span>
+                  <button class="btn btn-mini" data-open-term="term-writer-mock">看 PTY</button>
+                </div>
+              </div>
+              <!-- 演示推进时新增 researcher 的卡片（JS 注入） -->
+              <div id="inbox-extra"></div>
+            </div>
+            <div class="footnote" style="padding: 6px 2px;">
+              「总是允许」会沉淀成规则：<span class="rule-chip">bash(npm run deploy *) · 作用域=本成员</span>
+              ⚠ 作用域（本成员 / 全队）是裁决 B 的一部分（视图⑤）
+            </div>
+          </div>
+        </div>
+
+        <!-- 页签：任务板（降级为页签，列收窄横滚） -->
+        <div class="page" data-id="board">
+          <div class="board">
+            <div class="bcol"><div class="bcol-head">待认领 <span id="c-pending">1</span></div>
+              <div class="bcol-body" id="col-pending">
+                <div class="tcard"><div class="tcard-title truncate">t4 · 补 auth 文档</div><div class="tcard-meta"><span class="chip chip-path">只读</span></div></div>
+              </div>
+            </div>
+            <div class="bcol"><div class="bcol-head">进行中 <span id="c-progress">2</span></div>
+              <div class="bcol-body" id="col-progress">
+                <div class="tcard" data-hot="true" data-task="t1"><div class="tcard-title truncate">t1 · 重构 auth 中间件</div><div class="tcard-meta" id="t1-meta"><span class="chip">writer</span><span class="lease">租约 18:03</span></div></div>
+                <div class="tcard" data-task="t2" id="card-t2"><div class="tcard-title truncate">t2 · 抽公共类型</div><div class="tcard-meta" id="t2-meta"><span class="chip">researcher</span><span class="lease">租约 24:51</span></div></div>
+              </div>
+            </div>
+            <div class="bcol"><div class="bcol-head">待审批 <span id="c-awaiting">0</span></div>
+              <div class="bcol-body" id="col-awaiting"><div class="muted" style="font-size:10px;padding:4px">—</div></div>
+            </div>
+            <div class="bcol"><div class="bcol-head">已完成 <span id="c-done">1</span></div>
+              <div class="bcol-body" id="col-done">
+                <div class="tcard"><div class="tcard-title truncate">t3 · 清理死代码</div><div class="tcard-meta"><span class="st st-done">完成</span><span class="chip">researcher</span></div></div>
+              </div>
+            </div>
+            <div class="bcol"><div class="bcol-head">阻塞 <span id="c-blocked">1</span></div>
+              <div class="bcol-body" id="col-blocked">
+                <div class="tcard"><div class="tcard-title truncate">t5 · 迁移配置格式</div><div class="tcard-meta"><span class="chip chip-dead">租约回收 ×1</span></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="footnote" style="padding: 4px 8px 8px;">
+            ⚠ 裁决 A：板在此为页签（聚合层），主面是成员+审批。卡片上的「重新派发」见视图④。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════ 视图 2：审批收件箱 ══════════ -->
+    <section class="view" data-id="2">
+      <div class="doc">
+        <h2>② 审批收件箱 —— 多 agent 审批必须是「收件箱」，不能是散落弹窗</h2>
+        <p>调研对照（research/05 §B1/B2）：<b>单 agent 行内审批；多 agent 汇聚成收件箱 + attention</b>。
+           Claude Code teams 的反例：teammate 权限请求上浮到 lead 会话行内、无队列无批量，实测每会话点几十次批准，
+           且 "always allow" 规则不随 teammate 继承（issue #26479）。Neeko 已有 Queue 策略语义（R0b），本原型给它可操作的面。</p>
+
+        <h3>三档策略在 UI 上的呈现（R0b 已有语义）</h3>
+        <table>
+          <tr><th>策略</th><th>发生什么</th><th>UI 形态</th></tr>
+          <tr><td><b>Interactive</b></td><td>请求直接呈给当前焦点</td><td>行内卡片抢占中央区（仅单成员调试时建议）</td></tr>
+          <tr><td><b>Queue</b>（默认）</td><td>进收件箱，成员 Awaiting，任务 awaiting_approval</td><td>收件箱卡片 + 徽标计数 + 成员行 attention</td></tr>
+          <tr><td><b>Bypass</b></td><td>跳过审批，开关来自 <code>AgentConfig.approval_bypass_args</code>（插件数据，红线 15）</td><td>成员行带<b>非隐蔽警示条</b>（旧原型契约保留）</td></tr>
+        </table>
+
+        <h3>卡片上的三个动作</h3>
+        <ul>
+          <li><b>批准</b> —— 向成员 PTY 写入其 CLI 的确认键序列（各 CLI 的写法落 HookTarget/插件数据，团队域不按名分支）；成员回 <code>Running</code>，任务回 <code>in_progress</code>。</li>
+          <li><b>拒绝</b> —— 写入拒绝键序列；成员收到 CLI 自己的拒绝处理，可附一句话说明（排队下一条消息）。</li>
+          <li><b>总是允许…</b> —— 把本次决策沉淀为规则（<span class="rule-chip">bash(npm run deploy *) · 作用域=本成员</span>），并执行本次批准。
+              ⚠ 规则的作用域与继承是裁决 B 的一部分 —— Claude Code teams 的教训：规则不继承 = 摩擦重现。</li>
+        </ul>
+        <div class="demo-stage">
+          <div class="footnote" style="margin-bottom:6px">试一试（与视图①同一份状态）：</div>
+          <div class="demo-row">
+            <button class="btn btn-mini" id="v2-show-inbox">打开面板审批页签</button>
+            <button class="btn btn-mini" id="v2-approve-all">全部批准（代批）</button>
+            <button class="btn btn-mini" id="v2-reset">重置演示</button>
+            <span class="footnote" id="v2-note">writer 的 deploy 审批还在队列里。</span>
+          </div>
+        </div>
+
+        <h3>为什么批准动作是「写入 PTY」</h3>
+        <p>成员是 CLI（本期唯一路径）：审批框渲染在<b>它自己的 PTY</b> 里，Neeko 不解析它。
+           hook 只上报「有审批请求」；批准/拒绝 = 向该 PTY 写对应键序列。因此收件箱卡片上
+           <b>没有「批准前改命令」</b>（那是 Chat 成员/未来阶段的梯级，见视图③）——这也是本原型在卡片上
+           只给「看 PTY」而不给编辑的原因。</p>
+      </div>
+    </section>
+
+    <!-- ══════════ 视图 3：插话与接管 ══════════ -->
+    <section class="view" data-id="3">
+      <div class="doc">
+        <h2>③ 插话与接管 —— 排队是默认，打断是显式，接管是渐进</h2>
+        <p>调研对照（research/05 §B3/B4/B5）：Claude Code（<kbd>Enter</kbd> 排队 / <kbd>Esc</kbd> 打断 / <kbd>Up</kbd> 取回）、
+           Codex（<kbd>Tab</kbd> 排队）、Warp（waiting tab attention）。共同约定：<b>输入永远不丢，打断要用专门的键</b>。</p>
+
+        <h3>CLI 成员下的接管阶梯（注意第一级在 CLI-only 下不可用）</h3>
+        <div class="seq">
+          <div class="seq-step"><div class="seq-dot" style="color:var(--text-muted)">1</div><div class="seq-body">
+            <div class="seq-t">批准前改命令 <span class="pill">仅 Chat 成员 / 未来</span></div>
+            <div class="seq-d">Gemini "Modify with editor"、Cline 审批条可编辑。CLI 成员的审批框在它自己的 PTY 里，Neeko 改不了 —— 本期不可用，诚实标注。</div>
+          </div></div>
+          <div class="seq-step"><div class="seq-dot" style="color:var(--accent)">2</div><div class="seq-body">
+            <div class="seq-t">排队插话（默认）</div>
+            <div class="seq-d">视图①的 composer：<kbd>Enter</kbd> 入队（灰色、可见、可删），成员回合结束后投递。<b>目标 Awaiting 时拒投</b>（target_blocked，R2.7/AC14 后端语义已有，UI 同步禁发并说明原因）。</div>
+          </div></div>
+          <div class="seq-step"><div class="seq-dot" style="color:var(--warning)">3</div><div class="seq-body">
+            <div class="seq-t">打断（Esc）</div>
+            <div class="seq-d">向成员 PTY 写入 ^C；成员徽标闪回「空闲 ⚠ 未声明」（turn 被切段，hook 语义自动给）——不假装它还是「运行中」。</div>
+          </div></div>
+          <div class="seq-step"><div class="seq-dot" style="color:var(--danger)">4</div><div class="seq-body">
+            <div class="seq-t">attach PTY（已有）</div>
+            <div class="seq-d">中央终端 tab 直接接管成员会话手打 —— 最强兜底，永远在（Claude Squad 的 attach 模式）。</div>
+          </div></div>
+        </div>
+
+        <h3>试一试</h3>
+        <div class="demo-stage">
+          <div class="demo-row">
+            <button class="btn btn-mini" id="v3-goto-composer">去 researcher 的 composer</button>
+            <button class="btn btn-mini" id="v3-queue-sample">排队一条样例消息</button>
+            <button class="btn btn-mini" id="v3-flush">立即发送（Ctrl+Enter）</button>
+            <button class="btn btn-mini" id="v3-interrupt">Esc 打断 researcher</button>
+          </div>
+          <div class="footnote" id="v3-note" style="margin-top:6px">排队后消息停在 composer 上方；立即发送会进入时间线并唤醒成员。</div>
+        </div>
+
+        <h3>lead 的插话</h3>
+        <p>队长是 CLI、走 MCP 工具面 —— 对 lead 的「插话」就是<b>聚焦它的终端 tab</b> 手打（已有能力，不需要新通道）。
+           收件箱/队列只给成员，因为成员没有「人在场」的会话窗口。</p>
+      </div>
+    </section>
+
+    <!-- ══════════ 视图 4：换人重做与关停 ══════════ -->
+    <section class="view" data-id="4">
+      <div class="doc">
+        <h2>④ 换人重做与关停 —— 廉价重试，两种停止</h2>
+        <p>调研对照（research/05 §C2/B6）：VK「Create New Attempt」（换 agent/换基线）、Claude Squad 的 pause/kill 分离、
+           Claude Code teams 的优雅关停（要成员同意、可能很慢）vs 按 <code>x</code> 强杀。单轮成功率有限，<b>重试必须是一等动作</b>。</p>
+
+        <div class="card2">
+          <h4>重启（respawn_member，implement.md C11 未完项）</h4>
+          <p style="margin-bottom:4px">PTY 死了 / 首次启动失败：成员行出现红色 attention + 「重启」。重启 = <b>同成员身份</b>重开 PTY
+             （env 身份不变、token 重签、租约重置、在飞任务保留 claim）。</p>
+          <div class="demo-row">
+            <button class="btn btn-mini" id="v4-kill-writer">演示：杀掉 writer 的 PTY</button>
+            <button class="btn btn-mini" id="v4-respawn" disabled>重启 writer</button>
+            <span class="footnote" id="v4-respawn-note">writer 运行中。</span>
+          </div>
+        </div>
+
+        <div class="card2">
+          <h4>换人重做（重新派发 = 显式回收 + 新 attempt）</h4>
+          <p style="margin-bottom:4px">对卡住/反复失败的任务：任务卡「重新派发」→ 回收旧成员租约（记 reclaimed，<b>不是</b>等超时）
+             → 可选新成员 claim（attempt ×2）。任务体与 workspace <b>不变</b>（R1.5：claim 前确定，事后不可改）；
+             旧成员已产出的内容留在 artifacts，不静默清掉。</p>
+          <div class="demo-row">
+            <button class="btn btn-mini" id="v4-redispatch">演示：t1 从 writer 换给 cody</button>
+            <span class="footnote" id="v4-rd-note">t1 进行中 · writer。</span>
+          </div>
+          <div class="footnote">⚠ 裁决 B：这个按钮在不在 UI 上，取决于「UI 代行队长职权」的边界（视图⑤）。</div>
+        </div>
+
+        <div class="card2">
+          <h4>关停：优雅 vs 强杀，两个动作（B6）</h4>
+          <ul style="margin-bottom:4px">
+            <li><b>请求收尾</b> —— 排队一条收尾消息让成员做完手头活再退（慢，但产物完整；照 Claude Code teams 的优雅关停）。</li>
+            <li><b>强杀</b> —— 直接 close PTY + 归档成员 + 作废 token（既有 team_close 语义的单成员版）。</li>
+            <li>整队关闭不变：<code>team_close</code> 请求关全部进程，关不掉停在 <code>closing</code> 横幅可重试（旧原型契约）。</li>
+          </ul>
+          <div class="footnote">成员行 ⋯ 菜单里放这两个动作；强杀需二次确认（同删除团队的确认纪律）。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════ 视图 5：改动对照与裁决 ══════════ -->
+    <section class="view" data-id="5">
+      <div class="doc">
+        <h2>⑤ 改动对照与裁决</h2>
+        <p>与旧原型 <code>prototype-agent-team.html</code> 的关系：<b>观察契约不变</b>（六态徽标 / 准入三档 / 租约语义 /
+           「未声明」的任务留在进行中列），本原型只改<b>信息架构与行动面</b>。</p>
+
+        <h3>每处改动对应的研究证据</h3>
+        <table>
+          <tr><th>本原型的改动</th><th>研究模式（research/05）</th><th>出处</th></tr>
+          <tr><td>面板改「成员 / 审批 / 任务」三页签</td><td>A1 两级布局 + 反向启示：板退为聚合层</td><td class="src">VK sunsetting · claude-swarm v1→v2 · Conductor</td></tr>
+          <tr><td>审批收件箱（卡片可操作 + 批量 + 规则沉淀）</td><td>B1 审批三层叠加 · B2 收件箱而非弹窗</td><td class="src">Omnara · Roo allowlist · Claude Code teams 反例 #26479</td></tr>
+          <tr><td>成员时间线（三态 + 工具卡 + 等人卡）</td><td>A2 事件流时间线 · A3 三态可视化</td><td class="src">OpenHands stage groups · Omnara turn timeline</td></tr>
+          <tr><td>时间线以中央 tab 与终端并列（选中成员 → 查看）</td><td>A1 + Claude Code teams agent panel</td><td class="src">Claude Code teams（方向键选中 → Enter 看 transcript）</td></tr>
+          <tr><td>composer：排队默认 / Ctrl+Enter 立即 / Esc 打断</td><td>B3 排队 vs 打断双通道</td><td class="src">Claude Code Enter/Esc/Up · Codex Tab · Amp（反默认）</td></tr>
+          <tr><td>Awaiting 时拒投（composer 禁发 + 原因可见）</td><td>R2.7 / AC14（后端已有，UI 对齐）</td><td class="src">Neeko 既有语义</td></tr>
+          <tr><td>成员行内联动作（终端/时间线/打断/⋯）</td><td>B4 渐进接管 · C? 行动入口跟着对象走</td><td class="src">Warp tab attention · Claude Squad attach</td></tr>
+          <tr><td>respawn / 重新派发（新 attempt）</td><td>C2 廉价重试</td><td class="src">VK new attempt · LangGraph re-run · Claude Squad restart</td></tr>
+          <tr><td>请求收尾 vs 强杀分离</td><td>B6 两种停止</td><td class="src">Claude Code teams x · Claude Squad pause/kill</td></tr>
+          <tr><td>空闲成员折叠（30s）</td><td>A3 正常时低噪音、需要时拉回</td><td class="src">Claude Code teams「N idle agents」</td></tr>
+          <tr><td>⑥ 分配 flow 图（任务 DAG + 认领连线）</td><td>C3 状态真相来自机器 · A2 因果顺序可见</td><td class="src">数据已在线上（dependsOn/owner，view.rs:233）· 零新增 IPC</td></tr>
+          <tr><td>角色预设（persona 层，与授权正交）</td><td>C4 配置两层 · C5 声明式双模</td><td class="src">CrewAI role/goal/backstory · claude-swarm YAML instances</td></tr>
+        </table>
+
+        <h3>两个待拍板的裁决</h3>
+        <div class="decision">
+          <h4>⚠ 裁决 A：主面隐喻 —— 本原型按「成员 + 审批为主面、任务板退为页签」绘制</h4>
+          <div class="opt"><span class="tag tag-rec">推荐</span><span>流+收件箱为主面。依据：板是低频聚合对象，高频的是成员流与审批；VK（板最重）已 sunsetting。</span></div>
+          <div class="opt"><span class="tag tag-alt">备选</span><span>维持板为主（与旧原型/AC11 一致，改动最小），行动入口塞进现有布局。</span></div>
+          <p class="footnote" style="margin-top:6px">影响：若采纳推荐项，<code>prototype-agent-team.html</code> 视图①与 AC11「四视图逐条落地」需同步修订。</p>
+        </div>
+        <div class="decision">
+          <h4>⚠ 裁决 B：UI 代行队长职权的边界 —— 本原型按「UI 可操作审批；建/改/派任务仍走队长」绘制</h4>
+          <div class="opt"><span class="tag tag-rec">推荐</span><span>UI 审批（本来是 3.2 计划内）+ 重新派发按钮（显式回收，落审计「用户代队长」）；任务创建仍只有队长 <code>task_create</code>（R1.7 不动）。</span></div>
+          <div class="opt"><span class="tag tag-alt">更保守</span><span>UI 仅审批+观察，重新派发也让队长做 —— 权限矩阵零改动，但「换人重做」要靠提示词。</span></div>
+          <p class="footnote" style="margin-top:6px">影响：推荐项需 <code>authorize.rs</code> 加 actor 概念（user-on-behalf-of-lead）与审计标注；「总是允许」规则的作用域（本成员/全队）也在本裁决内。</p>
+        </div>
+
+        <h3>不在本原型内</h3>
+        <ul>
+          <li>真实 xterm 渲染、真实 diff/产物视图（diff 依赖 P4 worktree 分支产物，是时间线的下一批内容）</li>
+          <li>Chat 成员（二期）、跨队聚合仪表盘（Warp Agent Management Panel 式，可作后续）</li>
+          <li>审批规则编辑器的完整形态（本原型只给一枚规则 chip 示意）</li>
+          <li>浅色主题（沿用旧原型的 dark-only 约定）</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ══════════ 视图 6：分配 flow 与角色 ══════════ -->
+    <section class="view" data-id="6">
+      <div class="doc">
+        <h2>⑥ 分配 flow —— 队长怎么拆活、派给谁，一张图看清</h2>
+        <p><b>数据零缺口</b>：<code>TeamTask.depends_on</code>（不变量 3：依赖未全 done 不可 claim）、<code>owner</code>、
+           <code>state</code>、<code>reclaim_count</code> 已经都在快照线上（<code>view.rs:233</code> → <code>team.ts:278</code> 的 <code>dependsOn</code>）。
+           图是<b>快照的投影</b>，不是新的真相源，也不编排任何东西 —— 编排决策仍只由 LLM 队长做
+           （「声明式 DAG 编排器」留在 Non-goals，勿偷渡回来）。</p>
+        <div class="flow-legend">
+          <span class="lg"><span class="ln"></span>创建（lead → 首层）</span>
+          <span class="lg"><span class="ln dash"></span>依赖 depends_on</span>
+          <span class="lg"><span class="ln claim"></span>认领 owner</span>
+          <span class="lg"><span class="ln dash" style="border-color:var(--danger)"></span>租约回收</span>
+          <span class="lg">节点色 = 六态徽标语义 · 点击任务节点看依赖链与认领边</span>
+        </div>
+        <div class="flow-wrap">
+          <svg id="flow-svg" viewBox="0 0 660 400" role="img" aria-label="任务分配 flow 图">
+            <defs>
+              <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L8,4 L0,8 z" fill="var(--border-strong)"/>
+              </marker>
+            </defs>
+            <!-- 创建边（lead → 首层；更深层的任务也是 lead 建的，图上省略避免扇形杂乱） -->
+            <path class="fedge" data-kind="create" data-efrom="lead" data-eto="t1" d="M330,46 L114,114" marker-end="url(#arr)"/>
+            <path class="fedge" data-kind="create" data-efrom="lead" data-eto="t2" d="M330,46 L330,114" marker-end="url(#arr)"/>
+            <path class="fedge" data-kind="create" data-efrom="lead" data-eto="t3" d="M330,46 L546,114" marker-end="url(#arr)"/>
+            <!-- 依赖边 -->
+            <path class="fedge" data-kind="dep" data-efrom="t2" data-eto="t4" d="M330,158 L204,240" marker-end="url(#arr)"/>
+            <path class="fedge" data-kind="dep" data-efrom="t3" data-eto="t5" d="M546,158 L460,240" marker-end="url(#arr)"/>
+            <!-- 认领边 -->
+            <path class="fedge" data-kind="claim" data-efrom="cody" data-eto="t1" d="M114,340 L114,162" marker-end="url(#arr)"/>
+            <path class="fedge" data-kind="claim" data-efrom="researcher" data-eto="t2" d="M330,340 L330,162" marker-end="url(#arr)"/>
+            <path class="fedge" data-kind="claim" data-efrom="cody" data-eto="t3" d="M170,340 L540,162" marker-end="url(#arr)"/>
+            <!-- 回收边 -->
+            <path class="fedge" data-kind="recycle" data-efrom="writer" data-eto="t5" d="M530,340 L472,288" marker-end="url(#arr)"/>
+            <!-- lead -->
+            <g class="fnode" data-node="lead">
+              <rect x="275" y="14" width="110" height="32"/>
+              <text x="330" y="34" text-anchor="middle" style="font-weight:700">lead · 队长</text>
+            </g>
+            <!-- 任务 L0 -->
+            <g class="fnode" data-task="t1">
+              <rect x="50" y="118" width="128" height="40"/>
+              <text x="114" y="136" text-anchor="middle">t1 · 重构 auth 中间件</text>
+              <text class="sm" x="114" y="150" text-anchor="middle" style="fill:var(--accent)">进行中 · cody · attempt×2</text>
+            </g>
+            <g class="fnode" data-task="t2">
+              <rect x="266" y="118" width="128" height="40"/>
+              <text x="330" y="136" text-anchor="middle">t2 · 抽公共类型</text>
+              <text class="sm" x="330" y="150" text-anchor="middle" style="fill:var(--accent)">进行中 · researcher</text>
+            </g>
+            <g class="fnode" data-task="t3">
+              <rect x="482" y="118" width="128" height="40"/>
+              <text x="546" y="136" text-anchor="middle">t3 · 清理死代码</text>
+              <text class="sm" x="546" y="150" text-anchor="middle" style="fill:var(--success)">完成 ✓ 已声明 · cody</text>
+            </g>
+            <!-- 任务 L1（依赖层） -->
+            <g class="fnode" data-task="t4">
+              <rect x="140" y="244" width="128" height="40"/>
+              <text x="204" y="262" text-anchor="middle">t4 · 补 auth 文档</text>
+              <text class="sm" x="204" y="276" text-anchor="middle">待认领 · 依赖 t2</text>
+            </g>
+            <g class="fnode" data-task="t5">
+              <rect x="396" y="244" width="128" height="40"/>
+              <text x="460" y="262" text-anchor="middle">t5 · 迁移配置格式</text>
+              <text class="sm" x="460" y="276" text-anchor="middle" style="fill:var(--purple)">阻塞 · 租约回收 ×1</text>
+            </g>
+            <!-- 成员 -->
+            <g class="fnode" data-member="cody">
+              <rect x="44" y="340" width="140" height="36"/>
+              <circle cx="64" cy="358" r="8" fill="var(--purple)"/>
+              <text x="80" y="356" style="font-weight:700">cody</text>
+              <text class="sm" x="80" y="369">实现者 · pi</text>
+            </g>
+            <g class="fnode" data-member="researcher">
+              <rect x="260" y="340" width="140" height="36"/>
+              <circle cx="280" cy="358" r="8" fill="var(--success)"/>
+              <text x="296" y="356" style="font-weight:700">researcher</text>
+              <text class="sm" x="296" y="369">研究员 · claude-code</text>
+            </g>
+            <g class="fnode" data-member="writer">
+              <rect x="460" y="340" width="140" height="36"/>
+              <circle cx="480" cy="358" r="8" fill="var(--warning)"/>
+              <text x="496" y="356" style="font-weight:700">writer</text>
+              <text class="sm" x="496" y="369">实现者 · codex · 已回收</text>
+            </g>
+          </svg>
+          <div id="flow-detail">
+            <h5>任务详情</h5>
+            <div class="kv"><dt>点击任一任务节点</dt><dd>这里显示它的依赖链、持有者与角色</dd></div>
+          </div>
+        </div>
+        <p class="footnote">落点建议：任务页签内加「看板 / 分配图」双视图（图需要宽度时可换到中央 tab）；渲染 = 纯前端 SVG，
+           布局按 <code>depends_on</code> 拓扑分层，每次脉冲重取后重算 —— 与「快照唯一真相」纪律一致。</p>
+
+        <div class="hr"></div>
+
+        <h2>角色预设 —— 人设（persona）与授权（MemberRole）必须分开</h2>
+        <p>现状：`MemberRole` 只有 <code>Lead | Worker</code>，它是<b>授权矩阵</b>的维度（design §3.2：谁能调哪些工具）；
+           worker preamble 全员一份（<code>identity::preamble</code>，C14 机制）。而「研究员 / 实现者 / 评审员」是另一个维度 ——
+           <b>persona</b>：preamble 文本 + CLI 偏好 + 审批策略 + 缺省工作区的数据包。
+           <b>不能往 `MemberRole` 里加变体</b> —— persona 若能改变授权，spawn 就成了提权后门；正确落点是一份新数据，
+           在 spawn 时被消费、且只能落在 spawn 时本来就允许定的参数上（审批档位、工作区、CLI 选择）。</p>
+
+        <div class="role-card">
+          <h4><span class="avatar" style="background:var(--success)">研</span>研究员 <span class="pill">research</span></h4>
+          <div class="kv"><dt>CLI 偏好</dt><dd>claude-code</dd><dt>审批策略</dt><dd>Queue</dd><dt>缺省工作区</dt><dd>shared / read_only</dd></div>
+          <p>preamble：只调研、不改生产代码；结论写进 summary；无结论不得声明 done。</p>
+        </div>
+        <div class="role-card">
+          <h4><span class="avatar" style="background:var(--purple)">实</span>实现者 <span class="pill">impl</span></h4>
+          <div class="kv"><dt>CLI 偏好</dt><dd>codex / pi</dd><dt>审批策略</dt><dd>Queue</dd><dt>缺省工作区</dt><dd>worktree（P4 后）</dd></div>
+          <p>preamble：写码 + 跑测试；完成后 <code>task_update(done)</code> + summary（≤4KB）+ 产物登记 artifacts。</p>
+        </div>
+        <div class="role-card">
+          <h4><span class="avatar" style="background:var(--accent)">审</span>评审员 <span class="pill">review</span></h4>
+          <div class="kv"><dt>CLI 偏好</dt><dd>pi</dd><dt>审批策略</dt><dd>Interactive</dd><dt>缺省工作区</dt><dd>read_only</dd></div>
+          <p>preamble：只审不写；对「完成 ⚠ 未声明」的任务做复核；产出 review 意见到板。</p>
+        </div>
+
+        <h3>persona 的消费链路（全部复用既有机制）</h3>
+        <div class="seq">
+          <div class="seq-step"><div class="seq-dot">1</div><div class="seq-body">
+            <div class="seq-t">建队配置池位时选角色</div>
+            <div class="seq-d">角色库（全局，YAML 可导入导出）+ 队内覆盖（C4 两层配置、C5 双模编辑：表单 ↔ YAML）。</div>
+          </div></div>
+          <div class="seq-step"><div class="seq-dot">2</div><div class="seq-body">
+            <div class="seq-t"><code>team_spawn(member, persona=研究员)</code></div>
+            <div class="seq-d">persona 只是 spawn 的一个入参；准入档位（tier）仍由 admission 表计算，调用方声明无效（R0.6 不变）。</div>
+          </div></div>
+          <div class="seq-step"><div class="seq-dot">3</div><div class="seq-body">
+            <div class="seq-t">spawn 注入</div>
+            <div class="seq-d">身份 env + <code>persona.preamble</code>（与 worker 授权 preamble 拼接，走 C14 同一机制、admission 的 <code>{{preamble}}</code> 占位符）+ 审批策略覆盖 + CLI 偏好选 <code>AgentConfig</code>。</div>
+          </div></div>
+          <div class="seq-step"><div class="seq-dot">4</div><div class="seq-body">
+            <div class="seq-t">呈现</div>
+            <div class="seq-d">花名册 / flow 图按 persona 着色；授权判定仍只看 <code>MemberRole(Lead | Worker)</code>，persona 一字不进授权矩阵（红线 15 精神：persona 是数据，不是代码分支）。</div>
+          </div></div>
+        </div>
+        <p class="footnote">小裁决（可默认推进）：角色库存放形态 —— 建议 SQLite 表（与 team_options 同族、随库迁移）+ YAML 导入导出（团队即文件，C5）。</p>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (sel) { return document.querySelector(sel); };
+  var $$ = function (sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); };
+
+  /* ── toast ─────────────────────────────────────────────────────── */
+  var toastTimer = null;
+  function toast(msg, tone) {
+    var t = $("#toast");
+    t.textContent = msg;
+    t.setAttribute("data-tone", tone || "info");
+    t.setAttribute("data-show", "true");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.setAttribute("data-show", "false"); }, 2600);
+  }
+
+  /* ── 视图切换 ───────────────────────────────────────────────────── */
+  $$(".proto-bar .tab").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      $$(".proto-bar .tab").forEach(function (b) { b.setAttribute("aria-selected", String(b === btn)); });
+      $$(".view").forEach(function (v) {
+        v.setAttribute("data-active", String(v.getAttribute("data-id") === btn.getAttribute("data-view")));
+      });
+    });
+  });
+
+  /* ── 面板页签（成员/审批/任务）─────────────────────────────────── */
+  function gotoPage(page) {
+    $$(".ptab").forEach(function (b) { b.setAttribute("aria-selected", String(b.getAttribute("data-ptab") === page)); });
+    $$(".page").forEach(function (p) { p.setAttribute("data-active", String(p.getAttribute("data-id") === page)); });
+  }
+  $$(".ptab").forEach(function (btn) {
+    btn.addEventListener("click", function () { gotoPage(btn.getAttribute("data-ptab")); });
+  });
+
+  /* ── 中央区 tab（终端/时间线）──────────────────────────────────── */
+  function gotoCenter(id) {
+    $$(".ctab").forEach(function (b) { b.setAttribute("aria-selected", String(b.getAttribute("data-ctab") === id)); });
+    $$(".center-body").forEach(function (b) { b.setAttribute("data-active", String(b.getAttribute("data-id") === id)); });
+  }
+  $$(".ctab").forEach(function (btn) {
+    btn.addEventListener("click", function () { gotoCenter(btn.getAttribute("data-ctab")); });
+  });
+
+  /* ── Thinking 折叠 ─────────────────────────────────────────────── */
+  $$(".thinking").forEach(function (el) {
+    function toggle() {
+      var open = el.getAttribute("aria-expanded") === "true";
+      el.setAttribute("aria-expanded", String(!open));
+    }
+    el.addEventListener("click", toggle);
+    el.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+  });
+
+  /* ── 成员行：选中态 + 内联动作 ─────────────────────────────────── */
+  $$("#roster .member").forEach(function (row) {
+    row.addEventListener("click", function (e) {
+      if (e.target.closest("button")) return;
+      $$("#roster .member").forEach(function (r) { r.setAttribute("data-selected", "false"); });
+      row.setAttribute("data-selected", "true");
+      var m = row.getAttribute("data-member");
+      if (m === "researcher") gotoCenter("tl-researcher");
+      if (m === "writer") gotoCenter("tl-writer");
+    });
+  });
+  $$("[data-open-term]").forEach(function (btn) {
+    btn.addEventListener("click", function () { gotoCenter(btn.getAttribute("data-open-term")); });
+  });
+  $$("[data-goto-inbox]").forEach(function (btn) {
+    btn.addEventListener("click", function () { gotoPage("inbox"); });
+  });
+
+  /* ── 收件箱：批准 / 拒绝 / 总是允许 / 批量 ──────────────────────── */
+  var inboxCount = 1;
+  function setInboxCount(n) {
+    inboxCount = Math.max(0, n);
+    $("#inbox-total").textContent = String(inboxCount);
+    $("#tab-inbox-n").textContent = String(inboxCount);
+    $("#tab-inbox-n").style.display = inboxCount > 0 ? "" : "none";
+    $("#pill-inbox").style.display = inboxCount > 0 ? "" : "none";
+  }
+  function resolveCard(id, mode) {
+    var card = $('[data-acard="' + id + '"]');
+    if (!card || card.getAttribute("data-resolved")) return false;
+    card.setAttribute("data-resolved", mode);
+    var foot = card.querySelector(".acard-foot");
+    if (foot) {
+      var label = mode === "allow" ? "✓ 已批准 · 已写入成员 PTY" : "✕ 已拒绝 · 已写入成员 PTY";
+      foot.innerHTML = '<span class="footnote" style="color:' + (mode === "allow" ? "var(--success)" : "var(--danger)") + '">' + label + "</span>";
+    }
+    setInboxCount(inboxCount - 1);
+    return true;
+  }
+  function memberResumed(member) {
+    var st = $("#st-" + member);
+    if (st) { st.className = "st st-running"; st.textContent = "运行中"; }
+    var row = $('[data-member="' + member + '"]');
+    if (row) row.setAttribute("data-attn", "false");
+    var ctab = $('[data-ctab="tl-' + member + '"]');
+    if (ctab) ctab.setAttribute("data-attn", "false");
+    var comp = $("#composer-" + member);
+    if (comp) {
+      comp.setAttribute("data-blocked", "false");
+      var input = comp.querySelector("input");
+      var send = comp.querySelector("[data-send]");
+      if (input) input.disabled = false;
+      if (send) send.disabled = false;
+    }
+    addEvent("stream-" + member, "14:07", '<div class="ev-sys"><b>✓ 已批准</b> · 审批卡片 → 写入 PTY，成员继续执行</div>');
+    var t3card = $('[data-task="t3x"]');
+  }
+  $$("[data-approve]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var id = btn.getAttribute("data-approve");
+      var card = $('[data-acard="' + id + '"]');
+      var member = card ? card.getAttribute("data-member") : "";
+      if (resolveCard(id, "allow")) { memberResumed(member); toast("已批准 · 写入 " + member + " 的 PTY", "ok"); }
+    });
+  });
+  $$("[data-deny]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var id = btn.getAttribute("data-deny");
+      var card = $('[data-acard="' + id + '"]');
+      var member = card ? card.getAttribute("data-member") : "";
+      if (resolveCard(id, "deny")) {
+        var st = $("#st-" + member);
+        if (st) { st.className = "st st-idle"; st.textContent = "空闲"; }
+        toast("已拒绝 · " + member + " 会收到 CLI 自己的拒绝处理", "warn");
+      }
+    });
+  });
+  $$("[data-always]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var id = btn.getAttribute("data-always");
+      var card = $('[data-acard="' + id + '"]');
+      var member = card ? card.getAttribute("data-member") : "";
+      if (resolveCard(id, "allow")) {
+        memberResumed(member);
+        var rule = document.createElement("div");
+        rule.className = "rule-chip";
+        rule.style.margin = "6px 8px";
+        rule.textContent = "规则已沉淀：bash(npm run deploy *) · 作用域=本成员 ⚠";
+        card.appendChild(rule);
+        toast("已批准并沉淀规则（作用域=本成员）—— 全队作用域属裁决 B", "ok");
+      }
+    });
+  });
+  function approveAll() {
+    var did = 0;
+    $$("[data-acard]").forEach(function (card) {
+      var id = card.getAttribute("data-acard");
+      var member = card.getAttribute("data-member");
+      if (resolveCard(id, "allow")) { memberResumed(member); did += 1; }
+    });
+    if (did) toast("代批 " + did + " 条 · 各写入成员 PTY", "ok");
+    else toast("队列是空的", "info");
+    return did;
+  }
+  $("#approve-all").addEventListener("click", approveAll);
+
+  /* ── composer：排队 / 立即发送 / 打断 / target_blocked ─────────── */
+  function queuedList(member) { return $("#queued-" + member); }
+  function queueMessage(member, text) {
+    if (!text) return false;
+    var li = document.createElement("div");
+    li.className = "qmsg";
+    li.innerHTML = '<span>◌ 排队中</span><span class="q-text truncate"></span><button class="q-x" aria-label="删除">×</button>';
+    li.querySelector(".q-text").textContent = text;
+    li.querySelector(".q-x").addEventListener("click", function () {
+      li.remove();
+      if (!queuedList(member).children.length) toast("已取回排队消息（照 Claude Code 的 Up 取回）", "info");
+    });
+    queuedList(member).appendChild(li);
+    return true;
+  }
+  function flush(member) {
+    var list = queuedList(member);
+    var n = list.children.length;
+    if (!n) { toast("队列为空：输入后按 Enter 排队", "info"); return; }
+    addEvent("stream-" + member, "14:08", '<div class="ev-who">你 → ' + member + '</div><div class="bubble bubble-user">' +
+      Array.prototype.map.call(list.children, function (q) { return q.querySelector(".q-text").textContent; }).join("<br>") + "</div>");
+    list.innerHTML = "";
+    toast("已投递 " + n + " 条给 " + member + "（回合结束后被读走）", "ok");
+  }
+  $$("[data-send]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var member = btn.getAttribute("data-send");
+      var comp = $("#composer-" + member);
+      if (comp.getAttribute("data-blocked") === "true") {
+        toast("target_blocked：" + member + " 在等待审批，未写入任何字节（R2.7）", "warn");
+        return;
+      }
+      var input = $("#input-" + member);
+      if (input.value.trim()) { queueMessage(member, input.value.trim()); input.value = ""; }
+      flush(member);
+    });
+  });
+  $$("input[id^='input-']").forEach(function (input) {
+    input.addEventListener("keydown", function (e) {
+      var member = input.id.replace("input-", "");
+      if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (input.value.trim()) { queueMessage(member, input.value.trim()); input.value = ""; }
+      } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        $$("[data-send='" + member + "']")[0].click();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        interrupt(member);
+      }
+    });
+  });
+  function addEvent(streamId, time, html) {
+    var stream = $("#" + streamId);
+    if (!stream) return;
+    var div = document.createElement("div");
+    div.className = "ev";
+    div.innerHTML = '<div class="ev-time">' + time + '</div><div class="ev-body">' + html + "</div>";
+    stream.appendChild(div);
+    stream.scrollTop = stream.scrollHeight;
+  }
+  function interrupt(member) {
+    var st = $("#st-" + member);
+    if (st) { st.className = "st st-unverified"; st.textContent = "空闲 ⚠ 未声明"; }
+    addEvent("stream-" + member, "14:09", '<div class="ev-sys"><b>⎋ 你打断了当前 turn</b>（写入 ^C）—— turn_completed 未到，成员落「空闲 ⚠ 未声明」，任务仍在进行中（AC2）</div>');
+    toast("已打断 " + member + " · turn_completed 不会来，徽标如实显示", "warn");
+  }
+  $$("[data-interrupt]").forEach(function (btn) {
+    btn.addEventListener("click", function () { interrupt(btn.getAttribute("data-interrupt")); });
+  });
+
+  /* ── 视图②的联动按钮 ──────────────────────────────────────────── */
+  $("#v2-show-inbox").addEventListener("click", function () {
+    $$(".proto-bar .tab")[0].click();
+    gotoPage("inbox");
+  });
+  $("#v2-approve-all").addEventListener("click", function () {
+    var n = approveAll();
+    $("#v2-note").textContent = n ? "已代批 " + n + " 条。" : "队列是空的 —— 可按「重置演示」再来。";
+  });
+  $("#v2-reset").addEventListener("click", function () { location.reload(); });
+
+  /* ── 视图③的联动按钮 ──────────────────────────────────────────── */
+  $("#v3-goto-composer").addEventListener("click", function () {
+    $$(".proto-bar .tab")[0].click();
+    gotoCenter("tl-researcher");
+    $("#input-researcher").focus();
+  });
+  $("#v3-queue-sample").addEventListener("click", function () {
+    queueMessage("researcher", "先别清理导入路径，把 enum 换成 union type 再收尾");
+    toast("已排队（Enter 语义）—— 成员回合结束后投递", "info");
+  });
+  $("#v3-flush").addEventListener("click", function () { flush("researcher"); });
+  $("#v3-interrupt").addEventListener("click", function () { interrupt("researcher"); });
+
+  /* ── 视图④：respawn / 重新派发 ────────────────────────────────── */
+  var writerDead = false;
+  $("#v4-kill-writer").addEventListener("click", function () {
+    if (writerDead) { toast("writer 已经死了", "info"); return; }
+    writerDead = true;
+    var st = $("#st-writer");
+    st.className = "st st-dead"; st.textContent = "PTY 已死";
+    var row = $('[data-member="writer"]');
+    row.setAttribute("data-attn", "true");
+    var meta = row.querySelector(".m-meta");
+    if (!row.querySelector(".chip-dead")) {
+      var c = document.createElement("span");
+      c.className = "chip chip-dead"; c.textContent = "进程退出 · 不续租";
+      meta.appendChild(c);
+    }
+    $("#v4-respawn").disabled = false;
+    $("#v4-respawn-note").textContent = "writer 的 PTY 已退出 —— 在飞任务 t1 等租约到期会回 pending；现在就重启可保住 claim。";
+    toast("writer 进程退出（session_failed / 进程死亡不续租）", "warn");
+  });
+  $("#v4-respawn").addEventListener("click", function () {
+    if (!writerDead) return;
+    writerDead = false;
+    var st = $("#st-writer");
+    st.className = "st st-running"; st.textContent = "运行中";
+    var row = $('[data-member="writer"]');
+    row.setAttribute("data-attn", "false");
+    var dead = row.querySelector(".chip-dead");
+    if (dead) dead.remove();
+    $("#v4-respawn").disabled = true;
+    $("#v4-respawn-note").textContent = "已重启：同成员身份重开 PTY，token 重签、租约重置，t1 保留 claim。";
+    toast("respawn_member · t1 的 claim 保留", "ok");
+  });
+  var redispatched = false;
+  $("#v4-redispatch").addEventListener("click", function () {
+    if (redispatched) { toast("t1 已经换人了", "info"); return; }
+    redispatched = true;
+    var meta = $("#t1-meta");
+    meta.innerHTML = '<span class="chip">cody</span><span class="attempt">attempt ×2</span><span class="chip chip-warn">writer 已回收</span>';
+    $("#v4-rd-note").textContent = "t1 已重新派发给 cody：旧租约显式回收（记 reclaimed），任务体与 workspace 不变，writer 的产出留在 artifacts。";
+    toast("t1 → cody · attempt ×2（显式回收，非超时）", "ok");
+  });
+
+  /* ── 视图⑥：flow 图（快照投影的交互演示）──────────────────────── */
+  var FLOW_INFO = {
+    t1: { title: "t1 · 重构 auth 中间件", rows: [["状态", "进行中"], ["持有者", "cody（角色 · 实现者）"], ["依赖", "无"], ["工作区", "shared"], ["备注", "attempt ×2 · 租约回收 ×1（从 writer 显式换给 cody）"]] },
+    t2: { title: "t2 · 抽公共类型", rows: [["状态", "进行中"], ["持有者", "researcher（角色 · 研究员）"], ["依赖", "无"], ["工作区", "shared"], ["备注", "summary 已回板一次"]] },
+    t3: { title: "t3 · 清理死代码", rows: [["状态", "完成 ✓ 已声明（L2）"], ["持有者", "cody（角色 · 实现者）"], ["依赖", "无"], ["工作区", "shared"], ["备注", "若只有 hook 信号会落「完成 ⚠ 未声明」—— 六态契约不合并"]] },
+    t4: { title: "t4 · 补 auth 文档", rows: [["状态", "待认领"], ["持有者", "—"], ["依赖", "t2（未全 done 不可 claim，不变量 3）"], ["工作区", "read_only"], ["备注", "需要 t2 的产物作为输入"]] },
+    t5: { title: "t5 · 迁移配置格式", rows: [["状态", "阻塞"], ["持有者", "—（writer 已回收）"], ["依赖", "t3"], ["工作区", "shared"], ["备注", "租约回收 ×1 —— 依赖 t3 完成后可重新派发（视图④）"]] }
+  };
+  var FLOW_DEPS = { t1: [], t2: [], t3: [], t4: ["t2"], t5: ["t3"] };
+  var flowSel = null;
+  function flowAncestors(id, acc) {
+    (FLOW_DEPS[id] || []).forEach(function (d) {
+      if (!acc[d]) { acc[d] = true; flowAncestors(d, acc); }
+    });
+    return acc;
+  }
+  function flowDetail(id) {
+    var info = FLOW_INFO[id];
+    var html = "<h5>" + info.title + "</h5>" + info.rows.map(function (r) {
+      return '<div class="kv"><dt>' + r[0] + "</dt><dd>" + r[1] + "</dd></div>";
+    }).join("");
+    $("#flow-detail").innerHTML = html;
+  }
+  function flowSelect(id) {
+    var svg = $("#flow-svg");
+    if (flowSel === id) {  // 再点一次取消
+      flowSel = null;
+      svg.removeAttribute("data-selecting");
+      $$("#flow-svg .fnode").forEach(function (n) { n.removeAttribute("data-on"); n.removeAttribute("data-dim"); });
+      $$("#flow-svg .fedge").forEach(function (e) { e.removeAttribute("data-dim"); });
+      $("#flow-detail").innerHTML = '<h5>任务详情</h5><div class="kv"><dt>点击任一任务节点</dt><dd>这里显示它的依赖链、持有者与角色</dd></div>';
+      return;
+    }
+    flowSel = id;
+    svg.setAttribute("data-selecting", "true");
+    var active = flowAncestors(id, {});
+    active[id] = true;
+    $$("#flow-svg .fnode").forEach(function (n) {
+      var task = n.getAttribute("data-task");
+      var member = n.getAttribute("data-member");
+      n.removeAttribute("data-on");
+      n.removeAttribute("data-dim");
+      if (task) {
+        if (active[task]) n.setAttribute("data-on", "true");
+        else n.setAttribute("data-dim", "true");
+      } else if (member) {
+        // 成员：只要有一条 active 的认领/回收边连着它就保留
+        var related = $$("#flow-svg .fedge").some(function (e) {
+          return e.getAttribute("data-efrom") === member && active[e.getAttribute("data-eto")];
+        });
+        if (!related) n.setAttribute("data-dim", "true");
+      }
+      // lead 恒亮（它是创建者）
+    });
+    $$("#flow-svg .fedge").forEach(function (e) {
+      var f = e.getAttribute("data-efrom"), t = e.getAttribute("data-eto");
+      var kind = e.getAttribute("data-kind");
+      var on = t === id || (f === id) ||
+        ((kind === "dep" || kind === "claim") && active[f] && active[t]);
+      e.setAttribute("data-dim", on ? "false" : "true");
+      if (on) e.removeAttribute("data-dim");
+    });
+    flowDetail(id);
+  }
+  $$("#flow-svg .fnode[data-task]").forEach(function (n) {
+    n.addEventListener("click", function () { flowSelect(n.getAttribute("data-task")); });
+  });
+
+  /* ── 推进演示（全局状态机）────────────────────────────────────── */
+  var step = 0;
+  var steps = [
+    {
+      hint: "①/6 researcher 也提交了审批请求 → 收件箱 +1，成员行与时间线 tab 出现 attention",
+      fn: function () {
+        var extra = document.createElement("div");
+        extra.className = "acard";
+        extra.setAttribute("data-acard", "r1");
+        extra.setAttribute("data-member", "researcher");
+        extra.innerHTML =
+          '<div class="acard-head"><div class="avatar" style="background:var(--success)">R</div><b style="font-size:11px">researcher · claude-code</b>' +
+          '<span class="pill">Queue</span><span style="margin-left:auto" class="footnote mono">14:07</span></div>' +
+          '<div class="acard-cmd mono">$ git push --force-with-lease origin refactor/api-types</div>' +
+          '<div class="acard-meta"><span class="chip chip-task">t2</span><span class="footnote">演示注入的第二条请求</span></div>' +
+          '<div class="acard-foot"><button class="btn btn-mini btn-primary" data-approve="r1">批准</button>' +
+          '<button class="btn btn-mini" data-always="r1">总是允许…</button>' +
+          '<button class="btn btn-mini btn-danger" data-deny="r1">拒绝</button></div>';
+        $("#inbox-extra").appendChild(extra);
+        extra.querySelector("[data-approve]").addEventListener("click", function () {
+          if (resolveCard("r1", "allow")) { memberResumed("researcher"); toast("已批准 · 写入 researcher 的 PTY", "ok"); }
+        });
+        extra.querySelector("[data-deny]").addEventListener("click", function () {
+          if (resolveCard("r1", "deny")) { var st = $("#st-researcher"); if (st) { st.className = "st st-idle"; st.textContent = "空闲"; } }
+        });
+        extra.querySelector("[data-always]").addEventListener("click", function () {
+          if (resolveCard("r1", "allow")) { memberResumed("researcher"); toast("规则已沉淀（作用域=本成员）", "ok"); }
+        });
+        var st = $("#st-researcher");
+        st.className = "st st-awaiting"; st.textContent = "待审批";
+        $('[data-member="researcher"]').setAttribute("data-attn", "true");
+        $('[data-ctab="tl-researcher"]').setAttribute("data-attn", "true");
+        var comp = $("#composer-researcher");
+        comp.setAttribute("data-blocked", "true");
+        comp.querySelector("input").disabled = true;
+        comp.querySelector("[data-send]").disabled = true;
+        addEvent("stream-researcher", "14:07", '<div class="ev-await">⚑ 等待审批 · 请求执行 <b>git push --force-with-lease</b> —— 已进收件箱</div>');
+        var card = $("#card-t2");
+        $("#col-awaiting").appendChild(card);
+        $("#c-awaiting").textContent = "1"; $("#c-progress").textContent = "1";
+        setInboxCount(inboxCount + 1);
+        toast("新审批进收件箱 —— 成员行 / 时间线 tab / 徽标三处 attention", "warn");
+      }
+    },
+    {
+      hint: "②/6 打开「审批」页签批量批准（或再按一次「推进演示」代批）",
+      fn: function () {
+        var n = approveAll();
+        var card = $("#card-t2");
+        $("#col-progress").appendChild(card);
+        $("#c-awaiting").textContent = "0"; $("#c-progress").textContent = "2";
+        if (!n) toast("队列已空 —— 上一步的请求可能已被你手动处理", "info");
+      }
+    },
+    {
+      hint: "③/6 插话：researcher 的 composer 收到排队消息（回合结束后投递，不丢）",
+      fn: function () {
+        gotoCenter("tl-researcher");
+        if (!queuedList("researcher").children.length) {
+          queueMessage("researcher", "注意 types.ts 里的命名要和 auth/ 对齐");
+        }
+        toast("消息在 composer 上方排队 —— Ctrl+Enter 可立即发送", "info");
+      }
+    },
+    {
+      hint: "④/6 writer 的 PTY 死了 → 红色 attention + 「重启」（respawn 的入口）",
+      fn: function () {
+        $("#v4-kill-writer").click();
+      }
+    },
+    {
+      hint: "⑤/6 重启 writer：同身份重开 PTY、租约重置、t1 保留 claim（C11）",
+      fn: function () {
+        $("#v4-respawn").click();
+      }
+    },
+    {
+      hint: "⑥/6 t1 换人重做：显式回收 writer → cody 认领（attempt ×2）",
+      fn: function () {
+        $("#v4-redispatch").click();
+      }
+    },
+    {
+      hint: "演示完毕 —— 切到 ②③④ 看交互细节，⑤ 是改动对照与两个待拍板裁决",
+      fn: function () {
+        toast("行动闭环走完：审批 → 插话 → 重启 → 换人重做", "ok");
+      }
+    }
+  ];
+  $("#advance").addEventListener("click", function () {
+    if (step >= steps.length) step = 0;
+    var s = steps[step];
+    $$(".proto-bar .tab")[0].click();
+    s.fn();
+    $("#step-hint").textContent = s.hint;
+    step += 1;
+  });
+})();
+</script>
+</body>
+</html>

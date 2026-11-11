@@ -192,6 +192,7 @@ impl TerminalRouter {
         launch: crate::terminal::launch::TerminalLaunch,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession, AppError> {
+        ensure_launch_valid(env, &launch)?;
         // 主题产物属主题域，由该域按环境准备（见 `theme::service::prepare_project_theme`）。
         // 项目级配置落在 Workspace 根，**不**随语言 runner 的模块子目录覆盖漂移。
         crate::theme::service::prepare_project_theme(env, workspace_root, launch.command.is_some())
@@ -216,7 +217,7 @@ impl TerminalRouter {
             ProjectEnvironment::Local => {
                 let session = self
                     .local
-                    .create_session(cwd, &launch, history, live, app_handle)
+                    .create_session(cwd, &launch, &launch.extra_env, history, live, app_handle)
                     .map_err(AppError::from)?;
                 self.register(&session.id, SessionOwner::Pty);
                 session
@@ -356,11 +357,125 @@ fn unknown_session(session_id: &str) -> AppError {
     AppError::NotFound(format!("Terminal session not found: {session_id}"))
 }
 
+/// 域边界的启动参数校验：**拒绝而不是降级**。
+///
+/// 三条判据（都是「静默降级会让调用方拿到一个看起来正常、实际不可用的会话」）：
+///
+/// 1. `command`（shell 一行）与 `argv`（精确 argv）**互斥** —— 同时给意味着调用方不知道
+///    自己要哪一种，而任何一种解释都会丢掉另一半意图；
+/// 2. `argv` 必须至少含程序名 —— 空列表退化成交互 shell，成员「起来了但没连上」；
+/// 3. `extra_env` 只能注入 **Local** 路径 —— WSL 走 `wsl.exe -- bash -c`、SSH 走远端 shell，
+///    变量进不去内层进程，静默丢弃会让成员的上报**没有身份**（团队上下文里等于拒绝归属，
+///    表现为「成员永远不产出」，离家太远）。
+fn ensure_launch_valid(
+    env: &ProjectEnvironment,
+    launch: &crate::terminal::launch::TerminalLaunch,
+) -> Result<(), AppError> {
+    if launch.command.is_some() && launch.argv.is_some() {
+        return Err(AppError::InvalidInput(
+            "`command` (one shell line) and `argv` (exact argv) are mutually exclusive".to_string(),
+        ));
+    }
+    if let Some(argv) = &launch.argv {
+        if argv.is_empty() {
+            return Err(AppError::InvalidInput(
+                "an argv launch needs a program as its first element; an empty argv would silently \
+                 fall back to an interactive shell"
+                    .to_string(),
+            ));
+        }
+    }
+    if !launch.extra_env.is_empty() && !matches!(env, ProjectEnvironment::Local) {
+        return Err(AppError::Unsupported(
+            "identity env can only be injected into a local PTY session; the WSL and SSH paths \
+             run the process in a different shell, so the variables would be dropped and the \
+             session would report without an identity"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::common::connection::types::AuthMethod;
+
+    /// 启动参数的域边界校验。三条判据各有用例：**静默降级**是这里唯一要挡的东西。
+    fn launch(
+        command: Option<&str>,
+        argv: Option<Vec<&str>>,
+        extra_env: Vec<(String, String)>,
+    ) -> crate::terminal::launch::TerminalLaunch {
+        crate::terminal::launch::TerminalLaunch {
+            cols: 80,
+            rows: 24,
+            shell: None,
+            command: command.map(str::to_string),
+            resume_from: None,
+            argv: argv.map(|argv| argv.into_iter().map(str::to_string).collect()),
+            extra_env,
+        }
+    }
+
+    #[test]
+    fn an_empty_argv_launch_is_invalid_input() {
+        let err = ensure_launch_valid(
+            &ProjectEnvironment::Local,
+            &launch(None, Some(vec![]), vec![]),
+        )
+        .expect_err("空 argv 必须拒绝");
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(err.to_string().contains("program"), "{err}");
+    }
+
+    /// `command` 与 `argv` 互斥：同时给意味着调用方不知道自己要哪一种。
+    #[test]
+    fn command_and_argv_are_mutually_exclusive() {
+        let err = ensure_launch_valid(
+            &ProjectEnvironment::Local,
+            &launch(Some("cargo test"), Some(vec!["claude"]), vec![]),
+        )
+        .expect_err("同时给 shell 与 argv 必须拒绝");
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+    }
+
+    /// 其余三形态都合法。
+    #[test]
+    fn ordinary_launch_shapes_are_accepted() {
+        for launch in [
+            launch(None, None, vec![]),
+            launch(Some("cargo test"), None, vec![]),
+            launch(None, Some(vec!["claude", "--print"]), vec![]),
+        ] {
+            assert!(ensure_launch_valid(&ProjectEnvironment::Local, &launch).is_ok());
+        }
+    }
+
+    /// 身份 env 的注入只对 Local 成立；其余传输必须显式拒绝而不是静默丢弃。
+    #[test]
+    fn identity_env_is_only_injectable_on_the_local_path() {
+        let env = vec![("NEEKO_TEAM_ID".to_string(), "tm_1".to_string())];
+        let ssh = ProjectEnvironment::Remote {
+            host: "h".into(),
+            port: 22,
+            username: "u".into(),
+            auth: AuthMethod::Password(String::new()),
+        };
+        assert!(
+            ensure_launch_valid(&ProjectEnvironment::Local, &launch(None, None, env.clone()))
+                .is_ok()
+        );
+        // 空 env 对任何传输都无害（普通终端会话走这条）。
+        assert!(ensure_launch_valid(&ssh, &launch(None, None, vec![])).is_ok());
+
+        let err = ensure_launch_valid(&ssh, &launch(None, None, env))
+            .expect_err("SSH 路径注入身份 env 必须是 Unsupported");
+        assert!(matches!(err, AppError::Unsupported(_)), "{err:?}");
+        assert!(err.to_string().contains("local PTY"), "{err}");
+    }
 
     /// 三端对称护栏：`prepare_history` 是唯一入口，未注入 history / agent TUI 都降级为
     /// 「不落盘不回放」。这样 Local / WSL / SSH 不可能出现「前端传了 resumeFrom、

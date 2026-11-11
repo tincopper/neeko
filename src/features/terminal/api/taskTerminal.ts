@@ -38,7 +38,10 @@ export interface TaskTerminalOptions {
 }
 
 /**
- * 在**指定单元**里创建终端 tab。返回 `false` = 该单元终端数已达上限。
+ * 在**指定单元**里创建终端 tab。返回**新 tab 的 id**；`null` = 该单元终端数已达上限。
+ *
+ * 返回 id 而不是布尔：`refId` 类调用方（工作项执行记录要指回这个终端）需要它，
+ * 而「是否建出来了」用 `!== null` 判，语义不丢。
  *
  * 显式收 `WorkspaceSession` 而不是 `projectId`：活跃单元可能是 linked worktree，
  * 由「项目身份」反推 tab 空间键会激活到另一个空间（用户看到的是「点了没反应」）。
@@ -46,11 +49,11 @@ export interface TaskTerminalOptions {
 export function createTerminalTabIn(
   workspace: WorkspaceSession,
   opts: TaskTerminalOptions,
-): boolean {
+): string | null {
   const state = useEditorStore.getState();
   const existing = state.tabs[workspace.key];
   const terminalCount = (existing?.tabs ?? []).filter((t) => t.data.kind === 'terminal').length;
-  if (terminalCount >= MAX_TERMINAL_TABS) return false;
+  if (terminalCount >= MAX_TERMINAL_TABS) return null;
 
   const tabId = generateTabId();
   const tab: Tab = {
@@ -69,7 +72,7 @@ export function createTerminalTabIn(
   };
   state.addTab(tab);
   state.activateTab(workspace.key, tabId);
-  return true;
+  return tabId;
 }
 
 export interface TaskTerminalCommandOptions extends TaskTerminalOptions {
@@ -79,11 +82,11 @@ export interface TaskTerminalCommandOptions extends TaskTerminalOptions {
 /**
  * 在当前活跃单元里创建 `taskCommand` 终端 tab（PTY 直接执行命令，无需等 session 就绪）。
  *
- * @returns 建成功 true；配额满（`MAX_TERMINAL_TABS`）false。
+ * @returns 新 tab 的 id；配额满（`MAX_TERMINAL_TABS`）`null`。
  */
 export function createTaskTerminal(
   projectId: ProjectId,
   opts: TaskTerminalCommandOptions,
-): boolean {
+): string | null {
   return createTerminalTabIn(activeWorkspaceSession(projectId), opts);
 }

@@ -11,6 +11,8 @@ export interface ProjectActionsContextValue {
   onBackToMainTerminal: (projectId: ProjectId) => void;
   onOpenIde?: (projectId: ProjectId) => void;
   onOpenWorktreeTerminal?: (projectId: ProjectId, worktreePath: string, branch: string) => void;
+  /** 打开某个项目的 Tasks（先切项目，再进中心视图）—— design §4.2c。 */
+  onOpenTasks?: (projectId: ProjectId) => void;
   onDragEnd?: (draggedId: string, targetId: string) => void;
   onSaveProjectSettings?: (
     projectId: ProjectId,

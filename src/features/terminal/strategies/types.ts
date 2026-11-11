@@ -10,6 +10,14 @@ export interface CacheEntry {
   sessionId: string | null;
   unlisten: (() => void) | null;
   inputController: TerminalInputController | null;
+  /**
+   * 这个 entry **不拥有** 会话进程（接管了后端已建好的会话，如团队队长/成员 PTY）。
+   *
+   * 要区分所有权是因为「销毁缓存」与「杀掉进程」是两件事：关 tab / 自愈重建只该销毁缓存，
+   * 而进程的生命周期归它的创建者（团队域 `TeamManager` 的关闭协议）。不区分的话，用户
+   * 关掉队长终端 tab 就会 `kill` 掉整个团队的队长，而在界面上看不出是谁干的。
+   */
+  attached?: boolean;
 }
 
 export interface TerminalStrategy {

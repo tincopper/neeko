@@ -21,4 +21,7 @@ mod close;
 pub mod commands;
 pub mod session_lifecycle;
 
+mod team_executor;
+mod team_notifier;
+
 pub use boot::run;

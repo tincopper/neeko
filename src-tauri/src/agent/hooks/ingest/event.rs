@@ -78,6 +78,14 @@ pub struct HookEvent {
     /// 环境提示（Neeko 自有 PTY 注入 env 的回传），缺省视为全 None。
     #[serde(default)]
     pub hints: super::attribution::EnvHints,
+    /// 上报侧单调序号（会话内从 **1** 起算，成员级水位线 = `TeamMember.last_seq`）。
+    ///
+    /// 团队域用它做乱序/重复去重（design §7.2、AC12）：**先到 seq=5 后到 seq=3，后者丢弃**。
+    /// 消费方只有 `agent::team::observe`，通知链路不读它。
+    ///
+    /// `None` = 上报侧未带（旧模板尚未升级）：**不得**当成序号 `0`，否则升级期的成员会永久静默。
+    #[serde(default)]
+    pub seq: Option<u64>,
 }
 
 impl HookEvent {
@@ -155,6 +163,7 @@ mod tests {
             title: None,
             title_source: None,
             hints: Default::default(),
+            seq: None,
         }
     }
 
@@ -169,6 +178,23 @@ mod tests {
         assert_eq!(e.cwd.as_deref(), Some("/x"));
         assert_eq!(e.detail, None);
         assert_eq!(e.hints, Default::default());
+    }
+
+    /// `seq`：缺字段默认为 `None`（旧模板仍可解析），出现时按整数读。
+    ///
+    /// 保护契约：`None` 与 `Some(0)` 是**两个不同的结论** —— 前者「未带序号」必须照常处理，
+    /// 后者会被成员级水位线判成陈旧（`last_seq` 初值为 0）。
+    #[test]
+    fn seq_defaults_to_none_and_parses_when_present() {
+        let missing: HookEvent =
+            serde_json::from_str(r#"{"agent_session_id":"a1","event":"turn_completed"}"#)
+                .expect("valid event");
+        assert_eq!(missing.seq, None);
+
+        let present: HookEvent =
+            serde_json::from_str(r#"{"agent_session_id":"a1","event":"turn_completed","seq":7}"#)
+                .expect("valid event");
+        assert_eq!(present.seq, Some(7));
     }
 
     /// 会话身份是唯一的可用性前提（其余字段由消费者自行判断）。

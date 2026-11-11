@@ -20,6 +20,7 @@ import type {
   PRDetailTabData,
   BrowserTabData,
   AgentChatTabData,
+  TeamBoardTabData,
   TabKind,
 } from '@/shared/types/tab';
 import { emitTabActivated } from '@/shared/utils/editorActivity';
@@ -242,6 +243,19 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         kind: 'browser' as const,
         url: 'url' in p ? (p.url as string) : d.url,
         favicon: 'favicon' in p ? (p.favicon as string | undefined) : d.favicon,
+      };
+    }
+    case 'team-board': {
+      // 唯一可合并的字段是 view（面板「在中间打开」会带当前视图重开同一个 tab）。
+      // teamId / teamName 是 tab 的**地址**（建 tab 时写一次，无更新路径 —— 同
+      // terminal 的 `attachSessionId`：`partial` 里的同名字段故意不读）。
+      const p = partial as Record<string, unknown>;
+      const d = data as TeamBoardTabData;
+      return {
+        kind: 'team-board' as const,
+        teamId: d.teamId,
+        teamName: d.teamName,
+        view: 'view' in p ? (p.view as 'board' | 'flow') : d.view,
       };
     }
     case 'agent-chat': {

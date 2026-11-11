@@ -351,9 +351,22 @@ describe('WindowControls', () => {
 
 ### 测试环境：node vs jsdom（2026-09-17 起）
 
-全量套件的 environment 开销曾是最大瓶颈（jsdom 29 每文件独立构造，440 文件累计 ~111s）。
-**163 个纯逻辑测试文件已通过文件级 docblock 切到 node 环境**（environment 累计 ~62s，
-配合 `maxWorkers: 6`，全量 wall time 107s → 41-50s）。
+全量套件的 environment 开销曾是最大瓶颈（jsdom 29 每文件独立构造）。**252 个纯逻辑测试
+文件已通过文件级 docblock 切到 node 环境**（728 个文件里剩 476 个跑 jsdom）。
+
+> 数字会漂移（2026-09 是 163/440，2026-11 是 252/728）——**以 `grep -rl '@vitest-environment
+> node' src --include='*.test.*'` 为准**，不要抄本文档。
+
+**`maxWorkers` 保持 6，不要再试「加 worker」（2026-11-02 二次实测）**：同一份
+728 文件 / 6689 测试的代码，连跑四轮对照（6/10/6/10）得 83.8 / 106.4 / 125.1 / 119.2s ——
+**同配置自身就有 ±25% 的摆动，10 worker 没有可靠收益**（10 worker 那两轮反而把
+environment 累计从 ~200–314s 抬到 ~465–522s）。归档任务
+`2026-10/10-16-guard-local-wall-clock` 当年测到的是同一个结论（6↔10 持平）。
+
+**因此 `test_fe` 的墙钟要按「摆动上界 + 门禁并发」估**：静机 84–125s，`pnpm check`
+（`JOBS_CAP=4`，与 `test_rust` 的 10 线程 / `lint_fe` 的 tsc 抢 10 核）实测 154–167s，
+只加一个并发 `cargo test` 就能让单独跑从 116s 涨到 174s。门禁预算（300s）是**两倍于典型值**
+的地板，遇到冷 transform 或机器本身负载时仍可能被掐断 —— 那是预算问题，不是用例慢。
 
 **新增测试文件时**：
 

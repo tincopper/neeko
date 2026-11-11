@@ -29,7 +29,7 @@ src/
 │   │   ├── OpenIdeButton.tsx     # IDE 打开按钮
 │   │   └── SplashScreen.tsx
 │   ├── dock/                # Dock 面板胶水 + UI 注册表
-│   │   ├── registry.ts      # title/icon/lazy component 绑定（合并 DOCK_PANEL_META）
+│   │   ├── registry.ts      # title/icon/lazy component 绑定（合并 DOCK_VIEW_META）
 │   │   └── wrappers/        # 每面板一文件的薄适配层（store/context → panel，独立 lazy chunk）
 │   ├── utils/               # app 级工具（ComposeProviders 平铺 Provider 组合、layoutId 等）
 │   └── hooks/               # app 级共享 hooks（useAppShell 薄组合器 = useAppShellData 编排 + buildAppShellValues 纯装配）
@@ -128,8 +128,8 @@ src/
 │   ├── hooks/               # 共享 hooks（含 __tests__）
 │   ├── store/               # 共享状态（appStore、dockStore）
 │   ├── dock/                # Dock 纯数据 meta（无 React / 无 features）
-│   │   ├── types.ts         # DockPanelMeta
-│   │   ├── panelMeta.ts     # DOCK_PANEL_META
+│   │   ├── types.ts         # DockViewMeta
+│   │   ├── panelMeta.ts     # DOCK_VIEW_META
 │   │   └── index.ts
 │   ├── types/               # 共享类型（project、session、connection、file 等，无 adapter.ts）
 │   └── utils/               # 纯工具函数
@@ -244,7 +244,7 @@ layout/      ← app/        (app 组装骨架并填充 slot)
 | `ui/Sidebar.tsx` | 删除 | shadcn Sidebar 全家桶，仅被上述死组件消费 |
 | `ui/ResizablePanel.tsx` | `ui/OverlayPanel.tsx` | 消除与 `ui/Resizable` 分栏基元 `ResizablePanel` 的同名陷阱；4 个 skill 对话框同步更新 |
 | `DockLayout` 局部 `MIN_RIGHT_ZONE_SIZE` + JSX `"12%"` + store clamp 魔法数 | `shared/dock/panelMeta.ts` 的 `MIN_ZONE_SIZE_PERCENT` | zone 最小尺寸单源 |
-| `shared/dock` 的 `DockPanelId` 手工联合类型 | 删除 | 零使用且与 `DOCK_PANEL_META` keys 重复 |
+| `shared/dock` 的 `DockPanelId` 手工联合类型 | 删除 | 零使用且与 `DOCK_VIEW_META` keys 重复 |
 | `dockStore.leftPanelWidth` + DockLayout ResizeObserver effect | 删除 | 注释宣称 TitleBar 消费，实际无人读取 |
 | `layout/AppLayout.tsx`（近纯透传层，内含 ToolbarFooter） | 删除；`ToolbarFooter`/`AddProjectMenu` 迁 `app/components/` | AppShell 直用 DockLayout，挂载树少一层；视图状态由叶子组件自订阅（ToolbarFooter 读 appViewStore 高亮 Settings），AppShell 零 store 订阅 |
 | `layout/hooks/useAppLayoutProps.ts` | `app/hooks/useToolbarFooterProps.ts` | appView 路由决策归 app 层 |
@@ -258,7 +258,7 @@ layout/      ← app/        (app 组装骨架并填充 slot)
 | `layout/dock-layout/` | Dock 布局框架 | DockBar、DockLayout、DockZone、拖拽 Hook 等 |
 | `app/components/` | app 协调组件 | ProjectView、DockBarButton、OpenIdeButton、SplashScreen |
 | `app/dock/` | Dock UI 注册表 + 胶水 | registry、wrappers/（每面板一文件） |
-| `shared/dock/` | Dock 纯 meta | DOCK_PANEL_META（供 dockStore） |
+| `shared/dock/` | Dock 纯 meta | DOCK_VIEW_META（供 dockStore） |
 | `ui/` | UI 基元 | ContextMenu、DropdownMenu、Resizable（分栏基元）、OverlayPanel、ScrollArea、ToggleGroup |
 | `features/project/components/` | 项目管理 | 项目卡片壳层 + Git 区段 + 拖拽/菜单 Hook |
 | `features/terminal/components/` | 终端视图 | React 终端组件 + 缓存/工厂/命令 API |

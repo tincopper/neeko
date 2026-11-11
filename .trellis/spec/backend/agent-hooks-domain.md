@@ -798,8 +798,9 @@ match read_settings(&path) {
   **第一个落脚点**，不是它的定义域。
 - **Scope**：`src-tauri/src/server/`（引擎 + 门 + 路由组契约）、
   `agent/hooks/ingest/`（8 文件，按「一次请求经过的顺序」+ 正交关注点分层：
-  `handlers` 路由组 / `validation` 准入校验 / `event` 事件契约 / `notify` 通知投影 /
-  `dispatch` 投递链 / `attribution` 归属 / `endpoint` 坐标）、
+  `handlers` 路由组 + 消费者装配 / `validation` 准入校验 / `event` 事件契约 /
+  `notify` 通知投影 / `dispatch` 通知消费者（投递链的唯一有副作用实现）/
+  `attribution` 归属 / `endpoint` 坐标）、
   `agent/hooks/boot.rs`（bind → 建门 → 建组 → serve 接线）。
   **文件命名判据**：文件名必须回答「它做什么」，而不是「它属于哪个抽象层」——
   「kernel」是 OS 术语、「contract」是抽象分类词，两者都不描述行为，故不用作文件名。
@@ -821,12 +822,16 @@ pub fn validate(source: &str, body: &[u8], sink: impl FnMut(&str, HookEvent));
 
 // agent/hooks/ingest/event.rs     —— HookEvent：上报事件契约（公共数据资产）
 // agent/hooks/ingest/handlers.rs  —— handler + RouteGroup 声明 + 投递隔离
-pub fn route_group(app: AppHandle, runtime: Arc<AppRuntime>) -> RouteGroup;      // handlers.rs 生产入口
+pub fn route_group(app: AppHandle, runtime: Arc<AppRuntime>, sinks: Vec<HookSink>) -> RouteGroup;
 pub fn route_group_with(deliver: impl Fn(&str, HookEvent) + Send + Sync + 'static) -> RouteGroup; // 测试缝
 
-// agent/hooks/ingest/dispatch.rs  —— 投递链（唯一有副作用；经 AppRuntime::spawn_blocking）
-pub fn via_blocking_pool(app: AppHandle, runtime: Arc<AppRuntime>)
-    -> impl Fn(&str, HookEvent) + Send + Sync + 'static;
+// agent/hooks/ingest/dispatch.rs  —— 投递链（广播给 N 个 sink；消费者表由组合根装配）
+/// 一个 hook 事件的**消费者**：`(app, 上报来源, 已解析事件)`。本层不认识任何具体域。
+pub type HookSink = Arc<dyn Fn(&AppHandle, &str, &HookEvent) + Send + Sync>;
+pub fn via_blocking_pool(app: AppHandle, runtime: Arc<AppRuntime>, sinks: Vec<HookSink>)
+    -> impl Fn(&str, HookEvent) + Send + Sync + 'static;   // 唯一投递闭包：一次 spawn_blocking，按序广播
+pub fn notification_sink() -> HookSink;                     // 通知消费者（既有实现，闭包化）
+pub(crate) fn deliver_notification(app: &AppHandle, source: &str, event: &HookEvent);
 ```
 
 ### 3. Contracts
@@ -847,8 +852,18 @@ pub fn via_blocking_pool(app: AppHandle, runtime: Arc<AppRuntime>)
   `TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, …)`（`-D warnings` 会拦旧 API）。
 - **投递必须隔离（红线 3）**：`deliver_notification`（`dispatch.rs`）同步持
   `project_manager` / `notification.policy` 两把 std `Mutex`；handler 跑在 Tauri 共享 runtime
-  worker 上，必须经 `AppRuntime::spawn_blocking` fire-and-forget 投递（生产闭包 =
+  worker 上，必须经 `AppRuntime::spawn_blocking` fire-and-forget 投递（唯一装配点 =
   `dispatch::via_blocking_pool`）。204 不依赖投递结果，响应不再含锁等待。
+- **一次 `spawn_blocking`，N 个 sink**：每个消费者各开一个阻塞任务会让每条 hook 占 N 个
+  worker（在途上限 16 ⇒ N 倍占用）；多个 sink 读的还是同一份事件快照，分开投递会让它们
+  可能看到不同的中间状态。所以 `via_blocking_pool` 把 `Vec<HookSink>` 在**同一次**阻塞任务里
+  按序跑完，顺序即 `Vec` 顺序。新增消费者的正确做法是「写一个 `HookSink` + 组合根里加一行」，
+  **不是**再调一次 `spawn_blocking`，也**不是**在 `dispatch.rs` 里加分支。
+- **下游消费者经组合根装配，不反向依赖**：`hooks` 只认识 `HookSink` 这个签名
+  （`Arc<dyn Fn(&AppHandle, &str, &HookEvent)>`），今天的三个消费者是通知域、
+  live-sessions 注册表、团队观察者（`agent::team::deliver::observe` —— 签名天然对齐，函数指针
+  直接进表，没有适配层）。依赖边因此是 `组合根 → 各域`，`hooks` 可脱离任何消费方编译 ——
+  它是 fail-open 的常开路径，不该因为下游域的重构而受影响。
 - **token 校验唯一位置是门**：准入层（`validation`）不再持有 token、不做比较（`ct_eq` 调用点 = 1，AC7）。
 - **访问日志用自写 `log` 中间件**：`tower_http::TraceLayer` 发 `tracing` 事件，本仓日志是
   `log` crate、无 subscriber → 生产静默 no-op。
@@ -1041,3 +1056,21 @@ HookTarget { source: "dsh", dir: || None, shapes: &[] }
 // ✅ 显式字段
 rows.filter((r) => !r.selfSupplied)
 ```
+
+## 消费者投影文件的位置（例外：团队观察者）
+
+`ingest/mod.rs` 的既定约定是「新增消费者时读 `HookEvent`，**自己写一个投影文件**」，
+暗示投影落在 `agent/hooks/ingest/` 下。
+
+**已知例外**：Agent Team 的观察者（`agent/team/observe.rs`）**故意放在消费方域内**，不在 `ingest/`。
+
+判据是依赖方向：
+
+| 放法 | 依赖边 | 后果 |
+| --- | --- | --- |
+| 放 `ingest/team.rs`（照文档） | `hooks → team` | hooks 是 **fail-open 常开路径**（承载 8 个 CLI 上报、与用户终端里的 agent 生死相关），认识团队域后，团队域的任何编译错误/语义变更都会波及上报链路 |
+| 放 `team/observe.rs`（现状） | `team → hooks` | hooks 保持对消费方无知；团队域整体可删而不影响上报 |
+
+所以判据不是「投影文件放生产者还是消费者」，而是「**让谁依赖谁**」。
+新增消费者时按此判定；若你选择把投影放进 `ingest/`，必须在同一 diff 里说明为什么它值得
+让 hooks 依赖你的域。

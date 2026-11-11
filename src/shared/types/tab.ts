@@ -7,6 +7,8 @@ import type { ConversationMeta } from './session';
 
 export type TabKind =
   | 'terminal'
+  | 'team-board'
+  | 'team-task'
   | 'file'
   | 'diff'
   | 'html-preview'
@@ -53,6 +55,41 @@ export interface TerminalTabData {
    * 一个接现有进程，一个起新进程。
    */
   attachSessionId?: string;
+}
+
+/**
+ * 团队看板 / 分配图的**中央 tab**（300px 的 dock 列装不下整张板）。
+ *
+ * # 数据面是 teamStore，不是本 tab
+ *
+ * tab 只携带「打开哪支队、默认哪个视图」；快照仍由 `teamStore` 持有（唯一数据面，
+ * 面板与中央 tab 是同一支队伍的两个视图）。中央 tab 挂载时若 store 不在这支队上，
+ * 会 `openTeam` 把 store 拉回来（面板同步切过去 —— 同一事实，两个观察位）。
+ */
+export interface TeamBoardTabData {
+  kind: 'team-board';
+  /** 团队 id（`tm_*`）。 */
+  teamId: string;
+  /** 展示名（建 tab 时快照；面板刷新后可能改名，不追）。 */
+  teamName: string;
+  /** 默认视图：看板 / 分配图。 */
+  view: 'board' | 'flow';
+}
+
+/**
+ * 团队**任务详情**的中央 tab（markdown 渲染 + 步骤轨迹；替代旧的底部抽屉）。
+ *
+ * 地址只带（teamId, taskId）：详情是**点开才拉**的载荷（红线 4），tab 挂载时
+ * 自己发 `team_task_detail`，不进任何 store —— 关 tab 即弃，无缓存失效问题。
+ */
+export interface TeamTaskTabData {
+  kind: 'team-task';
+  /** 团队 id（任务 id 只在队内唯一 —— 两列一起寻址，C23）。 */
+  teamId: string;
+  /** 任务 id（`t{n}`）。 */
+  taskId: string;
+  /** tab 标题（`t1 · <任务标题>`，建 tab 时快照）。 */
+  label: string;
 }
 
 export interface FileTabData {
@@ -179,6 +216,8 @@ export interface AgentChatTabData {
 
 export type TabData =
   | TerminalTabData
+  | TeamBoardTabData
+  | TeamTaskTabData
   | FileTabData
   | DiffTabData
   | HtmlPreviewTabData

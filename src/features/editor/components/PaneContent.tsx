@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { AgentChatTabView } from '@/features/agent-chat';
+import { TeamBoardCenterView, TeamTaskCenterView } from '@/features/agent-team';
 import { BrowserTabView } from '@/features/browser';
 import { ConversationViewer } from '@/features/conversation';
 import { ConflictView, DiffView, PRDetailView } from '@/features/git';
@@ -199,6 +200,23 @@ function PaneContent({
           tabId={activeTab.id}
           projectId={projectId}
           isActive={isActiveGroup}
+        />
+      );
+    case 'team-board':
+      return (
+        <TeamBoardCenterView
+          key={activeTab.id}
+          teamId={activeTab.data.teamId}
+          view={activeTab.data.view}
+          projectId={projectId}
+        />
+      );
+    case 'team-task':
+      return (
+        <TeamTaskCenterView
+          key={activeTab.id}
+          teamId={activeTab.data.teamId}
+          taskId={activeTab.data.taskId}
         />
       );
     default:

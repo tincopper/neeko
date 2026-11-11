@@ -80,6 +80,80 @@ class ValidateInvariantsTest(unittest.TestCase):
         findings = subject.validate_invariants(ledger_with(inv), context(root), SIGNATURES)
         self.assertEqual(len(findings), 1)
 
+    # ── `kind: "test"` 的第二个维度：声明的测试名必须真的在文件里 ──────────────
+    #
+    # 只验文件存在的旧口径实测无效：把 `exactly_one_of_two_concurrent_claims_wins`
+    # 改名删掉，40 条不变量 / 0 违规 —— 9 条 team 不变量 note 里写的测试名是无人校验的散文。
+
+    def test_declared_test_name_must_exist_in_the_file(self):
+        root = repo_with_demo(self)
+        make_repo(root, {"src/team.rs": "fn another_test() {}\n"})
+        inv = good_guard_invariant(
+            enforcement=[
+                {"kind": "test", "ref": "src/team.rs", "tests": ["renamed_away_test"]}
+            ]
+        )
+        findings = subject.validate_invariants(ledger_with(inv), context(root), SIGNATURES)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("renamed_away_test", findings[0].message)
+
+    def test_declared_test_name_present_passes(self):
+        root = repo_with_demo(self)
+        make_repo(root, {"src/team.rs": "    fn another_test() {}\n"})
+        inv = good_guard_invariant(
+            enforcement=[{"kind": "test", "ref": "src/team.rs", "tests": ["another_test"]}]
+        )
+        findings = subject.validate_invariants(ledger_with(inv), context(root), SIGNATURES)
+        self.assertEqual(findings, [])
+
+    def test_note_declared_test_names_are_checked_too(self):
+        # `…::tests::{a, b}` 是把名字写成可解析形态的 note —— 应当被收，且逐个校验。
+        root = repo_with_demo(self)
+        make_repo(root, {"src/team.rs": "fn kept_test() {}\n"})
+        inv = good_guard_invariant(
+            enforcement=[
+                {
+                    "kind": "test",
+                    "ref": "src/team.rs",
+                    "note": "team::tests::{kept_test, gone_test}；表驱动",
+                }
+            ]
+        )
+        findings = subject.validate_invariants(ledger_with(inv), context(root), SIGNATURES)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("gone_test", findings[0].message)
+
+    def test_prose_note_declares_no_names_and_is_not_guessed(self):
+        # 散文里的英文词（emit / pull）不得被猜成测试名 —— 猜错会把护栏自己噪声化。
+        root = repo_with_demo(self)
+        make_repo(root, {"src/team.rs": "fn kept_test() {}\n"})
+        inv = good_guard_invariant(
+            enforcement=[
+                {
+                    "kind": "test",
+                    "ref": "src/team.rs",
+                    "note": "三条确定性回归：写入+emit / 释放后拒绝（无 emit 增量）",
+                }
+            ]
+        )
+        findings = subject.validate_invariants(ledger_with(inv), context(root), SIGNATURES)
+        self.assertEqual(findings, [])
+
+    def test_python_test_names_use_def_form(self):
+        root = repo_with_demo(self)
+        make_repo(root, {"tools/guards/tests/test_demo.py": "def test_kept():\n    pass\n"})
+        inv = good_guard_invariant(
+            enforcement=[
+                {
+                    "kind": "test",
+                    "ref": "tools/guards/tests/test_demo.py",
+                    "tests": ["test_kept"],
+                }
+            ]
+        )
+        findings = subject.validate_invariants(ledger_with(inv), context(root), SIGNATURES)
+        self.assertEqual(findings, [])
+
     def test_structure_requires_note(self):
         root = repo_with_demo(self)
         inv = good_guard_invariant(

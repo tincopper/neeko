@@ -263,16 +263,18 @@ export default React.memo(function TerminalViewBase({
           fitAddon,
           element,
           sessionId: null as string | null,
+          attached: false, // 探针之后确定（见下）
           unlisten: null as (() => void) | null,
           inputController: null as ReturnType<typeof setupTerminalInput> | null,
         };
         cache.set(cacheKey, entry);
 
         try {
-          // 接回一条还活着的会话（后台运行中）；会话已结束则照常新建。
+          // 接回活着的会话（后台运行中）；已结束则照常新建。
           const attached = attachSessionId
             ? await attachLiveSession(attachSessionId, term.cols, term.rows)
             : null;
+          entry.attached = attached !== null; // 借看：销毁时不得 close（会 kill 掉队长）
           const sessionId =
             attached ??
             (await createSessionVal(term.cols, term.rows, {

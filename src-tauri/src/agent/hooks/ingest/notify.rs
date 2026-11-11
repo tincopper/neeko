@@ -92,6 +92,7 @@ mod tests {
             title: None,
             title_source: None,
             hints: Default::default(),
+            seq: None,
         }
     }
 

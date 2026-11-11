@@ -21,5 +21,5 @@ mod gate;
 mod group;
 
 pub use engine::{serve, ServerConfig, ServerHandle};
-pub use gate::{AuthGate, CredentialExt, HeaderToken};
+pub use gate::{AuthGate, CredentialExt, HeaderToken, SharedTokenSet};
 pub use group::{FailurePolicy, RouteGroup};

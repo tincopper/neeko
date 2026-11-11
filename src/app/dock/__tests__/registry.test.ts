@@ -111,3 +111,44 @@ describe('buildDockPanelRegistry — fail-fast 负例', () => {
     expect(() => buildDockPanelRegistry({}, bindings)).toThrow(/no entry in DOCK_VIEW_META/);
   });
 });
+
+describe('dockPanelRegistry — 团队 / 任务中心入口', () => {
+  it('team：右栏常驻面板，绑定了组件与自己的最小宽度', () => {
+    const view = panelView('team');
+    const meta = DOCK_VIEW_META[view];
+    const def = dockPanelRegistry[view];
+
+    expect({ view, host: meta.host }).toEqual({ view, host: 'singleton' });
+    expect(meta.defaultSlot).toBe('right');
+    expect(meta.activation).toEqual({ kind: 'toggleZone' });
+    // 花名册 + 任务板纵向堆叠：没有最小宽度时会被挤到徽标失形
+    expect(def.minPanelSize).toBe(260);
+    expect(def.component).toBeTruthy();
+    expect(dockPanelIcons[def.icon]).toBeTruthy();
+  });
+
+  it('tasks：中心视图入口（host:none），点击切 appView，不登记 minPanelSize', () => {
+    const view = appViewKey('tasks');
+    const meta = DOCK_VIEW_META[view];
+    const def = dockPanelRegistry[view];
+
+    expect({ view, host: meta.host }).toEqual({ view, host: 'none' });
+    expect(meta.activation).toEqual({ kind: 'appView', view: 'tasks' });
+    // 与 library 同槽连排（左栏菜单里两个「中心视图入口」）
+    expect(meta.defaultSlot).toBe('left');
+    // 宽度由中心区决定：登记尺寸只会让下一个人以为它还受那个约束
+    expect(def.minPanelSize).toBeUndefined();
+    expect(def.component).toBeTruthy();
+  });
+
+  it('tasks 的入口序紧跟 library（同槽且不与其他入口同序）', () => {
+    const { [appViewKey('library')]: library, [appViewKey('tasks')]: tasks } = DOCK_VIEW_META;
+
+    expect(tasks.defaultSlot).toBe(library.defaultSlot);
+    expect(tasks.defaultOrder).toBeGreaterThan(library.defaultOrder);
+    const sameSlotOrders = Object.values(DOCK_VIEW_META)
+      .filter((meta) => meta.defaultSlot === 'left')
+      .map((meta) => meta.defaultOrder);
+    expect(new Set(sameSlotOrders).size).toBe(sameSlotOrders.length);
+  });
+});

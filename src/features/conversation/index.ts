@@ -32,3 +32,6 @@ export {
   conversationViewerTabRefs,
   flattenTabSpaces,
 } from './utils/conversationInUse';
+
+// 会话地址铸造点（`agentId:nativeSessionId`）—— 侧栏 / 团队 / 历史列表共用同一份
+export { conversationIdOf, parseConversationId } from './utils/conversationId';

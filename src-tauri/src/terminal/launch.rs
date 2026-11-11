@@ -18,4 +18,16 @@ pub struct TerminalLaunch {
     pub command: Option<String>,
     /// 纯 shell 会话恢复时的旧 `session_id`；由 router 用它准备回放计划。
     pub resume_from: Option<String>,
+    /// **直接 argv**（不经 shell）：与 [`Self::command`] 互斥，互斥性在
+    /// `router::create_session` 的边界守卫里判成 `InvalidInput`。
+    ///
+    /// 存在的理由只有一条：团队成员会话要带 `--mcp-config` 这类含 JSON 引号的参数。
+    /// 走 `command`（`sh -c` / `cmd /c`）就得自己定一套引号/转义规则，而那正是红线 2
+    /// 要消灭的平台差异。`argv[0]` 是程序，其余是参数。
+    pub argv: Option<Vec<String>>,
+    /// 调用方注入的环境变量（不透明的键值对，**仅本地传输生效**）。
+    ///
+    /// terminal 域不认识 `NEEKO_TEAM_*`：env 名的组装在 `agent::team::identity::member_env`，
+    /// 这里只转发（依赖方向 team → terminal）。IPC 边界恒传空 —— 前端不拥有环境注入能力。
+    pub extra_env: Vec<(String, String)>,
 }

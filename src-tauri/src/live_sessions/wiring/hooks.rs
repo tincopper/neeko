@@ -261,9 +261,14 @@ mod tests {
             detail: None,
             title: title.map(str::to_string),
             title_source: title_source.map(str::to_string),
+            // 上报序号只服务团队域的乱序判定；live-sessions 的投影不读它。
+            seq: None,
             hints: crate::agent::hooks::ingest::attribution::EnvHints {
                 neeko_session_id: hints_id.map(str::to_string),
                 project_id: Some("p1".into()),
+                // 团队身份只对团队域有意义（普通终端会话没有）。
+                team_id: None,
+                team_member_id: None,
             },
         }
     }

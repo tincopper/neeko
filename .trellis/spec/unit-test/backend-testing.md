@@ -450,6 +450,32 @@ assert!(result.len() > 0);  // 使用 assert!(!result.is_empty())
 
 ---
 
+## 变异验证（红-绿可信度）
+
+「改坏 → 变红 → 还原」是判据质量的唯一证据。但它有一步会**删掉未提交的工作**，必须按下面的协议做。
+
+### 唯一安全的协议
+
+```bash
+cp <file> /tmp/<basename>.$(date +%s).bak   # ① 先做内容快照（还原的唯一来源）
+# ② 改坏：只改动到「必须让目标判据红」的最小一处
+cargo test --lib <判据所在模块>              # ③ 确认红，并记录变红的判据名
+cp /tmp/<...>.bak <file>                    # ④ 用快照还原（不是用 git）
+cargo test --lib <模块>                      # ⑤ 复跑确认绿
+```
+
+### 禁手：`git checkout` / `git restore` / `git stash`
+
+三者取的是 **index / HEAD**，不是「你改坏前的磁盘内容」。在本仓库的常态（同一工作树里有大量未提交改动）下，用它们「还原」等于把作者的未提交改动一起删掉。
+
+**事故（2026-11-01）**：一次 review 的变异验证用 `git checkout <path>` 还原，抹掉了 `agent/team/manager.rs`（2600 行、关闭两相位 + `TaskRef` 复合键）与一份 hook 模板的改动；靠另一条流程留下的 `/tmp/*.bak` 才恢复，全量测试 2750 通过。代价是不必要的，且不报警 —— `git checkout` 成功、退出码 0。
+
+### 派单时必须写进指令
+
+把「还原只许用内容快照；禁止 `git checkout` / `git restore` / `git stash`」写进任何允许改坏代码的派单。**默认禁止**：review / check 类任务只读，变异验证由作者在隔离副本（`git worktree` 或 `cp -r`）里做。
+
+---
+
 ## 常见错误
 
 ### 1. 不使用 `tempfile` —— 硬编码路径

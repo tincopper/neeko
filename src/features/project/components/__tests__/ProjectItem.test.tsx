@@ -113,3 +113,46 @@ describe('ProjectItem', () => {
     expect(screen.queryByText('main')).not.toBeInTheDocument();
   });
 });
+
+describe('ProjectItem — 打开本项目的 Tasks（design §4.2c）', () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockResolvedValue(undefined);
+  });
+
+  it('右键菜单里有「Open Tasks」，点了转交 onOpenTasks(projectId)', () => {
+    const project = createProject({ collapsed: false });
+    const onOpenTasks = vi.fn();
+    const actions = createActions({ onOpenTasks });
+
+    render(<ProjectItem project={project} isActive={false} actions={actions} />);
+
+    fireEvent.contextMenu(screen.getByTestId('project-group-header'));
+    fireEvent.click(screen.getByText('Open Tasks'));
+
+    expect(onOpenTasks).toHaveBeenCalledWith('p-1');
+  });
+
+  it('悬停按钮也能打开本项目 Tasks（与右键是同一个动作）', () => {
+    const project = createProject({ collapsed: false });
+    const onOpenTasks = vi.fn();
+    const actions = createActions({ onOpenTasks });
+
+    render(<ProjectItem project={project} isActive={false} actions={actions} />);
+
+    fireEvent.click(screen.getByTitle('Open Tasks'));
+
+    expect(onOpenTasks).toHaveBeenCalledWith('p-1');
+  });
+
+  it('没注入 onOpenTasks 时不渲染入口（不给一个点了没反应的按钮）', () => {
+    const project = createProject({ collapsed: false });
+    const actions = createActions();
+
+    render(<ProjectItem project={project} isActive={false} actions={actions} />);
+
+    expect(screen.queryByTitle('Open Tasks')).not.toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByTestId('project-group-header'));
+    expect(screen.queryByText('Open Tasks')).not.toBeInTheDocument();
+  });
+});

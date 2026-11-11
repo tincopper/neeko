@@ -10,6 +10,9 @@
 - **Active File**: `journal-9.md`
 - **Total Sessions**: 450
 - **Last Active**: 2026-11-11
+- **Active File**: `journal-8.md`
+- **Total Sessions**: 447
+- **Last Active**: 2026-11-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -21,6 +24,7 @@
 |------|-------|--------|
 | `journal-9.md` | ~572 | Active |
 | `journal-8.md` | ~1971 | Archived |
+| `journal-8.md` | ~1355 | Active |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -85,6 +89,27 @@
 | 384 | 2026-10-30 | pi 会话恢复为 Agent Chat（能力单一真相）+ 真机验收 | - | `main` |
 | 383 | 2026-10-30 | opencode v2 存储兼容（v1 保留） | - | `main` |
 | 382 | 2026-10-30 | 历史会话删除（三态能力）+ 确认框结算缺陷 | `e705163b`, `2862900d` | `main` |
+| 447 | 2026-11-10 | 修复 neeko-check 审核问题：5 个功能 bug + 身份口径统一 + 测试补齐 | - | `multi-agent` |
+| 446 | 2026-11-09 | Team：任务详情 tab 修复 + 队长先规划按角色配人 + flow 三层关系 | `61a3263e` | `multi-agent` |
+| 445 | 2026-11-09 | Team：历史会话冷缓存兜底 + 已退出成员可查看记录（v21） | `0a253899` | `multi-agent` |
+| 441 | 2026-11-08 | Team：清单跟随项目（project_id 过滤，v20） | `47723ecf` | `multi-agent` |
+| 440 | 2026-11-08 | Team：看板/分配图中央 tab（team-board kind）+ 岛屿底色 + role_hints 预设落实现 | `5677c6ba` | `multi-agent` |
+| 439 | 2026-11-08 | Agent Team：列表优先导航重排 + 成员位角色预设（v20）+ 品牌图标 | `85fcc506` | `multi-agent` |
+| 438 | 2026-11-07 | Agent Team：分配 flow 图 + persona 角色库（v19） | `913717c4` | `multi-agent` |
+| 421 | 2026-11-05 | 表面层叠判据改为自动发现（堵住三次同型事故的结构盲区） | `2cc58c64` | `multi-agent` |
+| 420 | 2026-11-05 | Tasks 面板：圆角块/工具栏/英文文案 + check 复审修 4 类缺陷 | `98554a06` | `multi-agent` |
+| 419 | 2026-11-05 | Tasks 工具栏优化：三分区 + lucide 图标 + 搜索清空 | `d086955e` | `multi-agent` |
+| 418 | 2026-11-05 | 参考图落地：列变圆角块 + 卡片自适配底层 | `64375892` | `multi-agent` |
+| 417 | 2026-11-05 | 内容卡片岛同源几何 + 呼吸感 | `7de84ce5` | `multi-agent` |
+| 413 | 2026-11-04 | Tasks 表面阶梯适配主题（卡片/header/空态） | `e6572a2a` | `multi-agent` |
+| 412 | 2026-11-04 | 中心视图几何统一到 CenterViewFrame | `d273c146` | `multi-agent` |
+| 405 | 2026-11-04 | Tasks 岛屿可见性根因：缺海面 + 同色叠同色 | `b112a524` | `multi-agent` |
+| 404 | 2026-11-04 | Tasks 面板层级修正：一座主岛承载 header+content | `fb11b5a5` | `multi-agent` |
+| 403 | 2026-11-04 | Tasks 内容区改为一座内容岛承接所有状态 | `6517174c` | `multi-agent` |
+| 402 | 2026-11-04 | Tasks 只占中间区 + 左侧 Projects 打开本项目 Tasks | `83659c55` | `multi-agent` |
+| 400 | 2026-11-03 | Tasks 面板岛屿布局重构（design §4.2b） | `8b9f14ba` | `multi-agent` |
+| 399 | 2026-11-03 | Work items MVP complete: GitHub PR provider + test_env hygiene | `47c4b8cf`, `9486b8e8`, `28de1b18` | `multi-agent` |
+| 392 | 2026-11-03 | Work items MVP: Local provider, Tasks panel, run-single | `6ae67611`, `2fb4d532`, `7e7ca0ae`, `fae1ff01`, `c5492a14`, `752993cb`, `6122a2c1`, `08a888ff`, `5ceae855` | `multi-agent` |
 | 381 | 2026-10-30 | 会话正文按需加载：统计/搜索/剪贴板下沉到 Rust，三个适配器计数口径统一 | - | `main` |
 | 380 | 2026-10-29 | 第二轮审查：修掉分页重复解析、计数口径与切会话竞态 | - | `main` |
 | 379 | 2026-10-29 | 关闭会话适配器审查清单：性能回归、分层收敛与正文载荷分页 | - | `main` |

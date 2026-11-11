@@ -1,0 +1,15 @@
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/prd.md", "reason": "逐条核对 Acceptance Criteria（AC1–AC10）"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/design.md", "reason": "核对实现是否偏离裁决：状态机不变量、授权矩阵、已否决方案未被偷偷绕过"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/implement.md", "reason": "核对分期验收门是否真的过了，而非跳过"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/research/01-research-notes.md", "reason": "对抗复核：业界四个已踩的坑（提示词级等待 / idle≠done / 批准 spawn 即批准一切 / 无租约死锁）是否真被堵住"}
+{"file": ".trellis/spec/backend/agent-chat-transports.md", "reason": "检查观察者接入是否破坏既有 4 条传输契约"}
+{"file": ".trellis/spec/backend/agent-hooks-domain.md", "reason": "检查归因改动是否破坏既有 8 个 CLI 的通知链路（回归面最大的地方）"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "红线 4 复核：构造超大成员会话断言单次 IPC ≤2MB"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "红线 3 复核：团队域内是否有遗漏的阻塞调用"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "红线 14 复核：WorkerChannel / 完成判定能力是否声明即实现"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "收尾门：check:quick 绿 + 全量门由 push/CI 兜底的边界"}
+{"file": ".trellis/spec/security/allowlist.md", "reason": "复核成员不能冒充队长、不能转交审批绕过拒绝、不能建新成员"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "复核纯函数覆盖（lease/completion）与并发 race 测试的写法"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/research/03-sentinel-channel.md", "reason": "对抗复核 sentinel 是否真的四条校验齐全，尤其回显模板能否被 owner/state 杀掉"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/research/04-rmux-demo-close-reading.md", "reason": "复核 Pty 写入是否真的分两次；是否有人在团队代码里按 CLI 名分支（红线 15）"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/research/admission-matrix.md", "reason": "复核实现是否真的按实测走：是否优先 --mcp-config、是否用 HTTP 而非硬上 bridge、是否复用了错误的 settings.json 路径"}

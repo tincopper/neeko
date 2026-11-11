@@ -147,11 +147,15 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
         return false;
       }
       const taskCommand = buildAgentPromptCommand(agent, message);
-      return createTaskTerminal(currentProjectIdForToolbar, {
-        agentId,
-        agentName: agent.name,
-        taskCommand,
-      });
+      // 本动作只关心「开没开出来」：端口返回的 tab id 在编辑器域没有用处
+      // （唯一出口只有一个，`!== null` 就是判据 —— 见 `taskTerminal` 的注释）。
+      return (
+        createTaskTerminal(currentProjectIdForToolbar, {
+          agentId,
+          agentName: agent.name,
+          taskCommand,
+        }) !== null
+      );
     },
     [currentProjectIdForToolbar],
   );
