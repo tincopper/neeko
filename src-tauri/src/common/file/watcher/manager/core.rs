@@ -226,10 +226,12 @@ impl WatcherManager {
 
     /// **测试专用**：关闭真实 OS 流（改用 `PlatformWatcher::Noop`）。
     ///
-    /// 见 `no_real_fs` 字段说明。供纯状态机语义的用例使用 ——
-    /// 它们断言的是 `Mutex<HashMap>` 里的状态，不需要内核投递。
+    /// 见 `no_real_fs` 字段说明。供断言对象是「本仓状态机 / 编排」的用例使用 ——
+    /// 它们断言的是 `Mutex<HashMap>` 里的状态与端口投递，不需要内核投递。
+    /// 跨域夹具（`common::testing`）通过 [`crate::AppStateWrapper`] 的测试态构造器
+    /// 注入，因此可见度为 `pub(crate)`。
     #[cfg(test)]
-    pub(super) fn without_real_fs(self) -> Self {
+    pub(crate) fn without_real_fs(self) -> Self {
         self.no_real_fs
             .store(true, std::sync::atomic::Ordering::Relaxed);
         self

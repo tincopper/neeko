@@ -10,19 +10,46 @@
 use std::sync::Arc;
 
 use crate::app_state::AppStateWrapper;
+use crate::common::file::watcher::WatcherManager;
 use crate::session::StorageManager;
+
+/// 隔离的存储层（StorageManager 指向临时目录 + 内存 LibraryStore）。
+///
+/// 两种事件源形态的 `AppStateWrapper` 都从这里取输入 —— 「隔离」只有一处实现。
+fn isolated_storage(
+    tmp: &tempfile::TempDir,
+) -> (StorageManager, Arc<crate::library::LibraryStore>) {
+    let storage =
+        StorageManager::with_dir(tmp.path().join(".neeko")).expect("fixture: storage manager");
+    let store = Arc::new(
+        crate::library::LibraryStore::open_in_memory().expect("fixture: in-memory library store"),
+    );
+    (storage, store)
+}
 
 /// 隔离的 `AppStateWrapper`：StorageManager 指向临时目录。
 ///
 /// **严禁**用默认 `~/.neeko` —— 否则 project 的 auto-save 会覆盖用户数据。
 #[must_use]
 pub fn isolated_state(tmp: &tempfile::TempDir) -> AppStateWrapper {
-    let storage =
-        StorageManager::with_dir(tmp.path().join(".neeko")).expect("fixture: storage manager");
-    let store = Arc::new(
-        crate::library::LibraryStore::open_in_memory().expect("fixture: in-memory library store"),
-    );
+    let (storage, store) = isolated_storage(tmp);
     AppStateWrapper::new_with_storage_and_library(storage, store)
+}
+
+/// 同 [`isolated_state`]，但 **关闭 OS 文件事件源**（`PlatformWatcher::Noop`）。
+///
+/// 给「断言对象是本仓的编排 / 状态机」的用例用：worker 链路（挂载 → 首轮 git status →
+/// 盖章 → 经端口投递）一直真实，只是不再建内核监听 —— 因此两类与断言无关的噪声消失：
+/// 临时目录里无关的文件事件，以及 Windows `ReadDirectoryChangesW` 溢出时投递的空 dirs
+/// `tree-changed`（见 `.trellis/spec/unit-test/real-source-determinism.md`「已落地的注入缝」）。
+#[must_use]
+pub fn isolated_state_without_os_watch(tmp: &tempfile::TempDir) -> AppStateWrapper {
+    let (storage, store) = isolated_storage(tmp);
+    AppStateWrapper::new_with_watcher_manager_for_test(
+        storage,
+        store,
+        WatcherManager::new().without_real_fs(),
+    )
 }
 
 /// 注册一个普通项目，返回 `(state, project_id)`。
@@ -30,7 +57,23 @@ pub fn isolated_state(tmp: &tempfile::TempDir) -> AppStateWrapper {
 /// 断点 / 静音 / 会话编排的单测只依赖项目注册 + 磁盘路径。
 #[must_use]
 pub fn plain_project_state(tmp: &tempfile::TempDir) -> (AppStateWrapper, String) {
-    let state = isolated_state(tmp);
+    with_placeholder_project(isolated_state(tmp), tmp)
+}
+
+/// 同 [`plain_project_state`]，但关闭 OS 文件事件源（理由见
+/// [`isolated_state_without_os_watch`]）。
+///
+/// 夹具名把差异写在名字里：拿到它就用它断言（不要指望内核投递会驱动任何东西）。
+#[must_use]
+pub fn plain_project_state_without_os_watch(tmp: &tempfile::TempDir) -> (AppStateWrapper, String) {
+    with_placeholder_project(isolated_state_without_os_watch(tmp), tmp)
+}
+
+/// 在 `tempdir/proj` 上注册一个项目（两种 state 夹具共用的后半段）。
+fn with_placeholder_project(
+    state: AppStateWrapper,
+    tmp: &tempfile::TempDir,
+) -> (AppStateWrapper, String) {
     let project_dir = tmp.path().join("proj");
     std::fs::create_dir_all(&project_dir).expect("fixture: project dir");
     let project = state

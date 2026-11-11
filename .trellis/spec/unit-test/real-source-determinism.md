@@ -165,6 +165,7 @@ assert!(manager.snapshot(&repo_a).is_some());
 | `manager/git_meta_merge.rs::decide(root, git_repo, exclusions, backend_can_exclude, env_off, ws)` | 纯函数（`env_off` 是**参数**） | 合并可行性判定；不得在函数内读 `std::env` |
 | `platform/macos_fsevent.rs::should_handle_event` / `translate_flags` | 纯函数 | 路径过滤与 flags→EventKind 映射 |
 | `git_meta/watcher.rs::create_git_meta_watcher_with(watch_fn)` | 注入 `watch_fn` | 失败分支 |
+| `common/testing.rs::isolated_state_without_os_watch` / `plain_project_state_without_os_watch` | `AppStateWrapper::new_with_watcher_manager_for_test`（watcher **事件源**作构造参数） | 服务层编排用例（如 `git/services/status.rs`）：worker / 端口链路真实，**不建任何 OS 流** |
 
 > **两条传输必须同构**（2026-10-26 事故）：git 元数据走「合并进主回调」（macOS 递归后端）
 > 或「独立流」（Linux 逐目录注册 / Windows 整树过滤），由 `decide` 的平台能力位决定。

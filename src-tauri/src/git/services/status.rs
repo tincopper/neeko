@@ -492,7 +492,7 @@ mod tests {
     use crate::common::executor::factory::ExecTarget;
     use crate::common::file::watcher::{wait_for_unit_snapshot, CollectingSink};
     use crate::common::git::WorkspaceSession;
-    use crate::common::testing::{init_git_repo, plain_project_state};
+    use crate::common::testing::{init_git_repo, plain_project_state_without_os_watch};
 
     /// 首份快照事件的宽容上限（git 项目要等 worker 起 git 子进程；慢机兜底）。
     const FIRST_EVENT_TIMEOUT: Duration = Duration::from_secs(8);
@@ -576,7 +576,7 @@ mod tests {
     #[tokio::test]
     async fn activate_mounts_the_unit_and_emits_to_the_injected_sink() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let (state, project_id) = plain_project_state(&tmp);
+        let (state, project_id) = plain_project_state_without_os_watch(&tmp);
         init_git_repo(&tmp.path().join("proj"));
 
         let (_target, repo) = state
@@ -621,7 +621,7 @@ mod tests {
     #[tokio::test]
     async fn declaring_two_units_mounts_both() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let (state, project_a) = plain_project_state(&tmp);
+        let (state, project_a) = plain_project_state_without_os_watch(&tmp);
         init_git_repo(&tmp.path().join("proj"));
         let project_b = add_git_project(&state, &tmp.path().join("proj-b"));
 
@@ -668,7 +668,7 @@ mod tests {
     #[tokio::test]
     async fn visible_set_releases_units_outside_it() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let (state, project_a) = plain_project_state(&tmp);
+        let (state, project_a) = plain_project_state_without_os_watch(&tmp);
         init_git_repo(&tmp.path().join("proj"));
         let project_b = add_git_project(&state, &tmp.path().join("proj-b"));
 
@@ -741,7 +741,7 @@ mod tests {
     #[tokio::test]
     async fn reconcile_keeps_a_unit_that_is_still_in_the_set() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let (state, project_id) = plain_project_state(&tmp);
+        let (state, project_id) = plain_project_state_without_os_watch(&tmp);
         init_git_repo(&tmp.path().join("proj"));
         let (_t, repo) = state
             .resolve_workspace(&project_id, None)
@@ -773,7 +773,7 @@ mod tests {
     #[tokio::test]
     async fn reconcile_never_releases_a_unit_that_is_declared_but_not_mountable() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let (state, project_id) = plain_project_state(&tmp);
+        let (state, project_id) = plain_project_state_without_os_watch(&tmp);
         init_git_repo(&tmp.path().join("proj"));
         let (_t, repo) = state
             .resolve_workspace(&project_id, None)
@@ -806,7 +806,7 @@ mod tests {
     #[tokio::test]
     async fn batch_activation_mounts_every_unit_and_isolates_failures() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let (state, project_a) = plain_project_state(&tmp);
+        let (state, project_a) = plain_project_state_without_os_watch(&tmp);
         init_git_repo(&tmp.path().join("proj"));
         let project_b = add_git_project(&state, &tmp.path().join("proj-b"));
         let project_bad = add_plain_project(&state, &tmp.path().join("not-a-repo"));
@@ -875,7 +875,7 @@ mod tests {
     #[tokio::test]
     async fn missing_project_surfaces_as_a_failed_entry_not_a_batch_error() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let (state, _project_id) = plain_project_state(&tmp);
+        let (state, _project_id) = plain_project_state_without_os_watch(&tmp);
         let outcomes = activate_many(
             &state,
             CollectingSink::new(),
@@ -899,7 +899,7 @@ mod tests {
     #[tokio::test]
     async fn pull_branch_computes_without_mounting_or_releasing_other_units() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let (state, project_a) = plain_project_state(&tmp);
+        let (state, project_a) = plain_project_state_without_os_watch(&tmp);
         init_git_repo(&tmp.path().join("proj"));
         let project_b = add_git_project(&state, &tmp.path().join("proj-b"));
 
@@ -956,7 +956,7 @@ mod tests {
     #[tokio::test]
     async fn read_workspace_status_of_an_unmounted_unit_computes_and_records() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let (state, project_id) = plain_project_state(&tmp);
+        let (state, project_id) = plain_project_state_without_os_watch(&tmp);
         init_git_repo(&tmp.path().join("proj"));
         let (_t, repo) = state
             .resolve_workspace(&project_id, None)
@@ -1021,7 +1021,7 @@ mod tests {
     #[tokio::test]
     async fn pull_producer_fills_ahead_behind() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let (state, project_id) = plain_project_state(&tmp);
+        let (state, project_id) = plain_project_state_without_os_watch(&tmp);
         init_git_repo(&tmp.path().join("proj"));
         setup_upstream_with_local_commit(tmp.path());
 

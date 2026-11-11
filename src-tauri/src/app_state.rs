@@ -363,6 +363,33 @@ impl AppStateWrapper {
         storage_manager: StorageManager,
         library_store: Arc<library::LibraryStore>,
     ) -> Self {
+        Self::assemble(storage_manager, library_store, WatcherManager::new())
+    }
+
+    /// 测试态组装：watcher 的**事件源**由调用方决定
+    /// （`WatcherManager::without_real_fs` 关掉内核投递，只留 worker / 快照链路）。
+    ///
+    /// 为什么是构造参数而不是「装完再换字段」：`watcher_manager` 是组合根注入的**依赖**，
+    /// 在装配那一刻就该定下来 —— 先建生产实例再替换，会让「这份 state 用哪种事件源」在
+    /// 两次赋值之间不确定，且要求外部知道该字段可替换（把装配细节泄漏给测试）。
+    /// 除事件源外与 [`Self::new_with_storage_and_library`] 走**同一条**装配路径。
+    #[cfg(test)]
+    #[must_use]
+    pub fn new_with_watcher_manager_for_test(
+        storage_manager: StorageManager,
+        library_store: Arc<library::LibraryStore>,
+        watcher_manager: WatcherManager,
+    ) -> Self {
+        Self::assemble(storage_manager, library_store, watcher_manager)
+    }
+
+    /// 组合根装配的**唯一实现**：生产入口与测试态入口只在 watcher 的事件源上不同。
+    #[allow(clippy::expect_used)]
+    fn assemble(
+        storage_manager: StorageManager,
+        library_store: Arc<library::LibraryStore>,
+        watcher_manager: WatcherManager,
+    ) -> Self {
         // Persist callback: auto-saves projects after every mutation
         let persist = {
             let sm_clone = storage_manager.clone();
@@ -419,9 +446,10 @@ impl AppStateWrapper {
 
         // 用户级 watcher 排除由配置域读取、经组合根注入 watcher 域（依赖倒置：
         // watcher 不感知 `~/.neeko/config.json`）。每次挂载调用一次，保持配置冻结语义。
+        // 事件源（生产：真实 OS 流 / 测试态：Noop）在入参已定，这里只做排除接线。
         let watcher_manager = {
             let storage = storage_manager.clone();
-            WatcherManager::new().with_watcher_excludes(move || storage.watcher_excludes())
+            watcher_manager.with_watcher_excludes(move || storage.watcher_excludes())
         };
 
         // 通知设置只读一次（构造期），运行期由薄命令 update_settings 刷新快照 ——
