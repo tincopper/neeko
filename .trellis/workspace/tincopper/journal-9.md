@@ -491,3 +491,46 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 449: Event observation attribution: keyed sink waits
+<!-- trellis-session: v=2 fp=eb8d173406481713 -->
+
+**Date**: 2026-11-11
+**Task**: Event observation attribution: keyed sink waits
+**Branch**: `main`
+
+### Summary
+
+Attribution became a first-class field of the watcher event port; un-keyed queries deleted so the weak predicate no longer compiles; guard added.
+
+### Main Changes
+
+- WatcherEvent::workspace_key() as the single payload-identity mapping (5 variants, cfg(test) only)
+- CollectingSink records (name, workspace_key); count/event_names deleted, count_for/names_for added
+- Single waiter: wait_for_unit_event / wait_for_unit_snapshot (workspace_key is a required argument)
+- Migrated status.rs (4), lifecycle_tests.rs (22), callback_tests.rs (7); removed two local wait helpers
+- New guard check_event_wait_attribution (J1 keyed observation surface, J2 wait-primitive single source) + 12 unit tests
+- Dropped a vacuous assertion in the pull-branch test (sink was never handed to any callee)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c8c50d5d` | test(watcher): attribute sink events to their unit |
+| `f9a65860` | docs(task): plan the event observation attribution task |
+
+### Testing
+
+- [OK] pnpm check:quick: 41 guards green (new guard included)
+- [OK] cargo test --lib common::file::watcher: 143 passed; git::services::status: 12 passed
+- [OK] Guard replayed on HEAD~2 files: 5 violations (event_names / count / 3 hand-rolled waits), 0 after
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Watch the Windows backend-test job: declaring_two_units_mounts_both should stay green
+- Consider giving src-tauri/Cargo.toml profile.dev tweak its own commit (left uncommitted)
