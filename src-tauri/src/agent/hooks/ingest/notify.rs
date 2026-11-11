@@ -90,6 +90,7 @@ mod tests {
             cwd: None,
             detail: None,
             title: None,
+            title_source: None,
             hints: Default::default(),
         }
     }

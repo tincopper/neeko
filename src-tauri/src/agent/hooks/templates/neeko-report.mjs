@@ -116,6 +116,33 @@ function pick(input, names) {
   return null;
 }
 
+// 主题候选：**数据表**（读法 → 来源），按优先级排列。
+//
+// 来源只有两类观测，判据靠它定覆盖序（`Prompt < Native`）：
+//   native — CLI 自己写的会话名（claude / qoder 的 `session_title`、codex 的 `thread_name`）
+//   prompt — 用户敲的字（claude 兼容面的 `prompt`、codex notify 的 `input-messages[0]`）
+// 字段名差异落在这张表里，下面的函数不认识任何 CLI 名。
+const TOPIC_SOURCES = [
+  { source: "native", read: (input) => firstLine(input.session_title) },
+  { source: "native", read: (input) => firstLine(input.thread_name) },
+  { source: "prompt", read: (input) => firstLine(input.prompt) },
+  {
+    source: "prompt",
+    read: (input) =>
+      firstLine(Array.isArray(input["input-messages"]) ? input["input-messages"][0] : null),
+  },
+];
+
+// 第一个取到文本的候选。**来源必须随文本一起上报**：同一句「Can you please …」当
+// CLI 自述用时是主题，当用户 prompt 用时前端会剥掉客套包装 —— 服务端猜不出来。
+function pickTopic(input) {
+  for (const candidate of TOPIC_SOURCES) {
+    const title = candidate.read(input);
+    if (title) return { title, source: candidate.source };
+  }
+  return { title: null, source: null };
+}
+
 // CLI hook input → Neeko envelope。
 //
 // 候选名链覆盖两种面：
@@ -125,12 +152,7 @@ function toEnvelope(input) {
   const detail =
     pick(input, ["tool_name", "message", "title", "last-assistant-message"]) || null;
   // 会话主题（R7）：优先原生标题；无则取首条用户消息（notify 面叫 `input-messages`）。
-  const firstInput = Array.isArray(input["input-messages"]) ? input["input-messages"][0] : null;
-  const topic =
-    firstLine(input.session_title) ||
-    firstLine(input["thread_name"]) ||
-    firstLine(typeof firstInput === "string" ? firstInput : null) ||
-    null;
+  const topic = pickTopic(input);
   return {
     agent_session_id:
       pick(input, ["session_id", "turn_id", "thread-id", "turn-id", "thread_id"]) || "",
@@ -139,7 +161,9 @@ function toEnvelope(input) {
     cwd: pick(input, ["cwd"]) || process.cwd(),
     detail: detail ? String(detail).slice(0, 500) : null,
     // 会话主题（R7）：服务端只做非空校验 + 截断，优先级判定已在本函数完成。
-    title: topic,
+    title: topic.title,
+    // 主题来源（判据的输入，不是展示字段）：`native` = CLI 自述，`prompt` = 用户敲的字。
+    title_source: topic.source,
     hints: {
       neeko_session_id: process.env.NEEKO_SESSION_ID || null,
       project_id: process.env.NEEKO_PROJECT_ID || null,

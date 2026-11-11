@@ -1,4 +1,4 @@
-//! hooks 生产者：CLI hook 上报（[`HookEvent`]）→ 会话标题（`Native`）+ 权威状态。
+//! hooks 生产者：CLI hook 上报（[`HookEvent`]）→ 会话标题（`Native` / `Prompt`）+ 权威状态。
 //!
 //! # 为什么这是**最权威**的标题源
 //!
@@ -47,16 +47,11 @@ use crate::live_sessions::registry::Registry;
 use crate::live_sessions::state::Signal;
 use crate::AppStateWrapper;
 
-/// 只被状态表消费的语义键（与 `event_keys` 那四个**通知类**键分开）。
+/// 只被状态表消费的语义键 —— 常量本体在 hook 上报域（模板 argv 与 Rust 表同源）。
 ///
-/// 为什么不进 `agent::chat::notify::event_keys`：那张表是通知词汇表（设置页清单 + 节流
-/// 主键），与 `NotificationClass` 一一对应；「刚开始干活」不该弹通知，放进去就会造出一个
-/// 永远不弹的设置项。`ingest::notify::classify` 对未知键返回 `None`（fail-open）正是本键
-/// 能存活的前提 —— 它只驱动状态，不驱动通知。
-///
-/// 它仍是**双端契约**：模板侧写字面量 `"turn_started"`，一致性由
-/// `templates/tests.rs::templates_hold_completion_while_children_run` 钉住。
-pub(crate) const EVENT_TURN_STARTED: &str = "turn_started";
+/// 这里 re-export 是为了让「状态机读它」与「模板写它」引用同一个符号：本域只消费，
+/// 不定义（定义在 [`crate::agent::hooks::ingest::event::EVENT_TURN_STARTED`]）。
+pub(crate) use crate::agent::hooks::ingest::event::EVENT_TURN_STARTED;
 
 /// 语义事件 → 权威状态信号。
 ///
@@ -102,15 +97,18 @@ fn attributed_session(event: &HookEvent) -> Option<&str> {
 ///
 /// 标题、可见性与状态同属一次上报，故**只走一次注册表写入**（一次 hook 只
 /// [`emit_changed`] 一次）：
-/// - 有 `topic` ⇒ 直接用它做 `Native` 标题；
+/// - 有 `topic` ⇒ 用它做标题，**来源由上报声明**（[`HookEvent::topic_with_source`]）：
+///   `session_title` / `thread_name` 是 CLI 自述（`Native`），`prompt` 是用户敲的字
+///   （`Prompt`）；
+/// - `Prompt` 只给**还没有真标题**的会话命名：它是逐轮事件，否则标题会随每条消息跳一次；
 /// - **只有** `topic` 缺失且 registry 尚无真标题时才回落 `cached_title_for`
 ///   （registry 条目的 `agent_id` + `event.agent_session_id`）查 conversation 缓存；
 /// - 权威事件 ⇒ 置位 `has_user_input`、应用状态并开启输出推断门；
 /// - 纯信息事件 ⇒ 只更新标题。
 ///
-/// 回落标题同样是 `Native`：`should_upgrade` 保证用户改名（`User`）永不被覆盖。
-/// `cached_title_for` 由调用方注入，生产实现只读内存缓存（**不触发扫描 / 不读盘**，
-/// 红线 3）；测试可注入固定值而不碰 Tauri 运行时。
+/// 回落标题是 `Native`（缓存里的就是 CLI 自述或转录里的 AI 标题）：`should_upgrade`
+/// 保证用户改名（`User`）永不被覆盖。`cached_title_for` 由调用方注入，生产实现只读
+/// 内存缓存（**不触发扫描 / 不读盘**，红线 3）；测试可注入固定值而不碰 Tauri 运行时。
 pub(crate) fn project(
     registry: &Registry,
     event: &HookEvent,
@@ -121,23 +119,48 @@ pub(crate) fn project(
     };
     // 原生会话 id：`resume_command` 的唯一入参，点击恢复时用（不进 wire 契约）。
     registry.record_native_session_id(session_id, &event.agent_session_id);
-    let title: Option<String> = match event.topic() {
-        Some(topic) => Some(topic.to_string()),
-        None => registry.entry(session_id).and_then(|entry| {
-            // 缓存是扫描快照，不是事件时刻的事实；已有真标题的会话不能被它同级改回旧值。
-            // 判据复用 `SessionEntry::has_real_title`（与注册表同一份），不在这里再造一个。
-            if entry.has_real_title() {
-                return None;
-            }
-            let agent_id = entry.agent_id?;
-            cached_title_for(&agent_id, &event.agent_session_id)
-        }),
-    };
-    let title = title.as_deref().map(|topic| (TitleSource::Native, topic));
+    let title = resolve_title(registry, event, session_id, cached_title_for);
+    let title = title
+        .as_ref()
+        .map(|(source, text)| (*source, text.as_str()));
     match authoritative_signal(event.event.as_str()) {
         Some(signal) => registry.report_authoritative(session_id, title, signal),
         None => registry.report(session_id, title, false),
     }
+}
+
+/// 这条上报能提供的标题（来源 + 文本），`None` = 这次上报对标题没有新信息。
+///
+/// 两条腿的优先级是**观测时序**决定的，不是质量序：
+/// 1. 上报自带主题（含它声明的来源）；
+/// 2. 没有主题时才去问 conversation 缓存 —— 缓存是**扫描快照**，比事件时刻旧，
+///    所以只在「还没有真标题」时使用（`SessionEntry::has_real_title`，与注册表同一判据）。
+///
+/// `Prompt` 的「先到者胜」不是特例而是语义：标题回答「这次会话要谈什么」，只有第一条
+/// 通过判据的意图有这个信息；同一会话的后续 prompt 不改变主题。
+fn resolve_title(
+    registry: &Registry,
+    event: &HookEvent,
+    session_id: &str,
+    cached_title_for: &dyn Fn(&str, &str) -> Option<String>,
+) -> Option<(TitleSource, String)> {
+    if let Some((source, text)) = event.topic_with_source() {
+        // 未知会话照旧交给 `report_*`（它记 debug 并丢弃）：不在这里提前 return，
+        // 否则排障时「上报来了但没归属」会变成一行日志都没有。
+        let already_named = registry
+            .entry(session_id)
+            .is_some_and(|entry| entry.has_real_title());
+        let names_only_once = source == TitleSource::Prompt && already_named;
+        return (!names_only_once).then(|| (source, text.to_string()));
+    }
+    registry.entry(session_id).and_then(|entry| {
+        if entry.has_real_title() {
+            return None;
+        }
+        let agent_id = entry.agent_id?;
+        cached_title_for(&agent_id, &event.agent_session_id)
+            .map(|title| (TitleSource::Native, title))
+    })
 }
 
 /// 投递入口（本域自己消费，见 [`on_hook_event`] 的调用方 sink）。
@@ -221,12 +244,23 @@ mod tests {
     }
 
     fn event(key: &str, hints_id: Option<&str>, title: Option<&str>) -> HookEvent {
+        event_with_source(key, hints_id, title, None)
+    }
+
+    /// 同上，但声明主题来源（`None` = 旧 shim 的缺省语义：CLI 自述）。
+    fn event_with_source(
+        key: &str,
+        hints_id: Option<&str>,
+        title: Option<&str>,
+        title_source: Option<&str>,
+    ) -> HookEvent {
         HookEvent {
             agent_session_id: "agent-1".into(),
             event: key.into(),
             cwd: Some("/proj-wt".into()),
             detail: None,
             title: title.map(str::to_string),
+            title_source: title_source.map(str::to_string),
             hints: crate::agent::hooks::ingest::attribution::EnvHints {
                 neeko_session_id: hints_id.map(str::to_string),
                 project_id: Some("p1".into()),
@@ -253,6 +287,131 @@ mod tests {
         assert_eq!(entry.title, "修复登录竞态");
         assert_eq!(entry.title_source, TitleSource::Native);
         assert!(entry.has_user_input);
+    }
+
+    /// AC4：**提交 prompt 的事件**（claude / codebuddy / qoder 面唯一携带主题文本的那个）
+    /// 必须在**没有任何历史扫描**的情况下给出标题。
+    ///
+    /// 双向反证：
+    /// - 若把 `CLAUDE_COMPAT_ENTRIES` 里新增的 prompt 事件删掉（或 shim 不取 `prompt` 字段），
+    ///   标题只能靠 conversation 缓存回落 —— 而缓存要等用户打开过 History 才会 hydrate，
+    ///   于是「开机后第一个会话没有标题」；
+    /// - 若可见性/标题仍以「有真标题」为门（旧的 `isListedSession`），这条会话在侧栏里
+    ///   整条不出现。
+    #[test]
+    fn prompt_event_names_the_session_without_peeking_at_history() {
+        let registry = registry_with_terminal("pty-1");
+        // 空缓存：注入一个恒 miss 的回落解析器，模拟「本次运行还没扫过盘」。
+        let changed = super::project(
+            &registry,
+            &event_with_source(
+                EVENT_TURN_STARTED,
+                Some("pty-1"),
+                Some("帮我修一下登录跳转的竞态"),
+                Some("prompt"),
+            ),
+            &|_agent_id, _native_id| None,
+        );
+
+        assert!(changed);
+        let entry = &registry.snapshot()[0];
+        assert_eq!(entry.title, "帮我修一下登录跳转的竞态");
+        assert_eq!(
+            entry.title_source,
+            TitleSource::Prompt,
+            "用户敲的字是 Prompt：来源错了会让同一句话在历史列表被判成另一种质量级"
+        );
+        assert!(
+            entry.has_user_input,
+            "提交 prompt 同时意味着「用户开始用它了」"
+        );
+    }
+
+    /// 提示词是**逐轮**事件，标题只回答「这次会话要谈什么」：后续 prompt 不得改名。
+    ///
+    /// 反证：去掉 `resolve_title` 的 `names_only_once` 判据，本用例立刻红 ——
+    /// 那正是「侧栏标题随每条消息跳一次」的形态。
+    #[test]
+    fn later_prompts_do_not_rename_an_already_named_session() {
+        let registry = registry_with_terminal("pty-1");
+        assert!(super::project(
+            &registry,
+            &event_with_source(
+                EVENT_TURN_STARTED,
+                Some("pty-1"),
+                Some("帮我修一下登录跳转的竞态"),
+                Some("prompt"),
+            ),
+            &|_, _| None,
+        ));
+
+        // 第二次上报对标题没有新信息 ⇒ 不产生变更（不重写、也不触发一次侧栏刷新）。
+        let changed = super::project(
+            &registry,
+            &event_with_source(
+                EVENT_TURN_STARTED,
+                Some("pty-1"),
+                Some("顺便把这两处测试也补上"),
+                Some("prompt"),
+            ),
+            &|_, _| None,
+        );
+
+        assert_eq!(
+            registry.snapshot()[0].title,
+            "帮我修一下登录跳转的竞态",
+            "第一条意图才是主题；后续 prompt 只能推进状态"
+        );
+        assert!(!changed, "改名没发生就不该发变更事件");
+    }
+
+    /// CLI 自己写的会话名（`session_title`）比用户敲的字更浓缩，可以覆盖 Prompt。
+    #[test]
+    fn cli_session_title_upgrades_a_prompt_title() {
+        let registry = registry_with_terminal("pty-1");
+        assert!(super::project(
+            &registry,
+            &event_with_source(
+                EVENT_TURN_STARTED,
+                Some("pty-1"),
+                Some("can you please fix the login race"),
+                Some("prompt"),
+            ),
+            &|_, _| None,
+        ));
+        assert_eq!(registry.snapshot()[0].title_source, TitleSource::Prompt);
+
+        assert!(super::project(
+            &registry,
+            &event_with_source(
+                event_keys::TURN_COMPLETED,
+                Some("pty-1"),
+                Some("修复登录跳转竞态"),
+                Some("native"),
+            ),
+            &|_, _| None,
+        ));
+
+        let entry = &registry.snapshot()[0];
+        assert_eq!(entry.title, "修复登录跳转竞态");
+        assert_eq!(entry.title_source, TitleSource::Native);
+    }
+
+    /// 已安装的旧 shim 不带 `title_source`：按既有语义解释为 CLI 自述（Native），
+    /// 不得因为缺字段就把标题丢掉。
+    #[test]
+    fn legacy_reports_without_a_source_stay_native() {
+        let registry = registry_with_terminal("pty-1");
+        assert!(super::project(
+            &registry,
+            &event(
+                event_keys::TURN_COMPLETED,
+                Some("pty-1"),
+                Some("修复登录跳转竞态")
+            ),
+            &|_, _| None,
+        ));
+        assert_eq!(registry.snapshot()[0].title_source, TitleSource::Native);
     }
 
     /// Codex 的 `turn_completed` 必须把状态落到 Ready；随后仅由 PTY 重绘产生的

@@ -304,6 +304,8 @@ fn report_shim_keeps_contract_anchors_and_knows_no_native_events() {
         "process.exit(0)",
         // argv 契约：source 与 event_key 从命令行取。
         "process.argv",
+        // 主题来源随文本一起上报（判据的输入，见下一个用例）。
+        "title_source: topic.source",
     ] {
         assert!(shim.contains(anchor), "shim 缺少契约锚点 {anchor:?}");
     }
@@ -320,6 +322,36 @@ fn report_shim_keeps_contract_anchors_and_knows_no_native_events() {
             "shim 不得包含 CLI 原生事件名 {native:?}（T9：翻译必须在 Rust 数据表里）"
         );
     }
+}
+
+/// 主题来源必须随文本一起上报：判据（`should_upgrade` / `admit`）按来源定质量序。
+///
+/// 反证：删掉 `title_source`，或把 `prompt` 字段错标成 `native`，本用例红 ——
+/// 后果是同一句用户 prompt 在实时侧栏（Native：不剥客套包装、单 token 路径判负）与
+/// 历史列表（Prompt：剥包装、接受）拿到两种判决。
+#[test]
+fn report_shim_declares_where_the_topic_came_from() {
+    let shim = crate::agent::hooks::templates::REPORT_SHIM;
+    for anchor in [
+        "const TOPIC_SOURCES",
+        "function pickTopic",
+        "title_source: topic.source",
+    ] {
+        assert!(shim.contains(anchor), "shim 缺少主题来源锚点 {anchor:?}");
+    }
+
+    // 字段 → 来源的绑定关系：`input.prompt` 必须是 `prompt`（最近的一个 `source:` 声明）。
+    let prompt_at = shim
+        .find("firstLine(input.prompt)")
+        .expect("shim 未从 prompt 字段取主题（UserPromptSubmit 的主题链断裂）");
+    let before = &shim[..prompt_at];
+    let last_source = before
+        .rfind(r#"source: ""#)
+        .expect("prompt 字段没有对应的 source 声明");
+    assert!(
+        before[last_source..].starts_with(r#"source: "prompt""#),
+        "prompt 字段被标成了别的来源（用户敲的字必须是 Prompt）"
+    );
 }
 
 /// V2 模板契约（opencode 2.x loader 只认 `{id, setup}` + `ctx.event.subscribe`）：

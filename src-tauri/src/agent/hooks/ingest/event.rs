@@ -23,10 +23,24 @@
 
 use serde::Deserialize;
 
+use crate::common::agent::title::TitleSource;
+
+/// 语义事件键：用户提交了一次 prompt（这一轮开始）。
+///
+/// # 为什么常量在这里
+///
+/// 它是**hook 上报面**的词汇：模板（写入 shim 的 argv）与 Rust 数据表
+/// （`agent::hooks::targets::entries::CLAUDE_COMPAT_ENTRIES`）必须逐字一致，否则上报静默失效。
+/// 单源放在本文件，两侧都引用它 —— 各写一份字面量只能靠测试粘住，改名时先红的是测试而不是编译器。
+///
+/// 它**不**进 `agent::chat::notify::event_keys`：那张表是通知词汇表（设置页清单 + 节流主键），
+/// `ingest::notify::classify` 对未知键返回 `None` 正是本键能存活的前提 —— 它只驱动状态，不弹通知。
+pub const EVENT_TURN_STARTED: &str = "turn_started";
+
 /// CLI hook 上报的一条状态事件（Neeko 与 shim 之间唯一的载荷契约）。
 ///
-/// 六字段回答三个问题：**是谁**（`agent_session_id`）、**发生了什么**（`event` /
-/// `detail` / `title`）、**在哪**（`cwd` / `hints`）。
+/// 字段回答三个问题：**是谁**（`agent_session_id`）、**发生了什么**（`event` / `detail` /
+/// `title` + `title_source`）、**在哪**（`cwd` / `hints`）。
 ///
 /// # 扩展指引
 ///
@@ -53,6 +67,14 @@ pub struct HookEvent {
     /// 模板侧做优先级判定，服务端只做噪声过滤。
     #[serde(default)]
     pub title: Option<String>,
+    /// 主题**来自哪一类观测**：`"native"`（CLI 自己写的会话名）或 `"prompt"`（用户敲的字）。
+    ///
+    /// 为什么必须随文本一起上报：标题阶梯的质量序（`Prompt < Native`）是判据的输入，
+    /// 少了它「用户敲的字」会被当成 CLI 自述，于是同一串文本在实时侧栏与历史列表上
+    /// 拿到两种判决（侧栏不剥客套包装、历史列表剥；单 token 路径在侧栏被判负）。
+    /// 模板侧只在**取到哪个字段**处声明一次，服务端不猜。
+    #[serde(default)]
+    pub title_source: Option<String>,
     /// 环境提示（Neeko 自有 PTY 注入 env 的回传），缺省视为全 None。
     #[serde(default)]
     pub hints: super::attribution::EnvHints,
@@ -78,6 +100,20 @@ impl HookEvent {
             .map(str::trim)
             .filter(|t| !t.is_empty())
             .filter(|t| !is_placeholder_title(t))
+    }
+
+    /// 主题 + 它的来源（`None` = 无主题可用）。
+    ///
+    /// 来源缺省 ⇒ [`TitleSource::Native`]：模板比服务端旧时（已安装的 shim 还没重装）
+    /// 它取的是 `session_title` 优先的旧字段链，按既有语义解释，不猜成 Prompt。
+    #[must_use]
+    pub fn topic_with_source(&self) -> Option<(TitleSource, &str)> {
+        let topic = self.topic()?;
+        let source = match self.title_source.as_deref() {
+            Some("prompt") => TitleSource::Prompt,
+            _ => TitleSource::Native,
+        };
+        Some((source, topic))
     }
 
     /// 人类可读细节（已 trim）；`None` = 无细节。
@@ -117,6 +153,7 @@ mod tests {
             cwd: None,
             detail: None,
             title: None,
+            title_source: None,
             hints: Default::default(),
         }
     }
@@ -163,6 +200,36 @@ mod tests {
             Some("New session handling refactor"),
             "形近的正常标题不得误杀"
         );
+    }
+
+    /// 主题来源：模板声明为 `prompt` 才算用户敲的字；缺省 / 未知值一律按 CLI 自述。
+    #[test]
+    fn topic_source_defaults_to_native_and_recognises_prompt() {
+        let mut e = event("turn_started");
+        e.title = Some("修复登录竞态".into());
+
+        assert_eq!(
+            e.topic_with_source(),
+            Some((TitleSource::Native, "修复登录竞态")),
+            "缺省（旧 shim）必须按 Native 解释"
+        );
+
+        e.title_source = Some("prompt".into());
+        assert_eq!(
+            e.topic_with_source(),
+            Some((TitleSource::Prompt, "修复登录竞态"))
+        );
+
+        // 未知值不是反序列化错误（fail-open），而是退回既有语义。
+        e.title_source = Some("something-new".into());
+        assert_eq!(
+            e.topic_with_source().map(|(s, _)| s),
+            Some(TitleSource::Native)
+        );
+
+        // 无主题时来源也不存在（不返回 `(_, "")` 这种半成品）。
+        e.title = None;
+        assert_eq!(e.topic_with_source(), None);
     }
 
     /// 细节：trim 后空串归一为 None。

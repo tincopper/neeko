@@ -6,6 +6,7 @@
 
 use super::shape::HookEntry;
 use crate::agent::chat::notify::event_keys;
+use crate::agent::hooks::ingest::event::EVENT_TURN_STARTED;
 
 /// Claude Code 规范事件面 → 语义键。**三源共用一份**（claude / codebuddy / qoder）。
 ///
@@ -26,12 +27,25 @@ use crate::agent::chat::notify::event_keys;
 /// 实测（2026-10-16）：两种写法下 `std::ptr::eq` 均判为不相等 —— 而「三源共享同一份而非
 /// 各复制一份」正是本表要防的漂移源（父任务 AC3），必须有机器判据。
 /// 用 static 数组后地址恒为 static 自身，指针判据稳定成立。
-pub static CLAUDE_COMPAT_ENTRIES: [HookEntry; 3] = [
+pub static CLAUDE_COMPAT_ENTRIES: [HookEntry; 4] = [
     // 权限门 = 等待用户行动（主路径）。
     HookEntry {
         native_event: "PermissionRequest",
         matcher: Some("*"),
         event_key: event_keys::APPROVAL_REQUESTED,
+    },
+    // 用户提交 prompt：**唯一携带会话主题文本的事件**（载荷字段 `prompt`）。
+    //
+    // 为什么必需：claude / codebuddy / qoder 的侧栏标题只有两条来路 —— hook 的 `topic`，
+    // 或 conversation 缓存回落（那条要求「先扫过盘」，开机后没打开过 History 就必然 miss）。
+    // 少了这一条，三源的标题恒为空，实测表现为「会话根本不进侧栏」。
+    // 事件键用 `EVENT_TURN_STARTED`（提交 prompt 就是「这一轮开始」，语义与状态机一致，
+    // 不新造键）：常量与模板的 argv 契约同源，改名由编译器而不是测试兜住。
+    HookEntry {
+        native_event: "UserPromptSubmit",
+        // 规范明确 `UserPromptSubmit` 不使用 matcher（与 Notification / Stop 同类）。
+        matcher: None,
+        event_key: EVENT_TURN_STARTED,
     },
     // 主 agent 结束响应 = 本轮完成。
     HookEntry {
