@@ -83,7 +83,7 @@
       "argv": ["pnpm", "test:fe"],
       "kind": "test",
       "stages": ["local", "push"],
-      "budget_ms": 300000,
+      "budget_ms": 600000,
       "scopes": [
         "src/*.ts", "src/*.tsx", "src/*.js", "src/*.jsx",
         "src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx",

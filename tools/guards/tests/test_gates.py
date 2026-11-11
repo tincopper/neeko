@@ -164,7 +164,8 @@ EXPECTED_GATES = {
     # 冷缓存实测 94.6s（eslint 95s + tsc 27s 串行，命中缓存仅 7.6s）。原来的 180s
     # 只在缓存命中时够用；开发循环每轮改文件都会让 `.eslintcache` 失效，再叠加
     # `pnpm check` 内部与 test_fe / test_rust 的并发争抢，实测撞上 180s 上限并按
-    # 「护栏失效」报错（等价于该门禁从 checks 里消失）。300s 与 test_fe 同档。
+    # 「护栏失效」报错（等价于该门禁从 checks 里消失）。300s 覆盖这份冷缓存成本并留
+    # 争抢余量（test_fe 是否同档是另一条判据，见下 —— 它在 744 文件规模下已抬到 600s）。
     "lint_fe": (
         ("pnpm", "lint:fe"), "lint", ("local", "commit", "ci"),
         "frontend-check", ("linux", "macos", "windows"), 300_000,
@@ -188,9 +189,15 @@ EXPECTED_GATES = {
         ("pnpm", "build"), "lint", ("ci",),
         "frontend-build", ("linux", "macos", "windows"), 600_000,
     ),
+    # 原 300s 是按 533 文件 / 82–132s 定档的。744 文件 / 6913 用例下实测：空闲 189s、
+    # 外部负载窗口 304s（同一份代码，同一台共享 10 核机器；同窗口 test_rust 也从
+    # 26–48s 漂到 184s，说明差额来自机器而非套件）。成本结构是「每文件固定开销 × 文件数」：
+    # jsdom 环境 245ms + setup 62ms + 模块图 import 134–190ms（isolate 每文件重付一次，
+    # jsdom 200–500ms/import 属官方区间）—— 文件数或环境一变就要重测，不能让预算停在旧规模。
+    # 600s = 空闲实测 × 2 的争抢余量，与跑同一命令的 test_fe_coverage 同档。
     "test_fe": (
         ("pnpm", "test:fe"), "test", ("local", "push"),
-        "", ("linux", "macos", "windows"), 300_000,
+        "", ("linux", "macos", "windows"), 600_000,
     ),
     "test_rust": (
         ("pnpm", "test:rust"), "test", ("local", "push", "ci"),
