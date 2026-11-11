@@ -36,9 +36,10 @@ pub const OPENCODE_TEMPLATE: &str = include_str!("templates/neeko-opencode-statu
 /// pi 扩展模板（1.5.0 实测事件面：agent_settled（旧版回落 agent_end）/ tool_call(ask 类工具)
 /// / ui_prompt_start）。
 ///
-/// 两条判据各由一次实测事故定义：会话来源门（in-process 子 agent 会话复用本扩展，
-/// `NEEKO_SESSION_ID` 是进程级 env ⇒ 子会话完成事件会带着父会话 id 上报）与完成腿判据
-/// （`agent_end` 在重试 / 压缩 / 队列续跑时会先发一次）。
+/// 三条判据各由一次实测事故定义：会话来源门（in-process 子 agent 会话复用本扩展，
+/// `NEEKO_SESSION_ID` 是进程级 env ⇒ 子会话完成事件会带着父会话 id 上报；拿不到
+/// `parentSession` 的 inMemory 子会话用「没有会话文件」兜底）、完成腿判据（`agent_end`
+/// 在重试 / 压缩 / 队列续跑时会先发一次）与后台子 agent 花名册（根会话真的会先 settle）。
 pub const PI_TEMPLATE: &str = include_str!("templates/neeko-pi-status.ts");
 
 /// OMP 扩展模板 —— pi 模板的**派生变体**。

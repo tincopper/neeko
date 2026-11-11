@@ -511,8 +511,24 @@ cwd 在同一项目多会话时必然串号。env 是**唯一随进程树自动�
 
 | 判据 | 落点 | 形态 |
 | --- | --- | --- |
-| 会话来源门 | 两个模板的 `onStatus` 包装器 | `sessionManager.getHeader().parentSession` 非空 ⇒ 整条不上报 |
+| 会话来源门 | 两个模板的 `onStatus` 包装器 | `sessionManager.getHeader().parentSession` 非空 ⇒ 整条不上报；拿不到它时再看**有没有会话文件**（`getSessionFile()` 返回空 ⇒ 子会话） |
 | 稳定终点 | pi：`agent_settled`（旧版回落 `agent_end`）；OMP：`agent_end.willContinue === true` 是非终态 | 完成腿只在稳定终点上报 |
+
+**会话来源门的第二条判据（2026-11-11，同一症状的残留口子）**：第一条判据假定子会话的 header
+里有 `parentSession`，而 `@tintinweb/pi-subagents@0.23.2` 的
+`persistSession = agentConfig?.persistSession ?? (options.nested ? false : rememberAgents)`
+（`agent-runner.js`）、`nested: options.parentAgentId !== undefined`（`agent-manager.js`）——
+为 `false` 时子会话走 `SessionManager.inMemory(cwd)`，**不传 options**，于是 header 里没有
+`parentSession`；同一条记录又被 `isTopLevelAgent`（`parentAgentId !== undefined`）从花名册里
+滤掉 ⇒ **两道防线同时失效**，子 agent 的 `agent_settled` 直接落到父会话。
+
+inMemory 的会话**没有会话文件**，这是唯一剩下的可判事实：Neeko 以 `pi --mode rpc` 启动
+（`pi_rpc/process.rs::launch_args`，不带 `--no-session`），用户可见的根会话必有文件。
+判据因此写成 `typeof sm.getSessionFile === "function" ? !sm.getSessionFile() : false` ——
+**能力检测不可省**：不暴露该 API 的 CLI 会因为「无文件」恒成立把**根会话**判成子会话，
+症状从「误判完成」变成「永不上报」（会话永久停在 Running）。fail-open 的取向因此没变：
+判不出来就按根会话上报（宁可漏挡一次的旧症状，也不要静默哑掉整个会话）。
+锚点：`templates/tests.rs::templates_treat_a_fileless_session_as_a_child`（pi 与 omp 两个模板都要求）。
 
 **门必须收敛成一个注册点**：`pi.on` 在每个模板只允许出现**一次**（`onStatus` 包装器内部）。
 初版写成每个 handler 自己加门，变异验证立刻暴露：删掉任意一处门仍全绿 —— `contains` 数不清
