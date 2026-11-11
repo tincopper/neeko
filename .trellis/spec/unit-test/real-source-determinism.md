@@ -2,8 +2,10 @@
 
 > **唯一正文**：本文件是「测试对真实外部源（OS 文件事件 / 进程 / 时钟 / 线程调度）做断言」的
 > 完整规则。`index.md` 与 `backend-testing.md` 只放指针，不复述判据。
-> 护栏：`tools/guards/checks/check_nondeterministic_event_assertions.py`（id 同名）。
-> 不变量台账：`tools/guards/ledger/invariants.json` → `nondeterministic-event-assertion-ban`。
+> 护栏：`tools/guards/checks/check_nondeterministic_event_assertions.py`（id 同名，次数口径）
+> 与 `tools/guards/checks/check_event_wait_attribution.py`（身份口径，见「归属」节）。
+> 不变量台账：`tools/guards/ledger/invariants.json` → `nondeterministic-event-assertion-ban`
+> / `event-observation-attribution`。
 
 ## 第一性原理：真实源只承诺 `≥`
 
@@ -26,6 +28,8 @@
 | 事件观察者 | 绝对零 / 精确集合 | `assert_eq!(refs.load(..), 0)` | — | ❌ **禁止** |
 | 事件观察者 | 与运行时基线比较 | `assert_eq!(count, baseline)` | 真机 | ✅ 差分式 |
 | 事件观察者 | 单向可达 | `probe.wait_reached(..)` / `assert_ne!(n, 0)` / `n > 0` | 真机 | ✅ **唯一正向写法** |
+| 事件观察者 | 归属无关（「有没有事件」当证据） | `!sink.event_names().is_empty()` | — | ❌ **禁止**（见「归属」节） |
+| 事件观察者 | 按单元归属 | `wait_for_unit_snapshot(&sink, &unit.key(), 1, ..)` | 真机 / 合成 | ✅ **唯一正向写法** |
 
 两条推论：
 
@@ -86,6 +90,48 @@ feed.feed(Ok(event));   // 扇出器内部按生产同构路由（见下表最�
 保持兼容；`manager/lifecycle_tests.rs` 的差分式负向已合规，沿用即可。
 
 两条路径都**不暴露**可直接与整数字面量比较的裸观察器 ⇒ 精确集合 / 绝对零断言无处表达。
+
+## 归属：事件观察必须归因到被断言的主体（2026-11 新增）
+
+「真实源只承诺 `≥`」管的是**次数口径**；本节管**身份口径**：观察到的这一次，是不是你以为
+的那个主体发出来的？
+
+- 批量入口（`git/services/status.rs::activate_many`、`WatcherManager::reconcile_mounted`）
+  一次只注入**一个**端口给整批单元。端口观察到的事实永远是「这批里某个单元发生了某事」。
+- 于是「有没有事件」不能作为「某个单元已就绪」的证据 —— 被兄弟单元的投递满足是**必然**的，
+  只需要一台慢机（本地 macOS 上第一个快照通常几毫秒就绪，这个窗口根本张不开）。
+
+判据（三层机制，逐层收紧）：
+
+| 层 | 判据 | 落点 |
+| --- | --- | --- |
+| 数据 | 归属是事件载荷的一部分：`WatcherEvent::workspace_key()`（与 `name()` 对称的单点映射） | `sink.rs` |
+| 类型 | 观测口**只**暴露带 `workspace_key` 的查询（`count_for` / `names_for`）；无归属查询**编译期不存在** | `sink.rs::test_support` |
+| 结构 | 等待原语单点且强制带 key：`wait_for_unit_event` / `wait_for_unit_snapshot`；测试文件不得手写「循环体内查 sink」 | 护栏 `check_event_wait_attribution` |
+
+```rust
+// ❌ 反例（2026-11 CI 假失败的原形态）：等「A 的首份快照」，判据却是「任意事件」
+while Instant::now() < deadline {
+    if !sink.event_names().is_empty() { return true; }   // B 的推送满足它
+    ...
+}
+
+// ✅ 正例：等的是**这个单元**的快照事件
+assert!(wait_for_unit_snapshot(&sink, &repo_a.key(), 1, FIRST_EVENT_TIMEOUT));
+// 登记表先写后 emit ⇒ 事件已到即数据已到（`deliver_push`：upsert_push → emit）
+assert!(manager.snapshot(&repo_a).is_some());
+```
+
+配套事实（为什么正例的第二行可以这样写）：`deliver_push` 先 `upsert_push` 再 `emit`，因此
+「该单元的 snapshot 事件已到」⇒「登记表里必有该单元」；反之不成立 —— **没有事件是合法的**，
+冷窗口超时是 `Pending`，不是错误（见 `git-domain.md` §12）。
+
+**为什么它不并入 `check_nondeterministic_event_assertions`**：那条的判据只在其**域内**生效
+（域 = 真的用了真实异步事件源 / 有界等待原语的文件），而归属错误与「源是否真实」无关 ——
+`without_real_fs` 的合成事件夹具同样会把旁单元的事件当成自己的证据，`git/services/status.rs`
+这类服务层夹具甚至不在那条护栏的域里。判据机制也不同（后者扫 `assert_eq!` / `assert!` 的
+实参形态，前者扫观测口的公开方法与循环体）。两者是同一元类「观察者读数 ≠ 被断言的命题」的
+两个**适用范围不同**的特化，故分列而不合并。
 
 ## 成本约束：真实源测试的「性能税」（2026-10 新增）
 
@@ -160,6 +206,10 @@ feed.feed(Ok(event));   // 扇出器内部按生产同构路由（见下表最�
   读取 ⇒ 违规（绝对零与精确集合同罪）；同形的 `assert!(observer == 0)` 同罪（换宏不绕过）。
   `assert_ne!` / `assert!(observer != 0)` 不拦；差分式（`count(..) - baseline`）与
   正向可达（`> 0` / `wait_reached`）放行。
+- **判据（二）—— 归属**（`check_event_wait_attribution`，机制见上节「归属」）：
+  `impl CollectingSink` 的公开方法（除 `new`）必须接 `workspace_key`；除 `sink.rs` 外
+  不得出现「循环体内查 sink」的手写轮询。已知边界：经函数指针间接轮询、或在 A 函数里循环
+  调用 B 函数里的查询，不在射程内（实测本仓无此写法）。
 - **已知边界（诚实登记）**：域判定是结构启发式，不是类型级保证；手搓 `AtomicUsize` 并显式绕过仍
   可能，此时由本 guard 兜住——这正是它登记为 `guard` 档而非 `type` 档的理由。
 
@@ -173,6 +223,11 @@ feed.feed(Ok(event));   // 扇出器内部按生产同构路由（见下表最�
   - 工作区换行字节断言（红线 11）：`assert_eq!(bytes, "…\n")` —— 误把工作区物化字节当契约；
   - macOS FSEvents 迟到事件污染：`assert_eq!(index_changed, 0)` —— 误把事件集合精确当契约；
   - 本次 Windows refs 误触发：`assert_eq!(refs_changed, 0)` —— 同上。
+- 2026-11（仅 windows-latest 红）：`git::services::status::tests::declaring_two_units_mounts_both`
+  的 `snapshot(&repo_a).is_some()` 失败。根因不是产品缺陷，而是**证据归属错位**：等待谓词是
+  `!sink.event_names().is_empty()`，同批（`activate_many` 一个端口供整批）B 的 `git-status-snapshot`
+  先到 ⇒ 等待返回，而 A 的冷窗口（合法 `Pending`）还在算。产品侧已由「事件先登记后 emit」
+  反证不可能。修法见「归属」节：归属进观测口、等待原语单点且强制带 key + 护栏。
 
 ## 收敛规则（同类事故必须遵守）
 

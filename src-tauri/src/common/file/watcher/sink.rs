@@ -56,6 +56,31 @@ impl WatcherEvent<'_> {
             Self::PerfSuggestion(_) => GIT_PERF_SUGGESTION_EVENT,
         }
     }
+
+    /// 该事件**归属的单元**（载荷身份的唯一映射源，与 [`Self::name`] 对称）。
+    ///
+    /// 为什么归属必须由事件类型自己给出：批量入口（`activate_many` / `reconcile_mounted`）
+    /// 一次只注入**一个**端口给整批单元 —— 端口观察到的事实永远是「这批里某个单元发生了
+    /// 某事」。归属一旦由观测口猜（或干脆不记），「B 的首份快照」就会被当成「A 已就绪」的
+    /// 证据：2026-11 Windows CI `declaring_two_units_mounts_both` 的假失败就是该形态
+    /// （A 的冷窗口超时是**合法** `Pending`，B 的推送先到）。
+    ///
+    /// 五个变体的载荷都带 `workspace_key`，因此这里是无分支的单点映射 —— 新增变体时
+    /// 编译器会强制补上归属，不会出现「新事件忘了带身份」。
+    ///
+    /// `#[cfg(test)]`：唯一消费方是测试观测口（`test_support::CollectingSink`）。
+    /// 生产适配器直接路由载荷，不需要它；放进生产面只会得到一个 `dead_code`。
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn workspace_key(&self) -> &str {
+        match self {
+            Self::FileChanged(payload) => &payload.workspace_key,
+            Self::TreeChanged(payload) => &payload.workspace_key,
+            Self::GitChanged(payload) => &payload.workspace_key,
+            Self::StatusSnapshot(payload) => &payload.workspace_key,
+            Self::PerfSuggestion(payload) => &payload.workspace_key,
+        }
+    }
 }
 
 /// watcher 事件出口。生产实现见 [`AppHandleSink`]；测试注入收集器。
@@ -103,17 +128,34 @@ impl WatcherEventSink for AppHandleSink {
 #[cfg(test)]
 pub(crate) mod test_support {
     //! 测试用事件出口：生命周期契约测试（`manager/lifecycle_tests.rs`）的观测口。
+    //!
+    //! **归属是观测口的一等字段**（两条结构性约束，不是约定）：
+    //! 1. 每次投递记录 `(事件名, 归属单元)` —— 归属唯一来源是 [`WatcherEvent::workspace_key`]；
+    //! 2. 查询与等待**只能按单元**（[`CollectingSink::count_for`] / [`CollectingSink::names_for`]
+    //!    / [`wait_for_unit_event`]）。刻意**不提供**「有没有任意事件」这种无归属判据：
+    //!    批量入口给整批单元注入同一个端口，无归属判据会把别单元的事件当成自己的收敛
+    //!    证据（2026-11 Windows CI 假失败的形态）。护栏 `check_event_wait_attribution`
+    //!    钉住这两条 —— 想加回一个 `count(name)` 便捷方法，门禁会红。
+
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
 
     use super::{WatcherEvent, WatcherEventSink};
     use crate::common::file::watcher::types::{
         FILE_CHANGED_EVENT, GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT,
     };
-    use std::sync::{Arc, Mutex};
 
-    /// 收集事件名的 sink（只记事件名：契约断言关心"有没有、几次"，不关心载荷）。
+    /// 一次被记录的投递：事件名 + 归属单元（缺一不可）。
+    #[derive(Clone)]
+    struct Recorded {
+        name: &'static str,
+        workspace_key: String,
+    }
+
+    /// 收集事件（**带归属**）的 sink：契约断言关心「哪个单元、什么事件、几次」。
     #[derive(Default)]
     pub(crate) struct CollectingSink {
-        events: Mutex<Vec<String>>,
+        events: Mutex<Vec<Recorded>>,
     }
 
     impl CollectingSink {
@@ -121,46 +163,144 @@ pub(crate) mod test_support {
             Arc::new(Self::default())
         }
 
-        /// 已收到的事件名序列。
-        pub(crate) fn event_names(&self) -> Vec<String> {
-            self.events.lock().map(|e| e.clone()).unwrap_or_default()
+        /// 指定单元收到的事件名序列（保序；用于诊断输出与「一条都不许有」的负断言）。
+        pub(crate) fn names_for(&self, workspace_key: &str) -> Vec<String> {
+            self.recorded()
+                .iter()
+                .filter(|event| event.workspace_key == workspace_key)
+                .map(|event| event.name.to_string())
+                .collect()
         }
 
-        /// 某一事件名的累计次数（契约测试按时间窗比较前后差值）。
-        pub(crate) fn count(&self, name: &str) -> usize {
-            self.event_names().iter().filter(|n| *n == name).count()
+        /// 指定单元某事件名的累计次数（差分式断言：与运行时基线比较）。
+        pub(crate) fn count_for(&self, workspace_key: &str, name: &str) -> usize {
+            self.recorded()
+                .iter()
+                .filter(|event| event.workspace_key == workspace_key && event.name == name)
+                .count()
+        }
+
+        fn recorded(&self) -> Vec<Recorded> {
+            self.events.lock().map(|e| e.clone()).unwrap_or_default()
         }
     }
 
     impl WatcherEventSink for CollectingSink {
         fn emit(&self, event: WatcherEvent<'_>) {
-            // 复用 `WatcherEvent::name()`（单一映射源），替身不再持有第二份映射。
+            // 名字与归属都来自 `WatcherEvent` 自己的单点映射，替身不持有第二份映射。
+            let recorded = Recorded {
+                name: event.name(),
+                workspace_key: event.workspace_key().to_string(),
+            };
             if let Ok(mut events) = self.events.lock() {
-                events.push(event.name().to_string());
+                events.push(recorded);
             }
         }
     }
 
+    /// 有界等待**指定单元**的某事件累计到 `at_least` 次。
+    ///
+    /// 唯一等待入口（`at_least = 1` 即「该单元至少投递过一次」，`baseline + 1` 即
+    /// 「该单元又推送了一次」）。**不提供**不带 `workspace_key` 的重载：那正是把
+    /// 「这批里有人发过事件」误当成「这个单元已收敛」的入口，而且它在同批多单元时
+    /// 几乎总会先被别人的事件满足（慢机上就是假失败）。
+    ///
+    /// 阻塞轮询（25ms）：驱动方是 worker / watcher 的**OS 线程**，与此处是否 async 无关；
+    /// async 用例里调用它不会卡住被测链路（`#[tokio::test]` 默认单线程运行时，被等待的
+    /// 事件由独立线程产出）。
+    pub(crate) fn wait_for_unit_event(
+        sink: &CollectingSink,
+        workspace_key: &str,
+        name: &str,
+        at_least: usize,
+        timeout: Duration,
+    ) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if sink.count_for(workspace_key, name) >= at_least {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        false
+    }
+
+    /// 等**指定单元**的首份 `git-status-snapshot`（冷窗口语义下唯一的收敛证据）。
+    ///
+    /// 单列一个入口而不是让调用方自带事件名常量：`git-status-snapshot` 的语义
+    /// （「该单元已有权威快照」）是跨域单测（git 服务层编排）最常用的一条，
+    /// 名字写错就是一条永不满足的等待。
+    pub(crate) fn wait_for_unit_snapshot(
+        sink: &CollectingSink,
+        workspace_key: &str,
+        at_least: usize,
+        timeout: Duration,
+    ) -> bool {
+        wait_for_unit_event(
+            sink,
+            workspace_key,
+            GIT_STATUS_SNAPSHOT_EVENT,
+            at_least,
+            timeout,
+        )
+    }
+
     #[test]
-    fn collecting_sink_records_event_names() {
-        use super::super::types::FileChangedEvent;
+    fn collecting_sink_attributes_events_to_their_unit() {
+        use super::super::types::{FileChangedEvent, GitChangedEvent};
 
         // 夹具也不手拼 key：身份一律由 WorkspaceRef 产出（护栏判据 6 对测试支撑代码同样生效）
-        let repo = crate::common::git::WorkspaceRef::main("p1", "/repo");
+        let repo_a = crate::common::git::WorkspaceRef::main("p1", "/repo-a");
+        let repo_b = crate::common::git::WorkspaceRef::main("p2", "/repo-b");
         let sink = CollectingSink::new();
-        let payload = FileChangedEvent {
-            workspace_key: repo.key(),
+        sink.emit(WatcherEvent::FileChanged(&FileChangedEvent {
+            workspace_key: repo_a.key(),
             project_id: "p1".into(),
             paths: vec!["a.txt".into()],
-        };
-        sink.emit(WatcherEvent::FileChanged(&payload));
-        sink.emit(WatcherEvent::GitChanged(
-            &crate::common::file::watcher::types::GitChangedEvent::new(&repo),
+        }));
+        sink.emit(WatcherEvent::GitChanged(&GitChangedEvent::new(&repo_b)));
+
+        assert_eq!(sink.count_for(&repo_a.key(), FILE_CHANGED_EVENT), 1);
+        assert_eq!(sink.count_for(&repo_b.key(), GIT_CHANGED_EVENT), 1);
+        // 交叉为零：A 的投递不记在 B 名下，反之亦然（本观测口存在的全部理由）
+        assert_eq!(sink.count_for(&repo_a.key(), GIT_CHANGED_EVENT), 0);
+        assert_eq!(sink.count_for(&repo_b.key(), FILE_CHANGED_EVENT), 0);
+    }
+
+    /// **本任务的回归钉子**：等 A 的等待**不得**被 B 的投递满足。
+    ///
+    /// 事故形态（2026-11 Windows CI）：等「A 的首份快照」的谓词是「收到任意事件」，
+    /// 于是同批 B 的 `git-status-snapshot` 让等待立刻返回，而 A 的冷窗口（合法 `Pending`）
+    /// 还在算 ⇒ `snapshot(&A)` 为 None ⇒ 假失败。
+    #[test]
+    fn waiting_for_one_unit_is_not_satisfied_by_another_units_event() {
+        let repo_a = crate::common::git::WorkspaceRef::main("p1", "/repo-a");
+        let repo_b = crate::common::git::WorkspaceRef::main("p2", "/repo-b");
+        let sink = CollectingSink::new();
+        sink.emit(WatcherEvent::StatusSnapshot(
+            &crate::common::git::status_worker::GitStatusSnapshot::for_unit(&repo_b, 1),
         ));
 
-        assert_eq!(sink.count(FILE_CHANGED_EVENT), 1);
-        assert_eq!(sink.count(GIT_CHANGED_EVENT), 1);
-        assert_eq!(sink.count(GIT_STATUS_SNAPSHOT_EVENT), 0);
+        assert!(
+            !wait_for_unit_event(
+                &sink,
+                &repo_a.key(),
+                GIT_STATUS_SNAPSHOT_EVENT,
+                1,
+                Duration::from_millis(60)
+            ),
+            "B 的快照不得满足「等 A」——否则用例证明的不是它声称的事"
+        );
+        assert!(
+            wait_for_unit_event(
+                &sink,
+                &repo_b.key(),
+                GIT_STATUS_SNAPSHOT_EVENT,
+                1,
+                Duration::from_millis(60)
+            ),
+            "本单元的投递必须立即满足等待"
+        );
     }
 }
 
@@ -201,6 +341,30 @@ mod tests {
                     suggestions: Vec::new(),
                 },
             }
+        }
+    }
+
+    /// 每个变体必须能给出自己的**归属单元**（观测口归因的唯一来源，与 `name()` 对称）。
+    ///
+    /// 断言用 `repo.key()` 而不是字面量：归属的身份形态由 `WorkspaceRef` 单点定义
+    /// （护栏判据 6），事件侧不得自带第二套拼接。
+    #[test]
+    fn every_variant_yields_its_unit_key() {
+        let f = Fixtures::new();
+        let key = crate::common::git::WorkspaceRef::main("p1", "/repo").key();
+        for event in [
+            WatcherEvent::FileChanged(&f.file_changed),
+            WatcherEvent::TreeChanged(&f.tree_changed),
+            WatcherEvent::GitChanged(&f.git_changed),
+            WatcherEvent::StatusSnapshot(&f.snapshot),
+            WatcherEvent::PerfSuggestion(&f.perf),
+        ] {
+            assert_eq!(
+                event.workspace_key(),
+                key,
+                "{} 的归属必须来自载荷",
+                event.name()
+            );
         }
     }
 

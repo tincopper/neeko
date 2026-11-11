@@ -150,6 +150,22 @@
       "red_line": null
     },
     {
+      "id": "event-observation-attribution",
+      "title": "事件观察必须归因到被断言的主体：观测口只暴露带 workspace_key 的查询，等待原语单点且带 key",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_event_wait_attribution"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_event_wait_attribution.py"
+        }
+      ],
+      "red_line": null
+    },
+    {
       "id": "git-optional-lock-single-source",
       "title": "可选 git 锁语义只允许一个事实源",
       "tier": "guard",

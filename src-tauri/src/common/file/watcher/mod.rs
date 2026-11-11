@@ -26,9 +26,11 @@ pub use gitignore::GitIgnoreFilter;
 pub use manager::{DirtyMask, WatcherManager};
 // 事件出口（组合根注入；测试注入收集器）
 pub use sink::{AppHandleSink, WatcherEvent, WatcherEventSink};
-// 测试用收集器：跨域单测（如 git 服务层编排）需要驱动端口时复用同一实现。
+// 测试用收集器 + **唯一的 sink 等待原语**：跨域单测（如 git 服务层编排）需要驱动端口时复用同一实现。
+// 等待只能按单元归属（`wait_for_unit_event` 强制 `workspace_key`）—— 批量入口给整批单元
+// 注入同一个端口，无归属判据会把别单元的事件当成自己的收敛证据（2026-11 CI 假失败）。
 #[cfg(test)]
-pub(crate) use sink::test_support::CollectingSink;
+pub(crate) use sink::test_support::{wait_for_unit_event, wait_for_unit_snapshot, CollectingSink};
 pub use types::{
     FileChangedEvent, FileTreeChangedEvent, FILE_CHANGED_EVENT, FILE_TREE_CHANGED_EVENT,
     GIT_CHANGED_EVENT,

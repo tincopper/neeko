@@ -31,6 +31,9 @@ use std::sync::{mpsc, Arc};
 struct CallbackHarness {
     callback: Box<dyn FnMut(Result<Event, notify::Error>)>,
     sink: Arc<CollectingSink>,
+    /// 本 harness 的单元身份（`WorkspaceRef::key()`）—— 观测口按它归属断言，
+    /// 与生产回调里 `repo` 用的是同一个 key（身份不在这里第二次拼接）。
+    key: String,
     maintenance_rx: mpsc::Receiver<WatchMaintenance>,
     debounce_rx: mpsc::Receiver<PathBuf>,
     tree_rx: mpsc::Receiver<TreeChangeMsg>,
@@ -83,6 +86,7 @@ impl CallbackHarness {
             )
         });
 
+        let key = repo.key();
         let cb = build_notify_callback(
             repo,
             sink.clone(),
@@ -101,6 +105,7 @@ impl CallbackHarness {
         Self {
             callback: boxed,
             sink,
+            key,
             maintenance_rx,
             debounce_rx,
             tree_rx,
@@ -136,7 +141,7 @@ fn gitignored_path_is_dropped_before_reaching_sink() {
         h.debounce_rx.try_recv().is_err(),
         "被 .gitignore 忽略的路径不得进入 file-changed debounce"
     );
-    assert!(h.sink.event_names().is_empty(), "不得投递任何前端事件");
+    assert!(h.sink.names_for(&h.key).is_empty(), "不得投递任何前端事件");
 }
 
 #[test]
@@ -182,7 +187,7 @@ fn hard_noise_git_path_is_dropped_without_filter() {
         ".git 路径不得进入 debounce"
     );
     assert!(
-        h.sink.event_names().is_empty(),
+        h.sink.names_for(&h.key).is_empty(),
         ".git 不是项目内容，不得投递"
     );
     assert!(h.scheduler_rx.try_recv().is_err(), "不得驱动 git worker");
@@ -395,9 +400,9 @@ fn own_git_index_event_signals_scheduler_without_emitting_a_fact() {
         "index 是 git 元数据，不得进入 file-changed（否则与 git 写 index 形成自反馈）"
     );
     assert!(
-        h.sink.event_names().is_empty(),
+        h.sink.names_for(&h.key).is_empty(),
         "index 只发信号不发事实，实际投递了 {:?}",
-        h.sink.event_names()
+        h.sink.names_for(&h.key)
     );
 }
 
@@ -445,9 +450,9 @@ fn sibling_unit_gitdir_event_is_classified_as_nothing() {
         "别的单元的 HEAD 变化不得驱动本单元重算（跨单元泄漏的原始形态）"
     );
     assert!(
-        h.sink.event_names().is_empty(),
+        h.sink.names_for(&h.key).is_empty(),
         "别的单元的 HEAD 变化不得被当成本单元的 `git-changed` 广播，实际 {:?}",
-        h.sink.event_names()
+        h.sink.names_for(&h.key)
     );
     assert!(
         h.debounce_rx.try_recv().is_err(),
@@ -552,7 +557,7 @@ fn error_event_emits_tree_changed_with_empty_dirs() {
     (h.callback)(Err(notify::Error::generic("overflow")));
 
     // 错误事件 → 空 dirs 的 tree-changed（前端退回全树刷新）
-    let names = h.sink.event_names();
+    let names = h.sink.names_for(&h.key);
     assert_eq!(
         names,
         vec![FILE_TREE_CHANGED_EVENT.to_string()],

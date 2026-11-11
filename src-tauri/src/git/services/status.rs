@@ -483,33 +483,29 @@ async fn pull_outcome(
 #[cfg(test)]
 mod tests {
     use std::path::Path;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     use super::{
         activate_many, first_snapshot_outcome, pull_outcome, read_workspace_status,
         supports_push_producer, WorkspaceActivation,
     };
     use crate::common::executor::factory::ExecTarget;
-    use crate::common::file::watcher::CollectingSink;
+    use crate::common::file::watcher::{wait_for_unit_snapshot, CollectingSink};
     use crate::common::git::WorkspaceSession;
     use crate::common::testing::{init_git_repo, plain_project_state};
 
     /// 首份快照事件的宽容上限（git 项目要等 worker 起 git 子进程；慢机兜底）。
     const FIRST_EVENT_TIMEOUT: Duration = Duration::from_secs(8);
 
-    /// 有界等待注入端口收到首个 watcher 事件。
+    /// 等**该单元**的首份 status 快照经注入端口投递（冷窗口语义下事件是唯一收敛保证）。
     ///
-    /// 事件驱动（非 sleep 定论）：冷窗口语义下**事件是收敛的唯一保证**，测试因此断言
-    /// 「最终到达」（`≥`），不依赖任何一次读接口的预算内就绪。
-    async fn wait_for_sink_event(sink: &CollectingSink, timeout: Duration) -> bool {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            if !sink.event_names().is_empty() {
-                return true;
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-        false
+    /// 归属必须写在判据里：`activate_many` 一次只注入**一个**端口给整批单元，任何
+    /// 「有没有事件」的等待都会被同批别的单元满足 —— 2026-11 Windows CI
+    /// `declaring_two_units_mounts_both` 的假失败就是它（A 的冷窗口超时是合法 `Pending`，
+    /// B 的推送先到）。等待原语在 `watcher::sink::test_support` 单点提供且强制带单元 key，
+    /// 本文件不得再写轮询循环（护栏 `check_event_wait_attribution`）。
+    fn first_snapshot_delivered(sink: &CollectingSink, key: &str) -> bool {
+        wait_for_unit_snapshot(sink, key, 1, FIRST_EVENT_TIMEOUT)
     }
 
     /// **冷窗口裁决（本批核心语义）**：预算内等不到首份快照 ⇒ `Pending`（挂载成立、
@@ -604,9 +600,9 @@ mod tests {
 
         assert!(state.watcher_manager.is_watched(&repo));
         // 收敛走**事件通道**（冷窗口语义下事件是唯一保证）：
-        // 无论结果就绪与否，首份快照都必须经注入的端口投递。
+        // 无论结果就绪与否，首份快照都必须经注入的端口投递 —— 且必须是**本单元**的。
         assert!(
-            wait_for_sink_event(&sink, FIRST_EVENT_TIMEOUT).await,
+            first_snapshot_delivered(&sink, &repo.key()),
             "首份快照应经注入的端口投递（服务层不依赖交付机制）"
         );
         // 就绪分支的载荷身份必须是被激活单元（Pending 无数据可查，由上面的事件断言兜住）
@@ -654,10 +650,14 @@ mod tests {
         assert!(state.watcher_manager.is_watched(&repo_a));
         assert!(state.watcher_manager.is_watched(&repo_b));
         // 夹具前提：A 的权威快照已落地（事件是冷窗口语义下唯一的收敛保证）。
+        // 只认 A 自己的快照事件：B 同批挂载、共用同一个注入端口，`is_empty` 式判据会把
+        // B 的推送当成 A 已就绪（本用例的失败形态）。
         assert!(
-            wait_for_sink_event(&sink_a, FIRST_EVENT_TIMEOUT).await,
+            first_snapshot_delivered(&sink_a, &repo_a.key()),
             "A 的首份快照必须经注入端口投递"
         );
+        // 事件已到 ⇒ 登记表必然已有该单元：`deliver_push` 是「先写登记表、后 emit」，
+        // 二者不可能分叉。本行钉的是那条顺序契约，不是「有没有事件」。
         assert!(state.watcher_manager.snapshot(&repo_a).is_some());
     }
 
@@ -695,7 +695,7 @@ mod tests {
         assert!(state.watcher_manager.is_watched(&repo_a));
         assert!(state.watcher_manager.is_watched(&repo_b));
         assert!(
-            wait_for_sink_event(&sink_ab, FIRST_EVENT_TIMEOUT).await,
+            first_snapshot_delivered(&sink_ab, &repo_a.key()),
             "先决条件：A 的首份快照落地，后面的 retention 断言才有意义"
         );
         let before = state
@@ -922,7 +922,6 @@ mod tests {
         assert!(state.watcher_manager.is_watched(&repo_a));
 
         // B 走「远端形态」：同一条 pull 编排（本地 transport + 无 push 生产者）
-        let sink = CollectingSink::new();
         let outcome = pull_outcome(&state, &repo_b, &ExecTarget::Local)
             .await
             .expect("pull b");
@@ -943,10 +942,10 @@ mod tests {
             state.watcher_manager.is_watched(&repo_a),
             "pull 分支不得释放已有挂载（它从不碰挂载：释放只发生在 reconcile 的差集里）"
         );
-        assert!(
-            sink.event_names().is_empty(),
-            "pull 分支不产生 watcher 事件（没有 worker）"
-        );
+        // 无端口即无投递：`pull_outcome` 根本收不到 `WatcherEventSink`（没有 worker，
+        // 也就没有事件源）—— 这条是**结构**保证，不需要（也无法）在运行时断言：
+        // 曾经写下的一条 `assert!(sink 无事件)` 因为 sink 从未交给任何被调方而恒真，
+        // 属于「看起来在钉契约、实际钉不到任何东西」的假断言，已删除。
         assert!(
             state.watcher_manager.snapshot(&repo_b).is_some(),
             "pull 结果必须登记进同一张快照表"
