@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/11-10-session-title-observation-pipeline/research/current-state.md", "reason": "根因证据：三源共享的 hook 面缺口、adapter 存储路径过时、claude 标题噪声、5×N 知识副本清单与代码落点索引"}
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "adapter 契约本体：parse_meta 分离、file_pattern 与嵌套扫描、常见存储与解析陷阱（qoder/codebuddy 正落在这一节）"}
+{"file": ".trellis/spec/backend/agent-hooks-domain.md", "reason": "受管 CLI 数据表、InstallShape、模板契约与内容寻址标记（D13）——PromptHookSpec 与重装提示的依据"}
+{"file": ".trellis/spec/unit-test/real-source-determinism.md", "reason": "真实源只承诺 ≥：夹具探针只能断言「至少存在 1 条真标题」，禁用精确集合断言"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "红线 9/10/13 与模块边界；新增 descriptor 模块的落位与夹具路径规则"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "侧栏可见性规则的历史修订（isListedSession 与命名解耦的上一轮决策），改判据前必须对齐"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "SessionView / ConversationMeta 的 wire 契约与前端 wrapper 归位"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 单测层级与覆盖率基线：判据类纯函数必须全域覆盖"}

@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/11-10-session-title-observation-pipeline/prd.md", "reason": "验收口径：R1-R8 与 AC1-AC7，含「新接一个 CLI 的 diff 形态」这类结构判据"}
+{"file": ".trellis/tasks/11-10-session-title-observation-pipeline/design.md", "reason": "事实层/观测层分离、descriptor 派生矩阵、5 个关键决策（D1-D5）"}
+{"file": ".trellis/tasks/11-10-session-title-observation-pipeline/research/current-state.md", "reason": "核对实现是否真的消掉了知识副本，而不是又加了一层解析"}
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "adapter 契约核对：候选与判决分离后，parse_meta 的职责边界是否仍成立"}
+{"file": ".trellis/spec/backend/agent-hooks-domain.md", "reason": "hook 侧改动是否越过信任门/代写边界；模板一致性测试是否到位"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端去兜底后的静态检查与组件规模基线"}
+{"file": ".trellis/spec/unit-test/real-source-determinism.md", "reason": "夹具探针的断言口径复核（≥ 而非精确集合）"}
