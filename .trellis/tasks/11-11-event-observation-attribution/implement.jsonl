@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/unit-test/real-source-determinism.md", "reason": "本任务同类不变量：真实源事件观察的确定性/归属判据，护栏 docs 指针落点"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试支撑模块（common/testing.rs / sink.rs test_support）的既有约定"}
