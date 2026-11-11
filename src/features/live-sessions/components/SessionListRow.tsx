@@ -6,7 +6,6 @@ import HoverActionSlot, { META_FADE_GROUP_CLASSES } from '@/shared/components/Ho
 import InlineRenameInput from '@/shared/components/InlineRenameInput';
 import SessionRowMenu from '@/shared/components/SessionRowMenu';
 import SessionStatusIcon from '@/shared/components/SessionStatusIcon';
-import { isNamedSession } from '@/shared/selectors/liveSessionSelectors';
 import { useAgentStore } from '@/shared/store/agentStore';
 import type { SessionView } from '@/shared/types/liveSessions';
 import { DEFAULT_AGENT_ICON } from '@/shared/utils/agents';
@@ -21,9 +20,9 @@ import { useSessionRowOverlay } from '../hooks/useSessionRowOverlay';
  * - 图标 = **该会话的 agent 品牌图标**（不是 kind 图标）：扫一眼就知道哪个 agent 在跑；
  *   纯 shell / 未知 agent 回落 `cli.svg`（`AgentIcon` 自带兜底，本组件不另建映射表）。
  * - 标题：真标题用主色（**不画任何来源徽标** —— 标题来源是内部事实，见 design §10）。
- *   `isListedSession` 已保证「没有名字的行不会进列表」（拿不到标题就先不显示），
- *   下面的无标题分支只作为后端旧快照 / 竞态窗口的渲染兜底：只画图标 + 相对时间 + 状态，
- *   不拿 agent 名或项目名编一个假标题。
+ *   本组件不判断「有没有名字」：wire 上的 `title` **永远非空**（无真标题时后端给身份标签，
+ *   如 `claude-code · neeko`），所以这里无条件渲染它 —— 渲染层不编兜底，否则后端缺什么
+ *   就永远看不见（红线 17）。
  * - 相对时间取 `updatedAt`：terminal 全程 `running`，用「还在动」表达而不是伪造 Idle。
  * - 行尾默认显示相对时间；仅省略 ready / stopped 的状态点，其余状态仍常驻提醒。
  * - hover / 聚焦 / 菜单展开时由同一位置的 `⋯` 覆盖；实底与行 hover 同色遮住长标题/元信息，不画浮块、不预留额外列。
@@ -50,10 +49,6 @@ const SessionListRow: React.FC<SessionListRowProps> = ({
     session.agentId ? s.agents?.find((a) => a.id === session.agentId)?.icon : undefined,
   );
   const ago = formatRelativeTime(session.updatedAt, now);
-  // 判据复用 `isNamedSession`（与 tab 标题、侧栏可见性同一份），不在这里重写一遍。
-  const hasTitle = isNamedSession(session);
-  // 无标题时按钮仍需要一个可读名字（否则屏幕阅读器只念出「2m」+ 状态）
-  const fallbackLabel = session.kind === 'chat' ? '聊天会话' : '终端会话';
   const hasToolbar = Boolean(onRename || onDelete);
   // 窄侧栏只省略 ready / stopped；running / awaitingApproval / failed 仍需常驻提醒。
   const showStatus = session.state !== 'ready' && session.state !== 'stopped';
@@ -118,12 +113,11 @@ const SessionListRow: React.FC<SessionListRowProps> = ({
           'flex min-w-0 flex-1 items-center gap-1.5 text-left',
           'cursor-pointer focus-visible:outline-2 focus-visible:outline-accent-blue',
         )}
-        title={hasTitle ? session.title : undefined}
-        aria-label={hasTitle ? undefined : fallbackLabel}
+        title={session.title}
         onClick={() => onActivate?.(session)}
         onDoubleClick={() => {
           // 双击改名：与 worktree 行的「双击标签重命名」同一手感（省一次开菜单）。
-          if (hasTitle && onRename) setDraft(session.title);
+          if (onRename) setDraft(session.title);
         }}
       >
         <AgentIcon
@@ -131,13 +125,9 @@ const SessionListRow: React.FC<SessionListRowProps> = ({
           size={13}
           className="w-[13px] h-[13px] shrink-0 object-contain"
         />
-        {hasTitle ? (
-          <span className="min-w-0 flex-1 truncate text-[0.92em] text-text-primary">
-            {session.title}
-          </span>
-        ) : null}
-        {/* 无标题时用弹性占位把「时间 + 需注意状态点」推到行尾（与有标题时的对齐一致） */}
-        {!hasTitle ? <span className="flex-1" /> : null}
+        <span className="min-w-0 flex-1 truncate text-[0.92em] text-text-primary">
+          {session.title}
+        </span>
         {/* 行尾元信息：时间默认显示、状态点省略 ready / stopped；hover / 聚焦 / 菜单展开时让位给工具栏 */}
         {hasMeta ? (
           <span
@@ -166,7 +156,7 @@ const SessionListRow: React.FC<SessionListRowProps> = ({
           onBlur={handleActionsBlur}
         >
           <SessionRowMenu
-            sessionTitle={hasTitle ? session.title : fallbackLabel}
+            sessionTitle={session.title}
             onOpenChange={setMenuOpen}
             onRename={onRename ? () => setDraft(session.title) : undefined}
             onDelete={onDelete ? () => onDelete(session) : undefined}

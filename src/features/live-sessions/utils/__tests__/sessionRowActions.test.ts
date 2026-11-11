@@ -85,12 +85,12 @@ describe('sessionRowActions — 删除', () => {
     expect(deleteLiveSession).toHaveBeenCalledWith('pty-1');
   });
 
-  it('没有标题时用 sessionId 点名（确认框不能是一句空话）', async () => {
-    void deleteSession(session({ title: '', titleSource: 'placeholder' }));
+  it('确认框用 wire 上的标题（后端保证非空，前端不再编兜底）', async () => {
+    void deleteSession(session({ title: 'claude-code · neeko', titleSource: 'placeholder' }));
 
     expect(useCloseConfirmStore.getState().pending).toEqual({
       kind: 'delete-session',
-      title: 'pty-1',
+      title: 'claude-code · neeko',
     });
   });
 });

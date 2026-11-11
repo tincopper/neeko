@@ -41,17 +41,14 @@ function tabWith(data: TabData, id = 'tab-1'): Tab {
 }
 
 describe('isNamedSession', () => {
-  it('占位来源 / 空标题都算「还没有名字」', () => {
-    expect(isNamedSession(session({ sessionId: 'a', title: '', titleSource: 'placeholder' }))).toBe(
-      false,
-    );
-    // 兜底：来源非占位但标题是空白，同样不算有名字（渲染期兜底 tab.title）
-    expect(isNamedSession(session({ sessionId: 'b', title: '   ', titleSource: 'native' }))).toBe(
-      false,
-    );
-  });
-
-  it('真标题（prompt / native / user）才算有名字', () => {
+  it('看 titleSource 而不是「非空」：占位标签不算有名字', () => {
+    // wire 上的 title 永远非空（后端会给身份标签），所以「空串」不再是「没名字」的信号 ——
+    // 用非空判会让占位标签冒充真标题，刚打开的会话就会被当成已有名字。
+    expect(
+      isNamedSession(
+        session({ sessionId: 'a', title: 'claude-code · neeko', titleSource: 'placeholder' }),
+      ),
+    ).toBe(false);
     for (const titleSource of ['prompt', 'native', 'user'] as const) {
       expect(isNamedSession(session({ sessionId: 'a', title: 'x', titleSource }))).toBe(true);
     }
@@ -60,117 +57,102 @@ describe('isNamedSession', () => {
 
 describe('isListedSession', () => {
   it('有标题但用户还没输入 ⇒ 不列出（CLI 启动就发 OSC 标题也不能算「会话已开始」）', () => {
-    const startupTitle = session({
-      sessionId: 'a',
-      title: 'claude',
-      titleSource: 'native',
-      hasUserInput: false,
-    });
-    expect(isNamedSession(startupTitle)).toBe(true);
-    expect(isListedSession(startupTitle)).toBe(false);
-  });
-
-  it('用户输入了但还没有标题 ⇒ **不列出**（不画一条空行）', () => {
-    // agent 终端的首条输入被后端判负（TUI 面板字节不是会话事实），一输入就进侧栏
-    // 正是用户看到的空行。标题要等 CLI hook `turn_completed` 带 topic 上报。
     expect(
       isListedSession(
-        session({ sessionId: 'a', title: '', titleSource: 'placeholder', hasUserInput: true }),
+        session({ sessionId: 'a', title: 'claude', titleSource: 'native', hasUserInput: false }),
       ),
     ).toBe(false);
   });
 
-  it('已输入 + 有标题 + 首轮跑完 ⇒ 列出', () => {
-    expect(isListedSession(session({ sessionId: 'a', title: 'npm test' }))).toBe(true);
-  });
-
-  it('首轮没跑完就算有标题也不列出（纯 shell 的「一输入」）', () => {
-    expect(isListedSession(session({ sessionId: 'a', title: 'npm test', turnCount: 0 }))).toBe(
-      false,
-    );
-  });
-
-  it('hook `turn_completed` 带来的 native 标题 ⇒ 直接列出', () => {
+  it('用户输入了 + 首轮跑完，但**只有占位标签** ⇒ 不列出（等标题到手再出现）', () => {
+    // 侧栏要的流程：打开 CLI 不出行 → 用户输入 → 拿到真标题后出现。
+    // 占位标签只是「tab / 历史列表永远有字可读」，不能当进列表的许可 ——
+    // 否则一条没有信息量的行会常驻侧栏（第 35 轮踩过）。
     expect(
       isListedSession(
         session({
           sessionId: 'a',
-          kind: 'terminal',
-          agentId: 'pi',
-          title: '修复登录跳转',
+          title: 'claude-code · neeko',
+          titleSource: 'placeholder',
+          hasUserInput: true,
+          turnCount: 1,
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('用户输入后 hook 带来了真标题 ⇒ 立刻列出（不必等本轮结束）', () => {
+    expect(
+      isListedSession(
+        session({
+          sessionId: 'a',
+          agentId: 'claude-code',
+          title: '帮我修登录竞态',
           titleSource: 'native',
+          hasUserInput: true,
           turnCount: 0,
         }),
       ),
     ).toBe(true);
   });
-});
 
-describe('isListedSession — chat 等首轮跑完、拿到标题后才进侧栏', () => {
-  const chat = (overrides: Partial<SessionView> = {}): SessionView =>
-    session({
-      sessionId: 'chat-1',
-      kind: 'chat',
-      agentId: 'pi',
-      title: '修一下登录跳转',
-      titleSource: 'prompt',
-      state: 'running',
-      turnCount: 0,
-      ...overrides,
-    });
-
-  it('刚发出第一条消息、首轮还没跑完 ⇒ 不列出', () => {
-    expect(isListedSession(chat())).toBe(false);
+  it('已输入 + 有真标题 ⇒ 列出（旧版这里还写了 `title: ""` 的空串夹具，占位标签后不再成立）', () => {
+    expect(isListedSession(session({ sessionId: 'a', title: 'npm test' }))).toBe(true);
   });
 
-  it('首轮跑完（turnCount > 0）且有标题 ⇒ 列出', () => {
-    expect(isListedSession(chat({ turnCount: 1, state: 'ready' }))).toBe(true);
+  it('标题到手就列出，**不看回合数**（「拿到标题就出现」）', () => {
+    // 旧实现要求 `turnCount > 0`，并对 native|user 开了个直通特例（因为回填行的
+    // turnCount 不落盘）。判据不再看回合数后，特例也一起消失 —— 这条用例钉住这一点。
+    expect(isListedSession(session({ sessionId: 'a', title: 'npm test', turnCount: 0 }))).toBe(
+      true,
+    );
+    for (const titleSource of ['prompt', 'native', 'user'] as const) {
+      expect(
+        isListedSession(
+          session({ sessionId: 'a', title: 'x', titleSource, turnCount: 0, state: 'running' }),
+        ),
+      ).toBe(true);
+    }
   });
 
-  it('首轮跑完但仍没拿到标题 ⇒ 不列出（不画一条无标题行）', () => {
+  it('还没拿到标题（只有占位）⇒ 不列出，与回合数无关', () => {
+    for (const turnCount of [0, 1, 5]) {
+      expect(
+        isListedSession(
+          session({
+            sessionId: 'a',
+            kind: 'terminal',
+            agentId: 'pi',
+            title: 'pi · neeko',
+            titleSource: 'placeholder',
+            turnCount,
+          }),
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it('chat 还没发过输入 ⇒ 不列出（打开 tab ≠ 在用）', () => {
+    expect(isListedSession(session({ sessionId: 'c', kind: 'chat', hasUserInput: false }))).toBe(
+      false,
+    );
+  });
+
+  it('恢复的历史会话（turnCount 不落盘 ⇒ 0）⇒ 照样列出', () => {
+    // 这是「不看回合数」的直接收益：回填行不需要任何特例。
     expect(
       isListedSession(
-        chat({ turnCount: 1, state: 'ready', title: '', titleSource: 'placeholder' }),
+        session({ sessionId: 'restored', kind: 'chat', title: '构建日志', titleSource: 'prompt' }),
       ),
-    ).toBe(false);
-  });
-
-  it('首轮失败 / 会话终止也算「跑完了」 ⇒ 列出', () => {
-    expect(isListedSession(chat({ state: 'failed' }))).toBe(true);
-    expect(isListedSession(chat({ state: 'stopped' }))).toBe(true);
-  });
-
-  it('恢复的历史会话已有 CLI 标题 ⇒ 不必等新一轮，直接列出', () => {
-    expect(isListedSession(chat({ titleSource: 'native' }))).toBe(true);
-    expect(isListedSession(chat({ titleSource: 'user' }))).toBe(true);
-  });
-
-  it('chat 还没发过输入 ⇒ 不列出', () => {
-    expect(isListedSession(chat({ turnCount: 1, hasUserInput: false }))).toBe(false);
-  });
-
-  it('agent 终端同样要等：一输入（无标题 + 首轮未结束）⇒ 不列出', () => {
-    expect(
-      isListedSession(
-        session({
-          sessionId: 't1',
-          kind: 'terminal',
-          agentId: 'pi',
-          turnCount: 0,
-          state: 'running',
-          title: '',
-          titleSource: 'placeholder',
-        }),
-      ),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 
 describe('sessionsByUnit', () => {
-  it('无标题的会话不进分组（不画空行）', () => {
+  it('只有占位标签的会话不进分组（不画一行没有信息量的行）', () => {
     const list = [
       session({ sessionId: 'named', title: 'fix login', titleSource: 'prompt' }),
-      session({ sessionId: 'unnamed', title: '', titleSource: 'placeholder' }),
+      session({ sessionId: 'unnamed', title: 'claude-code · neeko', titleSource: 'placeholder' }),
     ];
     const byUnit = sessionsByUnit(list);
     expect(byUnit.get(MAIN_KEY)?.map((s) => s.sessionId)).toEqual(['named']);
@@ -181,7 +163,7 @@ describe('sessionsByUnit', () => {
     expect(sessionsByUnit(list).size).toBe(0);
   });
 
-  it('chat 首轮未跑完不进分组，跑完才进', () => {
+  it('chat 只要标题到手就进分组（不等回合结束）', () => {
     const running = session({
       sessionId: 'running',
       kind: 'chat',
@@ -189,18 +171,17 @@ describe('sessionsByUnit', () => {
       turnCount: 0,
       state: 'running',
     });
-    const finished = session({
-      sessionId: 'finished',
+    const unnamed = session({
+      sessionId: 'unnamed',
       kind: 'chat',
-      title: '补上单测',
-      turnCount: 1,
-      state: 'ready',
+      title: 'pi · neeko',
+      titleSource: 'placeholder',
     });
     expect(
-      sessionsByUnit([running, finished])
+      sessionsByUnit([running, unnamed])
         .get(MAIN_KEY)
         ?.map((s) => s.sessionId),
-    ).toEqual(['finished']);
+    ).toEqual(['running']);
   });
 
   it('按 workspaceKey 分组，且保持后端顺序（不重排）', () => {
@@ -248,10 +229,15 @@ describe('unitsWithListedActiveSession', () => {
   });
 
   it('前台会话还没名字 ⇒ 侧栏没有子行，父行不让出选中底', () => {
-    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'unnamed' }];
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'opened' }];
     expect(
       unitsWithListedActiveSession(refs, [
-        session({ sessionId: 'unnamed', title: '', titleSource: 'placeholder' }),
+        session({
+          sessionId: 'opened',
+          title: 'neeko',
+          titleSource: 'placeholder',
+          hasUserInput: false,
+        }),
       ]),
     ).toEqual(new Set());
   });
@@ -408,11 +394,11 @@ describe('selectLatestSessionForUnit —— 点图标时该接回哪一条', () 
     );
   });
 
-  it('还没名字的会话不算「上次那一条」（没进过侧栏）', () => {
+  it('只有占位标签的会话不算「上次那一条」（它还没进侧栏）', () => {
     const unnamed = session({
       sessionId: 'unnamed',
       startedAt: late,
-      title: '',
+      title: 'claude-code · neeko',
       titleSource: 'placeholder',
     });
     expect(selectLatestSessionForUnit([unnamed], MAIN_KEY, 'terminal')).toBeNull();

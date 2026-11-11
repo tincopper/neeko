@@ -1,9 +1,8 @@
-import { isNamedSession } from '@/shared/selectors/liveSessionSelectors';
 import type { SessionView } from '@/shared/types/liveSessions';
 import type { TabLike } from '@/shared/types/tab';
 
 /**
- * tab 标题的**派生**规则：会话有名字时用注册表标题，否则用 tab 自带标题。
+ * tab 标题的**派生**规则：会话被用过之后用注册表标题，否则用 tab 自带标题。
  *
  * ## 为什么不写回 tab store
  *
@@ -17,9 +16,10 @@ import type { TabLike } from '@/shared/types/tab';
  * 「侧栏列不列它」与「tab 能不能用它当标题」是**两条**判据：chat 会话要等首轮跑完才进
  * 侧栏，但 tab 从用户发出第一条消息起就应该显示会话标题 —— 拿侧栏的可见性当 tab 标题的
  * 门槛，会让 chat 在整轮运行期间一直停在 `Agent Chat` 这个占位名上。
- * 无 hook 的终端会话可能永远没有名字，tab 标题不能是空串，所以仍要 `isNamedSession`。 */
+ *
+ * 不再需要「有没有名字」的二次判断：wire 上的 `title` 永远非空（无真标题时是后端合成的
+ * 身份标签，见 `title::placeholder_label`）。 */
 export function resolveTabTitle(tab: TabLike, session?: SessionView | null): string {
-  // 两条都成立才用注册表标题：用户确实用过（否则 tab 用创建期标题）+ 它已有名字。
-  if (!session || !session.hasUserInput || !isNamedSession(session)) return tab.title;
+  if (!session || !session.hasUserInput) return tab.title;
   return session.title;
 }

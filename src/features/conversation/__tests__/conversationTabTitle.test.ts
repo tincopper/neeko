@@ -28,8 +28,10 @@ describe('conversationTabTitle', () => {
     expect(conversationTabTitle({ title: 'Login bug' })).toBe('Login bug');
   });
 
-  it('falls back to agentId then Conversation', () => {
-    expect(conversationTabTitle({ agentId: 'codex' })).toBe('codex');
-    expect(conversationTabTitle({})).toBe('Conversation');
+  it('keeps only the backend-provided title chain (no invented fallbacks)', () => {
+    // 兜底链只有 userTitle → title，两者都来自后端（wire 上 title 永远非空）。
+    // 编一个 agentId / 'Conversation' 就是后端的影子副本，且让「后端没给」隐形。
+    expect(conversationTabTitle({ userTitle: '  ', title: 'real' })).toBe('real');
+    expect(conversationTabTitle({ title: 'claude-code · neeko' })).toBe('claude-code · neeko');
   });
 });

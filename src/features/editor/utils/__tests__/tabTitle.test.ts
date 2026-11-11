@@ -39,15 +39,16 @@ describe('resolveTabTitle', () => {
     expect(resolveTabTitle(TAB, undefined)).toBe('Agent Chat');
   });
 
-  it('注册表标题为空 / 全空白时回落 tab 标题（不渲染一条不可辨认的空白 tab）', () => {
-    expect(resolveTabTitle(TAB, session(''))).toBe('Agent Chat');
-    expect(resolveTabTitle(TAB, session('   '))).toBe('Agent Chat');
-  });
-
-  it('已输入但还没名字 ⇒ 回落 tab 标题（侧栏会列出它，但 tab 不能变成空串）', () => {
+  it('占位标签原样返回（wire 保证非空，渲染层不编兜底）', () => {
+    // 无真标题时后端给身份标签（`title::placeholder_label`），前端不再判空回落 ——
+    // 多一处判空就多一份「有没有名字」的判据（红线 17）。
     expect(
-      resolveTabTitle(TAB, { ...session(''), titleSource: 'placeholder', hasUserInput: true }),
-    ).toBe('Agent Chat');
+      resolveTabTitle(TAB, {
+        ...session('claude-code · neeko'),
+        titleSource: 'placeholder',
+        hasUserInput: true,
+      }),
+    ).toBe('claude-code · neeko');
   });
 
   it('chat 首轮还在跑（侧栏未列出）⇒ tab 仍用注册表标题', () => {

@@ -49,8 +49,8 @@ export function renameSession(session: SessionView, title: string): void {
  * @returns 是否真的发起了删除（`false` = 用户取消）。
  */
 export async function deleteSession(session: SessionView): Promise<boolean> {
-  const label = session.title.trim() || session.sessionId;
-  if ((await useCloseConfirmStore.getState().requestSessionDelete(label)) !== 'delete') {
+  // 标题由后端保证非空（无真标题时是身份标签），不在这里再编一道兜底。
+  if ((await useCloseConfirmStore.getState().requestSessionDelete(session.title)) !== 'delete') {
     return false;
   }
 

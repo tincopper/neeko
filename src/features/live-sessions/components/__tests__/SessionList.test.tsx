@@ -109,7 +109,9 @@ describe('SessionList', () => {
     expect(agentIconSrc(container)).toBe(getAgentIconSrc(DEFAULT_AGENT_ICON));
   });
 
-  it('没有会话级标题时只画图标：不拿 agent 名 / 项目名占位', () => {
+  it('占位标签照常渲染：渲染层不再判断「有没有名字」，也不编兜底', () => {
+    // wire 契约：`title` 永远非空（无真标题时后端给身份标签）。渲染层若再判一次空，
+    // 就会多出第二份「有没有名字」的判据 —— 那是后端的影子副本（红线 17）。
     useAgentStore.setState({
       agents: [
         {
@@ -126,18 +128,16 @@ describe('SessionList', () => {
     });
 
     const { container } = render(
-      <SessionList sessions={[session({ sessionId: 's1', title: '', agentId: 'pi' })]} />,
+      <SessionList
+        sessions={[session({ sessionId: 's1', title: 'pi · neeko', titleSource: 'placeholder' })]}
+      />,
     );
 
-    // agent 身份只剩图标这一个出口
+    // agent 身份仍然只有图标这一个出口（标题里不重复 agent 名）
     expect(agentIconSrc(container)).toBeTruthy();
-    // 不渲染任何替它编的名字（agent 名 / 项目名都没有）
-    expect(screen.queryByText('pi')).not.toBeInTheDocument();
-    expect(screen.queryByText('Pi')).not.toBeInTheDocument();
-    expect(screen.queryByText('neeko')).not.toBeInTheDocument();
+    expect(screen.getByText('pi · neeko')).toBeInTheDocument();
     // 行仍在：状态点 + 时间照常
     expect(screen.getByRole('img')).toHaveAttribute('data-session-state', 'running');
-    expect(screen.getByRole('button')).toHaveAttribute('aria-label', '终端会话');
   });
 
   it('有真标题时用主色，且不渲染任何来源徽标', () => {

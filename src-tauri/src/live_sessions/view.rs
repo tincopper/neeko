@@ -3,11 +3,14 @@
 //! 载荷规模：100 条会话 × ~200B ≈ 20KB，远低于红线 4 的 2MB 上界 ⇒ 不分页
 //! （若将来破 1MB 再按单元分页，不预做）。
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::live_sessions::entry::{SessionEntry, SessionKind, SessionState, TitleSource};
 use crate::live_sessions::registry::Registry;
+use crate::live_sessions::title::placeholder_label;
 
 /// 一条会话的前端形态。
 ///
@@ -25,7 +28,7 @@ pub struct SessionView {
     pub agent_id: Option<String>,
     /// 执行地址 key（`WorkspaceSession::key()`）。
     pub workspace_key: String,
-    /// 派生后的标题。
+    /// 派生后的标题。**永远非空**：没有真标题时是身份标签（`title::placeholder_label`）。
     pub title: String,
     /// 标题来源（**不进 UI**：只表达「有真标题 / 占位」，见 design §10）。
     pub title_source: TitleSource,
@@ -43,14 +46,23 @@ pub struct SessionView {
 
 impl SessionView {
     /// 条目 → wire DTO（`workspace_key` 由地址的唯一 key 铸造点产出，不在这里拼分隔符）。
+    ///
+    /// 标题在这一层**补齐**：`SessionEntry.title` 仍是「只有真标题」的形状（空串 +
+    /// `Placeholder`，这是注册表与持久化的既有不变量），wire 则永远携带一个可渲染的字符串。
+    /// 于是「空标题」不再是一个能被前端观察到的状态（红线 17 的三份前端兜底因此没有存在理由）。
     #[must_use]
     pub fn from_entry(entry: &SessionEntry) -> Self {
+        let title = if entry.has_real_title() {
+            entry.title.clone()
+        } else {
+            placeholder_label(entry.agent_id.as_deref(), &entry.cwd, &entry.session_id)
+        };
         Self {
             session_id: entry.session_id.clone(),
             kind: entry.kind,
             agent_id: entry.agent_id.clone(),
             workspace_key: entry.workspace.key(),
-            title: entry.title.clone(),
+            title,
             title_source: entry.title_source,
             state: entry.state,
             started_at: entry.started_at,
@@ -90,14 +102,46 @@ impl Registry {
     #[must_use]
     pub fn snapshot_view(&self) -> LiveSessionsSnapshot {
         let version = self.version();
-        LiveSessionsSnapshot {
-            version,
-            sessions: self
-                .snapshot()
-                .iter()
-                .map(SessionView::from_entry)
-                .collect(),
+        let mut sessions: Vec<SessionView> = self
+            .snapshot()
+            .iter()
+            .map(SessionView::from_entry)
+            .collect();
+        disambiguate_placeholder_titles(&mut sessions);
+        LiveSessionsSnapshot { version, sessions }
+    }
+}
+
+/// 同一单元里两条无真标题的会话经常共享同一个身份标签（同 cwd、同 agent）：
+/// 追加 `#2` / `#3` 让它们仍可区分。
+///
+/// 只给 `Placeholder` 编号（有真标题的行本来就可区分，且用户记得住自己的名字）；
+/// 编号按快照顺序（注册表已稳定排序）⇒ 同一组会话反复快照得到同一组标签。
+///
+/// 分组键是 `(单元 key, 标签)` **元组**而不是拼接串：拼分隔符会造出第二个地址编码
+/// （红线 12 的同形风险，`check_workspace_identity` 也会拦）。
+///
+/// 两趟（先计数、再改写）而不是一趟：一趟要在遍历中同时读标题和写标题，只能靠 clone 键；
+/// 第一趟只借 `&str`，第二趟才落盘新标签 —— 快照是热路径（每次变更都全量重算）。
+fn disambiguate_placeholder_titles(sessions: &mut [SessionView]) {
+    let mut numbered: Vec<(usize, String)> = Vec::new();
+    {
+        let mut seen: HashMap<(&str, &str), u32> = HashMap::new();
+        for (index, session) in sessions.iter().enumerate() {
+            if session.title_source != TitleSource::Placeholder {
+                continue;
+            }
+            let count = seen
+                .entry((session.workspace_key.as_str(), session.title.as_str()))
+                .or_insert(0);
+            *count += 1;
+            if *count > 1 {
+                numbered.push((index, format!("{} #{count}", session.title)));
+            }
         }
+    }
+    for (index, label) in numbered {
+        sessions[index].title = label;
     }
 }
 
@@ -187,6 +231,82 @@ mod tests {
         assert!(session["workspaceKey"].is_string());
         assert_eq!(session["agentId"], serde_json::Value::Null);
         assert!(json["version"].is_u64());
+    }
+
+    /// wire 上的标题**永远非空**：没有真标题时是身份标签，而不是空串。
+    ///
+    /// 变异验证：把 `SessionView::from_entry` 的补齐分支删掉（退回 `entry.title.clone()`）
+    /// 本用例必红 —— 那正是「三源标题不显示」能被前端观察到的机制。
+    #[test]
+    fn placeholder_session_still_carries_a_renderable_title() {
+        let registry = registry();
+        registry.register(entry("t1", "/proj/neeko", None));
+        let view = registry.snapshot_view();
+        let session = &view.sessions[0];
+        assert_eq!(session.title_source, TitleSource::Placeholder);
+        assert_eq!(session.title, "neeko", "纯 shell 取 cwd 末段");
+    }
+
+    /// agent 会话的占位标签带 agent slug（行内 meta 已显示 agent 名，所以只用 slug）。
+    #[test]
+    fn placeholder_title_includes_the_agent_slug() {
+        let registry = registry();
+        let mut terminal = entry("t1", "/proj/neeko", None);
+        terminal.agent_id = Some("claude-code".into());
+        registry.register(terminal);
+        assert_eq!(
+            registry.snapshot_view().sessions[0].title,
+            "claude-code · neeko"
+        );
+    }
+
+    /// 同单元里同身份的两条会话必须可区分：第二条起追加序号。
+    #[test]
+    fn duplicate_placeholder_titles_are_numbered() {
+        let registry = registry();
+        registry.register(entry("t1", "/proj/neeko", None));
+        registry.register(entry("t2", "/proj/neeko", None));
+        let titles: Vec<String> = registry
+            .snapshot_view()
+            .sessions
+            .iter()
+            .map(|s| s.title.clone())
+            .collect();
+        assert_eq!(titles, vec!["neeko".to_string(), "neeko #2".to_string()]);
+    }
+
+    /// 有真标题的行不参与编号（用户起的名字不该被改写成 `名字 #2`）。
+    #[test]
+    fn real_titles_are_never_numbered() {
+        let registry = registry();
+        let mut named = entry("t1", "/proj/neeko", None);
+        named.title = "neeko".into();
+        named.title_source = TitleSource::Prompt;
+        registry.register(named);
+        registry.register(entry("t2", "/proj/neeko", None));
+        let titles: Vec<String> = registry
+            .snapshot_view()
+            .sessions
+            .iter()
+            .map(|s| s.title.clone())
+            .collect();
+        assert_eq!(titles, vec!["neeko".to_string(), "neeko".to_string()]);
+    }
+
+    /// 单元隔离：不同单元各从 `#1` 开始，不互相挤号。
+    #[test]
+    fn placeholder_numbering_is_per_unit() {
+        let registry = registry();
+        registry.register(entry("t1", "/proj/neeko", None));
+        // 同一个 cwd 末段，但属于另一个单元（worktree）：两边都应保持 `neeko`。
+        registry.register(entry("t2", "/proj/neeko", Some("/proj/.worktrees/a")));
+        let titles: Vec<String> = registry
+            .snapshot_view()
+            .sessions
+            .iter()
+            .map(|s| s.title.clone())
+            .collect();
+        assert_eq!(titles, vec!["neeko".to_string(), "neeko".to_string()]);
     }
 
     /// 快照是**全量**的：单元过滤在前端 selector（按 `workspaceKey` 等值），后端不分单元切片。

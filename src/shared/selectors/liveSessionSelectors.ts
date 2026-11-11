@@ -56,61 +56,41 @@ export function isBusySession(session: SessionView): boolean {
 }
 
 /**
- * 会话是否已经有名字（＝注册表里存在真标题）。
+ * 会话是否**已经有名字**（＝存在真标题，而不是身份占位）。
  *
- * 判据只有「非空」一条：后端 `title::admit` 对 `Placeholder` **恒**返回 `None`，
- * 于是 `titleSource === 'placeholder' ⟺ title === ''` 恒成立（`registry::has_real_title`
- * 因此退化成同一个判据）。把来源再写一遍就是同一事实的第二份表达 —— 而两份判据
- * 迟早会漂移。
- *
- * 标题可能来自首条 prompt / 首条终端输入（`Prompt`）、CLI 自报的会话主题（`Native`）、
- * 用户改名（`User`）；`Placeholder` 只是「还没起名」的占位，恒为空串。
+ * 判据看的是 `titleSource`，不是「非空」：wire 上的 `title` 永远非空（无真标题时后端给
+ * 身份标签，如 `claude-code · neeko`），因此「空串」不再是「没名字」的信号 ——
+ * 用非空判会让占位标签冒充真标题（那样任何刚打开的会话都会被当成已有名字）。
  */
 export function isNamedSession(session: SessionView): boolean {
-  return session.title.trim().length > 0;
+  return session.titleSource !== 'placeholder';
 }
 
 /**
- * 「首轮已经跑完」：一轮完成（`Signal::TurnFinished` 累计 `turnCount`）或会话已终止。
+ * 是否该把这条会话列进侧栏：**用户真的用过，且已经拿到名字**。
  *
- * 用 `turnCount` 而不是 `state === 'ready'`：新建会话的初始态就是 `Ready`，
- * 用户刚敲完第一条消息、流还没起时也是 `Ready` —— 按状态判会在那一刻就放行。
- * 失败 / 终止要单独算：终止态吸收迟到的 `TurnFinished`，`turnCount` 可能永远是 0。
- */
-function hasFinishedFirstTurn(session: SessionView): boolean {
-  return session.turnCount > 0 || session.state === 'failed' || session.state === 'stopped';
-}
-
-/**
- * 是否该把这条会话列进侧栏：**跑完一轮、且拿到了真标题**。
- *
- * 三条前提缺一不可：
+ * 两条前提，缺一不可：
  * 1. `hasUserInput` —— 打开 agent tab 就会创建 PTY / 静默会话，那时用户还没敲一个字；
- * 2. `isNamedSession` —— **没有标题就不显示**。agent 终端的首条输入被后端判负
- *    （`report_terminal_input` 对 `agent_id = Some` 恒传空串，TUI 面板字节不是会话事实），
- *    所以「一输入就冒出一条空行」正是这条挡掉的；标题只能等 CLI hook 的 `turn_completed`
- *    带 `topic` 上报（`Native`），或 conversation 缓存回落后才到位；
- * 3. `hasFinishedFirstTurn` —— 首轮没结束不显示。纯 shell 的「一轮结束」是 PTY 静默推断
- *    的 `TurnFinished`，chat 是 `TurnEnd` 事件，agent 终端是 hook `turn_completed`。
+ * 2. `isNamedSession` —— **占位标签不算名字**。占位（`claude-code · neeko`）只用来让
+ *    tab / 历史列表永远有字可读，不是「这条会话可以进列表」的信号；否则一条没有信息量的行
+ *    会常驻侧栏（第 35 轮踩过）。
  *
- * `Native` / `User` 标题直接放行：前者只在任务有实质进展的 hook 事件里写入（恢复的历史行
- * 也是它），后者是用户主动改名 —— 两者都不该再等一轮。
+ * **不看回合数**（2026-11-10 定案：「拿到标题就出现」）。理由：
+ * - 用户要的是「输入指令 → 标题到手 → 行出现」，而不是「等这一轮跑完」；
+ * - 依赖回合数还有一个隐性坏账：`session_store` 不持久化 `turn_count`，重启后回填的行
+ *   恒为 0 —— 那会逼出一个 `native|user` 直通特例（旧实现就有），而特例本身又让判据
+ *   分叉。去掉这条依赖，特例一起消失。
  *
- * 注：这是对第 35 轮「可见性与命名彻底解耦」的**主动修订**。旧规则让无 hook 的终端以
- * 「图标 + 时间 + 状态」占位行常驻，实测就是用户看到的空行；现在的取舍是「拿不到标题
- * 宁可不显示」，与「一输入就列出」相比更符合会话列表的用途。
+ * 换句话说：**打开 CLI 不出行；用户提交指令、标题到手的那一帧出现**。
  */
 export function isListedSession(session: SessionView): boolean {
-  if (!session.hasUserInput) return false;
-  if (!isNamedSession(session)) return false;
-  if (session.titleSource === 'native' || session.titleSource === 'user') return true;
-  return hasFinishedFirstTurn(session);
+  return session.hasUserInput && isNamedSession(session);
 }
 
 /**
  * 前台会话已实际列出的单元集合（父行据此让出选中态）。
  *
- * 父行不能只看 tab 身份：未输入 / 无标题 / 首轮没跑完的会话不会出现在子列表，
+ * 父行不能只看 tab 身份：未输入 / 还没名字的会话不会出现在子列表，
  * 此时让出填充色会让「当前」在整个侧栏消失。判据与 `sessionsByUnit` 同源。
  */
 export function unitsWithListedActiveSession(
@@ -164,7 +144,7 @@ export function sessionsByUnit(sessions: readonly SessionView[]): Map<string, Se
  * 三条判据都不能少：
  * - `workspaceKey` 相等 —— 单元隔离（切项目不得接回别的单元的会话）；
  * - `kind` 相等 —— chat 与 terminal 的 id 空间互不相干（见 `isSameSession`）；
- * - `isListedSession` —— 与侧栏同一个判据：打开 tab 就会建静默会话，还要等首轮跑完 + 拿到标题，
+ * - `isListedSession` —— 与侧栏同一个判据：打开 tab 就会建静默会话，还要等标题到手，
  *   把那些当成「上次那一条」会让第一次点图标就接回一个空会话。
  *
  * 取 `startedAt` **最大值**而不是数组末位：快照顺序是**后端**的事（store 明确写了

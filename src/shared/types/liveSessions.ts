@@ -22,7 +22,9 @@ export type SessionState = 'ready' | 'running' | 'awaitingApproval' | 'failed' |
 /**
  * 标题来源（Rust `TitleSource`），质量顺序 `placeholder < prompt < native < user`。
  *
- * **不进 UI**：它只决定「谁能覆盖谁」，界面只表达结果（有真标题 / 占位斜体）。
+ * 两层用途：后端决定「谁能覆盖谁」；前端 `isNamedSession` 用它回答「有没有真标题」
+ * （`≠ placeholder`）。**不要**改成判 `title` 是否非空 —— wire 上的 `title` 永远非空
+ * （无真标题时是后端合成的身份标签），用非空判会让占位标签冒充真标题。
  */
 export type TitleSource = 'placeholder' | 'prompt' | 'native' | 'user';
 
@@ -52,7 +54,7 @@ export interface SessionView {
    *
    * 打开 tab 就会创建 PTY / 静默会话，agent CLI 往往还会自己发 OSC 标题 —— 所以
    * 「有标题」不等于「有人在用」。这是侧栏列出的**必要而非充分**条件（见
-   * `isListedSession`：还要有真标题，且首轮已跑完或标题来自 CLI / 用户）。
+   * `isListedSession`：还要求已有**真标题**，占位标签不算）。
    */
   hasUserInput: boolean;
 }
