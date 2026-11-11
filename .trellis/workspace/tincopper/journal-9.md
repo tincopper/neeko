@@ -570,3 +570,25 @@ The watcher event source became a composition-root construction parameter, so se
 ### Status
 
 [OK] **Completed**
+
+
+## Session 451: merge multi-agent into feat-team with mainline as the baseline
+<!-- trellis-session: v=2 fp=d83848de99fcaf0e -->
+
+**Date**: 2026-11-11
+**Task**: merge multi-agent into feat-team with mainline as the baseline
+**Branch**: `feat-team`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ca2861bf` | chore(merge): bring multi-agent into feat-team with the mainline as the baseline |
+
+### Status
+
+[OK] **Completed**

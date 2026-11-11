@@ -8,11 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 450
+- **Total Sessions**: 451
 - **Last Active**: 2026-11-11
-- **Active File**: `journal-8.md`
-- **Total Sessions**: 447
-- **Last Active**: 2026-11-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -22,9 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~572 | Active |
-| `journal-8.md` | ~1971 | Archived |
-| `journal-8.md` | ~1355 | Active |
+| `journal-9.md` | ~594 | Active |
+| `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -41,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 451 | 2026-11-11 | merge multi-agent into feat-team with mainline as the baseline | `ca2861bf` | `feat-team` |
 | 450 | 2026-11-11 | Service-layer suites without OS watchers | `783793a6` | `main` |
 | 449 | 2026-11-11 | Event observation attribution: keyed sink waits | `c8c50d5d`, `f9a65860` | `main` |
 | 448 | 2026-11-10 | resume replay separator in English | `834c4de5` | `main` |
