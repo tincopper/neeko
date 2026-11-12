@@ -8,6 +8,7 @@ export {
 } from './components/terminalAddress';
 export {
   resolveTerminalEntry,
+  resolveTerminalEntryOfTab,
   destroyTerminalsForProject,
   destroyTerminalsForSession,
   destroyTerminalsForTab,

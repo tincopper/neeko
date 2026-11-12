@@ -4,7 +4,7 @@ import { terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { workspaceKeyLabel } from '@/shared/utils/workspaceRef';
 import type { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
-import { log, resolveTerminalEntry } from './terminalCache';
+import { log, resolveTerminalEntryOfTab } from './terminalCache';
 
 /**
  * 写侧执行路径统一入口。地址一律由 `session` 派生（`terminalAddress`），
@@ -15,7 +15,9 @@ import { log, resolveTerminalEntry } from './terminalCache';
  * 四个生产调用方本来就全部显式传 tabId。
  */
 export function sendToTerminal(session: WorkspaceSession, text: string, tabId: string): void {
-  const entry = resolveTerminalEntry(session, tabId);
+  // **pane 无关** resolve：本函数只持有 tab 身份（pane 是渲染方的知识）。
+  // 旧实现用 `paneId='p1'` 默认值硬猜 —— 终端不在第一个 pane 时恒 miss 且静默。
+  const entry = resolveTerminalEntryOfTab(session, tabId);
   const sessionId = entry?.sessionId ?? null;
 
   if (!sessionId) {

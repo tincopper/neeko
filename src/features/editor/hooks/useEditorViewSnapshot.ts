@@ -17,6 +17,7 @@ import {
   type SerializedSelection,
 } from '@/shared/utils/editorViewState';
 
+import { registerEditorInsertPort, unregisterEditorInsertPort } from '../api/editorInsertPort';
 import { editorIdentityOfTab, registerEditorView, unregisterEditorView } from '../api/editorViews';
 import { resolveDebugHighlightLine } from '../stopMatch';
 
@@ -148,6 +149,10 @@ export function useEditorViewSnapshot({
       // document uri 找回这个视图。项目根取自项目对象，不在本处推导。
       const viewIdentity = editorIdentityOfTab(tab.workspace.projectId, absFilePath);
       if (viewIdentity) registerEditorView(viewIdentity, view);
+      // 登记到插入端口注册表（文件拖拽 / 面板投递的仲裁目标之一）：身份用 (tabKey, tabId)，
+      // DOM 根就是 CodeMirror 自己的节点，插入走 `replaceSelection`（编辑器域自管，见
+      // `api/editorInsertPort.ts`；`shared/inputs` 不知道 `features/editor` 的存在）。
+      registerEditorInsertPort(tabKey, tabId, view);
       setEditorViewEpoch((n) => n + 1);
       // Apply any breakpoints already in the store (effect may have run before view existed)
       const dbgBp = useDebugStore.getState();
@@ -226,10 +231,11 @@ export function useEditorViewSnapshot({
       // 注销：注册表必须随视图一起回收，否则会持有已销毁的 EditorView（V8 堆泄漏）。
       const viewIdentity = editorIdentityOfTab(tab.workspace.projectId, absFilePath);
       if (viewIdentity) unregisterEditorView(viewIdentity);
+      unregisterEditorInsertPort(tabKey, tabId);
       editorViewRef.current = null;
       editorRestoredRef.current = false;
     };
-  }, [saveEditorSnapshot, editorViewRef, tab.workspace.projectId, absFilePath]);
+  }, [saveEditorSnapshot, editorViewRef, tab.workspace.projectId, absFilePath, tabKey, tabId]);
 
   return { handleCreateEditor, viewStateExt, resetEditorRestored };
 }

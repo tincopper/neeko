@@ -252,19 +252,49 @@ function backendForKey(key: string): TerminalBackendHandle | null {
 }
 
 /**
- * 唯一 resolve：精确键在三个物理 Map 中唯一命中。
+ * 精确键 resolve：调用方**确实知道 paneId** 时用它（三个物理 Map 中唯一命中）。
  *
- * **tabId 必填、无隐式 fallback** —— session 内 fallback 只由 `terminalRouting` 的前台仲裁
- * 承担（避免同一语义两处实现而漂移）。跨 session 串写在前缀上不可表达（前缀 = 整串
- * `session.key` + SEP，嵌套 worktree `/wt/a` 不匹配 `/wt/a-b`）。
+ * **`paneId` 必填、无默认值** —— 曾经的默认值 `'p1'` 是 2026-11 「拖文件到终端什么都没发生」
+ * 事故的根因：paneId 是**渲染方**才知道的知识，猜一个默认值在终端不在第一个 pane
+ * （右侧 dock / 分屏）时恒 miss，而调用方只拿到一个静默的 `false`。
+ * 「只知道 tab、不知道 pane」的写侧路径请用 `resolveTerminalEntryOfTab`。
  */
 export function resolveTerminalEntry(
   session: WorkspaceSession,
   tabId: string,
-  paneId = 'p1',
+  paneId: string,
 ): CacheEntry | null {
   const key = terminalAddress(session, tabId, paneId);
   return backendForKey(key)?.cache.get(key) ?? null;
+}
+
+/**
+ * tab 级、**pane 无关**的 resolve：该 tab 任意一条存活 PTY（`terminalAddressPrefixOfTab` 扫描）。
+ *
+ * 服务对象是「只持有 tab 身份」的写侧调用方（`sendToTerminal` / `insertToTerminalTarget`）——
+ * 它们不知道这个 tab 被拆成几个 pane、每个 pane 的 paneId 是什么（那是渲染方的知识）。
+ *
+ * 命中顺序：三个物理 Map（键共唯一）+ **键字典序**（`paneId` 是键的末段，因此等价于
+ * paneId 升序）。排序是为了确定性：不排序就是「Map 插入顺序」，那是同一问题第二个
+ * 答案的温床（决议 Q2 判过的形态）。
+ *
+ * 「优先激活 pane」**不在本层回答** —— pane 激活态只有渲染方知道，拖拽投递走的是端口模型
+ * （`shared/inputs/insertPorts`，每个 pane 自带自己的 PTY），本函数只服务「按 tab 写入」
+ * 这条没有 pane 上下文的路径。
+ */
+export function resolveTerminalEntryOfTab(
+  session: WorkspaceSession,
+  tabId: string,
+): CacheEntry | null {
+  const prefix = terminalAddressPrefixOfTab(session, tabId);
+  for (const bk of allBackends()) {
+    const keys = [...bk.cache.keys()].filter((key) => key.startsWith(prefix)).sort();
+    for (const key of keys) {
+      const entry = bk.cache.get(key);
+      if (entry?.sessionId) return entry;
+    }
+  }
+  return null;
 }
 
 /**

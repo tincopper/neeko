@@ -58,9 +58,13 @@ function ProjectView() {
   const centerHasTabs = useEditorStore((s) => hasCenterTabs(s, tabKey));
   const hasActiveProject = !!activeProject;
 
-  // Wire up file drag-to-agent: on dragend, paste the stored file path into
-  // the agent terminal without auto-submitting (no \r).
-  useFileDrop();
+  // 文件拖拽投递：dragend 时按**插入端口身份**仲裁（指针落点 → 焦点 → 文本控件 →
+  // composer → 编辑器 → 终端）。一个端口都不接时回调本处提示 —— `file` 域不 import UI（R5），
+  // 可见性由这里注入。静默失败正是这次事故难定位的原因（「拖了，Console 干净」）。
+  const handleUnhandledFileDrop = useCallback(() => {
+    showToast('这里不能插入路径', 'info');
+  }, [showToast]);
+  useFileDrop({ onUnhandled: handleUnhandledFileDrop });
 
   const { handleAddTerminalTab } = useTerminalTabs(tabKey, currentProjectId);
 

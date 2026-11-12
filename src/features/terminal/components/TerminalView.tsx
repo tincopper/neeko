@@ -1,13 +1,16 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 
 import { adoptLiveSession } from '@/features/live-sessions/api/liveSessionsApi';
 import { useEditorContext } from '@/shared/contexts';
+import { registerInsertPort, unregisterInsertPort } from '@/shared/inputs/insertPorts';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { selectActiveTabId } from '@/shared/store/editorTabSelectors';
 import type { AuthMethod } from '@/shared/types';
 import type { TerminalTabData } from '@/shared/types/tab';
 
 import { useTerminalStrategy } from '../strategies';
 
+import { pasteToTerminalSession } from './terminalCommands';
 import TerminalViewBase from './TerminalViewBase';
 
 export interface TerminalViewProps {
@@ -57,6 +60,41 @@ function TerminalView({ paneId, tabSpaceKey, remoteConfig }: TerminalViewProps) 
     fullTabData?.kind === 'terminal' ? (fullTabData.resumeFromSessionId ?? null) : null;
 
   const strategy = useTerminalStrategy({ paneId, remoteConfig });
+
+  /**
+   * 终端插入端口 —— **每个渲染中的 pane 一个**，`insert` 用**本 pane 自己那条 PTY 的
+   * sessionId**（`strategy.cache.get(strategy.cacheKey)`）。
+   *
+   * 这是 2026-11 那次「拖文件到终端什么都没发生」的结构性修法：旧实现由投递方按
+   * `paneId = 'p1'` 猜 PTY，终端只要不在第一个 pane（右侧 dock / 分屏）就必然 miss。
+   * 现在 pane 身份由**渲染方**自己带着登记，「猜 paneId」这一步不存在。
+   *
+   * `el` 是**惰性投影**（getter）：终端 DOM 由 `TerminalViewBase` 在字体门闩之后创建，
+   * 登记时通常还不存在；指针 / 焦点判据因此每次都读当前那一个，不需要重挂。
+   * `isActive` 用布局派生的前台 tab（唯一真源 `editorTabSelectors`），不另造口径。
+   */
+  useEffect(() => {
+    if (!strategy || !tabSpaceKey) return;
+    const { cache, cacheKey } = strategy;
+    const portId = `terminal:${cacheKey}`;
+    registerInsertPort({
+      id: portId,
+      kind: 'terminal',
+      sessionKey: tabSpaceKey,
+      get el() {
+        return cache.get(cacheKey)?.element ?? null;
+      },
+      isActive: () => selectActiveTabId(useEditorStore.getState(), tabSpaceKey) === activeTabId,
+      insert: (text) => {
+        // PTY 未就绪（entry 还没建 / sessionId 还是 null）→ false，仲裁继续降级。
+        const entry = cache.get(cacheKey);
+        if (!entry?.sessionId) return false;
+        pasteToTerminalSession(entry.sessionId, text);
+        return true;
+      },
+    });
+    return () => unregisterInsertPort(portId);
+  }, [strategy, tabSpaceKey, activeTabId]);
 
   /**
    * PTY 创建成功 → 把后端铸造的 session id 写进 tab data。

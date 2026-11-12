@@ -2,13 +2,19 @@ import type { Editor } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
+import { registerInsertPort, unregisterInsertPort } from '@/shared/inputs/insertPorts';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { selectActiveTabId } from '@/shared/store/editorTabSelectors';
 import type { AgentChatTabData, ComposerDocJson } from '@/shared/types/tab';
 
 import type { ComposerPaletteSource } from '../paletteSources';
 
 import { CHIP_NODE_VIEWS } from './ChipView';
-import { registerComposerEditor, unregisterComposerEditor } from './editorRegistry';
+import {
+  insertIntoComposer,
+  registerComposerEditor,
+  unregisterComposerEditor,
+} from './editorRegistry';
 import { buildComposerExtensions, plainTextToDoc } from './editorSchema';
 import { isComposerEmpty, submitComposer } from './submitComposer';
 import type { ComposerSubmission } from './submitComposer';
@@ -189,6 +195,29 @@ function RichComposer({
     return () => {
       unregisterComposerEditor(tabKey, tabId, editor);
     };
+  }, [editor, tabKey, tabId]);
+
+  /**
+   * 插入端口登记：让**统一仲裁**（`shared/inputs/insertPorts` + `useFileDrop`）能把本
+   * composer 当成一个可落地的目标。
+   *
+   * 插入本身复用既有注册表（`insertIntoComposer`）—— 不在这里重写一条写入路径；
+   * 未挂载 / 已销毁时它返回 false，仲裁继续下一个候选（可能落到本 session 的终端）。
+   * `isActive` 取布局派生的前台 tab（唯一真源 `editorTabSelectors`），不另造口径。
+   */
+  useEffect(() => {
+    const portId = `agent-composer:${tabKey}:${tabId}`;
+    registerInsertPort({
+      id: portId,
+      kind: 'agent-composer',
+      sessionKey: tabKey,
+      get el() {
+        return editor && !editor.isDestroyed ? editor.view.dom : null;
+      },
+      isActive: () => selectActiveTabId(useEditorStore.getState(), tabKey) === tabId,
+      insert: (text) => insertIntoComposer(tabKey, tabId, text),
+    });
+    return () => unregisterInsertPort(portId);
   }, [editor, tabKey, tabId]);
 
   return (
