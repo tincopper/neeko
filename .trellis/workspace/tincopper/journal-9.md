@@ -707,3 +707,23 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 458: 修复 codex 成员：MCP 鉴权形状不一致（403 → 无工具面）+ Pty 投递被 paste-burst 吞回车
+<!-- trellis-session: v=2 fp=6682a44f71c6c62b -->
+
+**Date**: 2026-11-12
+**Task**: 修复 codex 成员：MCP 鉴权形状不一致（403 → 无工具面）+ Pty 投递被 paste-burst 吞回车
+**Branch**: `feat-team`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**

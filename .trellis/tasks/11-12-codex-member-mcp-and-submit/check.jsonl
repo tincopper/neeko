@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/team-domain.md", "reason": "核对改动是否仍守住两相位、门-身份表顺序、准入表字段边界（pty_submit 是『怎么提交』不是『怎么发』）"}
+{"file": ".trellis/spec/security/allowlist.md", "reason": "核对新凭证形状没有放宽裁决面（无免鉴权路径、无第二处比较）"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试风格与命名（护栏测试的写法与变异验证记录方式）"}
+{"file": ".trellis/tasks/11-12-codex-member-mcp-and-submit/research/00-evidence.md", "reason": "验收时对照证据：日志不再出现 403、codex 成员能 task_list/task_claim、投递自行提交"}

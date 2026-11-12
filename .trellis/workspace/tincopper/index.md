@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 457
-- **Last Active**: 2026-11-11
+- **Total Sessions**: 458
+- **Last Active**: 2026-11-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~709 | Active |
+| `journal-9.md` | ~729 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 458 | 2026-11-12 | 修复 codex 成员：MCP 鉴权形状不一致（403 → 无工具面）+ Pty 投递被 paste-burst 吞回车 | - | `feat-team` |
 | 457 | 2026-11-11 | S3 历史按身份归属：ProjectScope + team workspace_worktree(v23) | - | `feat-team` |
 | 456 | 2026-11-11 | S2 团队会话恢复：resume argv + team_resume + 五态入口 | - | `feat-team` |
 | 455 | 2026-11-11 | 团队会话恢复 S1：身份与进程资源分家（v22） | - | `feat-team` |
