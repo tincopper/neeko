@@ -34,23 +34,32 @@
 
 ## Requirements
 
-- **R1**（红线 4）：`lsp_request` / `lsp_transport` 统一按字节预算封顶并返回**明确错误**
-  （含实际字节数与建议的收窄方式），前端不得静默拿到被截断的 JSON。
-- **R2**：诊断权威副本按 `languageId` 分区，会话边界只清该语言（诊断事件需补 `languageId`，
-  `diag_bus` 已有该字段）。
-- **R3**（红线 14）：`relatedInformation` 要么删除声明，要么给出渲染色（`DiagnosticRow` / hover）。
-- **R4**：状态词表单一来源：`indexing` 必须经 `publish_status`（或删除该变体并同步注释）；
-  `LspSessionInfo.status` 用字面量 union 序列化并去掉前端 `as`；事件常量加**跨栈**断言
-  （照 `src/shared/__tests__/sessionsEventConstant.test.ts` 的形态反向读源码）。
-- **R5**：`$/progress` 两端形态对齐；无消费点就删掉该条转发。
+- **R1（红线 4）**：`lsp_request` / `lsp_transport` 的响应体按**字节**封顶（2 MiB），
+  超限返回明确错误（含实际字节数与 method），不得把无界 JSON 直接交给 Tauri IPC。
+- **R2（红线 14）**：删除 `publishDiagnostics.relatedInformation` 假声明（全仓零消费）。
+- **R3（状态单写点）**：`$/progress begin` 的 `indexing` 事件经 `publish_status` 发出，
+  受 lifecycle 终态门约束；关闭后的迟到 `indexing` / `ready` 不得复活 chip。
+- **R4（红线 5 的执行侧）**：新增**跨栈**断言：读取 `src-tauri/src/lsp/types.rs` 的常量声明，
+  与 `src/shared/events.ts` 逐字比较（形态照 `src/shared/__tests__/sessionsEventConstant.test.ts`）。
+- **R5（监听器不泄漏）**：`tauriLspTransport.setup()` 的三个 `listen().then()` 在 `destroy()`
+  已发生时立即注销；顺带删除**死**的 `$/progress` 转发（`@codemirror/lsp-client` dist 内无
+  `$/progress` 消费点，实测零命中；`lspStore` 的 busy 投影有自己的监听）。
+
+> 范围修正（2026-11-12）：原 R2「诊断按 languageId 分区」与原 R4「status union + camelCase」
+> 都已拆出（前者要改事件载荷契约与前端 store 形状，后者是纯类型卫生、当前无失效）。
+> 本任务只收「IPC 边界 + 红线执行侧 + 监听器生命周期」这一束，避免把契约变更混进小修批次。
 
 ## Acceptance Criteria
 
-- **AC1**：超预算响应返回 `AppError`（有测试：构造 3MB 假响应，断言错误文案含字节数）。
-- **AC2**：`clear_diagnostics_only_affects_that_language` —— Java 会话边界后 Rust 诊断仍在。
-- **AC3**：`rg -n 'relatedInformation' src/` 零命中，或存在渲染测试。
-- **AC4**：改 `src/shared/events.ts` 任一 `LSP_*` 常量（不留别的改动）→ 测试变红（变异验证）。
-- **AC5**：关闭后不再有 `ready` 事件（测试：CLOSED 相位 + 迟到 progress end）。
+- **AC1**：`lsp_request` / `lsp_transport` 超预算返回 `AppError`，文案含字节数与 method
+  （测试构造 2MiB+ 假响应）；预算内原样返回。
+- **AC2**：`rg -n 'relatedInformation' src-tauri/src` 零命中。
+- **AC3**：关闭后迟到的 `$/progress begin` 不再产生 `indexing` 事件（测试：lifecycle 已终态）。
+- **AC4**：故意改 `src/shared/events.ts` 的任一 `LSP_*` 常量（不留其他改动）→ 新跨栈断言变红
+  （变异验证）。
+- **AC5**：`destroy()` 在 `listen()` resolve 之前调用时，三个监听器仍被注销（测试断言
+  `safeUnlisten` 被调用 / 事件不再送达）；`rg -n '\$/progress' src/features/lsp/transport` 零命中。
+- **AC6**：`cargo test --lib` 全绿；`npx vitest run src/features/lsp` 全绿。
 
 ## Out of scope
 

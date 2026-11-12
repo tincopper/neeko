@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/11-12-lsp-cross-layer-contracts/prd.md", "reason": "需求与 AC 本体（2026-11-12 范围修正：诊断分区与 status union 已拆出）"}
+{"file": ".trellis/tasks/11-12-lsp-cross-layer-contracts/design.md", "reason": "设计：2MiB 预算（量长度而非截断）、删假声明、indexing 走 lifecycle、跨栈断言、监听器生命周期；含失败矩阵"}
+{"file": ".trellis/tasks/11-12-lsp-cross-layer-contracts/implement.md", "reason": "执行计划 S1-S6 与 Gate A-E"}
+{"file": ".trellis/tasks/archive/2026-11/11-12-lsp-graceful-shutdown/research/audit-contracts.md", "reason": "缺陷证据 #4/#6/#7/#8/#10/#11（progress 载荷、2MB 缺失、relatedInformation、indexing、事件常量、监听器泄漏）"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "既有契约：能力声明=行为契约、事件名常量化、诊断边界（不得回退）"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端跨栈断言范式（读后端源码逐字比较）"}
+{"file": "src/shared/__tests__/sessionsEventConstant.test.ts", "reason": "跨栈断言的既有正确范式（照抄形态）"}
