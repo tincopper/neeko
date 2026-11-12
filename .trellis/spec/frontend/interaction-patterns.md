@@ -840,3 +840,54 @@ quality-guidelines §18b）。
 `preventDefault` 并短路发送；未打开或 IME 组合中恒返回 `false`。**只要输入载体仍是
 textarea 且弹层是自己实现的状态机，这个契约就成立**（返回 `void` 会让调用方猜，猜错
 就是 Enter 双触发）。agent chat 不再属于这个场景 —— 它由 suggestion 引擎承担。
+
+## 拖拽投递：插入端口模型（file-drop-insert-ports，勿回退）
+
+### 1. 触发场景与事故
+
+从文件树拖文件/目录「到某个能输入的地方」。2026-11 实测缺陷：拖到输入位置**什么都没发生**，
+Console 无错、窗口里有激活终端。根因不是「paneId 默认值写错了」，而是**投递方在猜一件只有
+渲染方才知道的事**：`terminalRouting.insertToTerminalTarget` → `resolveTerminalEntry` 的
+`paneId` 默认 `'p1'`，而终端缓存键是 `terminalAddress(session, tabId, paneId)` ⇒ 终端只要
+不在第一个 pane（右侧 dock / 分屏）就必然 miss，且 `{ ok: false }` 静默无提示。
+
+### 2. 契约
+
+```
+注册（渲染方，各自带身份）               仲裁（useFileDrop，唯一实现）
+shared/inputs/insertPorts.ts   ←── ① 指针所在端口（dragover 记坐标 + elementFromPoint）
+  port = { id, kind, sessionKey,  ② 焦点所在端口（焦点是端口的键，不是元素类型）
+           el, isActive, insert } ③ 聚焦的普通文本控件（合成端口，execCommand('insertText')）
+                                  ④ session 的 agent-composer（activeFirst）
+                                  ⑤ session 的 code-editor（仅 isActive）
+                                  ⑥ session 的 terminal（activeFirst）← 本 bug 的修复点
+                                  ⑦ onUnhandled（toast + console.debug，禁止静默）
+```
+
+1. **端口由渲染方注册**：PTY sessionId / paneId / 是否激活 / DOM 根只有它同时持有。
+   投递方**不得**扫缓存、拼 key、`endsWith` 反解身份（红线 12）。
+2. **每一级都真的调 `insert()`**：能不能落地由端口返回值回答；`false` 继续降级，
+   最终必到 ⑦。**静默 return 是缺陷**（这次事故查了半天就因为它）。
+3. **禁止复活标签名启发式**：`isTextInputElement(document.activeElement)` 当年被 xterm 的
+   `<textarea class="xterm-helper-textarea">` 骗过 —— 判据恒真，文本被投给零监听者的 DOM
+   事件后消失。「焦点在输入框」只能作为**③ 的合成端口**，且必须用「值/选区是否真的变了」
+   判定成功（`execCommand` 失败即 false）。
+4. **域边界**：`features/file` 不 import UI；可见性由调用方注入
+   （`useFileDrop({ onUnhandled })`，`ProjectView` 传 `showToast`）。
+5. **文本控件插入用 `execCommand('insertText')`**（保 undo、能驱动 React 受控组件）；
+   不要手写 value setter + 手工 dispatch（会绕过受控状态，产生「界面有、state 没有」）。
+
+### 3. 护栏
+
+- `useFileDrop.test.ts`：`terminal_in_a_non_default_pane_receives_the_path`（本 bug 的回归钉）、
+  `unhandled_drop_calls_onUnhandled`、仲裁顺序（指针优先于焦点优先于种类）。
+- `shared/inputs/__tests__/insertPorts.test.ts`：pointer / focus 解析、引用计数
+  （StrictMode 双挂载：先卸载不得摘掉仍存活者）。
+- `textControlPort.test.ts`：input / textarea 成功；button 不算文本端口。
+- `rg -n "resolveTerminalEntry\(" src/features/file` 零命中（拖拽路径不许再按 paneId 猜）。
+
+### 4. 已知边界（Out of scope，另行立项）
+
+**外部文件拖入**（Finder / 资源管理器 → 窗口）全仓零 `onDragDropEvent` 监听，
+`dragDropEnabled` 默认 true 由 Tauri 在 WKWebView 层接管 ⇒ 静默无反应。
+要支持需窗口级事件接线，并与内部 HTML5 拖拽的互斥策略一起定。
