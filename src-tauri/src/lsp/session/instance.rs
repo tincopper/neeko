@@ -390,6 +390,7 @@ impl LspSession {
                                             &notif.params,
                                             &pp_reader,
                                             &lang_id_clone,
+                                            &lifecycle_reader,
                                             &*transport_clone,
                                             &progress_tokens_reader,
                                         );
@@ -400,6 +401,7 @@ impl LspSession {
                                             &notif.params,
                                             &pp_reader,
                                             &lang_id_clone,
+                                            &lifecycle_reader,
                                             &*transport_clone,
                                             &progress_tokens_reader,
                                         );
@@ -772,6 +774,12 @@ impl LspSession {
 }
 
 /// 推进生命周期相位并经 transport 发布事件（session 未构造时也可用的自由函数）。
+///
+/// **终态门**：进入终态（关闭 / 崩溃）后唯一允许继续发布的投影是 `stopped` 本身
+/// （关闭路径先 `Lifecycle::close()` 再发终态事件）。其余状态 —— 尤其是由 work-done
+/// 进度合成的 `indexing` 与握手完成后的 `ready` —— 一律丢弃：迟到的服务端通知不得
+/// 把状态标 chip 从终态“复活”成绿点（而 `snapshot()` 读同一个 lifecycle 仍报
+/// `stopped`，两者必须同源）。
 pub(crate) fn publish_status(
     lifecycle: &Lifecycle,
     transport: &dyn LspTransport,
@@ -781,6 +789,14 @@ pub(crate) fn publish_status(
     message: Option<&str>,
     progress_pct: Option<u32>,
 ) {
+    let terminal_notice = matches!(status, LspSessionStatus::Stopped);
+    if lifecycle.is_terminal() && !terminal_notice {
+        log::debug!(
+            "[LSP] Dropping {} event for {project_path}:{language_id}: session already terminal",
+            status.as_str()
+        );
+        return;
+    }
     lifecycle.set(&status);
     transport.push_session_event(
         project_path,
@@ -995,8 +1011,7 @@ pub(crate) fn build_client_capabilities() -> Value {
                 // 本栈没有 `codeAction/resolve` 通道，声明会让 jdtls 把 edit 全部推迟到
                 // resolve（同 `resolveAdditionalTextEditsSupport` 事故，2026-09-18）。
                 "codeActionLiteralSupport": { "codeActionKind": { "valueSet": ["quickfix", "source"] } }
-            },
-            "publishDiagnostics": { "relatedInformation": true }
+            }
         },
         "workspace": { "workspaceFolders": true, "configuration": true, "didChangeConfiguration": { "dynamicRegistration": false } },
         "window": { "workDoneProgress": true }
@@ -1247,6 +1262,24 @@ mod tests {
             caps["textDocument"]["codeAction"].get("resolveSupport").is_none(),
             "do not declare codeAction.resolveSupport — no codeAction/resolve channel exists; \
              jdtls would defer every edit to resolve (same trap as resolveAdditionalTextEditsSupport)"
+        );
+    }
+
+    /// 红线 14（声明 = 行为契约）：客户端**不得**再声明 `textDocument.publishDiagnostics`
+    /// 下的「关联位置」能力 —— 全仓没有任何渲染消费点，声明它只会让服务器为每条
+    /// 诊断附加我们永不显示的关联位置（纯 IPC / 内存开销）。与 `codeAction.resolveSupport`
+    /// 同族：**消费点不存在 ⇒ 不声明**；要恢复必须先有渲染实现（并同步改本用例）。
+    ///
+    /// 断言的形状是「该能力键不存在」而不是「某子键为 false」（AC2 以 grep 零命中为据，
+    /// 这里刻意不在代码里复述该 capability 名）。
+    #[test]
+    fn client_capabilities_do_not_advertise_publish_diagnostics_extras() {
+        let caps = build_client_capabilities();
+        assert!(
+            caps["textDocument"]["publishDiagnostics"].is_null(),
+            "不得声明 textDocument.publishDiagnostics::关联位置 —— 全仓无消费点 \
+             (红线 14); got: {:?}",
+            caps["textDocument"]["publishDiagnostics"]
         );
     }
 

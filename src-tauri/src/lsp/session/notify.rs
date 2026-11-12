@@ -7,6 +7,9 @@ use serde_json::Value;
 
 use super::super::diag_bus::{DiagnosticBus, DiagnosticEvent};
 use super::super::transport::{LspTransport, ProgressKind};
+use super::lifecycle::Lifecycle;
+use super::publish_status;
+use super::status::LspSessionStatus;
 
 pub(super) fn handle_diagnostics_notification(
     params: &Value,
@@ -49,6 +52,7 @@ pub(super) fn handle_progress_notification(
     params: &Value,
     project_path: &str,
     language_id: &str,
+    lifecycle: &Lifecycle,
     transport: &dyn LspTransport,
     in_flight: &Mutex<HashSet<String>>,
 ) {
@@ -86,7 +90,18 @@ pub(super) fn handle_progress_notification(
                 msg,
                 project_path
             );
-            transport.push_session_event(project_path, language_id, "indexing", Some(msg), None);
+            // `indexing` 是**服务端进度**的投影，不是直推事件：必经 `publish_status`
+            // （相位 + 事件同一写点）。终态（关闭 / 崩溃）后迟到的 `begin` 不得
+            // 复活状态标 chip —— 该取舍由 `publish_status` 的终态门统一给出。
+            publish_status(
+                lifecycle,
+                transport,
+                project_path,
+                language_id,
+                LspSessionStatus::Indexing,
+                Some(msg),
+                None,
+            );
             transport.push_progress(
                 project_path,
                 language_id,
@@ -119,7 +134,16 @@ pub(super) fn handle_progress_notification(
                 msg,
                 pct,
             );
-            transport.push_session_event(project_path, language_id, "indexing", msg, pct);
+            // 同 `begin`：经 lifecycle 单写点（终态后不再推）。
+            publish_status(
+                lifecycle,
+                transport,
+                project_path,
+                language_id,
+                LspSessionStatus::Indexing,
+                msg,
+                pct,
+            );
         }
         Some("end") => {
             log::info!(
@@ -154,6 +178,7 @@ pub(super) fn handle_server_status_notification(
     params: &Value,
     project_path: &str,
     language_id: &str,
+    lifecycle: &Lifecycle,
     transport: &dyn LspTransport,
     in_flight: &Mutex<HashSet<String>>,
 ) {
@@ -174,6 +199,7 @@ pub(super) fn handle_server_status_notification(
         &serde_json::json!({ "token": SERVER_STATUS_TOKEN, "value": value }),
         project_path,
         language_id,
+        lifecycle,
         transport,
         in_flight,
     );
@@ -211,11 +237,13 @@ mod tests {
     fn begin_and_end_track_in_flight_tokens() {
         let t = NullTransport;
         let s = Mutex::new(HashSet::new());
+        let lc = Lifecycle::new();
 
         handle_progress_notification(
             &progress("begin", &serde_json::json!("java-import")),
             "/p",
             "java",
+            &lc,
             &t,
             &s,
         );
@@ -225,6 +253,7 @@ mod tests {
             &progress("report", &serde_json::json!("java-import")),
             "/p",
             "java",
+            &lc,
             &t,
             &s,
         );
@@ -234,6 +263,7 @@ mod tests {
             &progress("end", &serde_json::json!("java-import")),
             "/p",
             "java",
+            &lc,
             &t,
             &s,
         );
@@ -245,11 +275,13 @@ mod tests {
     fn multiple_tokens_tracked_independently() {
         let t = NullTransport;
         let s = Mutex::new(HashSet::new());
+        let lc = Lifecycle::new();
         for token in ["a", "b"] {
             handle_progress_notification(
                 &progress("begin", &serde_json::json!(token)),
                 "/p",
                 "java",
+                &lc,
                 &t,
                 &s,
             );
@@ -258,6 +290,7 @@ mod tests {
             &progress("end", &serde_json::json!("a")),
             "/p",
             "java",
+            &lc,
             &t,
             &s,
         );
@@ -269,12 +302,13 @@ mod tests {
     fn empty_or_non_string_token_is_ignored() {
         let t = NullTransport;
         let s = Mutex::new(HashSet::new());
+        let lc = Lifecycle::new();
         for token in [
             serde_json::json!(""),
             serde_json::Value::Null,
             serde_json::json!(7),
         ] {
-            handle_progress_notification(&progress("begin", &token), "/p", "java", &t, &s);
+            handle_progress_notification(&progress("begin", &token), "/p", "java", &lc, &t, &s);
         }
         assert!(snapshot(&s).is_empty());
     }
@@ -284,8 +318,77 @@ mod tests {
     fn malformed_payload_does_not_touch_state() {
         let t = NullTransport;
         let s = Mutex::new(HashSet::new());
-        handle_progress_notification(&serde_json::json!({ "token": "x" }), "/p", "java", &t, &s);
+        let lc = Lifecycle::new();
+        handle_progress_notification(
+            &serde_json::json!({ "token": "x" }),
+            "/p",
+            "java",
+            &lc,
+            &t,
+            &s,
+        );
         assert!(snapshot(&s).is_empty());
+    }
+
+    /// 关闭后迟到的 `$/progress begin` 不得产生 `indexing` 事件（AC3）。
+    ///
+    /// 事故形态：`begin` 曾绕过 `publish_status` 直推事件 —— 会话已关闭（lifecycle
+    /// 终态）时迟到通知仍会推 `indexing`，状态标 chip 被“复活”；而 `snapshot()`
+    /// 读 lifecycle 报 `stopped` —— 同一事实两份记录。本用例同时钉住两个方向：
+    /// 终态前 `indexing` 照发，终态后（含 `report`）一条不发。
+    #[test]
+    fn indexing_event_is_gated_by_terminal_phase() {
+        let transport = crate::lsp::session::testing::RecordingTransport::default();
+        let s = Mutex::new(HashSet::new());
+        let lc = Lifecycle::new();
+        lc.set(&LspSessionStatus::Ready);
+
+        // 终态前：`indexing` 照发，且相位由 lifecycle 单写点推进。
+        handle_progress_notification(
+            &serde_json::json!({ "token": "t1", "value": { "kind": "begin", "title": "indexing" } }),
+            "/p",
+            "rust",
+            &lc,
+            &transport,
+            &s,
+        );
+        // `RecordingTransport::take()` 返回**累积**快照（不是 drain），所以下面
+        // 用「迟到通知前后快照完全相等」作为「一条新事件都没发」的判据。
+        let before_close = transport.take();
+        assert_eq!(
+            before_close.len(),
+            1,
+            "终态前的 begin 必须发一条 indexing: {before_close:?}"
+        );
+        assert_eq!(before_close[0].2, "indexing");
+
+        // 关闭：相位落终态，迟到通知不得再复活 chip。
+        lc.close();
+
+        for value in [
+            serde_json::json!({ "kind": "begin", "title": "indexing" }),
+            serde_json::json!({ "kind": "report", "message": "still busy", "percentage": 40 }),
+        ] {
+            handle_progress_notification(
+                &serde_json::json!({ "token": "late", "value": value }),
+                "/p",
+                "rust",
+                &lc,
+                &transport,
+                &s,
+            );
+        }
+
+        let events = transport.take();
+        assert_eq!(
+            events, before_close,
+            "关闭后迟到的进度通知不得产生任何会话事件（chip 不得复活）: {events:?}"
+        );
+        assert_eq!(
+            lc.status("rust-analyzer"),
+            LspSessionStatus::Stopped,
+            "终态不得被迟到通知覆盖（相位与事件必须同源）"
+        );
     }
 
     // ── rust-analyzer 就绪语义（experimental/serverStatus，能力门控）────────
@@ -296,12 +399,14 @@ mod tests {
     fn server_status_tracks_quiescent_as_synthetic_token() {
         let transport = crate::lsp::session::testing::RecordingTransport::default();
         let s = Mutex::new(HashSet::new());
+        let lc = Lifecycle::new();
 
         // 加载中（含 message）：合成 begin，并把 message 作为进度标题透传。
         handle_server_status_notification(
             &serde_json::json!({ "health": "ok", "quiescent": false, "message": "workspace loading" }),
             "/p",
             "rust",
+            &lc,
             &transport,
             &s,
         );
@@ -320,6 +425,7 @@ mod tests {
             &serde_json::json!({ "quiescent": false }),
             "/p",
             "rust",
+            &lc,
             &transport,
             &s,
         );
@@ -330,6 +436,7 @@ mod tests {
             &serde_json::json!({ "health": "ok", "quiescent": true, "message": null }),
             "/p",
             "rust",
+            &lc,
             &transport,
             &s,
         );
@@ -346,6 +453,7 @@ mod tests {
     fn server_status_malformed_payload_is_ignored() {
         let transport = crate::lsp::session::testing::RecordingTransport::default();
         let s = Mutex::new(HashSet::new());
+        let lc = Lifecycle::new();
 
         for params in [
             serde_json::json!({}),
@@ -353,7 +461,7 @@ mod tests {
             serde_json::json!({ "quiescent": null }),
             serde_json::Value::Null,
         ] {
-            handle_server_status_notification(&params, "/p", "rust", &transport, &s);
+            handle_server_status_notification(&params, "/p", "rust", &lc, &transport, &s);
         }
 
         assert!(snapshot(&s).is_empty(), "畸形通知不得改变在途集合");

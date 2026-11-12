@@ -15,7 +15,7 @@ pub(crate) mod testing;
 mod utils;
 
 // Re-export for external use
-pub(crate) use instance::{emit_session_error, LspSession, SessionPlumbing};
+pub(crate) use instance::{emit_session_error, publish_status, LspSession, SessionPlumbing};
 pub(crate) use log_ring_buffer::LogRingBuffer;
 // 单条 JSON 上界：manager 的 IPC 预算以它为编译期下界（见 `LSP_SERVER_LOGS_MAX_BYTES`）。
 pub(crate) use log_ring_buffer::LOG_ENTRY_JSON_MAX_BYTES;

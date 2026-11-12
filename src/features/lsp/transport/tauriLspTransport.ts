@@ -4,11 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import { resolveEditorViewFromUri } from '@/features/editor/api/editorViews';
-import {
-  LSP_APPLY_EDIT_EVENT_PREFIX,
-  LSP_DIAG_EVENT_PREFIX,
-  LSP_PROGRESS_EVENT_PREFIX,
-} from '@/shared/events';
+import { LSP_APPLY_EDIT_EVENT_PREFIX, LSP_DIAG_EVENT_PREFIX } from '@/shared/events';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
@@ -33,7 +29,6 @@ import {
 export class TauriLspTransport implements Transport {
   private handlers = new Set<(value: string) => void>();
   private unlistenDiag: UnlistenFn | null = null;
-  private unlistenProgress: UnlistenFn | null = null;
   private unlistenApplyEdit: UnlistenFn | null = null;
   private subscribed = false;
   /** 已销毁：此后 `send()` 一律丢弃（见 `send()` 注释）。 */
@@ -176,27 +171,18 @@ export class TauriLspTransport implements Transport {
         );
       },
     ).then((unlisten) => {
+      // `destroy()` 早于 `listen()` resolve（HMR dispose / 测试 reset / idle 调小）时
+      // 没人再持有这个句柄 —— 必须就地注销，否则监听器永久泄漏。
+      if (this.destroyed) {
+        safeUnlisten(unlisten)();
+        return;
+      }
       this.unlistenDiag = unlisten;
     });
 
-    // Listen for work-done progress events（同病同修：$/progress 通知也需信封）
-    const progressEventName = `${LSP_PROGRESS_EVENT_PREFIX}${this.projectPath}`;
-    listen<{
-      token: string;
-      value: { kind: string; title?: string; message?: string; percentage?: number };
-    }>(progressEventName, (event) => {
-      this.handlers.forEach((h) =>
-        h(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            method: '$/progress',
-            params: { token: event.payload.token, value: event.payload.value },
-          }),
-        ),
-      );
-    }).then((unlisten) => {
-      this.unlistenProgress = unlisten;
-    });
+    // 不订阅服务端 work-done 进度通道：`@codemirror/lsp-client` 的 dist 内没有任何
+    // 消费点（实测零命中），那个转发只是每个 transport 多订阅一次事件。Rust 侧的
+    // `lsp-progress-{projectPath}` 事件**保留**，由 `lspStore` 的 busy 投影消费。
 
     // 服务端请示的 `workspace/applyEdit`（Rust 侧已回 `{applied:true}`）：这里真正落
     // 编辑。按 languageId 分流 —— 同一 project 下每种语言各有一个 transport，
@@ -210,6 +196,10 @@ export class TauriLspTransport implements Transport {
         applyWorkspaceEdit(payload.edit, uri, resolveEditorViewFromUri);
       }
     }).then((unlisten) => {
+      if (this.destroyed) {
+        safeUnlisten(unlisten)();
+        return;
+      }
       this.unlistenApplyEdit = unlisten;
     });
   }
@@ -225,10 +215,6 @@ export class TauriLspTransport implements Transport {
     if (this.unlistenDiag) {
       safeUnlisten(this.unlistenDiag)();
       this.unlistenDiag = null;
-    }
-    if (this.unlistenProgress) {
-      safeUnlisten(this.unlistenProgress)();
-      this.unlistenProgress = null;
     }
     if (this.unlistenApplyEdit) {
       safeUnlisten(this.unlistenApplyEdit)();

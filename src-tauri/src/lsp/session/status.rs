@@ -8,9 +8,10 @@ pub(crate) enum LspSessionStatus {
     Initializing,
     /// Server is indexing the workspace.
     ///
-    /// **服务端不会发出该状态**：`indexing` 是前端由 work-done 进度 token 合成的
-    /// 展示态（见 lspStore 的 `progressTokens`）。此处保留该变体是为了让
-    /// `as_str` 覆盖前端可见的完整状态词表，相位归一化见 `Lifecycle`（→ Ready）。
+    /// **服务端没有该相位**：LSP 协议里没有 `indexing` 状态，它由 `$/progress` /
+    /// `experimental/serverStatus` 等 work-done 进度**合成**（见 `notify::handle_progress_notification`）。
+    /// 合成事件同样必须经 `publish_status`（相位 + 事件同一写点，并受终态门约束）；
+    /// 相位归一为 `Ready`（会话确实可用，见 `Lifecycle::set`）。
     Indexing,
     /// Server is ready to accept requests.
     Ready,

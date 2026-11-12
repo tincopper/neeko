@@ -4,9 +4,19 @@ use serde_json::Value;
 use tauri::State;
 
 use crate::lsp::symbol::UnifiedLocation;
-use crate::lsp::types::LspSessionInfo;
+use crate::lsp::types::{enforce_response_bytes, LspSessionInfo};
 use crate::AppError;
 use crate::AppStateWrapper;
+
+/// `lsp_transport` 的**唯一成功出口**：把已序列化的响应体过一遍字节预算（红线 4）。
+///
+/// 所有分支（initialize 缓存能力 / shutdown / 请求响应 / 通知返回 `{}`）都必须经此
+/// 返回 —— 预算只在单出口生效，否则任何新增分支都会绕开它。量的是**已存在的
+/// `String` 长度**，零额外序列化成本。
+fn transport_response(method: &str, body: String) -> Result<String, AppError> {
+    enforce_response_bytes(method, body.len())?;
+    Ok(body)
+}
 
 /// jdtls 非标准类内容请求（`ClassfileContentHandler` 路由；`JDTLanguageServer`
 /// 本体字符串表实测，`java/classContents` 不存在）。
@@ -108,10 +118,17 @@ pub async fn lsp_request(
         );
     }
 
-    state
+    let value = state
         .lsp_manager
         .send_request_async(&project_path, &language_id, &method, params, false)
-        .await
+        .await?;
+
+    // 预算判定必须自己再序列化一次（Tauri 随后还要再序列化一遍用于 IPC）：
+    // **多一次序列化是有意的** —— 不知道长度就无法判定，而把 50MB 丢进 IPC 的
+    // 代价（主线程 JSON clone / WebView eval）远大于 2MB 量级多几十毫秒。
+    let bytes = serde_json::to_vec(&value).map_err(AppError::from)?.len();
+    enforce_response_bytes(&method, bytes)?;
+    Ok(value)
 }
 
 #[tauri::command]
@@ -422,27 +439,33 @@ pub async fn lsp_transport(
             .lsp_manager
             .get_capabilities(&project_path, &language_id)
             .unwrap_or_else(|| serde_json::json!({}));
-        return serde_json::to_string(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": caps,
-        }))
-        .map_err(AppError::from);
+        return transport_response(
+            method,
+            serde_json::to_string(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": caps,
+            }))
+            .map_err(AppError::from)?,
+        );
     }
 
     // ── initialized: already sent by Rust, no-op ──────────────────────
     if method == "initialized" {
-        return Ok("{}".into());
+        return transport_response(method, "{}".into());
     }
 
     // ── shutdown / exit: handled gracefully ──────────────────────────
     if method == "shutdown" {
-        return serde_json::to_string(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": null,
-        }))
-        .map_err(AppError::from);
+        return transport_response(
+            method,
+            serde_json::to_string(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": null,
+            }))
+            .map_err(AppError::from)?,
+        );
     }
 
     // ── Request (has id): forward to LSP server, return response ─────
@@ -451,12 +474,15 @@ pub async fn lsp_transport(
             .lsp_manager
             .send_request_async(&project_path, &language_id, method, params, false)
             .await?;
-        return serde_json::to_string(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": result,
-        }))
-        .map_err(AppError::from);
+        return transport_response(
+            method,
+            serde_json::to_string(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": result,
+            }))
+            .map_err(AppError::from)?,
+        );
     }
 
     // ── Notification (no id)：didOpen 由唯一出口接管，其余原样转发 ──
@@ -488,7 +514,7 @@ pub async fn lsp_transport(
                 uri
             );
         }
-        return Ok("{}".into());
+        return transport_response(method, "{}".into());
     }
 
     if method == "textDocument/didClose" {
@@ -524,7 +550,7 @@ pub async fn lsp_transport(
     state
         .lsp_manager
         .send_notification(&project_path, &language_id, method, params)?;
-    Ok("{}".into())
+    transport_response(method, "{}".into())
 }
 
 /// Optimized go-to-definition: returns the LSP result plus preloaded target file content

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TauriLspTransport } from '../tauriLspTransport';
@@ -25,8 +26,11 @@ const { invokeMock } = vi.hoisted(() => ({
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 
+// 真实契约是 `safeUnlisten(unlisten) => () => void`（返回注销函数，调用方负责调用）。
+// mock 必须同形态：返回 `fn` 本身 —— 写成 `fn()` 会**立刻执行**并返回 undefined，
+// 让 `safeUnlisten(u)()` 变成「调用 undefined」，从而掩盖被测的注销时机。
 vi.mock('@/shared/utils/safeUnlisten', () => ({
-  safeUnlisten: (fn: () => void) => fn(),
+  safeUnlisten: (fn: () => void) => fn,
 }));
 
 vi.mock('@/shared/store/notificationStore', () => ({
@@ -68,21 +72,18 @@ describe('TauriLspTransport — 服务端推送必须补全 JSON-RPC 信封', ()
     expect(message.params.diagnostics[0].code).toBe('UndeclaredName');
   });
 
-  it('progress 推送被包装为 $/progress 通知', async () => {
+  it('不再把 lsp-progress 事件转发成 JSON-RPC 进度通知', async () => {
+    // `@codemirror/lsp-client` 的 dist 内没有任何进度通知消费点（实测零命中）：这个转发
+    // 只是每个 transport 多订阅一次事件。本断言防止它无声回来 —— 真要恢复，必须先有
+    // 消费实现并同步改本用例。Rust 侧的 `LSP_PROGRESS_EVENT_PREFIX` 事件**保留**：
+    // `lspStore` 的 busy 投影订阅的正是它（另一条监听）。
     const transport = new TauriLspTransport('/proj', 'go');
-    const received: string[] = [];
-    transport.subscribe((message) => received.push(message));
+    transport.subscribe(() => {});
     await Promise.resolve();
 
-    listenHandlers['lsp-progress-/proj']?.({
-      payload: { token: 't1', value: { kind: 'begin', title: 'indexing' } },
-    });
-
-    expect(received).toHaveLength(1);
-    const message = JSON.parse(received[0]);
-    expect(message.method).toBe('$/progress');
-    expect(message.params.token).toBe('t1');
-    expect(message.params.value.kind).toBe('begin');
+    expect(listenHandlers['lsp-progress-/proj']).toBeUndefined();
+    expect(listenHandlers['lsp-diagnostics-/proj']).toBeDefined();
+    expect(listenHandlers['lsp-apply-edit-/proj']).toBeDefined();
   });
 
   it('推送事件名与 projectPath 精确拼接（跨项目不串）', async () => {
@@ -191,6 +192,59 @@ describe('TauriLspTransport — 诊断推送必须带 version', () => {
     const params = JSON.parse(received[0]).params as Record<string, unknown>;
     expect('version' in params).toBe(false);
     expect(params.uri).toBe('file:///proj/src/main.rs');
+  });
+});
+
+describe('TauriLspTransport — destroy 早于 listen resolve 时监听器不得泄漏', () => {
+  beforeEach(() => {
+    for (const key of Object.keys(listenHandlers)) delete listenHandlers[key];
+    vi.clearAllMocks();
+  });
+
+  /**
+   * 事故形态：`listen(...).then(u => this.unlistenX = u)` 只在 `.then` 里赋值，而
+   * `destroy()` 只注销「已赋值」的句柄。HMR dispose / 测试 reset / 将来调小 idle
+   * 阈值都会让 `destroy()` 先于 `listen()` resolve ⇒ 句柄被默默丢弃、监听器永久泄漏
+   * （没有任何代码再持有它们，连手动注销都不可能）。
+   */
+  it('resolve 后立即注销，且不持有句柄', async () => {
+    const unlisteners: Array<ReturnType<typeof vi.fn>> = [];
+    const resolveAll: Array<() => void> = [];
+
+    // 模拟「listen 返回一个尚未 resolve 的 promise」（Tauri 注册是异步 IPC）。
+    const pendingListen = () =>
+      new Promise<UnlistenFn>((resolve) => {
+        resolveAll.push(() => {
+          const un = vi.fn();
+          unlisteners.push(un);
+          resolve(un);
+        });
+      });
+    // 覆盖**全部** listen 调用（不写死监听器个数：新增订阅时本用例自动跟着覆盖）。
+    const baseImplementation = vi.mocked(listen).getMockImplementation();
+    vi.mocked(listen).mockImplementation(pendingListen);
+
+    try {
+      const transport = new TauriLspTransport('/proj', 'rust');
+      transport.subscribe(() => {});
+      expect(resolveAll.length).toBeGreaterThan(0);
+
+      // destroy() 时没有任何句柄被赋值 —— 正是泄漏窗口。
+      transport.destroy();
+
+      // 之后 listen 才 resolve：每个句柄必须被立即注销恰好一次。
+      for (const resolveOne of resolveAll) resolveOne();
+      await vi.waitFor(() => {
+        expect(unlisteners).toHaveLength(resolveAll.length);
+        for (const un of unlisteners) expect(un).toHaveBeenCalledTimes(1);
+      });
+
+      // 迟到的 resolve 不得回填句柄（否则后续 destroy 会二次调用）。
+      transport.destroy();
+      for (const un of unlisteners) expect(un).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.mocked(listen).mockImplementation(baseImplementation!);
+    }
   });
 });
 
