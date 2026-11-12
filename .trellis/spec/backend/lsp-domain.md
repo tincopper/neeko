@@ -293,6 +293,24 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
    的计数器写同一会话）。
 6. **uri 必须与 didOpen 完全一致**：编辑器 quickfix 取 `useLspClient` 算出的 `fileUri`，
    不得自己再算（`tabLspDocumentUri` 对普通文件恒 `undefined`，曾致三入口静默 return）。
+7. **文档登记表分「重启保留」与「停止清空」两把操作**（11-12-lsp-document-identity）：
+   `session_store::take_session` 只摘会话对象（`open_docs` / `editor_owned` 活着），
+   `close_session` 才是「会话就此结束」（清登记、清所有权、清 restart streak）。
+   `manager::take_for_close` 按 `SessionCloseNotice` 分派：`Silent`（重启/崩溃重试）→
+   `take_session`，`Announce`（stop/项目停用）→ `close_session`。
+   **用错的后果（2026-11-12 修复前）**：重启后 `reopen_documents` 恒重放 0 条（死代码）⇒
+   服务器端文档消失（无诊断无补全直到用户编辑）；`editor_owned` 一并清 ⇒ 后端按**磁盘文本**
+   代开编辑器里的未保存缓冲区 ⇒ 诊断坐标整体错位（§7.5 的事故形态）。
+   回归钉：`take_session_keeps_documents_and_ownership` /
+   `close_session_clears_documents_and_ownership` / `restart_keeps_open_documents`。
+8. **`didChange` 必须回写登记表**（同上）：生产路径只有 `commands.rs::lsp_transport` 的通用
+   转发，在那里的 `textDocument/didChange` 分支调 `record_document_change`：
+   `contentChanges` 里**没有 `range`** = 全量同步 → 文本 + 版本都更新；有 `range` = 增量 →
+   只推版本（文本保持，重放时 `warn` 说明可能陈旧）。未登记的 uri **不造条目**（登记表 =
+   「我们 didOpen 过的文档」）。
+   为什么必须：重放用的是登记表里的文本，只在 didOpen 时写一次的话，重放出去的永远是打开
+   那一刻的内容（服务器按旧文本分析）。根治方向（前端在会话就绪后重发 didOpen）已记在该
+   任务 PRD 的 out of scope。
 
 ## 失败诊断归属：证据锚定身份键（10-10-lsp-failure-diagnostics-ownership，勿回退）
 
