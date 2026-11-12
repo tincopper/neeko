@@ -23,23 +23,39 @@
 
 ## Requirements
 
-- **R1**：可用性判据与安装产物同环境 —— 远端 exec env 同样置顶 `$HOME/.neeko/bin`，或判据直接查
-  该绝对路径（不得只靠 PATH）。
-- **R2**：安装移出会话装配（激活项目时预装/显式安装入口），装配路径只在「已可用」时继续。
-- **R3**：安装去重键 = `(language_id, exec_target)`；同键并发改为**等待**而不是硬失败。
-- **R4**：删除项目复用停用拆解路径（close + evict + profiles.remove），并让 exec target 变更
-  使既有会话失效。
+- **R1（判据与产物同环境，止血版）**：安装产物落在**目标环境**的 `$HOME/.neeko/bin`，而判据只看
+  目标 PATH（Local 由 `host_path::prepend_neeko_bin` 置顶，WSL/SSH 没有）⇒ 远端每轮会话创建都
+  重下 ~100MB。改为：PATH 查不到时，**按绝对安装路径**再判一次（`$HOME/.neeko/bin/<bin>`，
+  经目标 shell 展开，`command_exists` 在 WSL/SSH 上本来就是 `command -v` 脚本形态）。
+  命中即视为已安装 → 不再重复下载，并在失败文案里明确「已装但不在 PATH，请把
+  `~/.neeko/bin` 加入目标环境 PATH」。
+- **R2（去重键含 target）**：`INSTALL_IN_PROGRESS` 从 `HashSet<String>`（仅 language_id）改为
+  `(language_id, target)`；**同键并发改为等待**而不是硬失败（当前返回
+  `Err("Install already in progress")`，被包装成「请手动安装」）。
+- **R3（删除项目必须拆 LSP）**：`project/commands.rs::remove_project` 现在只关终端 + 停 watcher。
+  改为在删除前取出项目路径，删除后调 `lsp_manager.close_sessions_for_project(path)`
+  （它已包含 close + profiles.remove + `attempt_diag.evict_project` 三件事）。
+
+> 范围修正（2026-11-12）：原 R2「安装移出会话装配路径」被拆出 —— 现状**没有任何显式安装入口**
+> （`InstallProgressBridge` 消费的进度事件也由装配期安装发出），移出装配等于同时新增一个安装命令 +
+> 前端入口 + 进度接线，是特性而非修复。原 R1 的完整形态（把 `~/.neeko/bin` 注入**每个目标**的
+> LSP exec env，让远端 spawn 也能按名字解析到包装脚本）需要平台门面 + 每目标 PATH 读取，
+> 与红线 10（平台差异落 `platform/`）同族，单独立项。
 
 ## Acceptance Criteria
 
-- **AC1**：WSL/SSH 目标下「安装成功 ⇒ `check_plugin_installed` 为真」（用假远端 root 的单测，
-  不 spawn 真实安装）。
-- **AC2**：装配路径中不再出现安装调用（`rg -n 'install_plugin_server' src-tauri/src/lsp/session` 零命中）。
-- **AC3**：两个项目并发同语言安装只跑一次，第二个等它完成并成功（不报「已在安装中」）。
-- **AC4**：`remove_project` 后该项目的会话全部关闭、诊断键被驱逐（有测试断言 store 为空）。
-- **AC5**：`cargo test --lib lsp::` 全绿；安装相关测试不得真下载。
+- **AC1**：`check_binary_installed` 在 PATH 缺失但目标 `$HOME/.neeko/bin/<bin>` 存在时返回 `true`
+  （测试用假 ExecTarget / 注入的探测结果，不真起远端）。
+- **AC2**：`INSTALL_IN_PROGRESS` 键为 `(language, target)`：同语言不同 target 可并行；
+  **同键**第二次调用等待第一次结束并成功（不再返回 "Install already in progress"）。
+- **AC3**：`remove_project` 后该项目 LSP 会话全部关闭（断言 store 里该 path 无会话 /
+  `close_sessions_for_project` 被调用），且 `profiles` / 诊断键被驱逐（既有实现保证）。
+- **AC4**：`cargo test --lib` 全绿；既有 `remove_project` 的项目管理测试语义不变。
 
 ## Out of scope
 
 - 安装脚本本身的下载源/版本选择策略（`java_install.rs` 的 milestone 解析）。
 - `-data` 归属（jdtls workspace 目录）。
+- **显式安装入口**：把安装移出装配路径需要新命令 + 前端入口 + 进度接线（特性，另立项）。
+- **远端 exec env 的 PATH 注入**：让远端 spawn 也能按名字解析 `~/.neeko/bin` 下的包装脚本。
+  需要平台门面（红线 10）+ 每目标 PATH 读取 + 缓存；与本次「止血」（不再重复下载）分开做。
