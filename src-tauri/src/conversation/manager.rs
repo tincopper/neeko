@@ -2499,7 +2499,7 @@ mod tests {
 
     #[test]
     fn should_reuse_file_meta_cache_on_second_scan_and_preserve_user_edits() {
-        crate::conversation::scan_cache::reset_scan_parse_cache_for_tests();
+        let _guard = crate::conversation::scan_cache::reset_scan_parse_cache_for_tests();
         let dir = TempDir::new().unwrap();
         create_fixture(&dir, "sess-cache.jsonl", Some("/proj/a"));
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());

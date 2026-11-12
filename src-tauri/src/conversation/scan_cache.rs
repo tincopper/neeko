@@ -116,14 +116,31 @@ fn with_cache<T>(f: impl FnOnce(&mut ScanParseCache) -> T) -> T {
     f(&mut guard)
 }
 
-/// Clear all scan caches (tests only).
+/// Clear all scan caches and hold the process-wide test lock for the rest of the case.
+///
+/// The reset and the lock are one call on purpose. `SCAN_PARSE_CACHE` is process-wide
+/// but `cargo test` runs the cases of one binary on parallel threads, so a reset from
+/// another case lands between this case's `put_*` and its `get_*` and turns an asserted
+/// hit into a miss — `should_cache_file_meta_by_signature` died that way in CI
+/// (`Option::unwrap()` on `None` at line 511) while passing locally on different
+/// scheduling. Splitting "clear" from "hold the lock" re-opens that hole, so the
+/// guard is returned: `#[must_use]` rejects a caller that drops it on the same line.
+///
+/// A process-level `Mutex` rather than a `serial_test` dependency: same precedent as
+/// `notification/boot.rs`'s `TEST_GUARD`.
 #[cfg(test)]
-pub fn reset_scan_parse_cache_for_tests() {
+#[must_use = "hold the guard for the whole case — dropping it re-opens the reset race"]
+pub fn reset_scan_parse_cache_for_tests() -> std::sync::MutexGuard<'static, ()> {
+    static TEST_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let guard = TEST_GUARD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     with_cache(|c| {
         c.file_meta.clear();
         c.bulk_meta.clear();
         c.jsonl.clear();
     });
+    guard
 }
 
 fn touch_insert<K: Eq + std::hash::Hash + Clone, V>(
@@ -392,7 +409,7 @@ mod tests {
 
     #[test]
     fn should_reuse_jsonl_when_signature_unchanged() {
-        reset_scan_parse_cache_for_tests();
+        let _guard = reset_scan_parse_cache_for_tests();
         let mut tmp = NamedTempFile::new().unwrap();
         write_lines(&mut tmp, &[r#"{"type":"user","text":"hi"}"#]);
 
@@ -406,7 +423,7 @@ mod tests {
 
     #[test]
     fn should_resume_jsonl_on_append() {
-        reset_scan_parse_cache_for_tests();
+        let _guard = reset_scan_parse_cache_for_tests();
         let mut tmp = NamedTempFile::new().unwrap();
         write_lines(&mut tmp, &[r#"{"n":1}"#]);
 
@@ -425,7 +442,7 @@ mod tests {
 
     #[test]
     fn should_full_reread_when_jsonl_shrinks() {
-        reset_scan_parse_cache_for_tests();
+        let _guard = reset_scan_parse_cache_for_tests();
         let mut tmp = NamedTempFile::new().unwrap();
         write_lines(&mut tmp, &[r#"{"n":1}"#, r#"{"n":2}"#, r#"{"n":3}"#]);
         let first = read_jsonl_cached(tmp.path()).unwrap();
@@ -490,7 +507,7 @@ mod tests {
 
     #[test]
     fn should_cache_file_meta_by_signature() {
-        reset_scan_parse_cache_for_tests();
+        let _guard = reset_scan_parse_cache_for_tests();
         let tmp = NamedTempFile::new().unwrap();
         let path = tmp.path().to_path_buf();
         let sig = source_signature(&path).unwrap();
@@ -520,7 +537,7 @@ mod tests {
 
     #[test]
     fn should_cache_bulk_metas_by_signature() {
-        reset_scan_parse_cache_for_tests();
+        let _guard = reset_scan_parse_cache_for_tests();
         let tmp = NamedTempFile::new().unwrap();
         let path = tmp.path().to_path_buf();
         let sig = source_signature(&path).unwrap();
@@ -548,7 +565,7 @@ mod tests {
     /// 变异验证：把 `invalidate_path` 实现改成空操作 → 本用例红。
     #[test]
     fn should_forget_file_meta_and_jsonl_after_invalidate_path() {
-        reset_scan_parse_cache_for_tests();
+        let _guard = reset_scan_parse_cache_for_tests();
         let tmp = NamedTempFile::new().unwrap();
         let path = tmp.path().to_path_buf();
         let sig = source_signature(&path).unwrap();
@@ -577,7 +594,7 @@ mod tests {
     /// 变异验证：把 `invalidate_bulk_sources` 实现改成空操作 → 本用例红。
     #[test]
     fn should_clear_bulk_snapshots_when_agent_cli_rewrote_its_store() {
-        reset_scan_parse_cache_for_tests();
+        let _guard = reset_scan_parse_cache_for_tests();
         let tmp = NamedTempFile::new().unwrap();
         let path = tmp.path().to_path_buf();
         let sig = source_signature(&path).unwrap();
@@ -602,7 +619,7 @@ mod tests {
 
     #[test]
     fn should_leave_unterminated_trailing_line_unconsumed() {
-        reset_scan_parse_cache_for_tests();
+        let _guard = reset_scan_parse_cache_for_tests();
         let mut tmp = NamedTempFile::new().unwrap();
         // One complete line + incomplete trailing payload without newline.
         tmp.write_all(concat!(r#"{"n":1}"#, "\n", r#"{"n":2"#).as_bytes())
@@ -630,5 +647,58 @@ mod tests {
         let (more, _) = read_jsonl_from_offset(tmp.path(), offset).unwrap();
         assert_eq!(more.len(), 1);
         assert_eq!(more[0]["n"], 2);
+    }
+
+    /// `reset_scan_parse_cache_for_tests` 必须把「清空缓存」与「持闸」绑成一次调用。
+    ///
+    /// 进程级 `SCAN_PARSE_CACHE` 被同一二进制的所有用例共享，而 `cargo test` 默认
+    /// 多线程并发。`should_cache_file_meta_by_signature` 在 `put_cached_file_meta`
+    /// 之后紧接着断言命中 —— 另一条用例的 reset 只要落进这两行之间，命中就变成
+    /// miss，`Option::unwrap()` 直接 panic（CI 上真实发生过，本地因线程调度不同是绿的）。
+    ///
+    /// 变异验证：把 reset 改回不返回闸（或让用例丢弃闸）→ 本用例红。
+    #[test]
+    fn concurrent_reset_must_not_break_a_put_then_get_pair() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let resetter = std::thread::spawn({
+            let stop = Arc::clone(&stop);
+            move || {
+                while !stop.load(Ordering::Relaxed) {
+                    // 持闸期间清空 —— 即「另一条用例正在跑自己的 reset」。
+                    let _guard = reset_scan_parse_cache_for_tests();
+                }
+            }
+        });
+
+        let _guard = reset_scan_parse_cache_for_tests();
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_path_buf();
+        let sig = source_signature(&path).unwrap();
+        let meta = ParsedMeta {
+            native_session_id: "race".into(),
+            title: None,
+            first_user_message: None,
+            recent_messages: vec![],
+            model: None,
+            started_at: 0,
+            updated_at: 0,
+            message_count: 0,
+            project_path: None,
+        };
+
+        for round in 0..2_000 {
+            put_cached_file_meta(path.clone(), sig, meta.clone());
+            assert!(
+                get_cached_file_meta(&path, &sig).is_some(),
+                "第 {round} 轮：并发 reset 落进了 put 与 get 之间"
+            );
+        }
+
+        stop.store(true, Ordering::Relaxed);
+        drop(_guard);
+        resetter.join().unwrap();
     }
 }
