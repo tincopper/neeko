@@ -373,6 +373,13 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
   不得因「不支持 `--version`」误杀）；超时 / 无 stderr → 仅记录，不判定。
 - PATH 存在性（`check_plugin_installed`）只作为**自安装门控**；「能不能应答」由 probe +
   真实启动回答（R4：判据的失败必须能被诊断通道解释）。
+- **下载式安装的产物在目标环境的 `~/.neeko/bin`**（jdtls 包装脚本）：Local 由
+  `host_path::prepend_neeko_bin` 把该目录置顶到进程 PATH，WSL/SSH 没有。故
+  `check_binary_installed` 在 PATH 未命中时**再按绝对路径判一次**（`$HOME/.neeko/bin/<bin>`，
+  由目标 shell 展开）—— 否则远端每轮会话创建重下 ~100MB 再报「装完仍找不到」
+  （11-12-lsp-install-lifecycle）。
+  **已知局限**：本轮只修判据、不注入 exec env PATH ⇒ 远端「已装但不在 PATH」时判据为真而
+  spawn 仍失败。失败文案必须说清这一点；完整修法（每目标 PATH 前缀）已记该任务 out of scope。
 - 探测 / 启动失败文案附插件 `install` 数据给出的修法提示（`installer::install_hint`，
   数据驱动，红线 15）。
 
