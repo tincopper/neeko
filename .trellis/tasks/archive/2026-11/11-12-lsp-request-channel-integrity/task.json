@@ -3,7 +3,7 @@
   "name": "lsp-request-channel-integrity",
   "title": "LSP 请求通道健全性：错误响应不得重启服务器",
   "description": "服务器 error response 被当成会话故障去重启整台语言服务器（restart_count 只增不清零，5 次后该语言永久不可用）；业务请求等待无界；三套 id 生成器共用一个 pending 表；写失败泄漏 pending/inflight；握手失败有两个终态写者。",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-11-12",
-  "completedAt": null,
+  "completedAt": "2026-11-12",
   "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,7 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "commit": "9bc2bc69"
+  }
 }
