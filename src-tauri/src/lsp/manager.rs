@@ -1340,6 +1340,25 @@ impl LspManager {
         }
     }
 
+    /// 测试夹具：把一个**无真实进程**的桩会话登记进 store。
+    ///
+    /// 存在的理由：`session_store` 是私有字段，而别的模块（`project::commands`
+    /// 的删除项目路径）要断言的正是「关闭后 store 里不再有该 path 的会话」。
+    /// 不应为此把 store 开成 pub（那会把「谁能直接改会话表」变成默认权限），
+    /// 也不应让调用方自己拼一份会话 —— 所以只开一条 `cfg(test)` 门控的登记口。
+    #[cfg(test)]
+    pub(crate) fn insert_stub_session_for_test(&self, project_path: &str, language_id: &str) {
+        let transport = Arc::new(super::session::testing::RecordingTransport::default());
+        let session = super::session::testing::stub_session(
+            transport,
+            project_path,
+            language_id,
+            "stub-server",
+        );
+        self.session_store
+            .insert(session_key(project_path, language_id), session);
+    }
+
     /// Get cached server capabilities for a session.
     pub fn get_capabilities(&self, project_path: &str, language_id: &str) -> Option<Value> {
         let key = session_key(project_path, language_id);

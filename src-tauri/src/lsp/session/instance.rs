@@ -164,7 +164,17 @@ impl LspSession {
                 Ok(true) => {
                     log::info!("[LSP] Auto-install succeeded for {}", language_id);
                     if !crate::lsp::installer::check_plugin_installed(plugin, &ctx.target) {
-                        anyhow::bail!("{} was installed but still not found in project PATH. Try restarting Neeko.", server_name);
+                        // 文案必须指向**真实原因**：下载式安装的产物在目标环境的
+                        // `~/.neeko/bin`（可能不在 PATH 上），而不是安装失败 —— 让用户
+                        // 去查安装只会白费一轮。
+                        anyhow::bail!(
+                            "{} was installed but is not on the project environment PATH. \
+                             Download-style installs land in ~/.neeko/bin — add that directory \
+                             to the PATH of the project environment (or install {} so PATH \
+                             resolves it) and restart Neeko.",
+                            server_name,
+                            server_name
+                        );
                     }
                 }
                 Ok(false) => {
