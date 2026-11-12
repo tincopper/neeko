@@ -3,7 +3,7 @@
   "name": "lsp-document-identity",
   "title": "LSP 会话与文档身份：重启不得丢文档登记与编辑器所有权",
   "description": "重启关闭清掉 open_docs + editor_owned ⇒ reopen_documents 恒重放 0 条，之后后端按磁盘文本代开未保存缓冲区（坐标错位）；lsp_open_document 是 didOpen 的第四个出口；文档定根不进会话 key；TS/TSX 双服务器。",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-11-12",
-  "completedAt": null,
+  "completedAt": "2026-11-12",
   "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,7 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "commit": "4947b13c"
+  }
 }
