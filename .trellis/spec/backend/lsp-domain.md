@@ -585,3 +585,63 @@ spawn_blocking(move || shutdown_and_exit(session)).await;
    回归钉子：`exit_budget_is_a_total_not_per_step`（120ms 预算必须 <200ms 收口，按步实现约 240ms）。
 4. **退出清理两阶段**：优雅域先跑完，`kill_all_live` 作为 finalizer 最后跑 —— 否则每次退出都
    SIGKILL 掉正在 checkpoint 的服务器（详见 `concurrency-guidelines.md`「收敛点（两阶段）」）。
+
+## 请求级失败 vs 会话级失败（11-12-lsp-request-channel-integrity，勿回退）
+
+### 1. 分类是**类型**，不是文案
+
+`session/request.rs::RequestFailure` 是出站请求的唯一失败类型，`do_send_request` 返回它
+（实现 `std::error::Error`，`anyhow` 调用点透明穿透）：
+
+| 变体 | 含义 | 重启 | 消耗 streak | 用户可见 |
+| --- | --- | --- | --- | --- |
+| `Server { code, message }` | 服务器答了 JSON-RPC error（`-32602` 文档未打开、`ContentModified` 编辑中） | 否 | 否 | 原样上抛 |
+| `Timeout { method, budget }` | 预算内没等到响应（服务器慢 ≠ 会话死） | 否 | 否 | 上抛（含方法与预算） |
+| `Channel(String)` | 写失败 / 发送端丢失 / reader 已退 | **是**（唯一入口） | 是 | 上层重试一次 |
+| `Cancelled` | 被更新的同类请求取消（single-flight） | 否 | 否 | `Ok(Null)` |
+
+判据：`RequestFailure::is_session_level()` 是唯一分类函数，`manager` 的
+`if !failure.is_session_level() || policy == Never => 请求级失败，直接上抛` 是唯一消费点。
+`rg -n "Will restart" src-tauri/src/lsp` 只允许命中该分支的一处日志 —— 第二处 = 绕过了分类。
+
+**Why**：曾把任何 error response 当会话故障 → 整台服务器重启（jdtls 数十秒重新导入）+
+`restart_count` 只增不清零 → 5 次普通错误后该 `project:lang` **永久**
+`Max restart count exceeded`，而 chip 仍显 Running、无重试入口。
+
+### 2. 重启必须「先关后建」，streak 只在成功后清零
+
+- **先关后建**：活会话会被 `get_or_create_session` 快路径原样复用 —— 不先
+  `close_session_for_restart(...).await` 的「重启」只是计数器 +1、进程不换（旧实现的真实形态），
+  且旧进程仍持 workspace 锁时新会话必然起不来。
+- **streak 接账**：`close_session_for_restart` 内部 `clear_restart`（用户 stop = 从头开始），
+  所以重启路径要在关闭**之前**读 `prev_count`，建好会话后 `set_restart_count(prev+1)` 接上，
+  否则每次重启都从 1 开始、`MAX_RESTART_COUNT` 永不生效。
+- **清零点唯一**：一次**请求成功**之后（`clear_restart`）。不得在创建成功时清零 ——
+  否则崩溃循环每次都被清零，上限形同虚设。
+- **预算耗尽必须可见**：经 `emit_session_error` 推 error 事件（chip 进 error + 重试入口），
+  只写 `log::warn!` = 静默把该语言弄坏。
+
+### 3. id 空间与等待边界
+
+- **唯一 allocator**：`session::request::next_request_id()`。`initialize` / `shutdown` /
+  业务请求都从它取；禁止再出现 `RequestId::from(1i32)` / `from(1000i32)`
+  （曾三套 id 共用一个以 id 为键的 `pending` 表）。
+- **`pending` 插入拒绝重复 id**：命中已存在即 `bail`（陈旧 sender 被 drop 会让前一个等待者
+  误报「无响应」，把 id 缺陷伪装成网络问题）。
+- **等待一律有界**：业务请求用 `tokio::time::timeout` 包 `rx.await`，预算取
+  `LspSession::request_timeout`（插件 `request_timeout_ms`，未声明 15s）；超时与写失败走
+  **同一清理**（摘 `pending` + `inflight.complete` + `$/cancelRequest`）。
+  回归判据：`rg -n 'rx\.await' src-tauri/src/lsp` 不得出现裸等待。
+
+### 4. 握手期终态单写者
+
+`instance.rs` 的 `init_completed: Arc<AtomicBool>`：握手完成前 reader 退出**不写终态、不推
+error**（`on_reader_exit` 里 `if !init_completed { return false }`），由 manager 的装配失败分支
+唯一落账。否则同一故障前端收两条不同文案的 error（`exited unexpectedly` +
+`no response received`），`outcome` 还依赖线程写序。
+
+**护栏**：`request.rs` 的分类三例 + `write_failure_clears_pending_and_inflight` /
+`silent_server_times_out_and_cancels` / `pending_insert_refuses_duplicate_id`；
+`manager.rs` 的 `server_error_does_not_consume_restart_budget` /
+`successful_request_resets_restart_streak` / `channel_failure_rebuilds_the_session` /
+`handshake_failure_reports_one_error`。
