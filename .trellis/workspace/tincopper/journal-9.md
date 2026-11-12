@@ -702,3 +702,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 464: File drop: insert ports replace guessed pane identity
+<!-- trellis-session: v=2 fp=6169b45035f12071 -->
+
+**Date**: 2026-11-12
+**Task**: File drop: insert ports replace guessed pane identity
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f480da09` | fix(file-drop): deliver dropped paths through insert ports |
+
+### Status
+
+[OK] **Completed**
