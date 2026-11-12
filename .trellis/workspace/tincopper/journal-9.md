@@ -680,3 +680,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 463: LSP install lifecycle: probe where the binary lands, tear down on project removal
+<!-- trellis-session: v=2 fp=108da00689e6f3f4 -->
+
+**Date**: 2026-11-12
+**Task**: LSP install lifecycle: probe where the binary lands, tear down on project removal
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3993f6ef` | docs(task): record the LSP install lifecycle task |
+
+### Status
+
+[OK] **Completed**

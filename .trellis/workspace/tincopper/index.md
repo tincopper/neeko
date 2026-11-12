@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 462
+- **Total Sessions**: 463
 - **Last Active**: 2026-11-12
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~682 | Active |
+| `journal-9.md` | ~704 | Active |
 | `journal-8.md` | ~1971 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 463 | 2026-11-12 | LSP install lifecycle: probe where the binary lands, tear down on project removal | `3993f6ef` | `main` |
 | 462 | 2026-11-12 | LSP IPC budget, dropped capability claim, cross-stack event guard | `faaab45e` | `main` |
 | 461 | 2026-11-12 | LSP document identity: restart keeps registry and ownership | `4947b13c` | `main` |
 | 460 | 2026-11-12 | LSP request channel: typed failure classification, streak, bounded waits | `9bc2bc69` | `main` |
