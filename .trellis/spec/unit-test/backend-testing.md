@@ -643,3 +643,37 @@ assert!(template.contains("if (isChildSession(ctx)) return;\n      return handle
 
 反向判据（变异验证）：删掉归一化，跨行回归钉在**任何**平台必红；删掉 `.gitattributes` 条目，
 `check_embedded_asset_eol` 在本地就红（不必等 Windows CI）。与红线 11（换行边界）同族。
+
+### 9. 进程级全局状态必须自带串行闸（只有 CI 会红）
+
+`cargo test` 默认在**同一二进制里多线程并发**跑用例，而 `static` 全局（缓存 / 通道 / 环境变量）
+是所有用例共享的。`### 2 测试间存在依赖` 说的是「不要共享可变状态」，但有些状态删不掉（进程级
+缓存就是产品设计），此时**必须把「复位 + 独占」做成一次调用**，不要让每个用例自己写一行。
+
+```rust
+// ❌ 复位与持闸分离：另一个用例的复位可以落进本用例的 put 与 get 之间
+reset_cache();
+let hit = get_cached(&path, &sig).unwrap();   // ← 命中变 miss，Option::unwrap() panic
+
+// ✅ 返回闸 + `#[must_use]`：调用方想丢都丢不掉，-D warnings 下编译期拦住
+let _guard = reset_scan_parse_cache_for_tests();   // 持到用例结束
+let hit = get_cached(&path, &sig).unwrap();
+```
+
+**2026-11-12 事故**：`conversation::scan_cache` 的 `SCAN_PARSE_CACHE` 被 11 个用例
+（`scan_cache.rs` / `conversation/manager.rs` / `adapters/opencode/tests/listing.rs`）共享，
+每个各用一次无返回值的 `reset_scan_parse_cache_for_tests()` 复位。
+`should_cache_file_meta_by_signature` 在 `put_cached_file_meta` 之后**紧接着**断言命中，被另一条
+用例的复位清掉 → `scan_cache.rs:511` `Option::unwrap()` on `None`。**本地 `pnpm test:rust` 绿、
+CI `backend-coverage` 红**，差异只来自线程调度与核数 —— 这类间歇红比确定性红更贵，它训练人重跑。
+
+修法与判据：
+
+- 复位函数**返回** `MutexGuard` 并标 `#[must_use = "..."]`，让「拿到就丢」（`reset();`）变成
+  `-D warnings` 下的编译错误；**不要**拆成 `reset()` + 调用方自己 `lock()` 两行。
+- 先例（照抄即可）：`notification/boot.rs` 的 `TEST_GUARD`、`agent/hooks/targets/tests.rs` 的
+  `ENV_LOCK`、`common/file/watcher/manager/lifecycle_tests.rs` 的 `REAL_FS_GUARD`。**不要引入
+  `serial_test`** —— 用例很少，不值得一个 crate。
+- 回归钉（变异验证：把复位改回不返回闸 → 必红）：
+  `scan_cache::tests::concurrent_reset_must_not_break_a_put_then_get_pair`。
+- 只给**触碰该全局的**用例加闸；纯函数用例别跟着串行化，否则白白丢掉并发。
