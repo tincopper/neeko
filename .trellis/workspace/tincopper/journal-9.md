@@ -636,3 +636,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 461: LSP document identity: restart keeps registry and ownership
+<!-- trellis-session: v=2 fp=feea9fd81a96b49a -->
+
+**Date**: 2026-11-12
+**Task**: LSP document identity: restart keeps registry and ownership
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4947b13c` | docs(task): record the LSP document identity task |
+
+### Status
+
+[OK] **Completed**
