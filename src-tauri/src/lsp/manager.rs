@@ -710,6 +710,22 @@ impl LspManager {
             .unwrap_or(false)
     }
 
+    /// 会话事件的出口：优先复用该键**活会话自带的** transport，否则向装配端口要一个。
+    ///
+    /// 预算耗尽 / 装配失败这类「会话可能已不在」的路径也需要一条通道把 error 送到
+    /// 前端（重试入口的数据源）。装配端口缺失 `AppHandle` 时退化为 `None` —— 此时
+    /// 错误仍经 `Err` 上抛，不会被静默吞掉。
+    fn event_transport(&self, key: &str) -> Option<Arc<dyn LspTransport>> {
+        if let Some(transport) = self
+            .session_store
+            .with_session(key, |s| Arc::clone(&s.transport))
+        {
+            return Some(transport);
+        }
+        let app_handle = self.app_handle.lock().ok().and_then(|h| h.clone());
+        self.session_factory.transport(app_handle.as_ref()).ok()
+    }
+
     /// Send an LSP request asynchronously, restarting the session if needed.
     ///
     /// `is_probe` marks best-effort decoration lookups (e.g. the link-highlight
@@ -777,27 +793,54 @@ impl LspManager {
 
         // Fast path: extract session ingredients, drop lock before awaiting
         if self.session_store.is_alive(&key) {
-            if let Some((pending, writer, inflight)) = self.session_store.with_session(&key, |s| {
-                (
-                    Arc::clone(&s.pending),
-                    s.writer.clone(),
-                    Arc::clone(&s.inflight),
+            if let Some((pending, writer, inflight, budget)) =
+                self.session_store.with_session(&key, |s| {
+                    (
+                        Arc::clone(&s.pending),
+                        s.writer.clone(),
+                        Arc::clone(&s.inflight),
+                        s.request_timeout,
+                    )
+                })
+            {
+                match do_send_request(
+                    pending,
+                    writer,
+                    inflight,
+                    method,
+                    params.clone(),
+                    is_probe,
+                    budget,
                 )
-            }) {
-                match do_send_request(pending, writer, inflight, method, params.clone(), is_probe)
-                    .await
+                .await
                 {
-                    Ok(val) => return Ok(val),
-                    // 观察类请求到此为止（见 `send_request_observed`）：失败不重启会话，
-                    // 原样上抛错误供调用方分类（错误文本是探测分类的输入）。
-                    Err(e) if policy == RequestPolicy::Never => {
-                        return Err(AppError::Lsp(e.to_string()));
+                    Ok(val) => {
+                        // 一次成功请求就是「该会话可用」的证明 ⇒ streak 归零。
+                        // 只在成功后清零（创造成功即清零会让崩溃循环永远绕过上限）。
+                        self.session_store.clear_restart(&key);
+                        return Ok(val);
                     }
-                    Err(e) => {
+                    // 请求级失败（服务器回错 / 预算内无响应）：会话健康，原样上抛。
+                    // 观察类请求同样到此为止（见 `send_request_observed`）：失败不重启
+                    // 会话，错误文本是探测分类的输入。
+                    Err(failure)
+                        if !failure.is_session_level() || policy == RequestPolicy::Never =>
+                    {
+                        log::warn!(
+                            "[LSP] {} for {} is a request-level failure (no restart): {}",
+                            method,
+                            key,
+                            failure
+                        );
+                        return Err(AppError::Lsp(failure.to_string()));
+                    }
+                    Err(failure) => {
+                        // 只有通道不可用（会话级）才进重启路径：这是 `Will restart`
+                        // 的**唯一**入口（Gate D 的 grep 判据）。
                         log::warn!(
                             "[LSP] send_request_async failed for {}, reason: {}. Will restart.",
                             key,
-                            e
+                            failure
                         );
                     }
                 }
@@ -816,10 +859,17 @@ impl LspManager {
         let prev_count = self.session_store.restart_count(&key);
 
         if prev_count >= MAX_RESTART_COUNT {
-            return Err(AppError::Lsp(format!(
+            let message = format!(
                 "Max restart count ({}) exceeded for {}",
                 MAX_RESTART_COUNT, key
-            )));
+            );
+            log::warn!("[LSP] {message}");
+            // 预算耗尽必须让前端可见：只有 warn 日志 + chip 仍显 Running 等于「静默
+            // 把该语言弄坏」（用户既看不到文案也没有重试入口）。
+            if let Some(transport) = self.event_transport(&key) {
+                emit_session_error(transport.as_ref(), project_path, language_id, &message);
+            }
+            return Err(AppError::Lsp(message));
         }
 
         if prev_count > 0 {
@@ -833,6 +883,12 @@ impl LspManager {
             tokio::time::sleep(delay).await;
         }
 
+        // **先关后建**：活会话会被 `get_or_create_session` 的快路径原样复用（那正是
+        // 「计数器在涨、进程不换」的缺陷现场），且旧进程仍持 workspace 锁时新会话
+        // 必然起不来（jdtls 的 `-data`）。序列有界且 await 收口后才返回。
+        self.close_session_for_restart(project_path, language_id)
+            .await;
+
         // Spawn session creation on the business AppRuntime blocking pool
         let this = Arc::clone(self);
         let pp = project_path.to_string();
@@ -842,20 +898,30 @@ impl LspManager {
             .await
             .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))??;
 
-        // Increment restart_count
-        self.session_store.increment_restart(&key);
+        // 接账 streak：`close_session_for_restart` 内部会 `clear_restart`（用户 stop
+        // 的语义是「从头开始」），而重启是同一故障 episode 的延续 —— 用关闭前读到的
+        // `prev_count` 接上本次失败，否则每次重启都从 1 开始、上限永不生效。
+        self.session_store
+            .set_restart_count(&key, prev_count.saturating_add(1));
 
         // Get session ingredients for the request
-        if let Some((pending, writer, inflight)) = self.session_store.with_session(&key, |s| {
-            (
-                Arc::clone(&s.pending),
-                s.writer.clone(),
-                Arc::clone(&s.inflight),
-            )
-        }) {
-            do_send_request(pending, writer, inflight, method, params, is_probe)
-                .await
-                .map_err(|e| AppError::Lsp(e.to_string()))
+        if let Some((pending, writer, inflight, budget)) =
+            self.session_store.with_session(&key, |s| {
+                (
+                    Arc::clone(&s.pending),
+                    s.writer.clone(),
+                    Arc::clone(&s.inflight),
+                    s.request_timeout,
+                )
+            })
+        {
+            let value =
+                do_send_request(pending, writer, inflight, method, params, is_probe, budget)
+                    .await
+                    .map_err(|e| AppError::Lsp(e.to_string()))?;
+            // 重试成功同样是「会话可用」的证明 ⇒ streak 归零。
+            self.session_store.clear_restart(&key);
+            Ok(value)
         } else {
             Err(AppError::Lsp(format!(
                 "Failed to create LSP session: {}",
@@ -1736,6 +1802,11 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .expect("必须发出 shutdown request");
         assert_eq!(label(&first), "request:shutdown");
+        // shutdown 的 id 由唯一 allocator 分配（不再硬编码 1000），只能从报文里取。
+        let id = match &first {
+            lsp_server::Message::Request(req) => req.id.clone(),
+            other => panic!("shutdown 必须以 request 形式发出: {other:?}"),
+        };
         // 观察窗而非瞬时快照：瞬时 `try_recv` 在「实现立刻发 exit」时几乎必然
         // 通过（exit 还在路上），等于没断言。
         assert!(
@@ -1746,7 +1817,6 @@ mod tests {
             "响应未到达前不得发 exit（否则等于不等服务器响应）"
         );
 
-        let id = lsp_server::RequestId::from(1000i32);
         let responder = pending
             .lock()
             .expect("pending lock")
@@ -1915,6 +1985,11 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .expect("必须发出 shutdown request");
         assert_eq!(label(&first), "request:shutdown");
+        // shutdown 的 id 由唯一 allocator 分配（不再硬编码 1000），只能从报文里取。
+        let shutdown_id = match &first {
+            lsp_server::Message::Request(req) => req.id.clone(),
+            other => panic!("shutdown 必须以 request 形式发出: {other:?}"),
+        };
 
         let gate = manager.creation_gate(&key);
         let acquired_at: Arc<Mutex<Option<std::time::Instant>>> = Arc::new(Mutex::new(None));
@@ -1933,11 +2008,11 @@ mod tests {
         let responder = pending
             .lock()
             .expect("pending lock")
-            .remove(&lsp_server::RequestId::from(1000i32))
+            .remove(&shutdown_id)
             .expect("shutdown 的发送端必须在 pending 里等响应");
         responder
             .send(lsp_server::Message::Response(lsp_server::Response {
-                id: lsp_server::RequestId::from(1000i32),
+                id: shutdown_id.clone(),
                 result: Some(serde_json::json!({})),
                 error: None,
             }))
@@ -2521,6 +2596,439 @@ mod tests {
             DidOpenAction::Reopen {
                 version_regressed: true
             }
+        );
+    }
+
+    // ── S4：请求级失败 vs 会话级失败（错误响应不得重启服务器）──────────────
+
+    /// 假 reader 的应答方式。
+    #[derive(Clone, Copy)]
+    enum Answer {
+        /// 回一个合法结果。
+        Ok,
+        /// 回 JSON-RPC error（`-32602` 文档未打开是 didClose/definition 交错的常态）。
+        Error { code: i32, message: &'static str },
+    }
+
+    /// 单次 `build` 的装配规格（按序消费，用尽后沿用最后一项）。
+    #[derive(Clone)]
+    enum BuildSpec {
+        /// 通道已死（writer 接收端被丢弃）⇒ 任何请求都是 `RequestFailure::Channel`。
+        DeadWriter,
+        /// reader 存活 + 假服务器按 [`Answer`] 应答。
+        Answer(Answer),
+    }
+
+    /// 假 reader：从 writer 通道取请求，直接 resolve `pending` 里的等待者。
+    ///
+    /// 与真实 reader 线程同构（唯一区别：它不解析 JSON，只按规格应答），因此这里
+    /// 验证的是**编排层**的分类与重建决策，不重复 request 域的报文测试。
+    struct FakeReader {
+        stop: crossbeam_channel::Sender<()>,
+        handle: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl FakeReader {
+        fn spawn(
+            writer_rx: crossbeam_channel::Receiver<lsp_server::Message>,
+            pending: Arc<Mutex<HashMap<lsp_server::RequestId, PendingSender>>>,
+            answer: Answer,
+        ) -> Self {
+            let (stop, stop_rx) = crossbeam_channel::bounded::<()>(1);
+            let handle = std::thread::Builder::new()
+                .name("lsp-fake-reader".to_string())
+                .spawn(move || loop {
+                    match writer_rx.recv_timeout(Duration::from_millis(10)) {
+                        Ok(lsp_server::Message::Request(req)) => {
+                            let reply = match answer {
+                                Answer::Ok => {
+                                    lsp_server::Message::Response(lsp_server::Response::new_ok(
+                                        req.id.clone(),
+                                        serde_json::json!({ "uri": "file:///target.rs" }),
+                                    ))
+                                }
+                                Answer::Error { code, message } => {
+                                    lsp_server::Message::Response(lsp_server::Response::new_err(
+                                        req.id.clone(),
+                                        code,
+                                        message.to_string(),
+                                    ))
+                                }
+                            };
+                            if let Some(tx) = pending.lock().expect("pending lock").remove(&req.id)
+                            {
+                                let _ = tx.send(reply);
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                            if stop_rx.try_recv().is_ok() {
+                                return;
+                            }
+                        }
+                        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return,
+                    }
+                })
+                .expect("spawn fake reader");
+            Self {
+                stop,
+                handle: Some(handle),
+            }
+        }
+
+        fn shutdown(&mut self) {
+            let _ = self.stop.send(());
+            if let Some(handle) = self.handle.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    impl Drop for FakeReader {
+        fn drop(&mut self) {
+            self.shutdown();
+        }
+    }
+
+    /// 装配端口桩：按 [`BuildSpec`] 造「reader 存活」的会话，并记录每次 build 的
+    /// 生命周期句柄与装配次数 —— 「重启是否真的换了进程」的判据只有这两个观测点。
+    struct RespondingSessionFactory {
+        transport: Arc<RecordingTransport>,
+        specs: Vec<BuildSpec>,
+        builds: std::sync::atomic::AtomicUsize,
+        lifecycles: Mutex<Vec<Arc<Lifecycle>>>,
+        readers: Mutex<Vec<FakeReader>>,
+        /// reader 存活凭据：随工厂存活（工厂 Drop 即 reader 线程退出）。
+        liveness: Mutex<Vec<LiveReader>>,
+    }
+
+    impl RespondingSessionFactory {
+        fn new(transport: Arc<RecordingTransport>, specs: Vec<BuildSpec>) -> Self {
+            Self {
+                transport,
+                specs,
+                builds: std::sync::atomic::AtomicUsize::new(0),
+                lifecycles: Mutex::new(Vec::new()),
+                readers: Mutex::new(Vec::new()),
+                liveness: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn builds(&self) -> usize {
+            self.builds.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        /// 第 `index` 次装配的会话生命周期句柄。
+        fn lifecycle(&self, index: usize) -> Arc<Lifecycle> {
+            Arc::clone(&self.lifecycles.lock().expect("lifecycles lock")[index])
+        }
+    }
+
+    impl SessionFactory for RespondingSessionFactory {
+        fn transport(
+            &self,
+            _: Option<&tauri::AppHandle>,
+        ) -> Result<Arc<dyn LspTransport>, AppError> {
+            Ok(Arc::clone(&self.transport) as Arc<dyn LspTransport>)
+        }
+
+        fn build(&self, _: SessionBuildRequest<'_>) -> Result<LspSession, AppError> {
+            let index = self
+                .builds
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let spec = self
+                .specs
+                .get(index)
+                .or_else(|| self.specs.last())
+                .cloned()
+                .unwrap_or(BuildSpec::DeadWriter);
+            let (session, writer_rx, live) =
+                crate::lsp::session::testing::live_stub_session_with_writer(
+                    Arc::clone(&self.transport) as Arc<dyn LspTransport>,
+                    TEST_PROJECT,
+                    TEST_LANG,
+                    TEST_SERVER,
+                );
+            self.lifecycles
+                .lock()
+                .expect("lifecycles lock")
+                .push(Arc::clone(&session.lifecycle));
+            match spec {
+                // 接收端就地丢弃 ⇒ 之后的 send 全部失败（通道已死）。
+                BuildSpec::DeadWriter => drop(writer_rx),
+                BuildSpec::Answer(answer) => {
+                    let reader = FakeReader::spawn(writer_rx, Arc::clone(&session.pending), answer);
+                    self.readers.lock().expect("readers lock").push(reader);
+                }
+            }
+            self.liveness.lock().expect("liveness lock").push(live);
+            Ok(session)
+        }
+    }
+
+    use crate::lsp::session::PendingSender;
+
+    /// 装好一个「项目 exec target 已绑定 + 可注入装配质量」的 manager。
+    fn responding_manager(
+        transport: &Arc<RecordingTransport>,
+        specs: Vec<BuildSpec>,
+    ) -> (Arc<LspManager>, Arc<RespondingSessionFactory>) {
+        let factory = Arc::new(RespondingSessionFactory::new(Arc::clone(transport), specs));
+        let manager = Arc::new(manager_with_factory(
+            Arc::clone(&factory) as Arc<dyn SessionFactory>
+        ));
+        (manager, factory)
+    }
+
+    /// R1/AC1/D2：服务器回 `-32602`（文档未打开）是**请求级**失败 ——
+    /// 不得重建会话、不得消耗重启预算、不得发 error 事件，错误原样上抛。
+    ///
+    /// 反例（修复前）：`bail!("LSP error …")` 一律进重启分支 ⇒ 一次 didClose 与
+    /// definition 的常规交错就重启整台 jdts（数十秒 + 重新导入），5 次后该 key 永久
+    /// `Max restart count exceeded`，而 chip 仍显示 Running。
+    #[tokio::test]
+    async fn server_error_does_not_consume_restart_budget() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (manager, factory) = responding_manager(
+            &transport,
+            vec![BuildSpec::Answer(Answer::Error {
+                code: -32602,
+                message: "Document not open",
+            })],
+        );
+        let key = session_key(TEST_PROJECT, TEST_LANG);
+        manager
+            .get_or_create_session(TEST_PROJECT, TEST_LANG, None)
+            .expect("首次装配应当成功");
+        // 基线：把「首次装配」产生的计数清掉，断言只关心本次失败的影响。
+        manager.session_store.clear_restart(&key);
+        let before = manager.session_store.restart_count(&key);
+
+        let error = manager
+            .send_request_async(
+                TEST_PROJECT,
+                TEST_LANG,
+                "textDocument/definition",
+                serde_json::json!({}),
+                false,
+            )
+            .await
+            .expect_err("服务器回错必须上抛给调用方");
+
+        assert!(
+            error.to_string().contains("LSP error (-32602)"),
+            "错误必须原样上抛（能力探测按码分类）: {error}"
+        );
+        assert_eq!(
+            manager.session_store.restart_count(&key),
+            before,
+            "请求级失败不得消耗重启预算（否则 5 次普通错误就永久废掉该语言）"
+        );
+        let builds = factory.builds();
+        assert!(
+            builds <= 1,
+            "错误响应不得重建会话（会话完全健康），观测到 {builds} 次装配"
+        );
+        assert!(
+            !transport.has(TEST_PROJECT, TEST_LANG, "error"),
+            "请求级失败不是会话故障，前端不得收到 error: {:?}",
+            transport.take()
+        );
+    }
+
+    /// R2/AC2：restart 计数是**连续失败 streak** —— 一次成功请求即清零。
+    ///
+    /// 反例（修复前）：计数只增不减 ⇒ 长跑会话的历史错误永久占用预算，5 次后该
+    /// `project:lang` 再也无法自动恢复。
+    #[tokio::test]
+    async fn successful_request_resets_restart_streak() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (manager, _factory) =
+            responding_manager(&transport, vec![BuildSpec::Answer(Answer::Ok)]);
+        let key = session_key(TEST_PROJECT, TEST_LANG);
+        manager
+            .get_or_create_session(TEST_PROJECT, TEST_LANG, None)
+            .expect("装配应当成功");
+
+        // 制造「有失败史」的基线（3 次连续失败）。
+        manager.session_store.set_restart_count(&key, 3);
+        assert!(
+            manager.session_store.restart_count(&key) > 0,
+            "基线必须是「已经有过失败」"
+        );
+
+        let value = manager
+            .send_request_async(
+                TEST_PROJECT,
+                TEST_LANG,
+                "textDocument/definition",
+                serde_json::json!({}),
+                false,
+            )
+            .await
+            .expect("健康会话必须成功");
+        assert!(value.get("uri").is_some(), "必须拿到真实结果");
+
+        assert_eq!(
+            manager.session_store.restart_count(&key),
+            0,
+            "一次成功请求必须清零 streak（成功的请求证明该会话可用）"
+        );
+    }
+
+    /// R2/AC1：通道故障必须**真的重建**（旧会话先关、再建），而不是复用坏会话。
+    ///
+    /// 反例（修复前）：`get_or_create_session` 的快路径看到活会话就复用 ⇒ 计数器
+    /// 在涨、进程不换（`channel_failure` 的「重启」是空操作），重试仍在坏通道上失败。
+    #[tokio::test]
+    async fn channel_failure_rebuilds_the_session() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (manager, factory) = responding_manager(
+            &transport,
+            vec![BuildSpec::DeadWriter, BuildSpec::Answer(Answer::Ok)],
+        );
+        // 先装配出「通道已死的活会话」：快路径会命中它，这正是缺陷现场
+        // （旧实现会原样复用同一台坏会话）。
+        manager
+            .get_or_create_session(TEST_PROJECT, TEST_LANG, None)
+            .expect("首次装配应当成功");
+
+        let value = manager
+            .send_request_async(
+                TEST_PROJECT,
+                TEST_LANG,
+                "textDocument/definition",
+                serde_json::json!({}),
+                false,
+            )
+            .await
+            .expect("通道故障后必须在新会话上重试成功");
+        assert!(value.get("uri").is_some(), "重试必须拿到真实结果");
+
+        let builds = factory.builds();
+        assert!(
+            builds >= 2,
+            "通道故障必须重新装配（活会话会被快路径复用 = 重启是空操作），观测到 {builds} 次"
+        );
+        assert!(
+            factory.lifecycle(0).is_terminal(),
+            "重建前必须先关掉旧会话（否则两个服务器抢同一 workspace 锁）"
+        );
+    }
+
+    /// R2：真故障（通道不可用）必须**消耗**重启预算 —— 否则「连续失败」没有成本，
+    /// `MAX_RESTART_COUNT` 形同虚设（新会话仍坏 ⇒ 失败必须累计）。
+    #[tokio::test]
+    async fn channel_failure_consumes_the_restart_budget() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (manager, factory) = responding_manager(
+            &transport,
+            vec![BuildSpec::DeadWriter, BuildSpec::DeadWriter],
+        );
+        let key = session_key(TEST_PROJECT, TEST_LANG);
+        manager
+            .get_or_create_session(TEST_PROJECT, TEST_LANG, None)
+            .expect("首次装配应当成功");
+        manager.session_store.clear_restart(&key);
+        let before = manager.session_store.restart_count(&key);
+
+        manager
+            .send_request_async(
+                TEST_PROJECT,
+                TEST_LANG,
+                "textDocument/definition",
+                serde_json::json!({}),
+                false,
+            )
+            .await
+            .expect_err("新会话的通道仍不可用 ⇒ 重试必须失败");
+
+        let builds = factory.builds();
+        assert!(builds >= 2, "必须真的重建过（观测到 {builds} 次装配）");
+        assert!(
+            manager.session_store.restart_count(&key) > before,
+            "通道故障必须消耗重启预算（streak 只在成功后清零）"
+        );
+    }
+
+    /// R2：streak 必须**跨重启**累计 ——「先关后建」会顺带清空计数（用户 stop 的
+    /// 语义是「从头开始」），重启是同一故障 episode 的延续，必须接账。
+    ///
+    /// 反例（本实现若不接账）：每次重启都把计数抹成 1 ⇒ 崩溃循环永远绕过
+    /// `MAX_RESTART_COUNT`，用户侧表现是「无限重启、永远起不来、也没有上限提示」。
+    ///
+    /// 基线取 1（已有一次失败）而不是 4：`prev_count > 0` 的退避是 1s，这是能区分
+    /// 「接账（2）」与「从头开始（1）」的最小代价。
+    #[tokio::test]
+    async fn restart_streak_is_carried_across_the_rebuild() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (manager, _factory) = responding_manager(
+            &transport,
+            vec![BuildSpec::DeadWriter, BuildSpec::DeadWriter],
+        );
+        let key = session_key(TEST_PROJECT, TEST_LANG);
+        manager
+            .get_or_create_session(TEST_PROJECT, TEST_LANG, None)
+            .expect("首次装配应当成功");
+        manager.session_store.set_restart_count(&key, 1);
+
+        manager
+            .send_request_async(
+                TEST_PROJECT,
+                TEST_LANG,
+                "textDocument/definition",
+                serde_json::json!({}),
+                false,
+            )
+            .await
+            .expect_err("新会话的通道仍不可用 ⇒ 重试必须失败");
+
+        assert_eq!(
+            manager.session_store.restart_count(&key),
+            2,
+            "历史失败（1）+ 本次失败（1）必须接账；1 表示被关闭路径抹平（崩溃循环绕过上限）"
+        );
+    }
+
+    /// R2：命中 `MAX_RESTART_COUNT` 时状态栏必须可见 —— 只有 warn 日志 + chip 仍显
+    /// Running 等于「静默把该语言弄坏」（前端既无文案也无重试入口）。
+    #[tokio::test]
+    async fn max_restart_count_is_visible_to_the_frontend() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (manager, _factory) = responding_manager(&transport, vec![BuildSpec::DeadWriter]);
+        let key = session_key(TEST_PROJECT, TEST_LANG);
+        manager
+            .session_store
+            .set_restart_count(&key, MAX_RESTART_COUNT);
+
+        let error = manager
+            .send_request_async(
+                TEST_PROJECT,
+                TEST_LANG,
+                "textDocument/definition",
+                serde_json::json!({}),
+                false,
+            )
+            .await
+            .expect_err("预算用尽必须失败");
+
+        assert!(
+            error.to_string().contains("Max restart count"),
+            "错误文案必须点明上限: {error}"
+        );
+        let events = transport.take();
+        let errors: Vec<_> = events.iter().filter(|e| e.2 == "error").collect();
+        assert_eq!(
+            errors.len(),
+            1,
+            "命中上限必须让前端可见（恰好一条 error，复用既有 emit_session_error）: {events:?}"
+        );
+        assert!(
+            errors[0]
+                .3
+                .as_deref()
+                .is_some_and(|m| m.contains("Max restart count")),
+            "error 文案必须说明重试预算已用尽: {events:?}"
         );
     }
 }

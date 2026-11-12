@@ -23,4 +23,6 @@ pub(crate) use log_ring_buffer::LOG_ENTRY_JSON_MAX_BYTES;
 #[cfg(test)]
 pub(crate) use log_ring_buffer::LOG_RING_MAX_BYTES;
 pub(crate) use request::do_send_request;
+#[cfg(test)]
+pub(crate) use request::PendingSender;
 pub(crate) use utils::iso_timestamp_now;

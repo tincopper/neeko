@@ -90,15 +90,30 @@ impl LspSessionStore {
             .unwrap_or(0)
     }
 
-    pub(crate) fn increment_restart(&self, key: &str) -> u32 {
-        self.restart_counts
-            .write()
-            .map(|mut m| {
-                let entry = m.entry(key.to_string()).or_insert(0);
-                *entry += 1;
-                *entry
-            })
-            .unwrap_or(0)
+    /// 把该键的「连续失败」计数设为 `count`（**重启路径接账专用**）。
+    ///
+    /// 为什么是绝对值而不是自增：`close_session` 会 `clear_restart`（用户 stop 的
+    /// 语义是「从头开始」），而**重启**是同一故障 episode 的延续。重启路径「先关
+    /// 后建」会顺带清空计数，若再用自增，每次重启都从 1 开始 ⇒ 崩溃循环永远绕过
+    /// `MAX_RESTART_COUNT`（上限形同虚设）。调用方必须拿关闭**前**读到的 streak 接账。
+    pub(crate) fn set_restart_count(&self, key: &str, count: u32) {
+        match self.restart_counts.write() {
+            Ok(mut m) => {
+                if count == 0 {
+                    m.remove(key);
+                } else {
+                    m.insert(key.to_string(), count);
+                }
+            }
+            Err(poisoned) => {
+                log::warn!("[LSP] restart_counts mutex poisoned, recovering");
+                if count == 0 {
+                    poisoned.into_inner().remove(key);
+                } else {
+                    poisoned.into_inner().insert(key.to_string(), count);
+                }
+            }
+        }
     }
 
     pub(crate) fn clear_restart(&self, key: &str) {
