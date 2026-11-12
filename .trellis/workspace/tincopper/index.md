@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 453
-- **Last Active**: 2026-11-11
+- **Total Sessions**: 459
+- **Last Active**: 2026-11-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~594 | Active |
+| `journal-9.md` | ~616 | Active |
 | `journal-8.md` | ~1971 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 459 | 2026-11-12 | LSP close protocol: single sequence, bounded waits, audit-driven T0 | `a4375c9e` | `main` |
 | 453 | 2026-11-11 | fileless sub-session gate for agent hook status | `d9d839dc` | `main` |
 | 450 | 2026-11-11 | Service-layer suites without OS watchers | `783793a6` | `main` |
 | 449 | 2026-11-11 | Event observation attribution: keyed sink waits | `c8c50d5d`, `f9a65860` | `main` |

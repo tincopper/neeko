@@ -592,3 +592,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 459: LSP close protocol: single sequence, bounded waits, audit-driven T0
+<!-- trellis-session: v=2 fp=341c1ea00ad2a581 -->
+
+**Date**: 2026-11-12
+**Task**: LSP close protocol: single sequence, bounded waits, audit-driven T0
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a4375c9e` | docs(task): record the LSP close protocol task and the audit backlog |
+
+### Status
+
+[OK] **Completed**
