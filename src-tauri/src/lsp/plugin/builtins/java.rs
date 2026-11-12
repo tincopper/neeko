@@ -50,6 +50,10 @@ pub fn plugins() -> Vec<LspPlugin> {
     .with_tuning(LspServerTuning {
         version_probe: false,
         java_home_from_path: true,
+        // Eclipse 在收到 `exit` 之后才 checkpoint 整棵资源树（大工程可达数秒）。
+        // 硬杀会把 `0.snap` 截断到半写状态 → 下次启动 `SaveManager.restore()`
+        // 抛 ObjectNotFoundException → Application error（现场见 11-12 任务 research）。
+        shutdown_grace_ms: 10_000,
     })
     // 首请求超时：JVM + Eclipse/OSGi 冷启动常超通用预算（原为前端
     // `languageId === 'java'` 分支，见 `lspClientManager`）。声明在此 = 第二个
@@ -161,6 +165,12 @@ mod tests {
             plugin.tuning.java_home_from_path,
             "jdtls 需要 PATH java 推导的 JAVA_HOME（Tooling JDK）"
         );
+        // 退出宽限同理必须是**插件数据**：Eclipse 的 checkpoint 远比一般服务器慢，
+        // 写通用默认值等于把它截断（红线 15：语言差异落数据，不落 `language_id` 分支）。
+        assert!(
+            plugin.tuning.shutdown_grace_ms > crate::lsp::plugin::types::DEFAULT_SHUTDOWN_GRACE_MS,
+            "jdtls 的退出宽限必须显著大于通用默认（Eclipse checkpoint 在 exit 之后）"
+        );
     }
 
     /// jdtls 首请求超时同样应是**插件数据**（原为前端 `languageId === 'java'` 分支）：
@@ -227,6 +237,12 @@ mod tests {
             assert!(
                 !p.tuning.java_home_from_path,
                 "{} 不应注入 JAVA_HOME",
+                p.language_id
+            );
+            assert_eq!(
+                p.tuning.shutdown_grace_ms,
+                crate::lsp::plugin::types::DEFAULT_SHUTDOWN_GRACE_MS,
+                "{} 的退出宽限必须保持通用默认（jdtls 特判不得泄漏）",
                 p.language_id
             );
         }

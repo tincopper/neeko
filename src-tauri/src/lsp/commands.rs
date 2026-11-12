@@ -224,11 +224,12 @@ pub async fn lsp_restart_session(
     language_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<LspSessionInfo, AppError> {
-    // Close existing session (sends shutdown + kills child).
-    // 静默关闭：重启是替换而非结束，不向状态栏宣告 `stopped`（否则 chip 闪断）。
-    let _ = state
+    // 静默关闭（重启是替换而非结束，不向状态栏宣告 `stopped`），并**等它收口**：
+    // 紧接着就要建新会话，而服务器共享磁盘上的会话数据目录（jdtls 的 `-data` 带锁）。
+    state
         .lsp_manager
-        .close_session_for_restart(&project_path, &language_id);
+        .close_session_for_restart(&project_path, &language_id)
+        .await;
 
     // Re-create session (triggers lazy init + reopen docs on next request).
     // 重建走统一的阻塞隔离路径 —— 状态栏「崩溃重试」一键触达，绝不允许在
@@ -302,10 +303,11 @@ pub async fn lsp_restart_all_sessions(
         .lsp_manager
         .session_language_ids_for_project(&project_path);
     for language_id in languages {
-        // 同上：重启路径静默关闭（不宣告 stopped），避免 chip 闪断。
-        let _ = state
+        // 同上：静默关闭 + 等收口（避免新会话与未退出的旧进程抢同一把 workspace 锁）。
+        state
             .lsp_manager
-            .close_session_for_restart(&project_path, &language_id);
+            .close_session_for_restart(&project_path, &language_id)
+            .await;
         ensure_session_async(&state, &project_path, &language_id, None).await?;
     }
     Ok(())

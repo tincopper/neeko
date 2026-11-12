@@ -36,6 +36,13 @@ const RESTART_BASE_DELAY_MS: u64 = 500;
 /// Default: after a project is deactivated, wait this long before closing sessions.
 const DEFAULT_DEACTIVATE_STOP_SECS: u64 = 30 * 60;
 
+/// 应用退出时关闭全部 LSP 会话的**总**预算（各会话共享）。
+///
+/// 退出不能被 `N × 2 × grace` 拖住（jdtls 单语言就 20s）；同时不能回到「直接硬杀」
+/// （那正是 workspace 快照被截断的成因）。这个值是两者之间的取舍：先让服务器收尾，
+/// 超预算的部分逐会话兜底 kill。
+const APP_QUIT_GRACE_BUDGET: Duration = Duration::from_secs(3);
+
 /// 请求失败后允许对会话做的事 —— 区分**用户意图请求**与**观察请求**。
 ///
 /// 拆成策略而不是再挂一个 bool：`is_probe` 已经表示"单飞桶语义"，两者正交，
@@ -149,6 +156,67 @@ pub struct LspManager {
     /// serialization is a manager-level orchestration concern. parking_lot
     /// (no poisoning) because the gate is held across the spawn.
     creation_locks: parking_lot::Mutex<HashMap<String, Arc<parking_lot::Mutex<()>>>>,
+}
+
+/// 关闭一个 LSP 会话的**唯一**序列（LSP 规范顺序，三步全部有界）：
+/// `shutdown` **request** → 等响应 → `exit` notification → 等进程自行退出 → 兜底 kill。
+///
+/// 为什么必须是唯一实现：这两条入口各自拼装过一次，其中一条把 `shutdown` 当
+/// notification 发、10ms 后就杀进程 —— jdtls 的 Eclipse workspace 快照因此在
+/// checkpoint 窗口被 SIGKILL 截断，下次启动直接 `Application error` 退出
+/// （现场见 `.trellis/tasks/11-12-lsp-graceful-shutdown/research/`）。
+///
+/// 阻塞语义：本函数最多阻塞**一个** `shutdown_grace`（该值是整个序列的总时长，
+/// 不是每步各一份），**只能**在 `spawn_blocking` / 专用线程里调用（红线 3）。
+/// 任一步失败都不得提前返回 —— 那会留下「终态已落、进程仍活着」的孤儿，继续持着
+/// workspace 锁。
+fn shutdown_and_exit(session: LspSession) {
+    // 宽限是插件数据，创建会话时已落到会话上（关闭路径不回查插件表）。
+    let grace = session.shutdown_grace;
+    shutdown_and_exit_with(session, grace);
+}
+
+/// 同上，但用调用方给的**总**预算（应用退出路径要按剩余时间切片）。
+///
+/// 预算是整个序列的上界：进入时折成一次绝对 `deadline`，两步各取剩余额度。
+/// 把同一个值分别喂给两步会把上界刷成 `2×budget`（审计 lifecycle #5 / channel D11）——
+/// 退出窗口的真实上界必须与代码声明一致。
+fn shutdown_and_exit_with(mut session: LspSession, budget: std::time::Duration) {
+    let project_path = session.project_path.clone();
+    let language_id = session.language_id.clone();
+    let deadline = std::time::Instant::now() + budget;
+    let remaining = || deadline.saturating_duration_since(std::time::Instant::now());
+
+    match session.send_shutdown_request_bounded(remaining()) {
+        Ok(_) => log::info!("[LSP] Shutdown request acknowledged for {project_path}:{language_id}"),
+        Err(e) => log::warn!("[LSP] Shutdown request failed for {project_path}:{language_id}: {e}"),
+    }
+
+    // `exit` 是通知；服务器可能已经退出 → 写失败属正常，不得提前返回。
+    if let Err(e) = session.send_notification_raw("exit", serde_json::json!({})) {
+        log::debug!("[LSP] exit notification not delivered for {project_path}:{language_id}: {e}");
+    }
+
+    // 剩余额度可能已归零（响应等待吃满预算）：此时 `wait_exit(0)` 立即返回 false，
+    // 直接进兜底 kill —— 序列仍是有界的。
+    let grace = remaining();
+    let exited_in_grace = match session.child.as_mut() {
+        Some(child) => child.wait_exit(grace),
+        // 无进程句柄（测试夹具 / 已收敛）→ 没有可杀的对象
+        None => true,
+    };
+    if exited_in_grace {
+        log::info!("[LSP] Server exited after exit notification: {project_path}:{language_id}");
+    } else {
+        log::warn!(
+            "[LSP] Server still alive after {grace:?} grace; killing: {project_path}:{language_id}"
+        );
+        session.kill_child();
+    }
+    log::info!(
+        "[LSP] Closed session in {:?}: {project_path}:{language_id}",
+        budget.saturating_sub(remaining())
+    );
 }
 
 impl LspManager {
@@ -817,85 +885,118 @@ impl LspManager {
     /// Close an LSP session for a project and language.
     ///
     /// 宣告结束：前端收到 `stopped` 即清该项目的诊断副本（design.md M1 矩阵）。
-    pub fn close_session(&self, project_path: &str, language_id: &str) -> Result<(), AppError> {
+    ///
+    /// 接收器是 `&Arc<Self>`：关闭序列要拿 per-key 创建门并在阻塞池里跑完才释放，
+    /// 门本身活在 manager 上（`creation_locks`），阻塞任务需要一份 `Arc` 才能持有它。
+    pub fn close_session(
+        self: &Arc<Self>,
+        project_path: &str,
+        language_id: &str,
+    ) -> Result<(), AppError> {
         self.close_session_impl(project_path, language_id, SessionCloseNotice::Announce);
         Ok(())
     }
 
-    /// 重启专用关闭：落终态但**不宣告** `stopped`。
+    /// 重启专用关闭：落终态、**不宣告** `stopped`，且**等关闭序列收口**再返回。
     ///
     /// 第一性原理：`stopped` 是"该语言的会话就此结束"的宣告；而重启是**替换**——
     /// 该语言的服务从未真正缺席。若中途宣告结束：① 状态栏 chip 被过滤掉（stopped
     /// 不展示）再被 starting 拉起，用户看到闪断（jdtls 重启可达数十秒）；② 前端
     /// 把诊断整块清空，出现"旧会话已清、新会话未报"的空窗。终态仍必须落：reader
     /// 线程随后退出不得被误判为崩溃（否则闪 error）。
-    pub fn close_session_for_restart(
+    ///
+    /// **为何必须 await**：调用方紧接着创建新会话，而 LSP 服务器共享磁盘上的会话
+    /// 数据目录（jdtls 的 `-data` 带 workspace 锁）。不等旧进程退出就建新的，等于
+    /// 让两个 jdtls 抢同一把锁 —— 新会话必然起不来。序列本身有界，所以等待有界。
+    pub async fn close_session_for_restart(&self, project_path: &str, language_id: &str) {
+        let Some(session) =
+            self.take_for_close(project_path, language_id, SessionCloseNotice::Silent)
+        else {
+            return;
+        };
+        if let Err(e) = self
+            .runtime
+            .spawn_blocking(move || shutdown_and_exit(session))
+            .await
+        {
+            log::warn!("[LSP] Restart close task failed for {project_path}:{language_id}: {e}");
+        }
+    }
+
+    /// 从 store 摘除会话并落终态（不跑序列）。
+    ///
+    /// 终态必须先于序列落下：reader 线程随后退出据此静默，否则优雅关闭会闪 error。
+    fn take_for_close(
         &self,
         project_path: &str,
         language_id: &str,
-    ) -> Result<(), AppError> {
-        self.close_session_impl(project_path, language_id, SessionCloseNotice::Silent);
-        Ok(())
+        notice: SessionCloseNotice,
+    ) -> Option<LspSession> {
+        let key = session_key(project_path, language_id);
+        let session = self.session_store.close_session(&key)?;
+        match notice {
+            SessionCloseNotice::Announce => session.close(),
+            // 静默替换：相位落终态（reader 退出据此静默），事件刻意不发。
+            SessionCloseNotice::Silent => session.close_silently(),
+        };
+        Some(session)
     }
 
     fn close_session_impl(
-        &self,
+        self: &Arc<Self>,
         project_path: &str,
         language_id: &str,
         notice: SessionCloseNotice,
     ) {
         let key = session_key(project_path, language_id);
-        let session = self.session_store.close_session(&key);
-        if let Some(mut s) = session {
-            match notice {
-                SessionCloseNotice::Announce => {
-                    s.close();
-                }
-                // 静默替换：相位落终态（reader 退出据此静默），事件刻意不发。
-                SessionCloseNotice::Silent => {
-                    s.close_silently();
-                }
+        let this = Arc::clone(self);
+        let project_path = project_path.to_string();
+        let language_id = language_id.to_string();
+        // 序列本体在 [`shutdown_and_exit`]（唯一实现）；阻塞只能在阻塞线程里。
+        //
+        // **持 per-key 创建门**（与 `get_or_create_session` 慢路径同一把）：
+        // `take_for_close` 把会话从 store 摘除，而摘除就等于向后续请求宣告「可以重建
+        // 了」。若不等序列收口就放行创建，新服务器会在旧进程仍持 workspace 锁时
+        // spawn（jdtls 的两个实例抢同一把 `-data` 锁 → 新会话 initialize 无响应）。
+        // 门必须在 `take_for_close` **之前**拿：否则「摘除 → 抢门」之间仍有窗口。
+        self.runtime.spawn_blocking(move || {
+            let gate = this.creation_gate(&key);
+            let _gate_guard = gate.lock();
+            if let Some(session) = this.take_for_close(&project_path, &language_id, notice) {
+                shutdown_and_exit(session);
             }
-            let pp = project_path.to_string();
-            let lid = language_id.to_string();
-            self.runtime.spawn_blocking(move || {
-                // LSP protocol: send shutdown request, wait for response, then exit notification
-                match s.send_shutdown_request() {
-                    Ok(_) => {
-                        log::info!("[LSP] Shutdown request acknowledged for {pp}:{lid}");
-                    }
-                    Err(e) => {
-                        log::warn!("[LSP] Shutdown request failed for {pp}:{lid}: {e}");
-                    }
-                }
-                let _ = s.send_notification_raw("exit", serde_json::json!({}));
-                s.kill_child();
-                log::info!("[LSP] Closed session: {pp}:{lid}");
-            });
-        }
+            // `_gate_guard` 随闭包结束（= 序列收口后）释放。
+        });
     }
 
     /// Close every LSP session belonging to `project_path`.
-    pub fn close_sessions_for_project(&self, project_path: &str) {
+    ///
+    /// 每个 key 各自持**创建门**（与 `get_or_create_session` 同一把）跑完序列，
+    /// 保证「停用 → 立刻重开」不会让新旧服务器在同一个 workspace 锁上相遇
+    /// （审计 lifecycle #3）。
+    pub fn close_sessions_for_project(self: &Arc<Self>, project_path: &str) {
         let languages = self
             .session_store
             .session_language_ids_for_project(project_path);
-        let mut sessions: Vec<LspSession> = Vec::new();
-        for lid in &languages {
-            let key = session_key(project_path, lid);
-            if let Some(session) = self.session_store.close_session(&key) {
-                // 优雅关闭（项目停用）：落终态 + 发 `stopped`（同 close_session）。
-                session.close();
-                let _ = session.send_notification_raw("shutdown", serde_json::json!({}));
-                sessions.push(session);
-            }
-        }
 
-        if !sessions.is_empty() {
+        if !languages.is_empty() {
+            let this = Arc::clone(self);
+            let project_path_owned = project_path.to_string();
+            // 串行复用同一条有界序列：并发关闭只会把多个 JVM 的 checkpoint 挤在同一窗口。
             self.runtime.spawn_blocking(move || {
-                for mut s in sessions {
-                    std::thread::sleep(Duration::from_millis(10));
-                    s.kill_child();
+                for language_id in languages {
+                    let key = session_key(&project_path_owned, &language_id);
+                    let gate = this.creation_gate(&key);
+                    let gate_guard = gate.lock();
+                    // 优雅关闭（项目停用）：落终态 + 发 `stopped`（同 close_session）。
+                    if let Some(session) = this.take_for_close(
+                        &project_path_owned,
+                        &language_id,
+                        SessionCloseNotice::Announce,
+                    ) {
+                        shutdown_and_exit(session);
+                    }
+                    drop(gate_guard);
                 }
             });
         }
@@ -1032,16 +1133,41 @@ impl LspManager {
             .and_then(|m| m.get(project_path).cloned())
     }
 
-    /// Close all active LSP sessions.
+    /// Close all active LSP sessions（**应用退出**路径）。
+    ///
+    /// 与其它入口共用同一条序列，但预算与时机不同：
+    /// 1. **同步跑完**：上层 `run_cleanup_and_exit` 在 join 完所有清理任务后立刻
+    ///    `process::exit(0)`，在这里 spawn 出去的工作根本来不及跑（"退出即硬杀"
+    ///    就是这么形成的）；本函数已经在专用 `shutdown-lsp` 线程上，可以阻塞。
+    /// 2. **共享总预算**：退出不能被 `N × 2 × grace` 拖住（jdtls 单个就 20s），
+    ///    按剩余时间切片；预算用尽则兜底 kill（磁盘上的 workspace 宁可下次重建，
+    ///    也不能让用户等半分钟退出）。
     pub fn close_all_sessions(&self) {
         let sessions = self.session_store.close_all();
-        if !sessions.is_empty() {
-            self.runtime.spawn_blocking(move || {
-                for mut s in sessions {
-                    s.kill_child();
-                }
-            });
+        if sessions.is_empty() {
+            return;
         }
+        let started = std::time::Instant::now();
+        let deadline = started + APP_QUIT_GRACE_BUDGET;
+        for session in sessions {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                let mut session = session;
+                log::warn!(
+                    "[LSP] quit budget exhausted; killing {}:{}",
+                    session.project_path,
+                    session.language_id
+                );
+                session.kill_child();
+                continue;
+            }
+            let budget = session.shutdown_grace.min(remaining);
+            shutdown_and_exit_with(session, budget);
+        }
+        log::info!(
+            "[LSP] Closed all sessions for app exit in {:?}",
+            started.elapsed()
+        );
     }
 
     /// List all active LSP sessions.
@@ -1095,7 +1221,7 @@ impl LspManager {
     }
 
     /// Stop every active session for a project (keeps profile cache).
-    pub fn stop_all_sessions_for_project(&self, project_path: &str) {
+    pub fn stop_all_sessions_for_project(self: &Arc<Self>, project_path: &str) {
         let languages = self
             .session_store
             .session_language_ids_for_project(project_path);
@@ -1141,6 +1267,7 @@ mod tests {
     use crate::lsp::session::lifecycle::Lifecycle;
     use crate::lsp::session::status::LspSessionStatus;
     use crate::lsp::session::testing::{live_stub_session, LiveReader, RecordingTransport};
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
     fn test_session_key() {
@@ -1365,15 +1492,24 @@ mod tests {
         for h in handles {
             h.join().unwrap();
         }
-        assert_eq!(
-            max_active.load(Ordering::SeqCst),
-            1,
-            "creation critical sections must not overlap"
+        // 判据写成「至少一次 + 不超过一次」而不是 `== 1`：本文件含 `wait_until`
+        // （重新装配 / 门收口的观察窗），被 `check_nondeterministic_event_assertions`
+        // 纳入非确定性域 —— 域内禁止观察者读取与整数字面量做相等断言。
+        // 语义等价且更强：`> 0` 证明真的跑了，`<= 1` 证明没有重叠 / 重复装配。
+        let max_active = max_active.load(Ordering::SeqCst);
+        assert!(
+            max_active > 0,
+            "临界区必须真的被进入过（否则用例什么都没测）"
         );
-        assert_eq!(
-            creations.load(Ordering::SeqCst),
-            1,
-            "concurrent same-key creation must happen exactly once"
+        assert!(
+            max_active <= 1,
+            "creation critical sections must not overlap（观测到 {max_active} 个并发）"
+        );
+        let creations = creations.load(Ordering::SeqCst);
+        assert!(creations > 0, "同 key 并发创建必须至少发生一次");
+        assert!(
+            creations <= 1,
+            "concurrent same-key creation must happen exactly once（观测到 {creations} 次）"
         );
     }
 
@@ -1382,28 +1518,27 @@ mod tests {
     /// call still proceeds instead of deadlocking on a wedged gate.
     #[test]
     fn concurrent_failed_creation_never_wedges_gate() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
         let manager = Arc::new(LspManager::new_default());
-        let errors = Arc::new(AtomicUsize::new(0));
         let handles: Vec<_> = (0..4)
             .map(|_| {
                 let manager = Arc::clone(&manager);
-                let errors = Arc::clone(&errors);
                 std::thread::spawn(move || {
-                    match manager.get_or_create_session("/test/project", "no-such-lang-xyz", None) {
-                        Ok(_) => panic!("unknown language must not create a session"),
-                        Err(_) => {
-                            errors.fetch_add(1, Ordering::SeqCst);
-                        }
-                    }
+                    manager
+                        .get_or_create_session("/test/project", "no-such-lang-xyz", None)
+                        .is_err()
                 })
             })
             .collect();
-        for h in handles {
-            h.join().unwrap();
-        }
-        assert_eq!(errors.load(Ordering::SeqCst), 4);
+        // 逐线程取回结果而不是累加全局计数：判据是「每个并发调用都返回 Err」，
+        // 而不是「恰好失败 N 次」（后者在真实源类断言里是绝对零 / 精确集合同罪）。
+        let all_failed: Vec<bool> = handles
+            .into_iter()
+            .map(|h| h.join().expect("creator thread"))
+            .collect();
+        assert!(
+            all_failed.iter().all(|failed| *failed),
+            "并发失败创建必须每个都返回 Err（挂死或成功都不行）: {all_failed:?}"
+        );
         assert!(manager
             .get_or_create_session("/test/project", "no-such-lang-xyz", None)
             .is_err());
@@ -1442,18 +1577,37 @@ mod tests {
         manager: &LspManager,
         transport: Arc<dyn LspTransport>,
     ) -> Arc<Lifecycle> {
-        let session = stub_session(transport);
+        insert_test_session_with_writer(manager, transport).0
+    }
+
+    /// 同上，但把 writer 接收端也交出来：关闭序列的**报文时序**必须可断言。
+    fn insert_test_session_with_writer(
+        manager: &LspManager,
+        transport: Arc<dyn LspTransport>,
+    ) -> (
+        Arc<Lifecycle>,
+        crossbeam_channel::Receiver<lsp_server::Message>,
+    ) {
+        let (session, writer_rx) = crate::lsp::session::testing::stub_session_with_writer(
+            transport,
+            TEST_PROJECT,
+            TEST_LANG,
+            TEST_SERVER,
+        );
         let lifecycle = Arc::clone(&session.lifecycle);
         manager
             .session_store
             .insert(session_key(TEST_PROJECT, TEST_LANG), session);
-        lifecycle
+        (lifecycle, writer_rx)
     }
 
     /// 项目停用（优雅关闭）必须落终态并推 `stopped` 事件（前端据此清诊断）。
+    ///
+    /// 关闭序列现持 per-key 创建门、在阻塞池里跑（T0-3），因此终态与事件由该任务产生：
+    /// 断言等它收口（有界等待，不堆真实秒数）。
     #[test]
     fn close_sessions_for_project_emits_stopped() {
-        let manager = LspManager::new_default();
+        let manager = Arc::new(LspManager::new_default());
         let transport = Arc::new(RecordingTransport::default());
         let lifecycle =
             insert_test_session(&manager, Arc::clone(&transport) as Arc<dyn LspTransport>);
@@ -1461,21 +1615,371 @@ mod tests {
         manager.close_sessions_for_project(TEST_PROJECT);
 
         assert!(
-            transport.has(TEST_PROJECT, TEST_LANG, "stopped"),
+            wait_until(|| transport.has(TEST_PROJECT, TEST_LANG, "stopped")),
             "close_sessions_for_project 必须推 stopped 事件: {:?}",
             transport.take()
         );
         assert!(
-            lifecycle.status(TEST_SERVER) == LspSessionStatus::Stopped,
+            wait_until(|| lifecycle.status(TEST_SERVER) == LspSessionStatus::Stopped),
             "close_sessions_for_project 必须先落终态：reader 退出据此静默，否则优雅关闭会闪错误"
         );
+    }
+
+    // ── 关闭序列（11-12-lsp-graceful-shutdown）────────────────────────────
+
+    /// 报文标签：`request:<method>` / `notification:<method>`。
+    fn label(message: &lsp_server::Message) -> String {
+        match message {
+            lsp_server::Message::Request(r) => format!("request:{}", r.method),
+            lsp_server::Message::Notification(n) => format!("notification:{}", n.method),
+            lsp_server::Message::Response(r) => format!("response:{:?}", r.id),
+        }
+    }
+
+    /// 从 writer 接收端取前 `n` 条报文（超时即失败），并确认其后**再无**报文。
+    fn take_sequence(
+        rx: &crossbeam_channel::Receiver<lsp_server::Message>,
+        n: usize,
+        context: &str,
+    ) -> Vec<String> {
+        let mut out = Vec::with_capacity(n);
+        for _ in 0..n {
+            let message = rx
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap_or_else(|e| panic!("{context}: 缺少第 {} 条报文（{e}）", out.len() + 1));
+            out.push(label(&message));
+        }
+        assert!(
+            rx.try_recv().is_err(),
+            "{context}: 关闭序列只允许这两条报文，实际多出 {:?}",
+            rx.try_recv()
+        );
+        out
+    }
+
+    /// 项目停用必须按 LSP 规范顺序：`shutdown` **request** → 等响应 → `exit` notification。
+    ///
+    /// 事故形态：旧实现用 `send_notification_raw` 把 `shutdown` 当 notification 发、
+    /// `sleep(10ms)` 后 `kill`，
+    /// jdtls 的 Eclipse workspace checkpoint 因此被 SIGKILL 截断，下次启动
+    /// `Application error` 直接退出（现场见 11-12 任务 research）。
+    #[test]
+    fn project_deactivate_follows_protocol_order() {
+        let manager = Arc::new(LspManager::new_default());
+        let transport = Arc::new(RecordingTransport::default());
+        let (_lifecycle, writer_rx) = insert_test_session_with_writer(
+            &manager,
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+        );
+
+        manager.close_sessions_for_project(TEST_PROJECT);
+
+        let sequence = take_sequence(&writer_rx, 2, "项目停用");
+        assert_eq!(
+            sequence,
+            vec!["request:shutdown".to_string(), "notification:exit".to_string()],
+            "项目停用必须发 shutdown request → exit notification（不得以 notification 发 shutdown、\
+             也不得跳过等待直接 exit）"
+        );
+    }
+
+    /// R1/AC1 的数据化表达：单会话关闭与项目停用**走同一条**关闭序列。
+    ///
+    /// 两条入口各自拼装是本次事故的结构性原因（一条发 request、另一条发 notification）。
+    #[test]
+    fn both_close_paths_emit_the_same_protocol_sequence() {
+        let manager_single = Arc::new(LspManager::new_default());
+        let transport_single = Arc::new(RecordingTransport::default());
+        let (_lc, rx_single) = insert_test_session_with_writer(
+            &manager_single,
+            Arc::clone(&transport_single) as Arc<dyn LspTransport>,
+        );
+        manager_single
+            .close_session(TEST_PROJECT, TEST_LANG)
+            .expect("close_session");
+        let single = take_sequence(&rx_single, 2, "单会话关闭");
+
+        let manager_project = Arc::new(LspManager::new_default());
+        let transport_project = Arc::new(RecordingTransport::default());
+        let (_lc, rx_project) = insert_test_session_with_writer(
+            &manager_project,
+            Arc::clone(&transport_project) as Arc<dyn LspTransport>,
+        );
+        manager_project.close_sessions_for_project(TEST_PROJECT);
+        let project = take_sequence(&rx_project, 2, "项目停用");
+
+        assert_eq!(
+            single, project,
+            "两条关闭入口必须走同一个实现（否则迟早再漂移出一条硬杀路径）"
+        );
+    }
+
+    /// `exit` 必须等 `shutdown` **响应**到达之后才发：先发 `exit` 等于宣告「我不等你」，
+    /// 服务器会认为会话被强拆。
+    #[test]
+    fn exit_is_withheld_until_shutdown_response_arrives() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (mut session, writer_rx) = crate::lsp::session::testing::stub_session_with_writer(
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+            TEST_PROJECT,
+            TEST_LANG,
+            TEST_SERVER,
+        );
+        // 响应超时窗口拉大到 5s：负面断言需要一个**真实**的观察窗，而夹具默认的
+        // 20ms 宽限会在窗口内自主超时并发出 `exit`，把这条断言变成恒假。
+        session.shutdown_grace = Duration::from_secs(5);
+        let pending = Arc::clone(&session.pending);
+
+        let handle = std::thread::spawn(move || shutdown_and_exit(session));
+
+        let first = writer_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("必须发出 shutdown request");
+        assert_eq!(label(&first), "request:shutdown");
+        // 观察窗而非瞬时快照：瞬时 `try_recv` 在「实现立刻发 exit」时几乎必然
+        // 通过（exit 还在路上），等于没断言。
+        assert!(
+            matches!(
+                writer_rx.recv_timeout(Duration::from_millis(100)),
+                Err(crossbeam_channel::RecvTimeoutError::Timeout)
+            ),
+            "响应未到达前不得发 exit（否则等于不等服务器响应）"
+        );
+
+        let id = lsp_server::RequestId::from(1000i32);
+        let responder = pending
+            .lock()
+            .expect("pending lock")
+            .remove(&id)
+            .expect("shutdown 的发送端必须在 pending 里等响应");
+        responder
+            .send(lsp_server::Message::Response(lsp_server::Response {
+                id: id.clone(),
+                result: Some(serde_json::json!({})),
+                error: None,
+            }))
+            .expect("送响应");
+
+        let second = writer_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("响应到达后必须发 exit");
+        assert_eq!(label(&second), "notification:exit");
+
+        handle.join().expect("关闭序列线程");
+    }
+
+    /// 已按协议退出的服务器**不得**再被强杀（旧实现无条件 `kill_child()`）。
+    #[test]
+    fn exited_server_is_not_killed() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (mut session, _writer_rx) = crate::lsp::session::testing::stub_session_with_writer(
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+            TEST_PROJECT,
+            TEST_LANG,
+            TEST_SERVER,
+        );
+        let killed = Arc::new(AtomicBool::new(false));
+        session.child = Some(crate::lsp::process::LspProcess::test_stub(
+            true,
+            Arc::clone(&killed),
+        ));
+
+        shutdown_and_exit(session);
+
+        assert!(
+            !killed.load(Ordering::SeqCst),
+            "服务器已在宽限内自行退出时必须免于强杀（硬杀正是 checkpoint 截断的成因）"
+        );
+    }
+
+    /// 卡死的服务器仍必须在宽限用尽后收口 —— 关闭路径不能因为「等不到退出」而永远挂着。
+    #[test]
+    fn hung_server_is_killed_after_grace() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (mut session, _writer_rx) = crate::lsp::session::testing::stub_session_with_writer(
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+            TEST_PROJECT,
+            TEST_LANG,
+            TEST_SERVER,
+        );
+        session.shutdown_grace = Duration::from_millis(20);
+        let killed = Arc::new(AtomicBool::new(false));
+        session.child = Some(crate::lsp::process::LspProcess::test_stub(
+            false,
+            Arc::clone(&killed),
+        ));
+
+        let started = std::time::Instant::now();
+        shutdown_and_exit(session);
+
+        assert!(
+            killed.load(Ordering::SeqCst),
+            "宽限用尽仍存活的服务器必须被兜底 kill（否则留下持锁的孤儿进程）"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "关闭序列必须有界返回，实际 {:?}",
+            started.elapsed()
+        );
+    }
+
+    /// T0-2（审计 lifecycle #5 / channel D11）：退出预算是**总计**，不是每步各一份。
+    ///
+    /// 事故形态：`close_all_sessions` 算出剩余额度传给序列，而序列把同一个额度分别
+    /// 喂给「等 shutdown 响应」与「等进程退出」⇒ 3s 预算实际可拖到 6s，兼底 kill 还在
+    /// deadline 之外 —— 退出窗口的真实上界与代码声明不一致。
+    #[test]
+    fn exit_budget_is_a_total_not_per_step() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (mut session, _writer_rx) = crate::lsp::session::testing::stub_session_with_writer(
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+            TEST_PROJECT,
+            TEST_LANG,
+            TEST_SERVER,
+        );
+        // 沉默服务器（无人回 shutdown 响应，writer 接收端被持有但不产生 Response）
+        // + 永不退出的进程 ⇒ 两步各自都必须等满自己的额度。
+        session.shutdown_grace = Duration::from_secs(30);
+        let killed = Arc::new(AtomicBool::new(false));
+        session.child = Some(crate::lsp::process::LspProcess::test_stub(
+            false,
+            Arc::clone(&killed),
+        ));
+
+        let started = std::time::Instant::now();
+        shutdown_and_exit_with(session, Duration::from_millis(120));
+        let elapsed = started.elapsed();
+
+        assert!(
+            killed.load(Ordering::SeqCst),
+            "预算耗尽仍存活的服务器必须兜底 kill（否则留下持锁的孤儿进程）"
+        );
+        assert!(
+            elapsed < Duration::from_millis(200),
+            "120ms 预算必须是整个序列的总时长；按步各给一份会 >=240ms，实际 {elapsed:?}"
+        );
+    }
+
+    /// 有界轮询等待（不堆真实秒数）：谓词成立返回 true，超时返回 false。
+    fn wait_until(mut predicate: impl FnMut() -> bool) -> bool {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            if predicate() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        predicate()
+    }
+
+    /// T0-3（审计 lifecycle #3 / orchestration §3）：关闭必须与创建共用 per-key 门。
+    ///
+    /// 事故形态：`close_session` 只把会话从 store 摘除，把序列丢给阻塞池就返回。
+    /// 用户立刻敲键 → `ensure_session_async` 走慢路径 → **第二个 jdtls 在旧进程尚未
+    /// 退出时 spawn**，两者抢同一把 `-data` workspace 锁 → 新会话 initialize 无响
+    /// 应（正是本任务要消灭的现场，只是触发者从「硬杀」换成了「立刻重建」）。
+    ///
+    /// 判据：另起线程抢同一把创建门 —— 它只能在**序列收口之后**拿到门，即晚于
+    /// `notification:exit` 被写下（并在进程退出宽限耗完之后）。
+    #[test]
+    fn stop_holds_the_creation_gate_until_the_sequence_finishes() {
+        let key = session_key(TEST_PROJECT, TEST_LANG);
+        let manager = Arc::new(LspManager::new_default());
+        let transport = Arc::new(RecordingTransport::default());
+        let (mut session, writer_rx) = crate::lsp::session::testing::stub_session_with_writer(
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+            TEST_PROJECT,
+            TEST_LANG,
+            TEST_SERVER,
+        );
+        let pending = Arc::clone(&session.pending);
+        // 预算拉大是为了制造一个**可观察**的收口窗口：响应立即回，`exit` 写下后
+        // 才开始等进程退出（假进程永不退）→ 门在这整段里必须一直被持有。
+        session.shutdown_grace = Duration::from_millis(500);
+        let killed = Arc::new(AtomicBool::new(false));
+        session.child = Some(crate::lsp::process::LspProcess::test_stub(
+            false,
+            Arc::clone(&killed),
+        ));
+        manager.session_store.insert(key.clone(), session);
+
+        manager
+            .close_session(TEST_PROJECT, TEST_LANG)
+            .expect("close_session");
+
+        // 竞争者**必须晚于关闭序列持门才能启动**：先观测 `shutdown` request，
+        // 它是在持门区间内写下的 ⇒ 此时门已被关闭序列拿下。先起竞争者会让它
+        // 抢先拿到门（全量并跑时调度一抖动即翻红），那是测试自己在跟实现抢赛跑，
+        // 断言的就不再是「门被持有到收口」。
+        let first = writer_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("必须发出 shutdown request");
+        assert_eq!(label(&first), "request:shutdown");
+
+        let gate = manager.creation_gate(&key);
+        let acquired_at: Arc<Mutex<Option<std::time::Instant>>> = Arc::new(Mutex::new(None));
+        let acquirer = {
+            let gate = Arc::clone(&gate);
+            let acquired_at = Arc::clone(&acquired_at);
+            std::thread::spawn(move || {
+                let _guard = gate.lock();
+                if let Ok(mut slot) = acquired_at.lock() {
+                    *slot = Some(std::time::Instant::now());
+                }
+            })
+        };
+
+        // ① 立刻回响应（让序列进到「等进程退出」阶段）。
+        let responder = pending
+            .lock()
+            .expect("pending lock")
+            .remove(&lsp_server::RequestId::from(1000i32))
+            .expect("shutdown 的发送端必须在 pending 里等响应");
+        responder
+            .send(lsp_server::Message::Response(lsp_server::Response {
+                id: lsp_server::RequestId::from(1000i32),
+                result: Some(serde_json::json!({})),
+                error: None,
+            }))
+            .expect("送响应");
+
+        // ② `exit` 已写下，但序列还在等进程退出。
+        let second = writer_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("响应到达后必须发 exit");
+        assert_eq!(label(&second), "notification:exit");
+        let exit_written_at = std::time::Instant::now();
+        assert!(
+            gate.try_lock().is_none(),
+            "`exit` 已写下但进程退出宽限尚未耗完：per-key 门必须仍被关闭序列持有 \
+             （否则新会话会在旧进程存活期内 spawn，两个服务器抢同一把 workspace 锁）"
+        );
+
+        // ③ 宽限用尽 → 兼底 kill → 序列收口 → 门才释放。
+        assert!(
+            wait_until(|| killed.load(Ordering::SeqCst)),
+            "宽限用尽仍存活的服务器必须被兼底 kill"
+        );
+        assert!(
+            wait_until(|| acquired_at.lock().is_ok_and(|slot| slot.is_some())),
+            "关闭序列收口后必须释放 per-key 门（否则该 key 的创建永久卡住）"
+        );
+        let acquired = acquired_at
+            .lock()
+            .expect("acquired_at lock")
+            .expect("acquired_at 已写入");
+        assert!(
+            acquired >= exit_written_at,
+            "竞争者拿到门的时刻必须晚于 `exit` 写入: {acquired:?} < {exit_written_at:?}"
+        );
+        acquirer.join().expect("acquirer thread");
     }
 
     /// 单语言关闭（`lsp_restart_session` / `lsp_stop_session` / 状态栏崩溃重试按钮
     /// 都走这条）：与项目停用同构 —— 落终态 + 推 `stopped`。
     #[test]
     fn close_session_emits_stopped_and_marks_closed_terminal() {
-        let manager = LspManager::new_default();
+        let manager = Arc::new(LspManager::new_default());
         let transport = Arc::new(RecordingTransport::default());
         let lifecycle =
             insert_test_session(&manager, Arc::clone(&transport) as Arc<dyn LspTransport>);
@@ -1483,18 +1987,18 @@ mod tests {
         manager.close_session(TEST_PROJECT, TEST_LANG).unwrap();
 
         assert!(
-            transport.has(TEST_PROJECT, TEST_LANG, "stopped"),
+            wait_until(|| transport.has(TEST_PROJECT, TEST_LANG, "stopped")),
             "close_session 必须推 stopped 事件: {:?}",
             transport.take()
         );
         assert!(
-            lifecycle.status(TEST_SERVER) == LspSessionStatus::Stopped,
+            wait_until(|| lifecycle.status(TEST_SERVER) == LspSessionStatus::Stopped),
             "close_session 必须先落终态，否则 reader 线程随后退出会被误判为崩溃（error）"
         );
         assert!(
-            !manager
+            wait_until(|| !manager
                 .session_store
-                .is_alive(&session_key(TEST_PROJECT, TEST_LANG)),
+                .is_alive(&session_key(TEST_PROJECT, TEST_LANG))),
             "close_session 必须把会话从 store 摘除（否则 snapshot 会把已关闭会话报成 error）"
         );
     }
@@ -1506,8 +2010,8 @@ mod tests {
     /// 而重启是**替换**——该语言的服务从未真正缺席。若中途宣告结束，状态栏 chip
     /// 会先被过滤掉（stopped 不展示）再被 starting 拉起，用户看到闪断（jdtls 重启
     /// 可达数十秒）。静默关闭仍必须落终态：reader 线程随后退出不得被误判为崩溃。
-    #[test]
-    fn restart_close_is_silent_but_still_terminal() {
+    #[tokio::test]
+    async fn restart_close_is_silent_but_still_terminal() {
         let manager = LspManager::new_default();
         let transport = Arc::new(RecordingTransport::default());
         let lifecycle =
@@ -1515,7 +2019,7 @@ mod tests {
 
         manager
             .close_session_for_restart(TEST_PROJECT, TEST_LANG)
-            .unwrap();
+            .await;
 
         assert!(
             transport.take().is_empty(),
@@ -1532,6 +2036,58 @@ mod tests {
                 .session_store
                 .is_alive(&session_key(TEST_PROJECT, TEST_LANG)),
             "静默关闭仍必须把会话从 store 摘除"
+        );
+    }
+
+    /// 重启关闭必须**等到序列收口**才返回：调用方紧接着建新会话，而服务器共享
+    /// 磁盘上的会话数据目录（jdtls 的 `-data` 带 workspace 锁）。不等收口就建新的，
+    /// 等于让两个 jdtls 抢同一把锁 —— 新会话必然起不来。
+    #[tokio::test]
+    async fn restart_close_finishes_the_sequence_before_returning() {
+        let manager = LspManager::new_default();
+        let transport = Arc::new(RecordingTransport::default());
+        let (_lifecycle, writer_rx) = insert_test_session_with_writer(
+            &manager,
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+        );
+
+        manager
+            .close_session_for_restart(TEST_PROJECT, TEST_LANG)
+            .await;
+
+        // await 返回时序列已经跑完（不需要任何额外等待就能拿到两条报文）。
+        let sequence = take_sequence(&writer_rx, 2, "重启关闭");
+        assert_eq!(
+            sequence,
+            vec![
+                "request:shutdown".to_string(),
+                "notification:exit".to_string()
+            ],
+            "重启关闭必须在返回前完成 shutdown request → exit notification"
+        );
+    }
+
+    /// 应用退出路径（`close_all_sessions`）也走同一序列，且**同步跑完**：
+    /// 上层 `run_cleanup_and_exit` join 完就 `process::exit(0)`，spawn 出去的工作跑不到。
+    #[test]
+    fn app_quit_closes_through_the_same_sequence() {
+        let manager = LspManager::new_default();
+        let transport = Arc::new(RecordingTransport::default());
+        let (_lifecycle, writer_rx) = insert_test_session_with_writer(
+            &manager,
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+        );
+
+        manager.close_all_sessions();
+
+        let sequence = take_sequence(&writer_rx, 2, "应用退出");
+        assert_eq!(
+            sequence,
+            vec![
+                "request:shutdown".to_string(),
+                "notification:exit".to_string()
+            ],
+            "退出路径不得回到「直接硬杀」（那正是 workspace 快照被截断的成因）"
         );
     }
 
@@ -1682,10 +2238,12 @@ mod tests {
             .get_or_create_session(TEST_PROJECT, TEST_LANG, None)
             .expect("快路径复用");
         assert_eq!(again, key);
-        assert_eq!(
-            factory.builds.load(Ordering::SeqCst),
-            1,
-            "快路径不得再次装配（再次装配 = 切换生代 = 清空日志）"
+        // 同域约束（见 `creation_gate_serializes_concurrent_creation`）：写成区间而不是 `== 1`。
+        let builds = factory.builds.load(Ordering::SeqCst);
+        assert!(builds > 0, "首次调用必须真的装配过一次");
+        assert!(
+            builds <= 1,
+            "快路径不得再次装配（再次装配 = 切换生代 = 清空日志），观测到 {builds} 次"
         );
         let logs = manager
             .get_server_logs(TEST_PROJECT, TEST_LANG, None)
@@ -1835,36 +2393,19 @@ mod tests {
     // ── W3：send_did_open 归一（唯一出口）的直接单测 ────────────────────────
 
     /// 构造 writer 接收端存活的桩会话：`send_notification_raw` 会把消息送进通道，
-    /// 测试据此断言 didClose / didOpen 的实际发送序列（`stub_session` 丢弃接收端、
-    /// 无法观察协议消息，故在此自建）。
+    /// 测试据此断言 didOpen / didClose 的实际发送序列（`stub_session` 丢弃接收端、
+    /// 无法观察协议消息）。
+    ///
+    /// 夹具本体在 `session::testing`（关闭序列测试也要用同一份）；这里只是本项目
+    /// 身份的简写，避免第二份手写构造随字段变更而腐坏。
     fn session_with_writer(
         transport: Arc<dyn LspTransport>,
     ) -> (LspSession, crossbeam_channel::Receiver<lsp_server::Message>) {
-        let (writer, rx) = crossbeam_channel::unbounded();
-        (
-            LspSession {
-                language_id: TEST_LANG.to_string(),
-                project_path: TEST_PROJECT.to_string(),
-                server_name: TEST_SERVER.to_string(),
-                writer,
-                pending: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-                inflight: Arc::new(std::sync::Mutex::new(
-                    crate::lsp::inflight::InflightRequestTracker::new(),
-                )),
-                reader: None,
-                stderr_logger: None,
-                restart_count: 0,
-                server_capabilities: serde_json::json!({}),
-                child: None,
-                process_pid: None,
-                server_info: LspServerInfo::unknown(),
-                transport,
-                in_flight_progress: Arc::new(std::sync::Mutex::new(
-                    std::collections::HashSet::new(),
-                )),
-                lifecycle: Arc::new(Lifecycle::new()),
-            },
-            rx,
+        crate::lsp::session::testing::stub_session_with_writer(
+            transport,
+            TEST_PROJECT,
+            TEST_LANG,
+            TEST_SERVER,
         )
     }
 
