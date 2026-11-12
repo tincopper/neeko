@@ -658,3 +658,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 462: LSP IPC budget, dropped capability claim, cross-stack event guard
+<!-- trellis-session: v=2 fp=c824d5226f264872 -->
+
+**Date**: 2026-11-12
+**Task**: LSP IPC budget, dropped capability claim, cross-stack event guard
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `faaab45e` | docs(task): record the LSP cross-layer contract task |
+
+### Status
+
+[OK] **Completed**
