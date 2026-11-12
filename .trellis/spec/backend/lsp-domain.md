@@ -311,6 +311,12 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
    为什么必须：重放用的是登记表里的文本，只在 didOpen 时写一次的话，重放出去的永远是打开
    那一刻的内容（服务器按旧文本分析）。根治方向（前端在会话就绪后重发 didOpen）已记在该
    任务 PRD 的 out of scope。
+9. **IPC 主通道也有字节预算**（11-12-lsp-cross-layer-contracts，红线 4）：
+   `lsp/types.rs::LSP_RESPONSE_MAX_BYTES`（2 MiB）+ `enforce_response_bytes(method, bytes)`。
+   `lsp_transport` 的**所有**返回点收敛到单一出口 `commands.rs::transport_response(method, body)`
+   （新增分支不再可能绕开）；`lsp_request` 在返回前用 `serde_json::to_vec` 量一次长度
+   （多一次序列化是有意的 —— 不知道长度就无法判定）。**超限直接失败、不截断**：截断的 JSON
+   会让前端解析出半个结果，比明确报错更难诊断。新增「原样转发服务器响应」的命令时必须过这个口。
 
 ## 失败诊断归属：证据锚定身份键（10-10-lsp-failure-diagnostics-ownership，勿回退）
 
@@ -429,6 +435,9 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
   → Java 自动导包彻底失效。实测：声明 `true` 时 `List` 的 33 个候选 0 个带
   `additionalTextEdits`，不声明则 33/33 带。
 - `progressReportProvider: true` 而全仓无 `language/progressReport` 处理 —— 同属假声明。
+- `publishDiagnostics.relatedInformation: true` 而全仓无渲染/解析（`src/` 零命中）—— 同属假声明，
+  已删除（11-12-lsp-cross-layer-contracts）。要恢复必须先有渲染色（`DiagnosticRow` /
+  `lspQuickFixPopup`），否则只是让服务器为每条诊断多带一份永不显示的关联位置。
 - **反向违约同样致命**（rust-analyzer 1.97.1）：客户端未在
   `completionItem.resolveSupport.properties` 声明 `additionalTextEdits` 时，r-a 把**所有**
   flyimport 候选整条丢弃，补全列表里永远不会出现 `HashMap`。实测：不声明 108 项无候选，
