@@ -614,3 +614,25 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 460: LSP request channel: typed failure classification, streak, bounded waits
+<!-- trellis-session: v=2 fp=c53bc824b4a55c79 -->
+
+**Date**: 2026-11-12
+**Task**: LSP request channel: typed failure classification, streak, bounded waits
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9bc2bc69` | docs(task): record the LSP request channel task |
+
+### Status
+
+[OK] **Completed**
