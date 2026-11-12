@@ -755,8 +755,19 @@ let output = tokio::time::timeout(
   最后一个句柄释放即注销。**反面教材**：把 lease 放进 `ExecChild` 结构体字段会错——
   `into_wait_and_kill` 把 `ExecChild` 拆开时 lease 当场 drop，而进程还活着（LSP / pi rpc 正是
   这么用的）。回归钉子：`child_registry::tests::registration_outlives_into_wait_and_kill`。
-- **收敛点**：`shutdown_background_and_exit` 的 `CleanupTask`（`"git-children"`，现覆盖全部
-  kill_tree 子进程）在所有后台服务关停前调 `kill_all_live()`（同步驱动，确认有界 5s）；
+- **收敛点（两阶段，11-12 修正）**：`shutdown_background_and_exit` 把清理分成两批——
+  ①`tasks`：各域先跑**自己的优雅收尾**（`close_all_sessions` / `close_terminal_session` …），
+  可并行；②`finalizers`：所有 tasks **全部 join 完**之后才跑收割器
+  （`"git-children"` → `kill_all_live()`，同步驱动，确认有界 5s）。
+
+  **为什么必须分段（2026-11-12 实测的因果）**：`kill_all_live` 会 SIGKILL 收敛表里的**全部**
+  `kill_tree` 子进程，而 LSP 服务器从 spawn 到退出都留在表里（lease 捕获在 kill 闭包）。
+  两批并行时 SIGKILL 毫秒级到达、而 Eclipse 的 workspace checkpoint 要秒级 ⇒ **每次退出都
+  截断服务器侧状态**（jdtls：`SaveManager.restore()` 抛 `ObjectNotFound` → `Application error`
+  → 下次启动握手无响应）。旧文档写的「在后台服务关停**前**调 `kill_all_live`」是反的，已改。
+  机制与回归钉子：`common::shutdown::run_cleanup_phases(tasks, finalizers)` +
+  `tests::finalizers_run_only_after_every_task_finished`。
+
   Local / WSL 的动作用平台门面 `platform::process_spawn::kill_process_tree`（红线 10）本地树杀；
   SSH 的动作在**远端** `kill -9`（新通道）—— 远端 pid 与本地 pid 无关，**不得**本地按 pid 杀。
 - **`kill_all_live` 是同步入口**：它借用全局 runtime 做 `block_on`，**不得**在 async 上下文调用

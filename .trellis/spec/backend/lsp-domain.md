@@ -466,3 +466,122 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
 排查入口：`[perf] do_send_request … awaited …`（后端真实耗时）与 `[LSP] Progress begin/end`
 （服务器自述阶段）；两者对齐即可区分「服务器慢」与「客户端预算小」。
 
+
+## 关闭序列：唯一实现 + 三步有界（11-12-lsp-graceful-shutdown，勿回退）
+
+### 1. Scope / Trigger
+
+任何「关掉一个语言服务器」的改动：`close_session` / `close_session_for_restart` /
+`close_sessions_for_project`（含项目停用的 `schedule_deactivate` 定时路径）/
+`close_all_sessions`（应用退出）。
+新增关闭入口时**只能**调用 `manager.rs::shutdown_and_exit`（或带预算的
+`shutdown_and_exit_with`），不得再拼一份序列。
+
+### 2. Contracts
+
+LSP 规范顺序，三步都必须**有界**：
+
+| 步骤 | 形态 | 有界来源 |
+| --- | --- | --- |
+| `shutdown` | **Request**（服务器响应后才允许 `exit`） | `send_shutdown_request_bounded(grace)`：看门狗到期摘 `pending` 发送端 → `blocking_recv` 立刻以「无响应」失败 |
+| `exit` | Notification | 写失败容忍（服务器可能已退），不得提前返回 |
+| 等进程自行退出 | `LspProcess::wait_exit(grace)`（`Condvar` 退出门，按截止时间循环） | 超时 `false` → 才 `kill_child()` |
+
+- **宽限期是插件数据**：`LspServerTuning::shutdown_grace_ms`（默认 `DEFAULT_SHUTDOWN_GRACE_MS = 2_000`，
+  jdtls 声明 `10_000`）。会话创建时落到 `LspSession::shutdown_grace`，关闭路径**只读会话**。
+  禁止 `language_id == "java"` 分支（红线 15）。
+- **`kill` 必须跳过已退出的进程**（`LspProcess::kill` 先零宽限探一次退出门）：`kill_tree`
+  面向 PID，PID 会被系统回收 —— 对已退出句柄发杀最多空转，对复用 PID 发杀会误杀无辜进程。
+  `Drop for LspProcess` 也走这条，所以「已退出免杀」必须落在 `kill()` 内部。
+- **阻塞语义**：序列最多阻塞 `响应超时 + 退出宽限`，只能在 `spawn_blocking` / 专用线程里跑（红线 3）。
+  项目停用是**串行**关闭各语言会话（并发关闭会把多个 JVM 的 checkpoint 挤进同一窗口）；
+  总时长是 `N × 2 × grace`（N = 该项目的语言数），不是单个 `2 × grace`。
+- 任一步失败都**不得**提前返回：那会留下「终态已落、进程仍活着」的孤儿，继续持着 workspace 锁。
+
+### 2b. 三条入口的差异化约束（同为一条序列，预算/时机不同）
+
+| 入口 | 是否需要等序列跑完 | 预算 | 理由 |
+| --- | --- | --- | --- |
+| `close_session`（用户停止） | 否（fire-and-forget） | 会话宽限 | stop 是单向的，调用方不立刻重建 |
+| `close_session_for_restart` | **是（`async`，必须 `await`）** | 会话宽限 | 调用方紧接着建新会话；服务器共享磁盘上的会话数据目录（jdtls `-data` 带 workspace 锁）→ 不等旧进程退出 = 两个 jdtls 抢同一把锁 |
+| `close_sessions_for_project` | 否 | 会话宽限（串行） | 项目停用发生在离开 30 分钟后，无立即重建 |
+| `close_all_sessions`（应用退出） | **是（同步跑完）** | `APP_QUIT_GRACE_BUDGET`（3s，各会话共享切片） | `run_cleanup_and_exit` join 完就 `process::exit(0)` —— 在这里 spawn 出去的工作**跑不到**，这正是「退出即硬杀」的成因 |
+
+> 退出预算用尽后的兜底 `kill_child()` 是**有意的取舍**：宁可下次重建索引，也不能让用户等
+> `N × 2 × grace` 才退出。
+
+### 3. 违反现场（2026-11-12 实测，证据在 `.trellis/tasks/11-12-lsp-graceful-shutdown/research/`）
+
+项目停用路径曾把 `shutdown` 当 **notification** 发、`sleep(10ms)` 后 `kill_child()`：
+
+```
+用户侧: jdtls exited unexpectedly | stderr: WARNING: Using incubator modules: jdk.incubator.vector
+        LSP initialization: no response received | server stderr: <同一句无害警告>
+真死因: <data>/.metadata/.log
+        The workspace exited with unsaved changes in the previous session
+        ResourcesPlugin.start() → SaveManager.restore() → ObjectNotFoundException
+        → NoClassDefFoundError (jdt.core / jdt.ls.core) → "Application error" → 进程退出
+```
+
+jdtls 的致命日志**只进** `<data>/.metadata/.log`，stderr 里没有任何堆栈 —— 所以
+「`exited unexpectedly` + 只有 incubator 警告」这一组合，先去看 `<data>/.metadata/.log`，
+不要去猜 JDK 版本。`-data` 由启动器决定（Homebrew 的 python 启动器按 `sha1(basename(cwd))`
+分目录，同名工程会撞车），手工恢复 = 删掉该目录重建（纯缓存，代价是重新 import）。
+
+### 4. Tests Required
+
+`manager.rs` 关闭序列测试组（缺一即回退）：
+
+- `project_deactivate_follows_protocol_order` —— 报文逐条 `request:shutdown` → `notification:exit`
+- `both_close_paths_emit_the_same_protocol_sequence` —— 单会话关闭与项目停用序列逐条相等
+- `app_quit_closes_through_the_same_sequence` —— 退出路径同样走序列（不是直接硬杀）
+- `restart_close_finishes_the_sequence_before_returning` —— 重启关闭在返回前已跑完序列
+- `exit_is_withheld_until_shutdown_response_arrives` —— 响应未到不得发 `exit`
+- `exited_server_is_not_killed` —— 宽限内自行退出后不得再 kill
+- `hung_server_is_killed_after_grace` —— 卡死服务器在宽限后用尽后被收口
+- `process.rs`：`wait_exit_times_out_without_signal`（有界）、`kill_is_a_no_op_after_exit`、
+  `process_wait_exit_observes_exit_gate`
+
+夹具：`session::testing::stub_session_with_writer`（暴露 writer 接收端，报文时序可断言）+
+`LspProcess::test_stub(exited, killed)`（假进程，**不 spawn 真实服务器**）。夹具宽限固定 20ms，
+测试里不得出现真实秒级 `sleep`。
+
+### 5. Wrong vs Correct
+
+```rust
+// ✗ 错：notification + 固定 sleep + 硬杀（无法知道服务器是否在 checkpoint）
+let _ = s.send_notification_raw("shutdown", json!({}));
+thread::sleep(Duration::from_millis(10));
+s.kill_child();
+
+// ✗ 错：request 之后立刻杀（顺序对了，但 checkpoint 照样被截断）
+let _ = s.send_shutdown_request();          // 甚至无界等待
+let _ = s.send_notification_raw("exit", json!({}));
+s.kill_child();
+
+// ✓ 对：唯一入
+spawn_blocking(move || shutdown_and_exit(session)).await;
+```
+
+### 2c. 关闭/创建互斥与握手 deadline（T0 审计整改，2026-11-12）
+
+> 这两条是「关闭协议合规」的**闭环**：没有它们，上文的序列仍会在两条路径上被绕开。
+
+1. **关闭与创建共用 per-key 门**：`close_session` / `close_sessions_for_project` 在**阻塞任务内**
+   先取该 key 的 creation gate（与 `get_or_create_session` 慢路径同一把 `parking_lot::Mutex<()>`），
+   再 `take_for_close` + 跑序列。理由：stop 是 fire-and-forget 的时代，用户 stop 后立刻敲键就
+   触发新建 ⇒ 第二个 jdtls 与仍在宽限内的旧进程抢同一 `-data` 锁（与硬杀同源的故障）。
+   回归钉子：`stop_holds_the_creation_gate_until_the_sequence_finishes`。
+   注：`close_session_for_restart` 走 `await`（调用方紧接着重建），语义更强，不需再持门。
+2. **`initialize` 握手必须有 deadline**：`await_init_response(..., timeout)` —— 看门狗到期摘
+   `pending` 发送端（与 `send_shutdown_request_bounded` 同一实现，勿复制第二份）。预算 =
+   `plugin.request_timeout_ms`，未声明回落 `INIT_TIMEOUT_DEFAULT`（60s）。
+   为什么必须有：服务器**活而不答**（撞 `-data` 锁正是这种）时，`blocking_recv` 只由 reader 退出
+   解除 ⇒ 阻塞线程 + per-key 门被永久占用 ⇒ 该 key 的每条 hover/didOpen 排队，前端每条 invoke
+   永不 settle（表现为「LSP 整体没反应」，日志里只有 read 级噪音）。回归钉子：
+   `await_init_response_fails_when_server_stays_silent`。
+3. **退出预算是总计不是每步**：`shutdown_and_exit_with(session, budget)` 内部只算一次
+   `deadline = now + budget`，`shutdown` 等待与退出宽限各取剩余额度；归零即兜底 kill。
+   回归钉子：`exit_budget_is_a_total_not_per_step`（120ms 预算必须 <200ms 收口，按步实现约 240ms）。
+4. **退出清理两阶段**：优雅域先跑完，`kill_all_live` 作为 finalizer 最后跑 —— 否则每次退出都
+   SIGKILL 掉正在 checkpoint 的服务器（详见 `concurrency-guidelines.md`「收敛点（两阶段）」）。
