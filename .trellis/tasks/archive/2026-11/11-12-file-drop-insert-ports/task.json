@@ -3,7 +3,7 @@
   "name": "file-drop-insert-ports",
   "title": "文件拖拽投递推广到任意输入面（编辑器 / 输入框 / composer / 终端）",
   "description": "从文件树拖文件到输入位置：终端解析写死 paneId='p1' 导致非首 pane 的终端静默不落地；且投递目标只有 agent composer + 终端两种。改为统一插入端口注册表（composer / 代码编辑器 / 焦点文本控件 / 终端 + 所有 pane），按端口身份仲裁，未命中必须可见。",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-11-12",
-  "completedAt": null,
+  "completedAt": "2026-11-12",
   "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,7 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "commit": "f480da09"
+  }
 }
