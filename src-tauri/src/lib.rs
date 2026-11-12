@@ -412,9 +412,6 @@ macro_rules! neeko_invoke_handler {
             // ── settings ─────────────────────────────────────────────────────
             $crate::lsp::commands::lsp_request,
             $crate::lsp::commands::lsp_notification,
-            $crate::lsp::commands::lsp_open_document,
-            $crate::lsp::commands::lsp_change_document,
-            $crate::lsp::commands::lsp_close_document,
             $crate::lsp::commands::lsp_close_session,
             $crate::lsp::commands::lsp_list_sessions,
             $crate::lsp::commands::lsp_restart_session,

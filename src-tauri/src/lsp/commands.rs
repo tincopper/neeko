@@ -20,6 +20,23 @@ fn text_document_uri(params: &serde_json::Value) -> Option<&str> {
     params.pointer("/textDocument/uri").and_then(|v| v.as_str())
 }
 
+/// `textDocument/didChange` 的全量同步判定：`contentChanges` 里**没有 `range`**
+/// 时返回新全文，否则（增量同步）返回 `None`。
+///
+/// 为什么后端要区分：增量同步只给出 range + 片段，而 Neeko 没有编辑器缓冲区，
+/// 重建不出全文。伪造「新文本」会让重启重放（`reopen_documents`）拿错文本去
+/// didOpen，服务器按错位内容算出的诊断坐标与编辑器整体偏 —— 所以增量时只推版本、
+/// 文本留旧值并标记可能陈旧。
+#[must_use]
+pub(crate) fn did_change_full_text(params: &Value) -> Option<&str> {
+    let changes = params.get("contentChanges")?.as_array()?;
+    if changes.is_empty() || changes.iter().any(|c| c.get("range").is_some()) {
+        return None;
+    }
+    // 规范形态是单条 `{ text }`；畸形载荷取最后一条（服务器也是逐条应用，末尾即终态）。
+    changes.last()?.get("text")?.as_str()
+}
+
 /// Resolve project execution environment and record it on the LSP manager
 /// before any session spawn / binary check.
 fn bind_project_exec_target(state: &AppStateWrapper, project_path: &str) -> Result<(), AppError> {
@@ -111,90 +128,6 @@ pub async fn lsp_notification(
     state
         .lsp_manager
         .send_notification(&project_path, &language_id, &method, params)
-}
-
-#[tauri::command]
-/// Open a document in an LSP session.
-pub async fn lsp_open_document(
-    project_path: String,
-    language_id: String,
-    uri: String,
-    text: String,
-    version: i64,
-    state: State<'_, AppStateWrapper>,
-) -> Result<(), AppError> {
-    // 会话创建含 spawn + initialize 握手（阻塞秒级）：必须走 spawn_blocking，
-    // 否则同步命令会占住主线程、async 命令会占住 tokio worker（红线 3）。
-    ensure_session_async(&state, &project_path, &language_id, Some(&uri)).await?;
-
-    state
-        .lsp_manager
-        .register_open_document(&project_path, &language_id, &uri, &text, version);
-
-    let params = serde_json::json!({
-        "textDocument": {
-            "uri": uri,
-            "languageId": language_id,
-            "version": version,
-            "text": text,
-        }
-    });
-
-    state
-        .lsp_manager
-        .send_notification(&project_path, &language_id, "textDocument/didOpen", params)
-}
-
-#[tauri::command]
-/// Send a didChange notification for an open document.
-pub fn lsp_change_document(
-    project_path: String,
-    language_id: String,
-    uri: String,
-    version: i64,
-    changes: Value,
-    state: State<AppStateWrapper>,
-) -> Result<(), AppError> {
-    let params = serde_json::json!({
-        "textDocument": {
-            "uri": uri,
-            "version": version,
-        },
-        "contentChanges": changes,
-    });
-
-    state.lsp_manager.send_notification(
-        &project_path,
-        &language_id,
-        "textDocument/didChange",
-        params,
-    )
-}
-
-#[tauri::command]
-/// Close a document in an LSP session.
-pub fn lsp_close_document(
-    project_path: String,
-    language_id: String,
-    uri: String,
-    state: State<AppStateWrapper>,
-) -> Result<(), AppError> {
-    state
-        .lsp_manager
-        .unregister_open_document(&project_path, &language_id, &uri);
-
-    let params = serde_json::json!({
-        "textDocument": {
-            "uri": uri,
-        }
-    });
-
-    state.lsp_manager.send_notification(
-        &project_path,
-        &language_id,
-        "textDocument/didClose",
-        params,
-    )
 }
 
 #[tauri::command]
@@ -566,6 +499,28 @@ pub async fn lsp_transport(
         }
     }
 
+    if method == "textDocument/didChange" {
+        if let (Some(uri), Some(version)) = (
+            text_document_uri(&params),
+            params
+                .pointer("/textDocument/version")
+                .and_then(|v| v.as_i64()),
+        ) {
+            // 登记表与服务器同源：全量同步 → 文本 + 版本；增量 → 只推版本。
+            // 未登记的 uri 不造条目（登记表 = 我们确实 didOpen 过的文档）。
+            state.lsp_manager.record_document_change(
+                &project_path,
+                &language_id,
+                uri,
+                version,
+                did_change_full_text(&params),
+            );
+        } else {
+            // 畸形载荷：静默跳过会让登记表停在旧版本，重启重放随之陈旧。
+            log::warn!("[LSP] malformed textDocument/didChange: uri or version missing");
+        }
+    }
+
     state
         .lsp_manager
         .send_notification(&project_path, &language_id, method, params)?;
@@ -838,6 +793,59 @@ mod tests {
         assert!(!is_jdt_class_uri(""));
         // 少一杠的近似 scheme 不匹配（门控只认完整 jdt:// 前缀）
         assert!(!is_jdt_class_uri("jdt:/contents/java.base/System.class"));
+    }
+
+    /// 全量同步：`contentChanges` 无 `range` ⇒ 文本可信（登记表可以替换）。
+    #[test]
+    fn did_change_full_text_detects_full_sync() {
+        let params = serde_json::json!({
+            "textDocument": { "uri": "file:///a.rs", "version": 2 },
+            "contentChanges": [{ "text": "fn main() {}\n" }],
+        });
+        assert_eq!(did_change_full_text(&params), Some("fn main() {}\n"));
+    }
+
+    /// 增量同步（带 `range`）：后端重建不出全文 ⇒ `None`（只推版本，不伪造文本）。
+    #[test]
+    fn did_change_full_text_is_none_for_incremental() {
+        let params = serde_json::json!({
+            "textDocument": { "uri": "file:///a.rs", "version": 3 },
+            "contentChanges": [{
+                "range": {
+                    "start": { "line": 0, "character": 3 },
+                    "end": { "line": 0, "character": 6 },
+                },
+                "text": "foo",
+            }],
+        });
+        assert_eq!(did_change_full_text(&params), None);
+
+        // 混合（一条有 range、一条无）：整体按增量处理 —— 只推版本。
+        let mixed = serde_json::json!({
+            "contentChanges": [
+                { "range": { "start": {}, "end": {} }, "text": "x" },
+                { "text": "y" },
+            ],
+        });
+        assert_eq!(did_change_full_text(&mixed), None);
+    }
+
+    /// 畸形 / 空载荷不得被当成「全文为空」：返回 `None`（文本保持旧值）。
+    #[test]
+    fn did_change_full_text_is_none_for_malformed_payloads() {
+        assert_eq!(did_change_full_text(&serde_json::json!({})), None);
+        assert_eq!(
+            did_change_full_text(&serde_json::json!({ "contentChanges": [] })),
+            None
+        );
+        assert_eq!(
+            did_change_full_text(&serde_json::json!({ "contentChanges": [{ "rangeLength": 1 }] })),
+            None
+        );
+        assert_eq!(
+            did_change_full_text(&serde_json::json!({ "contentChanges": "nope" })),
+            None
+        );
     }
 
     #[test]

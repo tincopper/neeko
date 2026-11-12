@@ -13,6 +13,9 @@ pub(crate) struct OpenDocument {
     pub(crate) language_id: String,
     pub(crate) text: String,
     pub(crate) version: i64,
+    /// `text` 是否可能在 `version` 上已陈旧（只收到了增量 `didChange`，后端重建不了全文）。
+    /// 重放时据实告警 —— 不假装登记表里的文本是新的（错误地静默反而更难诊断）。
+    pub(crate) text_stale: bool,
 }
 
 /// Manages LspSession lifecycle independent of plugin or profile concerns.
@@ -92,10 +95,11 @@ impl LspSessionStore {
 
     /// 把该键的「连续失败」计数设为 `count`（**重启路径接账专用**）。
     ///
-    /// 为什么是绝对值而不是自增：`close_session` 会 `clear_restart`（用户 stop 的
-    /// 语义是「从头开始」），而**重启**是同一故障 episode 的延续。重启路径「先关
-    /// 后建」会顺带清空计数，若再用自增，每次重启都从 1 开始 ⇒ 崩溃循环永远绕过
-    /// `MAX_RESTART_COUNT`（上限形同虚设）。调用方必须拿关闭**前**读到的 streak 接账。
+    /// 为什么是绝对值而不是自增：用户 stop 走 `close_session`（清空 streak，语义是
+    /// 「从头开始」），而**重启**走 `take_session`（不清 streak）——重启是同一故障
+    /// episode 的延续，调用方必须拿关闭**前**读到的 streak 接账。绝对写入让「关闭
+    /// 序列内部新增的清理」不会把计数意外归零（若用自增，每次重启都从 1 开始 ⇒
+    /// 崩溃循环永远绕过 `MAX_RESTART_COUNT`，上限形同虚设）。
     pub(crate) fn set_restart_count(&self, key: &str, count: u32) {
         match self.restart_counts.write() {
             Ok(mut m) => {
@@ -248,14 +252,85 @@ impl LspSessionStore {
             .and_then(|m| m.get(key).cloned())
             .unwrap_or_default();
         docs.iter()
-            .filter(|doc| notify(&doc.uri, &doc.language_id, doc.version, &doc.text))
+            .filter(|doc| {
+                if doc.text_stale {
+                    // 只有增量 didChange 到达过：重放的文本停在最后一次全量同步。
+                    // 如实告警而不静默 —— 新一轮诊断可能基于陈旧文本，排错时必须知道。
+                    log::warn!(
+                        "[LSP] replaying {} at v={} with possibly stale text \
+                         (only incremental didChange was observed after it)",
+                        doc.uri,
+                        doc.version
+                    );
+                }
+                notify(&doc.uri, &doc.language_id, doc.version, &doc.text)
+            })
             .count()
     }
 
-    /// Close a session and return it for external kill.
+    /// 登记表与服务器**同源**：`didChange` 经 `lsp_transport` 转发时同步这里。
+    ///
+    /// - `full_text = Some(..)`（全量同步：`contentChanges` 里没有 `range`）⇒
+    ///   文本与版本都更新；
+    /// - `full_text = None`（增量同步）⇒ 只推版本，文本标记为可能陈旧；
+    /// - 未登记的 uri ⇒ **不造条目**（登记表 = 我们确实 didOpen 过的文档）。
+    ///
+    /// 版本只**前进**（`max`）：登记表版本是重启重放 didOpen 的依据，让迟到 /
+    /// 竞争 client 的低版本把它拉回去会破坏「重放版本不回退」的不变量。
+    ///
+    /// 返回是否命中已登记条目（调用方据此决定是否记 debug 日志）。
+    pub(crate) fn update_open_document(
+        &self,
+        key: &str,
+        uri: &str,
+        version: i64,
+        full_text: Option<&str>,
+    ) -> bool {
+        let update = |map: &mut HashMap<String, Vec<OpenDocument>>| -> bool {
+            let Some(doc) = map
+                .get_mut(key)
+                .and_then(|docs| docs.iter_mut().find(|d| d.uri == uri))
+            else {
+                return false;
+            };
+            doc.version = doc.version.max(version);
+            match full_text {
+                Some(text) => {
+                    doc.text.clear();
+                    doc.text.push_str(text);
+                    doc.text_stale = false;
+                }
+                None => doc.text_stale = true,
+            }
+            true
+        };
+        match self.open_docs.write() {
+            Ok(mut map) => update(&mut map),
+            Err(poisoned) => {
+                log::warn!("[LSP] open_docs mutex poisoned, recovering");
+                update(&mut poisoned.into_inner())
+            }
+        }
+    }
+
+    /// 摘除会话对象，**保留**该键的文档登记 / 编辑器所有权 / restart streak。
+    ///
+    /// 语义是「替换」：重启 / 崩溃重试后新服务器需要同一批文档（否则
+    /// `reopen_documents` 是空转），且编辑器可能仍持有未保存缓冲区（登记表丢了
+    /// 所有权就丢了，后端会按磁盘文本代开）。调用方负责对返回的会话跑关闭序列。
+    pub(crate) fn take_session(&self, key: &str) -> Option<LspSession> {
+        self.remove(key)
+    }
+
+    /// 摘除会话 + 清空该键的文档登记 / 编辑器所有权 / restart streak。
+    ///
+    /// 语义是「结束」（用户 stop / 项目停用）：服务器端确实忘了这些文档，下次
+    /// 打开必须重新 didOpen（版本从 `next_open_version(None) = 0` 起），streak 也
+    /// 该从头开始。**重启路径不得复用它**，否则重放的数据源被清掉。
+    ///
     /// Caller is responsible for calling `kill_child()` on the returned session.
     pub(crate) fn close_session(&self, key: &str) -> Option<LspSession> {
-        let session = self.remove(key);
+        let session = self.take_session(key);
         self.clear_open_documents(key);
         self.clear_restart(key);
         if let Ok(mut owned) = self.editor_owned.write() {
@@ -281,6 +356,14 @@ impl LspSessionStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    /// 往 store 里放一个无真实进程的桩会话（关闭路径要能摘出对象来跑序列）。
+    fn insert_stub_session(store: &LspSessionStore, key: &str) {
+        let transport = Arc::new(crate::lsp::session::testing::RecordingTransport::default());
+        let session = crate::lsp::session::testing::stub_session(transport, "/p", "rust", "stub");
+        store.insert(key.to_string(), session);
+    }
 
     fn doc(uri: &str, version: i64) -> OpenDocument {
         OpenDocument {
@@ -288,6 +371,7 @@ mod tests {
             language_id: "rust".to_string(),
             text: "fn main() {}".to_string(),
             version,
+            text_stale: false,
         }
     }
 
@@ -389,5 +473,147 @@ mod tests {
         assert!(store.is_document_open("/p::rust", "file:///a.rs"));
         assert!(!store.is_document_open("/p::go", "file:///a.rs"));
         assert!(!store.is_document_open("/q::rust", "file:///a.rs"));
+    }
+
+    /// 重启是**替换**：摘会话对象不得连带清掉文档登记与编辑器所有权。
+    ///
+    /// 缺陷现场（本用例钉死）：`close_session` 三件事一起做，重启路径复用它 ⇒
+    /// 新会话建好后的 `reopen_documents` 恒重放 0 条（服务器端该文档消失，编辑器
+    /// 也不重发 didOpen ⇒ 无诊断无补全），且 `editor_owned` 被清 ⇒ 后续请求判定
+    /// 「需要后端代开」⇒ 按**磁盘文本**代开编辑器里的未保存缓冲区 ⇒ 诊断坐标错位。
+    #[test]
+    fn take_session_keeps_documents_and_ownership() {
+        let store = LspSessionStore::new();
+        let key = "/p::rust";
+        insert_stub_session(&store, key);
+        store.register_open_document(key.to_string(), doc("file:///a.rs", 1));
+        store.register_open_document(key.to_string(), doc("file:///b.rs", 2));
+        store.claim_document(key.to_string(), "file:///a.rs".to_string());
+        store.set_restart_count(key, 2);
+
+        let taken = store.take_session(key);
+
+        assert!(
+            taken.is_some(),
+            "take_session 必须摘出会话对象（调用方要跑关闭序列）"
+        );
+        assert!(!store.is_alive(key), "会话对象已摘除");
+        assert_eq!(
+            store.reopen_documents(key, |_, _, _, _| true),
+            2,
+            "重启后重放的数据源必须还在（否则 reopen_documents 恒 0 条）"
+        );
+        assert!(
+            store.is_editor_owned(key, "file:///a.rs"),
+            "编辑器所有权必须跨重启保留（否则后端按磁盘文本代开未保存缓冲区）"
+        );
+        assert_eq!(
+            store.restart_count(key),
+            2,
+            "重启是同一故障 episode 的延续：streak 不得被替换路径清零"
+        );
+    }
+
+    /// 用户 stop / 项目停用是「会话就此结束」：登记表、所有权、streak 一并清空。
+    #[test]
+    fn close_session_clears_documents_and_ownership() {
+        let store = LspSessionStore::new();
+        let key = "/p::rust";
+        insert_stub_session(&store, key);
+        store.register_open_document(key.to_string(), doc("file:///a.rs", 1));
+        store.register_open_document(key.to_string(), doc("file:///b.rs", 2));
+        store.claim_document(key.to_string(), "file:///a.rs".to_string());
+        store.set_restart_count(key, 3);
+
+        let closed = store.close_session(key);
+
+        assert!(closed.is_some(), "close_session 必须摘出会话对象");
+        assert!(!store.is_alive(key));
+        assert_eq!(
+            store.reopen_documents(key, |_, _, _, _| true),
+            0,
+            "停止后服务器端确实忘了这些文档：登记表必须清空"
+        );
+        assert!(
+            !store.is_editor_owned(key, "file:///a.rs"),
+            "停止后所有权清空（下次打开重新声明）"
+        );
+        assert_eq!(
+            store.restart_count(key),
+            0,
+            "停止 = 从头开始（streak 归零）"
+        );
+    }
+
+    /// 全量同步的 didChange：文本与版本都可信 —— 重放必须用**最新文本**，
+    /// 否则重启后服务器按 didOpen 时刻的旧文本算诊断（坐标与编辑器错位）。
+    #[test]
+    fn update_open_document_full_sync_replaces_text() {
+        let store = LspSessionStore::new();
+        let key = "/p::rust";
+        store.register_open_document(key.to_string(), doc("file:///a.rs", 1));
+
+        let hit =
+            store.update_open_document(key, "file:///a.rs", 2, Some("fn main() { /* new */ }"));
+
+        assert!(hit, "已登记 uri 的 didChange 必须命中条目");
+        assert_eq!(store.open_document_version(key, "file:///a.rs"), Some(2));
+        let text = store
+            .open_docs
+            .read()
+            .expect("lock")
+            .get(key)
+            .and_then(|docs| docs.iter().find(|d| d.uri == "file:///a.rs"))
+            .map(|d| d.text.clone());
+        assert_eq!(
+            text.as_deref(),
+            Some("fn main() { /* new */ }"),
+            "全量同步的文本必须替换登记表里的旧文本（重放会用这份）"
+        );
+    }
+
+    /// 增量同步（只有 range 编辑）：后端无编辑器缓冲区，无法重建全文 ⇒ 只推版本，
+    /// 文本保持（重放会打 warn 说明可能陈旧，不假装文本是新的）。
+    #[test]
+    fn update_open_document_incremental_bumps_version_only() {
+        let store = LspSessionStore::new();
+        let key = "/p::rust";
+        store.register_open_document(key.to_string(), doc("file:///a.rs", 1));
+
+        let hit = store.update_open_document(key, "file:///a.rs", 5, None);
+
+        assert!(hit);
+        assert_eq!(store.open_document_version(key, "file:///a.rs"), Some(5));
+        let text = store
+            .open_docs
+            .read()
+            .expect("lock")
+            .get(key)
+            .and_then(|docs| docs.iter().find(|d| d.uri == "file:///a.rs"))
+            .map(|d| d.text.clone());
+        assert_eq!(
+            text.as_deref(),
+            Some("fn main() {}"),
+            "增量同步不得改文本（改了就是拿错文本去重放）"
+        );
+    }
+
+    /// 未登记的 uri（前端在 Neeko 之外打开的文档 / 竞争窗口里的迟到 didChange）
+    /// → 不造条目：登记表只记录「我们确实 didOpen 过的文档」。
+    #[test]
+    fn update_open_document_ignores_unregistered_uri() {
+        let store = LspSessionStore::new();
+        let key = "/p::rust";
+        store.register_open_document(key.to_string(), doc("file:///a.rs", 1));
+
+        let hit = store.update_open_document(key, "file:///other.rs", 9, Some("x"));
+
+        assert!(!hit, "未登记 uri 不得被报告为已更新");
+        assert!(!store.is_document_open(key, "file:///other.rs"));
+        assert_eq!(
+            store.reopen_documents(key, |_, _, _, _| true),
+            1,
+            "登记表仍只有原来那一条"
+        );
     }
 }

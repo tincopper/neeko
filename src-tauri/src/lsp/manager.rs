@@ -111,7 +111,8 @@ const fn did_open_action(previous: Option<i64>, version: i64) -> DidOpenAction {
 enum SessionCloseNotice {
     /// 会话结束（用户停止 / 项目停用 / 应用退出）：推 `stopped`。
     Announce,
-    /// 会话即将被同 project+language 的新会话**替换**（重启）：静默。
+    /// 会话即将被同 project+language 的新会话**替换**（重启）：静默，且**保留**该键的
+    /// 文档登记表与编辑器所有权（`take_session`，见 `take_for_close`）。
     /// 详见 [`LspManager::close_session_for_restart`]。
     Silent,
 }
@@ -375,6 +376,8 @@ impl LspManager {
                 language_id: language_id.to_string(),
                 text: text.to_string(),
                 version,
+                // 刚拿到的文本就是 didOpen 发出的那份：干净。
+                text_stale: false,
             },
         );
     }
@@ -518,6 +521,34 @@ impl LspManager {
     pub fn unregister_open_document(&self, project_path: &str, language_id: &str, uri: &str) {
         let key = session_key(project_path, language_id);
         self.session_store.unregister_open_document(&key, uri);
+    }
+
+    /// 登记表与服务器**同源**：`lsp_transport` 转发的 `didChange` 落到这里。
+    ///
+    /// 写在生产唯一路径（前端 wrapper 零调用，didChange 只经 `lsp_transport` 通用
+    /// 转发）上，而不是 `send_notification` 里 —— 后者会让所有内部通知都过一遍
+    /// 载荷解析。
+    ///
+    /// - 全量同步（`full_text = Some`）→ 文本 + 版本都更新；
+    /// - 增量同步（`None`）→ 只推版本，文本标记为可能陈旧；
+    /// - 未登记的 uri → 不造条目（登记表 = 我们确实 didOpen 过的文档）。
+    pub fn record_document_change(
+        &self,
+        project_path: &str,
+        language_id: &str,
+        uri: &str,
+        version: i64,
+        full_text: Option<&str>,
+    ) {
+        let key = session_key(project_path, language_id);
+        if !self
+            .session_store
+            .update_open_document(&key, uri, version, full_text)
+        {
+            log::debug!(
+                "[LSP] didChange for unregistered uri {uri} (registry only tracks didOpen'd docs)"
+            );
+        }
     }
 
     /// Set the Tauri AppHandle and connect the diagnostic bus to event emission.
@@ -898,9 +929,10 @@ impl LspManager {
             .await
             .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))??;
 
-        // 接账 streak：`close_session_for_restart` 内部会 `clear_restart`（用户 stop
-        // 的语义是「从头开始」），而重启是同一故障 episode 的延续 —— 用关闭前读到的
-        // `prev_count` 接上本次失败，否则每次重启都从 1 开始、上限永不生效。
+        // 接账 streak：`prev_count` 是关闭前读到的值 —— 重启走 `take_session`
+        // （不清 streak），而 `set_restart_count` 是**绝对值**写入，两条路径（清 / 不清）
+        // 下都能把本次失败接上同一 episode。不能改成自增：一旦关闭序列里再新增清理，
+        // 自增会让崩溃循环永远从 1 开始、`MAX_RESTART_COUNT` 形同虚设。
         self.session_store
             .set_restart_count(&key, prev_count.saturating_add(1));
 
@@ -963,7 +995,8 @@ impl LspManager {
         Ok(())
     }
 
-    /// 重启专用关闭：落终态、**不宣告** `stopped`，且**等关闭序列收口**再返回。
+    /// 重启专用关闭：落终态、**不宣告** `stopped`、**保留**文档登记与所有权，且
+    /// **等关闭序列收口**再返回。
     ///
     /// 第一性原理：`stopped` 是"该语言的会话就此结束"的宣告；而重启是**替换**——
     /// 该语言的服务从未真正缺席。若中途宣告结束：① 状态栏 chip 被过滤掉（stopped
@@ -992,6 +1025,14 @@ impl LspManager {
     /// 从 store 摘除会话并落终态（不跑序列）。
     ///
     /// 终态必须先于序列落下：reader 线程随后退出据此静默，否则优雅关闭会闪 error。
+    ///
+    /// **摘除粒度按 notice 分派**（这是「替换」与「结束」的差异所在）：
+    /// - `Announce`（用户 stop / 项目停用）→ `close_session`：登记表 / 所有权 /
+    ///   streak 全清，下次打开重新 didOpen。
+    /// - `Silent`（重启 / 崩溃重试）→ `take_session`：**只摘会话对象**，登记表与
+    ///   所有权活到新会话 —— 否则新会话建好后的 `reopen_documents` 恒重放 0 条
+    ///   （服务器端文档消失 ⇒ 无诊断无补全），且所有权守卫失效（后端会按磁盘文本
+    ///   代开编辑器里的未保存缓冲区 ⇒ 诊断坐标整体错位）。
     fn take_for_close(
         &self,
         project_path: &str,
@@ -999,7 +1040,10 @@ impl LspManager {
         notice: SessionCloseNotice,
     ) -> Option<LspSession> {
         let key = session_key(project_path, language_id);
-        let session = self.session_store.close_session(&key)?;
+        let session = match notice {
+            SessionCloseNotice::Announce => self.session_store.close_session(&key),
+            SessionCloseNotice::Silent => self.session_store.take_session(&key),
+        }?;
         match notice {
             SessionCloseNotice::Announce => session.close(),
             // 静默替换：相位落终态（reader 退出据此静默），事件刻意不发。
@@ -2142,6 +2186,121 @@ mod tests {
         );
     }
 
+    /// 桩装配端口（带 writer 观察窗）：会话「造得出来」且出站报文可断言。
+    ///
+    /// `StubSessionFactory` 丢弃 writer 接收端（只验证编排是否走到装配），而重放
+    /// 判据恰恰要看**报文内容**（哪些 uri、哪个版本、哪份文本）。
+    struct WriterCapturingFactory {
+        transport: Arc<RecordingTransport>,
+        writers: Mutex<Vec<crossbeam_channel::Receiver<lsp_server::Message>>>,
+    }
+
+    impl WriterCapturingFactory {
+        fn new(transport: Arc<RecordingTransport>) -> Self {
+            Self {
+                transport,
+                writers: Mutex::new(Vec::new()),
+            }
+        }
+
+        /// 最近一次装配的会话 writer 接收端。
+        fn latest_writer(&self) -> crossbeam_channel::Receiver<lsp_server::Message> {
+            self.writers
+                .lock()
+                .expect("writers lock")
+                .pop()
+                .expect("a session must have been built")
+        }
+    }
+
+    impl SessionFactory for WriterCapturingFactory {
+        fn transport(
+            &self,
+            _: Option<&tauri::AppHandle>,
+        ) -> Result<Arc<dyn LspTransport>, AppError> {
+            Ok(Arc::clone(&self.transport) as Arc<dyn LspTransport>)
+        }
+
+        fn build(&self, request: SessionBuildRequest<'_>) -> Result<LspSession, AppError> {
+            let (session, rx) = crate::lsp::session::testing::stub_session_with_writer(
+                request.transport,
+                request.project_path,
+                TEST_LANG,
+                TEST_SERVER,
+            );
+            self.writers.lock().expect("writers lock").push(rx);
+            Ok(session)
+        }
+    }
+
+    /// writer 中的 didOpen 载荷：`(uri, version, text)`。
+    fn did_open_payloads(
+        rx: &crossbeam_channel::Receiver<lsp_server::Message>,
+    ) -> Vec<(String, i64, String)> {
+        rx.try_iter()
+            .filter_map(|m| match m {
+                lsp_server::Message::Notification(n) if n.method == "textDocument/didOpen" => {
+                    let td = &n.params["textDocument"];
+                    Some((
+                        td["uri"].as_str()?.to_string(),
+                        td["version"].as_i64()?,
+                        td["text"].as_str()?.to_string(),
+                    ))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// AC1 + AC2：重启后 `reopen_documents` 必须真的重放已打开文档，且登记版本不回退。
+    ///
+    /// 缺陷现场（本用例钉死）：重启关闭复用 `close_session` 把登记表一起清掉 ⇒ 新会话
+    /// 建好后的重放恒 0 条（机制形同死代码）⇒ 服务器端该文档消失、编辑器不重发
+    /// didOpen ⇒ hover / definition / 诊断全无，直到用户编辑才被 didChange 带回。
+    #[tokio::test]
+    async fn restart_replays_open_documents() {
+        let transport = Arc::new(RecordingTransport::default());
+        let factory = Arc::new(WriterCapturingFactory::new(Arc::clone(&transport)));
+        let manager = manager_with_factory(Arc::clone(&factory) as Arc<dyn SessionFactory>);
+        let key = session_key(TEST_PROJECT, TEST_LANG);
+
+        // 旧会话（writer 接收端存活 ⇒ `send_did_open` 能真的发送并登记）。
+        let (old_session, _old_rx) =
+            session_with_writer(Arc::clone(&transport) as Arc<dyn LspTransport>);
+        manager.session_store.insert(key.clone(), old_session);
+        manager
+            .send_did_open(TEST_PROJECT, TEST_LANG, "file:///a.rs", "fn a() {}", 3)
+            .unwrap();
+        manager
+            .send_did_open(TEST_PROJECT, TEST_LANG, "file:///b.rs", "fn b() {}", 6)
+            .unwrap();
+        manager.claim_document(TEST_PROJECT, TEST_LANG, "file:///a.rs");
+
+        // 重启：静默关闭（替换），登记表与所有权必须活下来。
+        manager
+            .close_session_for_restart(TEST_PROJECT, TEST_LANG)
+            .await;
+        assert!(
+            manager.is_editor_owned(TEST_PROJECT, TEST_LANG, "file:///a.rs"),
+            "AC2：重启后编辑器所有权必须仍为真（否则后端拿磁盘文本代开未保存缓冲区）"
+        );
+
+        manager
+            .get_or_create_session(TEST_PROJECT, TEST_LANG, None)
+            .expect("桩装配应当成功");
+
+        let mut replayed = did_open_payloads(&factory.latest_writer());
+        replayed.sort();
+        assert_eq!(
+            replayed,
+            vec![
+                ("file:///a.rs".to_string(), 3, "fn a() {}".to_string()),
+                ("file:///b.rs".to_string(), 6, "fn b() {}".to_string()),
+            ],
+            "AC1：新会话建好后必须重放 2 条 didOpen（版本不得低于登记版本，文本取登记表）"
+        );
+    }
+
     /// 应用退出路径（`close_all_sessions`）也走同一序列，且**同步跑完**：
     /// 上层 `run_cleanup_and_exit` join 完就 `process::exit(0)`，spawn 出去的工作跑不到。
     #[test]
@@ -2597,6 +2756,111 @@ mod tests {
                 version_regressed: true
             }
         );
+    }
+
+    /// AC4：`lsp_transport` 转发的 didChange 必须让登记表与服务器**同源**。
+    ///
+    /// 缺陷现场：登记表的 `text/version` 只在 didOpen 时写入 ⇒ 即使重启重放修好，
+    /// 重放出去的也是 didOpen 时刻的旧文本（服务器按旧文本算诊断 ⇒ 坐标错位）。
+    ///
+    /// 为何不直接驱动 `lsp_transport` 命令：`AppStateWrapper` 需要整个应用依赖树
+    /// （DB / 终端 / agent），单测构造不出来。本用例驱动的是**同一调用链**：
+    /// `did_change_full_text`（全量/增量判定）+ `record_document_change`（登记表同步），
+    /// 与 `lsp_transport` 通知分支里的两行完全一致。
+    #[test]
+    fn did_change_through_transport_updates_registry() {
+        let manager = LspManager::new_default();
+        let transport = Arc::new(RecordingTransport::default());
+        let (session, _rx) = session_with_writer(Arc::clone(&transport) as Arc<dyn LspTransport>);
+        manager
+            .session_store
+            .insert(session_key(TEST_PROJECT, TEST_LANG), session);
+        manager
+            .send_did_open(TEST_PROJECT, TEST_LANG, TEST_URI, "fn a() {}", 1)
+            .unwrap();
+
+        // ① 全量同步（`contentChanges` 无 `range`）：文本 + 版本都可信。
+        let full = serde_json::json!({
+            "textDocument": { "uri": TEST_URI, "version": 2 },
+            "contentChanges": [{ "text": "fn a() { /* edited */ }" }],
+        });
+        let version = full
+            .pointer("/textDocument/version")
+            .and_then(|v| v.as_i64());
+        manager.record_document_change(
+            TEST_PROJECT,
+            TEST_LANG,
+            TEST_URI,
+            version.expect("version"),
+            crate::lsp::commands::did_change_full_text(&full),
+        );
+
+        assert_eq!(
+            manager.open_document_version(TEST_PROJECT, TEST_LANG, TEST_URI),
+            Some(2),
+            "didChange 必须推进登记表版本（否则重放会与服务器分叉）"
+        );
+        assert_eq!(
+            replay_of(&manager),
+            vec![(
+                TEST_URI.to_string(),
+                2,
+                "fn a() { /* edited */ }".to_string()
+            )],
+            "全量同步后重放必须用最新文本，而不是 didOpen 时刻的旧文本"
+        );
+
+        // ② 增量同步（`contentChanges` 带 `range`）：后端重建不出全文 ⇒ 只推版本。
+        let incremental = serde_json::json!({
+            "textDocument": { "uri": TEST_URI, "version": 3 },
+            "contentChanges": [{
+                "range": {
+                    "start": { "line": 0, "character": 5 },
+                    "end": { "line": 0, "character": 6 },
+                },
+                "text": "b",
+            }],
+        });
+        let version = incremental
+            .pointer("/textDocument/version")
+            .and_then(|v| v.as_i64());
+        manager.record_document_change(
+            TEST_PROJECT,
+            TEST_LANG,
+            TEST_URI,
+            version.expect("version"),
+            crate::lsp::commands::did_change_full_text(&incremental),
+        );
+
+        assert_eq!(
+            manager.open_document_version(TEST_PROJECT, TEST_LANG, TEST_URI),
+            Some(3),
+            "增量同步也必须推版本"
+        );
+        assert_eq!(
+            replay_of(&manager),
+            vec![(
+                TEST_URI.to_string(),
+                3,
+                "fn a() { /* edited */ }".to_string()
+            )],
+            "增量同步不得改文本（重放的应停在最后一次全量文本，并另有 warn）"
+        );
+    }
+
+    /// 重放实际会发出的 `(uri, version, text)`：直接观察 `reopen_documents` 的输入。
+    fn replay_of(manager: &LspManager) -> Vec<(String, i64, String)> {
+        let seen = std::sync::Mutex::new(Vec::new());
+        manager.session_store.reopen_documents(
+            &session_key(TEST_PROJECT, TEST_LANG),
+            |uri, _, ver, text| {
+                seen.lock()
+                    .expect("seen lock")
+                    .push((uri.to_string(), ver, text.to_string()));
+                true
+            },
+        );
+        seen.into_inner().expect("seen lock")
     }
 
     // ── S4：请求级失败 vs 会话级失败（错误响应不得重启服务器）──────────────
