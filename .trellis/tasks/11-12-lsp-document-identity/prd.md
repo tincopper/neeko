@@ -28,23 +28,42 @@
 
 ## Requirements
 
-- **R1**：重启路径保留 didOpen 登记表与 `editor_owned`（只摘会话对象），或在新会话建立后按登记表
-  重放；重放不得使用陈旧文本 —— `didChange` 必须同步登记表。
-- **R2**：`didOpen` 只有一个出口（`LspManager::send_did_open`）；删除 `lsp_open_document` 命令与前端
-  `lspOpenDocument/ChangeDocument/CloseDocument`（无消费点），或让命令体委托唯一出口。
-- **R3**：文档定根必须进会话身份（key 或会话内校验）：命中会话但根不一致 → 换根重建，且能被观测。
-- **R4**：同一 server 二进制/服务身份的多个 language_id 只建一个会话（插件声明「服务身份」）。
+- **R1**：重启路径保留 didOpen 登记表与 `editor_owned`（只摘会话对象），让
+  `reopen_documents` 真的重放；停止/项目停用仍清空（服务器端确实忘了这些文档）。
+- **R2**：`didOpen` 只有一个出口（`LspManager::send_did_open`）；删除 `lsp_open_document`
+  命令与前端 `lspOpenDocument/lspChangeDocument/lspCloseDocument`（无消费点）。
+- **R3**：登记表文本/版本必须与服务器同源：`lsp_transport` 转发的 `didChange` 要更新登记表
+  （全量同步 → 文本+版本；增量同步 → 只推版本并标记文本陈旧，重放时记录告警）。
+
+> 范围修正（2026-11-12）：原 R3「文档定根进会话身份」与原 R4「同一 server 二进制只建一个会话」
+> 都要求改 `session_key` 语义，会波及事件名（`lsp-*-{projectPath}` 载荷里的 languageId）、
+> 命令（`lsp_request` / `lsp_stop_session` …）、前端 store 分片与状态栏 chip。
+> 两者已拆出为独立任务，本轮不做（见 Out of scope），避免把「文档身份」这件事拖成重构。
 
 ## Acceptance Criteria
 
-- **AC1**：`restart_keeps_open_documents` —— 会话重启后 `reopen_documents` 重放 ≥1 条 didOpen，
+- **AC1**：`restart_keeps_open_documents` —— 重启后 `reopen_documents` 重放 ≥1 条 didOpen，
   且版本号继续单调（不低于重启前）。
-- **AC2**：`did_change_updates_registry_text_and_version` —— `didChange` 后登记表文本/版本同步。
-- **AC3**：`rg -n 'send_notification\("textDocument/didOpen"' src-tauri/src` 零命中（只有 `send_did_open` 内部）。
-- **AC4**：monorepo 双子包场景：第二个子包不复用处根不一致的会话（有测试，用 tempdir 造两个 `node_modules`）。
-- **AC5**：TS+TSX 同时打开只起一个 tsserver（断言 store 里会话数 = 1）。
+- **AC2**：`restart_keeps_editor_ownership` —— 重启后 `is_editor_owned` 仍为真
+  （否则后端会拿磁盘文本代开编辑器里的未保存缓冲区）。
+- **AC3**：`stop_clears_document_registry` —— 用户 stop / 项目停用仍清空登记表与所有权
+  （行为不变：那是「会话就此结束」）。
+- **AC4**：`did_change_full_sync_updates_registry` / `did_change_incremental_bumps_version` ——
+  `lsp_transport` 转发的 didChange 使登记表版本前进；全量同步时文本同步更新。
+- **AC5**：`rg -n 'send_notification\("textDocument/didOpen"' src-tauri/src` 零命中
+  （只有 `send_did_open` 内部）；`lsp_open_document` / `lsp_change_document` /
+  `lsp_close_document` 三个命令与三个前端 wrapper 已删除。
+- **AC6**：`cargo test --manifest-path src-tauri/Cargo.toml --lib` 全绿；既有
+  `send_did_open_duplicate_sends_close_before_reopen` 与
+  `send_did_open_version_regression_still_reopens_and_advances` 语义不变。
 
-## Out of scope
+## Out of scope（拆出，另行立项）
 
-- `-data` 归属（jdtls workspace 目录）—— 11-12 已记 out of scope。
-- 前端 `@codemirror/lsp-client` 的 effect deps 改造（若 R1 走「保留登记表 + 重放」，前端零改动）。
+1. **会话身份含文档定根**：monorepo 两个子包各有 `node_modules` 时，先开者定根、后者复用错根。
+   需要 `session_key` 纳入 root（或会话内校验根不一致即换根重建），并同步事件载荷 / 命令 /
+   前端分片。
+2. **同一 server 二进制的多个 language_id 只建一个会话**（TS/TSX 双 tsserver）：需要插件声明
+   「服务身份」并让会话 key 用它 —— 与第 1 项同一类改动（身份重构）。
+3. **重启后由前端重发 didOpen**（编辑器是文本唯一真相）：这是根治「登记表文本可能陈旧」的
+   方向，但需要前端 `useLspClient` 的 effect 依赖会话相位；本轮以「登记表 + didChange 同步」
+   先立住，前端侧留作后续。

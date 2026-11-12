@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/11-12-lsp-document-identity/prd.md", "reason": "审核基准：AC1-AC6；特别是 AC2（所有权不清空）与 AC3（stop 仍清空）必须同时成立"}
+{"file": ".trellis/tasks/11-12-lsp-document-identity/design.md", "reason": "审核基准：失败矩阵 6 行；take_session/close_session 的分派是否与 notice 语义一致"}
+{"file": ".trellis/tasks/11-12-lsp-document-identity/implement.md", "reason": "审核基准：Gate A-D 的 grep 判据是否真的达成"}
+{"file": ".trellis/tasks/archive/2026-11/11-12-lsp-graceful-shutdown/research/audit-channel.md", "reason": "证据链：改动能否解释「诊断消失 + 未保存缓冲区被覆盖」两条现场"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "禁止回退：didOpen 单出口、版本单调、编辑器所有权守卫"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "测试质量：断言打在语义上（登记表状态/报文序列），不是文案"}
