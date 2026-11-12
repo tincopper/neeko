@@ -99,8 +99,14 @@ pub type ResolvedWorkspace = (
 impl AppStateWrapper {
     /// 关闭全部后台服务并退出进程。
     ///
-    /// 组合根只声明"要清理哪些域"（任务表）；并行清理的**机制**在
+    /// 组合根只声明"要清理哪些域"（两阶段任务表）；两阶段清理的**机制**在
     /// [`crate::common::shutdown::run_cleanup_and_exit`]。
+    ///
+    /// 阶段划分（顺序不可交换）：
+    /// - `tasks`：各域**自己**收尾（terminal / watcher / lsp / http）。LSP 需要秒级
+    ///   宽限跑完 `shutdown` → `exit` → 等进程退出；
+    /// - `finalizers`：对所有域生效的**收割器**，只在全部 task 结束后才跑。
+    ///   `kill_all_live` 是整树 SIGKILL（毫秒级），与优雅域并行就会截断在途写入。
     pub fn shutdown_background_and_exit(&self) {
         // 第一行：置「退出中」标志 —— 之后任何清理路径触发的 `unregister` 都只摘内存条目，
         // 不删持久化行。否则「退出」会被写成「用户删光了所有会话」，下次启动侧栏为空。
@@ -124,12 +130,6 @@ impl AppStateWrapper {
             ),
             ("watcher", Box::new(move || watcher_manager.stop_all())),
             ("lsp", Box::new(move || lsp_manager.close_all_sessions())),
-            // git 长操作子进程树（git → hook → pnpm → vitest/cargo）没有自己的生命周期
-            // 守卫：退出前按登记表逐个驱动终止策略（宿主本地树杀 / SSH 远端 kill）。
-            (
-                "git-children",
-                Box::new(crate::common::executor::kill_all_live),
-            ),
             // HTTP 引擎：发 graceful shutdown 并等待在途请求收敛（有界 ≤200ms）。
             // 运行在独立的 `shutdown-http` OS 线程 → `block_on_shutdown` 契约成立。
             (
@@ -145,7 +145,17 @@ impl AppStateWrapper {
                 }),
             ),
         ];
-        crate::common::shutdown::run_cleanup_and_exit(tasks);
+
+        // 收割阶段：git 长操作子进程树（git → hook → pnpm → vitest/cargo）没有自己的
+        // 生命周期守卫，退出前按登记表逐个驱动终止策略（宿主本地树杀 / SSH 远端 kill）。
+        // 必须**最后**跑：LSP 的 checkpoint 窗口是秒级，整树 SIGKILL 是毫秒级，并行
+        // 等于每次退出都截断在途写入（审计 lifecycle #1）。
+        let finalizers: Vec<crate::common::shutdown::CleanupTask> = vec![(
+            "git-children",
+            Box::new(crate::common::executor::kill_all_live),
+        )];
+
+        crate::common::shutdown::run_cleanup_and_exit(tasks, finalizers);
     }
 
     /// 存入 HTTP 服务端句柄（setup 阶段由 agent-hooks boot 成功后调用一次）。
