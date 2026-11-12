@@ -2,6 +2,66 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.11] - 2026-11-12
+
+### 🚀 Features
+
+- **dock**: Compact the project list into island groups
+- **dock**: Add status-bar project switcher and polish sidebar rows
+- **guards**: Assert the merged Tauri window config
+- **terminal**: Record and replay plain shell output on resume
+- **terminal**: Pass resumeFrom when restoring a shell tab
+- **conversation**: Read the real codebuddy and qoder transcripts
+- **hooks**: Report where the topic text came from
+- **live-sessions**: Stop rendering empty session titles
+
+### 🐛 Bug Fixes
+
+- **editor**: Keep the dragged selection visible on changed lines
+- **watcher**: Refresh file tree ignored marks on gitignore rule changes
+- **window**: Start the macOS window maximized
+- **agent-icon**: Keep the CLI fallback icon readable on dark themes
+- **db**: Derive schema version from migration steps
+- **sidebar**: Defer session listing and dedupe resumed rows
+- **terminal**: Make the resume replay separator English
+- **agent-hooks**: Stop fileless child sessions from faking parent completion
+
+### 🚜 Refactor
+
+- **agent-icon**: Unify agent icon rendering in one component
+- **sidebar**: Unify hover slots and streamline row status
+- **agent**: Give agent facts and title verdicts one home
+
+### 📚 Documentation
+
+- **spec**: Record the gitignore full-refresh contract in W2
+- **spec**: Document the platform window config merge
+- **spec**: Record the AgentIcon layering and injected dialog
+- **task**: Add the agent icon unification task artifacts
+- **skills**: Align neeko-check with 17 red lines
+- **task**: Add terminal resume history replay planning artifacts
+- **spec**: Document the plain shell history log contract
+- **task**: Record the final resume replay design
+- **task**: Archive the terminal resume replay task
+- **spec**: Document the title ladder and the shared noise pipeline
+- **task**: Record the session title observation pipeline
+- **task**: Plan the event observation attribution task
+- **spec**: Record the fileless child-session gate
+
+### 🧪 Testing
+
+- **watcher**: Attribute sink events to their unit
+- **watcher**: Run the service-layer suites without OS watchers
+
+### ⚙️ Miscellaneous Tasks
+
+- **gitignore**: Untrack committed pycache bytecode
+- **task**: Archive 11-08-agent-icon-unify
+- **task**: Archive 11-11-event-observation-attribution
+- **build**: Keep only the rlib crate type and trim dev debug info
+- **guards**: Raise the test_fe budget to match its measured cost
+- **changelog**: Skip journal-record commits
+
 ## [1.0.10] - 2026-11-06
 
 ### 🚀 Features
@@ -143,62 +203,30 @@ All notable changes to this project will be documented in this file.
 
 ### ⚙️ Miscellaneous Tasks
 
-- Record journal
 - **trellis**: Record conversation adapter audit sessions
 - **trellis**: Record the on-demand loading sessions
 - **trellis**: Record the pi chat resume task
 - **trellis**: Record the ownership and cache-semantics fixes
 - **trellis**: Record the conversation delete task
-- Record journal
 - **task**: Archive 10-30-conversation-delete
-- Record journal
 - **trellis**: Record the opencode v2 storage task
-- Record journal
 - **task**: Archive 10-30-pi-chat-resume
-- Record journal
 - **task**: Archive 10-30-opencode-v2-storage
-- Record journal
 - **task**: Archive 10-29-md-image-pdf-preview
-- Record journal
 - **trellis**: Record the workspace addressing task
-- Record journal
 - **trellis**: Record the workspace addressing review round
 - **task**: Archive 10-30-workspace-address-everywhere
-- Record journal
-- Record journal
 - **repo**: Ignore local Python bytecode
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
 - **task**: Archive 11-03-dock-placement
-- Record journal
 - **task**: Archive 11-04-status-freshness-model
 - **task**: Archive 11-04-drop-exclusive-mount
 - **task**: Archive 11-04-frontend-single-writer
-- Record journal
 - **task**: Archive 11-04-watch-hub-single-stream
-- Record journal
-- Record journal
 - **task**: Archive 11-04-git-status-observability
-- Record journal
-- Record journal
-- Record journal
-- Record journal
 - **task**: Archive 10-31-live-sessions-title-status
-- Record journal
-- Record journal
-- Record journal
 - **journal**: Follow the reworded commit hashes and subjects
-- Record journal
 - **task**: Archive 11-06-config-owner-singleton
-- Record journal
-- Record journal
-- Record journal
+- Release v1.0.10
 
 ## [1.0.9] - 2026-10-29
 
@@ -806,76 +834,40 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - **task**: Archive 08-12-fix-markdown-link-crash-global-error-guard
-- Record journal
 - **task**: Archive 08-12-cleanup-silent-error-swallowing
-- Record journal
-- Record journal
 - **workspace**: Update tincopper journal
 - **workspace**: Record session 132 stash panel work
 - **task**: Add git history log scope plan
 - **task**: Archive 08-14-git-history-log-scope
-- Record journal
 - **task**: Archive 08-14-08-15-architecture-debt-cleanup
-- Record journal
 - **gitignore**: Ignore .dsh directory
 - **task**: Archive 08-15-browser-picker-multiselect
-- Record journal
 - **task**: Archive 08-15-browser-picker-edit-shortcuts
-- Record journal
 - **task**: Archive 08-15-08-15-worktree-list-empty-path
-- Record journal
 - Record session journal and archive diff cache task
-- Record journal
-- Record journal
-- Record journal
 - **task**: Archive 08-17-browser-as-editor-tab
-- Record journal
 - Standardize Node.js version to 24
-- Record journal
-- Record journal
 - **task**: Archive 08-25-terminal-memory-governance
-- Record journal
 - Ignore local .codebuddy directory
 - **action-menu**: Clarify new-agent-chat description
 - **task**: Archive 08-27-file-tree-git-decoration
-- Record journal
 - **task**: Archive 08-28-git-large-files
-- Record journal
 - **task**: Archive 08-28-layout-architecture
 - **task**: Archive 08-14-08-15-app-center-routing
 - **task**: Archive 08-14-08-15-dock-wrapper-refactor
-- Record journal
-- Record journal
 - **task**: Archive 08-07-drag-tab-to-pin
-- Record journal
 - **app**: Expose dev-only store debug bridge
 - **task**: Archive 08-30-lsp-navigation-ux
-- Record journal
-- Record journal
 - **task**: Archive 08-30-file-reader-unification
-- Record journal
-- Record journal
 - **task**: Archive 08-31-editor-git-component-split
-- Record journal
 - **task**: Archive 08-31-09-01-typography-font-unify
-- Record journal
 - **task**: Archive 08-31-font-picker-optimization
-- Record journal
 - **task**: Archive 09-01-scrollbar-auto-hide
-- Record journal
-- Record journal
-- Record journal
-- Record journal
 - **trellis**: Archive terminal-webgl-renderer-selfheal (AC1-AC5 verified)
-- Record journal
 - **task**: Archive 09-03-terminal-drain-long-poll
-- Record journal
-- Record journal
-- Record journal
 - **task**: Archive 09-04-terminal-lock-unify
 - **task**: Archive 09-04-statusbar-prompts-shortcut
 - **task**: Archive 09-04-statusbar-registry
-- Record journal
 - **task**: Record cmdw-unsaved-confirm task and journal
 - **task**: Record editor-test-run-buttons task and journal
 - **vitest**: Cap maxWorkers at 2 to fix jsdom worker timeouts
@@ -883,30 +875,16 @@ All notable changes to this project will be documented in this file.
 - **trellis**: Record s3/s4 tasks and journal
 - **trellis**: Record file tree ignored-state task and journal
 - **trellis**: Archive file-tree security task
-- Record journal
 - **trellis**: Archive cmdw-unsaved-confirm task
-- Record journal
-- Record journal
 - **task**: Archive 09-09-editor-codemirror-singleton
-- Record journal
 - **ci**: Gate the java debug host with its self-check
 - **task**: Archive 09-04-editor-test-run-buttons
 - **task**: Archive 09-16-debug-stop-reveal
-- Record journal
 - **guard**: Make the path-identity scope executable
-- Record journal
 - **task**: Archive 09-16-debug-bp-disable-rerun
-- Record journal
 - **task**: Archive 09-16-debug-source-identity
-- Record journal
-- Record journal
 - **task**: Archive 09-17-console-links-tabkey-worktree
-- Record journal
-- Record journal
 - **lsp**: Extend auto-import probe with import-candidate sampling
-- Record journal
-- Record journal
-- Record journal
 - **task**: Archive 09-20-problems-perf
 - **task**: Log quickfix no-preselect round and refactor ledger
 - **task**: Fill lsp task context ledgers
@@ -915,55 +893,37 @@ All notable changes to this project will be documented in this file.
 - **task**: Log round 12 diagnostic code display policy
 - **task**: Mark AC4 verified and AC6 gated, add AC5 rust checklist
 - **task**: Archive lsp-auto-import-diagnostics (AC5 verified, gates green)
-- Record journal
 - **task**: Archive 09-12-java-debug-backends (JDTLS/host dual backend, WSL marked known-limit)
-- Record journal
 - **task**: Archive 09-21-ctrl-hover-references
-- Record journal
 - **task**: Archive 09-24-editor-change-highlight
-- Record journal
 - **task**: Archive 09-24-git-unversioned-expansion-cache
-- Record journal
 - Ignore .qoder directory
 - **task**: Archive 09-24-watcher-lifecycle-and-git-lock
-- Record journal
 - **agents**: Guard AGENTS.md size and red-line routing
 - **guard**: Fix AGENTS.md size budget and enforce red-line ledger
-- Record journal
-- Record journal
 - **task**: Record the 09-26-worktree-repo-identity task
 - **tools**: Add the worktree manual hand-test script
-- Record journal
 - **gate**: Split the static gate from the test gate across commit and push
 - **scripts**: Name each gate once and give lint a write-back entry
 - **gate**: Call every gate by script name and widen what triggers it
 - **guards**: Pin the script references that hooks, CI and docs cite
-- Record journal
 - **docs**: Delete the stale state-management copy at the repo root
-- Record journal
 - **gate**: Gate the production bundle and name the host build
 - **task**: Record the 10-01-library-prompt-dialog-host task
 - **task**: Record the 10-01-path-identity-alphabet task
-- Record journal
 - **task**: Record the 10-01-async-path-resolution task
-- Record journal
 - **guards**: Forbid blocking fs primitives outside the pool
 - **task**: Record the 10-02-blocking-fs-sweep task
-- Record journal
 - **task**: Archive 10-01-library-prompt-dialog-host
-- Record journal
 - **task**: Record 10-04 git-sync-cancel-console
 - **task**: Archive 10-04-git-sync-cancel-console
-- Record journal
 - **task**: Archive 10-02-blocking-fs-sweep
 - **task**: Archive 10-01-async-path-resolution
 - **task**: Archive 10-01-path-identity-alphabet
 - **task**: Record 10-05 wsl-ssh-remote-changes-parity
 - **task**: Archive 09-26-worktree-repo-identity
-- Record journal
 - **task**: Record 10-05 app-exit-git-child-cleanup
 - **task**: Archive 10-05-app-exit-git-child-cleanup
-- Record journal
 - **task**: Expand 10-05 to cover WSL/SSH exit-kill parity
 - **task**: Drop 10-05 wsl-ssh-remote-changes-parity
 - **task**: Archive invariant-enforcement work and record journal
@@ -974,22 +934,16 @@ All notable changes to this project will be documented in this file.
 - **ci**: Clarify what the release build workflow covers
 - **task**: Add git-status-realtime planning artifacts
 - **task**: Archive 10-07-git-status-realtime
-- Record journal
 - **task**: Add gate-orchestration planning artifacts
 - **task**: Archive 10-08-gate-orchestration
-- Record journal
 - Fill gate-orchestration session details
 - **task**: Add real-source-test-determinism planning artifacts
 - **task**: Archive 10-08-real-source-test-determinism
-- Record journal
 - **task**: Add file IO workspace scope and git command session plans
-- Record journal
 - **task**: Archive 10-09-file-io-workspace-scope
 - **task**: Archive 10-08-worktree-run-debug
 - **task**: Archive 10-09-watcher-boundary-cost-model
-- Record journal
 - **task**: Archive 10-10-tab-identity-workspace-session
-- Record journal
 - **toolchain**: Install rust-analyzer with the pinned toolchain
 - **guards**: Gate the all-target Rust lint at local/push/CI and drop the duplicate
 - **trellis**: Record the L2 ban task and journals
@@ -997,21 +951,13 @@ All notable changes to this project will be documented in this file.
 - **trellis**: Record the ticket, pending, and governance sessions
 - **library**: Remove the dead MCP tag-group dialog
 - **task**: Archive 10-07-unify-command-execution
-- Record journal
 - **task**: Archive 10-08-workspace-naming
-- Record journal
 - **task**: Archive 10-09-git-command-workspace-session
 - **task**: Archive 10-10-lsp-failure-diagnostics-ownership
 - **task**: Archive 10-11-test-platform-cfg-item-scope
 - **task**: Record 10-12 terminal addressing migration
 - **task**: Record run root addressing plan
 - **task**: Archive 10-12-terminal-run-root-workspace-scope
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
 - **pi**: Switch to scoped pi-subagents and add pi-timing
 - **guards**: Widen the workspace-session addressing guard
 - **task**: Archive 10-12-terminal-insert-workspace-scope
@@ -1021,108 +967,49 @@ All notable changes to this project will be documented in this file.
 - **task**: Archive 10-14-git-conflict-resolve
 - **task**: Archive 10-14-opencode-2x-support
 - **task**: Archive 10-15-editor-tab-single-source
-- Record journal
 - **task**: Archive 10-16-guard-local-wall-clock
-- Record journal
-- Record journal
-- Record journal
-- Record journal
 - **guards**: Fix frontend test selection and shrink size baselines
 - **task**: Archive 10-12-agent-notify
-- Record journal
-- Record journal
 - **task**: Archive 10-16-notify-claude-compat
 - **task**: Archive 10-16-notify-codex
 - **task**: Record cs-http-gateway planning and implementation artifacts
 - **task**: Archive 10-17-cs-http-gateway
-- Record journal
-- Record journal
 - **task**: Archive 10-19-code-comment-translation
 - **guards**: Raise the lint_fe budget to match its cold-cache cost
 - **task**: Archive 10-19-generic-sqlite-cache
-- Record journal
-- Record journal
 - **task**: Archive 10-20-unify-acp-model-selection
-- Record journal
 - **task**: Record the capability-unify and two planned tasks
 - **task**: Record the four-state availability decision
 - **task**: Archive 10-21-pi-rpc-adapter
-- Record journal
 - **task**: Archive 10-20-opencode-2x-serve-dual-stack
 - **task**: Record the chat launch unify task artifacts
 - **task**: Archive 10-23-chat-launch-unify
 - **trellis**: Add 10-23-agent-chat-registry task artifacts
 - **trellis**: Add 10-24-agent-chat-context-usage artifacts
 - **task**: Archive 10-24-agent-chat-context-usage
-- Record journal
-- Record journal
-- Record journal
 - **task**: Record mention-slash-palette design addenda
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
 - **task**: Archive 10-17-dsh-neeko-bridge-fix
-- Record journal
-- Record journal
 - Give the workspace root the same repository pointers
 - Merge the dsh-neeko TUI package into main
-- Record journal
-- Record journal
 - Reuse the lint caches and record the check:quick cost model
 - **skills**: Record the BeautifulRust skill pair in the project lock
-- Record journal
 - **task**: Archive 10-25-watcher-test-decoupling
-- Record journal
 - **task**: Archive 10-25-fsevent-stream-consolidation
-- Record journal
 - **task**: Archive 10-24-composer-token-editor
 - **task**: Archive 10-23-agent-config-single-source
 - **task**: Archive 10-23-agent-chat-registry
 - **task**: Archive 10-21-mention-slash-palette
-- Record journal
-- Record journal
 - **task**: Archive 10-18-dsh-tui
-- Record journal
-- Record journal
 - **task**: Archive 10-16-notify-dsh
-- Record journal
 - **task**: Archive 10-16-agent-notify-more-clis
-- Record journal
-- Record journal
 - **task**: Archive 08-17-web-agent-page-design
 - **task**: Archive 08-24-agent-config-unify
 - **task**: Archive 07-26-ui-design-audit
 - **task**: Archive 07-26-unified-task-hub
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
 - **guards**: Record component size baseline for three dialog files
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
 - **capabilities**: Grant notification permission query commands
 - **task**: Archive 10-28-readme-rework
-- Record journal
 - Point journal entries at the reworded commit hashes
-- Record journal
-- Record journal
 - Release v1.0.9
 
 ### ◀️ Revert
@@ -1170,9 +1057,7 @@ All notable changes to this project will be documented in this file.
 
 - **ci**: Optimize CI/CD pipeline for faster feedback
 - **task**: Archive 08-10-platform-diff-centralization
-- Record journal
 - **task**: Archive 08-11-exec-target-consolidation
-- Record journal
 - Release v1.0.6
 
 ## [1.0.5] - 2026-08-10
@@ -2094,72 +1979,46 @@ All notable changes to this project will be documented in this file.
 - Remove dead code and suppress false positive warnings
 - Remove accidental .bak file
 - **task**: Archive 00-bootstrap-guidelines
-- Record journal
 - **task**: Archive 04-05-backend-unit-test-plan
-- Record journal
-- Record journal
 - Split frontend and backend lint/test into parallel jobs
-- Record journal
 - Exclude test directories from tsconfig build config
 - Improve CI workflow with dependency management and coverage reports
 - Adjust workflow triggers
-- Record journal
 - Remove coverage report from frontend test
 - Ignore generated Tauri schemas
 - **trellis**: Add IME cursor position analysis task and PRD
-- Record journal
 - **task**: Archive 04-08-04-08-branch-display
-- Record journal
 - **task**: Archive 04-09-multi-side-terminal
-- Record journal
 - **task**: Archive 04-11-refactor-app
-- Record journal
 - Add tag trigger and auto-generate release notes for GitHub Releases
 - **task**: Archive 04-11-quick-worktree
-- Record journal
 - Remove unused css_classes.txt
 - **task**: Archive 04-12-worktree-diff-preview
-- Record journal
 - Update .gitignore
 - **task**: Archive 04-12-enhance-titlebar-tabs
-- Record journal
 - **task**: Archive 04-13-fix-agent-compile
 - **task**: Archive 04-13-04-13-agent-detect-macos
-- Record journal
 - Merge main branch and add shadcn/ui components
-- Record journal
 - **task**: Archive 04-13-resolve-merge-conflicts
-- Record journal
 - **task**: Archive 04-13-one-dark-pro-theme
-- Record journal
 - **task**: Create 04-14-files-panel task with PRD and context
 - **task**: Archive 04-14-files-panel
-- Record journal
 - **task**: Archive 04-14-agent-visibility
-- Record journal
 - **task**: Create 04-15-font-size-split task with PRD
 - **task**: Update 04-15-font-size-split task context and mark completed
 - **task**: Archive 04-15-font-size-split
-- Record journal
 - **task**: Archive 04-15-markdown-preview-enhancement
-- Record journal
-- Record journal
 - **task**: Create git commit panel feature task
 - **task**: Create skill management feature tasks
 - Mark PR#01 skill data model as completed
 - **task**: Archive 04-15-skill-pr01-data-model
 - **task**: Archive 04-16-skill-pr09-local-skill-panel
-- Record journal
 - **task**: Archive 04-15-skill-pr02-skill-store
-- Record journal
-- Record journal
 - **task**: Create skill card display feature tasks
 - Add .snow to gitignore
 - **task**: Archive 04-17-terminal-split
-- Record journal
 - Archive task and record session
 - **task**: Archive 04-20-god-component-refactor
-- Record journal
 - **task**: Finalize archived phase metadata
 - Record session and archive task
 - Record session and archive task
@@ -2167,46 +2026,26 @@ All notable changes to this project will be documented in this file.
 - Record session progress
 - **task**: Archive 04-21-context-splitting
 - Record session progress
-- Record journal
 - **task**: Archive 04-15-skill-pr03-scanner-installer
-- Record journal
 - **task**: Archive 04-16-skill-pr12-marketplace-backend
-- Record journal
 - **task**: Archive 04-16-skill-pr13-marketplace-ui
-- Record journal
 - Remove unused skill migration and installer code
 - **task**: Archive 04-21-04-21-backend-directory-refactor
-- Record journal
 - **task**: Archive 04-22-lib-commands-refactor
-- Record journal
 - **task**: Archive 04-23-merge-conflict-resolve
-- Record journal
 - **task**: Archive 04-23-wsl-ssh-changes-layout
-- Record journal
 - Update .gitignore with common IDE directories
-- Record journal
 - **task**: Archive 04-23-fix-last-tab-close
-- Record journal
 - **task**: Archive 04-07-ime-cursor-position
-- Record journal
 - **task**: Archive 04-26-settings-full-page
-- Record journal
-- Record journal
 - **task**: Archive 04-27-terminal-fast-refresh-exports
-- Record journal
-- Record journal
 - **task**: Archive 04-28-fix-ssh-auth-on-restart
-- Record journal
 - **docs**: Update index.png preview screenshot
 - **task**: Archive 05-03-refactor-command-exec
-- Record journal
 - **task**: Archive 05-07-project-drag-sort
-- Record journal
 - Update pnpm version to 10.33.4 and add .pi / .pnpm-store to gitignore
 - **trellis**: Migrate from 0.4.x to 0.5.4
 - **task**: Archive 05-07-migrate-to-0.5.4
-- Record journal
-- Record journal
 - **task**: Archive 05-08-unified-tab-01-types-store
 - **task**: Archive 05-08-unified-tab-02-tabbar
 - **task**: Archive 05-08-unified-tab-03-file-migration
@@ -2215,128 +2054,73 @@ All notable changes to this project will be documented in this file.
 - **task**: Archive 05-08-unified-tab-06-cleanup
 - **task**: Archive 05-08-unified-tab-system
 - **task**: Archive 05-08-fix-auto-terminal-activate
-- Record journal
-- Record journal
 - **task**: Complete and archive 04-05-frontend-unit-test-plan
 - **trellis**: Update to v0.5.10 - add inline dispatch mode support and safe commit
 - **task**: Archive 05-09-dock-layout-design
-- Record journal
 - Archive task 05-09-dock-layout-design and record session
 - **task**: Add trellis task for html-preview feature
 - Delete task
 - **task**: Archive 05-14-task-runner
-- Record journal
 - **task**: Archive 05-16-nerd-font-fallback
-- Record journal
 - **task**: Archive 05-15-exit-cleanup-optimization
-- Record journal
 - **task**: Archive 05-16-files
-- Record journal
-- Record journal
 - **task**: Archive 05-16-pi-theme-settings-pi-settings-json-theme
-- Record journal
 - **task**: Archive 05-16-commit-diff-refresh-watcher
-- Record journal
 - **task**: Archive 05-17-realtime-git-watcher
 - **task**: Archive 05-17-realtime-git-watcher-v2
-- Record journal
 - **task**: Update commit-panel-instant-load prd with 10 slices
 - **task**: Archive 05-17-commit-panel-instant-load
-- Record journal
 - **task**: Archive 05-17-project-worktree-switch-optimization
-- Record journal
 - Mark task 05-15-terminal-links-browser as completed
 - **task**: Archive 05-15-terminal-links-browser
 - **task**: Archive 05-15-browser-element-picker
-- Record journal
 - **task**: Clean up archived task source files
 - **task**: Archive 05-18-settings-panel-app-level-view
-- Record journal
 - **task**: Archive 05-18-settings-project-panel
-- Record journal
 - **task**: Archive 05-18-project-list-redesign-v1-reference
-- Record journal
 - **task**: Archive 05-19-project-avatar-color-customization
-- Record journal
 - Restrict CI trigger to tag pushes only
 - **task**: Archive 05-21-phase-0-5-implementation-plan
-- Record journal
 - **task**: Archive 05-25-phase-1b-theme
-- Record journal
 - **task**: Archive 05-25-phase-2a-prop-phase-1-2
-- Record journal
 - **task**: Archive 05-25-phase-2b-useappcontainer-bag-1-bag-3-bag-4
-- Record journal
 - **task**: Archive 05-25-phase-3a-terminal-wsl-remote
-- Record journal
 - **task**: Archive 05-25-phase-3b-prop-phase-3-4-sharedpaneprops
-- Record journal
 - **task**: Archive 05-25-phase-4-store-appstore-822-6-slice
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
-- Record journal
 - **task**: Archive 05-25-phase-5-git-transport-trait-commands
 - **task**: Archive 05-26-phase-5-followup-git-operations-rs
-- Record journal
-- Record journal
 - **task**: Archive 05-26-phase-3a-2-local-terminalview-terminalviewbase
-- Record journal
 - **task**: Archive 05-26-phase-4-retry-zustand-5-store-useshallow
-- Record journal
 - **task**: Archive 05-27-git-unification-delete-old-commands-switch-frontend-to-unified
-- Record journal
 - **task**: Archive 05-27-decompose-god-hook
-- Record journal
 - **task**: Archive 05-27-unify-terminalview
-- Record journal
 - **task**: Archive 05-27-dedup-git-impl
-- Record journal
 - **task**: Archive 05-27-inline-refresh-git
-- Record journal
 - **task**: Archive 05-27-unify-projects-panel
-- Record journal
 - **task**: Archive 05-27-migrate-models-imports
-- Record journal
 - Delete dead code — orphaned useConnectionWorktreeState hook and unused define_unified_command macro
 - **task**: Archive 05-27-dead-code-cleanup
 - **task**: Archive 05-27-error-handling-gaps
-- Record journal
 - **task**: Archive 05-27-fix-keyboard-shortcuts
-- Record journal
 - **task**: Archive 05-27-aheadbehind-unified
-- Record journal
 - **task**: Archive 05-27-centralize-file-events
-- Record journal
 - **task**: Archive 05-27-add-critical-tests
-- Record journal
 - **task**: Archive 05-27-quick-wins-round3
 - **task**: Archive 05-27-fix-file-tab-refresh
-- Record journal
 - **task**: Archive 05-27-flatten-appmodals
 - **task**: Archive 05-27-shared-agent-skeleton
-- Record journal
 - **task**: Archive 05-27-extract-browser-picker
-- Record journal
 - **task**: Archive 05-27-fix-transport-bypass
-- Record journal
 - **task**: Archive 05-27-simplify-diffdata
-- Record journal
 - Remove all dead code — 15 Rust warnings fixed, 14 frontend items removed
 - **task**: Archive 05-27-remove-dead-code
-- Record journal
 - Remove temp fix-imports scripts
 - **spec**: Update quality guidelines for ESLint + Clippy setup
 - **task**: Archive 05-29-phase1-quality-gates
 - **task**: Archive 05-29-phase2-backend-layering
 - **task**: Archive Phase 3 tasks
-- Record journal
 - **task**: Archive 05-29-architecture-compliance-refactor
 - **task**: Archive Phase 4
-- Record journal
 - **task**: Archive 05-29-feature-based-b18-b19-types-test
 - **task**: Archive 05-29-fix-imports-for-project-feature-migration
 - **task**: Archive 05-29-fix-imports-for-session-feature-migration
@@ -2344,20 +2128,16 @@ All notable changes to this project will be documented in this file.
 - **task**: Archive 05-29-phase4-eliminate-unwrap
 - **task**: Delete expired task
 - **task**: Archive 05-30-spec-compliance-audit
-- Record journal
 - Move main.tsx and vite-env.d.ts to src/ root
 - **task**: Archive 05-31-phase-a-cross-domain-rust-cleanup-git-agent-and-file-git
 - **task**: Archive 05-31-phase-b-infrastructure-cleanup-core-db-rs-naming-visibility
 - **task**: Archive 05-31-phase-c-eslint-rules-lib-rs-deny-spec-alignment
-- Record journal
 - Align codebase with dev-spec — barrel files, ESLint zones, dead code cleanup
 - Merge shared/types into src/types, delete orphan directory
 - **claude**: Add design-md skill (Apple design language reference)
 - **trellis**: Record work-in-progress for 06-01 dark theme + editor group layout tasks
 - **trellis**: Record 06-01-watcher-only-active-project task
-- Record journal
 - **task**: Archive 06-01-watcher-only-active-project
-- Record journal
 - **trellis+ui**: Record 06-01 task progress; simplify TitleBar; align dark theme
 - **task**: Archive 06-01-align-dark-theme-with-apple-design-md-color-system
 - **task**: Archive 06-01-dark
@@ -2366,28 +2146,18 @@ All notable changes to this project will be documented in this file.
 - **task**: Archive 06-01-remove-project-name-and-branch-name-from-titlebar
 - **task**: Archive 06-01-set-active-project-watcher-watch
 - **task**: Archive add-project-delete-confirmation and replace-worktree-confirm-dialog
-- Record journal
 - **task**: Archive 06-02-add-local-project-modal
 - **task**: Archive 06-02-terminal-scroll-to-bottom-button
-- Record journal
 - **task**: Archive 06-02-replace-custom-drag-with-dnd-kit
-- Record journal
 - **task**: Archive 06-03-fix-dnd-kit-blocking-project-item-clicks
-- Record journal
 - **task**: Archive 07-03-editor-diff-ai-selection
-- Record journal
 - **task**: Archive 07-06-lsp-phase
-- Record journal
 - **trellis**: Add task tracking for conversation history feature
 - **task**: Archive 07-08-conversation-backend
-- Record journal
 - **task**: Archive 07-08-conversation-adapters
-- Record journal
 - **task**: Archive 07-08-conversation-frontend
-- Record journal
 - **task**: Archive 07-08-conversation-integration
 - **task**: Archive 07-08-conversation-history
-- Record journal
 - **task**: Archive 07-09-conversation-title-normalize
 - Record session 76 - conversation title normalization
 - Finalize task archive
@@ -2395,25 +2165,16 @@ All notable changes to this project will be documented in this file.
 - Record session 77 - view page UX optimization
 - Session record 78 - fix OpenCode adapter rewrite
 - **task**: Archive 07-09-07-09-fix-opencode-adapter
-- Record journal
 - **task**: Archive 07-10-lsp-stability-fix
-- Record journal
 - Clean up stale lsp-stability-fix task files from tracking
 - **task**: Archive 07-10-terminal-file-links
-- Record journal
 - Clean up prototype files and update .gitignore
 - **task**: Archive 07-13-git-push-https-auth
 - **task**: Archive 07-12-git-push-auth-handling
-- Record journal
 - Reduce push/network timeout from 60s/180s to 30s
-- Record journal
 - **task**: Archive 07-13-notification-system
-- Record journal
-- Record journal
 - **task**: Archive 07-13-git-provider-detection
-- Record journal
 - Add mimo agent icon asset
-- Record journal
 - **task**: Archive 07-16-c1-session-schema-flatten
 - **task**: Archive 07-16-c2-backend-fileio-unify
 - **task**: Archive 07-16-c5-naming-boundary-cleanup
@@ -2430,40 +2191,25 @@ All notable changes to this project will be documented in this file.
 - **task**: Archive executor tasks
 - **task**: Archive editor-lsp-dap (all children resolved)
 - **task**: Archive 07-17-pr-list-error-ux
-- Record journal
 - **task**: Archive 07-22-project-skills-relation-ui
-- Record journal
 - **trellis**: Archive agent-conversation-history-extensibility task
-- Record journal
 - **task**: Archive 07-20-skill-usable-closed-loop
 - **task**: Archive 07-24-layout-architecture-cleanup
-- Record journal for layout architecture cleanup
 - **task**: Archive 07-24-dock-registry-architecture
-- Record journal
 - **task**: Init 07-24-git-log-panel-refactor
 - **task**: Archive 07-24-git-log-panel-refactor
-- Record journal for git-log-panel-refactor
-- Record journal
 - Archive task 07-25-diff-tab-ui-modernization
-- Record journal session 95 (Git Control Diff Tab 标题前缀微调)
 - **task**: Archive 07-25-07-25-git-control-panel
-- Record journal session 96 (Git Control Panel spec update + quality verification)
 - **task**: Archive 07-26-terminal-space-fix
-- Record journal
 - **task**: Archive 07-26-git-changes-undo-support
-- Record journal
-- Record journal
 - **task**: Archive 07-26-07-26-notification-copy-fix
 - Add lefthook pre-commit checks for frontend and rust
 - **task**: Archive 07-26-new-action-menu
-- Record journal (session 100)
 - **task**: Archive 07-27-split-file-commands-from-git
 - **task**: Archive 07-27-optimize-changes-list-style
 - **task**: Archive 07-27-unify-tab-system
-- Record journal
 - Record branch-switcher session and mark task completed
 - **task**: Archive 07-27-branch-switcher
-- Record journal session 106
 - Rustfmt fix
 - **task**: Archive 07-29-lsp-status-redesign
 - **task**: Archive 07-28-agent-split-button
@@ -2473,20 +2219,13 @@ All notable changes to this project will be documented in this file.
 - **task**: Archive 07-30-lsp-review-remediation
 - **task**: Archive 07-30-lsp-frontend-cleanup
 - **task**: Archive remaining LSP subtasks
-- Record journal
 - Archive LSP polish and robustness tasks
 - **task**: Archive 07-29-resource-library
-- Record journal
 - **task**: Archive 07-30-resource-library-p2
-- Record journal
 - **task**: Archive 07-30-agent-plugin-system
-- Record journal
 - **task**: Archive 07-30-mcp-commands-resources
-- Record journal
 - **task**: Archive 07-30-tooladapter-replace-schema
-- Record journal
 - **task**: Archive 07-30-agent-config-schema
-- Record journal
 - **task**: Add ui-design-audit and unified-task-hub plans
 - **task**: Archive 07-31-git-history-virtual-scroll
 - Record session 109
@@ -2494,11 +2233,8 @@ All notable changes to this project will be documented in this file.
 - **task**: Archive 07-31-refactor-split-commitlist-into-hooks-presentational-component
 - Record session 110 + spec testing pitfalls
 - **task**: Archive 08-02-resource-library-redesign
-- Record journal
 - **gitignore**: Ignore .workbuddy and fix missing trailing newline
-- Record journal
 - **lint**: Fix import order and formatting in library files
-- Record journal session 116
 - **task**: Archive 08-02-mcp-marketplace
 - **task**: Archive 08-03-mcp-tag-agent-project
 - 忽略 .grok 本地会话数据目录
@@ -2515,7 +2251,6 @@ All notable changes to this project will be documented in this file.
 - **task**: Archive 08-07-fix-cmdw-tab-close-agent-leak
 - **trellis**: Record PTY reaper session log
 - **task**: Archive 08-07-08-07-fix-git-status-race
-- Record journal
 - **task**: Track find-in-files search task
 - **task**: Archive 08-10-search-find-in-files
 - Ignore .zcode tool directory
