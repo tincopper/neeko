@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/11-12-lsp-graceful-shutdown/prd.md", "reason": "审核基准：AC1-AC6 逐条可验证；R6 明确要求既有 stopped/静默语义不变（回归位）"}
+{"file": ".trellis/tasks/11-12-lsp-graceful-shutdown/design.md", "reason": "审核基准：失败矩阵 5 行是否都有对应测试；权衡表里「宽限期进 tuning」是否被遵守"}
+{"file": ".trellis/tasks/11-12-lsp-graceful-shutdown/implement.md", "reason": "审核基准：S1-S7 的 Gate A-D 判据是否真的达成（尤其 AC1 的唯一实现点与 AC4 的有界性）"}
+{"file": ".trellis/tasks/11-12-lsp-graceful-shutdown/research/jdtls-workspace-corruption.md", "reason": "证据链：改动必须能解释该现场（shutdown 语义 + checkpoint 窗口），而不是绕开症状"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "禁止回退既有决策：诊断归属、插件数据承载语言差异、能力声明与实现一致"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "红线 3 检查项：新增等待是否全部落在阻塞线程、有无无界阻塞"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "测试质量检查项：是否有真实进程/真实秒级 sleep、断言是否打在协议顺序上"}
