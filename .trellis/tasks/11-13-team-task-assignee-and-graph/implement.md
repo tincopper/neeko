@@ -84,3 +84,90 @@
 | claim 边又长回来 | E1（`edges` 不含 claim） |
 | 副标题来源漂移（只看 owner） | E3 三种情形 |
 | 图例又写回「实线 = 认领」 | E3 图例断言 |
+
+---
+
+# 第 2 轮：分配图可读性 + 视口（接阶段 F 之后）
+
+> 只动前端。改动面：`flowLayout.ts` · `FlowEdgesRenderer.tsx` · `FlowTaskNode.tsx` ·
+> `TeamFlowGraph.tsx` · `TeamBoardCenterView.tsx` · 新增 `utils/flowViewport.ts` ·
+> `utils/svgText.ts` · 上述文件的测试。
+
+## 动手前
+
+- [ ] Read `src/AGENTS.md`（前端红线）与 `.trellis/spec/frontend/interaction-patterns.md`
+      （dnd-kit 纪律的**适用边界**：列表排序 vs 画布 pan）。
+- [ ] 读本任务 `design.md` §8~§12（第 2 轮设计，尤其 §11.2 单一 zoom 持有者）。
+- [ ] 注意本 worktree 有大量别的任务未提交改动：禁止 `git checkout/restore/stash`。
+
+## 阶段 G：节点副标题（#1）
+
+- [ ] G1 红：`FlowTaskNode` 组件测试（或 `TeamFlowGraph.test.tsx`）四种组合，
+      断言**两行**副标题的确切文本（见 design §8 的表）。特别是
+      `assignee=A, owner=B`（A≠B）时两行分别出现 A 与 B —— 旧实现只显示 A。
+- [ ] G2 绿：`FlowTaskNode` 拆成 `meta1` / `meta2` 两个独立推导函数；
+      `NODE_H` 38→52，文字 y 改 15/29/42；`TeamFlowGraph` 的 `GAP_Y` 34→40。
+      `svgText.ts` 加 `TEXT_META2_STYLE`（或复用 `TEXT_META_STYLE` + 类名区分）。
+
+## 阶段 H：派发边（#2）
+
+- [ ] H1 红：`flowLayout.test.ts` 改「三层关系」用例：`create` 边只有首层 2 条、
+      `dispatched` == 首层 id；`TeamFlowGraph.test.tsx` 断言 `path.flow-create` 的
+      `stroke-dasharray` 不再是 `1 3`（实线 = 属性缺失或 `none`）、图例含「实线 = 派发」。
+- [ ] H2 绿：
+      - `flowLayout`：`create` 边与 `dispatched` 只遍历 `layers[0]`（首层），
+        注释改「派发 = 拆出入口任务」，**删掉**「每个任务都由 lead 派发」的旧说法；
+      - `FlowEdgesRenderer`：`create` 分支去掉 `strokeDasharray="1 3"`，改
+        `strokeWidth={1.4}` + `stroke-text-muted`（与依赖虚线靠线型区分）；
+      - `TeamFlowGraph` 图例文案；`renderFlowEdges` 的 `leadBottomY` 起点仍用
+        `layerY(0) - LEAD_GAP`（首层只在 layer 0，不再有跨层曲线）。
+
+## 阶段 I：移除成员行（#3）
+
+- [ ] I1 红：组件测试断言传入 members 后 SVG 里不出现成员名 + `任务` 计数，
+      且 `viewBox` 高度 < 第 1 轮基线。
+- [ ] I2 绿：删 `TeamFlowGraph` 的成员行 JSX / `memberY` / `memberX` / `memberById` /
+      `MEMBER_NAME_MAX_CHARS`；`contentW = max(layerW, 160)`；`contentH` 去掉 `+40`；
+      `svgText.ts` 删 `TEXT_SUB_STYLE`；`flowLayout` 的 `workerRow/memberRow` **保留**并
+      在注释标明「图上暂不消费」；`members` prop 保留（aria-label）。
+
+## 阶段 J：视口（#4）
+
+- [ ] J1 红：新建 `utils/__tests__/flowViewport.test.ts` 打三个纯函数
+      （clamp 上下界 / wheel 上滚放大下滚缩小 / `isPanClick` 阈值边界）。
+- [ ] J2 绿：新建 `utils/flowViewport.ts`（常量 + 三函数，见 design §11.4）。
+- [ ] J3 红：组件测试
+      - 受控模式 `fireEvent.wheel` → `onZoomChange` 收到钳制后的值；
+      - 非受控模式 wheel 后 SVG `width` 变化；
+      - `pointerdown` → `pointermove`(dx>4) → `pointerup` → `click` 时 `onOpenTask` **不**调用；
+        位移 0 时**要**调用（反证：不能把正常点击也吞了）；
+      - 拖动改了容器 `scrollLeft`。
+- [ ] J4 绿：`TeamFlowGraph` 加 `onZoomChange?` prop；`useEffect` 原生注册
+      `wheel`（`{ passive: false }`，清理函数必须 remove）；`pointerdown/move/up` +
+      `setPointerCapture`；`onClickCapture` 判 `isPanClick`；
+      拖动 delta 直接作用于滚动容器 `scrollLeft/scrollTop`。
+- [ ] J5 `TeamBoardCenterView` 传 `onZoomChange={setZoom}`（保留 `+/-/重置` 按钮），
+      `ZOOM_STEP` 按钮步长与 wheel 步长**各自独立**（按钮 0.25 / wheel 0.1，别强行合并成
+      一个常量：两者的手感不是同一件事）。
+
+## 阶段 K：收尾
+
+- [ ] K1 `pnpm vitest run` 覆盖 `src/features/agent-team` 全部相关测试
+- [ ] K2 `npx tsc --noEmit` / `npx eslint <改动文件>` / `prettier --check` 绿
+- [ ] K3 `pnpm check:quick`（只跑一次；含组件规模护栏 300 行）
+- [ ] K4 更新 spec：`.trellis/spec/backend/team-domain.md` 的分配图段（若 §9a.7/§9.2 记了
+      「两类边」要补「派发只连首层」）、`.trellis/spec/frontend/interaction-patterns.md`
+      补一节「画布 pan 与列表排序的边界」（说明为什么这里不用 dnd-kit）。
+
+## 判据汇总（第 2 轮）
+
+| 退化 | 变红的测试 |
+| --- | --- |
+| 两行副标题又合成一个 `??` | G1 的 `A≠B` 用例 |
+| 派发线又变回 `1 3` 点线 | H1 的 dasharray 断言 |
+| 派发线又给每个任务都画（跨层穿节点） | H1 的 create 边数量 |
+| 成员行又长回来 | I1 |
+| wheel 被页面滚走（passive） | J3 受控 wheel 断言 + 手动验证 |
+| 拖完手一松误开详情 | J3 超阈值 click 断言 |
+| 正常点击被吞 | J3 零位移反证 |
+| zoom 出现第二份 state | 代码审查 + J3 受控断言 |

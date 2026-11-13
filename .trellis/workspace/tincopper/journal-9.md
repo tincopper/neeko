@@ -747,3 +747,23 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 466: 第3轮：只启动被指派到的成员（assignee 必填/计划成员/spawn 人数护栏/队长禁 claim），并收口第2轮视口抽取
+<!-- trellis-session: v=2 fp=3a6a21ff2c0e0c06 -->
+
+**Date**: 2026-11-13
+**Task**: 第3轮：只启动被指派到的成员（assignee 必填/计划成员/spawn 人数护栏/队长禁 claim），并收口第2轮视口抽取
+**Branch**: `feat-team`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
