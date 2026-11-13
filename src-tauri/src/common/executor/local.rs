@@ -140,12 +140,38 @@ impl CommandExecutor for LocalExecutor {
 mod tests {
     use super::*;
     use crate::common::executor::collect_child_output_streaming_cancellable;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
+
+    /// **进程级全局收敛表的串行闸**（照 `scan_cache` / `ENV_LOCK` 的先例）。
+    ///
+    /// `child_registry` 是整个进程共享的：`kill_all_live()` 会杀掉**任何**已登记的
+    /// `kill_tree` 子进程 —— 包括**别的用例**刚 spawn 的那个。本模块四个用例都会
+    /// spawn 子进程，其中一个还直接调 `kill_all_live()`，于是「谁先跑」决定了
+    /// 别人家的 fixture 是否被提前杀掉（实测：包装器 + 孙进程那条用例因此拿到
+    /// 空 stdout / 假绿，表现成「偶发红」）。
+    ///
+    /// 修法不是加 sleep，而是把「复位 + 独占」做成一次调用：拿闸就丢在
+    /// `-D warnings` 下编译失败（`#[must_use]`），用例之间不再互相杀。
+    /// 用 `tokio::sync::Mutex` 而不是 `std::sync::Mutex`：async 用例本就要跨 `await`
+    /// 持有（`clippy::await_holding_lock` 会拒绝 std 守卫跨 await，且那本来是错的用法）。
+    static CHILD_REGISTRY_GUARD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    #[must_use = "持闸到用例结束：跨用例杀子进程会让别人的 fixture 变成死进程"]
+    async fn child_registry_guard() -> tokio::sync::MutexGuard<'static, ()> {
+        CHILD_REGISTRY_GUARD.lock().await
+    }
+
+    /// 同步用例（`#[test]`，不在 runtime 内）的取闸形态。
+    #[must_use = "持闸到用例结束：跨用例杀子进程会让别人的 fixture 变成死进程"]
+    fn child_registry_guard_blocking() -> tokio::sync::MutexGuard<'static, ()> {
+        CHILD_REGISTRY_GUARD.blocking_lock()
+    }
 
     /// 退出收敛会在 wait future **仍存活**时直接驱动 kill 动作；Local 的 wait 若跨
     /// `await` 持 `Mutex<Child>`，kill 动作会抢不到锁而死锁 —— 回归钉子。
     #[tokio::test]
     async fn kill_action_does_not_deadlock_while_wait_is_polling() {
+        let _guard = child_registry_guard().await;
         let child = LocalExecutor
             .spawn_with(SpawnOptions::new("sh", &["-c", "sleep 30"]).with_kill_tree())
             .await
@@ -170,49 +196,55 @@ mod tests {
         let _ = task.await;
     }
 
-    /// `kill()` 必须连带杀死后代进程。回归背景:jdtls 的包装器脚本被杀后,
-    /// 它拉起的 JVM 孤儿化,堆积后互抢 Eclipse workspace 锁导致服务器永不
-    /// 初始化。**声明 `kill_tree`** 后子进程自成进程组,组杀应覆盖后代。
+    /// `kill()` 必须连带杀死**后代**进程。回归背景：jdtls 的包装器脚本被杀后，
+    /// 它拉起的 JVM 孤儿化，堆积后互抢 Eclipse workspace 锁导致服务器永不初始化。
+    /// **声明 `kill_tree`** 后子进程自成进程组，组杀应覆盖后代。
+    ///
+    /// **判据是事件，不是时间**：包装器与孙进程都继承同一条 stdout 管道（同一写端），
+    /// 两者的写端全部关闭才 EOF。于是
+    /// - 就绪 = 读到 `ready` 行（此刻 `sleep` 已 spawn，必然也持着写端）；
+    /// - 收口 = `kill()` 之后管道 EOF。
+    /// 若组杀漏掉孙进程，写端就仍被它持有 ⇒ 永远等不到 EOF（超时即失败信号）。
+    /// 这里没有 sleep 轮询，也没有 `kill(pid, 0)` 采样 —— 不猜「多久算死了」，
+    /// 只等事实（超时值只是失败预算，不是调度窗口）。
     #[tokio::test]
     async fn kill_kills_descendant_processes() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let pid_file = tmp.path().join("grandchild_pid");
-        // sh 保持存活等待后台 sleep,模拟"包装器 + 服务进程"树。
-        let script = format!("sleep 300 & echo $! > {}; wait $!", pid_file.display());
-        let child = LocalExecutor
-            .spawn_with(SpawnOptions::new("sh", &["-c", &script]).with_kill_tree())
+        let _guard = child_registry_guard().await;
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+
+        // `sleep` 继承 sh 的 stdout；`wait $!` 让包装器保持存活（模拟包装器 + 服务进程）。
+        let mut child = LocalExecutor
+            .spawn_with(
+                SpawnOptions::new("sh", &["-c", "sleep 300 & echo ready; wait $!"])
+                    .with_kill_tree(),
+            )
             .await
             .expect("spawn sh");
+        let (_, stdout, _) = child.take_stdio();
+        let mut stdout = BufReader::new(stdout.expect("stdout is piped"));
 
-        let grandchild: u32 = {
-            let deadline = Instant::now() + Duration::from_secs(3);
-            loop {
-                if let Ok(content) = std::fs::read_to_string(&pid_file) {
-                    if let Ok(pid) = content.trim().parse() {
-                        break pid;
-                    }
-                }
-                assert!(Instant::now() < deadline, "grandchild pid not written");
-                std::thread::sleep(Duration::from_millis(50));
-            }
-        };
+        // 就绪：孙进程已 spawn 且持有写端（读一行即可，无轮询）。
+        let mut ready = String::new();
+        tokio::time::timeout(Duration::from_secs(5), stdout.read_line(&mut ready))
+            .await
+            .expect("wrapper must report readiness")
+            .expect("read readiness line");
+        assert_eq!(
+            ready.trim(),
+            "ready",
+            "fixture must spawn the descendant first"
+        );
 
         child.kill().await.expect("kill");
 
-        // 后代必须死亡:kill(pid, 0) 返回 ESRCH(孙进程被孤儿化后由 launchd 收割)。
-        let pid = i32::try_from(grandchild).expect("grandchild pid fits i32");
-        let deadline = Instant::now() + Duration::from_secs(3);
-        loop {
-            let alive = unsafe { libc::kill(pid, 0) } == 0;
-            if !alive {
-                break;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "grandchild {grandchild} still alive after kill"
-            );
-            std::thread::sleep(Duration::from_millis(50));
-        }
+        // 收口：两个写端都关闭 ⇒ EOF。超时 = 有后代仍持有管道（漏杀）。
+        let mut rest = Vec::new();
+        tokio::time::timeout(Duration::from_secs(5), stdout.read_to_end(&mut rest))
+            .await
+            .unwrap_or_else(|_| {
+                panic!("descendant still holds the stdout pipe after kill — group kill missed it")
+            })
+            .expect("read to EOF");
     }
 
     /// **端到端：登记表驱动的退出收敛真的能杀掉一个活着的进程。**
@@ -220,6 +252,9 @@ mod tests {
     /// 这是机制层的钉子。之前登记是可选动作（16 个 spawn 点只有 git 做了），
     /// 现在 `kill_tree` 自动登记。本用例验证从「spawn」到「登记表驱动」的整个链条：
     /// 不必经过 `save_app_state` / Tauri 运行时，直接调 `kill_all_live`。
+    ///
+    /// **判据是事件**：本用例的子进程就是被收敛的那一个，所以直接等它的 `wait` future
+    /// 完成 —— 进程真退出才 resolve，不需要 `kill(pid, 0)` 采样或 sleep 轮询。
     ///
     /// 变异验证：把 `new_with_pid` 的 `kill_tree` 分支改成不登记 → 本用例红。
     ///
@@ -229,6 +264,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn kill_all_live_actually_kills_a_registered_child() {
+        let _guard = child_registry_guard_blocking();
         let child = crate::common::runtime::block_on_shutdown(async {
             LocalExecutor
                 .spawn_with(SpawnOptions::new("sh", &["-c", "sleep 300"]).with_kill_tree())
@@ -238,29 +274,31 @@ mod tests {
         let pid = child.pid.expect("local child has a pid");
         let pid_i32 = i32::try_from(pid).expect("pid fits i32");
 
+        // 瞬时事实（不是等待）：刚 spawn 的进程必须活着。
         assert!(
             unsafe { libc::kill(pid_i32, 0) } == 0,
             "child must be alive right after spawn"
         );
 
+        // 拆出 wait future；**kill 句柄必须活到 `kill_all_live` 之后** —— 登记表的
+        // lease 由它（及其克隆）持有，提前 drop 会把该子进程从收敛表里注销。
+        let (wait, kill_handle) = child.into_wait_and_kill();
+
         // 退出收敛驱动（同步入口，与 shutdown 路径同一个动作）。
         crate::common::executor::kill_all_live();
 
-        // 必须真的死（SIGKILL 按进程组发，可能略有延迟）。
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            let alive = unsafe { libc::kill(pid_i32, 0) } == 0;
-            if !alive {
-                break;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "child {pid} still alive after kill_all_live — 登记表没驱动 kill 动作"
-            );
-            std::thread::sleep(Duration::from_millis(50));
-        }
+        // 事件：进程真退出时 wait 才 resolve（SIGKILL 后是毫秒级，超时只是失败预算）。
+        // `wait` 的内层结果**不参与判据**：被 SIGKILL 的进程按 POSIX 报 `Killed`
+        // （`Err`），正常的退出码则是 `Ok(_)` —— 两者都证明「进程已经结束」。
+        let exited = crate::common::runtime::block_on_shutdown(async {
+            tokio::time::timeout(Duration::from_secs(5), wait).await
+        });
+        assert!(
+            exited.is_ok(),
+            "child {pid} still alive after kill_all_live — 登记表没驱动 kill 动作"
+        );
 
-        drop(child);
+        drop(kill_handle);
     }
 
     /// L8：进程组只在**显式声明** `kill_tree` 时建立 —— 普通短命令（git / 探测 /
@@ -268,6 +306,7 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn process_group_is_opt_in() {
+        let _guard = child_registry_guard().await;
         use tokio::io::AsyncReadExt;
 
         /// 子进程报告自己的 pgid（`$$` = sh 的 pid）。
