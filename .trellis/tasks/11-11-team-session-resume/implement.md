@@ -371,15 +371,41 @@ pnpm check:quick
 
 ## 收尾（三阶段都完成后）
 
-- [ ] spec 更新：
+- [x] spec 更新（落地：`team-domain.md` §5a/§5b/§2.6 · `conversation-adapter.md` §4.3/§4.5/§4.3.1 ·
+  `git-domain.md` ProjectScope · `frontend/interaction-patterns.md` 五态判据）：
   - `backend/team-domain.md`：状态语义（open/closing/sealed、offline）、`SessionOwner`、
     `team_resume`、boot 归位、删列与其代价。
   - `backend/conversation-*.md` / `frontend/*`：scope 按身份的契约、
     「会话身份 vs 进程资源」这条不变量写进对应 spec。
   - `frontend/quality-guidelines.md`（若涉及四态判据的落点纪律则补一句）。
-- [ ] release note 草稿：v22 删列、旧成员历史入口的替代路径、`team_send` 行为变更。
-- [ ] 全量 `pnpm check` 由 push/CI 兜底（本地只在排查差异时跑）。
-- [ ] `python3 ./.trellis/scripts/add_session.py` 记录三段会话。
+- [x] release note 草稿（见下节「Release note 草稿」）。
+- [x] 全量 `pnpm check` 由 push/CI 兜底（本地已跑 `cargo test --lib` 全量 + `npx vitest run` 全量 +
+  `pnpm check:quick`，见各阶段实施记录）。
+- [x] `python3 ./.trellis/scripts/add_session.py` 记录三段会话（S1 / S2 / S3 各一次）。
+
+## Release note 草稿（v22 + v23）
+
+**行为变更**
+
+- 团队与成员不再由 PTY 句柄定义：app 重启后成员一律 `offline`、团队的 `closing` 归位 `open`、
+  全部成员凭证作废（旧 token 立刻 401）。花名册按「有没有活进程」显示四态：
+  `打开会话` / `恢复会话` / `查看记录` / 置灰（`暂无会话` / `已关闭`）。
+- **新增 `team_resume(teamId, memberId?)`**：按各自的原生会话 id 续接对话（claude `--resume`、
+  pi / opencode `--session`、codex `resume` 子命令、codebuddy `--resume`）。qoder / gemini 没有可用
+  续接形态 ⇒ 明确报「只能新开」，**不再静默起一个空白会话**。已封存 / 正在关闭的团队拒绝恢复。
+- `team_send` 对没有活进程的成员从「静默成功」改为 `Conflict(target_offline)`，理由里指向
+  `team_resume`。
+- History 面板按**项目身份**取范围（主 checkout + 全部 worktree + 团队记录过的工作区）：
+  切换工作区不再重拉列表，团队在 `~/.neeko/worktrees/<name>` 里的会话也会出现在该项目下。
+- 侧栏：团队成员会话登记在它真正跑的那个工作区下（之前全登记在主仓）。
+
+**迁移（不可逆部分与排查入口）**
+
+- v22：删 `team_member.terminal_id` / `team.lead_session_id`；`state` 值 `active→open`、
+  `closed→sealed`、`dead→offline`（同时 `sealed_at=joined_at` 占位）；`closed_at→sealed_at`。
+- v23：`team.workspace_worktree`（`NULL` = 主 checkout）。
+- 旧版本读新库会失败（SQLite 结构变化）：回滚旧版本需要恢复备份的 `neeko.db`；
+  只降级 UI 不动库是安全的（旧列已无人读）。
 
 ## 已知的下一步（不在本任务内）
 

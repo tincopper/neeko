@@ -18,7 +18,13 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "11-11-team-session-resume",
+    "11-12-codex-member-mcp-and-submit",
+    "11-13-team-task-assignee-and-graph",
+    "11-13-team-handoff-by-reference",
+    "11-13-team-task-actions"
+  ],
   "parent": null,
   "relatedFiles": [],
   "notes": "",
