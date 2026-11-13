@@ -14,18 +14,18 @@ import TeamStateBadge from './TeamStateBadge';
  *
  * | state | 操作 | 依据 |
  * | --- | --- | --- |
- * | `active` | 打开 + 关闭 | 成员进程还在，两个动作都成立 |
+ * | `open` | 打开 + 关闭 | 这个队可派活（进程在不在是另一件事），两个动作都成立 |
  * | `closing` | 打开 + 关闭 | **关到一半**：既要能看还剩谁，也要能重试关闭 |
- * | `closed` | 查看 + **删除** | 已经没有可关的进程了；列一个「关闭」是给用户一个必然失败或什么都不做的按钮。而删除**只**在这里成立（后端 `delete_team` 只接受 `closed`）|
+ * | `sealed` | 查看 + **删除** | 用户已封存（不可恢复）；列一个「关闭」是给用户一个必然失败或什么都不做的按钮。而删除**只**在这里成立（后端 `delete_team` 只接受 `sealed`）|
  *
- * 「查看」与「打开」是同一个 `openTeam`，文案不同只因为**预期**不同：一个已关闭的队打开的
+ * 「查看」与「打开」是同一个 `openTeam`，文案不同只因为**预期**不同：一个已封存的队打开的
  * 是只读快照。
  *
  * # 删除与关闭为什么不能是同一个按钮
  *
  * 关闭可重试（失败停在 `closing`）；删除不可逆（行 + 成员 + 任务 + 审计一起没）。两者共用
  * 一个按钮时，用户在 `closing` 行上就会碰到一个「按了以后后果不可逆」的动作，而它长得跟
- * 旁边那个「再来一次」一模一样。所以它们的**可见条件互斥**（`closed` vs 非 `closed`）。
+ * 旁边那个「再来一次」一模一样。所以它们的**可见条件互斥**（`sealed` vs 非 `sealed`）。
  *
  * # 数字全部来自载荷
  *
@@ -38,7 +38,7 @@ interface TeamListRowProps {
   onOpen: (teamId: string) => void;
   /** 请求关闭（二次确认由宿主弹，行内不做任何判定）。 */
   onRequestClose: (team: TeamRef) => void;
-  /** 请求**删除**（同样只弹确认，不在这里判定；可删性由 `state === 'closed'` 决定）。 */
+  /** 请求**删除**（同样只弹确认，不在这里判定；可删性由 `state === 'sealed'` 决定）。 */
   onRequestDelete: (team: TeamRef) => void;
   /**
    * 正在删哪个队（`null` = 没有删除在飞）。
@@ -53,7 +53,7 @@ interface TeamListRowProps {
 const TeamListRow: React.FC<TeamListRowProps> = React.memo(
   ({ team, onOpen, onRequestClose, onRequestDelete, deletingTeamId }) => {
     const { teamId, name, state } = team;
-    const closed = state === 'closed';
+    const sealed = state === 'sealed';
     // 只有**这一行**正在被删时按钮才置灰（见 `deletingTeamId` 的文档）。
     const deleting = teamId === deletingTeamId;
 
@@ -97,13 +97,13 @@ const TeamListRow: React.FC<TeamListRowProps> = React.memo(
             type="button"
             onClick={handleOpen}
             // 行内按钮的可访问名必须带团队名：同一个面板里每行都有「打开」，读屏与测试都分不开。
-            aria-label={`${closed ? '查看' : '打开'}团队 ${name}`}
+            aria-label={`${sealed ? '查看' : '打开'}团队 ${name}`}
             className="rounded px-1.5 py-0.5 text-micro text-accent-blue hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
-            {closed ? '查看' : '打开'}
+            {sealed ? '查看' : '打开'}
           </button>
-          {/* 关闭与删除**互斥**：可关的是还在跑的队，可删的是已经关完的队。 */}
-          {closed ? (
+          {/* 关闭与删除**互斥**：可关的是还开着的队，可删的是已经封存的队。 */}
+          {sealed ? (
             <button
               type="button"
               onClick={handleDelete}

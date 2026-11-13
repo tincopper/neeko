@@ -19,7 +19,7 @@ const ALL_STATES: MemberState[] = [
   'idle',
   'done',
   'failed',
-  'dead',
+  'offline',
   'stalled',
 ];
 

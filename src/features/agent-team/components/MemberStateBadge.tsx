@@ -20,7 +20,7 @@ const TONE_CLASS: Record<MemberBadgeTone, string> = {
   awaiting: 'text-accent-yellow bg-accent-yellow/10',
   done: 'text-accent-green bg-accent-green/10',
   failed: 'text-accent-red bg-accent-red/10',
-  dead: 'text-accent-red bg-accent-red/10',
+  offline: 'text-accent-red bg-accent-red/10',
   stalled: 'text-accent-orange bg-accent-orange/10',
   unverified: 'text-accent-yellow border border-dashed border-accent-yellow bg-transparent',
 };

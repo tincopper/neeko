@@ -5,9 +5,9 @@ import type { TeamState } from '@/shared/types/team';
  *
  * # 为什么徽标是纯函数而不是组件里的三元
  *
- * `TeamState` 是**三态**，且 `closing` 不是 `active` 的修辞变体：「关到一半」是一个
+ * `TeamState` 是**三态**，且 `closing` 不是 `open` 的修辞变体：「关到一半」是一个
  * 可查询、可重试的真实状态（有成员关不掉时整次 `team_close` 以 `Err` 结束，团队停在这里）。
- * 把它并进 `active` 会让用户看到一个「运行中」的队，而它的成员进程关不掉 —— 那正是
+ * 把它并进 `open` 会让用户看到一个「运行中」的队，而它的成员进程关不掉 —— 那正是
  * 面板最该说清楚的一件事。文案 / 语义色 / 可访问文本三处因此必须**同源**且互不相同，
  * 由本文件一处产出（同 `memberBadge` 的纪律）。
  *
@@ -16,7 +16,7 @@ import type { TeamState } from '@/shared/types/team';
  */
 
 /** 徽标的语义色（组件映射到 token class，颜色不在这里拼）。 */
-export type TeamStateTone = 'active' | 'closing' | 'closed';
+export type TeamStateTone = 'open' | 'closing' | 'sealed';
 
 export interface TeamStateBadge {
   /** 视觉文案（人读的短标签）。 */
@@ -33,20 +33,21 @@ export interface TeamStateBadge {
 }
 
 const BADGE: Record<TeamState, TeamStateBadge> = {
-  active: {
+  open: {
     text: '运行中',
-    tone: 'active',
-    ariaLabel: '运行中：成员进程还在，可以重开并继续派活',
+    // 与 `sealed` 的差别是**能不能恢复**，不只是颜色：`open` 的队重启后可以整体拉起来。
+    tone: 'open',
+    ariaLabel: '运行中：可以派活，重启后也能整体恢复',
   },
   closing: {
     text: '正在关闭',
     tone: 'closing',
     ariaLabel: '正在关闭：还有成员没关掉，可以重试关闭',
   },
-  closed: {
-    text: '已关闭',
-    tone: 'closed',
-    ariaLabel: '已关闭：只读快照，成员进程已退出',
+  sealed: {
+    text: '已封存',
+    tone: 'sealed',
+    ariaLabel: '已封存：只读快照，不会随重启恢复',
   },
 };
 

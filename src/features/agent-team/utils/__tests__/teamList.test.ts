@@ -12,7 +12,7 @@ import { formatCreatedAt, projectRootTail, teamStateBadge } from '../teamList';
  * 用户以为成员进程正常跑着 —— 那是关闭流程里最贵的一次误解。
  */
 
-const STATES: TeamState[] = ['active', 'closing', 'closed'];
+const STATES: TeamState[] = ['open', 'closing', 'sealed'];
 
 describe('teamStateBadge', () => {
   it('三态的文案 / 语义色 / 可访问文本两两不同', () => {
@@ -25,11 +25,11 @@ describe('teamStateBadge', () => {
 
   it('closing 明确说「还有成员没关掉」（不是修辞上的「正在关闭」）', () => {
     expect(teamStateBadge('closing').ariaLabel).toContain('还有成员没关掉');
-    expect(teamStateBadge('active').ariaLabel).not.toContain('没关掉');
+    expect(teamStateBadge('open').ariaLabel).not.toContain('没关掉');
   });
 
-  it('closed 说明是只读快照（不承诺任何还能执行的动作）', () => {
-    expect(teamStateBadge('closed').ariaLabel).toContain('只读');
+  it('sealed 说明是只读快照（不承诺任何还能执行的动作）', () => {
+    expect(teamStateBadge('sealed').ariaLabel).toContain('只读');
   });
 });
 

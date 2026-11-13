@@ -8,12 +8,13 @@ import { useTeamCrossDomainCallbacks } from '../hooks/useTeamCrossDomainCallback
 import { useTeamDestructives } from '../hooks/useTeamDestructives';
 import { useTeamList } from '../hooks/useTeamList';
 import { useTeamPanel } from '../hooks/useTeamPanel';
+import { useTeamResumePanel } from '../hooks/useTeamResumePanel';
 import { useTeamStore } from '../store/teamStore';
 
-import ErrorNotice from './ErrorNotice';
 import TeamConfirmDialog from './TeamConfirmDialog';
 import TeamLaunchPanel from './TeamLaunchPanel';
 import TeamListPage from './TeamListPage';
+import TeamPanelErrors from './TeamPanelErrors';
 import TeamView from './TeamView';
 
 /**
@@ -48,8 +49,13 @@ import TeamView from './TeamView';
  *
  * | 动作 | 可逆面 | 状态判据 | 失败时 |
  * | --- | --- | --- | --- |
- * | 关闭（`team_close`）| **可重试**：失败停在 `closing` | 非 `closed` | 不清 store + 重取快照与列表 |
- * | 删除（`team_delete`）| **不可逆**：行 + 成员 + 任务 + 审计一起没 | 只 `closed` | 只重取列表 |
+ * | 关闭（`team_close`）| **可重试**：失败停在 `closing` | 非 `sealed` | 不清 store + 重取快照与列表 |
+ * | 删除（`team_delete`）| **不可逆**：行 + 成员 + 任务 + 审计一起没 | 只 `sealed` | 只重取列表 |
+ *
+ * 与它们并列的还有**恢复**（`team_resume`，`useTeamResume`）：它不是破坏性动作，但同样是
+ * 团队级的写操作 —— 入口在头部（整队）与花名册 / 抽屉（成员级），两条都走**同一个** hook
+ * 实例，所以「有没有恢复在飞」只有一个答案。它的错误与关闭错误同族：入口在团队视图里，
+ * 所以错误也挂在团队视图的顶栏（与 `closeError` 并列，不互相遮蔽）。
  *
  * 三个裁决都落在「失败时不假装成功」上：
  *
@@ -171,6 +177,25 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
 
     const showingTeamId = teamId !== null && browsingFrom !== teamId ? teamId : null;
 
+    /**
+     * 恢复（`team_resume`）的组合点：一个面板级在飞闸门 + 两个入口（整队 / 单成员）。
+     *
+     * 放在这里（与 `useTeamDestructives` 并列）而不是分散在两个入口的组件里：头部只恢复
+     * 整队、花名册只恢复成员，但「有没有一次恢复在飞」是一个面板级的事实 —— 两个入口
+     * 共用同一道闸门，在飞期间再按只会被忽略（不会起第二个编排）。
+     */
+    const handleResumeSettled = useCallback(() => {
+      // 快照与列表都要重取：成员活性变了（花名册的判据就靠它），列表行的徽标也变了。
+      void refresh();
+      reloadList();
+    }, [refresh, reloadList]);
+
+    const { resuming, resumeError, resumeTeam, resumeMember } = useTeamResumePanel({
+      showingTeamId,
+      onShowToast,
+      onSettled: handleResumeSettled,
+    });
+
     // 跨域回调的绑定层（项目落键 / 历史会话三参→四参）：四个落键点同口径，见 hook 文档。
     const crossDomain = useTeamCrossDomainCallbacks({
       showingTeamId,
@@ -210,15 +235,9 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
 
     return (
       <Island className="flex h-full min-h-0 flex-col">
-        {/* 关闭失败的后端原文（逐个点名关不掉的成员）**两个视图都要看得见**：
-            「关闭」在团队视图（头部 / closing 横幅的「重试关闭」）与列表行上都能发起，
-            所以它的错误不能挂在某一个视图上。失败时团队停在 `closing`，用户需要这句话
-            才知道「重试有没有用」。
-
-            删除错误则相反 —— 它只可能来自列表行，所以渲染在 [`TeamListPage`] 里（贴着行）。
-            把两条错误做成「按视图二选一」的单一槽位，就会让从列表行发起的关闭失败
-            **一个字都不显示**（这正是回归的形状）。 */}
-        <ErrorNotice message={closeError} className="shrink-0 border-b border-border px-2 py-1" />
+        {/* 两条团队级写操作的错误（关闭 / 恢复）贴顶栏、两个视图都看得见；
+            各自为什么在那里见 [`TeamPanelErrors`] 的文档。 */}
+        <TeamPanelErrors closeError={closeError} resumeError={resumeError} />
 
         {showingTeamId !== null ? (
           <TeamView
@@ -227,6 +246,7 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
             loading={loading}
             error={error}
             closing={closing}
+            resuming={resuming}
             onRefresh={handleRefresh}
             onBack={handleBackToList}
             onRequestClose={handleRequestClose}
@@ -234,6 +254,8 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
             onOpenTask={crossDomain.onOpenTask}
             onOpenBoard={crossDomain.onOpenBoard}
             onOpenHistory={crossDomain.onOpenHistory}
+            onResumeMember={resumeMember}
+            onResumeTeam={resumeTeam}
           />
         ) : creating ? (
           // 创建态：整面板推入的创建流（原型 ②）。做完或返回即退栈回列表。

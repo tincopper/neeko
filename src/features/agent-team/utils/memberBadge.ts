@@ -31,7 +31,7 @@ export type MemberBadgeTone =
   | 'awaiting'
   | 'done'
   | 'failed'
-  | 'dead'
+  | 'offline'
   | 'stalled'
   | 'unverified';
 
@@ -56,7 +56,7 @@ const STATE_TEXT: Record<MemberState, string> = {
   idle: '空闲',
   done: '完成',
   failed: '失败',
-  dead: '已退出',
+  offline: '已退出',
   stalled: '可能等待输入',
 };
 
@@ -67,7 +67,7 @@ const STATE_TONE: Record<MemberState, MemberBadgeTone> = {
   idle: 'idle',
   done: 'done',
   failed: 'failed',
-  dead: 'dead',
+  offline: 'offline',
   stalled: 'stalled',
 };
 
@@ -116,7 +116,7 @@ function stateReason(state: MemberState): string {
       return '成员的任务已被显式声明完成';
     case 'failed':
       return '本回合失败';
-    case 'dead':
+    case 'offline':
       return '成员进程已退出，任务租约到期后会被回收';
     case 'stalled':
       return '静默超阈值，无法确认它是否正在工作';

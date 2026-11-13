@@ -26,12 +26,14 @@ interface TeamRosterProps {
   onOpenTerminal: (terminalId: string, title: string, agentId: string | undefined) => void;
   /** 打开已退出成员的历史会话（`conversation` tab）。 */
   onOpenHistory?: (agentId: string, agentSessionId: string, title: string) => void;
+  /** 恢复一个成员（`team_resume`，成员级）—— 「恢复会话」按钮的宿主动作。 */
+  onResumeMember?: (memberId: string) => void;
   /** 打开某个成员的详情抽屉（点行的主体区域；与「打开会话」是两个动作）。 */
   onOpenMember: (memberId: string) => void;
 }
 
 const TeamRoster: React.FC<TeamRosterProps> = React.memo(
-  ({ members, onOpenTerminal, onOpenMember, onOpenHistory }) => {
+  ({ members, onOpenTerminal, onOpenMember, onOpenHistory, onResumeMember }) => {
     const hasSentinelOnly = members.some((member) => member.tier === 'c');
 
     return (
@@ -58,6 +60,7 @@ const TeamRoster: React.FC<TeamRosterProps> = React.memo(
                 onOpenTerminal={onOpenTerminal}
                 onOpenMember={onOpenMember}
                 onOpenHistory={onOpenHistory}
+                onResumeMember={onResumeMember}
               />
             ))}
           </ul>

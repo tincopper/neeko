@@ -13,6 +13,7 @@ import type {
   TeamList,
   TeamOptions,
   TeamPulse,
+  TeamResumeReport,
   TeamSession,
   TeamSnapshot,
 } from '@/shared/types/team';
@@ -32,6 +33,7 @@ import type {
  * | [`fetchTaskDetail`] | `team_task_detail` | 列视图 + 派活正文（**点开才拉**）|
  * | [`fetchMemberDetail`] | `team_member_detail` | 成员行 + 它的任务 + 待批队列 + 最近 50 条事件（**点开才拉**）|
  * | [`closeTeam`] | `team_close` | 本次真关掉了谁 + 诚实面 `notes` |
+ * | [`resumeTeam`] | `team_resume` | 一次恢复的四个桶（真的起了 / 已有进程 / 只能新开 / 失败）|
  * | [`deleteTeam`] | `team_delete` | **无载荷**（只接受 `closed`；成功就是「行不在了」）|
  *
  * 两条快照不在同一条命令里：「顺手把 body 一起拉回来」会让每次脉冲刷新都搬一遍全部派活正文，
@@ -60,6 +62,17 @@ export interface StartTeamSessionParams {
   agentId: string;
   /** 团队根：**必须是既有派生点给出的工作区根**，不要自己拼。 */
   projectPath: string;
+  /**
+   * 团队所在工作区的**工作树维度**（与 `projectId` 合成工作区身份）。
+   *
+   * `null` = **主 checkout**（不是「未知」）。它必须与 `projectPath` 指向同一个工作区：
+   * 两者来自**同一个激活单元**（`useActiveWorkspaceRoot` 与 `activeWorkspaceSession` 同源），
+   * 后端会用 `resolve_workspace` 校验后才落库。
+   *
+   * 为什么不能省：`projectPath` 只是执行的落地路径，`(projectId, workspaceWorktree)` 才是
+   * 身份 —— 团队的 `session_cursors` 与侧栅按后者精确相等分组。
+   */
+  workspaceWorktree?: string | null;
   /** 团队显示名；`null` / 省略 = 后端取项目目录名。 */
   name?: string | null;
   /**
@@ -78,6 +91,9 @@ export function startTeamSession(params: StartTeamSessionParams): Promise<TeamSe
     projectId: params.projectId,
     agentId: params.agentId,
     projectPath: params.projectPath,
+    // 显式 `null`（不是省略键）：主 checkout 的 `Some/None` 由后端一步判定，
+    // 少一个键与 `null` 在 Tauri 的入参反序列化上不是同一件事。
+    workspaceWorktree: params.workspaceWorktree ?? null,
     name: params.name ?? null,
     // 显式 `null`（不是省略键）：`Option<TeamConfig>` 的「没给」由后端一步判定，
     // 少一个键与 `null` 在 Tauri 的入参反序列化上不是同一件事。
@@ -152,15 +168,44 @@ export function fetchTeamSnapshot(teamId: string): Promise<TeamSnapshot> {
 }
 
 /**
+ * **恢复**团队（`team_resume`）：用成员**自己的原生会话 id** 重建进程。
+ *
+ * # 恢复不是「把旧进程找回来」
+ *
+ * 进程跨不过重启，所以恢复 = 用同一份身份（`teamId` / `memberId`）与同一份原生 id
+ * **重建资源**（重新 admission、重新签发凭证、用该 CLI 的 resume 片段起一个新进程）。
+ * 用户看到的是同一个对话，机制上是一个全新的 PTY。
+ *
+ * # 一个命令，两个范围
+ *
+ * `memberId` 缺省（`null`）= **整队**；有值 = 只恢复那一个成员。两个范围是同一件事的两个
+ * 尺度，所以只有一个命令：拆成两个会让「幂等 / 拒绝理由 / 报告形状」各写两遍，而前端的
+ * 「单个恢复」会变成第二个载荷契约。
+ *
+ * # 三个不许静默的行为
+ *
+ * - **没有原生 id 的成员不会被起一个裸 CLI**：它进 `cold`（`no_native_session`），因为
+ *   起一个空会话会让用户以为对话续上了 —— 那正是修之前的症状。
+ * - **已 `live` 的成员跳过**（`skippedAlreadyLive`）：对同一个队再点一次是幂等的。
+ * - **`sealed` / `closing` 团队整次拒绝**（可读的 `Conflict`）：封存是用户的决定，恢复它
+ *   等于撤销；`closing` 要先关完。前端在这两态下**不渲染**入口（判据在后端，UI 不重算）。
+ */
+export function resumeTeam(teamId: string, memberId?: string | null): Promise<TeamResumeReport> {
+  // 显式 `null`（不是省略键）：`Option<String>` 的「整队」与「少一个键」在 Tauri 的入参
+  // 反序列化上不是同一件事 —— 与 `closeTeam` 同一口径。
+  return invoke<TeamResumeReport>('team_resume', { teamId, memberId: memberId ?? null });
+}
+
+/**
  * **永久删除**一个已关闭的团队（`team_delete`）。
  *
  * # 与 `closeTeam` 的区别不是「另一个动作」，而是**不可逆**
  *
  * 关闭是可重试的：有成员关不掉时后端整次 `Err`，团队停在 `closing`，再调一次就是同一目标集
  * 重走一遍。删除把行连同成员 / 任务 / 审计一起抹掉，`team_list` 再也看不到它 —— 所以后端
- * **只接受 `closed`**，`active` / `closing` 一律 `Conflict`（错误文本点名状态与下一步）。
+ * **只接受 `sealed`**，`open` / `closing` 一律 `Conflict`（错误文本点名状态与下一步）。
  *
- * 前端的判据因此也只有一条：**列表行按 `state === 'closed'` 决定要不要渲染这个入口**
+ * 前端的判据因此也只有一条：**列表行按 `state === 'sealed'` 决定要不要渲染这个入口**
  * （见 [`TeamListRow`](../../components/TeamListRow.tsx)）。不要在按钮点击处再判一次 ——
  * 两处一旦漂移，症状是「按钮能点但后端永远拒」。
  *

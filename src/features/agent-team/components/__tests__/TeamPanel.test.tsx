@@ -130,6 +130,8 @@ describe('TeamPanel — 空态队长入口', () => {
         projectId: 'p1',
         agentId: 'codex',
         projectPath: WORKTREE_PATH,
+        // 同一个激活单元的**身份**维度：根是执行落点，worktree 是 Workspace 身份。
+        workspaceWorktree: WORKTREE_PATH,
         name: null,
         // 默认值一个字都没改 ⇒ 没有任何覆盖项。
         config: {},

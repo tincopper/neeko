@@ -22,7 +22,7 @@ import Chip from './Chip';
  * # 「开工文档」与「完成回报」不覆盖
  *
  * `body`（队长写下的派活文档）与 `summary`（成员的完成回报）是**两个独立字段**，
- * 各自一节并排呈现；中间发生了什么看 `steps`（审计轨迹：claim / update / 信号 /
+ * 各自一节并排呈现；中间发生了什么看 `events`（审计轨迹：claim / update / 信号 /
  * 回收，最新在前）—— 每一步都可见，不被最后一条覆盖。
  */
 interface TeamTaskCenterViewProps {
@@ -145,17 +145,17 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
             <section aria-label="步骤轨迹" className="flex flex-col gap-1.5">
               <h3 className="text-meta font-semibold text-text-secondary">
                 步骤轨迹
-                {detail.stepsTruncated ? (
+                {detail.eventsTruncated ? (
                   <span className="ml-1.5 text-micro font-normal text-text-muted">
-                    （只显示最近 {detail.steps.length} 条）
+                    （只显示最近 {detail.events.length} 条）
                   </span>
                 ) : null}
               </h3>
-              {detail.steps.length === 0 ? (
+              {detail.events.length === 0 ? (
                 <p className="text-micro text-text-muted">还没有步骤记录。</p>
               ) : (
                 <ol className="flex flex-col gap-1">
-                  {detail.steps.map((step, index) => (
+                  {detail.events.map((step, index) => (
                     <li
                       key={`${step.at}-${step.kind}-${index}`}
                       className="flex items-center gap-2 rounded-md border border-border bg-bg-primary px-2 py-1.5"

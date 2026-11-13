@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import type { TeamSnapshot } from '@/shared/types/team';
 
 import { memberCountOf } from '../utils/memberCount';
+import { hasResumableMember } from '../utils/memberTerminal';
 import { awaitingApprovalCount } from '../utils/taskBoard';
 import { projectRootTail } from '../utils/teamList';
 
@@ -18,7 +19,15 @@ import TeamStateBadge from './TeamStateBadge';
  * | 状态徽标 | `teamStateBadge`（三态，`closing` 不许并进 `active`）|
  * | `N 成员` | `memberCountOf(snapshot)`（**后端口径**：不含队长、含已退出的成员）|
  * | `M 待批` | `awaitingApprovalCount(snapshot.tasks)`（**只有 > 0 时出现**）|
- * | 「关闭团队」 | `closed` 时不存在（只读快照没有可关的东西，见 `TeamListRow` 同一判定）|
+ * | 「恢复团队」 | `open` 且有可恢复成员（`hasResumableMember`）时才出现 |
+ * | 「关闭团队」 | `sealed` 时不存在（只读快照没有可关的东西，见 `TeamListRow` 同一判定）|
+ *
+ * # 为什么「恢复团队」不是「关闭团队」的对称按钮
+ *
+ * 恢复**只能**发生在 `open` 的队上，而且只在「至少一个成员有原生会话 id、进程不在、未被
+ * 封存」时才有意义（判据来自 `hasResumableMember` —— 它与花名册的按钮**同一份**推导）。
+ * 一个「没有可恢复成员」的队渲染这个按钮，用户点下去得到的是一句「恢复 0 个成员」；
+ * 永远亮着的入口与「0 待批」同一条纪律：提示只在它成立时出现。
  *
  * # 为什么「M 待批」只在 > 0 时出现
  *
@@ -36,6 +45,14 @@ interface TeamHeaderProps {
   snapshot: TeamSnapshot | null;
   /** 有关闭请求在飞（按钮置灰，避免连点）。 */
   closing: boolean;
+  /** 有恢复请求在飞（整队 / 成员级共用；按钮置灰，避免连点出两个恢复编排）。 */
+  resuming: boolean;
+  /**
+   * 整队恢复（`team_resume`，不带 memberId）。
+   *
+   * `undefined` = 宿主未注入这条连线（测试环境）：按钮不渲染，而不是渲染一个点了没反应的。
+   */
+  onResumeTeam?: () => void;
   onRefresh: () => void;
   /** 回列表视图（**不清** store）。 */
   onBack: () => void;
@@ -43,7 +60,7 @@ interface TeamHeaderProps {
 }
 
 const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
-  ({ teamId, snapshot, closing, onRefresh, onBack, onRequestClose }) => {
+  ({ teamId, snapshot, closing, resuming, onResumeTeam, onRefresh, onBack, onRequestClose }) => {
     const state = snapshot?.team.state ?? null;
     const teamName = snapshot?.team.name ?? teamId;
     // 成员数只有一份产出点（`utils/memberCount`）：列表行用后端的 `TeamSummary.memberCount`，
@@ -52,8 +69,11 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
     const memberCount = snapshot === null ? 0 : memberCountOf(snapshot);
     const awaiting = snapshot ? awaitingApprovalCount(snapshot.tasks) : 0;
     const projectPath = snapshot?.team.projectPath ?? teamId;
+    // 可恢复成员的判据与花名册按钮**同源**（`openTerminalAction`）—— 不在这里重算 `!live && resumable`。
+    const resumable = snapshot !== null && hasResumableMember(snapshot.members);
 
     const handleRequestClose = useCallback(() => onRequestClose(), [onRequestClose]);
+    const handleRequestResume = useCallback(() => onResumeTeam?.(), [onResumeTeam]);
 
     return (
       <header className="flex flex-col gap-1 border-b border-border px-2 py-1.5">
@@ -98,21 +118,39 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
         </div>
 
         <div className="flex items-center gap-1.5">
-          {state === 'closed' ? (
-            <span className="text-micro text-text-muted">只读快照：成员进程已退出</span>
+          {state === 'sealed' ? (
+            <span className="text-micro text-text-muted">只读快照：已封存，不随重启恢复</span>
           ) : (
-            <button
-              type="button"
-              onClick={handleRequestClose}
-              disabled={closing}
-              className={cn(
-                'rounded px-1.5 py-0.5 text-micro text-accent-red hover:bg-bg-hover',
-                'focus-visible:ring-2 focus-visible:ring-accent-red focus-visible:outline-none',
-                'disabled:cursor-not-allowed disabled:text-text-muted',
-              )}
-            >
-              关闭团队
-            </button>
+            <>
+              {state === 'open' && resumable && onResumeTeam !== undefined ? (
+                <button
+                  type="button"
+                  onClick={handleRequestResume}
+                  disabled={resuming}
+                  aria-label={`恢复团队 ${teamName}`}
+                  title="用每个成员自己的原生会话 id 把它们接回来（没有会话记录的成员只能新开）"
+                  className={cn(
+                    'rounded px-1.5 py-0.5 text-micro text-accent-blue hover:bg-bg-hover',
+                    'focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
+                    'disabled:cursor-not-allowed disabled:text-text-muted',
+                  )}
+                >
+                  {resuming ? '正在恢复…' : '恢复团队'}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleRequestClose}
+                disabled={closing}
+                className={cn(
+                  'rounded px-1.5 py-0.5 text-micro text-accent-red hover:bg-bg-hover',
+                  'focus-visible:ring-2 focus-visible:ring-accent-red focus-visible:outline-none',
+                  'disabled:cursor-not-allowed disabled:text-text-muted',
+                )}
+              >
+                关闭团队
+              </button>
+            </>
           )}
         </div>
       </header>

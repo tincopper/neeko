@@ -4,7 +4,6 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAgentStore } from '@/shared/store/agentStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveWorkspaceRoot } from '@/shared/store/workspaceStore';
 import type { TeamSession } from '@/shared/types/team';
 
 import { useLaunchableAgents } from '../hooks/useLaunchableAgents';
@@ -12,6 +11,7 @@ import { useStartTeam } from '../hooks/useStartTeam';
 import { useTeamConfigDraft } from '../hooks/useTeamConfigDraft';
 import { useTeamOptions } from '../hooks/useTeamOptions';
 import { useTeamRoles } from '../hooks/useTeamRoles';
+import { useTeamWorkspaceAddress } from '../hooks/useTeamWorkspaceAddress';
 import { convergeAgentId, isLaunchable, launchGate, startableAgentIds } from '../utils/launchGate';
 
 import LeadPickerSection from './LeadPickerSection';
@@ -33,8 +33,9 @@ import TeamLaunchFooter from './TeamLaunchFooter';
  * # 四条「不要自己发明」的边界
  *
  * 1. **准入**：理由文字由后端给（人读句，已含注入方式），这里不改写、不归纳。
- * 2. **团队根**：走既有单一派生 [`useActiveWorkspaceRoot`]（≡ `workspaceRootOf` 作用在
- *    激活单元 key 上）。自己用 `project.path` 当根会让 worktree 视图下团队开在主仓。
+ * 2. **团队根与工作区身份**：走既有单一派生 [`useTeamWorkspaceAddress`]（≡
+ *    `useActiveWorkspaceRoot` + 激活单元的 `worktreePath`）。自己用 `project.path` 当根会让
+ *    worktree 视图下团队开在主仓；两半来源不同会让团队的 `workspace_key` 落到另一棵树下。
  * 3. **团队的项目**：那个根所属的**项目**是 `activeProjectId`，不是从路径反推的。
  *    执行环境按项目 id 查表，所以没有激活项目时主按钮不可用，理由是**可见文字**。
  * 4. **起进程之后的动作**：终端接管由 app 层注入（`onOpenLeaderTerminal`）。
@@ -69,8 +70,9 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
     const agents = useAgentStore((s) => s.agents);
     const activeProjectId = useProjectStore((s) => s.activeProjectId);
     const projectPath = useProjectStore((s) => s.activeProject?.path);
-    // 团队根 = 激活单元的工作树根（唯一派生点，禁止手拼）。
-    const workspaceRoot = useActiveWorkspaceRoot(activeProjectId, projectPath);
+    // 团队地址 = 激活单元的两半（根是执行落点、worktreePath 是身份）。唯一派生点，
+    // 禁止手拼；两半必须同源，理由见 `useTeamWorkspaceAddress`。
+    const address = useTeamWorkspaceAddress(activeProjectId, projectPath);
 
     const { agents: launchable, loading, error: launchError, reload } = useLaunchableAgents();
 
@@ -110,26 +112,27 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
       () =>
         launchGate({
           hasActiveProject: activeProjectId !== null,
-          hasWorkspaceRoot: workspaceRoot !== null,
+          hasWorkspaceRoot: address.root !== null,
           launchable,
           agentId,
           draftValid: draft.valid,
           busy,
         }),
-      [activeProjectId, workspaceRoot, launchable, agentId, draft.valid, busy],
+      [activeProjectId, address.root, launchable, agentId, draft.valid, busy],
     );
 
     // 只有载荷本身是依赖：整个草稿对象每次渲染都是新引用。
     const teamConfig = draft.config;
 
     const handleStart = useCallback(() => {
-      if (!activeProjectId || !agentId || !workspaceRoot || busy) return;
+      if (!activeProjectId || !agentId || !address.root || busy) return;
       // **第二道拦截**：`canStart` 已经把这种状态挡在主按钮之外，这里是给键盘 /
       // 程序化触发（可绕过 `disabled`）留的防守层 —— 把必然被后端拒绝的请求发出去只会
       // 多一条错误信息，不解决任何问题。
       if (!startableIds.includes(agentId)) return;
-      void start(activeProjectId, agentId, workspaceRoot, teamConfig);
-    }, [activeProjectId, agentId, startableIds, workspaceRoot, busy, start, teamConfig]);
+      // 根是**执行落点**、`worktreePath` 是**身份**：同一个激活单元的两半一起交出去。
+      void start(activeProjectId, agentId, address.root, address.worktreePath, teamConfig);
+    }, [activeProjectId, agentId, startableIds, address, busy, start, teamConfig]);
 
     /**
      * pick-or-create 的保存回调（面板包一层 `teamRoles.saveRole`）。
@@ -246,7 +249,11 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
           />
 
           {/* 步骤 2 */}
-          <StepHead n={2} title="成员与角色" hint="每个成员位可预设 persona" />
+          <StepHead
+            n={2}
+            title="成员与角色"
+            hint="候选 CLI 池 · 每位可预设 persona · 实际人数由任务指派决定"
+          />
           <TeamConfigSection
             options={teamOptions}
             loading={optionsLoading}
@@ -269,7 +276,7 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
 
           {/* 步骤 3 */}
           <StepHead n={3} title="默认值与团队根" hint="全部可不改" />
-          <TeamRootRow workspaceRoot={workspaceRoot} />
+          <TeamRootRow workspaceRoot={address.root} />
         </div>
 
         {/* 吸附 footer：CTA 永远在场；警示与理由随行（后果必须在按下去之前可见） */}

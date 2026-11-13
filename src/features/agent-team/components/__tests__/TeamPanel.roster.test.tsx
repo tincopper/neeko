@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +7,7 @@ import {
   createMemberStatus,
   createProject,
   createTaskCard,
+  createTeam,
   createTeamSnapshot,
 } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
@@ -19,7 +20,7 @@ import TeamPanel from '../TeamPanel';
  *
  * 两条判据：
  *
- * 1. **每个成员都能被看见地打开**：`terminalId != null` → 一行一个「打开会话」，
+ * 1. **每个成员都能被看见地打开**：`session.live` → 一行一个「打开会话」，
  *    回调参数精确等于**这一行**的 id 与名字；`null` → 置灰 + 可见理由 + **零调用**。
  * 2. **一眼能回答三件事**：这是谁（agentId / 档位）、它在哪干活（工作区）、它在等什么
  *    （六态 + 租约 / 未声明）。头像色按 `memberId` 派生，重排不漂移。
@@ -32,7 +33,7 @@ const MEMBERS = [
     name: 'lead',
     role: 'lead',
     state: 'running',
-    terminalId: 'term-lead',
+    session: { live: true, terminalId: 'term-lead' },
     // 无官方品牌图标的 CLI：头像走「首字母 + 派生色」回退路径（品牌图标的判据单独钉）。
     agentId: 'omp',
     leaseRemainingSecs: 1374,
@@ -42,7 +43,7 @@ const MEMBERS = [
     name: 'frontend',
     state: 'idle',
     verification: 'unverified',
-    terminalId: 'term-w1',
+    session: { live: true, terminalId: 'term-w1' },
     agentId: 'qoder',
     workspace: { worktree: { path: '/repo/worktrees/feat-auth-ui' } },
     leaseRemainingSecs: 0,
@@ -51,7 +52,7 @@ const MEMBERS = [
     memberId: 'w2@tm_1',
     name: 'backend',
     state: 'awaiting',
-    terminalId: null,
+    session: { live: false, terminalId: null },
     agentId: 'qoder',
     workspace: 'read_only',
     tier: 'c',
@@ -137,31 +138,36 @@ describe('花名册 — 打开成员终端', () => {
     ]);
   });
 
-  it('已退出但有原生会话 id：按钮可点，走历史记录（不是 PTY 接管）', () => {
+  it('已退出、有原生 id、但该 CLI 不能续接：按钮是「查看记录」（真实能力差异，不是错误）', () => {
     const { onOpenTerminal, onOpenHistory } = renderWithSnapshot(
       createTeamSnapshot({
         members: [
           createMemberStatus({
             memberId: 'gone@tm_1',
             name: 'gone',
-            state: 'dead',
-            terminalId: null, // 归档时清空（不给死进程一个死按钮）
-            agentSessionId: 'native-gone', // 但会话记录还在磁盘上
-            agentId: 'pi',
+            state: 'offline',
+            session: { live: false, terminalId: null }, // 归档时不再有活会话
+            agentSessionId: 'native-gone', // 会话记录还在磁盘上
+            // qoder 有原生 id，但它的续接只在 `--print` 下有效 ⇒ 后端判不可恢复。
+            // 这不是错误，所以**不**置灰：记录照看。
+            resumable: false,
+            agentId: 'qoder',
           }),
         ],
       }),
     );
-    // 按钮文案区分「活进程」与「历史记录」：后者叫「查看记录」。
+    // 按钮文案区分「能接回来」与「只能看」：后者叫「查看记录」。
     fireEvent.click(within(rowOf('gone')).getByRole('button', { name: /查看记录/ }));
 
     // 分派到历史路径（agentId, nativeId, 名字, 团队 projectId），**不**碰 PTY 接管。
     // 第四个参数与「打开会话」同口径：历史会话 tab 也按团队自己的项目落键。
-    expect(onOpenHistory).toHaveBeenCalledWith('pi', 'native-gone', 'gone', 'p1');
+    expect(onOpenHistory).toHaveBeenCalledWith('qoder', 'native-gone', 'gone', 'p1');
     expect(onOpenTerminal).not.toHaveBeenCalled();
+    // 不可恢复的成员**不许**被当成可恢复的（那会让 UI 宣传一个后端会拒绝的动作）
+    expect(mockInvoke).not.toHaveBeenCalledWith('team_resume', expect.anything());
   });
 
-  it('terminalId 为 null：按钮置灰 + 可见理由「暂无会话」+ **零调用**', () => {
+  it('没有活会话：按钮置灰 + 可见理由「暂无会话」+ **零调用**', () => {
     const { onOpenTerminal } = renderWithSnapshot();
     const button = within(rowOf('backend')).getByRole('button', { name: '打开会话：backend' });
 
@@ -355,5 +361,233 @@ describe('任务板 — 列计数与持有者状态', () => {
     expect(within(inProgress).getByText('空闲 ⚠ 未声明')).toBeInTheDocument();
     // 持有者名字是 chip，不是 member id
     expect(within(inProgress).getByText('frontend')).toBeInTheDocument();
+  });
+});
+
+/**
+ * 第三态「恢复会话」—— 用户报障的核心（app 重启 / 进程退出后团队回不来）。
+ *
+ * 三条判据：
+ *
+ * 1. **可恢复的离线成员拿到「恢复会话」**：点击走 `team_resume`（成员级），**不**新开一个
+ *    裸终端、也**不**跳到只读历史 —— 那两者都会让用户以为对话续上了。
+ * 2. **封存的成员只给「查看记录」**：封存是用户的决定，恢复到进程等于撤销它（后端也拒绝）。
+ * 3. **头部的「恢复团队」只在成立时出现**（`open` + 有可恢复成员），点击是**整队**恢复
+ *    （`memberId: null`）—— 与成员级是同一个命令的两个范围。
+ */
+describe('花名册 — 恢复会话（第三态）', () => {
+  beforeEach(() => {
+    resetStores();
+    mockInvoke.mockReset();
+  });
+
+  /** 一个离线、有原生 id、可恢复的成员（后端 `resumable` 派生的典型现场）。 */
+  const RESUMABLE = createMemberStatus({
+    memberId: 'w1@tm_1',
+    name: 'backend',
+    state: 'offline',
+    session: { live: false, terminalId: null },
+    agentSessionId: 'native-w1',
+    resumable: true,
+  });
+
+  const EMPTY_REPORT = {
+    teamId: 'tm_1',
+    resumed: ['w1@tm_1'],
+    skippedAlreadyLive: [],
+    cold: [],
+    failed: [],
+  };
+
+  it('离线 + 可恢复：按钮是「恢复会话」，点击 ⇒ team_resume(teamId, memberId)', async () => {
+    const snapshot = createTeamSnapshot({ members: [RESUMABLE] });
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_resume') return EMPTY_REPORT;
+      return snapshot;
+    });
+
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+    const onOpenTerminal = vi.fn();
+    const onOpenHistory = vi.fn();
+    const onShowToast = vi.fn();
+    render(
+      <TeamPanel
+        onShowToast={onShowToast}
+        onOpenTerminal={onOpenTerminal}
+        onOpenHistory={onOpenHistory}
+      />,
+    );
+
+    fireEvent.click(within(rowOf('backend')).getByRole('button', { name: '恢复会话：backend' }));
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('team_resume', {
+        teamId: 'tm_1',
+        memberId: 'w1@tm_1',
+      }),
+    );
+    // 恢复**不**接管一个不存在的 PTY，也**不**降级成只读历史。
+    expect(onOpenTerminal).not.toHaveBeenCalled();
+    expect(onOpenHistory).not.toHaveBeenCalled();
+    // 结果必须被说出来（四个桶的一句话；这里是「恢复了 1 个」）。
+    await waitFor(() => expect(onShowToast).toHaveBeenCalledWith('恢复 1 个成员', 'info'));
+  });
+
+  it('封存 + 有原生 id：只有「查看记录」，没有「恢复会话」（意图不许被撤销）', () => {
+    const snapshot = createTeamSnapshot({
+      members: [
+        createMemberStatus({
+          memberId: 'w1@tm_1',
+          name: 'backend',
+          state: 'offline',
+          session: { live: false, terminalId: null },
+          agentSessionId: 'native-w1',
+          resumable: true,
+          sealed: true,
+        }),
+      ],
+    });
+    mockInvoke.mockResolvedValue(snapshot);
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+
+    const onOpenHistory = vi.fn();
+    render(<TeamPanel onOpenHistory={onOpenHistory} />);
+
+    // 一条都不给 `恢复会话`（两个入口都不许出现）
+    expect(
+      within(rowOf('backend')).queryByRole('button', { name: /恢复会话/ }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(rowOf('backend')).getByRole('button', { name: /查看记录/ }));
+    expect(onOpenHistory).toHaveBeenCalledWith('pi', 'native-w1', 'backend', 'p1');
+    expect(mockInvoke).not.toHaveBeenCalledWith('team_resume', expect.anything());
+  });
+});
+
+describe('面板头 — 恢复团队', () => {
+  beforeEach(() => {
+    resetStores();
+    mockInvoke.mockReset();
+  });
+
+  const resumableMember = createMemberStatus({
+    memberId: 'w1@tm_1',
+    name: 'backend',
+    state: 'offline',
+    session: { live: false, terminalId: null },
+    agentSessionId: 'native-w1',
+    resumable: true,
+  });
+
+  it('open + 有可恢复的离线成员 ⇒ 出现「恢复团队」；点击是**整队**恢复（memberId: null）', async () => {
+    const snapshot = createTeamSnapshot({ members: [resumableMember] });
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_resume') {
+        return {
+          teamId: 'tm_1',
+          resumed: ['w1@tm_1'],
+          skippedAlreadyLive: [],
+          cold: [],
+          failed: [],
+        };
+      }
+      return snapshot;
+    });
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+
+    render(<TeamPanel />);
+
+    // 可访问名点名团队：同一个屏幕上的「恢复会话」是成员级的，两者不能混淆。
+    fireEvent.click(screen.getByRole('button', { name: '恢复团队 refactor' }));
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('team_resume', {
+        teamId: 'tm_1',
+        memberId: null,
+      }),
+    );
+  });
+
+  it('封存的团队没有这个入口（只读快照，恢复会撤销用户的决定）', () => {
+    const snapshot = createTeamSnapshot({
+      team: createTeam({ state: 'sealed', sealedAt: 1_700_000_000_000 }),
+      members: [resumableMember],
+    });
+    mockInvoke.mockResolvedValue(snapshot);
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+
+    render(<TeamPanel />);
+
+    expect(screen.queryByRole('button', { name: /恢复团队/ })).not.toBeInTheDocument();
+  });
+
+  it('没有可恢复的成员（全在跑）⇒ 不渲染一个「恢复 0 个成员」的按钮', () => {
+    const snapshot = createTeamSnapshot({
+      members: [
+        createMemberStatus({
+          memberId: 'w1@tm_1',
+          name: 'backend',
+          session: { live: true, terminalId: 'term-w1' },
+        }),
+      ],
+    });
+    mockInvoke.mockResolvedValue(snapshot);
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+
+    render(<TeamPanel />);
+
+    expect(screen.queryByRole('button', { name: /恢复团队/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('恢复失败 — 后端原文必须看得见', () => {
+  beforeEach(() => {
+    resetStores();
+    mockInvoke.mockReset();
+  });
+
+  it('team_resume 拒绝（sealed）⇒ 原文渲染 + 重取快照（事实可能已经变了）', async () => {
+    const snapshot = createTeamSnapshot({
+      members: [
+        createMemberStatus({
+          memberId: 'w1@tm_1',
+          name: 'backend',
+          state: 'offline',
+          session: { live: false, terminalId: null },
+          agentSessionId: 'native-w1',
+          resumable: true,
+        }),
+      ],
+    });
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_resume') {
+        throw 'Conflict: team `tm_1` is sealed; a sealed team cannot be resumed';
+      }
+      return snapshot;
+    });
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+
+    const onShowToast = vi.fn();
+    render(<TeamPanel onShowToast={onShowToast} />);
+
+    const before = mockInvoke.mock.calls.filter(([cmd]) => cmd === 'team_snapshot').length;
+
+    fireEvent.click(within(rowOf('backend')).getByRole('button', { name: '恢复会话：backend' }));
+
+    // 原文照抄（不是一句「操作失败」）：它说的是「封存了，去建新队」。
+    expect(
+      await screen.findByText(/is sealed; a sealed team cannot be resumed/),
+    ).toBeInTheDocument();
+    expect(onShowToast).toHaveBeenCalledWith(
+      'Conflict: team `tm_1` is sealed; a sealed team cannot be resumed',
+      'error',
+    );
+
+    // onSettled ⇒ 快照重取（失败也可能已经改了别的成员；按钮的可用性只能由快照回答）。
+    await waitFor(() =>
+      expect(
+        mockInvoke.mock.calls.filter(([cmd]) => cmd === 'team_snapshot').length,
+      ).toBeGreaterThan(before),
+    );
   });
 });

@@ -23,15 +23,19 @@ import MemberStateBadge from './MemberStateBadge';
  *
  * 三个派生输入（chip 文案 / 头像色 / 按钮判据）全部来自 `utils/` 的纯函数，这里只读结果。
  *
- * # 两个动作不许合并
+ * # 三个动作不许合并
  *
  * | 动作 | 目标 |
  * | --- | --- |
  * | 点行（主体那块） | 打开**成员详情抽屉**（`onOpenMember`）|
- * | 点「打开会话」 | 直接接管它那个 PTY（`onOpenTerminal`）|
+ * | 点按钮（`kind === 'live'`）| 直接接管它那个 PTY（`onOpenTerminal`）|
+ * | 点按钮（`kind === 'resume'`）| 起一个**新进程**续接同一个原生会话（`onResumeMember` → `team_resume`）|
+ * | 点按钮（`kind === 'archive'`）| 打开只读的历史记录（`onOpenHistory`）|
  *
  * 合并成一个动作就得选一个：只看详情 = 每次都要多点一次才能看到它在干什么；只开终端 =
  * 用户得自己在终端里翻 `team_task_list` 才知道它在等审批。两者是不同的问题。
+ * 「恢复会话」与「查看记录」更不能合并：前者接管一个新进程（对话接着往下走），后者只读
+ * 历史；合并后用户会得到「对话没有接着走」或「历史莫名被一个新的空会话顶掉」。
  *
  * # 为什么主体是一个 `<button>` 而不是 `div` + `onClick`
  *
@@ -42,9 +46,10 @@ import MemberStateBadge from './MemberStateBadge';
  *
  * # 「打不开」必须带可见理由
  *
- * `terminalId === null` 时按钮置灰，并把理由作为**可见文字**放在按钮旁边（`暂无会话`）。
+ * 没有活会话时按钮置灰，并把理由作为**可见文字**放在按钮旁边（`暂无会话` / `已关闭`）。
  * 只放 `title` 等于没有理由 —— `disabled` 元素不可聚焦，键盘与读屏用户拿不到它。
  * 判据同时作为点击守卫：置灰只是 UI，**零调用**是行为（[`openTerminalAction`]）。
+ * 五态（活进程 / 可恢复 / 只看记录 / 两种置灰）文案见该函数的文档 —— 这里不重算任何一条。
  *
  * # 队长行不特殊对待
  *
@@ -69,20 +74,34 @@ interface RosterRowProps {
    * 与 `onOpenTerminal` 是两条路：一个接管活进程，一个读磁盘记录。
    */
   onOpenHistory?: (agentId: string, agentSessionId: string, title: string) => void;
+  /**
+   * 恢复一个成员（`team_resume`，成员级）：起一个新进程续接**同一个**原生会话。
+   *
+   * `undefined` = 未注入（测试环境不动作），与 `onOpenHistory` 同一口径。
+   */
+  onResumeMember?: (memberId: string) => void;
   /** 打开这个成员的详情抽屉（点行的主体区域）。 */
   onOpenMember: (memberId: string) => void;
 }
 
 const RosterRow: React.FC<RosterRowProps> = React.memo(
-  ({ member, onOpenTerminal, onOpenMember, onOpenHistory }) => {
+  ({ member, onOpenTerminal, onOpenMember, onOpenHistory, onResumeMember }) => {
     const action = openTerminalAction(member);
     const chips = memberChips(member);
     const isLead = member.role === 'lead';
-    const terminalId = member.terminalId;
+    // 句柄来自**同一份**判据输入（`session.terminalId` 只在 live 时非空）。
+    const terminalId = member.session.terminalId;
 
     const handleOpenTerminal = useCallback(() => {
       if (!action.enabled) return;
-      // 两条路：活进程 → 接管 PTY；已退出 → 读历史记录（见 `openTerminalAction`）。
+      // 三条路（见 `openTerminalAction` 的五态表）：
+      //   恢复 → 起一个新进程续接同一个会话（不带 terminalId：旧的已经不在了）；
+      //   历史 → 读磁盘记录；
+      //   活进程 → 接管那个 PTY。
+      if (action.kind === 'resume') {
+        onResumeMember?.(member.memberId);
+        return;
+      }
       if (action.kind === 'archive') {
         if (member.agentSessionId !== null && member.agentId !== undefined) {
           onOpenHistory?.(member.agentId, member.agentSessionId, member.name);
@@ -92,7 +111,7 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
       // 置灰是 UI，**零调用**是行为：`null` 时连回调都不碰（否则宿主会去开一个不存在的会话）。
       if (terminalId === null) return;
       onOpenTerminal(terminalId, member.name, member.agentId);
-    }, [action, onOpenTerminal, onOpenHistory, member, terminalId]);
+    }, [action, onOpenTerminal, onOpenHistory, onResumeMember, member, terminalId]);
 
     const handleOpenDetail = useCallback(() => {
       onOpenMember(member.memberId);

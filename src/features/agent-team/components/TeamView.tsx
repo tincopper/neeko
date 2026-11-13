@@ -44,6 +44,11 @@ interface TeamViewProps {
   error: string | null;
   /** 有关闭请求在飞（按钮置灰，避免连点）。 */
   closing: boolean;
+  /**
+   * 有恢复请求在飞（整队与成员级共用的**一个**实例：在飞期间新的恢复请求被忽略，
+   * 所以不存在两个恢复同时对同一批成员发命令）。只用来置灰头部的整队入口。
+   */
+  resuming: boolean;
   onRefresh: () => void;
   /** 回列表视图（**不清** store）。 */
   onBack: () => void;
@@ -63,6 +68,15 @@ interface TeamViewProps {
   onOpenBoard?: (view: 'board' | 'flow') => void;
   /** 打开已退出成员的历史会话（`conversation` tab）。 */
   onOpenHistory?: (agentId: string, agentSessionId: string, title: string) => void;
+  /**
+   * 恢复**一个**成员（`team_resume` + `memberId`）。
+   *
+   * `undefined` = 测试环境未注入：花名册的「恢复会话」按钮仍是可点的（判据在
+   * `openTerminalAction`），但点下去不动作 —— 与 `onOpenHistory` 同一口径。
+   */
+  onResumeMember?: (memberId: string) => void;
+  /** 恢复**整个队**（`team_resume` 不带 memberId）。`undefined` = 头部不渲染这个入口。 */
+  onResumeTeam?: () => void;
 }
 
 const TeamView: React.FC<TeamViewProps> = React.memo(
@@ -72,6 +86,7 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
     loading,
     error,
     closing,
+    resuming,
     onRefresh,
     onBack,
     onRequestClose,
@@ -79,6 +94,8 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
     onOpenTask,
     onOpenBoard,
     onOpenHistory,
+    onResumeMember,
+    onResumeTeam,
   }) => {
     const teamName = snapshot?.team.name ?? teamId;
     /**
@@ -123,6 +140,8 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
           teamId={teamId}
           snapshot={snapshot}
           closing={closing}
+          resuming={resuming}
+          onResumeTeam={onResumeTeam}
           onRefresh={onRefresh}
           onBack={onBack}
           onRequestClose={handleRequestClose}
@@ -163,6 +182,7 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
             onOpenTerminal={onOpenTerminal}
             onOpenMember={handleOpenMember}
             onOpenHistory={onOpenHistory}
+            onResumeMember={onResumeMember}
           />
           <div className="border-t border-border" />
           <div className="flex items-center gap-1 px-2 pt-2">
@@ -224,6 +244,8 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
           <MemberDetailDrawer
             memberId={showingMemberId}
             onOpenTerminal={onOpenTerminal}
+            onOpenHistory={onOpenHistory}
+            onResumeMember={onResumeMember}
             onClose={handleCloseMember}
           />
         )}

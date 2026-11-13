@@ -169,6 +169,28 @@ fn on_setup(app: &tauri::App) {
         state.set_http_server(handle);
     }
 
+    // 团队运行态归位：**在端点 boot 之前**（身份表从库里组装，所以必须先归位 ——
+    // 否则端点会把上一个进程的 token hash 当成活钥匙装进门：幽灵授权）。
+    //
+    // 只 warning 不失败：归位失败最坏是「面板显示过期状态」，而启动失败是「整个应用不可用」。
+    match state.team_manager.reconcile_boot() {
+        Ok(report) if report.is_empty() => {}
+        Ok(report) => log::info!(
+            "[agent-team] boot reconcile reset {} team(s): {}",
+            report.teams.len(),
+            report
+                .teams
+                .iter()
+                .map(|row| format!(
+                    "{} (+{} offline, -{} tokens, reopened={})",
+                    row.team_id, row.members_offline, row.credentials_revoked, row.reopened
+                ))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        Err(err) => log::warn!("[agent-team] boot reconcile failed: {err}"),
+    }
+
     // 团队域的前端事件端口（失效脉冲）：**在端点 boot 之前**绑定。
     //
     // 顺序不是风格问题：端点一起，成员进程就可能开始写团队状态，而写路径靠 `WriteGuard::drop`
@@ -188,7 +210,16 @@ fn on_setup(app: &tauri::App) {
     let executor: Arc<dyn crate::agent::team::MemberExecutor> = Arc::new(
         super::team_executor::PtyMemberExecutor::new(app.handle().clone()),
     );
-    match crate::agent::team::boot_endpoint(&state.runtime, &state.team_manager, executor) {
+    // 花名册的会话读接口：注册表是活性的唯一真相，组合根把两者接起来。
+    let member_sessions: Arc<dyn crate::agent::team::view::MemberSessionLookup> = Arc::new(
+        crate::app::RegistryMemberSessions::new(Arc::clone(&state.live_sessions)),
+    );
+    match crate::agent::team::boot_endpoint(
+        &state.runtime,
+        &state.team_manager,
+        executor,
+        member_sessions,
+    ) {
         Ok(server) => {
             log::info!("[agent-team] mcp endpoint at {}", server.endpoint_url());
             state.set_team_server(server);

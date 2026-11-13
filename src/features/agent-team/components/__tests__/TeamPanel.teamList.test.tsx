@@ -126,12 +126,12 @@ describe('TeamPanel — 团队列表', () => {
     setActiveProject();
   });
 
-  it('三种状态的徽标文案互不相同（closing 不可并进 active）', async () => {
+  it('三种状态的徽标文案互不相同（closing 不可并进 open）', async () => {
     const list = createTeamList({
       teams: [
         createTeamSummary({ teamId: 'tm_active', name: 'running-team' }),
         createTeamSummary({ teamId: 'tm_closing', name: 'halfway-team', state: 'closing' }),
-        createTeamSummary({ teamId: 'tm_closed', name: 'done-team', state: 'closed' }),
+        createTeamSummary({ teamId: 'tm_closed', name: 'done-team', state: 'sealed' }),
       ],
     });
     mockInvoke.mockImplementation(async (cmd) => {
@@ -145,13 +145,13 @@ describe('TeamPanel — 团队列表', () => {
     await screen.findByText('running-team');
     const activeBadge = within(rowOf('tm_active')).getByText('运行中');
     const closingBadge = within(rowOf('tm_closing')).getByText('正在关闭');
-    const closedBadge = within(rowOf('tm_closed')).getByText('已关闭');
+    const sealedBadge = within(rowOf('tm_closed')).getByText('已封存');
 
     // 文案三者互不相同
     expect(activeBadge).not.toBe(closingBadge);
     expect(closingBadge).not.toHaveTextContent(activeBadge.textContent);
-    expect(closedBadge).not.toHaveTextContent(activeBadge.textContent);
-    expect(closingBadge).not.toHaveTextContent(closedBadge.textContent);
+    expect(sealedBadge).not.toHaveTextContent(activeBadge.textContent);
+    expect(closingBadge).not.toHaveTextContent(sealedBadge.textContent);
 
     // 「关到一半」的行里不许出现「运行中」这种说法
     expect(within(rowOf('tm_closing')).queryByText('运行中')).not.toBeInTheDocument();
@@ -253,7 +253,7 @@ describe('TeamPanel — 团队列表', () => {
     expect(await screen.findByRole('region', { name: '成员花名册' })).toBeInTheDocument();
   });
 
-  it('closed 行只读：没有「关闭」按钮，只有「查看」', async () => {
+  it('sealed 行只读：没有「关闭」按钮，只有「查看」', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
       if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
@@ -263,8 +263,8 @@ describe('TeamPanel — 团队列表', () => {
             createTeamSummary({
               teamId: 'tm_closed',
               name: 'finished',
-              state: 'closed',
-              closedAt: 1_700_000_100_000,
+              state: 'sealed',
+              sealedAt: 1_700_000_100_000,
             }),
           ],
         });
@@ -605,15 +605,15 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
 
   const deleteLabel = (name: string): string => `删除团队 ${name}`;
 
-  /** 两个队：一个还在跑（`active`），一个已关闭（`closed`）。 */
+  /** 两个队：一个还开着（`open`），一个已封存（`sealed`）。 */
   const TWO_TEAMS = createTeamList({
     teams: [
       createTeamSummary({ teamId: 'tm_open', name: 'still-open' }),
-      createTeamSummary({ teamId: 'tm_closed', name: 'finished', state: 'closed' }),
+      createTeamSummary({ teamId: 'tm_closed', name: 'finished', state: 'sealed' }),
     ],
   });
 
-  it('只有 closed 行有「删除」；active 行只有「关闭」（两者互斥）', async () => {
+  it('只有 sealed 行有「删除」；open 行只有「关闭」（两者互斥）', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
       if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list') return TWO_TEAMS;
@@ -710,8 +710,8 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
     // 用全局布尔时，删 A 会让列表上**所有**已关闭行的删除按钮一起置灰 —— 而 B 的删除
     // 本来完全成立（后端按 `team_id` 定位，两行之间没有共享状态）。
     const teams = [
-      createTeamSummary({ teamId: 'tm_a', name: 'alpha', state: 'closed' }),
-      createTeamSummary({ teamId: 'tm_b', name: 'beta', state: 'closed' }),
+      createTeamSummary({ teamId: 'tm_a', name: 'alpha', state: 'sealed' }),
+      createTeamSummary({ teamId: 'tm_b', name: 'beta', state: 'sealed' }),
     ];
     let releaseDelete: (() => void) | null = null;
     mockInvoke.mockImplementation(async (cmd) => {
@@ -747,10 +747,10 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
       if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
         return createTeamList({
-          teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor', state: 'closed' })],
+          teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor', state: 'sealed' })],
         });
       if (cmd === 'team_snapshot')
-        return createTeamSnapshot({ team: createTeam({ id: 'tm_1', state: 'closed' }) });
+        return createTeamSnapshot({ team: createTeam({ id: 'tm_1', state: 'sealed' }) });
       if (cmd === 'team_delete') return null;
       return emptyLaunchSurface(cmd);
     });
@@ -870,7 +870,7 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
       if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
       if (cmd === 'team_list')
         return createTeamList({
-          teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor', state: 'closed' })],
+          teams: [createTeamSummary({ teamId: 'tm_1', name: 'refactor', state: 'sealed' })],
         });
       if (cmd === 'team_delete') throw 'Conflict: team `tm_1` is Active and still owns members';
       return emptyLaunchSurface(cmd);
@@ -899,7 +899,7 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
         return createTeamList({
           teams: [
             createTeamSummary({ teamId: 'tm_open', name: 'still-open' }),
-            createTeamSummary({ teamId: 'tm_closed', name: 'finished', state: 'closed' }),
+            createTeamSummary({ teamId: 'tm_closed', name: 'finished', state: 'sealed' }),
           ],
         });
       if (cmd === 'team_close') throw 'Conflict: close failed for `w1@tm_open`';

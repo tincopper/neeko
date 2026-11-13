@@ -22,25 +22,65 @@ import { taskStateLabel } from '../utils/taskBoard';
  *
  * 一块永远存在、平时写「暂无待批」的面板，三次之后用户就不再读它 —— 真有东西时也一起忽略。
  * 判据（`awaiting_approval` 非空才出现）因此是**行为**，不是样式：空数组时本组件返回 `null`。
+ *
+ * # 与花名册同一判据（五态）
+ *
+ * 「去终端处理」的目标就是成员自己的终端，所以它的可用性来自同一份 `openTerminalAction`：
+ * 进程在 ⇒ 接管 PTY；可恢复 ⇒ 先 `team_resume` 把对话接回来（绝不静默地跳去读历史 —— 那样
+ * 用户会以为审批框在一个已经不存在的进程里）；只能看记录 ⇒ **置灰**并写出理由（历史里没有
+ * 审批框，可点却什么都不发生比置灰更糟）。
  */
 interface MemberApprovalQueueProps {
   /** AC5 队列（后端已经按 `state === awaiting_approval` 且 `owner === 该成员` 过滤）。 */
   tasks: readonly TaskCard[];
   /** 成员行 —— 「去终端处理」的可用性与理由都从它派生（`openTerminalAction`）。 */
-  member: Pick<MemberStatusView, 'terminalId' | 'name' | 'agentId' | 'agentSessionId'>;
+  member: Pick<
+    MemberStatusView,
+    'memberId' | 'session' | 'name' | 'agentId' | 'agentSessionId' | 'sealed' | 'resumable'
+  >;
   onOpenTerminal: (terminalId: string, title: string, agentId: string | undefined) => void;
+  /** 恢复这个成员（`team_resume`，成员级）；`undefined` = 未注入宿主连线。 */
+  onResumeMember?: (memberId: string) => void;
 }
 
 const MemberApprovalQueue: React.FC<MemberApprovalQueueProps> = React.memo(
-  ({ tasks, member, onOpenTerminal }) => {
+  ({ tasks, member, onOpenTerminal, onResumeMember }) => {
     const action = openTerminalAction(member);
-    const terminalId = member.terminalId;
+    // 句柄从**同一份**判据的输入里取：`session.terminalId` 只在 `live` 时非空，
+    // 所以这里不存在「判据说能开、句柄却是空的」这种错位。
+    const terminalId = member.session.terminalId;
+    /**
+     * 「去终端处理」能不能真去。
+     *
+     * `active`（可恢复）**能**：点下去先 `team_resume` 把对话接回来，用户才能在它自己的
+     * 终端里批。`archive`（只看得到记录）**不能**：历史里没有审批框，把它当成可点就是一次
+     * 静默的空点击 —— 所以这里单独置灰并给出可见理由（`action.reason` 对 archive 是 null，
+     * 因为那个态本身不是错误）。
+     */
+    const canGoToTerminal = action.enabled && action.kind !== 'archive';
+    const blockedReason = action.kind === 'archive' ? '进程已退出，只能在历史里看' : action.reason;
 
     const handleOpen = useCallback(() => {
-      // 置灰是 UI，**零调用**是行为：没有进程时连回调都不碰（与花名册行同一条判据）。
+      // 置灰是 UI，**零调用**是行为（与花名册行同一条判据）。
+      if (!canGoToTerminal) return;
+      // 成员进程已不在但可恢复：先起新进程，用户才能在它自己的终端里批。
+      if (action.kind === 'resume') {
+        onResumeMember?.(member.memberId);
+        return;
+      }
+      // `terminalId === null` 时连回调都不碰。
       if (terminalId === null) return;
       onOpenTerminal(terminalId, member.name, member.agentId);
-    }, [member.name, onOpenTerminal, terminalId]);
+    }, [
+      action.kind,
+      canGoToTerminal,
+      member.agentId,
+      member.memberId,
+      member.name,
+      onOpenTerminal,
+      onResumeMember,
+      terminalId,
+    ]);
 
     // 空队列 → 什么都不画（见文件头「空队列不渲染」）。
     if (tasks.length === 0) return null;
@@ -70,12 +110,12 @@ const MemberApprovalQueue: React.FC<MemberApprovalQueueProps> = React.memo(
               <div className="mt-0.5 flex items-center gap-1.5">
                 <span className="min-w-0 flex-1 truncate text-micro text-text-muted">
                   {taskStateLabel(task.state)}
-                  {action.reason === null ? '' : ` · ${action.reason}`}
+                  {blockedReason === null ? '' : ` · ${blockedReason}`}
                 </span>
                 <button
                   type="button"
                   onClick={handleOpen}
-                  disabled={!action.enabled}
+                  disabled={!canGoToTerminal}
                   aria-label={`去终端处理待批任务：${task.title}`}
                   className={cn(
                     'shrink-0 rounded px-1.5 py-0.5 text-micro font-semibold',

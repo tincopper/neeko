@@ -43,6 +43,11 @@ export interface StartTeamState {
    * `projectId` 是团队的**环境归属**（`activeProjectId`），`projectPath` 是工作区根 ——
    * 两者不能互相顶替：路径可能是落在项目目录之外的工作树。
    *
+   * `workspaceWorktree` 是同一个工作区的**身份**维度（`projectId` + 它 = 工作区身份），
+   * 位置紧跟 `projectPath`（与后端 `start_team_session` 同序）。它们必须来自**同一个激活
+   * 单元**：根是执行落点、worktree 是身份，一个用激活单元另一个用项目根会让团队的
+   * `session_cursors` 落到另一棵树下。`null` = 主 checkout。
+   *
    * `config` 只该带**真的改过**的字段（`null` / 省略 = 全默认）：载荷里的每一项都是
    * 对后端缺省值的覆盖，原样回传一份完整配置会把它抄成前端常量。
    */
@@ -50,6 +55,7 @@ export interface StartTeamState {
     projectId: string,
     agentId: string,
     projectPath: string,
+    workspaceWorktree: string | null,
     config?: TeamConfig | null,
   ) => Promise<boolean>;
 }
@@ -69,12 +75,19 @@ export function useStartTeam(options: StartTeamOptions = {}): StartTeamState {
       projectId: string,
       agentId: string,
       projectPath: string,
+      workspaceWorktree: string | null,
       config?: TeamConfig | null,
     ): Promise<boolean> => {
       setBusy(true);
       setError(null);
       try {
-        const session = await startTeamSession({ projectId, agentId, projectPath, config });
+        const session = await startTeamSession({
+          projectId,
+          agentId,
+          projectPath,
+          workspaceWorktree,
+          config,
+        });
         await useTeamStore.getState().openTeam(session.teamId);
         const teamName = useTeamStore.getState().snapshot?.team.name ?? session.teamId;
 

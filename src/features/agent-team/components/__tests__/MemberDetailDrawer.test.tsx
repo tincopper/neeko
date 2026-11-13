@@ -39,14 +39,14 @@ const MEMBERS = [
     name: 'lead',
     role: 'lead',
     state: 'running',
-    terminalId: 'term-lead',
+    session: { live: true, terminalId: 'term-lead' },
     agentId: 'claude-code',
   }),
   createMemberStatus({
     memberId: 'w1@tm_1',
     name: 'frontend',
     state: 'awaiting',
-    terminalId: 'term-w1',
+    session: { live: true, terminalId: 'term-w1' },
     agentId: 'qoder',
   }),
 ];
@@ -137,7 +137,11 @@ describe('成员详情抽屉 — 打开与关闭', () => {
     renderPanel(
       async () =>
         createMemberDetail({
-          member: createMemberStatus({ memberId: 'w1@tm_1', name: 'frontend', terminalId: null }),
+          member: createMemberStatus({
+            memberId: 'w1@tm_1',
+            name: 'frontend',
+            session: { live: false, terminalId: null },
+          }),
         }),
       onOpenTerminal,
     );
@@ -344,5 +348,174 @@ describe('成员详情抽屉 — 失败面', () => {
     expect(await within(drawer()).findByRole('alert')).toHaveTextContent('is not loaded');
     // 闪空比旧数据更糟：失败时上一次的任务仍在
     expect(within(drawer()).getByText('在飞的活')).toBeInTheDocument();
+  });
+});
+
+/**
+ * 抽屉与花名册**同一份判据**（`openTerminalAction` 的五态）。
+ *
+ * 两条判据：恢复态必须派发 `team_resume`（而不是什么都没发生 —— 抽屉曾经只认识「活进程」
+ * 与「历史」两条路，恢复态落进去就是静默的空点击），不可恢复的成员必须派发历史（而不是
+ * 静默地什么都不做）。
+ */
+describe('成员详情抽屉 — 五态里的恢复与历史（含待批队列的去处）', () => {
+  beforeEach(() => {
+    resetStores();
+    mockInvoke.mockReset();
+  });
+
+  /** 让 `team_member_detail` 返回给定成员，其余命令回快照（`team_resume` 回一份报告）。 */
+  function renderDrawerFor(
+    member: ReturnType<typeof createMemberStatus>,
+    host: { onOpenTerminal?: ReturnType<typeof vi.fn>; onOpenHistory?: ReturnType<typeof vi.fn> },
+  ) {
+    const snapshot = createTeamSnapshot({ members: MEMBERS });
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_member_detail') return createMemberDetail({ member });
+      if (cmd === 'team_resume') {
+        return {
+          teamId: 'tm_1',
+          resumed: [member.memberId],
+          skippedAlreadyLive: [],
+          cold: [],
+          failed: [],
+        };
+      }
+      if (cmd === 'team_list') return createTeamList({ teams: [] });
+      return snapshot;
+    });
+    render(<TeamPanel onOpenTerminal={host.onOpenTerminal} onOpenHistory={host.onOpenHistory} />);
+  }
+
+  it('离线 + 可恢复：按钮是「恢复会话」，点击 ⇒ team_resume（与花名册同一个动作）', async () => {
+    renderDrawerFor(
+      createMemberStatus({
+        memberId: 'w1@tm_1',
+        name: 'frontend',
+        state: 'offline',
+        session: { live: false, terminalId: null },
+        agentSessionId: 'native-w1',
+        resumable: true,
+      }),
+      { onOpenTerminal: vi.fn() },
+    );
+
+    fireEvent.click(openDetailButton('frontend'));
+    await screen.findByRole('dialog', { name: '成员详情 frontend' });
+
+    fireEvent.click(within(drawer()).getByRole('button', { name: '恢复会话：frontend' }));
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('team_resume', {
+        teamId: 'tm_1',
+        memberId: 'w1@tm_1',
+      }),
+    );
+  });
+
+  it('待批队列：可恢复的成员 ⇒ 点「去终端处理」先 team_resume（审批框在它自己的终端里）', async () => {
+    const snapshot = createTeamSnapshot({ members: MEMBERS });
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_member_detail') {
+        return createMemberDetail({
+          member: createMemberStatus({
+            memberId: 'w1@tm_1',
+            name: 'frontend',
+            state: 'offline',
+            session: { live: false, terminalId: null },
+            agentSessionId: 'native-w1',
+            resumable: true,
+          }),
+          awaitingApproval: [
+            createTaskCard({ id: 't9', title: '跑一次迁移', state: 'awaiting_approval' }),
+          ],
+        });
+      }
+      if (cmd === 'team_resume') {
+        return {
+          teamId: 'tm_1',
+          resumed: ['w1@tm_1'],
+          skippedAlreadyLive: [],
+          cold: [],
+          failed: [],
+        };
+      }
+      if (cmd === 'team_list') return createTeamList({ teams: [] });
+      return snapshot;
+    });
+    render(<TeamPanel onOpenTerminal={vi.fn()} />);
+
+    fireEvent.click(openDetailButton('frontend'));
+    const queue = await screen.findByRole('region', { name: '待批队列' });
+    fireEvent.click(within(queue).getByRole('button', { name: /去终端处理/ }));
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('team_resume', {
+        teamId: 'tm_1',
+        memberId: 'w1@tm_1',
+      }),
+    );
+  });
+
+  it('待批队列：只能看记录的成员 ⇒ 按钮置灰 + 可见理由（历史里没有审批框）', async () => {
+    const snapshot = createTeamSnapshot({ members: MEMBERS });
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_member_detail') {
+        return createMemberDetail({
+          member: createMemberStatus({
+            memberId: 'w1@tm_1',
+            name: 'frontend',
+            state: 'offline',
+            session: { live: false, terminalId: null },
+            agentSessionId: 'native-w1',
+            resumable: false,
+          }),
+          awaitingApproval: [
+            createTaskCard({ id: 't9', title: '跑一次迁移', state: 'awaiting_approval' }),
+          ],
+        });
+      }
+      if (cmd === 'team_list') return createTeamList({ teams: [] });
+      return snapshot;
+    });
+    const onOpenTerminal = vi.fn();
+    render(<TeamPanel onOpenTerminal={onOpenTerminal} />);
+
+    fireEvent.click(openDetailButton('frontend'));
+    const queue = await screen.findByRole('region', { name: '待批队列' });
+    const button = within(queue).getByRole('button', { name: /去终端处理/ });
+
+    expect(button).toBeDisabled();
+    // 理由必须是可见文字（`disabled` 元素不可聚焦）
+    expect(within(queue).getByText(/进程已退出，只能在历史里看/)).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(onOpenTerminal).not.toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalledWith('team_resume', expect.anything());
+  });
+
+  it('离线 + 不可恢复：按钮是「查看记录」，点击打开历史（不是一次静默的空点击）', async () => {
+    const onOpenHistory = vi.fn();
+    renderDrawerFor(
+      createMemberStatus({
+        memberId: 'w1@tm_1',
+        name: 'frontend',
+        state: 'offline',
+        session: { live: false, terminalId: null },
+        agentSessionId: 'native-w1',
+        resumable: false,
+      }),
+      { onOpenHistory },
+    );
+
+    fireEvent.click(openDetailButton('frontend'));
+    await screen.findByRole('dialog', { name: '成员详情 frontend' });
+
+    fireEvent.click(within(drawer()).getByRole('button', { name: '查看记录：frontend' }));
+
+    expect(onOpenHistory).toHaveBeenCalledWith('pi', 'native-w1', 'frontend', 'p1');
+    expect(mockInvoke).not.toHaveBeenCalledWith('team_resume', expect.anything());
   });
 });

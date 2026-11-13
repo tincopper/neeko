@@ -38,7 +38,7 @@ export const LEASE_TICK_MS = 1000;
  *
  * | 问题 | 块 |
  * | --- | --- |
- * | 这是谁 / 在哪干活 / 怎么打开它 | 头部（头像 + 名字 + 队长标记 + 四枚 chip + 六态徽标 + 打开终端）|
+ * | 这是谁 / 在哪干活 / 怎么打开它 | 头部（头像 + 名字 + 队长标记 + 四枚 chip + 六态徽标 + 打开 / 恢复 / 看记录）|
  * | 它卡在哪 | **待批队列**（AC5，置顶；空则整块不渲染）|
  * | 它手上有什么 | 当前任务（在飞 + 最近完成，带租约与回收次数）|
  * | 刚才发生了什么 | 最近事件（时间 + 类别 + 一行摘要）|
@@ -67,11 +67,18 @@ interface MemberDetailDrawerProps {
   onOpenTerminal: (terminalId: string, title: string, agentId: string | undefined) => void;
   /** 打开已退出成员的历史会话（`conversation` tab）。 */
   onOpenHistory?: (agentId: string, agentSessionId: string, title: string) => void;
+  /**
+   * 恢复这个成员（`team_resume`，成员级）。
+   *
+   * 抽屉与花名册**同一份判据**（`openTerminalAction`），所以它必须也接这个动作：
+   * 两处各写一份三元，同一个人在两处就会有两个说法（“恢复会话” vs “打开终端”）。
+   */
+  onResumeMember?: (memberId: string) => void;
   onClose: () => void;
 }
 
 const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
-  ({ memberId, onOpenTerminal, onClose, onOpenHistory }) => {
+  ({ memberId, onOpenTerminal, onClose, onOpenHistory, onResumeMember }) => {
     const { detail, loading, error, reload } = useMemberDetail(memberId);
     // 焦点管理（移焦 / 陷阱 / Esc / 归还）只有一份实现：两个抽屉共用 `useDrawerFocus`。
     const drawerRef = useDrawerFocus<HTMLElement>(onClose);
@@ -93,17 +100,21 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
 
     const handleOpenTerminal = useCallback(() => {
       if (member === null || action === null || !action.enabled) return;
-      // 两条路（与花名册同一判据）：活进程 → PTY 接管；已退出 → 历史记录。
+      // 三条路（与花名册同一判据）：恢复 → 起新进程续接；历史 → 只读记录；活进程 → PTY 接管。
+      if (action.kind === 'resume') {
+        onResumeMember?.(member.memberId);
+        return;
+      }
       if (action.kind === 'archive') {
         if (member.agentSessionId !== null && member.agentId !== undefined) {
           onOpenHistory?.(member.agentId, member.agentSessionId, member.name);
         }
         return;
       }
-      const terminalId = member.terminalId;
+      const terminalId = member.session.terminalId;
       if (terminalId === null) return;
       onOpenTerminal(terminalId, member.name, member.agentId);
-    }, [action, member, onOpenTerminal, onOpenHistory]);
+    }, [action, member, onOpenTerminal, onOpenHistory, onResumeMember]);
 
     return (
       <aside
@@ -152,14 +163,16 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
                 type="button"
                 onClick={handleOpenTerminal}
                 disabled={action === null || !action.enabled}
-                aria-label={`打开会话：${title}`}
+                aria-label={action === null ? `打开会话：${title}` : `${action.label}：${title}`}
                 className={cn(
                   'shrink-0 rounded px-1.5 py-0.5 text-micro font-semibold',
                   'text-accent-blue hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
                   'disabled:cursor-not-allowed disabled:text-text-muted disabled:hover:bg-transparent',
                 )}
               >
-                打开终端
+                {/* 文案来自判据本身（`打开会话` / `恢复会话` / `查看记录`）：写死一个
+                    「打开终端」会让抽屉与花名册同一个人两种说法。 */}
+                {action === null ? '打开终端' : action.label}
               </button>
             </div>
           )}
@@ -180,6 +193,7 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
                 tasks={detail.awaitingApproval}
                 member={detail.member}
                 onOpenTerminal={onOpenTerminal}
+                onResumeMember={onResumeMember}
               />
               <MemberDetailTasks tasks={detail.tasks} truncated={detail.tasksTruncated} now={now} />
               <MemberEventList events={detail.events} truncated={detail.eventsTruncated} />

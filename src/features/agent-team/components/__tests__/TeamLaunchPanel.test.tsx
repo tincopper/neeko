@@ -227,8 +227,39 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
         projectId: 'p1',
         agentId: 'codex',
         projectPath: PROJECT_PATH,
+        // 主 checkout ⇒ 工作区身份的工作树维度是 `null`（不是「未知」）。
+        workspaceWorktree: null,
         name: null,
         // 一个字都没改 ⇒ 载荷里没有任何覆盖项（不是一份抄来的默认值）。
+        config: {},
+      }),
+    );
+  });
+
+  it('激活单元是工作树：建队把工作区身份（projectPath + workspaceWorktree）一起交给后端', async () => {
+    // 团队根与工作区身份**同源**：都来自激活单元（`selectActiveCheckoutPath`）。
+    // 两者叉开（根用工作树、身份用主仓）会让团队的 `session_cursors` 落到另一棵树下 ——
+    // 侧栏分组与「历史归属」正是靠这两个分量。
+    const WORKTREE = '/repo/worktrees/feat-x';
+    useWorkspaceStore.setState({
+      byProject: { p1: { activePath: WORKTREE, activeBranch: 'feat-x', opened: [] } },
+    });
+    mockBackend({ agents: [createLaunchableAgent({ agentId: 'claude-code' })] });
+
+    render(<TeamLaunchPanel />);
+    await waitForPanelReady();
+    await waitForConfigForm();
+
+    fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('start_team_session', {
+        projectId: 'p1',
+        agentId: 'claude-code',
+        // 根是**执行落点**、worktreePath 是**身份**：同一个激活单元，两半必须都对上。
+        projectPath: WORKTREE,
+        workspaceWorktree: WORKTREE,
+        name: null,
         config: {},
       }),
     );
@@ -260,6 +291,8 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
         projectId: 'p1',
         agentId: 'claude-code',
         projectPath: PROJECT_PATH,
+        // 主 checkout ⇒ 工作区身份的工作树维度是 `null`（不是「未知」）。
+        workspaceWorktree: null,
         name: null,
         config: {},
       }),

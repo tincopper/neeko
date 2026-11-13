@@ -22,9 +22,9 @@ import { teamStateBadge, type TeamStateTone } from '../utils/teamList';
  * `data-state` 是给测试与将来做筛选用稳定钩子：文案会随语言变，枚举值不会。
  */
 const TONE_CLASS: Record<TeamStateTone, string> = {
-  active: 'text-accent-blue bg-accent-blue/10',
+  open: 'text-accent-blue bg-accent-blue/10',
   closing: 'text-accent-orange bg-accent-orange/10',
-  closed: 'text-text-muted bg-bg-tertiary',
+  sealed: 'text-text-muted bg-bg-tertiary',
 };
 
 interface TeamStateBadgeProps {

@@ -3,26 +3,54 @@ import type { MemberStatusView } from '@/shared/types/team';
 /**
  * 「打开会话」这个动作的**唯一**判据。
  *
- * # 为什么它是纯函数而不是按钮里的 `disabled={!member.terminalId}`
+ * # 为什么它是纯函数而不是按钮里的 `disabled={!member.session.live}`
  *
  * 置灰本身**不构成理由**：用户看到一个不可点的按钮，唯一能得到的解释是悬停提示，
  * 而 `disabled` 元素不可聚焦 —— 键盘用户、读屏用户、以及「手指点上去什么都没发生」的人都
  * 拿不到那行 `title`。所以「能不能开」与「为什么不能开」必须一起产出，理由还要由调用方
  * 渲染成**可见文字**（见 `RosterRow`）。
  *
- * 判据只有一条：`terminalId != null`。成员是 Neeko 起的 PTY，会话 id 只在团队域里
- * （红线 12：不许从路径 / 名字拼）；`null` = 现在没有可接管的终端（没起来 / 起失败 /
- * 已关掉）。「有 id 但会话已死」不在这里预判 —— 那种情况点下去会得到终端的可读错误。
+ * # 输入是三个**正交**的事实
  *
- * # 文案为什么说「暂无会话」而不是「无进程」
+ * | 事实 | 谁回答 | 是运行态还是意图 |
+ * | --- | --- | --- |
+ * | `session` | `live_sessions` 注册表（每次读现场查）| 运行态：现在有没有进程 |
+ * | `resumable` | 后端（`agent_session_id` + 该 CLI 的续接形态）| 能力：进程没了还接不接得回来 |
+ * | `sealed` | 成员行（落库）| 用户意图：关掉过没有 |
  *
- * `terminalId === null` 只在说「这个成员此刻没有可打开的终端」，而**不等于**「它没有进程」：
- * 将来接 Chat 类成员（`channel = 'mcp'`，本来就没有 PTY）时，它们会走到这同一条分支 ——
- * 那时「无进程」会是一句错话（进程在跑，只是没有终端）。
+ * 合成一个判据就会出现两种误判，而它们的恢复动作**相反**：把「收尾窗口」读成「已退出」
+ * （用户点了关闭，进程还没退干净），或把「进程崩了」读成「用户关掉了」。
  *
- * 扩展点：如果 Chat 成员需要不同的动作（比如「打开对话」而不是「打开会话」），判据的输入要
- * 从 `terminalId` 换成 `channel` + `terminalId` 两个字段，文案也要分叉；在那一刻之前保持
- * 中性措辞，不要在这里抢先写一种假设。
+ * # 五态
+ *
+ * | `session.live` | `resumable` | `agentSessionId` | `sealed` | 动作 |
+ * | --- | --- | --- | --- | --- |
+ * | ✅ | — | — | — | `打开会话`（接管那个 PTY）|
+ * | ❌ | ✅ | 有 | ❌ | `恢复会话`（起一个新进程续接**同一个**会话）|
+ * | ❌ | — | 有 | — | `查看记录`（`conversation` tab，只读）|
+ * | ❌ | — | 无 | ❌ | 置灰：`暂无会话` |
+ * | ❌ | — | 无 | ✅ | 置灰：`已关闭` |
+ *
+ * 三条不能丢的排序理由：
+ *
+ * 1. **`session.live` 必须最先判**：一个被封存的成员在收尾窗口里仍可能是活的，而那时
+ *    **能用**的动作是接管它（用户点了关闭，但还没关完，看一眼输出是合理需求）。
+ * 2. **`resumable` 优先于 `archive`**：有续接形态时，**主**动作是把对话接回来；记录是
+ *    接不回来时才看的东西。把两者反过来，用户会以为「团队恢复后只能读历史」。
+ * 3. **封存优先于 `resumable`**：`sealed` 是用户的决定，恢复到进程等于撤销它（后端同样
+ *    拒绝），所以封存 + 有原生 id 一律 `查看记录` —— 命中前三条之外的那一行。
+ *
+ * 第四态与第五态都不可点，但理由必须不同：看到「暂无会话」的用户会去重试，看到「已关闭」的不会。
+ *
+ * 还有一条不是错的「例外」：CLI 没有续接形态的成员（qoder / gemini 有原生 id）仍然得到
+ * `查看记录`，**不是**置灰按钮 —— 那是真实的能力差异（它确实说过话），不是一个错误，也不该
+ * 挡住用户看它说了什么。缺这个形态时**绝不**退化成「新开一个裸 CLI」：那正是这次要修的缺陷
+ * （用户得到一个空对话，以为对话续上了）。
+ *
+ * # 为什么不用成员行的 `state` 判活
+ *
+ * `state` 是**事件驱动**的投影（hook 上报什么就是什么），它会滞后于进程；而 `session`
+ * 是注册表现场查的结果。用 `state` 判活会让「刚崩、还没上报」的成员显示成可点。
  */
 export interface OpenTerminalAction {
   /** 能不能开。 */
@@ -41,15 +69,24 @@ export interface OpenTerminalAction {
    * | kind | 含义 | 宿主动作 |
    * | --- | --- | --- |
    * | `live` | 成员进程还在，接管它的 PTY | `openExistingTerminalTab` |
-   * | `archive` | 成员已退出（`terminalId` 已清），按原生会话 id 看**历史** | 打开 `conversation` tab |
+   * | `resume` | 身份在、进程不在：起一个**新进程**续接同一个原生会话 | `team_resume`（成员级）|
+   * | `archive` | 成员已退出，按原生会话 id 看**历史** | 打开 `conversation` tab |
    *
-   * 这两个不是同一件事：PTY 接管看的是「进程还在不在」，历史读的是「磁盘上有没有记录」。
-   * 把后者也塞进终端路径，症状正是用户报的「会话 id 找不到」（PTY 已随进程消失）。
+   * 三者不是同一件事：PTY 接管看的是「进程还在不在」，恢复接管的是一个**新进程**，
+   * 历史读的是「磁盘上有没有记录」。把恢复塞进终端路径，症状正是用户报的「会话 id 找不到」
+   * （PTY 已随进程消失）；把它塞进历史路径，症状是「点了查看记录，对话没有回来」。
    */
-  kind: 'live' | 'archive';
+  kind: 'live' | 'resume' | 'archive';
 }
 
 const OPEN: OpenTerminalAction = { enabled: true, label: '打开会话', reason: null, kind: 'live' };
+const OPEN_RESUME: OpenTerminalAction = {
+  enabled: true,
+  // 与「查看记录」的差别是**接管一个新进程**，不是读历史 —— 文案必须能区分这两件事。
+  label: '恢复会话',
+  reason: null,
+  kind: 'resume',
+};
 const OPEN_ARCHIVE: OpenTerminalAction = {
   enabled: true,
   // 文案区分：已退出的成员打开的是记录，不是活进程。
@@ -63,26 +100,49 @@ const NO_SESSION: OpenTerminalAction = {
   reason: '暂无会话',
   kind: 'live',
 };
+const SEALED: OpenTerminalAction = {
+  enabled: false,
+  label: '打开会话',
+  reason: '已关闭',
+  kind: 'live',
+};
+
+type TerminalJudgementInput = Pick<
+  MemberStatusView,
+  'session' | 'agentSessionId' | 'sealed' | 'resumable'
+>;
+
+/** 有没有一条能读的原生会话记录（空白 id 当作没有：它拼不出 `agentId:nativeId`）。 */
+function hasNativeSession(member: TerminalJudgementInput): boolean {
+  return member.agentSessionId !== null && member.agentSessionId.trim() !== '';
+}
 
 /**
- * 判据（两条，按优先级）：
+ * 判据（见模块文档的五态表）。
  *
- * 1. `terminalId != null` ⇒ **活的 PTY**（接管）。
- * 2. 否则 `agentSessionId != null` ⇒ **历史记录**（已退出，但会话文件还在）。
- * 3. 两者都没有 ⇒ 置灰，理由「暂无会话」。
- *
- * # 为什么第 2 条不能省（用户报障）
- *
- * `archive_member` 在归档时清掉 `terminalId`（避免给死进程一个死按钮）—— 但那让
- * **已退出的成员**从面板上彻底消失，而它的会话记录仍在磁盘上。`agentSessionId` 是
- * 观察者从 hook 事件记下来的，正好是 `conversation` 域要的 `agentId:nativeId` 的一半。
+ * 顺序不是风格：`session.live` 必须最先判 —— 一个被封存的成员在收尾窗口里仍可能是活的，
+ * 而那时**能用**的动作是接管它（用户点了关闭，但还没关完，看一眼输出是合理需求）。
  */
-export function openTerminalAction(
-  member: Pick<MemberStatusView, 'terminalId' | 'agentSessionId'>,
-): OpenTerminalAction {
-  if (member.terminalId !== null) return OPEN;
-  if (member.agentSessionId !== null && member.agentSessionId.trim() !== '') {
+export function openTerminalAction(member: TerminalJudgementInput): OpenTerminalAction {
+  if (member.session.live) return OPEN;
+  if (hasNativeSession(member)) {
+    // 有记录 ⇒ 至少还能看。能不能**接回来**是另一件事：`resumable` 说是能力，
+    // `sealed` 说是用户意图（恢复等于撤销它），两者都过才给「恢复会话」。
+    if (member.resumable && !member.sealed) return OPEN_RESUME;
     return OPEN_ARCHIVE;
   }
-  return NO_SESSION;
+  return member.sealed ? SEALED : NO_SESSION;
+}
+
+/**
+ * 这个队里有没有**可恢复**的成员（`TeamHeader` 的「恢复团队」显隐判据）。
+ *
+ * 它走的是 [`openTerminalAction`] 本身，不另写一份 `!live && resumable`：第二份判据必然
+ * 漂移，而漂移的症状是「头部的全队恢复按钮亮着，但每个成员行都写着查看记录」（或者反过来，
+ * 一个可恢复的成员因为封存被算进来了）。同一个判据只允许有一个产出点。
+ */
+export function hasResumableMember(
+  members: readonly Pick<MemberStatusView, 'session' | 'agentSessionId' | 'sealed' | 'resumable'>[],
+): boolean {
+  return members.some((member) => openTerminalAction(member).kind === 'resume');
 }

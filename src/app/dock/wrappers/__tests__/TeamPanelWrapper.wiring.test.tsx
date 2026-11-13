@@ -51,18 +51,18 @@ const SNAPSHOT = createTeamSnapshot({
       memberId: 'lead@tm_1',
       name: 'lead',
       role: 'lead',
-      terminalId: 'term-lead',
+      session: { live: true, terminalId: 'term-lead' },
     }),
     createMemberStatus({
       memberId: 'w1@tm_1',
       name: 'frontend',
-      terminalId: 'term-w1',
+      session: { live: true, terminalId: 'term-w1' },
       agentId: 'qoder',
     }),
     createMemberStatus({
       memberId: 'w2@tm_1',
       name: 'backend',
-      terminalId: null,
+      session: { live: false, terminalId: null },
     }),
   ],
 });
