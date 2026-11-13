@@ -44,7 +44,7 @@ use crate::agent::team::mcp::protocol::{ENDPOINT_PATH, TOKEN_HEADER};
 use crate::agent::team::mcp::schema::{self, ToolSpec};
 use crate::agent::team::types::TeamPrincipal;
 use crate::common::error::AppError;
-use crate::server::SharedTokenSet;
+use crate::server::{BearerToken, CredentialExt, HeaderToken, SharedTokenSet};
 
 /// 本端点声明的 MCP 协议版本。
 ///
@@ -79,8 +79,8 @@ pub const UNAUTHORIZED: i64 = -32001;
 ///
 /// # 为什么 `Clone`
 ///
-/// 所有字段都是 `Arc` / `SharedTokenSet`（内部 `Arc`），克隆是计数而不是拷贝。凭证刷新与
-/// 身份表重建要读库，必须能把自己搬进阻塞池（红线 3）—— 那需要一个 `'static` 的句柄。
+/// 字段都是 `Arc` / `SharedTokenSet`（内部 `Arc`）或它们的小表，克隆只复制句柄，不复制状态。
+/// 凭证刷新与身份表重建要读库，必须能把自己搬进阻塞池（红线 3）—— 那需要一个 `'static` 的句柄。
 #[derive(Clone)]
 pub struct TeamServerState {
     /// 团队域唯一管理器（工具调用的委派目标）。
@@ -95,9 +95,19 @@ pub struct TeamServerState {
     /// handler 刷新身份表时要同步它 —— 两处必须来自同一次 `principals_from`
     /// （门放行谁 / 认出谁，不能有两份表）。
     pub tokens: SharedTokenSet,
+    /// 凭证形状清单（与门**同源**：`team_credentials()`）。
+    ///
+    /// handler 用它把门放行的请求解析成主体。与门各写一份时，新增形状会出现
+    /// 「门按新形状放行、handler 查不到主体」的静默组合（见 `team_credentials` 的文档）。
+    pub credentials: Vec<Arc<dyn CredentialExt>>,
     /// 成员执行者（**必填**：组合根总是注入它，见
     /// [`crate::agent::team::execution::apply_effect`] 关于「不留会撒谎的 None 分支」的说明）。
     pub executor: Arc<dyn crate::agent::team::execution::MemberExecutor>,
+    /// 成员会话的**读接口**（`team_status` 的花名册用它回答「有没有活会话」）。
+    ///
+    /// 与 `executor` 同一条理由必须必填：缺席会让工具面对「成员在不在跑」撒谎
+    /// （恒 `live=false`），而那是模型据此决定要不要派活的输入。
+    pub sessions: Arc<dyn crate::agent::team::view::MemberSessionLookup>,
 }
 
 impl TeamServerState {
@@ -331,9 +341,16 @@ async fn tools_call(
 
     // 业务错误（含授权拒绝）→ `-32000` + `AppError` 的可读文案：它是写给队长模型的
     // 纠正提示（「哪个工具、哪个入参、允许什么」），不是给日志看的状态码。
-    let reply = dispatch::call_async(&state.runtime, &state.manager, principal, wire, &arguments)
-        .await
-        .map_err(|err| RpcError::new(SERVER_ERROR, err.to_string()))?;
+    let reply = dispatch::call_async(
+        &state.runtime,
+        &state.manager,
+        principal,
+        Arc::clone(&state.sessions),
+        wire,
+        &arguments,
+    )
+    .await
+    .map_err(|err| RpcError::new(SERVER_ERROR, err.to_string()))?;
 
     // 决策层只落库；**执行在这里**（两相位）。三件事各有唯一的实现：
     //
@@ -373,13 +390,37 @@ async fn tools_call(
     Ok(json!({ "content": [{ "type": "text", "text": text }] }))
 }
 
+/// 团队 MCP 的**凭证形状清单**（唯一实现）：门与 [`authenticate`] 共用。
+///
+/// - 门的消费者是 `agent::team::boot::team_gate`（决定「谁能进来」）；
+/// - handler 的消费者是 `authenticate`（决定「进来的是谁」）。
+///
+/// 两侧各写一份时会出现一个静默组合：门按新形状放行，handler 查不到主体 ⇒ HTTP 200 +
+/// JSON-RPC `unauthorized`。rmcp 看到的仍然是认证失败、工具面整体不存在，而访问日志上
+/// 那次请求是成功的 —— 比 403 更难查。
+#[must_use]
+pub(crate) fn team_credentials() -> Vec<Arc<dyn CredentialExt>> {
+    vec![
+        // JSON 配置形态的成员（claude-code / codebuddy / qoder / pi）：header 名与端点读的
+        // 那个常量同源。
+        Arc::new(HeaderToken { name: TOKEN_HEADER }),
+        // codex 的 `bearer_token_env_var`：`Authorization: Bearer <token>`。
+        Arc::new(BearerToken),
+    ]
+}
+
 /// header token → 主体（`sha256` 后查表，**不做任何恒定时间比较**）。
+///
+/// 形状清单与门**同源**（[`team_credentials`]）：门放行的候选值必须能在这里解析出主体。
 fn authenticate(state: &TeamServerState, headers: &HeaderMap) -> Option<TeamPrincipal> {
-    // 非 UTF-8 / 非 ASCII 的 header 值不可能命中（token 是 32 位十六进制），直接 None。
-    let token = headers.get(TOKEN_HEADER)?.to_str().ok()?;
     // 锁中毒视同未认证：拒绝比把 `PoisonError` 传给 handler 安全（团队关闭时会重建本表）。
     let principals = state.principals.read().ok()?;
-    resolve_principal(&principals, token).cloned()
+    state.credentials.iter().find_map(|credential| {
+        let candidate = credential.extract(headers)?;
+        // token 是 32 位十六进制（ASCII）；非 UTF-8 不可能命中，与旧的 `to_str()` 同口径。
+        let token = std::str::from_utf8(candidate.as_ref()).ok()?;
+        resolve_principal(&principals, token).cloned()
+    })
 }
 
 /// JSON-RPC 版本字面量（响应里的固定字段）。
@@ -531,7 +572,10 @@ mod tests {
             )),
             // 测试直接构造状态、不经门：集合内容不影响 handler 的分支，空集合即可。
             tokens: SharedTokenSet::new(Vec::new()),
+            credentials: team_credentials(),
             executor,
+            // handler 用例不关心活性：`NoSessions` 恒答「没有活会话」。
+            sessions: Arc::new(crate::agent::team::fixtures::AllLiveSessions),
         }
     }
 
@@ -543,12 +587,24 @@ mod tests {
         token: Option<&str>,
         raw: &str,
     ) -> (StatusCode, Value) {
+        let headers: Vec<(&str, String)> = token
+            .map(|token| vec![(TOKEN_HEADER, token.to_owned())])
+            .unwrap_or_default();
+        post_raw_with_headers(state, &headers, raw).await
+    }
+
+    /// 同上，但请求头由调用方给：鉴权形状不止 `TOKEN_HEADER` 一种（见 `team_credentials`）。
+    async fn post_raw_with_headers(
+        state: &TeamServerState,
+        headers: &[(&str, String)],
+        raw: &str,
+    ) -> (StatusCode, Value) {
         let mut builder = Request::builder()
             .method("POST")
             .uri("/team/mcp")
             .header("content-type", "application/json");
-        if let Some(token) = token {
-            builder = builder.header(TOKEN_HEADER, token);
+        for (name, value) in headers {
+            builder = builder.header(*name, value);
         }
         let request = builder
             .body(Body::from(raw.to_owned()))
@@ -585,11 +641,20 @@ mod tests {
         struct Recording(AtomicUsize);
         #[async_trait::async_trait]
         impl MemberExecutor for Recording {
-            async fn spawn(&self, member_id: &str, token: &str) -> Result<(), AppError> {
+            async fn spawn(
+                &self,
+                member_id: &str,
+                token: &str,
+                resume_argv: Option<Vec<String>>,
+            ) -> Result<String, AppError> {
                 assert_eq!(member_id, "w9@tm_1", "执行者拿到的必须是刚落库的成员 id");
                 assert!(!token.is_empty(), "执行者必须拿到刚签发的明文凭证");
+                assert!(
+                    resume_argv.is_none(),
+                    "`team_spawn` 永远新开对话（续接只走 `team_resume`）：{resume_argv:?}"
+                );
                 self.0.fetch_add(1, Ordering::SeqCst);
-                Ok(())
+                Ok("term-w9".to_owned())
             }
 
             async fn deliver(&self, _member_id: &str, _message: &str) -> Result<(), AppError> {
@@ -603,6 +668,22 @@ mod tests {
 
         let recording = Arc::new(Recording(AtomicUsize::new(0)));
         let state = state_with(recording.clone());
+
+        // 人数护栏：spawn 之前板上必须已有指派给 `w9@tm_1` 的未终结任务
+        // （先写计划再起人）。这也顺带验证了 handler 与 dispatch 的同一条链路。
+        let (_, planned) = post(
+            &state,
+            Some(LEAD_TOKEN),
+            request(
+                "tools/call",
+                json!({
+                    "name": "task_create",
+                    "arguments": {"title": "t", "body": "b", "assignee": "w9@tm_1"}
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(planned["error"], Value::Null, "{planned}");
 
         let (_, response) = post(
             &state,
@@ -645,7 +726,12 @@ mod tests {
         struct Recorder(std::sync::Mutex<Vec<String>>);
         #[async_trait::async_trait]
         impl MemberExecutor for Recorder {
-            async fn spawn(&self, _member_id: &str, _token: &str) -> Result<(), AppError> {
+            async fn spawn(
+                &self,
+                _member_id: &str,
+                _token: &str,
+                _resume_argv: Option<Vec<String>>,
+            ) -> Result<String, AppError> {
                 panic!("team_send 不该触发起进程")
             }
 
@@ -733,6 +819,46 @@ mod tests {
             // 正例对照：本队 token 必须通过（否则上面的拒绝可能是「全拒」）。
             let (_, response) = post(&state, Some(LEAD_TOKEN), body).await;
             assert!(response["error"].is_null(), "{response}");
+        });
+    }
+
+    /// codex 的 `bearer_token_env_var` 形态：门与 handler **都**要认。
+    ///
+    /// 只修门不修 handler 的症状是静默的：403 变成 200 + JSON-RPC `unauthorized`，
+    /// rmcp 仍然把 server 丢掉 —— 工具面还是不存在，而访问日志上那次请求是成功的。
+    /// 这里直接驱动 handler（门由 `boot::tests` 的护栏覆盖），两层合起来才是「能进门、
+    /// 进得来的是谁」。
+    #[test]
+    fn a_bearer_only_request_resolves_the_same_principal() {
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+        runtime.block_on(async {
+            let state = state();
+            let body = request("tools/list", json!({}));
+            let (status, response) = post_raw_with_headers(
+                &state,
+                &[("authorization", format!("Bearer {LEAD_TOKEN}"))],
+                &body.to_string(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            assert!(
+                response["error"].is_null(),
+                "Bearer 请求必须解析出主体：{response}"
+            );
+            assert!(
+                response["result"]["tools"].is_array(),
+                "Bearer 主体必须拿到工具面：{response}"
+            );
+
+            // 反例：同一个形状带错 token 仍然是 `unauthorized`（不是「有 Authorization 就过」）。
+            let (_, response) = post_raw_with_headers(
+                &state,
+                &[("authorization", "Bearer not-a-token".to_owned())],
+                &body.to_string(),
+            )
+            .await;
+            assert_eq!(error_code(&response), -32001, "{response}");
+            assert_eq!(error_message(&response), "unauthorized");
         });
     }
 
@@ -899,7 +1025,7 @@ mod tests {
                 Some(LEAD_TOKEN),
                 request(
                     "tools/call",
-                    json!({"name": "task_create", "arguments": {"title": "t", "body": "b"}}),
+                    json!({"name": "task_create", "arguments": {"title": "t", "body": "b", "assignee": "w9@tm_1"}}),
                 ),
             )
             .await;
@@ -1151,9 +1277,11 @@ mod tests {
                         "verification",
                         "leaseRemainingSecs",
                         "agentId",
-                        "terminalId",
+                        "session",
                         "workspace",
                         "agentSessionId",
+                        "sealed",
+                        "resumable",
                         "persona",
                         "channel",
                         "tier"

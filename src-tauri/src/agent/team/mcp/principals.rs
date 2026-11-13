@@ -210,7 +210,7 @@ mod tests {
 
         assert_eq!(
             manager.member(W1).expect("member").state,
-            crate::agent::team::types::MemberState::Dead
+            crate::agent::team::types::MemberState::Offline
         );
         assert!(
             gate_for(&manager)("w1-token"),

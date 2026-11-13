@@ -33,7 +33,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use axum::http::HeaderMap;
+use axum::http::{header, HeaderMap};
 use parking_lot::RwLock;
 use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq;
@@ -63,6 +63,33 @@ impl CredentialExt for HeaderToken {
         headers
             .get(self.name)
             .map(|value| Cow::Borrowed(value.as_bytes()))
+    }
+}
+
+/// `Authorization: Bearer <token>` 形态（codex 的 `bearer_token_env_var`）。
+///
+/// 与 [`HeaderToken`] 并列：**只提取、不比较** —— 恒定时间比较仍然只有
+/// [`AuthGate::authorize`] 里那一处（`constant_time_comparison_has_exactly_one_call_site`）。
+///
+/// # 为什么只认一种拼法
+///
+/// 这里不是给人用的输入框，是**我们下发的配置的回声**：`bearer_token_env_var` 这一族发出来的
+/// 就是 `Bearer <token>`（单空格、大小写固定）。宽容一条谁也没写过的形状（`bearer` /
+/// 多空格 / 大小写不敏感），等于给「另一条鉴权路径」开一个没人会去审计的缝 —— 而它
+/// **不会**让任何今天可用的成员变得可用。
+///
+/// 前缀不匹配或前缀后为空时返回 `None`（本请求没带这种凭证），而不是空候选值：空值会拿去
+/// 和 token 集合比一次，虽然通常必不相等，但那是在为「空凭证」留一个可达路径。
+pub struct BearerToken;
+
+impl CredentialExt for BearerToken {
+    fn extract<'a>(&self, headers: &'a HeaderMap) -> Option<Cow<'a, [u8]>> {
+        let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+        let token = value.strip_prefix("Bearer ")?;
+        if token.is_empty() {
+            return None;
+        }
+        Some(Cow::Owned(token.as_bytes().to_vec()))
     }
 }
 
@@ -341,6 +368,28 @@ mod tests {
             String::from_utf8(sha256_hex(b"abc")).expect("hex is utf8"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    /// `Bearer` 后面什么都没有不是一种凭证：提取器返回 `None`，空候选值不进比较。
+    ///
+    /// 反例（本用例挡住它）：「前缀匹配 ⇒ Some(空)」会让门多出一个空凭证的可达状态，
+    /// 而它**不是**「没带凭证」，不该走到裁决那一步。
+    #[test]
+    fn bearer_without_a_token_is_not_a_credential() {
+        let mut empty = HeaderMap::new();
+        empty.insert(
+            header::AUTHORIZATION,
+            "Bearer ".parse().expect("valid header value"),
+        );
+        assert!(BearerToken.extract(&empty).is_none());
+
+        // 正例对照：正常形态仍然提取得出（否则上面的断言会因「恒 None」假绿）。
+        let mut ok = HeaderMap::new();
+        ok.insert(
+            header::AUTHORIZATION,
+            "Bearer tok".parse().expect("valid header value"),
+        );
+        assert_eq!(BearerToken.extract(&ok).as_deref(), Some(b"tok".as_slice()));
     }
 
     /// header 名大小写由 HTTP 规范保证（`HeaderMap` 内部小写归一），此处钉住该前提。

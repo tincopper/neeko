@@ -24,6 +24,7 @@
 //! 与 A 级证据（实测）在矩阵里长得一样，只有把「我没验过这条」说出来，队长才不会
 //! 把不确定的能力当成确定的。
 
+use crate::agent::team::delivery::PtySubmit;
 use crate::agent::team::identity::TEAM_TOKEN_ENV;
 use crate::agent::team::types::{
     AdmissionTier, ApprovalPolicy, McpInjection, MemberRole, ResultChannel,
@@ -89,6 +90,22 @@ pub struct AgentAdmission {
     /// 两处必须同时成立才算自洽：档位是 `ConfigDir` ⇒ 这里有值；档位不是 ⇒ 这里是 `None`。
     /// 判据在 `config_dir_facts_live_exactly_on_the_config_dir_rows`。
     pub config_dir: Option<ConfigDirSpec>,
+    /// 把一行字变成**一次提交**的形态 —— 每 CLI 的实测事实（红线 15 同族）。
+    ///
+    /// # 为什么是数据，而不是投递层里的一个分支
+    ///
+    /// `research/00-evidence.md` §2 的证据是 codex 0.167.0 的 TUI 源码：它开着 bracketed
+    /// paste，且内置 paste-burst——窗口内的回车被当成「粘贴里的换行」。躲开它的唯一稳定
+    /// 办法是把正文声明成一次**显式粘贴**（`ESC[200~ … ESC[201~`），而那串字节对不认这个
+    /// 转义的 TUI 是灾难（它们会把 ``ESC[200~`` 当字面量插进输入框）。
+    ///
+    /// 所以这里**没有默认值可偷懒**：只有「实测过能用」的那一行才填非 [`PtySubmit::Plain`]，
+    /// 别的行保持与改动前逐字节相同。判据
+    /// `codex_uses_bracketed_paste_and_everyone_else_is_plain`。
+    ///
+    /// 与 `channel` 的边界：`channel` 是「怎么把字节**送到**对方」（CLI 成员一律 `Pty`），
+    /// 本字段是「送到之后怎么让它**提交**」。两者可独立变化，且都不按 agent 名分支。
+    pub pty_submit: PtySubmit,
     /// 启动时把**角色 preamble** 交给该 CLI 的 argv 模板（含 [`PREAMBLE_PLACEHOLDER`]）。
     ///
     /// 空 = 这条 CLI 无法接收初始系统提示 ⇒ **不能当队长**（见
@@ -607,6 +624,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         unverified: &[PREAMBLE_UNVERIFIED],
         mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
         config_dir: None,
+        pty_submit: PtySubmit::Plain,
         prompt_argv: &["--append-system-prompt", PREAMBLE_PLACEHOLDER],
     },
     // ① `--mcp-config <fileOrString>`；② `Stop` / `PermissionRequest` / `StopFailure` 已装。
@@ -623,6 +641,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
         config_dir: None,
+        pty_submit: PtySubmit::Plain,
         prompt_argv: &["--append-system-prompt", PREAMBLE_PLACEHOLDER],
     },
     // ① `codex mcp add` → `config.toml [mcp_servers]`，但 `-c key=value` 可在**本次启动**
@@ -649,6 +668,8 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
             "mcp_servers.neeko-team.bearer_token_env_var=\"{{token_env}}\"",
         ],
         config_dir: None,
+        // 裸正文 + `\r` 会被 codex 的 paste-burst 吞成「粘贴里的换行」（见 `PtySubmit` 的文档）。
+        pty_submit: PtySubmit::BracketedPaste,
         // codex 的系统提示只能从**位置参数** `[PROMPT]` 进去（它没有 `--append-system-prompt`）：
         // 实测 `codex --model definitely-not-a-model <probe>` 会走过 argv 解析而停在 TUI 启动，
         // 而两个位置参数会直接报 `unexpected argument`。
@@ -666,6 +687,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &[],
         config_dir: None,
+        pty_submit: PtySubmit::Plain,
         // 未安装 ⇒ 无法实测任何 argv 形态 ⇒ 空模板（**不能当队长**，也不会被误当成能当）。
         prompt_argv: &[],
     },
@@ -681,6 +703,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &[],
         config_dir: None,
+        pty_submit: PtySubmit::Plain,
         // 未实测：这一档连成员都做不了（`Subcommand` 写用户全局配置，v1 拒绝），preamble 无从验。
         // 空模板 = 不能当队长 —— 与本行「连成员也做不了」同一个方向。
         prompt_argv: &[],
@@ -697,6 +720,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &[],
         config_dir: None,
+        pty_submit: PtySubmit::Plain,
         // 未实测：本行连工具面都没有（成员都做不了），没有理由去验一个用不上的启动参数。
         prompt_argv: &[],
     },
@@ -714,6 +738,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &[],
         config_dir: None,
+        pty_submit: PtySubmit::Plain,
         // `--prompt <string>`（实测 `opencode --prompt <probe>` 把那段文字摆在 TUI 的输入框里），
         // 但本行今天不能当成员（`Subcommand` 档 v1 拒绝）—— 数据留着，等到它解除拒绝时
         // 不必重新实测。
@@ -774,6 +799,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
                 "models-store.json",
             ],
         }),
+        pty_submit: PtySubmit::Plain,
         // 实测：`pi --append-system-prompt <probe> --model definitely-not-a-model -p …` 停在
         // `Model "…" not found`（即 argv 已被完整解析），而未知开关会得到 `Unknown option`。
         prompt_argv: &["--append-system-prompt", PREAMBLE_PLACEHOLDER],
@@ -792,6 +818,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER, "--strict-mcp-config"],
         config_dir: None,
+        pty_submit: PtySubmit::Plain,
         prompt_argv: &["--append-system-prompt", PREAMBLE_PLACEHOLDER],
     },
     // ① 无 mcp 子命令实测；② Neeko 无 reasonix hook 目标 ⇒ 三档里最小的一种。C 档。
@@ -806,6 +833,7 @@ pub static ADMISSIONS: &[AgentAdmission] = &[
         ],
         mcp_argv: &[],
         config_dir: None,
+        pty_submit: PtySubmit::Plain,
         // 未实测（本行连成员都做不了）：空模板 = 不能当队长，失败方向与其余各列一致。
         prompt_argv: &[],
     },
@@ -852,6 +880,17 @@ pub fn admission_for(agent_id: &str) -> Option<&'static AgentAdmission> {
     ADMISSIONS
         .iter()
         .find(|row| same_id(row.agent_id, agent_id))
+}
+
+/// 成员那台 CLI 的**提交形态**（投递协议的第一个事实）。
+///
+/// 内部复用 [`admission_for`]：查表与 id 归一化（`same_id`）只有那一处，另写一遍查表
+/// 就会让「哪些 id 算同一台 CLI」有两个答案（而 `per_cli_facts_live_only_in_the_table`
+/// 会把它当成第二条事实源）。未登记的 id → [`PtySubmit::Plain`]：未登记的不可能是成员，
+/// 而 `Plain` 与改动前逐字节相同 —— 失败方向是「不变」。
+#[must_use]
+pub fn pty_submit_for(agent_id: &str) -> PtySubmit {
+    admission_for(agent_id).map_or(PtySubmit::Plain, |row| row.pty_submit)
 }
 
 /// 由 `(hooks, mcp)` 推导准入档位。**纯函数**（design §4.4 的三档）。
@@ -1402,6 +1441,7 @@ mod tests {
             bypass_args: &[],
             mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
             config_dir: None,
+            pty_submit: PtySubmit::Plain,
             prompt_argv: &[],
             unverified: &[],
         };
@@ -1549,6 +1589,7 @@ mod tests {
             bypass_args: &[],
             mcp_argv: &[],
             config_dir: None,
+            pty_submit: PtySubmit::Plain,
             prompt_argv: &[],
             unverified: &[],
         };
@@ -1580,6 +1621,7 @@ mod tests {
             bypass_args: &[],
             mcp_argv: &[],
             config_dir: None,
+            pty_submit: PtySubmit::Plain,
             prompt_argv: &[],
             unverified: &[],
         };
@@ -1646,6 +1688,34 @@ mod tests {
         }
         // 「已知但不可 spawn」的 id 也要点名（否则队长会一直拿 dsh 试）。
         assert!(message.contains("dsh"), "{message}");
+    }
+
+    /// 提交形态是**per-CLI 数据**（红线 15 同族）：只有 codex 实测需要 bracketed paste。
+    ///
+    /// 两个方向都要有判据：
+    /// - codex 被改回 `Plain` ⇒ 它的 paste-burst 把窗口内的回车当成「粘贴里的换行」，
+    ///   消息停在输入框（`research/00-evidence.md` §2）；
+    /// - 别的行被顺手改成 `BracketedPaste` ⇒ 不认这个转义的 TUI 会把 `ESC[200~` 当字面量
+    ///   插进输入框 —— 比今天的形态更糟，而且同样是静默的。
+    #[test]
+    fn codex_uses_bracketed_paste_and_everyone_else_is_plain() {
+        use crate::agent::team::delivery::PtySubmit;
+
+        assert_eq!(
+            admission_for("codex").expect("codex 已准入").pty_submit,
+            PtySubmit::BracketedPaste,
+            "codex 的 paste-burst 只认显式粘贴：裸正文 + `\\r` 会被吞成换行"
+        );
+        for row in ADMISSIONS.iter().filter(|row| row.agent_id != "codex") {
+            assert_eq!(
+                row.pty_submit,
+                PtySubmit::Plain,
+                "`{}` 的投递字节必须与改动前逐字节相同（未实测的 CLI 不进代码）",
+                row.agent_id
+            );
+        }
+        // 未登记的 id 不可能是一个成员；失败方向是「不变」（`Plain`），不是「包起来」。
+        assert_eq!(pty_submit_for("no-such-agent"), PtySubmit::Plain);
     }
 
     /// 源码级护栏（红线 15）：per-CLI 事实在生产代码里**只能以表里一行的形式存在**。

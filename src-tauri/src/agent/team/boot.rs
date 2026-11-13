@@ -33,11 +33,11 @@ use crate::agent::team::execution::{CredentialLedger, MemberExecutor};
 use crate::agent::team::manager::TeamManager;
 use crate::agent::team::mcp::dispatch::WAIT_TIMEOUT_MAX_SECS;
 use crate::agent::team::mcp::principals::{principals_from, token_hashes};
-use crate::agent::team::mcp::protocol::{ENDPOINT_PATH, TOKEN_HEADER};
+use crate::agent::team::mcp::protocol::ENDPOINT_PATH;
 use crate::agent::team::mcp::server::{self, TeamServerState};
 use crate::common::error::AppError;
 use crate::common::runtime::AppRuntime;
-use crate::server::{AuthGate, HeaderToken, ServerConfig, ServerHandle, SharedTokenSet};
+use crate::server::{AuthGate, ServerConfig, ServerHandle, SharedTokenSet};
 
 /// 在途上限：与 hooks 同量级。团队成员是个位数，16 已经远超实际并发。
 const MAX_INFLIGHT: usize = 16;
@@ -87,6 +87,30 @@ pub struct TeamSurface {
     pub executor: std::sync::Arc<dyn MemberExecutor>,
 }
 
+/// 团队 MCP 门的**唯一构造点**：期望集合（活集合）与可接受的鉴权形状。
+///
+/// 单独成函数不是为了复用，是为了让「门认哪些形状」有一个可以被测试直接问的落点：
+/// 只在 [`boot`] 里内联构造时，护栏测试只能自己另写一份凭证列表 —— 那正是漂移的写法。
+///
+/// # 形状的清单来自准入表宣传的那几种
+///
+/// 加一种形状的前提是**已经有一种成员配置会发出它**（红线 14：声明即实现）：
+///
+/// | 形状 | 谁发 |
+/// | --- | --- |
+/// | `x-neeko-team-token` | JSON 配置形态的成员（claude-code / codebuddy / qoder / pi） |
+/// | `Authorization: Bearer` | codex 的 `bearer_token_env_var` |
+///
+/// 少装一种的症状是「那个 CLI 的成员首个 `initialize` 恒 403」—— rmcp 随即关掉传输层，
+/// 工具面整体不存在，而板上看起来只是「没人认领」。
+///
+/// 形状清单的**唯一实现**是 `mcp::server::team_credentials()`：handler 的 `authenticate`
+/// 也用它把请求头解析成主体。两边各写一份时会出现「门放行、handler 查不到主体」的
+/// 静默组合（HTTP 200 + JSON-RPC `unauthorized`）。
+pub(crate) fn team_gate(tokens: SharedTokenSet) -> AuthGate {
+    AuthGate::with_shared_hashed_tokens(tokens, server::team_credentials())
+}
+
 /// 启动团队 MCP 端点。
 ///
 /// # 失败即整体失败
@@ -97,6 +121,7 @@ pub fn boot(
     runtime: &Arc<AppRuntime>,
     manager: &Arc<TeamManager>,
     executor: Arc<dyn MemberExecutor>,
+    sessions: Arc<dyn crate::agent::team::view::MemberSessionLookup>,
 ) -> Result<TeamServer, AppError> {
     // 端口由 OS 分配：`serve` 拿到的 listener 就是它，事后从 handle 读（单一来源）。
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0))
@@ -107,18 +132,16 @@ pub fn boot(
     let tokens = SharedTokenSet::new(token_hashes(&principals));
     let principals = Arc::new(RwLock::new(principals));
 
-    let gate = Arc::new(AuthGate::with_shared_hashed_tokens(
-        tokens.clone(),
-        // header 名与端点读的那个常量同源（`TOKEN_HEADER`）。
-        vec![Arc::new(HeaderToken { name: TOKEN_HEADER })],
-    ));
+    let gate = Arc::new(team_gate(tokens.clone()));
 
     let state = TeamServerState {
         manager: Arc::clone(manager),
         principals,
         runtime: Arc::clone(runtime),
         tokens: tokens.clone(),
+        credentials: server::team_credentials(),
         executor,
+        sessions,
     };
 
     let handle = crate::server::serve(
@@ -197,9 +220,15 @@ mod tests {
     use super::*;
     use crate::agent::team::fixtures::{fixture_member, fixture_team, NoopExecutor, TEAM, W1};
     use crate::agent::team::identity;
+    use crate::agent::team::mcp::protocol::TOKEN_HEADER;
     use crate::agent::team::store::TeamStore;
 
     const OTHER: &str = "w2@tm_1";
+
+    /// 端点用例不关心活性：`NoSessions` 恒答「没有活会话」（`view` 里的零实现）。
+    fn no_sessions() -> Arc<dyn crate::agent::team::view::MemberSessionLookup> {
+        Arc::new(crate::agent::team::view::NoSessions)
+    }
 
     fn seeded_manager() -> Arc<TeamManager> {
         let manager = TeamManager::new(TeamStore::open_in_memory().expect("in-memory store"));
@@ -210,6 +239,56 @@ mod tests {
             .add_member(fixture_member(W1, TEAM))
             .expect("add_member");
         Arc::new(manager)
+    }
+
+    /// 门的构造与测试共用同一个落点：`team_gate()`（不是各写一份凭证列表）。
+    fn gate_for(token: &str) -> AuthGate {
+        team_gate(SharedTokenSet::new(vec![identity::hash_token(token)]))
+    }
+
+    fn header(name: &'static str, value: &str) -> axum::http::HeaderMap {
+        let mut map = axum::http::HeaderMap::new();
+        map.insert(name, value.parse().expect("valid header value"));
+        map
+    }
+
+    const TOKEN: &str = "tok-team-gate";
+
+    /// 门必须接受准入表向成员**宣传的每一种**鉴权形状。
+    ///
+    /// 两侧的落点：形状来源是 `admission::ADMISSIONS`（JSON 配置形态的成员写
+    /// `TOKEN_HEADER`，codex 走 `bearer_token_env_var` ⇒ `Authorization: Bearer`），
+    /// 接受方是本函数测的 [`team_gate`]。少装一种形状的症状是「那个 CLI 的成员恒 403，
+    /// 工具面整体不存在」—— 而它只落一条 warn，看起来像 token 错了。
+    #[test]
+    fn the_team_gate_accepts_both_advertised_shapes() {
+        let gate = gate_for(TOKEN);
+
+        assert!(
+            gate.authorize(&header(TOKEN_HEADER, TOKEN)),
+            "JSON 配置形态的成员（claude-code / codebuddy / qoder / pi）必须能进门"
+        );
+        assert!(
+            gate.authorize(&header("authorization", &format!("Bearer {TOKEN}"))),
+            "codex 的 bearer_token_env_var 形态必须能进门"
+        );
+
+        // 反例：错 token / 没带凭证仍然拒绝 —— 门的单一比较点没有因此放宽。
+        assert!(!gate.authorize(&header("authorization", "Bearer tok-team-gatf")));
+        assert!(!gate.authorize(&axum::http::HeaderMap::new()));
+    }
+
+    /// 空集合恒拒，**新形状**上也要再断言一次。
+    ///
+    /// 「空集合 + Bearer」是最容易被顺手放宽的组合：放宽它等于给「本组免鉴权」开一条
+    /// 谁也不审计的路（门对每个路由组强制生效）。
+    #[test]
+    fn the_team_gate_rejects_everything_when_the_set_is_empty() {
+        let gate = team_gate(SharedTokenSet::new(Vec::new()));
+
+        assert!(!gate.authorize(&header(TOKEN_HEADER, TOKEN)));
+        assert!(!gate.authorize(&header("authorization", &format!("Bearer {TOKEN}"))));
+        assert!(!gate.authorize(&axum::http::HeaderMap::new()));
     }
 
     /// 坐标拼装只有一个实现：loopback + 端点路径。
@@ -227,7 +306,7 @@ mod tests {
     async fn boot_binds_a_loopback_port_and_exposes_its_url() {
         let runtime = Arc::new(AppRuntime::from_handle(tokio::runtime::Handle::current()));
         let manager = seeded_manager();
-        let server = boot(&runtime, &manager, Arc::new(NoopExecutor)).expect("boot");
+        let server = boot(&runtime, &manager, Arc::new(NoopExecutor), no_sessions()).expect("boot");
 
         assert_ne!(server.port(), 0, "OS 分配的端口不应为 0");
         assert_eq!(server.endpoint_url(), endpoint_url(server.port()));
@@ -249,7 +328,7 @@ mod tests {
 
         let runtime = Arc::new(AppRuntime::from_handle(tokio::runtime::Handle::current()));
         let manager = seeded_manager();
-        let server = boot(&runtime, &manager, Arc::new(NoopExecutor)).expect("boot");
+        let server = boot(&runtime, &manager, Arc::new(NoopExecutor), no_sessions()).expect("boot");
 
         // 起初：库里只有一个夹具凭证。
         assert_eq!(

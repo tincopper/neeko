@@ -41,13 +41,12 @@
 //! 成功路径**不在这里删**：目录还要给那个还在跑的成员进程读。
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
 
+use crate::agent::team::admission;
 use crate::agent::team::delivery::{self, DeliveryRoute};
 use crate::agent::team::execution::{self, ConfigDirPlan, MemberExecutor, SpawnPlan};
-use crate::agent::team::manager::now_millis;
 use crate::agent::team::types::{Team, TeamMember};
 use crate::common::error::AppError;
 use crate::common::executor::SpawnOptions;
@@ -78,7 +77,12 @@ impl PtyMemberExecutor {
 
 #[async_trait::async_trait]
 impl MemberExecutor for PtyMemberExecutor {
-    async fn spawn(&self, member_id: &str, token: &str) -> Result<(), AppError> {
+    async fn spawn(
+        &self,
+        member_id: &str,
+        token: &str,
+        resume_argv: Option<Vec<String>>,
+    ) -> Result<String, AppError> {
         let state = self.app.state::<AppStateWrapper>();
 
         // 端点没起来时**拒绝**：给成员一个空 URL 等于让它「起来了但连不上工具面」，
@@ -122,9 +126,18 @@ impl MemberExecutor for PtyMemberExecutor {
         let member_count = state.team_manager.member_count(&team.id);
         // 团队行下面的 plan 闭包按值搬走 `team`（成员行同理）：它还要的两个事实在这里先取。
         let team_project_id = team.project_id.clone();
+        // 工作区身份的另一半（v23）：团队的根**就是**它的 Workspace 单元，成员可能在其中
+        // 某个子目录里跑 —— 那是进程 cwd，不改变「这条会话属于哪个单元」。
+        let team_workspace_worktree = team
+            .workspace_worktree
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string());
+        // `team` 整行走进了下面的 plan 闭包（按值），归属要用的两个字段先取出来。
+        let team_id_for_attribution = team.id.clone();
         let member_for_plan = member.clone();
         let endpoint_for_plan = endpoint.clone();
         let token_for_plan = token.to_owned();
+        let resume_for_plan = resume_argv;
         let state_root = state.storage_manager.get_config_dir().to_path_buf();
         let plan = state
             .runtime
@@ -136,6 +149,7 @@ impl MemberExecutor for PtyMemberExecutor {
                     &token_for_plan,
                     &state_root,
                     member_count,
+                    resume_for_plan.as_deref(),
                 )
             })
             .await
@@ -175,8 +189,10 @@ impl MemberExecutor for PtyMemberExecutor {
             None => None,
         };
 
-        // 启动 argv = 程序 + 注入档给的参数（+ Bypass 的旁路开关）。
-        let argv = launch_argv(program, args, &member);
+        // 启动 argv = 程序 + **执行层算好的整段参数**（resume → MCP → preamble → 旁路）。
+        // 顺序只在一个地方定（`execution::plan_member_spawn`）：组合根不再认识 argv 的语义，
+        // 否则同一份顺序会有两份实现（而它们只在某一家 CLI 上分叉）。
+        let argv = launch_argv(program, args);
         let cwd_str = cwd.to_string_lossy().to_string();
 
         // 三份 env 合流：身份 → 凭证 → 配置目录重定向。
@@ -189,14 +205,26 @@ impl MemberExecutor for PtyMemberExecutor {
 
         // 登记信息：成员会话要出现在侧栏，就得带原生事实（地址 + 运行根 + agent）。
         //
-        // 地址取**团队所属项目的单元**（`team.project_id`）：团队的根就是它的 Workspace
-        // （`project_path`），成员可能在其中某个子目录里跑 —— 那是进程 cwd，不改变
-        // 「这条会话属于哪个单元」。旧库行（v16 之前，`project_id` 为空）仍按空地址登记：
-        // 侧栏不会为它编一条归属，但会话本身照常工作。
+        // 地址取**团队所属项目的该工作区**（`(project_id, workspace_worktree)`）：团队的根
+        // 就是它的 Workspace 单元，成员可能在其中某个子目录里跑 —— 那是进程 cwd，不改变
+        // 「这条会话属于哪个单元」。登记里丢掉工作树维度（曾固定写 `None`）会让
+        // `entry.cwd` 与 `entry.workspace` 互相矛盾：按 cwd 该是工作树单元，按 `workspaceKey`
+        // 却被登记在主仓行下（侧栏分组错、历史归属错）。
+        // 旧库行（v16 之前，`project_id` 为空）仍按空地址登记：侧栏不会为它编一条归属，
+        // 但会话本身照常工作。
         let registration = crate::live_sessions::wiring::pty::TerminalRegistration {
-            workspace: crate::common::git::WorkspaceSession::of(team_project_id, None),
+            workspace: crate::common::git::WorkspaceSession::of(
+                team_project_id,
+                team_workspace_worktree,
+            ),
             cwd: cwd_str.clone(),
             agent_id: Some(member.agent_id.clone()),
+            // 归属在**起进程那一刻**写入（唯一 100% 已知的时刻）：花名册的「有没有活会话」
+            // 与 `team_send` / `team_close` 的目标都从这里查，团队行上不再有句柄副本。
+            attribution: crate::live_sessions::SessionAttribution::TeamMember {
+                team_id: team_id_for_attribution,
+                member_id: member_id.to_owned(),
+            },
         };
         let launch = TerminalLaunch {
             cols: MEMBER_COLS,
@@ -231,23 +259,13 @@ impl MemberExecutor for PtyMemberExecutor {
             }
         };
 
-        // 回填句柄：成员从此可被 `team_send` 投递。写库同样进阻塞池。
-        let manager = Arc::clone(&state.team_manager);
-        let session_id = session.id.clone();
-        let member_id_owned = member_id.to_owned();
-        state
-            .runtime
-            .spawn_blocking(move || {
-                manager.set_member_terminal(&member_id_owned, &session_id, now_millis())
-            })
-            .await
-            .map_err(|err| AppError::Unknown(format!("binding member terminal failed: {err}")))??;
-
         log::info!(
             "[agent-team] member {member_id} started in session {}",
             session.id
         );
-        Ok(())
+        // 句柄**只作为本次调用的返回值**存在（「起完立刻开 tab」用一次）；
+        // 之后要问「它在哪」一律走 `live_sessions`（归属已在登记时写入）。
+        Ok(session.id)
     }
 
     async fn deliver(&self, member_id: &str, message: &str) -> Result<(), AppError> {
@@ -257,19 +275,27 @@ impl MemberExecutor for PtyMemberExecutor {
             .member(member_id)
             .ok_or_else(|| AppError::NotFound(format!("member {member_id}")))?;
 
-        // 通道选择是执行层策略（`delivery::route` 是纯函数，三档由数据决定）。
+        // 通道选择是执行层策略（`delivery::route` 是纯函数，三档由数据决定）；
+        // **提交形态**是成员那台 CLI 的实测事实（`PtySubmit`，从准入表取出）—— 投递层不认识 CLI。
         // 不可投递的通道在这里拿到**可行动**的拒绝理由，而不是静默成功。
-        let plan = match delivery::route(member.channel, message) {
+        let submit = admission::pty_submit_for(&member.agent_id);
+        let plan = match delivery::route(member.channel, submit, message) {
             DeliveryRoute::Pty(plan) => plan,
             DeliveryRoute::Unsupported(why) => return Err(AppError::Unsupported(why.to_owned())),
         };
 
-        let terminal_id = member.terminal_id.ok_or_else(|| {
-            AppError::Unsupported(format!(
-                "member `{member_id}` has no pty session yet (it was never started, or it has \
-                 been retired), so the message cannot be written to its stdin"
-            ))
-        })?;
+        // 目标句柄问注册表（红线 17）：团队行上没有可陈旧的副本，所以「有一条死句柄」
+        // 这种状态在这里不可表达 —— 没有活会话就是一句话说明得清的 `Unsupported`。
+        let terminal_id = state
+            .live_sessions
+            .live_session_for_member(&member.team_id, member_id)
+            .ok_or_else(|| {
+                AppError::Unsupported(format!(
+                    "member `{member_id}` has no live pty session right now (it was never \
+                     started, it exited, or it was sealed), so the message cannot be written to \
+                     its stdin"
+                ))
+            })?;
 
         // 投递 = emit + 150ms 等待 ⇒ 阻塞池（红线 3）。
         let app = self.app.clone();
@@ -311,11 +337,11 @@ impl MemberExecutor for PtyMemberExecutor {
             .team_manager
             .member(member_id)
             .ok_or_else(|| AppError::NotFound(format!("member {member_id}")))?;
-        let Some(terminal_id) = member.terminal_id else {
-            log::info!(
-                "[agent-team] member {member_id} was never started (no pty session); \
-                 nothing to close"
-            );
+        let Some(terminal_id) = state
+            .live_sessions
+            .live_session_for_member(&member.team_id, member_id)
+        else {
+            log::info!("[agent-team] member {member_id} has no live pty session; nothing to close");
             return Ok(());
         };
 
@@ -348,19 +374,18 @@ fn member_and_team(
     Ok((member, team))
 }
 
-/// 成员的启动 argv：`[program] ++ mcp args ++ bypass args`。
+/// 成员的启动 argv：`[program] ++ plan.args`。
 ///
 /// 程序名来自该 agent 的**已注册配置**（`AgentManager`，含用户覆盖），不是 id —— 拿 id
 /// 当程序名猜是最容易在自定义 agent 上静默失败的做法。
-fn launch_argv(program: String, mcp_args: Vec<String>, member: &TeamMember) -> Vec<String> {
-    let mut argv = Vec::with_capacity(mcp_args.len() + 2);
+///
+/// 除了程序名，这里**不再拼接任何参数**：`resume` 片段的位置、MCP 注入、角色 preamble
+/// 与旁路开关的相对顺序都是执行层的事实（`execution::plan_member_spawn` 是唯一组合点）。
+/// 在这一层再判一次 `approval_policy` 会让同一份顺序有两个所有者。
+fn launch_argv(program: String, args: Vec<String>) -> Vec<String> {
+    let mut argv = Vec::with_capacity(args.len() + 1);
     argv.push(program);
-    argv.extend(mcp_args);
-
-    // `approval_policy = Bypass` 时追加该 CLI 自己的旁路开关（per-CLI 数据，红线 15）。
-    if let Some(admission) = crate::agent::team::admission_for(&member.agent_id) {
-        argv.extend(admission.bypass_args(member.approval_policy));
-    }
+    argv.extend(args);
     argv
 }
 
