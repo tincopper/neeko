@@ -12,7 +12,7 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | --- | --- | --- |
 | `types.rs` | 数据模型 + serde 口径（camelCase / snake_case 两套） | 加字段 / 改 wire 名 |
 | `store.rs` | SQLite 持久化（v14 建表、迁移、分页） | 表结构 / 查询 |
-| `manager.rs` | **唯一写入口**（内存镜像 + 库在同一把锁内一起改） | 新状态迁移 |
+| `manager.rs` | **唯一写入口**（内存镜像 + 库在同一把锁内一起改）；含启动归位 `reconcile_boot`（见 §5a.2） | 新状态迁移 |
 | `completion.rs` / `lease.rs` | 完成判定 / 租约（纯函数） | 状态机规则 |
 | `reaper.rs` | **时间驱动**的租约回收（周期性循环 + `stop`）；将来 L3 的 `Stalled` 也长在这里 | 到期判据 / 节拍 |
 | `wait.rs` | `team_wait` 的阻塞等待（只读内存快照） | 等待语义 |
@@ -24,11 +24,12 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `mcp/protocol.rs` | 线协议常量（`TOKEN_HEADER` / `ENDPOINT_PATH`）：端点读的与客户端写的同一份 | wire 契约 |
 | `mcp/server.rs` | MCP over HTTP（JSON-RPC + header token → 主体） | 协议层 |
 | `mcp/principals.rs` | 身份表：`token hash → TeamPrincipal`（从**库**组装） | 凭证模型 |
-| `execution.rs` | 执行层：启动计划（纯函数）+ 端口（`MemberExecutor` / `CredentialLedger`）+ 回复副作用映射 | 执行语义（见 §2.2） |
+| `execution.rs` | 执行层：启动计划（纯函数，含 **resume 片段的位置**）+ 端口（`MemberExecutor` / `CredentialLedger`）+ 回复副作用映射 | 执行语义（见 §2.2 / §5b）|
+| `resume.rs` | `team_resume` 的**全部语义** + `TeamResumeReport`（四个桶）| 恢复语义（见 §5b）|
 | `delivery.rs` | 投递：通道路由 + 两笔写入协议（纯函数） | 投递协议 |
 | `boot.rs` | 域级 boot 入口：独立 loopback listener + 活集合门 | 端点坐标 |
 | `authorize.rs` | 授权矩阵（工具数 × 角色数，**当前 11 × 2 = 22 格**；格数由 `ALL_TOOL_NAMES` 自算，见 `matrix_is_enforced_cell_by_cell`） | 加减工具 |
-| `observe.rs` / `deliver.rs` | hook 事件的团队投影 / 投递入口（见 §6） | 新信号 |
+| `observe.rs` / `deliver.rs` | hook 事件的团队投影 / 投递入口（见 §6）；**原生会话 id 的登记在键过滤之前**（见 §5a） | 新信号 |
 | `events.rs` | 前端事件：`TEAM_EVENT` 常量 + 失效脉冲载荷 + `TeamNotifier` 端口（见 §8） | 改事件名 / 载荷 |
 | `view.rs` | **视图构造的唯一落点**：`TeamStatusView`（MCP 读者）/ `TeamSnapshot` / `TaskCard` / `TaskDetail`（前端读者） | 加读字段 / 改列载荷（见 §8） |
 | `commands.rs` | 本地 Tauri 入口（九条：建队开场 / 快照 / 任务详情 / 可启动清单 / 团队配置面 / 团队清单 / 关闭 / **删除**），保持极薄（红线 6） | 新入口命令 |
@@ -182,7 +183,15 @@ ToolReply ──effect_for──▶ Option<Effect> ──apply_effect──▶ E
 `emit(..., "\r")`。一次写 `"text\n"` 会被部分 AI TUI 丢弃或误解释（`research/04` 实测）。
 走既有事件而不是抢 terminal 的 writer 所有权：terminal 域对团队一无所知。
 
-**通道由 `delivery::route(WorkerChannel, msg)` 决定（纯函数）**：`Pty` → 两笔写入；
+**第一笔的字节内容是 per-CLI 数据（`PtySubmit`），不是协议常量**：`Plain` = 裸正文；
+`BracketedPaste` = `ESC[200~` + 正文 + `ESC[201~`。后者是 codex 需要的形态 —— 它的
+paste-burst 判据（快字符流 = 粘贴，粘贴后 120ms 内的回车 = 「粘贴里的换行」）会把紧跟的回车
+吞成换行，消息停在输入框永不提交；显式粘贴会清掉那个窗口（`clear_after_explicit_paste`），
+回车因此**必然**提交。形态来自 `admission::ADMISSIONS` 的 `pty_submit` 列（执行层用
+`pty_submit_for(agent_id)` 取出后传给投递层），投递层不认识 CLI。**150ms 间隔不承担正确性**：
+两次 `emit` 落到 PTY 的间隔取决于事件循环，靠它对齐任何窗口都是概率性的。
+
+**通道由 `delivery::route(WorkerChannel, PtySubmit, msg)` 决定（纯函数）**：`Pty` → 两笔写入；
 `Mcp` / `None` → `Unsupported` + **可行动**的理由（`Mcp` 成员是我们自己的客户端，没有推送
 通道，只能走板上派活）。静默「成功」比报错坏得多：队长会继续往下走，而成员从未收到任务。
 
@@ -198,7 +207,7 @@ ToolReply ──effect_for──▶ Option<Effect> ──apply_effect──▶ E
 ## 2.3 端点启动（`team/boot.rs`）与门的活集合
 
 团队 MCP 是**独立 loopback listener**（design §3.1b）：与 hooks 共用端口会让成员 token 能
-`POST /hook/{source}` 伪造队友的上报。四条容易写错的约束：
+`POST /hook/{source}` 伪造队友的上报。五条容易写错的约束：
 
 | 约束 | 否则会怎样 |
 | --- | --- |
@@ -206,6 +215,14 @@ ToolReply ──effect_for──▶ Option<Effect> ──apply_effect──▶ E
 | 门装 **活集合**（`AuthGate::with_shared_hashed_tokens` + `SharedTokenSet`） | 快照门让「先 promote、后 spawn」的成员永远进不来；重建 listener 换端口又会让已下发的 MCP URL 全部失效 |
 | `refresh_credentials` **先**写身份表**再**替换门的期望集合 | 反过来有窗口：门放行新 hash 而 handler 查不到主体（200 + 空主体） |
 | 读库失败 **不**降级成空表 | 空表 = 谁都进不来，看起来像「所有成员都没权限」，比启动失败更难排查 |
+| 门的**凭证形状清单**与 handler 的解析清单同源（`mcp::server::team_credentials()`） | 各写一份时的静默组合：门按新形状放行、handler 查不到主体 ⇒ HTTP 200 + JSON-RPC `unauthorized`，rmcp 仍然丢弃 server，而访问日志看起来是成功的 |
+
+**门的凭证形状必须覆盖准入表宣传的每一种鉴权方式**。今天的两种：`x-neeko-team-token`
+（`TOKEN_HEADER`，JSON 配置形态的 claude-code / codebuddy / qoder / pi）与
+`Authorization: Bearer <token>`（codex 的 `bearer_token_env_var`）。只装前者时，codex 成员的首个
+`initialize` 恒 403 —— rmcp 随即关掉传输层，工具面整体不存在，而板上看起来只是「没人认领」。
+两处都必须读同一份清单；少装一种的后遗症是 403，门放过而 handler 不认的后遗症是 200 +
+空主体（更难查）。
 
 门的**期望集合形态与摘要编码不可分开配置**：`ExpectedTokens::{Plain, Sha256HexShared}`
 两个变体各含锁行为与编码，`AuthGate` 只有一个 `expected` 字段。拆成两个字段能拼出
@@ -363,6 +380,88 @@ v16 期的裁决是「任务 id 的命名空间**就是 DB 全局单调**」，�
 替换成队内版本（见上一节列表）。谁再想改回全局序号，必须先回答：既然主键是复合的，
 全局唯一换来了什么？（答案是：什么都没有。）
 
+### 任务行的两列：`assignee`（计划事实）vs `owner`（执行事实）（v24）
+
+| 列 | 是什么 | 谁写 | 何时写 |
+| --- | --- | --- | --- |
+| `assignee` | **谁该做**（计划事实） | `task_create(assignee)` 的 dispatch 层 | 只在创建时（创建后不可改）|
+| `owner` | **谁在做**（执行事实） | `manager::claim_task` | `pending → claimed` 那一下 |
+
+三条纪律：
+
+1. **指派不改状态**：`task_create(assignee=w1)` 落库后仍是 `state = pending` / `owner = NULL` /
+   `claimed_at = NULL`，**不起租约**。自动落成 `claimed` 会让排队中的任务被 `reclaim_expired`
+   按 `claimed_at + lease_ttl` 当成过期租约回收（它会把 `owner` 清成 `NULL`）—— 队长一次派
+   5 个活、成员干到第 4 个时，前两个已经在板上「过期」了。指派是计划，认领是执行，两者
+   的写入时机不同，合并成一列就会把「没人在跑」编码成「有人在跑」。
+2. **认领闸门只缩候选集**：`assignee` 存在时只有该成员能 `claim`（别人 → `Conflict`，文案
+   点名被指派者 + 建议找队长改派）；未指派（`NULL`，含所有 v24 之前的老行）保持「谁先到
+   谁得」。「只有一个赢家」仍由 `claim_task` 在同一把锁里保证。
+3. **`assignee` 必须是本队成员**（与 `team_send.to` 同一寻址：`name@team_id`），校验点在
+   写入之前（`dispatch::assignee_arg` → `member_of_team`），拒绝时**列出本队成员**：
+   `claim_task` 只比对 member id、不查队，写进一个别队 id 的症状是「板上有一张永远没人接
+   的卡」。
+
+迁移（v23→v24）是纯 `ADD COLUMN`（`v23_to_v24` + `add_column_if_missing`），**不碰 v17 的
+`team_task_v17` 历史重建 DDL**：新库从 0 跑到 24 时，v17 重建会丢掉这一列，v24 再补回来。
+四个 SQL 同步点：`CREATE TABLE team_task` / `SELECT_TASK` / `INSERT … ON CONFLICT DO UPDATE`
+（含 `assignee = excluded.assignee`）。漏一处的症状是「新库能写、旧库读不出」或反之。
+判据：`a_task_row_round_trips_its_assignee` /
+`a_v23_task_row_upgrades_to_an_unassigned_task` / `v23_to_v24_is_idempotent` /
+`an_assigned_task_can_only_be_claimed_by_its_assignee` /
+`task_create_persists_the_assignee_without_claiming_the_task` /
+`task_create_rejects_a_foreign_assignee_and_lists_the_roster`。
+
+### 参与人数由任务板决定（第 3 轮，2026-11-13）
+
+现场事故：2 个任务起了 4 个 worker，且 `t2.owner = lead@…`（队长自己领了活）、
+4 张卡的 `assignee` 全是 `NULL`。三条结构护栏，**不靠提示词**：
+
+| 护栏 | 落点 | 判据 |
+| --- | --- | --- |
+| `assignee` 必填、允许**计划中的成员** `name@<team_id>` | `dispatch::assignee_arg` + `task_create` 的 `required` | 先写任务带指派 → 再为这些指派起人。要求成员已落库会反过来逼队长先把 CLI 池填满（顺序死锁） |
+| `team_spawn` 只为未终结任务里出现过的 assignee 起人 | `TeamManager::has_open_assignment` + `dispatch::spawn`（所有既有参数校验之后、`add_member` 之前） | 3 个任务只指派 2 个不同成员 ⇒ 只能起 2 次；第 3 个名字 `Conflict`。`done`/`failed`/`blocked` 复用 `is_terminal_task` 的同一判据 |
+| `Lead × task_claim = false` | `authorize` 矩阵 | 队长的工作是 plan / spawn / wait，不是 claim；授权矩阵逐格测试同步改一格 |
+
+**不禁止**同一成员承接多个有依赖顺序的任务（t1 → t2 由同一人做是合法复用）；
+`assignee` 是单值列，结构上不可能把一个任务派给两个人，`add_member` 的重名检查
+保证一个成员只起一次 ⇒ 起的人数 ≤ 板上不同指派人数 ≤ 任务数。
+
+队长 preamble 同步改成「任务驱动的人员规划」：删掉 `Staff to the plan: for each task spawn`
+与 `parallelize where the plan allows`（它们共同把池子说成必须填满的花名册），
+改写成「every task MUST name `assignee` / spawn exactly those distinct assignees /
+the pool is a menu, not a roster」。**提示词是第二道防线，状态校验才是第一道**。
+
+判据：`spawn_requires_an_open_assignment` / `spawn_count_is_bounded_by_distinct_assignees` /
+`a_terminal_assignment_does_not_justify_a_spawn` / `task_create_accepts_a_planned_member_id` /
+`task_create_without_an_assignee_is_rejected` / `the_lead_is_told_to_plan_first_and_match_personas`
+（含「不得再出现 parallelize where the plan allows」的反证断言）。
+
+## 2.6 团队记录它所在的**工作区身份**（v23），不只是路径
+
+`(project_id, workspace_worktree)` 是这个队**工作区身份**的两半，`project_path` 只是它的落地路径：
+
+| 字段 | 是什么 | 谁给 |
+| --- | --- | --- |
+| `project_id` | 拥有执行环境的项目（v16） | 前端 `activeProjectId` |
+| `workspace_worktree` | 团队所在的工作树（v23）；`None` = 主 checkout | 前端激活单元 `worktreePath` |
+| `project_path` | 团队根（= 该工作区的根，已规范化） | 前端 `useActiveWorkspaceRoot` |
+
+三条纪律：
+
+1. **写入前校验地址，且根必须等于地址给出的根**：`commands::start_team_session` 用
+   `resolve_workspace_target(WorkspaceSession::of(project_id, workspace_worktree))`（worktree 归属的
+   唯一校验入口）拿 `WorkspaceRef`，再断言规范化后的团队根 `== repo.root()`。不等 ⇒ 拒绝 ——
+   否则「团队跑在 A 单元、记录说 B 单元」，历史把它归到错的工作区，而那种错在面板上看不出来。
+2. **`workspace_worktree` 不是从路径推出来的**：`project_path != project root` 并不能证明它是
+   工作树（子目录也会不相等）。身份由前端给、后端校验（红线 12）。
+3. **登记地址跟着它走**：`app::team_executor` 用 `WorkspaceSession::of(team.project_id, team.workspace_worktree)`
+   登记成员的 PTY 会话。曾经硬编码 `(project_id, None)`（= 主仓），而 `cwd` 是团队根（可能是工作树）
+   ⇒ `session_cursors.workspace_key` 与真实执行根矛盾，侧栏把工作树的成员列在主仓下。
+
+  反过来读：**`entry.cwd` 与 `entry.workspace` 不是同一件事**（执行根 vs 地址），但生产代码里
+  两者必须指向同一个单元 —— 这条偏差是 `history-scope-and-identity.md` §2.4 第 7 条。
+
 ## 3. 准入表（红线 15 落点）## 3. 准入表（红线 15 落点）
 
 「这个 CLI 能不能当成员、走哪条通道」是 **per-CLI 数据**，只允许是 `ADMISSIONS` 里的一行：
@@ -379,6 +478,11 @@ v16 期的裁决是「任务 id 的命名空间**就是 DB 全局单调**」，�
   推送，工具面里也没有收件箱。症状是 `team_send` 对每个成员都 `Unsupported` ——
   队长以为派了活，成员从未收到（`a_spawned_member_is_deliverable_over_its_pty` 钉住这一条）。
   `Mcp` 留给将来的 Chat 成员（`SessionRequest` 是真正的下行通道）。
+- `pty_submit`（怎么**提交**）**是** per-CLI 事实，与 `channel` 不冲突：通道说「往哪发」，形态说
+  「发过去的字节怎么被那边当成一次提交」。今天两档：`Plain`（裸正文 + `\r`）与
+  `BracketedPaste`（`ESC[200~` + 正文 + `ESC[201~`，codex 专用：它的 paste-burst 会把裸流后紧跟
+  的回车当成「粘贴里的换行」）。**两种形态对不认对方的 TUI 都是灾难**（多出来的 `ESC[200~`
+  会被当字面量插进输入框），所以它没有默认值：只能逐行填实测过的那一个。
 - `unverified` 字段是**诚实面**：B 级证据（配置已装、未跑一轮）必须原样回给队长。
 - `McpTransport` 的变体集合 = **本仓已实现的传输集合**。加变体必须与它的 bridge 同一个 diff，
   否则 `has_mcp()` 会把一条发不进去的配置宣传成「有工具面」。
@@ -463,18 +567,18 @@ v16 期的裁决是「任务 id 的命名空间**就是 DB 全局单调**」，�
 
 ### 3.5 关闭协议（`team_close`）
 
-状态机：`Active → Closing → Closed`（单向）。**两个入口同一份决策**：MCP 工具（有 principal，
+状态机：`Open → Closing → Sealed`（单向）。**两个入口同一份决策**：MCP 工具（有 principal，
 走授权矩阵）与本地面板命令（无 principal，走本机用户）都调 `execution::plan_close`；
 执行都在 `execution::apply_effect(Effect::Close(..))`。判据只此一份。
 
 | 阶段 | 做什么 | 失败后 |
 | --- | --- | --- |
 | 决策（写库 ⇒ 阻塞池） | 校验 + `begin_team_close`（整队）/ 单成员校验 + 审计 `close_request` | 什么都没变 |
-| 执行 | `executor.close`（请求关 PTY）→ `finish_member_close`（Dead + 清 `terminal_id` + 作废凭证 + 在飞任务回 `pending`）→ 全部成功才 `finish_team_close`（`closed` + `closed_at`）→ **收尾**：`credentials.refresh()` | 停在 `Closing`，错误逐个点名，**可重试** |
+| 执行 | `executor.close`（请求关 PTY）→ `finish_member_close`（`offline` + `sealed_at` + 作废凭证 + 在飞任务回 `pending`）→ 全部成功才 `finish_team_close`（`sealed` + `sealed_at`）→ **收尾**：`credentials.refresh()` | 停在 `Closing`，错误逐个点名，**可重试** |
 
 几条不显然但必须守住的语义：
 
-- **先请求关进程，再归档成员**（design §7.1）。反过来会留「成员已 Dead、PTY 还活着」——那是
+- **先请求关进程，再归档成员**（design §7.1）。反过来会留「成员已 `offline`、PTY 还活着」——那是
   「会撒谎的状态」：面板说关了，进程还在跑。
 - **但 `close` 只是「请求」**：`MemberExecutor::close` 的 `Ok` 只保证 kill 已发出（PTY 的收尾
   在另一个线程里，`close_session` 是 remove-then-close）。所以「归档 + 撤凭证」可能先于
@@ -492,7 +596,7 @@ v16 期的裁决是「任务 id 的命名空间**就是 DB 全局单调**」，�
   协商式清理要等 worktree 创建接线之后（P4）。
 - **`Closing` 期间只允许读**：`team_status` / `task_list` / `team_list` / `team_close`；
   其余工具一律 `Conflict`，理由里带当前状态与允许清单。否则「正在解散的队」还能 spawn/派活。
-- 幂等：对 `Closed` 再关 → `Ok`，不重写 `closed_at`；对已归档成员再关 → 空操作。
+- 幂等：对 `Sealed` 再关 → `Ok`，不重写 `sealed_at`；对已归档成员再关 → 空操作。
 - 判据：`a_member_whose_process_survives_is_not_archived` / `a_partially_closed_team_stays_closing` /
   `finish_member_close_archives_and_releases_without_touching_reclaim_count` /
   `closing_a_member_revokes_its_credential_before_the_gate_is_rebuilt` /
@@ -505,12 +609,12 @@ v16 期的裁决是「任务 id 的命名空间**就是 DB 全局单调**」，�
 | | `team_close` | `team_delete` |
 | --- | --- | --- |
 | 可逆面 | **可重试**（失败停在 `closing`，再调一次是同一目标集重走） | **不可逆**（行 + 成员 + 任务 + 审计一起没） |
-| 允许的状态 | `active` / `closing` | **只** `closed` |
+| 允许的状态 | `open` / `closing` | **只** `sealed` |
 | 需要 `team_surface` | 是（要 `credentials` 作废凭证、要 `executor` 关 PTY） | **否**（成员已归档，本域不再持有进程） |
 | 失败后 | 停在 `closing`，可查询可重试 | 什么都没变 |
 | 载荷 | `ClosedReply`（关掉了谁 + 诚实面 `notes`） | `()` |
 
-**为什么只允许删 `closed`**：`active` / `closing` 背后是还在跑的进程。删掉那种队等于把
+**为什么只允许删 `sealed`**：`open` / `closing` 背后是还可恢复的会话。删掉那种队等于把
 「它还在跑」从唯一能看见它的界面抹掉，而后果是**不可撤销**的：`principals_from` 从**库**
 组装身份表，行没了表就空了 —— 那些进程的 token 全部失效，而进程还活着。这不是一个能回滚的
 状态。拒绝信息必须点名当前状态并指出下一步（「先关闭」），不是只说「不行」。状态词用本文件
@@ -547,13 +651,13 @@ per-connection 的，DDL 里写着不等于会级联）。
 
 | 事实 | 谁写 | 漏了会怎样 |
 | --- | --- | --- |
-| `member.state = Dead` | `finish_member_close` | 花名册上还显示在跑 |
-| `member.terminal_id = None` | 同上（**同一把锁的同一次写**） | 已关闭成员仍给一个「打开终端」的死按钮（前端唯一判据是 `terminalId == null`） |
+| `member.state = Offline` | `finish_member_close` | 花名册上还显示可派活 |
+| `member.sealed_at = Some(..)` | 同上（**同一把锁的同一次写**） | 面板分不清「跑到一半退了」与「用户关掉了」（两者的恢复动作相反）|
 | `member.token_hash = ""` | 同上 | 旧 token 还能调工具（直到门重建） |
 | 门**忘掉**那把钥匙 | `credentials.refresh()` | 上面三条都做对了也没用：**门还认旧 hash** |
 
 前三条由 `archive_member` 在锁内一次写完（判据
-`a_closed_member_has_no_terminal_and_no_credential` 用一条断言钉住三个事实）。第四条不属于任何
+`a_closed_member_is_sealed_and_has_no_credential` 用一条断言钉住三个事实）。第四条不属于任何
 **单个成员** —— 它属于整次关闭，所以它的位置不是「某一步之后」，而是**收尾**。
 
 #### 为什么 `refresh` 不能被 `?` 跳过
@@ -597,14 +701,14 @@ per-connection 的，DDL 里写着不等于会级联）。
 - `view::list_teams` 是唯一构造点；MCP 工具与 Tauri 命令同源。
 - **有界**：`MAX_LISTED_TEAMS = 50` + `truncated`（红线 4：历史团队会一直累积，单次载荷不许无界）。
   排序 `created_at` 倒序、同毫秒按 id 稳定。
-- `member_count` **不含队长、含已 Dead 的成员** —— 与 `team_options` / `team_spawn` 的上限判据同源；
+- `member_count` **不含队长、含已 `offline` 的成员** —— 与 `team_options` / `team_spawn` 的上限判据同源；
   同一个队不能有两个成员数。`TeamStatusView.member_count` 与 `TeamSummary.member_count` 因此走
   **同一个**访问器（`TeamManager::member_count`），判据
   `view::tests::the_two_faces_of_a_team_report_the_same_member_count`。花名册 `members` **含队长**，
   所以 `members.length` 永远不能当成员数用。
 - 三个计数走 `TeamManager::task_counts`（锁内一次遍历、**不 clone 任务行**）：`list_teams` 是每次
   面板脉冲都会走的读路径，`tasks()` 会把整段任务行 clone 出来（红线 4 的时间维度）。
-- 面板据此渲染三态徽标（`active` / `closing` / `closed` **不许合并**：`closing` 就是「关到一半」）。
+- 面板据此渲染三态徽标（`open` / `closing` / `sealed` **不许合并**：`closing` 就是「关到一半」）。
 
 ### 3.7 团队组成：配置是数据列，三个消费者一个推导
 
@@ -671,6 +775,147 @@ per-connection 的，DDL 里写着不等于会级联）。
 - 写路径必须经 `manager.lock_writing()`（离开作用域时置代数 + `notify_waiters()`），
   顺序固定「先置位、后 notify」；纯读用 `inner.lock()`，**不得**唤醒等待者。
 
+## 5a. 会话身份 vs 进程资源（v22，本域最重要的一条分界）
+
+一个成员的**对话**是 `(团队 id, 成员 id)` + 它行上的 `agent_session_id`（CLI 自己的原生会话 id）。
+这三样**持久**，跨重启有效，是 `team_resume` 的全部依据。
+
+而 PTY 句柄 / token / MCP 端口是**进程期资源**：进程一死它们就不存在了。它们因此**禁止**
+出现在任何身份或活性判据里 —— 那会造出「面板显示可点、点下去必失败」的僵尸状态。
+
+| 事实 | 归属 | 落库？ |
+| --- | --- | --- |
+| 「这是哪个成员」 | `team_member` 行 | ✅ |
+| 「它的对话叫什么」 | `team_member.agent_session_id` | ✅（观察者首见即写）|
+| 「用户关掉过它吗」 | `team_member.sealed_at` | ✅ |
+| 「它此刻有没有进程」 | `live_sessions::Registry`（问，不存）| ❌ |
+| PTY 会话 id / token / 端口 | 上两行的**运行时派生** | ❌ |
+
+三条由此推出的纪律：
+
+1. **团队域不存句柄**。v22 删掉了 `team_member.terminal_id` 与 `team.lead_session_id`（后者是
+   PTY 句柄且零读取方）。「它为什么打不开」不再是一个可陈旧的数据事实，而是每次现场问注册表。
+2. **活性只问注册表**：`view.rs` 只声明端口 `MemberSessionLookup`（`live_terminal_of`），
+   生产实现 `app::RegistryMemberSessions` 在组合根装配；`executor.deliver/close` 也同样问它。
+   零实现 `view::NoSessions` 答「没有活会话」—— 那是**安全方向**：错的只是「以为不在跑」。
+3. **原生会话 id 的登记与事件类型无关**。`observe.rs` 的顺序是「身份 → **记 id** → 键过滤 →
+   `seq` 去重 → 状态迁移」。曾经的顺序把登记放在「已知语义键」之后，于是**只发
+   `session_started` 的队长**永远记不上 id（它不跑回合）—— 重启后只能起一个空白新会话，
+   用户看到「历史里找不到队长的会话」。判据：`the_native_session_id_is_recorded_for_every_event_key`。
+
+### 5a.1 `state` 是两个正交维度的合取，不许合并
+
+- `TeamState`：`open`（可派活、可恢复）/ `closing`（用户要求关，收尾中）/ `sealed`（只读）。
+- `MemberState`：纯**运行态**（`spawned` / `running` / `awaiting` / `idle` / `done` / `failed` /
+  `offline` / `stalled`）。旧名 `dead` 同义于「进程没了」与「用户关掉了」两件事，而这两件事的
+  恢复动作相反，故拆开：意图进 `sealed_at`，运行态留在这里。
+
+### 5a.2 启动归位（`reconcile_boot`）—— 唯一必须「主动」修的一次
+
+进程不可能跨重启存活，所以启动时每个成员的运行态都是 `offline`，每个 `token_hash` 都必须清空
+（否则身份表里装着一把**已经不存在的**钥匙：幽灵授权），`closing` 的队必须回到 `open`
+（收尾者已随进程消失，那个队**永远不会**再有下一次写 —— 不能靠「下次写时顺手修」）。
+
+- 调用点唯一：`app::boot`，在端点 boot **之前**（身份表从库组装，晚一步就把幽灵 token 装进门）。
+- `TeamManager::load` 保持**纯读**（它也在测试与只读场景里跑）；归位是写路径，单独一个函数。
+- 一个队一条审计 `boot_reconcile`（与 `close_*` 分开：重启不是用户动作）。幂等：干净启动返回空
+  报告、不写审计。`sealed_at` **一律不碰**：它是用户意图，重启既不能撤销也不能伪造。
+- 判据：`boot_reconcile_resets_runtime_and_revokes_credentials` /
+  `boot_reconcile_reopens_a_closing_team` / `boot_reconcile_never_unseals_a_sealed_team` /
+  `boot_reconcile_is_idempotent`。
+
+### 5a.3 迁移 v21→v22 是**一步**，不是三步
+
+`active→open`、`closed→sealed`、`closed_at→sealed_at`（值原样搬运）、`dead→offline`
+（同时 `sealed_at = joined_at` 占位，读者只判非空）、删两列句柄 —— 同一版本内完成。分步会让
+`upsert_member` 被改写三次，而每个中间形态都是「有些列存在、有些不」的半状态。
+
+`RENAME` / `DROP` 不是幂等 DDL：各自先查 `pragma_table_info`（与 `add_column_if_missing`
+同一形状），半迁移后手工重放安全。**历史迁移步骤（`v13_to_v14` 等）保持当年形状，只追加不改写** ——
+在旧步骤里改列名会让所有「造旧库再升级」的用例变成在测一个从未发布过的形状。
+
+## 5b. 恢复是一等操作（`team_resume`）
+
+**恢复 ≠ 把旧进程找回来**。可恢复的只有两份持久事实（§5a 的表）：成员行（身份）与
+`agent_session_id`（它的对话）。所以恢复的动作与起一个新成员**完全相同**
+（`admit` → `provision` → `spawn` 三相位），唯一差别是启动行开头多一段「续接这个原生会话」
+的片段。
+
+### 片段的位置是承重的（唯一组合点 `execution::plan_member_spawn`）
+
+```text
+args  = resume 片段 ++ mcp_argv(渲染后) ++ prompt_argv(渲染后) ++ bypass_args
+argv  = [program] ++ args
+```
+
+**片段必须在紧跟 `program` 的位置**：`codex resume <id>` 的 `resume` 是**子命令**，追加到末尾
+会被它当成 `PROMPT`（2026-11-11 实测）。今天所有能当成员的 CLI 都是 prefix 形态，所以
+**没有** `suffix` 字段（红线 14：没有生产者的字段不建）。旁路开关保持在 preamble 之后：
+那个相对顺序是每一家的 argv 解析都被实测过的形状，`resume = None` 时必须逐字节等于旧输出
+（判据 `planning_a_fresh_member_is_byte_identical_to_before`）。
+
+**片段的内容是会话域的事实**：`conversation::adapters::resume_argv_for(agent_id, native_id, project_path)`
+（适配器 `resume_command` 的同一实现，见 `conversation-adapter.md` §4.3）。本域禁止
+`if agent_id == …`（红线 15）；没有续接形态的 CLI（qoder / gemini）在这里拿到 `None`。
+
+### 四个桶互斥且穷尽（`TeamResumeReport`）
+
+| 桶 | 判据 | 用户看到 |
+| --- | --- | --- |
+| `resumed` | 起了新进程 + `mark_member_resumed` 成功 | 恢复会话 |
+| `skipped_already_live` | `live_sessions` 说它有活进程 | 幂等（不是错误）|
+| `cold{no_native_session}` | 行上没有原生 id（从没跑过回合）| **只能新开** |
+| `cold{unsupported_cli}` | 有 id，但该 CLI 没有续接形态 | **只能新开**（理由不同）|
+| `failed{member_id,error}` | `admit`/`spawn` 失败 | 逐成员失败**不吞**，其余照常恢复 |
+
+**绝不静默新开**：`cold` 的两条分支都不起进程。静默起一个空白会话正是用户报的那个缺陷
+（“点恢复，对话没了”）—— 判据 `a_cli_without_a_resume_form_is_cold_and_not_started`。
+
+### 拒绝面（与「离线」区分）
+
+- `sealed` 团队 ⇒ `Conflict`（成员行全部已封存，恢复等于撤销用户决定）；
+- `closing` 团队 ⇒ `Conflict`（正被拆，下一步是重试 `team_close`）；
+- **已封存的成员不是候选**（不落任何桶）：`team_close` 过的成员不得被整队恢复顺手拉起来。
+
+### 恢复后必须把运行态写回 `spawned`
+
+`mark_member_resumed` 是唯一写点。没有它就是「进程在跑、行上写着 `offline`」——
+`finish_team_close` 会把一个**正在跑**的成员当成已关闭，于是在关队时提前 seal。
+
+三个边界：
+
+| 情形 | 行为 |
+| --- | --- |
+| 运行态（`spawned`/`running`/`awaiting`/`idle`）| no-op（幂等，不写库不审计）|
+| 已封存 | no-op（恢复不得撤销用户意图）|
+| 终态**或 `stalled`** | `spawned` + 一条 `resume_member` 审计 |
+
+`stalled` 与终态同侧：它是**针对一个已消失进程**的活性裁决，不是运行态。判据写成穷尽
+`match`（`is_reporting_member_state`），新增 `MemberState` 变体必须表态。
+
+### 审计与载荷
+
+一次调用一条 `resume_team`（四个桶的 id + 计数）+ 每名成功成员一条 `resume_member`。
+**argv 一律不进审计**：启动行里有 MCP 凭证明文（`--mcp-config` 的 JSON）。
+
+`MemberStatusView.resumable` 是**派生**字段（有原生 id ∧ 该 CLI 有续接形态），前端五态判据
+的唯一输入之一（`openTerminalAction`，单一产出点）：
+
+| `session.live` | `resumable` | 有原生 id | `sealed` | 动作 |
+| --- | --- | --- | --- | --- |
+| ✅ | — | — | — | 打开会话（接管 PTY）|
+| ❌ | ✅ | 有 | ❌ | **恢复会话**（`team_resume(member_id)`，起新进程）|
+| ❌ | ❌ | 有 | — | 查看记录（只读历史）|
+| ❌ | ❌ | 无 | ❌ | 置灰：暂无会话 |
+| ❌ | ❌ | 无 | ✅ | 置灰：已关闭 |
+
+`resumable && !sealed` 才给「恢复」：能力（CLI 能不能续）与意图（用户封没封）是两个维度，
+后端在 `resume_team` 里也各判一次（前端置灰只是 UI，命令是行为）。
+
+它因此也出现在 MCP `team_status` 的载荷里 ——
+接受这一列的理由是它解释「`team_send` 刚拿到的 `target_offline` 是不是可挽回的」，
+而不是一个执行参数（红线 14 的输出侧管的是后者）。
+
 ## 6. hook 事件的团队投影（依赖方向）
 
 `team/observe.rs` 是投影，`team/deliver.rs` 是投递入口，两者**故意放在消费方域内**。
@@ -732,6 +977,13 @@ cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / serv
 - `MAX_BOARD_TASKS = 200` + `tasks_truncated` 是**列载荷上界**，不是分页实现：单个快照稳在
   数十 KB 量级，但「每次派活都重拉一遍」会把红线 4 的约束从单次搬到时间维度上破。
 - 判据落在**序列化后的 `Value`**：断言结构体没有字段不算取证（wire 上可能有）。
+- **TS 镜像必须与 serde 输出逐字一致**（`src/shared/types/team.ts`）。跨栈这两套类型互为独立编译单元，
+  字段拼错 / 单侧改名**两边编译都能过**，症状只在运行时出现：`undefined is not an object`。
+  事故：后端 `TaskDetail.events` / `events_truncated`，前端类型写 `steps` / `stepsTruncated` ——
+  用户点开工任务时 `detail.steps.length` 抛 TypeError，整个 tab 白屏，而所有测试全绿（夹具按
+  类型手写，跟着一起错）。锚点两条：`view.rs::the_task_detail_json_matches_the_frontend_type`
+  （键集逐字，钉住后端这一半）＋ `TeamTaskCenterView.test.tsx` 里**手写的电线载荷**（钉住前端
+  这一半）。新增跨栈载荷时照这个形状配双份，别拿 `createXxx` 夹具当契约证据。
 
 ### 8.3 前端事件 = 失效脉冲，不是增量
 
@@ -903,18 +1155,35 @@ cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / serv
 `MAX_PREAMBLE_CHARS` 2000 → 3200：新增的规划规则是承重的，而 2000 的初衷只是
 「别顶掉用户第一句话」（3200 仍远低于该阈值）。
 
-### 9a.7 分配图的三层关系（前端）
+### 9a.7 分配图的两类边（前端）
 
-图不是「任务列表的另一画法」，而是**分工审核表**。布局（`flowLayout`）产三类边：
+图不是「任务列表的另一画法」，而是**分工审核表**。布局（`flowLayout`）只产两类边：
 
 | 边 | 含义 | 视觉 |
 | --- | --- | --- |
-| `create` | **lead 派发每个任务**（一个需求拆成哪些） | 点线，自顶部 lead 盒向下 |
-| `dep` | 任务间依赖（谁等谁） | 灰虚线 |
-| `claim` | 成员认领任务（谁在干） | 成员身份色实线 |
+| `create` | **lead 派发首层（layer 0）入口任务**（一个需求拆成哪些） | 可见实线，自顶部 lead 盒向下 |
+| `dep` | 任务间依赖（谁等谁） | `4 3` 虚线 |
 
-成员行按**角色分组**（同 persona 相邻，无人设排后但不藏），每个成员节点第二行显示
-`{角色} · {任务数}` —— 「分工是否合理、谁没被用上」直接读得出来。
+第 2 轮两条修正：**派发只连首层** —— 给第 1 层及更深的任务再拉一条从 lead 出发的曲线，
+它必须跨过整个第 0 层，会穿过中间层节点、与依赖边糊成一束；`t2 ← t1 ← lead` 的因果链
+本来就完整。`dispatched` 与 `create` 边同步收成首层 id。派发边也从 `1 3` 点线改成实线：
+点线在浅底上几乎全是空隙，用户只看到箭头，以为线没画出来。两种边靠**线型**区分，
+不靠颜色深浅；图例写「实线 = 派发 · 虚线 = 依赖」。
+
+**没有第三类「认领边」**（2026-11 用户裁决：派活即分配，图上的实线是多余的第二份信息）。
+「谁该做 / 谁在做」是节点上的**两行**，各自独立推导、绝不写 `assignee ?? owner`（第 1 轮
+那个 `??` 把 `owner` 吃掉，任务已被认领却只显示指派者）：第一行 `t1 · 指派 {name}` /
+`t1 · 指派 —` / `t1 · 未指派`，第二行 `已认领 {name}` / `待认领`。成员 id 的
+`split('@')[0]` 截短仍只有 `FlowTaskNode` 一处。`FlowEdge.kind` 收成 `'create' | 'dep'` 是刻意的：
+删一种边必须让所有消费点被编译器点名一次，而不是留一个永远不触发的分支。
+
+成员行（按角色分组 + `{角色} · {任务数}`）第 2 轮**图上暂不渲染**（用户「先不要了」），
+但 `flowLayout` 的 `workerRow` / `memberRow` 纯计算与判据保留 —— 恢复只需加回一块 JSX。
+`members` prop 仍在（aria-label 报成员数），几何只按任务层 + lead 胶囊算。
+
+判据：`flowLayout.test.ts`（`edges` 不含 `claim`、create 边数 == 首层数）、
+`FlowTaskNode.test.tsx`（四种组合的两行确切文本）、`TeamFlowGraph.test.tsx`
+（副标题 / 图例 / 实线属性 / 成员行消失 / 视口接线）。
 
 ### 9a.4 成员的「打开会话」有两条路（v21）
 
@@ -1005,10 +1274,11 @@ cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / serv
 ### 9.2 分配 flow 图：快照的投影，不是编排器
 
 前端「分配图」（`TeamFlowGraph` + `utils/flowLayout.ts`）把队长的分配画成
-lead → 任务 DAG（`dependsOn` 虚线）→ 成员（认领实线）。判据：
+lead → **首层任务**的派发实线 + 任务 DAG（`dependsOn` 虚线）+ 节点上「指派 / 认领」
+两行独立副标题（第 2 轮不再 `assignee ?? owner`，详见 §9a.7）。判据：
 
-- **零新增 IPC**：全部字段来自既有快照（`TaskCard.dependsOn` / `owner` / `state` /
-  `reclaimCount`，`view.rs` 早已在列路径上）。
+- **零新增 IPC**：全部字段来自既有快照（`TaskCard.dependsOn` / `assignee` / `owner` / `state` /
+  `reclaimCount`，`view.rs` 早已在列路径上；`assignee` 自 v24 起）。
 - **布局纯函数**（`flowLayout`）：任务层号 = 1 + 最深依赖层号。两个防御是必须的：
   **缺失依赖**（截断板可能不含某个依赖 → 当作无依赖落第 0 层）与**环**
   （`task_create` 不校验环，claim 时才被不变量 3 卡住 → 布局必须自兜，否则一个环 =

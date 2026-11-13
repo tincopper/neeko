@@ -700,6 +700,20 @@ versioned_snapshot_without_manual_poke` 就是为钉这条顺序而写红的）�
 - **非目标**：Unicode NFD/NFC 归一、大小写不敏感文件系统上输入大小写的折叠、
   `\\?\Volume{GUID}` 形态（原样保留）。
 
+**项目范围（`ProjectScope`，2026-11-11）**：`UnitScope` 回答「这条路径属于哪个**单元**」（最深根
+胜出），`common/git/project_scope.rs::ProjectScope` 回答「属不属于这个**项目**」（任一注册根包含
+即是）。两个字段刻意分开：
+
+| 字段 | 形态 | 用途 |
+| --- | --- | --- |
+| `roots()` | **登记时的原始串**（项目根 / `git worktree list` / 团队记录过的 `workspace_worktree`） | 发现期：CLI 把 cwd 编码成目录名，编码输入必须逐字等于进程 cwd（canonicalize 会让 macOS `/var` ↔ `/private/var` 的编码名对不上） |
+| `owns(cwd)` | 身份渲染（`PathAlphabet`）+ `deepest_root`（与 `UnitScope` 同一规则体） | 归属期：History / 搜索 |
+
+构造时额外收每个根的 **canonical 形态**作为身份（只多几条身份串，不改变 `roots()`）：
+会话 cwd 由各 CLI 自己记录，两侧写法不一致时归属仍成立；代价只在构造期付一次，不在每个会话上做 fs。
+它是 `conversation` 域的项目级范围来源，取代了 `matches_project_path`（已删除 —— 不要再复活第二套
+归属判据）。
+
 平台差异（verbatim 剥除、盘符规范化、UNC 渲染）在 `platform/path_identity/`（红线 10）：
 规则体是纯字符串函数（三端编译、三端测试），平台差异只体现在**选择**上；远端路径走
 `posix_render`，与宿主平台无关。

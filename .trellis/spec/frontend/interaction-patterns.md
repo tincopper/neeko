@@ -840,3 +840,79 @@ quality-guidelines §18b）。
 `preventDefault` 并短路发送；未打开或 IME 组合中恒返回 `false`。**只要输入载体仍是
 textarea 且弹层是自己实现的状态机，这个契约就成立**（返回 `void` 会让调用方猜，猜错
 就是 Enter 双触发）。agent chat 不再属于这个场景 —— 它由 suggestion 引擎承担。
+
+---
+
+## 「能不能打开这个会话」是**一个**纯函数，不是一个 `disabled` 表达式（2026-11-11）
+
+### 背景
+
+团队成员行的主按钮曾经只有两种状态（活 ⇒ 可点，死 ⇒ 置灰），于是「进程没了但对话还在」
+被压成「不可点」，用户唯一的出路是点开一个**会静默起空白 CLI** 的路径。加上恢复能力之后，
+同一个问题有四种答案，其中两种可点、两种不可点，且**它们的恢复动作相反**（接管旧进程 /
+起新进程续接 / 只读历史 / 没有会话）。
+
+### 模式
+
+判据只有一处：`features/agent-team/utils/memberTerminal.ts::openTerminalAction`，输出
+`{ enabled, label, reason, kind }`，`kind ∈ live | resume | archive`。组件**只读结果**，
+不得自己写 `disabled={!member.session.live}`（那正是「按钮在、点了必失败」的成因）。
+
+| `session.live` | `resumable` | 有原生 id | `sealed` | kind | 文案 |
+| --- | --- | --- | --- | --- | --- |
+| ✅ | — | — | — | `live` | 打开会话 |
+| ❌ | ✅ | 有 | ❌ | `resume` | 恢复会话 |
+| ❌ | — | 有 | — | `archive` | 查看记录 |
+| ❌ | — | 无 | ❌ | `live`（禁用） | 暂无会话 |
+| ❌ | — | 无 | ✅ | `live`（禁用） | 已关闭 |
+
+顺序是契约：`live` 最先（封存成员在收尾窗口里仍可能是活的，那时接管它才是有用的动作）；
+`resumable` 高于 `archive`（**接管新进程**与**只读历史**不是一回事）。
+
+### 规则
+
+- **不可点必须给可见文字理由**（`reason` 由调用方渲染在按钮旁）：`disabled` 元素不可聚焦，
+  只挂 `title` 等于没有理由。
+- `resumable`、`session`、`sealed` 全部来自后端快照（派生字段），前端**不缓存副本**（红线 17）；
+  组件不重新合成判据，需要「这个队有没有可恢复成员」时走同一个函数的批量版
+  （`hasResumableMember`）。
+- 能力与意图是两个维度：`resumable`（CLI 有没有续接形态）与 `sealed`（用户关没关过）。
+  合成一个布尔会让「已封存」显示成「可恢复」，而后端会拒绝 —— 判据必须与执行同源。
+
+### 测试
+
+`utils/__tests__/memberTerminal.test.ts`（五态 + `resumable × sealed` 正交矩阵）、
+`RosterRow`/`MemberDetailDrawer`/`MemberApprovalQueue` 的派发用例（点击 ⇒ `team_resume(teamId, memberId)`）、
+`TeamHeader` 的「恢复团队」显隐（`open` + 至少一个可恢复成员）。
+
+---
+
+## 画布 pan 与列表排序的边界（2026-11-13，分配图视口）
+
+### 为什么这里**不用** dnd-kit
+
+上面「项目列表拖拽排序」与「❌ 自实现 Pointer Events 拖拽」两节针对的是**重排元素顺序**：
+有 `SortableContext`、有落点判定（`closestCenter`）、有 `onDragEnd(active, over)` 产生的新顺序。
+分配图（`features/agent-team/components/TeamFlowGraph.tsx`）的拖拽**不改变任何元素顺序**，
+只改滚动容器的 `scrollLeft / scrollTop` —— 没有 droppable 可判，把 `DndContext` 拖进 SVG
+反而会把「排序」和「看视口」两件事混成一个抽象。这是标准 pointer 事件 + 滚动位置，不是
+被替换掉的那套自研排序拖拽。
+
+### 约束（都踩过或能静默失效）
+
+| 点 | 做法 | 否则 |
+| --- | --- | --- |
+| wheel 的 `preventDefault` | 容器上 `useEffect` 里 `addEventListener('wheel', h, { passive: false })`，卸载 `removeEventListener` | React 的 `onWheel` 是 **passive 合成事件**，`preventDefault()` 被忽略并打控制台警告，页面跟着一起滚 |
+| zoom 的真相源 | `zoom` 有值 = 受控（`onZoomChange` 回写），省略 = 组件内一份 `useState`；**绝不两边各存一份再同步**（红线 17 同族） | 中央 tab 与 dock 各显示一个不同的倍率 |
+| 纯逻辑 | `utils/flowViewport.ts` 的 `clampZoom` / `zoomFromWheel` / `isPanClick` 可直测，组件只做「事件 → 纯函数 → 写 state / scroll」 | 阈值 / 步长散在 JSX 里，只能手动拖鼠标验证 |
+| 拖完的 click | 容器 `onClickCapture`：总位移超过 `PAN_CLICK_THRESHOLD`(4px) 时 `stopPropagation + preventDefault` | 拖完手一松误开任务详情；零位移的正常点击**必须**仍能点开 |
+| 指针约束 | 主键（`button === 0`）+ `isPrimary`；`setPointerCapture` 让指针移出容器仍继续拖 | 右键 / 多指第二触点抢走 pan；指针移出后拖不动 |
+| 键盘等价 | 中央 tab 保留 `+/-/重置` 按钮与百分比文字 | 无鼠标 / 读屏用户没有任何缩放路径 |
+
+按钮步长（0.25）与 wheel 步长（0.1）**各自独立**：一个是点一下走一大格、一个是滚格微调，
+手感不是同一件事，别为了「DRY」硬合成一个常量；但 `ZOOM_MIN/MAX` 与钳制只有一份实现。
+
+判据：`utils/__tests__/flowViewport.test.ts`（三个纯函数）、
+`components/__tests__/TeamFlowGraph.test.tsx`（受控 wheel 回写、非受控 SVG 宽度变化、
+原生非 passive 注册与清理、pointer 拖动改 scrollLeft 且吞 click、零位移反证）、
+`components/__tests__/TeamBoardCenterView.test.tsx`（中央 tab 的 `zoom` + `onZoomChange` 接线）。
