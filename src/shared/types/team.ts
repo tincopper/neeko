@@ -18,8 +18,21 @@ import type { ProjectId } from '@/shared/utils/workspaceRef';
  *    [`TaskDetail`] 上（点开才拉，红线 4）。类型层面就断了「顺手把 body 塞进列」的路。
  */
 
-/** 团队状态机：`Active → Closing → Closed`（单向，不可回退）。 */
-export type TeamState = 'active' | 'closing' | 'closed';
+/**
+ * 团队状态机：`Open → Closing → Sealed`（单向，不可回退）。
+ *
+ * 三个词各自只说一件事，**不要**读成进程状态：
+ *
+ * | 值 | 含义 | 进程 |
+ * | --- | --- | --- |
+ * | `open` | 可派活、可恢复 | 可能有、可能一个都没有（进程跨不过重启）|
+ * | `closing` | 用户要求关，收尾进行中 | 正在逐个关 |
+ * | `sealed` | 用户封存（只读，不可恢复）| 一个都不在 |
+ *
+ * 旧名 `active` / `closed` 把「有没有进程」混进了团队意图里：`closed` 同时被读成
+ * 「进程都关了」（可重启）与「用户关掉了」（不可重启）—— 这两件事在恢复动作上相反。
+ */
+export type TeamState = 'open' | 'closing' | 'sealed';
 
 /** 成员角色。决定授权矩阵（队长可 spawn / close / create / force_done）。 */
 export type MemberRole = 'lead' | 'worker';
@@ -29,6 +42,9 @@ export type MemberRole = 'lead' | 'worker';
  *
  * 注意 `idle` 只说「它这一轮说完了」，**不等于**「它做完了」（design §6 硬规则 1）：
  * 要区分「空闲但没声明」必须再看 [`MemberStatusView.verification`]。
+ *
+ * `offline` 是**纯运行态**（进程不在：从未起过 / 已退出 / 重启后归位）。它**不**说明
+ * 用户关掉了这个成员 —— 那是 [`MemberStatusView.sealed`]，两者维度不同、可同时为真。
  */
 export type MemberState =
   | 'spawned'
@@ -37,7 +53,7 @@ export type MemberState =
   | 'idle'
   | 'done'
   | 'failed'
-  | 'dead'
+  | 'offline'
   | 'stalled';
 
 /**
@@ -97,8 +113,6 @@ export type ApprovalPolicy = 'interactive' | 'queue' | 'bypass';
 export interface Team {
   id: string;
   name: string;
-  /** 队长的会话 id（PTY 会话）。 */
-  leadSessionId: string;
   /** 队长的 agent id（`AgentConfig.id`）。 */
   leadAgentId: string;
   /** 团队根工作区（后端**已规范化**的绝对路径）。 */
@@ -119,8 +133,25 @@ export interface Team {
    * 「用激活项目顶替团队自己的项目」这类错误在类型层面就没有摩擦力。
    */
   projectId: ProjectId;
+  /**
+   * 团队所在工作区的**工作树维度**（`(projectId, workspaceWorktree)` 合成工作区身份）。
+   *
+   * `null` = **主 checkout**（项目根本身），不是「未知」。v23 之前建的行也没有这一维 ——
+   * 那些行只能退回 `projectPath` 当工作区根。
+   *
+   * 与 `projectPath` 的关系：后者是身份在宿主机上的**落地路径**（已规范化），前者是身份本身。
+   * 两个分量叉开（根指向工作树、身份写主仓）会让团队的 `session_cursors.workspace_key`
+   * 落到另一棵树下 —— 侧栅分组与「历史归属」正是靠它们精确相等。
+   */
+  workspaceWorktree: string | null;
   createdAt: number;
-  closedAt: number | null;
+  /**
+   * 用户封存时刻（epoch 毫秒）；`null` = 未封存（可恢复）。
+   *
+   * 与 [`state`] 是同一件事的两个面：`state` 是机器判据，这里是可展示的时刻。
+   * 旧名 `closedAt`（`closed` 同时被读成「进程关了」）。
+   */
+  sealedAt: number | null;
   state: TeamState;
   /**
    * 允许被 `team_spawn` 选中的 CLI（`agentId`）。**空 = 不限制**，不是「一个都不许」
@@ -235,12 +266,25 @@ export type WorkerChannel = 'mcp' | 'pty' | 'none';
 export type AdmissionTier = 'a' | 'b' | 'c';
 
 /**
+ * 一名成员**此刻**的运行态（`view.rs::LiveSession`）。
+ *
+ * 由后端向 `live_sessions` 注册表查一次得到，**不落库** —— 所以它不可能是「陈旧的句柄」：
+ * 没有进程就是 `live: false`，而不是一个点下去会失败的 id。
+ */
+export interface MemberSessionView {
+  /** 此刻真的有进程。 */
+  live: boolean;
+  /** 活着的 PTY 会话 id（`live === false` 时恒为 `null`）。 */
+  terminalId: string | null;
+}
+
+/**
  * 花名册一行：**身份 + 状态 + 它能被打开的那个终端** —— 不含任何正文。
  *
  * 五个附加字段回答面板的三件事（`view.rs::MemberStatusView`）：「这是谁」
  * （`agentId` / `tier`）、「它在哪干活」（`workspace`）、「我怎么看它」
- * （`terminalId` / `channel`）。缺了 `terminalId`，成员进程虽然在跑、用户却只能看见队长 ——
- * 那正是「看着一队 agent 干活」的反面。
+ * （`session` / `channel`）、「它还能不能被叫起来」（`sealed`）。缺了 `session`，
+ * 成员进程虽然在跑、用户却只能看见队长 —— 那正是「看着一队 agent 干活」的反面。
  */
 export interface MemberStatusView {
   memberId: string;
@@ -254,21 +298,47 @@ export interface MemberStatusView {
   /** 它跑的是哪个 CLI（`AgentConfig.id`）—— 花名册上的第一枚 chip。 */
   agentId: string;
   /**
-   * 它那个 PTY 的会话 id；`null` = 还没有进程（没起来 / 起失败 / 已关掉）。
+   * 它**此刻**的运行态（活会话 + 会话 id）。**这是「打开成员终端」的唯一凭据。**
    *
-   * **这是「打开成员终端」的唯一凭据**：成员是 Neeko 起的 PTY，会话 id 只在团队域里，
-   * 前端推不出来（红线 12：不许从路径 / 名字拼）。`null` 时按钮必须置灰并写出理由，
-   * 不能点下去再报错。
+   * 与 `sealed` 正交：`session.live` 回答「现在有没有进程」，`sealed` 回答「用户关掉过没有」。
+   * 收尾窗口里两者会短暂同时为真（用户点了关闭，进程还没退干净），那不是矛盾。
+   *
+   * 成员是 Neeko 起的 PTY，会话 id 只在团队域里，前端推不出来（红线 12）。
+   * `live === false` 时按钮必须置灰并写出理由，不能点下去再报错。
    */
-  terminalId: string | null;
+  session: MemberSessionView;
+  /** 用户封存过这个成员（落库的用户意图，跨重启有效）。 */
+  sealed: boolean;
+  /**
+   * 这个成员**还回不回来**：有原生会话 id，且它的 CLI 有原生续接形态。
+   *
+   * **后端派生的事实**（`view.rs::MemberStatusView::resumable`），不是前端能算出来的：
+   * 「哪个 CLI 支持哪种续接语法」住在会话域的适配器表里，前端没有也不该有那张表。
+   *
+   * 三条容易读错的地方：
+   *
+   * 1. **它不是 `!live`**。进程活着的时候它照样可能是 `true` —— 两个事实回答两个问题
+   *    （「现在能不能接管」vs「进程没了还接不接得回来」）。
+   * 2. **它与 `sealed` 正交**。`sealed` 是用户意图（关掉过没有），`resumable` 是能力；
+   *    封存的成员照样有原生 id、照样可看历史，但**不许**被恢复（恢复等于撤销用户的决定，
+   *    后端也会拒绝）。
+   * 3. `true` ⇒ [`MemberStatusView.agentSessionId`] 非空（有 id 才谈得上续接）；反过来不成立：
+   *    有 id 但 CLI 没有续接形态（qoder / gemini）是 `false`，那时只能看记录。
+   *
+   * 判据的**唯一**落点是 `utils/memberTerminal.ts::openTerminalAction` —— 组件不得自己
+   * 拿 `resumable && !live` 重算一遍（那会造出第二个判据点）。
+   */
+  resumable: boolean;
   /** 它在哪个工作区干活（共享团队根 / 独立 worktree / 只读）。 */
   workspace: Workspace;
   /**
    * CLI 的**原生会话 id**（`conversation` 域拼 `agentId:nativeId` 用）。
    *
-   * 与 `terminalId` 是两件事：`terminalId` 是**活的 PTY**（成员退出即清空），
-   * `agentSessionId` 是磁盘上的**会话记录**（退出后仍在）—— 「已退出」的成员
-   * 因此仍能打开历史 transcript。
+   * 与 `session.terminalId` 是两件事：后者是**活的 PTY**（进程一没就不是活会话），
+   * `agentSessionId` 是磁盘上的**会话记录**（进程没了仍在）—— 「已退出」的成员
+   * 因此仍能打开历史 transcript，`team_resume` 也靠它把对话接上。
+   *
+   * `null` = 这个成员还没上报过任何 hook 事件（它是唯一的登记口）。
    */
   agentSessionId: string | null;
   /**
@@ -341,6 +411,14 @@ export interface TaskCard {
   state: TeamTaskState;
   /** 持有者 member id。 */
   owner: string | null;
+  /**
+   * 被指派的成员 id（**计划事实**：谁该做；`owner` 是执行事实：谁在做）。
+   *
+   * `null` = 未指派（包括后端 v24 之前建的老行，以及老后端根本不发这个字段的
+   * `undefined` —— 消费侧用 `?? owner` 兼容两种）。指派**不改**状态：`state` 仍是
+   * `pending`、`owner` 仍为空。
+   */
+  assignee: string | null;
   workspace: Workspace;
   dependsOn: string[];
   claimedAt: number | null;
@@ -352,7 +430,14 @@ export interface TaskCard {
   reclaimCount: number;
 }
 
-/** 任务详情（`team_task_detail`，**点开才拉**）：列视图 + 派活正文（线上是平铺的）。 */
+/**
+ * 任务详情（`team_task_detail`，**点开才拉**）：列视图 + 派活正文（线上是平铺的）。
+ *
+ * 字段名以 `view.rs::TaskDetail` 的 serde 输出为唯一真相（`rename_all = "camelCase"`）：
+ * 步骤轨迹叫 `events` / `eventsTruncated` —— 与 [`MemberDetail`] 同名字段是**同一个类型**
+ * （`MemberEventView`），两个载荷不该给同一样东西取两个名字。曾经这里叫 `steps`，
+ * 与后端不一致，于是用户点开任务时 `detail.steps.length` 直接抛 TypeError。
+ */
 export interface TaskDetail extends TaskCard {
   /** 派活正文（长度无上限 —— 这就是它不在列路径里的原因）。 */
   body: string;
@@ -360,11 +445,11 @@ export interface TaskDetail extends TaskCard {
    * 这个任务的**步骤轨迹**（subject = 任务 id 的审计行，最新在前）。
    *
    * 「开工文档」(`body`) 与「完成回报」(`summary`) 并存、互不覆盖；中间发生了什么
-   * 看 steps。上界 50（`MAX_TASK_EVENTS`），`stepsTruncated` = 还有更早的。
+   * 看 events。上界 50（`MAX_TASK_EVENTS`），`eventsTruncated` = 还有更早的。
    */
-  steps: MemberEventView[];
+  events: MemberEventView[];
   /** 还有更早的步骤没取回。 */
-  stepsTruncated: boolean;
+  eventsTruncated: boolean;
 }
 
 /**
@@ -472,7 +557,7 @@ export interface TeamSummary {
   teamId: string;
   /** 用户可读名字。 */
   name: string;
-  /** 团队状态：`active` 能重开 / `closing` 关到一半 / `closed` 只读快照。 */
+  /** 团队状态：`open` 可派活可恢复 / `closing` 关到一半 / `sealed` 只读快照。 */
   state: TeamState;
   /** 团队根（后端**已规范化**的绝对路径）。 */
   projectPath: string;
@@ -480,10 +565,10 @@ export interface TeamSummary {
   leadAgentId: string;
   /** 建队时间（epoch 毫秒）。 */
   createdAt: number;
-  /** 关闭时间；`null` = 未关闭。 */
-  closedAt: number | null;
+  /** 用户封存时刻；`null` = 未封存（可恢复）。 */
+  sealedAt: number | null;
   /**
-   * 成员数（**不含队长、含已 `Dead` 的成员**）。
+   * 成员数（**不含队长、含已 `offline` 的成员**）。
    *
    * 与 `team_options` 的「还能加几个」同源：已关闭的成员仍占名额，所以这里刻意**不**改成
    * 「只数活着的」—— 那样同一个队会有两个成员数，而偏差只在「刚好卡在上限」时显形。
@@ -555,6 +640,61 @@ export interface ClosedReply {
    * worktree 一律保留。**面板的确认文案必须与这里同口径** —— 前端不许自造承诺。
    */
   notes: string[];
+}
+
+/**
+ * 一个成员只能「新开」的两个理由（`resume.rs::ColdReason`，wire 上是 `snake_case`）。
+ *
+ * 两个理由**各自的修法不同**，所以不许合并成一个「不能恢复」：
+ *
+ * | 值 | 含义 | 用户能做什么 |
+ * | --- | --- | --- |
+ * | `no_native_session` | 成员行上没有原生会话 id（从未跑出一个回合）| 只能新开一个会话 |
+ * | `unsupported_cli` | 有 id，但该 CLI 没有续接语法（qoder / gemini）| 只能新开，或换一个 CLI |
+ */
+export type ColdReason = 'no_native_session' | 'unsupported_cli';
+
+/** 一个「只能新开」的成员（`resume.rs::ColdMember`）。 */
+export interface ColdMember {
+  memberId: string;
+  /** 为什么回不来（见 [`ColdReason`]）。 */
+  reason: ColdReason;
+}
+
+/** 一个起不来的成员（`resume.rs::MemberFailure`）—— 逐成员失败**不吞**。 */
+export interface MemberFailure {
+  memberId: string;
+  /** 后端原文（已带 `memberId` 的可读文本），面板不加工。 */
+  error: string;
+}
+
+/**
+ * `team_resume` 的返回（真相源 `resume.rs::TeamResumeReport`）—— 一次恢复的**完整账目**。
+ *
+ * # 四个桶互斥且不遗漏
+ *
+ * 每个候选成员恰好落进一个桶：真的起了新进程（[`resumed`]）、本来就有活进程因此跳过
+ * （[`skippedAlreadyLive`]，幂等的证据）、只能新开（[`cold`]）、起不来（[`failed`]）。
+ *
+ * **四个桶都要能被说出来**，尤其 `cold`：静默地少恢复一个成员与「恢复了 0 个」在界面上
+ * 长得一模一样，而那正是这次要消灭的缺陷类型（`utils/resumeReport` 把理由变成可见文案）。
+ *
+ * # `cold` 不是错误
+ *
+ * 「没有原生 id」是**这个成员的现状**（它还没说过话），不是一次失败：后端刻意**不**给它
+ * 起一个裸 CLI（那会让用户以为对话续上了，其实是一个空会话）。
+ */
+export interface TeamResumeReport {
+  /** 被恢复的团队。 */
+  teamId: string;
+  /** 真的起了新进程的成员（后端按 id 排序）。 */
+  resumed: string[];
+  /** 本来就有活进程、没动的成员（同一队再点一次恢复就是这种结果）。 */
+  skippedAlreadyLive: string[];
+  /** 只能新开的成员（理由见 [`ColdReason`]）。 */
+  cold: ColdMember[];
+  /** 起不来的成员与原因。 */
+  failed: MemberFailure[];
 }
 
 /** `start_team_session` 的返回：队长能行动的三样（队 / 成员 / 落脚的终端）。 */

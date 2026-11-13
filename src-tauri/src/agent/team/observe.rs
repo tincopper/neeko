@@ -6,12 +6,13 @@
 //!                                    └─ team::observe     ← 本文件（新增第三路消费者）
 //! ```
 //!
-//! 本模块只做四件事，且**每条失败路径都必须 fail-open**（不能拖累 204 与通知链路）：
+//! 本模块只做五件事，且**每条失败路径都必须 fail-open**（不能拖累 204 与通知链路）：
 //!
-//! 1. `event_key → MemberSignal`（纯映射；未知键不是错误）
-//! 2. 身份裁决（[`attribution_verdict`]：残缺身份直接拒，**不回退 cwd**，design §5.4）
-//! 3. `seq` 单调去重（design §7.2 / AC12）
-//! 4. 交给 [`TeamManager::observe_signal`] —— 状态迁移只有那一处实现
+//! 1. 身份裁决（[`attribution_verdict`]：残缺身份直接拒，**不回退 cwd**，design §5.4）
+//! 2. **记原生会话 id**（与事件类型无关 —— 它是「这个成员的对话叫什么」，不是语义）
+//! 3. `event_key → MemberSignal`（纯映射；未知键不是错误）
+//! 4. `seq` 单调去重（design §7.2 / AC12）
+//! 5. 交给 [`TeamManager::observe_signal`] —— 状态迁移只有那一处实现
 //!
 //! # 为什么输入是 [`MemberSignal`] 而不是 `StreamEvent`
 //!
@@ -32,7 +33,11 @@
 //! 与 `ingest::event::HookEvent.event` 用字符串而非枚举的理由相同：枚举会把前向兼容
 //! 变成反序列化失败。故 [`ObserveOutcome::SkippedUnknownAgent`] 同时承担
 //! 「未知事件」「未知成员」「非团队上下文」「身份残缺」四种跳过 —— 对外只需要
-//! 一个「本域没有动作」的结论（区别只在日志）。
+//! 一个「本域没有状态迁移」的结论（区别只在日志）。
+//!
+//! 注意「未知事件」这一格**不**等于「什么都没做」：原生会话 id 在第 2 步就已经记下了
+//! （它的登记不依赖事件类型 —— 队长一辈子只发 `session_started`，而它正是最需要
+//! 被恢复的那个人）。
 
 use crate::agent::hooks::ingest::event::HookEvent;
 use crate::agent::team::identity::attribution_verdict;
@@ -83,26 +88,20 @@ pub fn signal_for(event_key: &str) -> Option<MemberSignal> {
 ///
 /// # 顺序（每一步都必须 fail-open）
 ///
-/// 1. 事件键不是本域词汇 → 跳过（**不**动水位线：没消费凭什么记账）
-/// 2. 身份裁决：残缺身份 → 跳过（不回退 cwd，design §5.4）
-/// 3. 成员在当前库里，且属于 env 声明的团队 → 否则跳过
-/// 4. `seq` 不大于水位线 → [`ObserveOutcome::StaleSeq`]，**不调 manager**
-/// 5. 交给 [`TeamManager::observe_signal`]
+/// 1. 身份裁决：残缺身份 → 跳过（不回退 cwd，design §5.4）
+/// 2. 成员在当前库里，且属于 env 声明的团队 → 否则跳过
+/// 3. **记原生会话 id**（与事件类型无关；fail-open）
+/// 4. 事件键不是本域词汇 → 跳过（**不**动水位线：没消费凭什么记账）
+/// 5. `seq` 不大于水位线 → [`ObserveOutcome::StaleSeq`]，**不调 manager**
+/// 6. 交给 [`TeamManager::observe_signal`]
 ///
-/// 第 3 步在第 4 步之前：`seq` 是**成员级**水位线，没有成员就无处比较。
+/// 第 2 步在第 5 步之前：`seq` 是**成员级**水位线，没有成员就无处比较。
+/// 第 3 步在第 4、5 步之前：会话身份与事件语义、去重策略都没有关系（见内联注释）。
 pub fn observe(
     manager: &TeamManager,
     source: &str,
     event: &HookEvent,
 ) -> Result<ObserveOutcome, AppError> {
-    let Some(signal) = signal_for(&event.event) else {
-        log::debug!(
-            "team::observe skip: unknown event_key={} source={source}",
-            event.event
-        );
-        return Ok(ObserveOutcome::SkippedUnknownAgent);
-    };
-
     let (team_id, member_id) = match attribution_verdict(&event.hints) {
         AttributionVerdict::Accept { team_id, member_id } => (team_id, member_id),
         AttributionVerdict::RefuseIncomplete => {
@@ -133,18 +132,35 @@ pub fn observe(
         return Ok(ObserveOutcome::SkippedUnknownAgent);
     }
 
+    // ── 原生会话 id：**先于任何键过滤**，且**先于** `seq` 去重 ───────────────
+    //
+    // 这里回答的是「这个成员的对话叫什么」，与「这个事件代表什么语义」是两个正交事实。
+    // 曾经的顺序（键过滤在前）让只发 `session_started` 的队长永远记不上 id ⇒ 重启后
+    // 只能起一个空白的新会话，而队列里那个 `native_session_id` 是**唯一**能让 CLI
+    // 「接着上次说」的依据（`MemberSession` / `team_resume`）。
+    //
+    // 放在 `seq` 之前同样不是风格：`seq` 是**语义事件**的水位线，让一条重复上报
+    // 连带丢掉 id 会把记录绑到去重策略上（两者没有任何关系）。
+    if let Err(err) = manager.note_agent_session_id(&member_id, &event.agent_session_id) {
+        // fail-open：记 id 失败不能拖累状态迁移与上报链路（本模块的头号纪律）。
+        log::warn!("team::observe could not record native session id for {member_id}: {err}");
+    }
+
+    // 键不认识 ⇒ 本域不消费这条上报。**不回 `SkippedUnknownAgent`**：那个变体的语义是
+    // 「这压根不是团队上下文」，而这里身份是完好的、id 也已经记下了。
+    let Some(signal) = signal_for(&event.event) else {
+        log::debug!(
+            "team::observe recorded id only: unknown event_key={} source={source}",
+            event.event
+        );
+        return Ok(ObserveOutcome::SkippedUnknownAgent);
+    };
+
     // `seq` 单调去重：`None`（旧模板）照常处理 —— 「缺字段」不等于序号 0。
     if let Some(seq) = event.seq {
         if !manager.note_signal_seq(&member_id, seq)? {
             return Ok(ObserveOutcome::StaleSeq);
         }
-    }
-
-    // 原生会话 id：每条上报都带着它，第一次见到就记下来 —— 「已退出的成员」
-    // 之后要按它打开历史 transcript（见 `TeamMember::agent_session_id`）。
-    if let Err(err) = manager.note_agent_session_id(&member_id, &event.agent_session_id) {
-        // fail-open：记 id 失败不能拖累状态迁移与上报链路（本模块的头号纪律）。
-        log::warn!("team::observe could not record native session id for {member_id}: {err}");
     }
 
     manager.observe_signal(&member_id, signal, now_millis())?;
@@ -187,6 +203,20 @@ mod tests {
         manager
     }
 
+    /// 与 [`seeded`] 同形，但成员的 `agent_session_id` 是空的 —— 真实形态：
+    /// 刚 spawn 出来的成员还没上报过任何事件。
+    fn seeded_unrecorded() -> TeamManager {
+        let manager = TeamManager::new(TeamStore::open_in_memory().expect("in-memory store"));
+        manager.create_team(fixture_team(TEAM)).expect("team");
+        manager
+            .add_member(TeamMember {
+                agent_session_id: None,
+                ..member(W1, "w1", MemberRole::Worker)
+            })
+            .expect("member");
+        manager
+    }
+
     /// 一条带完整成员身份的上报。
     fn event(event_key: &str, seq: Option<u64>) -> HookEvent {
         HookEvent {
@@ -204,6 +234,59 @@ mod tests {
                 ..EnvHints::default()
             },
         }
+    }
+
+    /// **原生会话 id 的登记不得依赖事件类型**（AC-2 的判据）。
+    ///
+    /// 这个缺陷的真实形态：队长一辈子只发 `session_started`（它不跑回合），而记录逻辑
+    /// 曾经住在「已知语义键」之后 —— 于是队长的 `agent_session_id` 永远是 `None`，
+    /// 重启后只能起一个**空白的**新会话（用户：'历史里找不到队长的会话'）。
+    ///
+    /// 判据是「任意键都记」：已知键、未知键、空键各来一条，三条都必须记下来。
+    #[test]
+    fn the_native_session_id_is_recorded_for_every_event_key() {
+        for key in ["session_started", "turn_completed", "some_future_key"] {
+            let manager = seeded_unrecorded();
+            // 反证：记录之前是空的（否则「记下来了」不成判据）。
+            assert_eq!(manager.member(W1).expect("member").agent_session_id, None);
+
+            observe(&manager, SOURCE, &event(key, Some(1))).expect("observe");
+
+            assert_eq!(
+                manager
+                    .member(W1)
+                    .expect("member")
+                    .agent_session_id
+                    .as_deref(),
+                Some("agent-1"),
+                "`{key}` 也必须记下原生会话 id —— 否则重启后无法恢复这个成员的对话"
+            );
+        }
+    }
+
+    /// 记 id 与「这个键有没有语义」是两个独立事实：未知键只记 id，不动状态。
+    #[test]
+    fn an_unknown_key_records_the_id_without_touching_the_state() {
+        let manager = seeded_unrecorded();
+        let before = manager.member(W1).expect("member").state;
+
+        observe(&manager, SOURCE, &event("some_future_key", Some(1))).expect("observed");
+
+        let after = manager.member(W1).expect("member");
+        assert_eq!(after.state, before, "未知键不得引发状态迁移");
+        assert_eq!(after.agent_session_id.as_deref(), Some("agent-1"));
+    }
+
+    /// 非团队上下文的 CLI（用户自己开的终端）不落任何东西 —— 记 id 也不能越界。
+    #[test]
+    fn a_non_team_event_records_nothing() {
+        let manager = seeded_unrecorded();
+        let mut plain = event("session_started", Some(1));
+        plain.hints = EnvHints::default();
+
+        observe(&manager, SOURCE, &plain).expect("observed");
+
+        assert_eq!(manager.member(W1).expect("member").agent_session_id, None);
     }
 
     /// 语义键映射：每个已知键 → 对应信号；未知键 → `None`（fail-open）。

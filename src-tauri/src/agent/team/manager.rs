@@ -73,17 +73,55 @@ pub const EVENT_SIGNAL: &str = "signal";
 /// 成员凭证签发（审计只记"何时签的"，**不记明文也不记 hash**）。
 pub const EVENT_ISSUE_TOKEN: &str = "issue_token";
 
-/// 成员 PTY 绑定（审计记 `terminal_id`，它是进程句柄不是凭证）。
-pub const EVENT_BIND_TERMINAL: &str = "bind_terminal";
-
-/// 审计事件类别：一名成员被归档（进程已关 → `Dead` + 凭证作废 + 在飞任务回 `pending`）。
+/// 审计事件类别：一名成员被归档（进程已关 → `Offline` + 凭证作废 + 在飞任务回 `pending`）。
 pub const EVENT_CLOSE_MEMBER: &str = "close_member";
 
 /// 审计事件类别：团队进入 `Closing`（整队关闭开始）。
 pub const EVENT_CLOSE_BEGIN: &str = "close_begin";
 
-/// 审计事件类别：团队落终态 `Closed`（`closed_at` 写入的那一次）。
+/// 审计事件类别：团队落终态 `Sealed`（`sealed_at` 写入的那一次）。
 pub const EVENT_CLOSE_TEAM: &str = "close_team";
+
+/// 审计事件类别：启动归位（把上一个进程的运行态改成事实）。
+///
+/// 与关闭类事件**分开**：重启不是用户动作，混进 `close_*` 会让「谁关掉了这个成员」
+/// 在审计里答错。
+pub const EVENT_BOOT_RECONCILE: &str = "boot_reconcile";
+
+/// 启动归位在审计里的 actor（不是成员 id：没有任何人做过这件事）。
+pub const RECONCILE_ACTOR: &str = "neeko:boot";
+
+/// 一个团队的启动归位结果（只有真的改过才会出现在报告里）。
+///
+/// 仅日志消费（组合根 `format!` 打印），不是跨栈 wire 契约 —— 不派生 `Serialize`。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TeamReconcile {
+    /// 团队 id。
+    pub team_id: String,
+    /// 被归位到 `offline` 的成员数（进程不可能跨重启存活）。
+    pub members_offline: usize,
+    /// 被清空凭证的成员数（撤销跨重启幽灵授权）。
+    pub credentials_revoked: usize,
+    /// `closing → open`：收尾者已随进程消失，这个队必须回到可操作状态。
+    pub reopened: bool,
+}
+
+/// 启动归位报告：只含**真的改过**的团队（干净启动是空报告）。
+///
+/// 仅日志消费（组合根 `format!` 打印），不是跨栈 wire 契约 —— 不派生 `Serialize`。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BootReconcile {
+    /// 有变化的团队（按 id 排序：报告不随 HashMap 迭代顺序摆动）。
+    pub teams: Vec<TeamReconcile>,
+}
+
+impl BootReconcile {
+    /// 有没有任何变化（组合根据此决定日志级别：干净启动不该吵）。
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.teams.is_empty()
+    }
+}
 
 /// 审计事件类别：收到一次关闭**请求**（`graceful` 是否被要求）。
 ///
@@ -127,8 +165,26 @@ const fn is_terminal_task(state: TeamTaskState) -> bool {
 const fn is_terminal_member(state: MemberState) -> bool {
     matches!(
         state,
-        MemberState::Done | MemberState::Failed | MemberState::Dead
+        MemberState::Done | MemberState::Failed | MemberState::Offline
     )
+}
+
+/// 这个运行态是否**已经在描述当前这个进程**（恢复后不该被覆盖成 `Spawned`）。
+///
+/// 与 [`is_terminal_member`] 分开：`Stalled` 不是终态（它还能被信号改写），但它与终态一样
+/// 是**针对某个已消失进程**的裁决。拿它当「运行态」会让 `team_resume` 之后的花名册
+/// 一直显示「停滞」—— 判据写成一个穷尽 `match`（不用 `matches!`）是为了让新增的
+/// `MemberState` 变体必须在这里表态。
+const fn is_reporting_member_state(state: MemberState) -> bool {
+    match state {
+        MemberState::Spawned | MemberState::Running | MemberState::Awaiting | MemberState::Idle => {
+            true
+        }
+        // 终态与 `Stalled` 都是「那个进程已经不在（或已不可信）」的结论。
+        MemberState::Done | MemberState::Failed | MemberState::Offline | MemberState::Stalled => {
+            false
+        }
+    }
 }
 
 /// 一个队任务板的三个计数（[`TeamManager::task_counts`]）。
@@ -466,6 +522,29 @@ impl TeamManager {
         self.inner.lock().members.get(member_id).cloned()
     }
 
+    /// 读**一个团队**的全部成员（含队长、含已封存的），按 id 排序。
+    ///
+    /// # 为什么在 manager 上而不是让调用方 `store().list_members()`
+    ///
+    /// 两个读者（`view::roster` 与 `resume::resume_team`）要的是同一件事：镜像里的当前
+    /// 花名册。走得库的读路径会多一次同步 I/O（要进阻塞池，红线 3），而花名册本来就是
+    /// `load` 时 hydrate 进镜像的 —— 再读一次库只是把同一份事实抄两遍。
+    ///
+    /// 排序是**契约**：`HashMap` 的迭代顺序不稳定，而恢复报告 / 审计的顺序必须是确定的
+    /// （两次调用看到两个顺序会让 diff 变成噪声）。
+    #[must_use]
+    pub fn members_of(&self, team_id: &str) -> Vec<TeamMember> {
+        let inner = self.inner.lock();
+        let mut members: Vec<TeamMember> = inner
+            .members
+            .values()
+            .filter(|member| member.team_id == team_id)
+            .cloned()
+            .collect();
+        members.sort_by(|a, b| a.id.cmp(&b.id));
+        members
+    }
+
     /// 读一个任务（**必须同时给队与 id**，见 [`TaskRef`]）。
     ///
     /// 签名里没有「只给 id」的形态是刻意的：`t1` 在每个队都存在，只给 id 的查询要么
@@ -496,7 +575,7 @@ impl TeamManager {
     /// 而那种偏差只在“刚好卡在上限”时显形。
     ///
     /// 只读内存镜像（锁内无 I/O）：花名册是 `load` 时期建的，与库同一把锁内一起改。
-    /// 已 `Dead` 的成员仍计入 —— 它在花名册上占着名字与 `max_members` 的名额，
+    /// 已 `Offline` 的成员仍计入 —— 它在花名册上占着名字与 `max_members` 的名额，
     /// 直到被 `team_close` 归档（否则一个反复起不来的 CLI 可以无限重试）。
     #[must_use]
     pub fn member_count(&self, team_id: &str) -> u32 {
@@ -533,6 +612,21 @@ impl TeamManager {
             }
         }
         counts
+    }
+
+    /// 板上是否还有**未终结**任务指派给这个成员（`team_spawn` 的人数护栏）。
+    ///
+    /// 判据用同一个 [`is_terminal_task`]：`done` / `failed` / `blocked` 的任务不该再为它
+    /// 起进程（那是重试/改派，属于另一条路径）。这里只答「有没有」而不返回整行 ——
+    /// 调用方不需要任务内容，把整段 `TeamTask` clone 出来只是给红线 4 添一个时间维度。
+    #[must_use]
+    pub fn has_open_assignment(&self, team_id: &str, member_id: &str) -> bool {
+        let inner = self.inner.lock();
+        inner.tasks.values().any(|task| {
+            task.team_id == team_id
+                && !is_terminal_task(task.state)
+                && task.assignee.as_deref() == Some(member_id)
+        })
     }
 
     /// 读团队全部任务（板视图），按 id 排序。
@@ -671,61 +765,6 @@ impl TeamManager {
         Ok(())
     }
 
-    /// 把成员的 `terminal_id` 绑定到刚起来的 PTY（执行层的回填点）。
-    ///
-    /// # 为什么是 manager 的方法而不是执行层直接写库
-    ///
-    /// `terminal_id` 是**成员行的一部分**，而成员行只有 manager 能写（内存镜像与库必须
-    /// 在同一把锁内一起改，否则下一帧读到的是旧镜像）。执行层（组合根）只能通过这里回填。
-    ///
-    /// # 重复绑定
-    ///
-    /// 允许覆盖：PTY 起失败后重试会得到新 session id，而旧 id 早已失效 —— 拒绝覆盖只会
-    /// 让成员卡在一个永远连不上的句柄上。审计记录两次 id，便于排查「绑过几个」。
-    pub fn set_member_terminal(
-        &self,
-        member_id: &str,
-        terminal_id: &str,
-        now: i64,
-    ) -> Result<(), AppError> {
-        if terminal_id.trim().is_empty() {
-            return Err(AppError::InvalidInput(
-                "terminal id must not be empty".to_string(),
-            ));
-        }
-        let mut inner = self.lock_writing();
-        let mut member = inner
-            .members
-            .get(member_id)
-            .cloned()
-            .ok_or_else(|| not_found(format!("member {member_id}")))?;
-        let previous = member
-            .terminal_id
-            .clone()
-            .unwrap_or_else(|| "<none>".to_string());
-        member.terminal_id = Some(terminal_id.to_owned());
-        self.store.upsert_member(&member)?;
-        inner.members.insert(member.id.clone(), member.clone());
-        // 队长的会话就是团队的 `lead_session_id`：两处各写一遍会漂移，而它正是
-        // 「这个团队由哪个会话开创」的唯一线索。
-        if member.role == MemberRole::Lead {
-            if let Some(mut team) = inner.teams.get(&member.team_id).cloned() {
-                team.lead_session_id = terminal_id.to_owned();
-                self.store.upsert_team(&team)?;
-                inner.teams.insert(team.id.clone(), team);
-            }
-        }
-        self.audit(
-            &mut inner,
-            &member.team_id,
-            member_id,
-            EVENT_BIND_TERMINAL,
-            Some(member_id.to_owned()),
-            Some(format!("{previous} -> {terminal_id} at={now}")),
-        )?;
-        Ok(())
-    }
-
     /// 派活。只接受 `pending` / `proposed` 作为初态（其它状态必须由迁移到达）。
     pub fn create_task(&self, task: TeamTask) -> Result<TeamTask, AppError> {
         let mut inner = self.lock_writing();
@@ -787,6 +826,22 @@ impl TeamManager {
                 "task {key} is {:?}, only pending can be claimed",
                 task.state
             )));
+        }
+        // 指派闸门（v24 / R3）：有计划事实时**只有被指派者**能认领。
+        //
+        // 它只缩小候选集，不代替认领：下面的状态迁移与 `claimed_at` 照旧要执行。
+        // 未指派（`None`）保持「谁先到谁得」—— 老任务全是 `None`，漏了这个分支会让
+        // 它们再也没人能认领。
+        //
+        // `Conflict` 而不是 `Unsupported`：等一等 / 换个人就好（与 `target_blocked`
+        // 同一类判据）。文案给出**下一步动作**（让队长改派），否则模型只能反复试探。
+        if let Some(assignee) = &task.assignee {
+            if assignee != member_id {
+                return Err(conflict(format!(
+                    "task {key} is assigned to {assignee}, not to {member_id}; ask the lead to \
+                     retry it with a new assignee if ownership must move"
+                )));
+            }
         }
         // 跨队认领：owner 关系跨队毫无意义，且会让授权矩阵算错队伍。
         if member.team_id != task.team_id {
@@ -1304,15 +1359,88 @@ impl TeamManager {
         )
     }
 
-    /// 成员关闭成功后的归档：`MemberState → Dead` + 清 `terminal_id` + 凭证立即作废，
+    /// 恢复一名成员的**运行态**：终态（`offline` / `done` / `failed`）回到 `spawned`。
+    ///
+    /// # 为什么必须写这一下
+    ///
+    /// 新起的进程并不 `offline`，但成员行上还留着重启前归位写的 `offline`。不写回
+    /// `spawned` 会有两个后果：`finish_team_close` 会把一个**正在跑**的成员当成「已经死了」，
+    /// 于是在关队时提前 seal（进程还在、团队已封存）；花名册也会把一个活会话显示成离线。
+    ///
+    /// 三条边界：
+    ///
+    /// | 情形 | 行为 |
+    /// | --- | --- |
+    /// | 已经在描述**当前进程**（`spawned` / `running` / `awaiting` / `idle`） | **no-op**（重复恢复幂等，不写库不审计） |
+    /// | 已封存（`sealed_at` 有值） | **no-op**：封存是用户意图，恢复不得把它翻回运行态 |
+    /// | 终态**或 `stalled`**，且未封存 | `state = spawned` + 一条 `resume_member` 审计 |
+    ///
+    /// `stalled` 必须与终态同侧：它是**活性裁决**（「这么久没说话」），而恢复起的是一个
+    /// 新进程 —— 留着旧裁决会让花名册一直显示「停滞」，而那个判断针对的进程早已不在。
+    ///
+    /// `token_hash` **不在这里动**：凭证由 `CredentialLedger::admit` 在起进程的同一个
+    /// 动作里签发（“签发 + 认门”是一个动作，见 `execution::CredentialLedger` 的文档）。
+    pub fn mark_member_resumed(&self, member_id: &str, now: i64) -> Result<(), AppError> {
+        let mut inner = self.lock_writing();
+        let mut member = inner
+            .members
+            .get(member_id)
+            .cloned()
+            .ok_or_else(|| not_found(format!("member {member_id}")))?;
+        // 封存后的成员永远不是「可恢复的」：即使有人错把它交给本函数，也不得把用户
+        // 关掉的成员翻回运行态（判据 `resume_never_clears_the_seal`）。
+        if member.sealed_at.is_some() || is_reporting_member_state(member.state) {
+            return Ok(());
+        }
+        let native = member
+            .agent_session_id
+            .clone()
+            .unwrap_or_else(|| "-".to_owned());
+        member.state = MemberState::Spawned;
+        // 库先写、镜像后改（与本文件其它写路径同一纪律）。
+        self.store.upsert_member(&member)?;
+        inner.members.insert(member.id.clone(), member.clone());
+        self.audit(
+            &mut inner,
+            &member.team_id,
+            crate::agent::team::resume::LOCAL_ACTOR,
+            crate::agent::team::resume::EVENT_RESUME_MEMBER,
+            Some(member.id.clone()),
+            Some(format!("native={native} → Spawned at={now}")),
+        )?;
+        Ok(())
+    }
+
+    /// 记一条 `team_resume` 的流水账（一次调用**恰好一条**，detail 由调用方拼好）。
+    ///
+    /// 与 [`Self::mark_member_resumed`] 分开：那份是逐成员的事实（台账），这份是**这次动作**
+    /// 的全景（谁被跳过、谁只能新开、谁起不来）。写在循环之后，所以它不会在逐成员失败时
+    /// 丢掉 —— 一个成员起不来不能让整次恢复连记录都没了。
+    pub fn record_team_resume(&self, team_id: &str, detail: String) -> Result<(), AppError> {
+        let mut inner = self.lock_writing();
+        if !inner.teams.contains_key(team_id) {
+            return Err(not_found(format!("team {team_id}")));
+        }
+        self.audit(
+            &mut inner,
+            team_id,
+            crate::agent::team::resume::LOCAL_ACTOR,
+            crate::agent::team::resume::EVENT_RESUME_TEAM,
+            None,
+            Some(detail),
+        )
+    }
+
+    /// 成员关闭成功后的归档：`MemberState → Offline` + `sealed_at` 落定 + 凭证立即作废，
     /// 在飞任务回 `pending`。
     ///
     /// 返回被释放（回到 `pending`）的任务的 [`TaskRef`]（不是裸 id —— `t1` 在别的队也有）。
     ///
     /// # 调用顺序是契约（design §7.1）
     ///
-    /// 只允许在**进程已经关掉之后**调（`MemberExecutor::close` 成功之后）。反过来会留一个
-    /// 悬空的 `terminal_id`：成员行已 `Dead`，而 terminal 域里那个会话还在跑，谁也不会去收。
+    /// 只允许在**进程已经关掉之后**调（`MemberExecutor::close` 成功之后）。反过来会出现
+    /// 「成员行已 `Offline`、PTY 还活着」的窗口：域侧认为它已消失，而 terminal 域里那个
+    /// 会话还在跑，谁也不会去收。
     ///
     /// # 为什么不加 `reclaim_count`
     ///
@@ -1328,7 +1456,7 @@ impl TeamManager {
     ///
     /// # 幂等
     ///
-    /// 对已 `Dead` 且凭证已空的成员再调一次是**一次空操作**（不重复写行、不重复审计）。
+    /// 对已 `Offline` 且凭证已空的成员再调一次是**一次空操作**（不重复写行、不重复审计）。
     /// 这使「整队关闭失败后重试」不会在审计里制造噪音。
     ///
     /// # 队长
@@ -1352,11 +1480,11 @@ impl TeamManager {
         self.archive_member(&mut inner, member_id, &actor, "member_close", now)
     }
 
-    /// 整队进入关闭中：`Active → Closing`，返回**需要关进程**的成员 id（worker 全部）。
+    /// 整队进入关闭中：`Open → Closing`，返回**需要关进程**的成员 id（worker 全部）。
     ///
-    /// # 为什么返回全部 worker（含已 `Dead` 的）
+    /// # 为什么返回全部 worker（含已 `Offline` 的）
     ///
-    /// `Dead` 只说明「上一次判定它死了」，不说明它的 `terminal_id` 指向的会话真的不在了
+    /// `Offline` 只说明「上一次判定它死了」，不说明那个会话在 terminal 域里真的不在了
     /// —— 那是 terminal 域的事实，本域看不到。把它们一并交出去（`close` 是幂等的）
     /// 就得到一条**安全的重复路径**：整队关闭可以反复调，每次都把「没有进程」这个事实
     /// 重新确认一遍。
@@ -1366,7 +1494,7 @@ impl TeamManager {
     ///
     /// # 幂等
     ///
-    /// 已 `Closed` 的团队返回空列表（没有进程可关，也不重复写 `closed_at`）；
+    /// 已 `Sealed` 的团队返回空列表（没有进程可关，也不重复写 `sealed_at`）；
     /// 已在 `Closing` 的团队返回同样的目标集，且**不重复写审计**。
     pub fn begin_team_close(&self, team_id: &str, now: i64) -> Result<Vec<String>, AppError> {
         let mut inner = self.lock_writing();
@@ -1375,7 +1503,7 @@ impl TeamManager {
             .get(team_id)
             .cloned()
             .ok_or_else(|| not_found(format!("team {team_id}")))?;
-        if team.state == TeamState::Closed {
+        if team.state == TeamState::Sealed {
             return Ok(Vec::new());
         }
 
@@ -1387,7 +1515,7 @@ impl TeamManager {
             .collect();
         targets.sort();
 
-        if team.state == TeamState::Active {
+        if team.state == TeamState::Open {
             team.state = TeamState::Closing;
             self.store.upsert_team(&team)?;
             inner.teams.insert(team.id.clone(), team.clone());
@@ -1399,7 +1527,7 @@ impl TeamManager {
                 EVENT_CLOSE_BEGIN,
                 Some(team_id.to_owned()),
                 Some(format!(
-                    "active → closing targets=[{}] at={now}",
+                    "open → closing targets=[{}] at={now}",
                     targets.join(",")
                 )),
             )?;
@@ -1407,17 +1535,17 @@ impl TeamManager {
         Ok(targets)
     }
 
-    /// 所有成员都关完之后落终态：`Closing → Closed` + `closed_at`，队长行一并归档。
+    /// 所有成员都关完之后落终态：`Closing → Sealed` + `sealed_at`，队长行一并归档。
     ///
     /// # 拒绝条件
     ///
-    /// - 团队还 `Active` ⇒ `Conflict`（跳过 `begin_team_close` 会让「先关进程、再落终态」
-    ///   这个顺序失去保障 —— 那正是会留下悬空 `terminal_id` 的路径）；
-    /// - 还有 worker 不是 `Dead` ⇒ `Conflict` 并点名它们（否则会出现「团队已关闭、成员还活着」）。
+    /// - 团队还 `Open` ⇒ `Conflict`（跳过 `begin_team_close` 会让「先关进程、再落终态」
+    ///   这个顺序失去保障 —— 那正是「成员行已归档、会话还活着」的路径）；
+    /// - 还有 worker 不是 `Offline` ⇒ `Conflict` 并点名它们（否则会出现「团队已封存、成员还活着」）。
     ///
     /// # 幂等
     ///
-    /// 已 `Closed` ⇒ `Ok(())`，**不重写** `closed_at`（第一次关闭的时间是事实）。
+    /// 已 `Sealed` ⇒ `Ok(())`，**不重写** `sealed_at`（第一次封存的时刻是事实）。
     pub fn finish_team_close(&self, team_id: &str, now: i64) -> Result<(), AppError> {
         let mut inner = self.lock_writing();
         let mut team = inner
@@ -1426,10 +1554,10 @@ impl TeamManager {
             .cloned()
             .ok_or_else(|| not_found(format!("team {team_id}")))?;
         match team.state {
-            TeamState::Closed => return Ok(()),
-            TeamState::Active => {
+            TeamState::Sealed => return Ok(()),
+            TeamState::Open => {
                 return Err(conflict(format!(
-                    "team `{team_id}` is active; it must enter `closing` before it can be sealed \
+                    "team `{team_id}` is open; it must enter `closing` before it can be sealed \
                      (call `team_close` — that path closes members first)"
                 )))
             }
@@ -1442,14 +1570,14 @@ impl TeamManager {
             .filter(|member| {
                 member.team_id == team_id
                     && member.role == MemberRole::Worker
-                    && member.state != MemberState::Dead
+                    && member.state != MemberState::Offline
             })
             .map(|member| member.id.clone())
             .collect();
         open.sort();
         if !open.is_empty() {
             return Err(conflict(format!(
-                "team `{team_id}` still has members that are not closed: {}; it stays in \
+                "team `{team_id}` still has members that are not offline: {}; it stays in \
                  `closing` until they are",
                 open.join(", ")
             )));
@@ -1468,8 +1596,8 @@ impl TeamManager {
             self.archive_member(&mut inner, &lead, &actor, "team_close", now)?;
         }
 
-        team.state = TeamState::Closed;
-        team.closed_at = Some(now);
+        team.state = TeamState::Sealed;
+        team.sealed_at = Some(now);
         self.store.upsert_team(&team)?;
         inner.teams.insert(team.id.clone(), team.clone());
         self.audit(
@@ -1478,7 +1606,7 @@ impl TeamManager {
             &actor,
             EVENT_CLOSE_TEAM,
             Some(team_id.to_owned()),
-            Some(format!("closing → closed closed_at={now}")),
+            Some(format!("closing → sealed sealed_at={now}")),
         )?;
         Ok(())
     }
@@ -1519,7 +1647,7 @@ impl TeamManager {
             .teams
             .get(team_id)
             .ok_or_else(|| not_found(format!("team {team_id}")))?;
-        if team.state != TeamState::Closed {
+        if team.state != TeamState::Sealed {
             // 状态用 `{:?}`：本文件里「把枚举写进错误句」一律是这个口径（`task {key} is {:?}`）。
             // 另起一个 enum→文本投影就等于造第二份口径，而它只在「恰好这一句」上生效。
             let state = team.state;
@@ -1549,7 +1677,7 @@ impl TeamManager {
         Ok(())
     }
 
-    /// 归档一名成员（**调用方已持锁**）：`Dead` + 清 `terminal_id` + 凭证作废 + 在飞任务回
+    /// 归档一名成员（**调用方已持锁**）：`Offline` + `sealed_at` 落定 + 凭证作废 + 在飞任务回
     /// `pending`。
     ///
     /// 单成员关闭与整队关闭共用一个实现：两处各写一遍的话，「凭证到底清没清」这类问题的
@@ -1567,33 +1695,30 @@ impl TeamManager {
             .get(member_id)
             .cloned()
             .ok_or_else(|| not_found(format!("member {member_id}")))?;
-        let already_dead = member.state == MemberState::Dead;
+        let already_sealed = member.sealed_at.is_some();
         let had_credential = !member.token_hash.is_empty();
-        let had_terminal = member.terminal_id.is_some();
-        let terminal = member
-            .terminal_id
-            .clone()
-            .unwrap_or_else(|| "<none>".to_owned());
 
         let released = self.release_in_flight_tasks(inner, member_id, actor, now)?;
 
-        member.state = MemberState::Dead;
+        // 两件事在**同一把锁的同一次写**里落地：用户意图（封存）+ 凭证作废。
+        // 分成两次写就会有一个「已封存但仍能调工具」的窗口。
+        //
+        // 句柄**不在行上**：`terminal_id` 已随 v22 删列，活性一律问 `live_sessions`
+        // （`view::MemberSessionLookup`）。所以这里不存在「清句柄」这一步，
+        // 也不存在「已归档但还能点开」的窗口 —— 那个窗口是列存在时才有的事物。
+        member.sealed_at = Some(member.sealed_at.unwrap_or(now));
+        // 运行态归位：封存必然意味着「不再是可派活的成员」。这不是从进程推出来的
+        // （进程早就不在了，见 `boot::reconcile`），而是封存这件事本身的定义。
+        member.state = MemberState::Offline;
         // 凭证作废：`principals_from` 过滤空 hash ⇒ 旧 token 再也进不了门。
         // 端点要**重新组装**身份表才会看到这件事（`CredentialLedger::refresh`）。
         member.token_hash = String::new();
-        // 进程句柄一并清掉：`terminal_id` 是「点开它的唯一凭据」（`view::MemberStatusView`），
-        // 前端唯一的判据是 `terminalId == null` ⇒ 已关闭。留着它等于给一个已归档的成员
-        // 一个「打开终端」的死按钮，点了只会得到终端的可读错误。
-        //
-        // 与另外两列在**同一把锁的同一次写**里落地：三件事共同定义「这个成员不存在了」，
-        // 分成两次写就会有一个「已 Dead 但还能点开」的窗口。
-        member.terminal_id = None;
-        if !already_dead || had_credential || had_terminal {
+        if !already_sealed || had_credential {
             self.store.upsert_member(&member)?;
             inner.members.insert(member.id.clone(), member.clone());
         }
 
-        if !already_dead || had_credential || had_terminal || !released.is_empty() {
+        if !already_sealed || had_credential || !released.is_empty() {
             self.audit(
                 inner,
                 &member.team_id,
@@ -1601,7 +1726,7 @@ impl TeamManager {
                 EVENT_CLOSE_MEMBER,
                 Some(member.id.clone()),
                 Some(format!(
-                    "{reason} terminal={terminal} released=[{}] at={now}",
+                    "{reason} released=[{}] at={now}",
                     released
                         .iter()
                         .map(ToString::to_string)
@@ -1663,7 +1788,7 @@ impl TeamManager {
     // 内部
     // ═══════════════════════════════════════════════════════════════════
 
-    /// 租约过期的 owner 落 `Stalled`；终态成员不动（`Dead` 不该被洗成 `Stalled`）。
+    /// 租约过期的 owner 落 `Stalled`；终态成员不动（`Offline` 不该被洗成 `Stalled`）。
     fn stall_member(&self, inner: &mut Inner, member_id: &str) -> Result<(), AppError> {
         let Some(mut member) = inner.members.get(member_id).cloned() else {
             return Ok(());
@@ -1700,6 +1825,95 @@ impl TeamManager {
             detail,
         })?;
         Ok(())
+    }
+
+    /// 启动归位：把上一个进程留下的运行态变回事实（成员 `offline`、凭证作废、
+    /// `closing → open`）。见 [`BootReconcile`] 的字段文档与模块级说明。
+    ///
+    /// # 为什么收在这里，而不是散成「成员 / 团队」两个写接口
+    ///
+    /// 归位是**一次**批量写：同一件事在三张表上的一致性（成员、团队、审计）只有在一把锁
+    /// 里才能成立。分开写就会有一个「成员都 offline 了、团队还是 closing」的中间态，
+    /// 而那个中间态会让第一次 `team_close` 重试走到「没有活成员」的路径上。
+    ///
+    /// # 幂等
+    ///
+    /// 已经是目标形态的行不写、不审计 —— 第二次调用是空操作（返回空报告）。
+    /// `sealed_at` 一律**不碰**：它是用户意图，重启既不能撤销也不能伪造。
+    ///
+    /// 时刻不外传：审计行自己盖时间戳（[`now_millis`]），归位**不写入任何时刻字段** ——
+    /// 所以这个函数没有 `now` 参数（少一个可以传错的数）。
+    pub fn reconcile_boot(&self) -> Result<BootReconcile, AppError> {
+        let mut inner = self.lock_writing();
+        let mut teams: Vec<Team> = inner.teams.values().cloned().collect();
+        // 报告的顺序不该取决于 HashMap 迭代顺序（测试与日志都读它）。
+        teams.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut report = BootReconcile::default();
+        for mut team in teams {
+            let mut outcome = TeamReconcile {
+                team_id: team.id.clone(),
+                ..TeamReconcile::default()
+            };
+            let member_ids: Vec<String> = inner
+                .members
+                .values()
+                .filter(|member| member.team_id == team.id)
+                .map(|member| member.id.clone())
+                .collect();
+            for member_id in member_ids {
+                let Some(member) = inner.members.get_mut(&member_id) else {
+                    continue;
+                };
+                let mut dirty = false;
+                // 进程不可能跨重启存活：任何非终态都是假数据。
+                if !is_terminal_member(member.state) {
+                    member.state = MemberState::Offline;
+                    outcome.members_offline += 1;
+                    dirty = true;
+                }
+                // 空 hash ⇒ 身份表跳过它。**封存过的成员一样清**：这一列回答的是
+                // 「这把钥匙现在有效吗」，而跨重启的答案恒为「无效」。
+                if !member.token_hash.is_empty() {
+                    member.token_hash = String::new();
+                    outcome.credentials_revoked += 1;
+                    dirty = true;
+                }
+                if dirty {
+                    // 库先写、镜像后改（与本文件其它写路径同一纪律）。
+                    self.store.upsert_member(member)?;
+                }
+            }
+
+            // `closing` 的收尾者随进程一起没了 ⇒ 这个队永远关不完，必须回到可操作状态。
+            // `sealed` **不碰**：那是用户意图，重启不是撤销它的理由。
+            if team.state == TeamState::Closing {
+                team.state = TeamState::Open;
+                outcome.reopened = true;
+                self.store.upsert_team(&team)?;
+                let previous = inner.teams.insert(team.id.clone(), team.clone());
+                debug_assert!(previous.is_some(), "镜像里本来就该有这一行");
+            }
+
+            if outcome.members_offline > 0 || outcome.credentials_revoked > 0 || outcome.reopened {
+                let detail = serde_json::json!({
+                    "membersOffline": outcome.members_offline,
+                    "credentialsRevoked": outcome.credentials_revoked,
+                    "reopened": outcome.reopened,
+                })
+                .to_string();
+                self.audit(
+                    &mut inner,
+                    &team.id,
+                    RECONCILE_ACTOR,
+                    EVENT_BOOT_RECONCILE,
+                    None,
+                    Some(detail),
+                )?;
+                report.teams.push(outcome);
+            }
+        }
+        Ok(report)
     }
 
     /// 重启后按任务板推导每个成员的取证（硬规则 3：板是 done 的唯一权威）。
@@ -1937,6 +2151,7 @@ Q",
             body: "body".into(),
             state: TeamTaskState::Pending,
             owner: None,
+            assignee: None,
             workspace: Workspace::Shared,
             depends_on: vec![],
             claimed_at: None,
@@ -2158,6 +2373,68 @@ Q",
                 .as_deref(),
             Some(W1)
         );
+    }
+
+    /// 指派闸门（R3 / AC4）：**有 assignee 时只有被指派者能认领**。
+    ///
+    /// 两条断言分别锁住两半：别人抢 ⇒ `Conflict`（且文案点名被指派者 + 下一步动作），
+    /// 被指派者自己抢 ⇒ 成功且 `owner` 落成它。
+    ///
+    /// 闸门的地位是「缩小候选集」，不是「自动认领」：认领仍要真调用 `claim_task`，
+    /// 所以才会写下 `owner` / `claimed_at` 并开始算租约。
+    #[test]
+    fn an_assigned_task_can_only_be_claimed_by_its_assignee() {
+        let manager = seeded();
+        let mut assigned = task("t1");
+        assigned.assignee = Some(W1.into());
+        manager.create_task(assigned).unwrap();
+
+        // ① 别人抢 → Conflict（等一等/换个人就好，与 target_blocked 同一类判据）。
+        let err = manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W2, 1_000)
+            .unwrap_err();
+        let AppError::Conflict(message) = &err else {
+            panic!("被指派给别人的任务必须 Conflict，实际 {err:?}");
+        };
+        assert!(message.contains(W1), "必须点名被指派者：{message}");
+        assert!(
+            message.contains("assignee"),
+            "必须指出下一步（让队长改派），否则模型只能反复试探：{message}"
+        );
+        // 被拒的认领不得留下任何执行痕迹。
+        let after = manager.task(&TaskRef::new(TEAM, "t1")).unwrap();
+        assert_eq!(after.owner, None);
+        assert_eq!(after.state, TeamTaskState::Pending);
+        assert_eq!(after.claimed_at, None);
+
+        // ② 被指派者自己抢 → 成功，owner / state / claimed_at 一并落位。
+        let claimed = manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        assert_eq!(claimed.owner.as_deref(), Some(W1));
+        assert_eq!(claimed.state, TeamTaskState::Claimed);
+        assert_eq!(claimed.claimed_at, Some(1_000));
+        assert_eq!(
+            claimed.assignee.as_deref(),
+            Some(W1),
+            "指派是历史事实，认领不改它"
+        );
+    }
+
+    /// 回归（R3 / AC4）：**未指派**任务保持「谁先到谁得」。
+    ///
+    /// 这条不是闸门的正面用例，而是「闸门没有把 `None` 当成拒绝理由」的反证：
+    /// 漏了 `Some`/`None` 的区分会让老任务（v24 之前全是 `None`）再也没人能认领。
+    #[test]
+    fn an_unassigned_task_can_still_be_claimed_by_any_member() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+
+        let claimed = manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W2, 1_000)
+            .unwrap();
+        assert_eq!(claimed.owner.as_deref(), Some(W2));
+        assert_eq!(claimed.state, TeamTaskState::Claimed);
     }
 
     /// 不变量 3：依赖未 `done` 时不可认领。
@@ -2544,43 +2821,6 @@ Q",
         );
     }
 
-    /// 回填 `terminal_id`：内存镜像与库一起改，且**允许覆盖**（重试会拿到新 session id）。
-    #[test]
-    fn binding_a_terminal_updates_mirror_and_store() {
-        let manager = seeded();
-        // 夹具成员已带 `term-w1` —— 回填是**覆盖**语义，不是"从无到有"。
-        assert_eq!(
-            manager.member(W1).expect("member").terminal_id.as_deref(),
-            Some("term-w1")
-        );
-
-        manager
-            .set_member_terminal(W1, "term-1", 1_000)
-            .expect("bind");
-        assert_eq!(
-            manager.member(W1).expect("member").terminal_id.as_deref(),
-            Some("term-1")
-        );
-        // 库与镜像同源：读库也必须看到同一个 id（否则第二次启动读到旧的）。
-        let stored = manager
-            .store()
-            .list_members(TEAM)
-            .expect("members")
-            .into_iter()
-            .find(|row| row.id == W1)
-            .expect("row");
-        assert_eq!(stored.terminal_id.as_deref(), Some("term-1"));
-
-        // 重复绑定（PTY 重试）必须覆盖，否则成员卡在一个失效句柄上。
-        manager
-            .set_member_terminal(W1, "term-2", 2_000)
-            .expect("rebind");
-        assert_eq!(
-            manager.member(W1).expect("member").terminal_id.as_deref(),
-            Some("term-2")
-        );
-    }
-
     /// 建队 + 队长**一次写入**：两步之间没有「没有队长」的中间态。
     #[test]
     fn a_team_and_its_lead_are_created_in_one_step() {
@@ -2654,54 +2894,34 @@ Q",
         assert!(manager.member("lead@tm_2").is_none());
     }
 
-    /// 绑定队长的终端会同时写 `Team.lead_session_id`：两处各写一遍会漂移。
+    /// 归档成员 = **封存**（用户意图）+ 撤凭证；不写任何进程句柄。
+    ///
+    /// v22 起成员行没有 `terminal_id` 列，`Team` 也没有 `lead_session_id` —— 句柄是
+    /// 进程期资源，「关掉它」这件事只剩 `sealed_at` 与空 `token_hash` 两个可持久事实。
     #[test]
-    fn binding_the_leads_terminal_records_the_team_session() {
+    fn archiving_a_member_seals_it_and_revokes_its_credential() {
         let manager = seeded();
-        assert_eq!(manager.team(TEAM).expect("team").lead_session_id, "sess");
+        assert_eq!(manager.member(W1).expect("member").sealed_at, None);
 
-        manager
-            .set_member_terminal(LEAD, "term-lead", 1_000)
-            .expect("bind");
-        assert_eq!(
-            manager.team(TEAM).expect("team").lead_session_id,
-            "term-lead"
-        );
+        manager.finish_member_close(W1, 1_000).expect("archive");
+
+        let member = manager.member(W1).expect("member");
+        assert_eq!(member.state, MemberState::Offline);
+        assert_eq!(member.sealed_at, Some(1_000), "封存时刻必须落库");
+        assert!(member.token_hash.is_empty(), "凭证必须立即作废");
+
         let stored = manager
             .store()
-            .list_teams()
-            .expect("teams")
+            .list_members(TEAM)
+            .expect("members")
             .into_iter()
-            .find(|row| row.id == TEAM)
+            .find(|row| row.id == W1)
             .expect("row");
-        assert_eq!(stored.lead_session_id, "term-lead", "库与镜像同源");
+        assert_eq!(stored.sealed_at, Some(1_000), "库与镜像同源");
 
-        // 工人的绑定**不**碰团队行。
-        manager.set_member_terminal(W1, "term-w1b", 2_000).unwrap();
-        assert_eq!(
-            manager.team(TEAM).expect("team").lead_session_id,
-            "term-lead"
-        );
-    }
-
-    /// 空 terminal id → `InvalidInput`；未知成员 → `NotFound`（两种错都不写库）。
-    #[test]
-    fn binding_rejects_an_empty_id_and_an_unknown_member() {
-        let manager = seeded();
-        let err = manager
-            .set_member_terminal(W1, "   ", 1_000)
-            .expect_err("empty");
-        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
-        assert_eq!(
-            manager.member(W1).expect("member").terminal_id.as_deref(),
-            Some("term-w1"),
-            "拒绝时不得改动已有绑定"
-        );
-
-        let err = manager
-            .set_member_terminal("ghost@tm_1", "term-1", 1_000)
-            .expect_err("unknown");
-        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+        // 幂等：再封一次不报错，且时刻不被覆盖（第一次封存的时刻才是用户意图）。
+        manager.finish_member_close(W1, 2_000).expect("re-archive");
+        assert_eq!(manager.member(W1).expect("member").sealed_at, Some(1_000));
     }
 
     /// 签发会**轮换**：旧凭证立即失效。
@@ -2787,10 +3007,10 @@ Q",
         );
     }
 
-    /// 杀进程（`Exited`）→ 成员 `Dead`，任务仍 `InProgress` 等租约回收
+    /// 杀进程（`Exited`）→ 成员 `Offline`，任务仍 `InProgress` 等租约回收
     /// （`advance` 不替成员判死任务，design §2.1）。
     #[test]
-    fn exited_marks_member_dead_and_leaves_reclaim_to_the_lease() {
+    fn exited_marks_member_offline_and_leaves_reclaim_to_the_lease() {
         let manager = seeded();
         manager.create_task(task("t1")).unwrap();
         manager
@@ -2800,7 +3020,7 @@ Q",
         manager
             .observe_signal(W1, MemberSignal::Exited, 1_100)
             .unwrap();
-        assert_eq!(manager.member(W1).unwrap().state, MemberState::Dead);
+        assert_eq!(manager.member(W1).unwrap().state, MemberState::Offline);
         assert_eq!(
             manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
             TeamTaskState::Claimed
@@ -2812,7 +3032,7 @@ Q",
             TeamTaskState::Pending
         );
         // 终态成员不得被洗成 Stalled。
-        assert_eq!(manager.member(W1).unwrap().state, MemberState::Dead);
+        assert_eq!(manager.member(W1).unwrap().state, MemberState::Offline);
     }
 
     /// 重启恢复：板从库里读回，取证按任务板推导（硬规则 3），不需要第二份持久化状态。
@@ -2993,7 +3213,7 @@ Q",
     // 关闭（两相位的「归档」那一半，design §7.1）
     // ───────────────────────────────────────────────────────────────
 
-    /// 单成员归档：`Dead` + 凭证作废 + 在飞任务回 `pending`，且 `reclaim_count` **不变**。
+    /// 单成员归档：`Offline` + 凭证作废 + 在飞任务回 `pending`，且 `reclaim_count` **不变**。
     ///
     /// 变异验证：把 `reclaim_count + 1` 加回来时本用例变红 —— 手动关队不是任务失败，
     /// 让它背锅会让「反复失败」这个指标失去意义（四轮之后任务会被冻结成 `blocked`）。
@@ -3013,7 +3233,7 @@ Q",
         assert_eq!(released, vec![TaskRef::new(TEAM, "t1")]);
 
         let member = manager.member(W1).unwrap();
-        assert_eq!(member.state, MemberState::Dead);
+        assert_eq!(member.state, MemberState::Offline);
         assert!(member.token_hash.is_empty(), "凭证必须立即作废");
 
         let task = manager.task(&TaskRef::new(TEAM, "t1")).unwrap();
@@ -3042,35 +3262,36 @@ Q",
     ///
     /// | 缺哪条 | 症状 |
     /// | --- | --- |
-    /// | `state` | 花名册上还显示"在跑" |
-    /// | `terminal_id` | 已关闭的成员仍给一个「打开终端」按钮（`view` 的唯一判据是 `terminalId == null`）|
+    /// | `state` | 花名册上还显示该成员可派活 |
+    /// | `sealed_at` | 面板分不清「跑到一半退了」与「用户关掉了它」（两者的恢复动作相反）|
     /// | `token_hash` | 旧 token 还能调工具（直到门重建）|
     ///
-    /// 变异验证：从 `archive_member` 里删掉 `member.terminal_id = None;` 时**只有**这里会红
-    /// —— 其它关闭用例只看状态与凭证，终端列漏清是静默的。
+    /// 变异验证：从 `archive_member` 里删掉 `member.sealed_at = ...` 时**只有**这里会红
+    /// —— 其它关闭用例只看状态与凭证，封存时刻漏写是静默的。
     #[test]
-    fn a_closed_member_has_no_terminal_and_no_credential() {
+    fn a_closed_member_is_sealed_and_has_no_credential() {
         let manager = seeded();
         // 反证：归档之前三项都不是终态（否则「已清空」不成判据）。
         let before = manager.member(W1).unwrap();
-        assert!(before.terminal_id.is_some(), "夹具必须带一个进程句柄");
+        assert_eq!(before.sealed_at, None, "夹具必须是一个未封存的成员");
         assert!(!before.token_hash.is_empty(), "夹具必须带一个已签发的凭证");
-        assert_ne!(before.state, MemberState::Dead);
+        assert_ne!(before.state, MemberState::Offline);
 
         manager.finish_member_close(W1, 5_000).unwrap();
 
         let member = manager.member(W1).unwrap();
-        assert_eq!(member.state, MemberState::Dead);
-        assert!(
-            member.terminal_id.is_none(),
-            "归档必须清掉 terminal_id —— 否则面板给一个已关闭成员一个「打开终端」的死按钮"
+        assert_eq!(member.state, MemberState::Offline);
+        assert_eq!(
+            member.sealed_at,
+            Some(5_000),
+            "归档必须写下封存时刻 —— 否则面板无法区分「可恢复」与「用户关掉了」"
         );
         assert!(member.token_hash.is_empty(), "凭证必须立即作废");
     }
 
     /// 整队关闭时队长的三列也要一起落地（队长行由 `finish_team_close` 归档）。
     #[test]
-    fn sealing_a_team_also_clears_the_leads_terminal_and_credential() {
+    fn sealing_a_team_also_seals_the_lead_and_revokes_its_credential() {
         let manager = seeded();
         manager
             .begin_team_close(TEAM, crate::agent::team::manager::now_millis())
@@ -3081,8 +3302,8 @@ Q",
         manager.finish_team_close(TEAM, 6_000).unwrap();
 
         let lead = manager.member(LEAD).unwrap();
-        assert_eq!(lead.state, MemberState::Dead);
-        assert!(lead.terminal_id.is_none(), "队长进程句柄同样要清");
+        assert_eq!(lead.state, MemberState::Offline);
+        assert_eq!(lead.sealed_at, Some(6_000), "队长的封存时刻同样要落");
         assert!(lead.token_hash.is_empty(), "队长的凭证同样要作废");
     }
 
@@ -3192,9 +3413,9 @@ Q",
         );
     }
 
-    /// 整队关闭：`active → closing → closed`，`closed_at` 写入，全员 `Dead`。
+    /// 整队关闭：`open → closing → sealed`，`sealed_at` 写入，全员 `Offline`。
     #[test]
-    fn a_team_close_walks_active_closing_closed() {
+    fn a_team_close_walks_open_closing_sealed() {
         let manager = seeded();
         let targets = manager.begin_team_close(TEAM, 1_000).unwrap();
         assert_eq!(targets, vec![W1.to_owned(), W2.to_owned()]);
@@ -3206,18 +3427,18 @@ Q",
         manager.finish_team_close(TEAM, 2_000).unwrap();
 
         let team = manager.team(TEAM).unwrap();
-        assert_eq!(team.state, TeamState::Closed);
-        assert_eq!(team.closed_at, Some(2_000));
+        assert_eq!(team.state, TeamState::Sealed);
+        assert_eq!(team.sealed_at, Some(2_000));
         for member_id in [LEAD, W1, W2] {
             let member = manager.member(member_id).unwrap();
-            assert_eq!(member.state, MemberState::Dead, "{member_id} 必须归档");
+            assert_eq!(member.state, MemberState::Offline, "{member_id} 必须归档");
             assert!(member.token_hash.is_empty(), "{member_id} 凭证必须作废");
         }
     }
 
-    /// 幂等：已 `Closed` 的队再关一次 = `Ok`，且 `closed_at` **不被重写**。
+    /// 幂等：已 `Sealed` 的队再关一次 = `Ok`，且 `sealed_at` **不被重写**。
     #[test]
-    fn closing_a_closed_team_keeps_the_first_closed_at() {
+    fn closing_a_sealed_team_keeps_the_first_sealed_at() {
         let manager = seeded();
         manager.begin_team_close(TEAM, 1_000).unwrap();
         for member_id in [W1, W2] {
@@ -3231,10 +3452,253 @@ Q",
         );
         manager.finish_team_close(TEAM, 9_000).unwrap();
         assert_eq!(
-            manager.team(TEAM).unwrap().closed_at,
+            manager.team(TEAM).unwrap().sealed_at,
             Some(2_000),
             "第一次关闭的时间是事实，不得被重试改写"
         );
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // 启动归位（`reconcile_boot`）
+    // ───────────────────────────────────────────────────────────────
+
+    /// 归位把「上一个进程的运行态」变回事实：成员 `offline` + 凭证作废，意图不动。
+    ///
+    /// 反证：三个前提在归位前都成立（非终态 / 有凭证 / 未封存），否则「改过了」不成判据。
+    #[test]
+    fn boot_reconcile_resets_runtime_and_revokes_credentials() {
+        let manager = seeded();
+        let before = manager.member(W1).expect("w1");
+        assert!(!before.token_hash.is_empty(), "前提：夹具成员带已签发凭证");
+        assert_ne!(before.state, MemberState::Offline, "前提：夹具是运行态");
+        assert_eq!(before.sealed_at, None, "前提：未封存");
+
+        let report = manager.reconcile_boot().expect("reconcile");
+
+        let w1 = manager.member(W1).expect("w1");
+        assert_eq!(w1.state, MemberState::Offline, "进程不可能跨重启存活");
+        assert!(w1.token_hash.is_empty(), "幽灵授权必须撤销");
+        assert_eq!(
+            w1.sealed_at, None,
+            "归位**不得**写封存时刻：那是用户意图，重启不是关掉它的理由"
+        );
+        // 报告只记事实，且按 id 排序（不随 HashMap 迭代顺序摆动）。
+        let ids: Vec<&str> = report
+            .teams
+            .iter()
+            .map(|row| row.team_id.as_str())
+            .collect();
+        assert_eq!(ids, vec![TEAM]);
+        assert_eq!(report.teams[0].members_offline, 3, "队长 + 两名成员");
+        assert_eq!(report.teams[0].credentials_revoked, 3);
+        assert!(!report.teams[0].reopened, "open 的队不需要重开");
+
+        // 审计：一个队一条，且类别是归位（不是 close_* —— 重启不是用户动作）。
+        let events = manager.store().list_events(TEAM).expect("events");
+        let reconcile_events: Vec<_> = events
+            .iter()
+            .filter(|event| event.kind == EVENT_BOOT_RECONCILE)
+            .collect();
+        assert_eq!(reconcile_events.len(), 1, "一个队一条归位审计");
+        assert_eq!(reconcile_events[0].actor, RECONCILE_ACTOR);
+    }
+
+    /// `closing` 的收尾者随进程一起没了 ⇒ 这个队永远关不完，必须回到 `open`。
+    ///
+    /// 反例（本用例挡的正是它）：重启后团队停在 `closing`，此后每次 `team_close` 都走
+    /// 「没有活成员可关」的分支却落不了终态 —— 用户看到「关了但没关掉」，且**无法恢复**。
+    #[test]
+    fn boot_reconcile_reopens_a_closing_team() {
+        let manager = seeded();
+        manager.begin_team_close(TEAM, 1_000).expect("begin close");
+        assert_eq!(manager.team(TEAM).expect("team").state, TeamState::Closing);
+
+        let report = manager.reconcile_boot().expect("reconcile");
+
+        let team = manager.team(TEAM).expect("team");
+        assert_eq!(team.state, TeamState::Open, "收尾者不在 ⇒ 回到可操作状态");
+        assert_eq!(team.sealed_at, None, "没有关完就没有封存时刻");
+        assert!(report.teams[0].reopened);
+    }
+
+    /// 已经封存的队**不得**被归位复活：封存是用户意图，跨重启同样有效。
+    ///
+    /// 归位只改运行态（成员 `offline` + 撤凭证），一个字节都不碰意图。
+    #[test]
+    fn boot_reconcile_never_unseals_a_sealed_team() {
+        let manager = seeded();
+        manager.begin_team_close(TEAM, 1_000).expect("begin");
+        for id in [W1, W2] {
+            manager
+                .finish_member_close(id, 1_000)
+                .expect("close member");
+        }
+        manager.finish_team_close(TEAM, 2_000).expect("seal");
+        // 人为造一个「封存了但运行态还在跑」的行（真实形态：封存与进程收尾之间有窗口，
+        // 而那个窗口被重启截断）。
+        {
+            let mut inner = manager.inner.lock();
+            let member = inner.members.get_mut(W1).expect("w1");
+            member.state = MemberState::Running;
+            member.token_hash = "sha256:ghost".into();
+            let snapshot = member.clone();
+            manager.store().upsert_member(&snapshot).expect("persist");
+        }
+
+        manager.reconcile_boot().expect("reconcile");
+
+        let team = manager.team(TEAM).expect("team");
+        assert_eq!(team.state, TeamState::Sealed, "封存跨重启有效");
+        assert_eq!(team.sealed_at, Some(2_000), "封存时刻不得被改写");
+        let w1 = manager.member(W1).expect("w1");
+        assert_eq!(w1.state, MemberState::Offline, "运行态照样归位");
+        assert!(w1.token_hash.is_empty(), "幽灵授权照样撤销");
+        assert_eq!(w1.sealed_at, Some(1_000), "成员封存时刻同样不得被改写");
+    }
+
+    /// 归位是幂等的：第二次调用是空操作，也不再产生审计行。
+    #[test]
+    fn boot_reconcile_is_idempotent() {
+        let manager = seeded();
+        let first = manager.reconcile_boot().expect("first");
+        assert!(!first.is_empty());
+
+        let second = manager.reconcile_boot().expect("second");
+        assert!(second.is_empty(), "第二次不得报告任何变化");
+        let events = manager.store().list_events(TEAM).expect("events");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind == EVENT_BOOT_RECONCILE)
+                .count(),
+            1,
+            "干净的重启不该在审计里制造噪音"
+        );
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // 恢复（`mark_member_resumed` / `members_of`）
+    // ───────────────────────────────────────────────────────────────
+
+    /// 恢复把一行**终态**成员写回 `spawned`：新进程不是「离线」，否则关队时会被当成
+    /// 已经死了（团队提前 seal，而进程还在跑）。
+    #[test]
+    fn resuming_moves_an_offline_member_back_to_spawned() {
+        let manager = seeded();
+        manager.reconcile_boot().expect("reconcile");
+        assert_eq!(manager.member(W1).unwrap().state, MemberState::Offline);
+
+        manager.mark_member_resumed(W1, 5_000).expect("resume");
+
+        assert_eq!(manager.member(W1).unwrap().state, MemberState::Spawned);
+        let events = manager
+            .store()
+            .list_events(TEAM)
+            .expect("events")
+            .into_iter()
+            .filter(|event| event.kind == crate::agent::team::resume::EVENT_RESUME_MEMBER)
+            .collect::<Vec<_>>();
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].subject.as_deref(), Some(W1));
+        assert_eq!(events[0].actor, crate::agent::team::resume::LOCAL_ACTOR);
+        let detail = events[0].detail.as_deref().expect("detail");
+        assert!(
+            detail.contains("native=native-w1"),
+            "审计必须带上原生 id（「接着哪个对话」是恢复唯一的事实）：{detail}"
+        );
+    }
+
+    /// 已经是运行态的成员：`mark_member_resumed` 是 **no-op**（不写库、不审计）。
+    ///
+    /// 这是幂等的另一半：`team_resume` 会跳过 live 成员，但竞态窗口里状态可能已经被
+    /// 别的路径写成运行态 —— 那时再敲一次不该制造一条假审计。
+    #[test]
+    fn marking_a_running_member_resumed_is_a_no_op() {
+        let manager = seeded();
+        let before = manager.member(W1).unwrap();
+        assert_eq!(before.state, MemberState::Spawned, "前提：夹具是运行态");
+
+        manager.mark_member_resumed(W1, 5_000).expect("resume");
+
+        assert_eq!(manager.member(W1).unwrap().state, MemberState::Spawned);
+        assert!(
+            !manager
+                .store()
+                .list_events(TEAM)
+                .expect("events")
+                .iter()
+                .any(|event| event.kind == crate::agent::team::resume::EVENT_RESUME_MEMBER),
+            "重复恢复不得写审计"
+        );
+    }
+
+    /// `stalled` 是**活性裁决**，不是运行态：恢复起的是新进程，旧裁决必须被清掉。
+    ///
+    /// 反证：把 `is_reporting_member_state` 写成「非终态即运行态」（即把 `Stalled` 也当
+    /// 运行态）→ 本用例红，而花名册会在一个刚恢复的成员上显示「停滞」。
+    #[test]
+    fn resuming_a_stalled_member_clears_the_stall() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager.reclaim_expired(1_000 + 1_800_000).unwrap();
+        assert_eq!(
+            manager.member(W1).unwrap().state,
+            MemberState::Stalled,
+            "前提：租约到期把 owner 落成 stalled"
+        );
+
+        manager.mark_member_resumed(W1, 2_000).expect("resume");
+
+        assert_eq!(
+            manager.member(W1).unwrap().state,
+            MemberState::Spawned,
+            "新进程不是「停滞」的那一个"
+        );
+    }
+
+    /// 封存是用户意图：恢复**不得**清掉 `sealed_at`，也不得把行翻回运行态。
+    #[test]
+    fn resume_never_clears_the_seal() {
+        let manager = seeded();
+        manager.finish_member_close(W1, 1_000).unwrap();
+        let sealed = manager.member(W1).unwrap();
+        assert!(sealed.sealed_at.is_some(), "前提：归档写了封存时刻");
+
+        manager.mark_member_resumed(W1, 2_000).expect("resume");
+
+        let after = manager.member(W1).unwrap();
+        assert_eq!(
+            after.sealed_at, sealed.sealed_at,
+            "封存时刻不得被恢复改写（那是用户关掉它的那一次）"
+        );
+        assert_eq!(
+            after.state,
+            MemberState::Offline,
+            "封存成员不得被翻回运行态（否则关队会把它当成活成员）"
+        );
+    }
+
+    /// `members_of` 是**排序后**的团队花名册：`HashMap` 的迭代顺序不稳定，而恢复报告
+    /// 与审计的顺序必须是确定的。
+    #[test]
+    fn members_of_returns_one_team_sorted_by_id() {
+        let manager = seeded();
+        let mut other = manager.member(LEAD).unwrap();
+        other.id = "lead@tm_other".into();
+        other.team_id = "tm_other".into();
+        manager.create_team(team("tm_other")).unwrap();
+        manager.add_member(other).unwrap();
+
+        let ids: Vec<String> = manager
+            .members_of(TEAM)
+            .into_iter()
+            .map(|member| member.id)
+            .collect();
+        assert_eq!(ids, vec![LEAD, W1, W2], "只含本队、按 id 排序");
+        assert_eq!(manager.members_of("tm_missing").len(), 0);
     }
 
     /// 成员还没关完就落终态 → `Conflict` 并点名还活着的成员。
@@ -3251,7 +3715,7 @@ Q",
         assert!(message.contains(W2), "必须点名还活着的成员：{message}");
         assert!(!message.contains(W1), "已关掉的成员不该被点名：{message}");
         assert_eq!(manager.team(TEAM).unwrap().state, TeamState::Closing);
-        assert_eq!(manager.team(TEAM).unwrap().closed_at, None);
+        assert_eq!(manager.team(TEAM).unwrap().sealed_at, None);
     }
 
     /// 跳过 `begin_team_close` 直接落终态 → `Conflict`（先关进程、再落终态的顺序）。
@@ -3260,13 +3724,13 @@ Q",
         let manager = seeded();
         let err = manager.finish_team_close(TEAM, 2_000).unwrap_err();
         assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
-        assert_eq!(manager.team(TEAM).unwrap().state, TeamState::Active);
+        assert_eq!(manager.team(TEAM).unwrap().state, TeamState::Open);
     }
 
-    /// 已 `Dead` 的 worker **也**在待关列表里：那是「terminal 里可能还挂着一个会话」的
+    /// 已 `Offline` 的 worker **也**在待关列表里：那是「terminal 里可能还挂着一个会话」的
     /// 唯一可重试路径（`close` 幂等，重复确认无害）。
     #[test]
-    fn dead_members_are_still_handed_to_the_executor_for_a_retry() {
+    fn offline_members_are_still_handed_to_the_executor_for_a_retry() {
         let manager = seeded();
         manager
             .observe_signal(W2, MemberSignal::Exited, 1_000)
@@ -3317,7 +3781,7 @@ Q",
             panic!("active 删队必须 Conflict，实际 {err:?}");
         };
         // 状态用本文件既有的 Debug 口径（`Active` / `Closing`），不另造 enum→文本投影。
-        assert!(message.contains("Active"), "必须点名当前状态：{message}");
+        assert!(message.contains("Open"), "必须点名当前状态：{message}");
         assert!(
             message.contains("close it before deleting"),
             "必须指出下一步：{message}"

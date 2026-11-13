@@ -16,12 +16,12 @@ use rusqlite::{Connection, TransactionBehavior};
 /// in the same commit as the migration SQL that creates the change.
 const LIBRARY_MIGRATION_LAST: u32 = 11;
 const CACHE_MIGRATION_STEP: u32 = LIBRARY_MIGRATION_LAST + 1;
-/// 团队协调基质与统一任务中心的持久化步骤（13..=20，逐版本一步）。
+/// 团队协调基质与统一任务中心的持久化步骤（13..=23，逐版本一步）。
 ///
 /// 版本号是**已发布的事实**，不可重排：一个版本号一旦进过用户的库，就只能继续往后加。
-/// 这段区间内两个域交替出现（team 五次 + work_items 一次 + team 两次），分派见 [`persist_step`]。
+/// 这段区间内两个域交替出现（team 五次 + work_items 一次 + team 四次），分派见 [`persist_step`]。
 const TEAM_MIGRATION_FIRST: u32 = CACHE_MIGRATION_STEP + 1;
-const TEAM_MIGRATION_LAST: u32 = 20;
+const TEAM_MIGRATION_LAST: u32 = 23;
 /// Current schema version = last implemented step + 1.
 pub const LATEST_VERSION: u32 = TEAM_MIGRATION_LAST + 1;
 
@@ -80,6 +80,9 @@ fn persist_step(conn: &Connection, from_version: u32) -> Result<()> {
         18 => crate::agent::team::store::v18_to_v19(conn),
         19 => crate::agent::team::store::v19_to_v20(conn),
         20 => crate::agent::team::store::v20_to_v21(conn),
+        21 => crate::agent::team::store::v21_to_v22(conn),
+        22 => crate::agent::team::store::v22_to_v23(conn),
+        23 => crate::agent::team::store::v23_to_v24(conn),
         _ => bail!("unknown persistence migration version: {from_version}"),
     }
 }

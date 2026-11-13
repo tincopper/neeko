@@ -27,6 +27,7 @@ pub mod mcp;
 pub mod observe;
 pub mod options;
 pub mod reaper;
+pub mod resume;
 pub mod sentinel;
 pub mod store;
 pub mod types;
@@ -49,6 +50,7 @@ pub use execution::{
 pub use lease::{lease_expired, next_reclaim_count, should_auto_release};
 pub use manager::{TaskCounts, TeamManager, TeamWake};
 pub use options::{default_options, options_for, TeamDefaults, TeamOptions};
+pub use resume::{ColdMember, ColdReason, MemberFailure, TeamResumeReport};
 pub use store::{TeamEventRecord, TeamStore};
 pub use view::{
     MemberDetail, MemberEventView, MemberStatusView, TaskCard, TaskDetail, TeamSnapshot,

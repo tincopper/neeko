@@ -98,17 +98,20 @@ fn lead_preamble(team: &Team, member: &TeamMember, members: &[LaunchableAgent]) 
     );
     out.push_str(&tool_block());
     out.push_str(&format!(
-        "\nOrder of work (plan -> staff by persona -> assign; never skip 2):\n\
-         1. `{}` - read the roster: who is here, what they hold.\n\
-         2. `{}` - read the pool: allowed CLIs, free slots, **each CLI's persona**.\n\
-         3. **Plan first**: write every deliverable as its own task with `{}`, using \
-         `depends_on` when one needs another's output. One vague task is a failed plan.\n\
-         4. **Staff to the plan**: for each task spawn (or reuse an idle member with) the \
-         persona that fits - pass `persona` explicitly when several candidates match.\n\
+        "\nOrder of work (plan -> assign -> spawn only the assignees -> wait):\n\
+         1. `{}` - read the roster.\n\
+         2. `{}` - read the pool: **a menu of allowed CLIs, not a roster to fill**.\n\
+         3. **Plan first**: every deliverable is its own `{}`, using `depends_on` when one \
+         needs another's output. Every task MUST name `assignee` = `\"<name>@<team_id>\"`; \
+         one member per task, distinct names unless the work is sequential.\n\
+         4. **Spawn exactly those distinct assignees** with `{}` (`name` = the `<name>` you \
+         assigned). The tool refuses any member with no assigned task. Two tasks need two \
+         members, not the whole pool.\n\
          5. `{}` - block until the named members or tasks settle; a timeout is a result.\n\n",
         wire(ToolName::TeamStatus),
         wire(ToolName::TeamOptions),
         wire(ToolName::TaskCreate),
+        wire(ToolName::TeamSpawn),
         wire(ToolName::TeamWait),
     ));
     out.push_str(
@@ -139,13 +142,14 @@ fn lead_preamble(team: &Team, member: &TeamMember, members: &[LaunchableAgent]) 
          - A request is not a task: split it into separately reviewable units, each with an \
          explicit done criterion in its body.\n\
          - Match persona to work (research / implementation / review). If no persona fits, say so.\n\
-         - Do not let one member take everything; parallelize where the plan allows.\n\n",
+         - Never claim a task yourself (the tool refuses the lead); the board's assignee owns it.\n\n",
     );
     out.push_str(&spawnable_block(members, hints));
     out.push_str(&format!(
-        "\nStart here: `{}` to see the roster and the pool, then `{}` to write the plan down as \
-         tasks, then `{}` (or reuse an idle member) matched to each task, then `{}`.\n",
+        "\nStart here: `{}` and `{}`, then `{}` for every task (with `assignee`), then `{}` \
+         for each distinct assignee, then `{}`.\n",
         wire(ToolName::TeamStatus),
+        wire(ToolName::TeamOptions),
         wire(ToolName::TaskCreate),
         wire(ToolName::TeamSpawn),
         wire(ToolName::TeamWait),
@@ -255,12 +259,13 @@ fn spawnable_block(members: &[LaunchableAgent], hints: &[AgentRoleHint]) -> Stri
         // 空清单不是「没有 CLI」而是「这个队的池子里没有可启动的 CLI」（池子被限制到 0 个
         // 可启动项，或本机的准入表推不出任何可启动项）—— 说出来，别让队长以为
         // `team_spawn` 的参数格式有问题。
-        return "Worker CLIs you can spawn in this team: none is launchable for it right now, so \
-                `team_spawn` will refuse every agent id; call `team_options` to read the pool.\n"
+        return "Allowed worker CLIs (a menu, not a roster to fill): none is launchable for it \
+                right now, so `team_spawn` will refuse every agent id; call `team_options` to \
+                read the pool.\n"
             .to_string();
     }
     format!(
-        "Worker CLIs you can spawn in this team: {}\n",
+        "Allowed worker CLIs (a menu, not a roster to fill): {}\n",
         roster.join(", ")
     )
 }
@@ -405,16 +410,22 @@ mod tests {
             "队长版必须要求先规划再委派：{lead}"
         );
         assert!(
-            lead.contains("One vague task is a failed plan"),
-            "必须把「一个含糊任务 = 失败的规划」说清楚：{lead}"
+            lead.contains("a menu of allowed CLIs, not a roster to fill"),
+            "池子必须说成菜单而不是必须填满的花名册：{lead}"
         );
         assert!(
-            lead.contains("Staff to the plan"),
-            "必须要求按计划配人（而不是抓第一个空闲的人）：{lead}"
+            lead.contains("Every task MUST name `assignee`"),
+            "必须把 assignee 写成硬要求：{lead}"
         );
         assert!(
-            lead.contains("persona that fits"),
-            "必须要求把 persona 与任务类型匹配：{lead}"
+            lead.contains("Spawn exactly those distinct assignees"),
+            "必须要求只为板上不同的指派起人：{lead}"
+        );
+        // 反证：旧文案会诱导队长把整个池子填满（真实现场：2 个任务起了 4 个成员）。
+        assert!(
+            !lead.contains("parallelize where the plan allows")
+                && !lead.contains("Staff to the plan"),
+            "不得再出现「按 persona 把池子填满」的旧指令：{lead}"
         );
         // 池位清单里每个可用 CLI 都带 persona（没有预设的显式写 none）。
         assert!(
@@ -519,7 +530,7 @@ mod tests {
         assert!(lead.contains("claude-code (tier A, persona: "), "{lead}");
         assert!(lead.contains("pi (tier A, persona: "), "{lead}");
         // 成员版没有这份清单：它的世界里只有任务板。
-        assert!(!worker_text().contains("Worker CLIs you can spawn"));
+        assert!(!worker_text().contains("Allowed worker CLIs (a menu"));
         // 空清单也要说话（而不是渲染成一句半截话）。
         let none = preamble(MemberRole::Lead, &fixture_team(TEAM), &lead_member(), &[]);
         assert!(

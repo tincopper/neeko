@@ -70,7 +70,18 @@ pub struct SpawnPlan {
     pub cwd: PathBuf,
     /// 注入子进程的身份 env（`identity::member_env` 的结果，**不含凭证**）。
     pub env: Vec<(String, String)>,
-    /// 追加到启动命令行的参数（`McpInjection::Argv` 档的 MCP 配置）。
+    /// 追加到启动命令行的参数（`McpInjection::Argv` 档的 MCP 配置 + 角色 preamble + 旁路开关）。
+    ///
+    /// # 位置契约（**唯一**组合点就是本类型的生产者）
+    ///
+    /// ```text
+    /// args = resume 片段 ++ mcp_argv ++ prompt_argv ++ bypass_args
+    /// ```
+    ///
+    /// **resume 片段必须在紧跟 program 的位置**：codex 的 `resume` 是子命令，追加到末尾
+    /// 会被它当成 PROMPT（2026-11-11 实测）。旁路开关保持在 preamble **之后** ——
+    /// 那个相对顺序是今天每一家 CLI 的参数解析都被实测过的形状，`resume = None` 时
+    /// 必须逐字节等于旧输出。
     pub args: Vec<String>,
     /// 需要注入子进程的**凭证** env（与 [`Self::env`] 分开：那份是身份，这份含密）。
     ///
@@ -139,6 +150,10 @@ pub struct ConfigDirPlan {
 /// - `member_count`：该团队**当前已有成员数（不含队长）**，用来算「这个队还允许谁」
 ///   （[`options_for`]）。由调用方从 `TeamManager` 的花名册取 —— 执行层不读库（本模块
 ///   只做纯推导 + `canonicalize`）。
+/// - `resume_argv`：续接片段（来自会话域，见
+///   [`crate::conversation::adapters::resume_argv_for`]）。**不是**准入事实：
+///   它回答「接着哪个对话」，而准入表回答「这个 CLI 怎么被拉起来」。位置由本函数决定
+///   （紧跟 program，见 [`SpawnPlan::args`]），`None` = 新开一个空白对话。
 pub fn plan_member_spawn(
     team: &Team,
     member: &TeamMember,
@@ -146,6 +161,7 @@ pub fn plan_member_spawn(
     token: &str,
     state_root: &Path,
     member_count: u32,
+    resume_argv: Option<&[String]>,
 ) -> Result<SpawnPlan, AppError> {
     if member.team_id != team.id {
         return Err(AppError::InvalidInput(format!(
@@ -193,8 +209,15 @@ pub fn plan_member_spawn(
         Vec::new()
     };
 
-    let (mut args, config_dir) = match admission.mcp_injection {
-        McpInjection::Argv => (render_argv(admission.mcp_argv, &ctx)?, None),
+    // resume 片段是**第一个**参数：codex 的 `resume` 是子命令，必须紧跟 program
+    // （追加到末尾会被当成 PROMPT —— 2026-11-11 实测）。它是会话域来的事实（「接着哪个
+    // 对话」），不是准入表的一部分，所以只在这里并入，不与 `mcp_argv` / `prompt_argv` 混排。
+    let mut args: Vec<String> = resume_argv.map(<[String]>::to_vec).unwrap_or_default();
+    let config_dir = match admission.mcp_injection {
+        McpInjection::Argv => {
+            args.extend(render_argv(admission.mcp_argv, &ctx)?);
+            None
+        }
         // 启动参数为空：这条 CLI 的 MCP 配置不是从命令行进去的，而是它自己的 `mcp add`
         // 写进**重定向后的**配置目录。
         McpInjection::ConfigDir => {
@@ -205,10 +228,7 @@ pub fn plan_member_spawn(
                     member.agent_id
                 ))
             })?;
-            (
-                Vec::new(),
-                Some(config_dir_plan(team, member, spec, &ctx, state_root)?),
-            )
+            Some(config_dir_plan(team, member, spec, &ctx, state_root)?)
         }
         // `launch_refusal` 已经把这两档拒了；到这里说明数据在两处之间漂了，
         // 拒绝而不是拿空参数起一个哑巴成员。
@@ -225,6 +245,10 @@ pub fn plan_member_spawn(
     // 两个位置都合法，选末尾是为了让注入档的参数保持一个连续前缀（排查时肉眼可比对）。
     // 空模板 ⇒ 空 vec ⇒ 该 CLI 拿不到这段文本（成员侧可接受，队长侧上面已拒）。
     args.extend(render_argv(admission.prompt_argv, &ctx)?);
+
+    // 旁路开关在**最后**：`Bypass` 是 per-CLI 数据（红线 15），而位置由本函数决定 ——
+    // 组合根只负责 `[program] ++ args`，它不再知道任何 argv 顺序。
+    args.extend(admission.bypass_args(member.approval_policy));
 
     Ok(SpawnPlan {
         cwd: resolve_cwd(team, member)?,
@@ -459,15 +483,29 @@ fn canonicalize(path: &Path, what: &str) -> Result<PathBuf, AppError> {
 /// 事就只剩 `block_on` 一条路 —— 那会在 handler 线程上阻塞 tokio worker（红线 3）。
 #[async_trait::async_trait]
 pub trait MemberExecutor: Send + Sync {
-    /// 为一个**已落库**的成员起进程，并把得到的 PTY 句柄回填到成员行。
+    /// 为一个**已落库**的成员起进程，返回它的 PTY 会话 id。
+    ///
+    /// 返回 id 而不是回填成员行：句柄是**进程期资源**，成员行跨重启（v22 起不再有
+    /// `terminal_id` 列）。归属与活性由登记时写入的 `SessionAttribution` 回答。
+    /// 调用方拿到 id 只为「起完立刻打开 tab」这一类当次动作。
     ///
     /// `token` 是该成员的凭证**明文**（由 [`CredentialLedger::admit`] 签发并已让门认识）。
     /// 它只在本函数内出现一次，随即进启动参数的 MCP 配置（design §3.1「明文只下发一次」）。
     ///
+    /// `resume_argv` 是**续接片段**（`None` = 新开一个空白对话）。它**不是身份**：成员的
+    /// 身份是成员行上的 `agent_session_id`；片段只是「接着哪个对话」这条指令，由
+    /// [`crate::conversation::adapters::resume_argv_for`] 给出、由
+    /// [`plan_member_spawn`] 放到启动行的开头。
+    ///
     /// 失败语义是「成员已落库但没有进程」——两相位设计里这是**可查询、可清理**的状态
     /// （见 `mcp::dispatch::ToolReply::MemberCreated` 的文档），所以错误原样上抛，不在这里
     /// 回滚成员。
-    async fn spawn(&self, member_id: &str, token: &str) -> Result<(), AppError>;
+    async fn spawn(
+        &self,
+        member_id: &str,
+        token: &str,
+        resume_argv: Option<Vec<String>>,
+    ) -> Result<String, AppError>;
 
     /// 把一条队内消息投递给成员。
     ///
@@ -480,8 +518,9 @@ pub trait MemberExecutor: Send + Sync {
     /// # 语义是**只关进程**，而且只是「请求」
     ///
     /// 状态迁移由调用方在关闭成功之后做（`TeamManager::finish_member_close`），因为
-    /// 「先 close PTY，再归档成员」是 design §7.1 写死的顺序 —— 反过来会留下悬空的
-    /// `terminal_id`（成员行已 `Dead`，会话还在跑，谁也不会去收）。
+    /// 「先 close PTY，再归档成员」是 design §7.1 写死的顺序 —— 反过来会出现
+    /// 「成员行已 `Offline`、PTY 还活着」的窗口：域侧认为它已消失，而那个会话还在收发，
+    /// 谁也不会去收。
     ///
     /// **返回 `Ok` 只保证 kill 已发出**，不保证进程已经消失：PTY 的收尾在另一个线程里完成
     /// （`close_session` 是 remove-then-close 的 async 形态）。所以「归档成员 + 撤凭证」可能
@@ -498,7 +537,7 @@ pub trait MemberExecutor: Send + Sync {
     ///
     /// | 情形 | 为什么算成功 |
     /// | --- | --- |
-    /// | `terminal_id` 是 `None`（从未起来） | 本来就没进程，目标状态已达成 |
+    /// | 从未起来过（活性注册表里没有它的会话） | 本来就没进程，目标状态已达成 |
     /// | 该会话已被关掉（terminal 域不认识它） | 目标状态已达成；把「已经不在」报成错误会让队长卡在一个终态上 |
     /// | 重复调用（整队关闭重试） | 整队关闭必须可重试，否则一个坏成员能把整个队钉在 `closing` |
     ///
@@ -665,7 +704,9 @@ pub async fn apply_effect(
 ) -> Result<EffectOutcome, AppError> {
     match effect {
         Effect::StartMember { member_id } => {
-            start_member(credentials, executor, member_id).await?;
+            // `team_spawn` 永远新开一个对话（模型给的是一份全新的任务）；续接只由
+            // `team_resume`（面板）发起 —— 它不是工具，也没有 principal。
+            start_member(credentials, executor, member_id, None).await?;
             Ok(EffectOutcome::Applied)
         }
         // `text` 已经由决定层用 `delivery::delivery_text` 拼好：发送者身份是 principal 的
@@ -694,8 +735,8 @@ pub async fn apply_effect(
 ///
 /// # 秩等
 ///
-/// 单成员关闭对已 `Dead` 的成员报 `Conflict`（既有的「不能关两次」语义）；整队关闭会把
-/// 已 `Dead` 的成员也算进目标 —— 那是「成员行死了但 PTY 还活着」的唯一安全重试路径，
+/// 单成员关闭对已 `Offline` 的成员报 `Conflict`（既有的「不能关两次」语义）；整队关闭会把
+/// 已 `Offline` 的成员也算进目标 —— 那是「成员行离线但 PTY 还活着」的唯一安全重试路径，
 /// 而 `executor.close` 本身幂等。
 pub fn plan_close(
     manager: &crate::agent::team::manager::TeamManager,
@@ -726,7 +767,7 @@ pub fn plan_close(
                     member.id, team.id
                 )));
             }
-            if member.state == MemberState::Dead {
+            if member.state == MemberState::Offline {
                 return Err(AppError::Conflict(format!(
                     "member `{}` process is already gone; a sole member cannot be closed twice — \
                      call this without `member_id` if the whole team still needs to be sealed",
@@ -829,19 +870,19 @@ fn close_notes(
 ///
 /// ```text
 /// executor.close(id)         → 请求关 PTY（幂等；「本来就没有进程」也算成功）
-/// finish_member_close(id)    → Dead + terminal_id=None + token 作废 + 在飞任务回 pending
-/// finish_team_close(team)    → 全部成员归档之后才 closing → closed + closed_at
+/// finish_member_close(id)    → Offline + sealed_at 落定 + token 作废 + 在飞任务回 pending
+/// finish_team_close(team)    → 全部成员归档之后才 closing → sealed + sealed_at
 /// credentials.refresh()      → 门忘掉刚被作废的那些 hash（**无 `?` 的收尾**）
 /// ```
 ///
-/// 反过来（先归档再关进程）会在 terminal 的清理窗口里留下悬空的 `terminal_id`：成员行已
-/// `Dead`，而 terminal 域里那个会话还在跑，谁也不会去收。
+/// 反过来（先归档再关进程）会出现「成员行已 `Offline`、PTY 还活着」的窗口：域侧认为它
+/// 已消失，而 terminal 域里那个会话还在跑，谁也不会去收。
 ///
 /// # 「关闭」是**一条**不可分割的后置条件
 ///
-/// 关掉一个成员之后，库里有四件事必须同时成立：`state = Dead`、`token_hash` 为空、
-/// `terminal_id` 为 `None`、门**忘掉**那把钥匙。前三个由 `finish_member_close` 在同一把锁内
-/// 一次写完；第四个不属于任何单个成员 —— 它属于整次关闭，所以它的位置不是「某一步之后」，
+/// 关掉一个成员之后，库里有三件事必须同时成立：`state = Offline`、`sealed_at` 落定、
+/// `token_hash` 为空；再加门**忘掉**那把钥匙。前三件由 `finish_member_close` 在同一把锁内
+/// 一次写完；第四件不属于任何单个成员 —— 它属于整次关闭，所以它的位置不是「某一步之后」，
 /// 而是**收尾**：
 ///
 /// - 循环里每一步都只把结果记进 `closed` / `failed`，**没有一个 `?`**；
@@ -969,7 +1010,10 @@ async fn close_targets(
 }
 
 /// id 列表的可读形态（错误信息里用；空 = `none`）。
-fn join_ids(ids: &[String]) -> String {
+///
+/// `pub(crate)`：错误信息里的「有谁」只能有一份拼法 —— `dispatch` 列本队成员时
+/// 复用它（各写一份 `join` 会让「空清单怎么读」在两处漂移：一处 `none`、一处空串）。
+pub(crate) fn join_ids(ids: &[String]) -> String {
     if ids.is_empty() {
         "none".to_owned()
     } else {
@@ -1056,10 +1100,11 @@ pub async fn start_member(
     credentials: &dyn CredentialLedger,
     executor: &dyn MemberExecutor,
     member_id: &str,
-) -> Result<(), AppError> {
+    resume_argv: Option<Vec<String>>,
+) -> Result<String, AppError> {
     let token = credentials.admit(member_id).await?;
     executor
-        .spawn(member_id, &token)
+        .spawn(member_id, &token, resume_argv)
         .await
         .map_err(|err| spawn_failure(member_id, err))
 }
@@ -1082,6 +1127,7 @@ mod tests {
     use crate::agent::team::admission::{
         McpTransport, MCP_CONFIG_PLACEHOLDER, MCP_URL_PLACEHOLDER,
     };
+    use crate::agent::team::delivery::PtySubmit;
     use crate::agent::team::fixtures::{fixture_member, fixture_team};
     use crate::agent::team::manager::TeamManager;
     use crate::agent::team::store::TeamStore;
@@ -1183,13 +1229,43 @@ mod tests {
     }
 
     /// 同上，但团队行由调用方给（池 / 默认值 / 上限影响推导的用例用它）。
+    ///
+    /// `resume = None`：绝大多数用例不关心续接（新开的对话是常态），需要续接的用例
+    /// 用 [`plan_for_team_resumed`]。
     fn plan_for_team(
         team: &Team,
         tmp: &tempfile::TempDir,
         member: &TeamMember,
         member_count: u32,
     ) -> Result<SpawnPlan, AppError> {
-        plan_member_spawn(team, member, MCP_URL, TOKEN, &state_root(tmp), member_count)
+        plan_member_spawn(
+            team,
+            member,
+            MCP_URL,
+            TOKEN,
+            &state_root(tmp),
+            member_count,
+            None,
+        )
+    }
+
+    /// 带续接片段的计划（`team_resume` 的形状：身份不变，只多一段 argv）。
+    fn plan_for_team_resumed(
+        team: &Team,
+        tmp: &tempfile::TempDir,
+        member: &TeamMember,
+        resume: &[&str],
+    ) -> Result<SpawnPlan, AppError> {
+        let resume: Vec<String> = resume.iter().map(|arg| (*arg).to_owned()).collect();
+        plan_member_spawn(
+            team,
+            member,
+            MCP_URL,
+            TOKEN,
+            &state_root(tmp),
+            0,
+            Some(&resume),
+        )
     }
 
     /// happy path：三件套各自来自一个**已落库**的字段（+ 末尾的角色 preamble）。
@@ -1226,6 +1302,90 @@ mod tests {
             config["mcpServers"][TEAM_SERVER_NAME]["headers"][TOKEN_HEADER],
             TOKEN
         );
+    }
+
+    /// **position 契约**：续接片段紧跟 program（`args[0..]` 的最前面）。
+    ///
+    /// codex 是这条契约的钉子：它的 `resume` 是**子命令**，把它追加到启动行末尾会被当成
+    /// `PROMPT` 位置参数（2026-11-11 实测）—— 于是「恢复」起来的是一个以 `resume` 为开场白
+    /// 的新对话，而用户看到的是一个空白聊天框。
+    #[test]
+    fn planning_a_resumed_member_puts_the_fragment_right_after_the_program() {
+        let tmp = tempdir();
+        let team = team_at(tmp.path());
+        let plan =
+            plan_for_team_resumed(&team, &tmp, &worker("codex"), &["resume", "s1"]).expect("plan");
+
+        assert_eq!(&plan.args[..2], ["resume", "s1"], "{:?}", plan.args);
+        // MCP 参数（`-c …`）紧跟在片段之后，preamble 仍在最后。
+        assert_eq!(plan.args[2], "-c", "{:?}", plan.args);
+        let preamble = plan.args.last().expect("preamble 在末尾");
+        assert!(
+            preamble.contains("You are a worker of Neeko team"),
+            "preamble 必须是最后一个参数：{preamble}"
+        );
+    }
+
+    /// `resume = None` 时的启动行**逐字节等于旧输出**：`mcp → prompt → bypass`。
+    ///
+    /// 反例（本用例挡的正是它）：把旁路开关挪到 preamble 之前 / 之后再加一段别的顺序 ——
+    /// 那会改变今天每一家 CLI 都被实测过的参数序，而症状只在「成员起来后行为怪」时显形。
+    #[test]
+    fn planning_a_fresh_member_is_byte_identical_to_before() {
+        let tmp = tempdir();
+        let member = TeamMember {
+            approval_policy: crate::agent::team::types::ApprovalPolicy::Bypass,
+            ..worker("claude-code")
+        };
+        let plan = plan_for(&tmp, &member).expect("plan");
+
+        assert_eq!(plan.args.len(), 5, "{:?}", plan.args);
+        assert_eq!(plan.args[0], "--mcp-config");
+        assert_eq!(plan.args[2], "--append-system-prompt");
+        assert!(
+            plan.args[3].contains("You are a worker of Neeko team"),
+            "{:?}",
+            plan.args[3]
+        );
+        assert_eq!(
+            plan.args[4], "--dangerously-skip-permissions",
+            "旁路开关仍在最后（per-CLI 数据，位置由本层定）"
+        );
+        assert!(
+            !plan
+                .args
+                .iter()
+                .any(|arg| arg == "--resume" || arg == "resume"),
+            "新开的对话不得带续接片段：{:?}",
+            plan.args
+        );
+    }
+
+    /// 新开 vs 续接：**差异只有那一段 argv**（cwd / env / 凭证 env / 隔离目录全同）。
+    ///
+    /// 这就是「恢复 = 用同一份身份 + 同一份原生 id 重建资源」的机器形式：两个计划只该在
+    /// 「接着哪个对话」上不同。
+    #[test]
+    fn the_only_argv_difference_between_fresh_and_resumed_is_the_fragment() {
+        let tmp = tempdir();
+        let team = team_at(tmp.path());
+        let member = worker("codex");
+        let fresh = plan_for_team(&team, &tmp, &member, 0).expect("fresh");
+        let fragment = ["resume", "s1"];
+        let resumed = plan_for_team_resumed(&team, &tmp, &member, &fragment).expect("resumed");
+
+        assert_eq!(
+            resumed.args[fragment.len()..],
+            fresh.args[..],
+            "片段之后必须逐字节相等：{:?} vs {:?}",
+            resumed.args,
+            fresh.args
+        );
+        assert_eq!(&resumed.args[..fragment.len()], fragment);
+        assert_eq!(fresh.cwd, resumed.cwd);
+        assert_eq!(fresh.env, resumed.env);
+        assert_eq!(fresh.credentials_env, resumed.credentials_env);
+        assert_eq!(fresh.config_dir, resumed.config_dir);
     }
 
     /// qoder 额外要 `--strict-mcp-config`（模板是数据，不是通用模板的特例分支）。
@@ -1374,6 +1534,7 @@ mod tests {
             bypass_args: &[],
             mcp_argv: &["--mcp-config", MCP_CONFIG_PLACEHOLDER],
             config_dir: None,
+            pty_submit: PtySubmit::Plain,
             prompt_argv: &[],
             unverified: &[],
         }
@@ -1753,11 +1914,19 @@ mod tests {
 
     #[async_trait::async_trait]
     impl MemberExecutor for Recorder {
-        async fn spawn(&self, member_id: &str, token: &str) -> Result<(), AppError> {
-            self.record(format!("spawn:{member_id}:{token}"));
+        async fn spawn(
+            &self,
+            member_id: &str,
+            token: &str,
+            resume_argv: Option<Vec<String>>,
+        ) -> Result<String, AppError> {
+            self.record(format!(
+                "spawn:{member_id}:{token}:{}",
+                resume_argv.map_or_else(|| "fresh".to_owned(), |argv| argv.join(" "))
+            ));
             match self.spawn_error {
                 Some(message) => Err(AppError::Terminal(message.to_owned())),
-                None => Ok(()),
+                None => Ok(format!("term-{member_id}")),
             }
         }
 
@@ -1804,6 +1973,7 @@ mod tests {
                 body: "body".into(),
                 state: TeamTaskState::Pending,
                 owner: None,
+                assignee: None,
                 workspace: Workspace::Shared,
                 depends_on: vec![],
                 claimed_at: None,
@@ -1840,12 +2010,12 @@ mod tests {
             team_id: TEAM.to_owned(),
             member_id: Some(member_id.to_owned()),
             targets: Vec::new(),
-            team_state: TeamState::Active,
+            team_state: TeamState::Open,
             notes: vec!["a note from the decision layer".to_owned()],
         })
     }
 
-    /// 走一遍决定层的整队关闭前置（`active → closing`），返回待关列表。
+    /// 走一遍决定层的整队关闭前置（`open → closing`），返回待关列表。
     ///
     /// 生产路径上这一步发生在 `plan_close` 里（`begin_team_close`）；本模块的用例
     /// 只负责「动手」那一半，所以在这里显式补上 —— 跳过它会被 `finish_team_close`
@@ -1899,8 +2069,12 @@ mod tests {
         assert_eq!(outcome, EffectOutcome::Applied, "起进程之后回复就是事实");
         assert_eq!(
             recorder.calls(),
-            vec![format!("admit:{W1}"), format!("spawn:{W1}:issued-token"),],
-            "顺序与载荷都是契约：认门在前，明文只在 spawn 的入参里出现"
+            vec![
+                format!("admit:{W1}"),
+                format!("spawn:{W1}:issued-token:fresh"),
+            ],
+            "顺序与载荷都是契约：认门在前，明文只在 spawn 的入参里出现；\
+             `team_spawn` 永远新开对话（续接只走 `team_resume`）"
         );
     }
 
@@ -1983,7 +2157,7 @@ mod tests {
         );
     }
 
-    /// 关单个成员：**先关进程**（执行者被调用）→ 再归档（`Dead` + 凭证作废 + 任务回 pending）。
+    /// 关单个成员：**先关进程**（执行者被调用）→ 再归档（`Offline` + 凭证作废 + 任务回 pending）。
     ///
     /// 保护的不变量：`reclaim_count` **不动**（手动关队不是任务失败）。若这里 +1，
     /// 「反复失败」这个指标就把人的决定算成了成员的无能 —— 四轮之后任务会被冻结。
@@ -2005,14 +2179,15 @@ mod tests {
         );
 
         let member = manager.member(W1).expect("member");
-        assert_eq!(member.state, MemberState::Dead, "关闭成功后必须归档");
+        assert_eq!(member.state, MemberState::Offline, "关闭成功后必须归档");
         assert!(
             member.token_hash.is_empty(),
             "凭证必须立即作废（空 hash 会让身份表跳过它）"
         );
         assert!(
-            member.terminal_id.is_none(),
-            "归档必须清掉 terminal_id（否则面板还给一个「打开终端」的死按钮）"
+            member.sealed_at.is_some(),
+            "归档必须写下封存时刻（否则面板分不清「跑到一半退了」与「用户关掉了」）\
+             —— 只判非空：这个字段的可读者只关心「用户封存过没有」，不读它的绝对值"
         );
 
         let task = manager.task(&TaskRef::new(TEAM, "t1")).expect("task");
@@ -2028,11 +2203,7 @@ mod tests {
         let closed = closed_outcome(outcome);
         assert_eq!(closed.members_closed, vec![W1.to_owned()]);
         assert!(closed.members_failed.is_empty());
-        assert_eq!(
-            closed.team_state,
-            TeamState::Active,
-            "关一个成员不改团队状态"
-        );
+        assert_eq!(closed.team_state, TeamState::Open, "关一个成员不改团队状态");
         assert!(
             closed
                 .notes
@@ -2044,8 +2215,8 @@ mod tests {
 
     /// **顺序判据**：关不掉进程的成员**不得**被归档。
     ///
-    /// 变异验证：把「先关进程、再归档」换成「先归档」时本用例变红（成员已 `Dead`，
-    /// 而进程还活着 —— 那正是悬空 `terminal_id` 的成因）。
+    /// 变异验证：把「先关进程、再归档」换成「先归档」时本用例变红（成员已 `Offline`，
+    /// 而进程还活着 —— 那正是「域以为它消失了、会话还在收发」的成因）。
     #[tokio::test]
     async fn a_member_whose_process_survives_is_not_archived() {
         let recorder = Recorder {
@@ -2072,7 +2243,7 @@ mod tests {
         );
 
         let member = manager.member(W1).expect("member");
-        assert_ne!(member.state, MemberState::Dead, "进程还活着就不能归档");
+        assert_ne!(member.state, MemberState::Offline, "进程还活着就不能归档");
         assert!(!member.token_hash.is_empty(), "关不掉就不该作废凭证");
         assert_eq!(
             manager.task(&TaskRef::new(TEAM, "t1")).expect("task").state,
@@ -2087,7 +2258,7 @@ mod tests {
         );
     }
 
-    /// 整队关闭：全部关掉之后才落终态 —— `closed` + `closed_at` + 全队 `Dead`。
+    /// 整队关闭：全部关掉之后才落终态 —— `sealed` + `sealed_at` + 全队 `Offline`。
     #[tokio::test]
     async fn closing_the_whole_team_seals_it_only_when_every_member_closed() {
         let recorder = Recorder::new();
@@ -2116,18 +2287,18 @@ mod tests {
         );
 
         let team = manager.team(TEAM).expect("team");
-        assert_eq!(team.state, TeamState::Closed);
-        assert!(team.closed_at.is_some(), "终态必须写 closed_at");
+        assert_eq!(team.state, TeamState::Sealed);
+        assert!(team.sealed_at.is_some(), "终态必须写 sealed_at");
         for member_id in [LEAD, W1, W2] {
             let member = manager.member(member_id).expect("member");
             assert_eq!(
                 member.state,
-                MemberState::Dead,
+                MemberState::Offline,
                 "{member_id} 必须随团队归档"
             );
             assert!(
-                member.terminal_id.is_none(),
-                "{member_id} 归档后不得留下 terminal_id"
+                member.sealed_at.is_some(),
+                "{member_id} 归档后必须留下封存时刻"
             );
             assert!(member.token_hash.is_empty(), "{member_id} 凭证必须作废");
         }
@@ -2136,7 +2307,7 @@ mod tests {
         assert_eq!(closed.members_closed, vec![W1.to_owned(), W2.to_owned()]);
         assert_eq!(
             closed.team_state,
-            TeamState::Closed,
+            TeamState::Sealed,
             "结果说的必须是执行之后的真相"
         );
     }
@@ -2188,11 +2359,11 @@ mod tests {
         // 判据二：库里的 hash 已经清空（重建之后旧 token 再也进不来）。
         for id in [W1, W2] {
             let member = manager.member(id).expect("member");
-            assert_eq!(member.state, MemberState::Dead, "{id} 已归档");
+            assert_eq!(member.state, MemberState::Offline, "{id} 已归档");
             assert!(member.token_hash.is_empty(), "{id} 的凭证必须已作废");
         }
         // 判据三：状态没有被伪造成 `closed`（seal 真的失败了）。
-        assert_eq!(manager.team(TEAM).expect("team").state, TeamState::Active);
+        assert_eq!(manager.team(TEAM).expect("team").state, TeamState::Open);
 
         let message = err.to_string();
         assert!(message.contains(W1), "错误必须点名已归档的成员：{message}");
@@ -2218,8 +2389,13 @@ mod tests {
 
         #[async_trait::async_trait]
         impl MemberExecutor for Flaky {
-            async fn spawn(&self, member_id: &str, token: &str) -> Result<(), AppError> {
-                self.inner.spawn(member_id, token).await
+            async fn spawn(
+                &self,
+                member_id: &str,
+                token: &str,
+                resume_argv: Option<Vec<String>>,
+            ) -> Result<String, AppError> {
+                self.inner.spawn(member_id, token, resume_argv).await
             }
 
             async fn deliver(&self, member_id: &str, message: &str) -> Result<(), AppError> {
@@ -2260,15 +2436,15 @@ mod tests {
 
         let team = manager.team(TEAM).expect("team");
         assert_eq!(team.state, TeamState::Closing, "有失败就停在 closing");
-        assert!(team.closed_at.is_none(), "没关干净就不能写 closed_at");
+        assert!(team.sealed_at.is_none(), "没关干净就不能写 sealed_at");
         assert_eq!(
             manager.member(W1).expect("member").state,
-            MemberState::Dead,
+            MemberState::Offline,
             "其它成员必须已经关掉（不能被一个坏成员卡死）"
         );
         assert_ne!(
             manager.member(W2).expect("member").state,
-            MemberState::Dead,
+            MemberState::Offline,
             "关不掉的成员不能归档"
         );
         // 已关掉的成员凭证仍然要失效（失败路径上也不许留着能用的钥匙）。

@@ -33,8 +33,11 @@ pub struct Team {
     pub id: String,
     /// 用户可读名字；缺省时由调用方派生（本层不派生）。
     pub name: String,
-    /// 队长的会话 id（PTY 会话）。
-    pub lead_session_id: String,
+    /// 用户封存时刻（epoch 毫秒）；`None` = 未封存（团队可恢复）。
+    ///
+    /// 与 [`TeamState::Sealed`] 是同一件事的两个面：`state` 是机器判据（能不能写），
+    /// 这里是可展示的时刻。**不存队长的 PTY 句柄** —— 它是进程期资源，团队行跨重启。
+    pub sealed_at: Option<i64>,
     /// 队长的 agent id（`AgentConfig.id`）。
     pub lead_agent_id: String,
     /// 团队根工作区（归一化后的绝对路径）。
@@ -48,10 +51,21 @@ pub struct Team {
     /// 写入路径（`bootstrap::plan_team`）对空 id 直接拒绝，所以空只可能来自旧库。
     #[serde(default)]
     pub project_id: String,
+    /// 团队所在的**工作树维度**（`project_path` 的地址分量）；`None` = 主 checkout。
+    ///
+    /// 与 `project_id` 合起来是工作区身份 `(project_id, worktree_path)` —— 同一个项目可以在
+    /// 主仓与多个工作树上各有一个团队，而它们分属不同的 Workspace 单元。
+    ///
+    /// **不是**从路径推导出来的（红线 12）：建队时由调用方给出（前端 `activeWorkspace`），
+    /// 后端用 `resolve_workspace` 校验后才落库。`project_path` 则是规范化后的团队根（信任根），
+    /// 两者必须指向同一个工作区（`start_team_session` 断言这一点）。
+    ///
+    /// **`None` 的两种含义**：主 checkout，或 v23 之前建的行（那时没记过这一维）。
+    /// 后者只能退回 `project_path` 当工作区根。
+    #[serde(default)]
+    pub workspace_worktree: Option<PathBuf>,
     /// 建队时间（epoch 毫秒）。
     pub created_at: i64,
-    /// 关闭时间；`None` = 未关闭。
-    pub closed_at: Option<i64>,
     /// 团队状态。
     pub state: TeamState,
     /// 允许被 `team_spawn` 选中的 CLI（`agent_id`）。**空 = 不限制**。
@@ -159,16 +173,25 @@ impl Default for TeamConfig {
     }
 }
 
-/// 团队状态机：`Active → Closing → Closed`（单向，不可回退）。
+/// 团队状态 —— **意图**，不是运行态。
+///
+/// `Open → Closing → Sealed` 单向；唯一的反向边是「关闭被重启打断」：`boot::reconcile`
+/// 把 `Closing` 归位回 `Open`（让用户重试），因为那次关闭的进程全部已随重启消失。
+///
+/// # 为什么 `Active` 改叫 `Open`、`Closed` 改叫 `Sealed`
+///
+/// 旧的 `Active` 同时表达了「进程在跑」与「团队可以用」，于是 app 重启后它必然说谎
+/// （进程没了，状态还是 active）。运行态一律由现实推导（成员 `offline`），团队状态只回答
+/// **用户意图**：这个团队还能不能派活 / 能不能恢复；`Sealed` = 用户封存了它，不可恢复、可删除。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TeamState {
-    /// 运行中。
-    Active,
-    /// 正在协商关闭（成员被要求收尾，进程尚未全退）。
+    /// 打开：可派活、可恢复（与「此刻有没有进程」无关）。
+    Open,
+    /// 正在协商关闭（成员被要求收尾，进程尚未全退）。可重试。
     Closing,
-    /// 已关闭；此状态后不再接受任何写操作。
-    Closed,
+    /// 已封存：只读、可删除、**不可恢复**（用户显式动作才能到这里）。
+    Sealed,
 }
 
 /// 一名团队成员。
@@ -194,13 +217,15 @@ pub struct TeamMember {
     pub session_id: Option<String>,
     /// CLI 的**原生会话 id**（hook 上报的 `agent_session_id`）。
     ///
-    /// 用途只有一个：成员退出后还能按它打开**历史 transcript**（`conversation` 域的
-    /// `agent_id:native_id`）—— 「已退出的成员」没有活的 PTY，但它的会话记录还在磁盘上。
-    /// 由观察者从 hook 事件里记录（第一次见到就写，之后不变：同一成员的 native id 稳定）。
+    /// 这就是「这名成员正在哪个对话里」这条**身份绑定** —— 全仓唯一持有者：会话域的
+    /// 条目随进程自然退出被整行删除（`live_sessions::wiring::pty::on_exit`），缓存由磁盘
+    /// 重建且不认成员，所以它不在这里就没人有（红线 17 的反面用例：**唯一副本**）。
+    ///
+    /// 观察者从**任意** hook 事件记录（不再按事件键门控 —— 门控会让「只发过
+    /// `session_started` 的队长」永远没有身份）。值可以变：成员 cold-start 出一个新会话时
+    /// 绑定跟着走，`--resume` 续接时保持原值。
     #[serde(default)]
     pub agent_session_id: Option<String>,
-    /// 本期唯一：关联的 PTY 会话 id（CLI 成员）。
-    pub terminal_id: Option<String>,
     /// 成员的 cwd（`Shared` = 团队根，`Worktree{path}` = 独立 worktree）。
     pub workspace: Workspace,
     /// 怎么**发**消息给它。
@@ -228,6 +253,16 @@ pub struct TeamMember {
     /// 展示与审计；正文由执行层拼进角色 preamble（`identity::with_persona`）。
     #[serde(default)]
     pub persona: Option<Persona>,
+    /// 封存时刻（epoch 毫秒）；`None` = 未封存。
+    ///
+    /// # 为什么它是独立字段而不是 `MemberState::Sealed`
+    ///
+    /// 运行态（`MemberState`）与用户意图是两个维度：`state` 回答「进程在干什么」
+    /// （一律可由现实推导，重启后归位成 `Offline`），`sealed_at` 回答「用户关掉了它」。
+    /// 把它们挤进同一个枚举的后果：重启归位会把「用户封存过」这件事擦掉，于是已封存的
+    /// 成员又变成可恢复的 —— 那正是本任务要消灭的一类错误。
+    #[serde(default)]
+    pub sealed_at: Option<i64>,
 }
 
 /// 成员的人设快照（[`TeamMember::persona`]）。
@@ -308,7 +343,16 @@ pub struct TeamPrincipal {
     pub tier: AdmissionTier,
 }
 
-/// 成员状态。**六态徽标契约**（`prototype-agent-team.html` 视图 ②）—— 一个都不能合并。
+/// 成员状态 —— 纯**运行态**：它只能描述「进程/回合现在在哪一步」。
+///
+/// 用户意图（封存）**不在**这里，它在 [`TeamMember::sealed_at`]：两者维度不同，
+/// 混进一个枚举会让「重启归位」把用户的决定擦掉。
+///
+/// # `Offline` 是投影，不是动作
+///
+/// 进程不可能跨重启存活，所以 app 启动时每个成员的运行态都是 `Offline`（`boot::reconcile`
+/// 统一写入）。同理，一个 `Offline` 成员被 `team_resume` 重新起进程后回到 `Running`。
+/// 旧名 `Dead` 把「进程没了」与「用户关掉了它」压进一个词，而这两件事在恢复语义上相反。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemberState {
@@ -324,8 +368,8 @@ pub enum MemberState {
     Done,
     /// 本回合失败。
     Failed,
-    /// 进程退出（L4）。
-    Dead,
+    /// 进程不在（从未起过 / 已退出 / 重启后归位）。**可恢复**，除非 `sealed_at` 有值。
+    Offline,
     /// 静默超阈值 / 租约到期（L3）。
     Stalled,
 }
@@ -393,7 +437,17 @@ pub struct TeamTask {
     /// 任务状态。
     pub state: TeamTaskState,
     /// 持有者 member id；`claimed` / `in_progress` 时**有且只有一个**（不变量 1）。
+    ///
+    /// 这是**执行事实**（谁在做）；「谁该做」是 [`Self::assignee`]。两者刻意分成两列。
     pub owner: Option<String>,
+    /// 被指派的成员 id（`name@team_id`，与 `team_send.to` 同一种寻址）。
+    ///
+    /// 这是**计划事实**（谁该做），`owner` 是执行事实（谁在做）。它**不改变状态**：
+    /// 指派后任务仍是 `pending`、`owner` 仍为空、不起租约 —— 自动落成 `claimed` 会让
+    /// 排队中的任务被租约回收器当成「没有进程在跑」而回收掉 owner（design §1）。
+    ///
+    /// `None` = 未指派（也包括 v24 之前建的老行），此时任何本队成员都能认领。
+    pub assignee: Option<String>,
     /// 任务的工作区。`state != Pending` 后**不可变**（不变量 5）。
     pub workspace: Workspace,
     /// 依赖的任务 id；未全部 `done` 时不可 claim（不变量 3）。
@@ -682,9 +736,9 @@ mod tests {
     /// （红线 5 的同族问题：双端只在常量层对齐）。
     #[test]
     fn every_unit_enum_roundtrips_through_json() {
-        roundtrip(TeamState::Active);
+        roundtrip(TeamState::Open);
         roundtrip(TeamState::Closing);
-        roundtrip(TeamState::Closed);
+        roundtrip(TeamState::Sealed);
         roundtrip(MemberRole::Lead);
         roundtrip(MemberRole::Worker);
         roundtrip(MemberState::Spawned);
@@ -693,7 +747,7 @@ mod tests {
         roundtrip(MemberState::Idle);
         roundtrip(MemberState::Done);
         roundtrip(MemberState::Failed);
-        roundtrip(MemberState::Dead);
+        roundtrip(MemberState::Offline);
         roundtrip(MemberState::Stalled);
         roundtrip(TeamTaskState::Pending);
         roundtrip(TeamTaskState::Claimed);
@@ -782,6 +836,7 @@ mod tests {
             body: "B".into(),
             state: TeamTaskState::Pending,
             owner: None,
+            assignee: None,
             workspace: Workspace::Shared,
             depends_on: vec![],
             claimed_at: None,
@@ -811,6 +866,7 @@ mod tests {
             body: "B".into(),
             state: TeamTaskState::Pending,
             owner: None,
+            assignee: None,
             workspace: Workspace::Shared,
             depends_on: vec![],
             claimed_at: None,
@@ -855,15 +911,17 @@ mod tests {
         let team = Team {
             id: "tm_1".into(),
             name: "T".into(),
-            lead_session_id: "s".into(),
             lead_agent_id: "pi".into(),
             project_path: PathBuf::from("root"),
             // 线上键集的判据（下方）：`projectId` 与 `projectPath` 是**两个**不同的键 ——
             // 合并它们就等于把「环境归属」和「工作区根」搞成同一件事。
             project_id: "p1".into(),
+            // 工作区身份的另一半（v23）：`workspaceWorktree` 必须出现在线上键集里，
+            // 否则前端读 `team.workspaceWorktree` 会拿到 `undefined` 而不报错。
+            workspace_worktree: Some(PathBuf::from("wt")),
             created_at: 1,
-            closed_at: None,
-            state: TeamState::Active,
+            sealed_at: None,
+            state: TeamState::Open,
             allowed_agent_ids: vec!["pi".into()],
             default_model: Some("m".into()),
             default_workspace: Workspace::Shared,
@@ -884,7 +942,6 @@ mod tests {
             keys,
             vec![
                 "allowedAgentIds",
-                "closedAt",
                 "createdAt",
                 "defaultApprovalPolicy",
                 "defaultModel",
@@ -892,13 +949,14 @@ mod tests {
                 "defaultWorkspace",
                 "id",
                 "leadAgentId",
-                "leadSessionId",
                 "maxMembers",
                 "name",
                 "projectId",
                 "projectPath",
                 "roleHints",
+                "sealedAt",
                 "state",
+                "workspaceWorktree",
             ]
         );
         roundtrip(team);

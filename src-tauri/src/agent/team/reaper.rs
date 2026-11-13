@@ -121,6 +121,7 @@ mod tests {
             body: "body".into(),
             state: TeamTaskState::Pending,
             owner: None,
+            assignee: None,
             workspace: Workspace::Shared,
             depends_on: vec![],
             claimed_at: None,

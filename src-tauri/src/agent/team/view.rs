@@ -97,14 +97,14 @@ pub struct TeamSummary {
     pub lead_agent_id: String,
     /// 建队时间（epoch 毫秒）。
     pub created_at: i64,
-    /// 关闭时间；`None` = 未关闭。
-    pub closed_at: Option<i64>,
-    /// **成员数（不含队长，含已 `Dead` 的成员）**。
+    /// 用户封存时刻；`None` = 未封存（团队可恢复）。
+    pub sealed_at: Option<i64>,
+    /// **成员数（不含队长，含已 `Offline` 的成员）**。
     ///
     /// 与 `TeamManager::member_count` **同源**（同一个数字也用于 `team_options` 的
     /// 「还能加几个」与 `team_spawn` 的上限判据）。刻意**不**在这里改成「只数活着的」：
     /// 那样同一个队会有两个不同的成员数（面板说 2、`team_options` 说 3），而偏差只在
-    /// 「刚好卡在上限」时显形。已关闭的成员仍占名额 —— 那是上限判据的事实。
+    /// 「刚好卡在上限」时显形。离线的成员仍占名额 —— 那是上限判据的事实。
     pub member_count: u32,
     /// 板上任务总数。
     pub task_total: usize,
@@ -133,7 +133,7 @@ pub struct TeamStatusView {
     pub team_id: String,
     /// 团队状态。
     pub team_state: TeamState,
-    /// **成员数（不含队长，含已 `Dead` 的成员）**。
+    /// **成员数（不含队长，含已 `Offline` 的成员）**。
     ///
     /// 与 [`TeamSummary::member_count`] **同源**（同一个 `TeamManager::member_count`：它也供
     /// `team_options` 的「还能加几个」与 `team_spawn` 的上限判据用）。
@@ -188,18 +188,39 @@ pub struct MemberStatusView {
     pub lease_remaining_secs: Option<i64>,
     /// 这个成员跑的是哪个 CLI（`AgentConfig.id`）—— 花名册上的第一枚 chip。
     pub agent_id: String,
-    /// 它那个 PTY 的会话 id（`None` = 还没有进程：没起来 / 起失败 / 已关掉）。
+    /// 它那个 PTY 的**运行态**（`live` + 活着的会话 id）。
     ///
-    /// **这是「打开成员终端」的唯一入口凭据**。`None` 与「有 id 但会话已死」是两件事：
-    /// 前者前端不该给按钮，后者点了会得到终端的可读错误 —— 前端不预判哪一种。
-    pub terminal_id: Option<String>,
+    /// **这是「打开成员终端」的唯一入口凭据**，且它来自终端的读接口而不是成员行：
+    /// 成员行不存句柄，所以「面板显示可点、点下去必失败」这种僵尸状态在类型上就不存在。
+    /// `live == false` 时前端走「恢复 / 查看记录 / 置灰」三态（`openTerminalAction`）。
+    pub session: LiveSession,
     /// 它在哪个工作区干活（共享团队根 / 独立 worktree / 只读）。
     pub workspace: Workspace,
     /// CLI 的**原生会话 id**（`conversation` 域用它拼 `agent_id:native_id`）。
     ///
-    /// 前端据此在成员**退出后**仍能打开历史 transcript：`terminalId` 已清空，
+    /// 前端据此在成员**退出后**仍能打开历史 transcript：`session.live == false`，
     /// 但会话记录还在磁盘上，这两件事不是一回事。
     pub agent_session_id: Option<String>,
+    /// 用户是否封存了这个成员（`false` = 未封存，§可恢复）。
+    ///
+    /// 与 `state` 是两个维度：`state` 是运行态（重启后归位成 `offline`），
+    /// `sealed` 是用户意图（只有用户动作能写）。
+    pub sealed: bool,
+    /// 这个成员**还回不回来**：有原生会话 id，且它的 CLI 有原生续接形态。
+    ///
+    /// 派生字段（不是落库列）：`agent_session_id` 来自成员行，形态来自会话域的适配器
+    /// （[`crate::conversation::adapters::resume_argv_for`]，传空 `project_path` —— 这里只问
+    /// `is_some()`，真正拼 argv 的是执行层）。封存成员恒为可看历史而不可恢复，所以前端
+    /// 还要看 `sealed`。
+    ///
+    /// 三态判据的落点（前端 `openTerminalAction`）：
+    ///
+    /// | `session.live` | `resumable` | `sealed` | 动作 |
+    /// | --- | --- | --- | --- |
+    /// | `true` | — | — | 打开会话 |
+    /// | `false` | `true` | `false` | 恢复（接管一个新进程） |
+    /// | `false` | `false` | — | 查看记录（只读历史）/ 置灰 |
+    pub resumable: bool,
     /// 人设名（spawn 时刻从角色库快照到成员行上的；`None` = 无人设）。
     ///
     /// 只有名字，不携带正文 —— 正文已经进了那个成员的 argv，面板不需要再读它。
@@ -228,6 +249,11 @@ pub struct TaskCard {
     pub state: TeamTaskState,
     /// 持有者成员 id。
     pub owner: Option<String>,
+    /// 被指派的成员 id（**计划事实**：谁该做；`owner` 是执行事实：谁在做）。（v24）
+    ///
+    /// `None` = 未指派（包括 v24 之前建的老行）。卡片与分配图的副标题取
+    /// `assignee ?? owner`：既没有指派也没有认领时才是「未指派」。
+    pub assignee: Option<String>,
     /// 工作区。
     pub workspace: Workspace,
     /// 依赖的任务 id。
@@ -256,6 +282,7 @@ impl TaskCard {
             title: task.title.clone(),
             state: task.state,
             owner: task.owner.clone(),
+            assignee: task.assignee.clone(),
             workspace: task.workspace.clone(),
             depends_on: task.depends_on.clone(),
             claimed_at: task.claimed_at,
@@ -362,10 +389,14 @@ pub struct TeamSnapshot {
 }
 
 /// `team_status` 的载荷（MCP 工具面）。
-pub fn team_status_view(manager: &TeamManager, team_id: &str) -> Result<TeamStatusView, AppError> {
+pub fn team_status_view(
+    manager: &TeamManager,
+    team_id: &str,
+    sessions: &dyn MemberSessionLookup,
+) -> Result<TeamStatusView, AppError> {
     let team = loaded_team(manager, team_id)?;
     let tasks = manager.tasks(team_id);
-    let members = roster(manager, team_id, &tasks, now_millis())?;
+    let members = roster(manager, team_id, &tasks, now_millis(), sessions)?;
     Ok(TeamStatusView {
         team_id: team.id.clone(),
         team_state: team.state,
@@ -382,10 +413,14 @@ pub fn team_status_view(manager: &TeamManager, team_id: &str) -> Result<TeamStat
 }
 
 /// 面板快照（本地 Tauri 入口）。
-pub fn team_snapshot(manager: &TeamManager, team_id: &str) -> Result<TeamSnapshot, AppError> {
+pub fn team_snapshot(
+    manager: &TeamManager,
+    team_id: &str,
+    sessions: &dyn MemberSessionLookup,
+) -> Result<TeamSnapshot, AppError> {
     let team = loaded_team(manager, team_id)?;
     let tasks = manager.tasks(team_id);
-    let members = roster(manager, team_id, &tasks, now_millis())?;
+    let members = roster(manager, team_id, &tasks, now_millis(), sessions)?;
     Ok(TeamSnapshot {
         team,
         member_count: manager.member_count(team_id),
@@ -466,7 +501,7 @@ pub fn list_teams_scoped(manager: &TeamManager, project_id: Option<&str>) -> Tea
                 project_path: team.project_path.clone(),
                 lead_agent_id: team.lead_agent_id.clone(),
                 created_at: team.created_at,
-                closed_at: team.closed_at,
+                sealed_at: team.sealed_at,
                 // 与 `team_options` / `team_spawn` 上限判据同一个数（见字段文档）。
                 member_count: manager.member_count(&team.id),
                 task_total: counts.total,
@@ -534,13 +569,17 @@ pub fn task_detail(manager: &TeamManager, key: &TaskRef) -> Result<TaskDetail, A
 /// `team_task` 没有 `completed_at`（完成时间只存在审计的 `update` 事件里），所以已完成那一段
 /// 只能按 `claimed_at` 倒序近似。同一个成员的两个任务起租时间相同时按 id 升序兜底 ——
 /// 排序必须**稳定**，否则每次脉冲重取都会换一遍行序。
-pub fn member_detail(manager: &TeamManager, member_id: &str) -> Result<MemberDetail, AppError> {
+pub fn member_detail(
+    manager: &TeamManager,
+    member_id: &str,
+    sessions: &dyn MemberSessionLookup,
+) -> Result<MemberDetail, AppError> {
     let member = manager
         .member(member_id)
         .ok_or_else(|| AppError::NotFound(format!("member `{member_id}` is not loaded")))?;
     let tasks = manager.tasks(&member.team_id);
     let now = now_millis();
-    let row = member_status_view(manager, member.clone(), &tasks, now);
+    let row = member_status_view(manager, member.clone(), &tasks, now, sessions);
 
     // 「在飞」+「已完成」：花名册只回答「手上有什么在飞」，详情要能回答「刚干完什么」。
     let (mut active, mut done): (Vec<TaskCard>, Vec<TaskCard>) = tasks
@@ -611,13 +650,66 @@ fn roster(
     team_id: &str,
     tasks: &[TeamTask],
     now: i64,
+    sessions: &dyn MemberSessionLookup,
 ) -> Result<Vec<MemberStatusView>, AppError> {
     let mut members = manager.store().list_members(team_id)?;
     members.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(members
         .into_iter()
-        .map(|member| member_status_view(manager, member, tasks, now))
+        .map(|member| member_status_view(manager, member, tasks, now, sessions))
         .collect())
+}
+
+/// 花名册一行需要的**运行态事实**：这个成员此刻有没有进程。
+///
+/// # 为什么它是注入的端口，而不是团队行上的一列
+///
+/// 进程句柄的生命期是**进程期**，而成员行是**跨重启**的身份。把句柄存在身份行上，
+/// 重启后它就是一条僵尸值：面板显示「可点」、点下去必失败（事故形态见
+/// `.trellis/tasks/11-11-team-session-resume/`）。所以团队域不持有它 ——
+/// 要问就问拥有它的域（红线 17）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MemberSession {
+    /// 此刻真的有进程的那个 PTY 会话 id；`None` = 没有进程。
+    pub terminal_id: Option<String>,
+}
+
+impl MemberSession {
+    /// 有没有进程（判据只有一处：`terminal_id` 是否为空）。
+    #[must_use]
+    pub const fn is_live(&self) -> bool {
+        self.terminal_id.is_some()
+    }
+}
+
+/// 成员会话的**读接口**（生产实现由组合根装配 `live_sessions::Registry`）。
+///
+/// 只回答一件事：这名成员此刻有没有活的 PTY。可恢复性不在这里 —— 它由成员行上的
+/// `agent_session_id` 与 `sealed_at` 回答，那是团队域自己的数据。
+pub trait MemberSessionLookup: Send + Sync {
+    /// 该成员此刻**真的有进程**的 PTY 会话 id；`None` = 没有。
+    fn live_terminal_of(&self, team_id: &str, member_id: &str) -> Option<String>;
+}
+
+/// 没有活会话的零实现：测试、无 GUI、以及注册表未接线的环境。
+///
+/// 它让「问不到 = 没有进程」成为**安全方向**：错的只是「以为不在跑」，不会推出一个死句柄。
+pub struct NoSessions;
+
+impl MemberSessionLookup for NoSessions {
+    fn live_terminal_of(&self, _team_id: &str, _member_id: &str) -> Option<String> {
+        None
+    }
+}
+
+/// 花名册一行里的运行态（由 [`MemberSessionLookup`] 查询得到，不落库）。
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveSession {
+    /// 此刻真的有进程。
+    pub live: bool,
+    /// 活着的 PTY 会话 id（`live == false` 恒为 `None`）。
+    pub terminal_id: Option<String>,
 }
 
 /// 花名册**一行**的构造（全仓唯一）。
@@ -630,7 +722,18 @@ fn member_status_view(
     member: TeamMember,
     tasks: &[TeamTask],
     now: i64,
+    sessions: &dyn MemberSessionLookup,
 ) -> MemberStatusView {
+    // 活性只问拥有它的域（红线 17）；成员行上没有可陈旧的句柄副本。
+    let session = MemberSession {
+        terminal_id: sessions.live_terminal_of(&member.team_id, &member.id),
+    };
+    // 「还回不回来」是**派生**字段：原生 id 在成员行上，续接形态在会话域的适配器里
+    // （红线 15：per-CLI 事实只活在那里）。传空 `project_path` 是刻意的 —— 这里只问
+    // `is_some()`（能不能续），真正拼 argv（可能需要工程路径）的是执行层。
+    let resumable = member.agent_session_id.as_deref().is_some_and(|native| {
+        crate::conversation::adapters::resume_argv_for(&member.agent_id, native, "").is_some()
+    });
     MemberStatusView {
         lease_remaining_secs: lease_remaining_secs(tasks, &member.id, now),
         // 取证缺失（内存里没有该行）= 未声明。`Verified` 只能由显式声明写出来，
@@ -639,9 +742,14 @@ fn member_status_view(
             .verification(&member.id)
             .unwrap_or(DoneVerification::Unverified),
         agent_id: member.agent_id.clone(),
-        terminal_id: member.terminal_id.clone(),
+        session: LiveSession {
+            live: session.is_live(),
+            terminal_id: session.terminal_id,
+        },
         workspace: member.workspace.clone(),
         agent_session_id: member.agent_session_id.clone(),
+        sealed: member.sealed_at.is_some(),
+        resumable,
         persona: member.persona.as_ref().map(|p| p.name.clone()),
         channel: member.channel,
         tier: member.tier,
@@ -707,6 +815,7 @@ mod tests {
                 body: "# 开工文档\n\n先写失败测试".into(),
                 state: TeamTaskState::Pending,
                 owner: None,
+                assignee: None,
                 workspace: Workspace::Shared,
                 depends_on: vec![],
                 claimed_at: None,
@@ -744,6 +853,55 @@ mod tests {
         assert!(!detail.events_truncated);
     }
 
+    /// 任务详情的**线上键集**就是跨栈契约：与 `src/shared/types/team.ts::TaskDetail`
+    /// （= `TaskCard` + `body` / `events` / `eventsTruncated`）逐字一致。
+    ///
+    /// 为什么值得一条测试：这两个名字曾经不一致 —— 后端发 `events` / `eventsTruncated`，
+    /// 前端类型读 `steps` / `stepsTruncated`。TS 编译期看不见跨栈那套类型，于是它只在
+    /// 运行时炸：用户点开任务 → `TypeError: undefined is not an object`
+    /// （`TeamTaskCenterView.tsx` 的 `detail.steps.length`）。这条测试只能钉住后端这一半，
+    /// 但至少让「后端单侧改名」在 CI 里红，而不是在用户屏幕上红；前端那一半由
+    /// `TeamTaskCenterView.test.tsx` 的手写电线载荷钉住。
+    #[test]
+    fn the_task_detail_json_matches_the_frontend_type() {
+        let manager = seeded();
+        manager.create_task(task("t1")).expect("t1");
+
+        let detail = task_detail(&manager, &TaskRef::new(TEAM, "t1")).expect("detail");
+        let json = serde_json::to_value(&detail).expect("serialize");
+        let mut keys: Vec<&str> = json
+            .as_object()
+            .expect("object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec![
+                "artifacts",
+                // `TaskDetail` = `TaskCard`（flatten）+ body/events：卡片的每一列都在，
+                // 包括 v24 的 `assignee`（前端 `TaskDetail extends TaskCard`）。
+                "assignee",
+                "body",
+                "claimedAt",
+                "dependsOn",
+                "events",
+                "eventsTruncated",
+                "id",
+                "leaseTtl",
+                "owner",
+                "reclaimCount",
+                "state",
+                "summary",
+                "summaryTruncated",
+                "teamId",
+                "title",
+                "workspace",
+            ]
+        );
+    }
+
     /// 项目过滤（跟随项目）：匹配的留下，空 `project_id` 的旧行（v16 之前）排除。
     #[test]
     fn list_teams_scopes_by_project_and_excludes_unattributed_legacy_rows() {
@@ -779,6 +937,62 @@ mod tests {
         assert!(scoped.truncated, "52 支 p1 队 > 50 ⇒ 必须置截断标记");
     }
 
+    /// 花名册的**可恢复性**是派生字段：原生 id（成员行）× 续接形态（适配器）。
+    ///
+    /// qoder 是反例：它**有**原生会话（历史能看），但 `-r/--resume` 只在 `--print` 下有效
+    /// ⇒ 不能接管一个新进程。两件事必须分开回答 —— 合并成一个 `hasSession` 会让 UI 把
+    /// 「能看记录」渲染成「可恢复」，而后者点下去必然失败。
+    #[test]
+    fn a_member_whose_cli_cannot_resume_is_not_resumable() {
+        let manager = TeamManager::new(TeamStore::open_in_memory().expect("in-memory store"));
+        manager.create_team(fixture_team(TEAM)).expect("team");
+        manager
+            .add_member(TeamMember {
+                agent_id: "qoder".into(),
+                agent_session_id: Some("native-qoder".into()),
+                ..fixture_member(W1, TEAM)
+            })
+            .expect("member");
+
+        let detail = member_detail(&manager, W1, &NoSessions).expect("detail");
+        assert_eq!(
+            detail.member.agent_session_id.as_deref(),
+            Some("native-qoder"),
+            "历史仍然可看：原生 id 不得因为不可恢复而被抹掉"
+        );
+        assert!(!detail.member.resumable, "qoder 没有可用续接形态");
+        assert!(!detail.member.sealed);
+    }
+
+    /// 没有原生 id ⇒ 不可恢复（只能新开）；夹具的 claude-code 本来就能续，所以
+    /// 这一条只拆掉 id 这一个条件。
+    #[test]
+    fn a_member_without_a_native_id_is_not_resumable() {
+        let manager = TeamManager::new(TeamStore::open_in_memory().expect("in-memory store"));
+        manager.create_team(fixture_team(TEAM)).expect("team");
+        manager
+            .add_member(TeamMember {
+                agent_session_id: None,
+                ..fixture_member(W1, TEAM)
+            })
+            .expect("member");
+
+        let detail = member_detail(&manager, W1, &NoSessions).expect("detail");
+        assert_eq!(detail.member.agent_session_id, None);
+        assert!(!detail.member.resumable);
+    }
+
+    /// 夹具成员的默认形态**确实**可恢复（上面两条反例的前提）。
+    #[test]
+    fn a_default_fixture_member_is_resumable() {
+        let manager = seeded();
+        let detail = member_detail(&manager, W1, &NoSessions).expect("detail");
+        assert!(
+            detail.member.resumable,
+            "夹具是 claude-code + 原生 id，必须可恢复（否则上面两条反例什么都不证明）"
+        );
+    }
+
     fn seeded() -> TeamManager {
         let manager = TeamManager::new(TeamStore::open_in_memory().expect("in-memory store"));
         manager.create_team(fixture_team(TEAM)).expect("team");
@@ -793,60 +1007,103 @@ mod tests {
         manager
     }
 
-    /// 花名册必须带出「打开这个成员终端」的凭据。
+    /// 花名册必须带出「这个成员此刻跑在哪个 PTY」——但它**不落库**。
     ///
-    /// 成员的 PTY 是 Neeko 起的（design §7.1），会话 id 只存在团队域里；前端不可能从
-    /// 名字/路径推出来（红线 12）。所以 `terminal_id` 要么在这一行上，要么这个成员
-    /// **没有第二种方式被看见** —— 而「只看得见队长」正是这个测试要钉住的失败模式。
+    /// 成员的 PTY 是 Neeko 起的（design §7.1），会话 id 不可能从名字/路径推出来（红线 12）。
+    /// v22 起这一列不在成员行上：活性只问拥有它的域（红线 17），花名册在构造时注入
+    /// [`MemberSessionLookup`] 读一次。
     #[test]
-    fn a_roster_row_carries_the_terminal_it_runs_in() {
+    fn a_roster_row_carries_the_live_terminal_it_runs_in() {
         let manager = seeded();
-        manager
-            .set_member_terminal(W1, "term-1", 1)
-            .expect("bind terminal");
+        let sessions = FakeSessions::only(W1, "term-1");
 
-        let view = team_status_view(&manager, TEAM).expect("status");
+        let view = team_status_view(&manager, TEAM, &sessions).expect("status");
         let w1 = view
             .members
             .iter()
             .find(|row| row.member_id == W1)
             .expect("w1 在花名册里");
 
-        assert_eq!(w1.terminal_id.as_deref(), Some("term-1"));
+        assert!(w1.session.live);
+        assert_eq!(w1.session.terminal_id.as_deref(), Some("term-1"));
         // 另外三项是同一行的「这是谁 / 在哪干活」：缺了它们花名册只剩名字与徽标。
         assert_eq!(w1.agent_id, fixture_member(W1, TEAM).agent_id);
         assert_eq!(w1.channel, WorkerChannel::Pty);
         assert_eq!(w1.workspace, Workspace::Shared);
+        // 未封存：这个成员可被继续派活，也可被恢复。
+        assert!(!w1.sealed);
     }
 
-    /// 没有进程的成员（没起来 / 起失败 / 已关掉）→ `terminal_id` 是 `None`。
+    /// 没有活进程的成员（没起来 / 跑完退了 / 起失败）→ `session.live == false`。
     ///
-    /// 前端据此**不给**「打开终端」按钮；后端不替它猜（`None` 与「id 已死」是两件事）。
-    /// 同一行的其它事实照旧在 —— 缺的是进程，不是这个成员。
+    /// 前端据此**不给**「打开终端」按钮；后端不替它猜。同一行的其它事实照旧在 ——
+    /// 缺的是进程，不是这个成员。
     #[test]
-    fn a_member_without_a_process_has_no_terminal() {
+    fn a_member_without_a_live_session_reports_not_live() {
         let manager = seeded();
-        manager
-            .add_member(TeamMember {
-                terminal_id: None,
-                ..fixture_member("w3@tm_1", TEAM)
-            })
-            .expect("w3");
+        let sessions = FakeSessions::only(W1, "term-1");
 
-        let view = team_status_view(&manager, TEAM).expect("status");
-        let w3 = view
+        let view = team_status_view(&manager, TEAM, &sessions).expect("status");
+        let w2 = view
             .members
             .iter()
-            .find(|row| row.member_id == "w3@tm_1")
-            .expect("w3 在花名册里");
-        assert!(w3.terminal_id.is_none());
-        assert_eq!(w3.agent_id, "claude-code", "成员身份不因没进程而消失");
-        // 对照：同一份视图里，有进程的成员仍然是 `Some`（证明这一列跟着行走，
-        // 不是「全部 None」这种看起来也通过的实现）。
+            .find(|row| row.member_id == W2)
+            .expect("w2 在花名册里");
+        assert!(!w2.session.live);
+        assert_eq!(w2.session.terminal_id, None);
+        assert_eq!(w2.agent_id, "claude-code", "成员身份不因没进程而消失");
+        // 对照：同一份视图里，有进程的成员仍然活着（证明这一列跟着行走，
+        // 不是「全部 false」这种看起来也通过的实现）。
         assert!(view
             .members
             .iter()
-            .any(|row| row.member_id == W1 && row.terminal_id.is_some()));
+            .any(|row| row.member_id == W1 && row.session.live));
+    }
+
+    /// 封存与活性是**两个正交的事实**：`sealed` 是用户意图（落库），`live` 是运行态（问注册表）。
+    ///
+    /// 这条挡的是最坏的一种混淆：把 `sealed_at` 当活性判据（于是「跑着但用户点了关闭」的成员
+    /// 在收尾期间被显示成已退出），或反过来把 `live` 当意图判据（于是「进程崩了」被当成
+    /// 「用户关掉了」，而这两者的恢复动作相反）。
+    #[test]
+    fn sealed_and_live_are_independent_facts() {
+        let manager = seeded();
+        // 一个封存过的成员**同时**还有一个活会话 —— 运行态说「在跑」，意图说「关掉」。
+        manager.finish_member_close(W2, 5_000).expect("seal w2");
+        let sessions = FakeSessions::only(W2, "term-w2");
+
+        let view = team_status_view(&manager, TEAM, &sessions).expect("status");
+        let w2 = view
+            .members
+            .iter()
+            .find(|row| row.member_id == W2)
+            .expect("w2 在花名册里");
+        assert!(w2.sealed, "用户关掉过 ⇒ sealed");
+        assert!(
+            w2.session.live,
+            "进程还没退干净 ⇒ live（收尾窗口里这两件事本来就不一致）"
+        );
+    }
+
+    /// 记录型读接口：只回答被点名的成员，其余一律「没有活会话」。
+    struct FakeSessions {
+        live: std::collections::HashMap<String, String>,
+    }
+
+    impl FakeSessions {
+        fn only(member_id: &str, terminal_id: &str) -> Self {
+            Self {
+                live: [(member_id.to_owned(), terminal_id.to_owned())]
+                    .into_iter()
+                    .collect(),
+            }
+        }
+    }
+
+    impl MemberSessionLookup for FakeSessions {
+        fn live_terminal_of(&self, _team_id: &str, member_id: &str) -> Option<String> {
+            self.live.get(member_id).cloned()
+        }
     }
 
     fn task(id: &str) -> TeamTask {
@@ -857,6 +1114,7 @@ mod tests {
             body: "派活正文：这段长度无上限，列路径里绝不允许出现".into(),
             state: TeamTaskState::Pending,
             owner: None,
+            assignee: None,
             workspace: Workspace::Shared,
             depends_on: vec![],
             claimed_at: None,
@@ -883,8 +1141,8 @@ mod tests {
         // `seeded()` 已经放了一个队长 + w1 + w2 ⇒ worker 两个。
         let manager = seeded();
 
-        let status = team_status_view(&manager, TEAM).expect("status");
-        let snapshot = team_snapshot(&manager, TEAM).expect("snapshot");
+        let status = team_status_view(&manager, TEAM, &NoSessions).expect("status");
+        let snapshot = team_snapshot(&manager, TEAM, &NoSessions).expect("snapshot");
         let listed = list_teams(&manager).teams.into_iter().next().expect("一行");
 
         assert_eq!(status.member_count, 2, "worker 两个");
@@ -897,9 +1155,13 @@ mod tests {
     #[test]
     fn the_snapshot_json_carries_no_task_body() {
         let manager = seeded();
-        manager.create_task(task("t1")).expect("t1");
+        // 指派的**值**也要真的上到线上（键集对不对只证明“有这个字段”，
+        // 把所有行都写成 `None` 也能让键集断言变绿）。
+        let mut assigned = task("t1");
+        assigned.assignee = Some(W1.into());
+        manager.create_task(assigned).expect("t1");
 
-        let snapshot = team_snapshot(&manager, TEAM).expect("snapshot");
+        let snapshot = team_snapshot(&manager, TEAM, &NoSessions).expect("snapshot");
         let json = serde_json::to_value(&snapshot).expect("serialize");
 
         // 键集逐字钉住：新增字段必须是有意识的决定，而不是顺手把整个 TeamTask 塞进来。
@@ -945,6 +1207,8 @@ mod tests {
             task_keys,
             vec![
                 "artifacts",
+                // 计划事实（谁该做）—— 与 `owner`（谁在做）是两列，图上与卡片上都要它。
+                "assignee",
                 "claimedAt",
                 "dependsOn",
                 "id",
@@ -964,6 +1228,16 @@ mod tests {
         assert!(
             !task_json.contains_key("body"),
             "列载荷里出现了 body（红线 4）：{json}"
+        );
+        // 指派是**计划事实**：线上的值与写入时一致（不是恒 `None` 的占位）。
+        assert_eq!(
+            task_json["assignee"],
+            serde_json::json!(W1),
+            "卡片必须带上被指派者：{json}"
+        );
+        assert!(
+            task_json["owner"].is_null(),
+            "指派不是认领：owner 必须仍为空：{json}"
         );
         // 递归兜底：任何层级的键都不得叫 body（防止将来被套进一个子对象）。
         assert!(
@@ -1003,14 +1277,14 @@ mod tests {
                 .expect("task");
         }
 
-        let snapshot = team_snapshot(&manager, TEAM).expect("snapshot");
+        let snapshot = team_snapshot(&manager, TEAM, &NoSessions).expect("snapshot");
         assert_eq!(snapshot.tasks.len(), MAX_BOARD_TASKS, "列上界必须生效");
         assert!(snapshot.tasks_truncated, "截断必须让面板知道");
 
         // 未超限时不得误报（否则提示永远亮着，等于没有提示）。
         let small = seeded();
         small.create_task(task("t1")).expect("t1");
-        let snapshot = team_snapshot(&small, TEAM).expect("snapshot");
+        let snapshot = team_snapshot(&small, TEAM, &NoSessions).expect("snapshot");
         assert!(!snapshot.tasks_truncated);
     }
 
@@ -1019,7 +1293,7 @@ mod tests {
     fn unknown_ids_are_not_found() {
         let manager = seeded();
 
-        let err = team_snapshot(&manager, "tm_missing").expect_err("未知团队");
+        let err = team_snapshot(&manager, "tm_missing", &NoSessions).expect_err("未知团队");
         assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
         assert!(err.to_string().contains("tm_missing"), "{err}");
 
@@ -1027,7 +1301,7 @@ mod tests {
         assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
         assert!(err.to_string().contains("t404"), "{err}");
 
-        let err = team_status_view(&manager, "tm_missing").expect_err("未知团队");
+        let err = team_status_view(&manager, "tm_missing", &NoSessions).expect_err("未知团队");
         assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
     }
 
@@ -1059,7 +1333,7 @@ mod tests {
             .observe_signal(W1, MemberSignal::TurnCompleted, now + 10)
             .expect("signal");
 
-        let snapshot = team_snapshot(&manager, TEAM).expect("snapshot");
+        let snapshot = team_snapshot(&manager, TEAM, &NoSessions).expect("snapshot");
         let member = snapshot
             .members
             .iter()
@@ -1093,7 +1367,7 @@ mod tests {
                 now + 20,
             )
             .expect("done");
-        let snapshot = team_snapshot(&manager, TEAM).expect("snapshot");
+        let snapshot = team_snapshot(&manager, TEAM, &NoSessions).expect("snapshot");
         let member = snapshot
             .members
             .iter()
@@ -1114,10 +1388,10 @@ mod tests {
         manager.set_notifier(recorder.clone());
         let before = manager.epoch();
 
-        let _ = team_snapshot(&manager, TEAM).expect("snapshot");
-        let _ = team_status_view(&manager, TEAM).expect("status");
+        let _ = team_snapshot(&manager, TEAM, &NoSessions).expect("snapshot");
+        let _ = team_status_view(&manager, TEAM, &NoSessions).expect("status");
         let _ = task_detail(&manager, &TaskRef::new(TEAM, "t1")).expect("detail");
-        let _ = member_detail(&manager, W1).expect("member detail");
+        let _ = member_detail(&manager, W1, &NoSessions).expect("member detail");
 
         assert!(recorder.pulses().is_empty(), "读路径不得发脉冲");
         assert_eq!(manager.epoch(), before, "读路径不得改动代数");
@@ -1132,7 +1406,7 @@ mod tests {
             .claim_task(&TaskRef::new(TEAM, "t1"), W1, now_millis())
             .expect("claim");
 
-        let snapshot = team_snapshot(&manager, TEAM).expect("snapshot");
+        let snapshot = team_snapshot(&manager, TEAM, &NoSessions).expect("snapshot");
         let w1 = snapshot
             .members
             .iter()
@@ -1169,10 +1443,10 @@ mod tests {
     #[test]
     fn the_two_faces_of_a_team_report_the_same_member_count() {
         let manager = seeded();
-        // 已 `Dead` 的成员仍计入（它是上限判据的事实，见 `TeamSummary::member_count` 的文档）。
+        // 已 `Offline` 的成员仍计入（它是上限判据的事实，见 `TeamSummary::member_count` 的文档）。
         manager.finish_member_close(W2, 5_000).expect("close w2");
 
-        let status = team_status_view(&manager, TEAM).expect("status");
+        let status = team_status_view(&manager, TEAM, &NoSessions).expect("status");
         let list = list_teams(&manager);
         let summary = list
             .teams
@@ -1186,7 +1460,7 @@ mod tests {
         );
         // 口径：**不含队长**（花名册含队长，所以两者恒差 1 是正常的 —— 这正是不能拿
         // `members.len()` 当成员数的原因）。
-        assert_eq!(status.member_count, 2, "两个 worker（含已 Dead 的 w2）");
+        assert_eq!(status.member_count, 2, "两个 worker（含已 Offline 的 w2）");
         assert_eq!(
             status.members.len(),
             3,
@@ -1201,9 +1475,6 @@ mod tests {
     /// 一个手里有活、有待批、也干完过一件活的成员 —— 三个桶各一行，外加别人的一行。
     fn seeded_with_member_work() -> TeamManager {
         let manager = seeded();
-        manager
-            .set_member_terminal(W1, "term-w1", 1)
-            .expect("terminal");
         for id in ["t_live", "t_await", "t_done", "t_other"] {
             manager.create_task(task(id)).expect("task");
         }
@@ -1296,7 +1567,7 @@ mod tests {
             )
             .expect("awaiting");
 
-        let detail = member_detail(&manager, W1).expect("detail");
+        let detail = member_detail(&manager, W1, &NoSessions).expect("detail");
         assert!(detail.tasks_truncated, "前置条件：这一屏必须是被截断的");
         assert_eq!(detail.tasks.len(), MAX_BOARD_TASKS);
 
@@ -1319,16 +1590,21 @@ mod tests {
     fn a_member_detail_carries_its_row_tasks_and_approval_queue() {
         let manager = seeded_with_member_work();
 
-        let detail = member_detail(&manager, W1).expect("detail");
+        // 抽屉与花名册必须看到**同一个**活会话（读接口是同一个）。
+        let sessions = FakeSessions::only(W1, "term-w1");
+        let detail = member_detail(&manager, W1, &sessions).expect("detail");
         // 花名册那一行与 `team_snapshot` 是**同一份推导**（同一个人不能有两种租约剩余秒）。
-        let snapshot = team_snapshot(&manager, TEAM).expect("snapshot");
+        let snapshot = team_snapshot(&manager, TEAM, &sessions).expect("snapshot");
         let row = snapshot
             .members
             .iter()
             .find(|row| row.member_id == W1)
             .expect("w1");
         assert_eq!(&detail.member, row, "详情里的成员行必须是花名册的同一行");
-        assert_eq!(detail.member.terminal_id.as_deref(), Some("term-w1"));
+        assert_eq!(
+            detail.member.session.terminal_id.as_deref(),
+            Some("term-w1")
+        );
 
         let ids: Vec<&str> = detail.tasks.iter().map(|task| task.id.as_str()).collect();
         assert_eq!(
@@ -1367,7 +1643,7 @@ mod tests {
         // `close_member`：actor 是队长，**subject 才是成员**（归档成员的唯一审计来源）。
         manager.finish_member_close(W1, 2_000).expect("close w1");
 
-        let detail = member_detail(&manager, W1).expect("detail");
+        let detail = member_detail(&manager, W1, &NoSessions).expect("detail");
         let kinds: Vec<&str> = detail
             .events
             .iter()
@@ -1384,7 +1660,7 @@ mod tests {
         // 「最新在前」：id DESC，所以归档那条排在认领前面。
         assert_eq!(kinds.first().copied(), Some("close_member"), "{kinds:?}");
         // 别人身上发生的事不许串进来。
-        let w2 = member_detail(&manager, W2).expect("w2 detail");
+        let w2 = member_detail(&manager, W2, &NoSessions).expect("w2 detail");
         assert!(w2.events.is_empty(), "{}", w2.events.len());
     }
 
@@ -1407,7 +1683,7 @@ mod tests {
                 .expect("signal");
         }
 
-        let detail = member_detail(&manager, W1).expect("detail");
+        let detail = member_detail(&manager, W1, &NoSessions).expect("detail");
         assert_eq!(detail.events.len(), MAX_MEMBER_EVENTS, "事件流上界必须生效");
         assert!(detail.events_truncated, "截断必须让抽屉知道");
         let newest = detail.events.first().expect("非空").at;
@@ -1419,7 +1695,7 @@ mod tests {
         small
             .observe_signal(W1, MemberSignal::TurnCompleted, 1_000)
             .expect("signal");
-        let detail = member_detail(&small, W1).expect("detail");
+        let detail = member_detail(&small, W1, &NoSessions).expect("detail");
         assert!(!detail.events.is_empty());
         assert!(!detail.events_truncated);
     }
@@ -1445,7 +1721,7 @@ mod tests {
                 .expect("done");
         }
 
-        let detail = member_detail(&manager, W1).expect("detail");
+        let detail = member_detail(&manager, W1, &NoSessions).expect("detail");
         assert_eq!(detail.tasks.len(), MAX_BOARD_TASKS);
         assert!(detail.tasks_truncated, "截断必须能说出来");
     }
@@ -1454,7 +1730,7 @@ mod tests {
     #[test]
     fn an_unknown_member_detail_is_not_found() {
         let manager = seeded();
-        let err = member_detail(&manager, "w404@tm_1").expect_err("未知成员");
+        let err = member_detail(&manager, "w404@tm_1", &NoSessions).expect_err("未知成员");
         assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
         assert!(err.to_string().contains("w404@tm_1"), "{err}");
     }
@@ -1595,7 +1871,7 @@ mod tests {
         assert!(!list.truncated);
     }
 
-    /// 一条摘要的字段口径：成员数**不含队长、含已 `Dead` 的成员**；任务三计数同板视图。
+    /// 一条摘要的字段口径：成员数**不含队长、含已 `Offline` 的成员**；任务三计数同板视图。
     ///
     /// 为什么已关闭的成员仍计入：那个数字也是 `team_options` 的「还能加几个」与
     /// `team_spawn` 的上限判据 —— 两个口径不一致时，偏差只在「刚好卡在上限」时显形。
@@ -1624,12 +1900,12 @@ mod tests {
         let summary = &list.teams[0];
         assert_eq!(summary.team_id, TEAM);
         assert_eq!(summary.name, "T");
-        assert_eq!(summary.state, TeamState::Active);
-        assert_eq!(summary.closed_at, None);
+        assert_eq!(summary.state, TeamState::Open);
+        assert_eq!(summary.sealed_at, None);
         assert_eq!(summary.lead_agent_id, "claude-code");
         assert_eq!(
             summary.member_count, 2,
-            "不含队长；已 Dead 的成员仍占名额（与上限判据同源）"
+            "不含队长；已 Offline 的成员仍占名额（与上限判据同源）"
         );
         assert_eq!(summary.task_total, 2);
         assert_eq!(summary.task_done, 1);
@@ -1641,9 +1917,9 @@ mod tests {
         );
     }
 
-    /// 关闭后的队仍会出现在列表里，带 `closed_at`（面板据此显示「已归档」而不是「当前」）。
+    /// 封存后的队仍会出现在列表里，带 `sealed_at`（面板据此显示「已归档」而不是「当前」）。
     #[test]
-    fn a_closed_team_is_still_listed_with_its_closed_at() {
+    fn a_sealed_team_is_still_listed_with_its_sealed_at() {
         let manager = seeded();
         manager.begin_team_close(TEAM, 1_000).expect("begin");
         for member_id in [W1, W2] {
@@ -1654,7 +1930,7 @@ mod tests {
         manager.finish_team_close(TEAM, 2_000).expect("seal");
 
         let summary = &list_teams(&manager).teams[0];
-        assert_eq!(summary.state, TeamState::Closed);
-        assert_eq!(summary.closed_at, Some(2_000));
+        assert_eq!(summary.state, TeamState::Sealed);
+        assert_eq!(summary.sealed_at, Some(2_000));
     }
 }

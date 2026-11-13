@@ -54,14 +54,16 @@ pub(crate) fn fixture_team(id: &str) -> Team {
     Team {
         id: id.into(),
         name: "T".into(),
-        lead_session_id: "sess".into(),
         // 真实内置 id（`agent/builtin/providers.rs`），与 `fixture_member` 同口径。
         lead_agent_id: "claude-code".into(),
         project_path: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
         project_id: "p1".into(),
+        // 主 checkout（`None`）：夹具表达的团队跑在项目根上。需要工作树形态的用例自己
+        // 覆盖（`workspace_worktree: Some(...)`）—— 工作区身份是行上的一个事实，不是推导出来的。
+        workspace_worktree: None,
         created_at: 1_700_000_000_000,
-        closed_at: None,
-        state: TeamState::Active,
+        sealed_at: None,
+        state: TeamState::Open,
         allowed_agent_ids: Vec::new(),
         default_model: None,
         default_workspace: Workspace::default(),
@@ -108,7 +110,7 @@ pub(crate) fn fixture_member(id: &str, team_id: &str) -> TeamMember {
         agent_id: "claude-code".into(),
         model: None,
         session_id: None,
-        terminal_id: Some(format!("term-{name}")),
+        sealed_at: None,
         workspace: Workspace::Shared,
         // 与 `team_spawn` 的生产取值一致：CLI 成员的入站通道是 PTY
         // （`WorkerChannel::CLI_MEMBER`）。夹具偏离生产会让「通道对不对」这类
@@ -174,6 +176,11 @@ pub(crate) fn fixture_member_status(member_id: &str) -> crate::agent::team::view
     // 多一个「没人用」的位置参数只会让每个调用点都要编一个值。
     let team_id = member_id.split_once('@').map_or("tm_1", |(_, team)| team);
     let member = fixture_member(member_id, team_id);
+    // 派生字段与真实构造点同源（`view::member_status_view`）：夹具是 claude-code
+    // + 原生 id，所以可恢复。先算出来——成员行的字段随后按值搬进结构体。
+    let resumable = member.agent_session_id.as_deref().is_some_and(|native| {
+        crate::conversation::adapters::resume_argv_for(&member.agent_id, native, "").is_some()
+    });
     crate::agent::team::view::MemberStatusView {
         member_id: member.id,
         name: member.name,
@@ -182,12 +189,28 @@ pub(crate) fn fixture_member_status(member_id: &str) -> crate::agent::team::view
         verification: crate::agent::team::types::DoneVerification::Unverified,
         lease_remaining_secs: None,
         agent_id: member.agent_id,
-        terminal_id: member.terminal_id,
+        // 夹具成员没有活进程（花名册的活性来自 `live_sessions`，不是成员行）。
+        session: crate::agent::team::view::LiveSession::default(),
+        sealed: member.sealed_at.is_some(),
         workspace: member.workspace,
         agent_session_id: member.agent_session_id.clone(),
+        resumable,
         persona: member.persona.as_ref().map(|p| p.name.clone()),
         channel: member.channel,
         tier: member.tier,
+    }
+}
+
+/// 会话读接口的假体：**任何**成员都答「有一条活会话」（`term-<member_id>`）。
+///
+/// 给「投递 / 花名册 / 状态」这类**不测活性**的用例打底：真实布置里成员当然在跑，
+/// 而测试不该为此造一个注册表。要测「没有活会话」的分支时用
+/// [`crate::agent::team::view::NoSessions`]（零实现）—— 两个假体合起来覆盖两端。
+pub struct AllLiveSessions;
+
+impl crate::agent::team::view::MemberSessionLookup for AllLiveSessions {
+    fn live_terminal_of(&self, _team_id: &str, member_id: &str) -> Option<String> {
+        Some(format!("term-{member_id}"))
     }
 }
 
@@ -206,8 +229,9 @@ impl crate::agent::team::execution::MemberExecutor for NoopExecutor {
         &self,
         _member_id: &str,
         _token: &str,
-    ) -> Result<(), crate::common::error::AppError> {
-        Ok(())
+        _resume_argv: Option<Vec<String>>,
+    ) -> Result<String, crate::common::error::AppError> {
+        Ok(format!("term-{_member_id}"))
     }
 
     async fn deliver(

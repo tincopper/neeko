@@ -27,7 +27,7 @@
 //! 两者的字段装配规则必须一致（`channel` / `result_channel` / `tier` / `mcp_injection`
 //! 全来自准入表），所以这里也走同一批准入函数，不另算一遍。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::agent::team::admission::{admission_for, launch_refusal_for, refusal, tier_of};
 use crate::agent::team::types::{
@@ -45,7 +45,7 @@ pub const LEAD_NAME: &str = "lead";
 /// 建队需要的两行（还没落库）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TeamBootstrap {
-    /// 团队行（`lead_session_id` 为空，等 PTY 起来后回填）。
+    /// 团队行（`sealed_at` 为空 —— 建队时还没有人封存它）。
     pub team: Team,
     /// 队长成员行（与 worker 同形，只有 `role` 不同）。
     pub lead: TeamMember,
@@ -79,14 +79,22 @@ pub fn new_team_id(now: i64) -> String {
 ///   目录之外），id 才是环境的归属 —— 执行层按 id 精确查表
 ///   （[`super::execution::environment_source`]）。空 id 在这里就拒绝：晚到执行层的后果是
 ///   「团队行已写入、进程起不来」的孤儿队。
+/// - `workspace_worktree`：团队所在的工作树**身份**（`None` = 主 checkout）。与 `project_id`
+///   合成工作区身份，供历史归属与侧栏分组使用。**调用方必须已用 `resolve_workspace` 校验地址**
+///   —— 本函数是纯计划层，不做 I/O（地址校验含 `canonicalize`，在命令层）。
 /// - `name`：团队显示名；`None` / 空白 → 取项目目录名（再退到 `team_id`）。
 /// - `team_id`：由 [`new_team_id`] 提供（纯函数，便于测试固定 id）。
 /// - `config`：团队组成配置（池 / 上限 / 默认值）。**调用方必须已过 [`validate_config`]** ——
 ///   本函数不重复校验（一次构造、一次裁决；两处各判一遍会让「哪个先拒」变成运气）。
+// 8 个参数：五个是建队要落的事实（CLI / 项目 id / 团队根 / 工作树身份 / 名字），三个是
+// 注入的确定性输入（team_id / now / config）。分组会造出一个只在这里用一次的类型，
+// 而调用方只有一个 —— 保留平铺参数让「建队需要哪些事实」在签名上一眼可见。
+#[allow(clippy::too_many_arguments)]
 pub fn plan_team(
     agent_id: &str,
     project_id: &str,
     project_path: &Path,
+    workspace_worktree: Option<PathBuf>,
     name: Option<&str>,
     team_id: &str,
     now: i64,
@@ -119,15 +127,16 @@ pub fn plan_team(
     let team = Team {
         id: team_id.to_owned(),
         name: display_name,
-        // 队长会话的句柄在 PTY 起来后回填（`set_member_terminal` 会同时写这里）——
+        // 团队行不持有任何会话句柄（v22 起句柄归会话域所有）——
         // 本层不假装已经有一个会话。
-        lead_session_id: String::new(),
         lead_agent_id: agent_id.to_owned(),
         project_path: project_path.to_path_buf(),
         project_id: project_id.to_owned(),
+        // 工作区身份的另一半：由调用方给（已校验），不从 `project_path` 反推。
+        workspace_worktree,
         created_at: now,
-        closed_at: None,
-        state: TeamState::Active,
+        sealed_at: None,
+        state: TeamState::Open,
         // 团队组成（design 之外的 C 方案裁定）：池 / 上限 / 默认值三处消费同一份数据。
         // 空池原样落库（= 不限制）—— 解析成「全部可启动」是读侧的事
         // （`options::options_for`），写侧把它展开就等于把「没限制」变成一个时间点快照，
@@ -148,9 +157,8 @@ pub fn plan_team(
         role: MemberRole::Lead,
         agent_id: agent_id.to_owned(),
         model: None,
-        // Chat 成员的位置（design §7.4，本期恒 `None`）；`terminal_id` 由执行层回填。
+        // Chat 成员的位置（design §7.4，本期恒 `None`）。
         session_id: None,
-        terminal_id: None,
         // 队长的工作区就是团队根：它派活 / 复核，不另开 worktree。
         workspace: Workspace::Shared,
         // CLI 成员的唯一通道（`WorkerChannel::CLI_MEMBER` 的文档）。
@@ -169,8 +177,10 @@ pub fn plan_team(
         joined_at: now,
         // 队长没有 persona：人设是「成员怎么干活」的包，队长的行为由角色 preamble 定义。
         persona: None,
-        // 原生会话 id 由观察者从 hook 事件记录（首次见到即写）。
+        // 原生会话 id 由观察者从 hook 事件记录（首见即写，任意事件类型）。
         agent_session_id: None,
+        // 新建的成员没有封存过。
+        sealed_at: None,
     };
 
     Ok(TeamBootstrap { team, lead })
@@ -320,6 +330,7 @@ mod tests {
             PROJECT,
             Path::new(ROOT),
             None,
+            None,
             TEAM,
             NOW,
             &TeamConfig::default(),
@@ -334,11 +345,11 @@ mod tests {
 
         assert_eq!(team.id, TEAM);
         assert_eq!(team.lead_agent_id, "claude-code");
-        assert_eq!(team.state, TeamState::Active);
+        assert_eq!(team.state, TeamState::Open);
         assert_eq!(team.created_at, NOW);
         assert_eq!(
-            team.lead_session_id, "",
-            "会话句柄在 PTY 起来后才回填，本层不许假装有"
+            team.sealed_at, None,
+            "新队未封存：这是「可恢复」在数据上的唯一形态"
         );
 
         assert_eq!(lead.id, format!("lead@{TEAM}"));
@@ -353,7 +364,10 @@ mod tests {
         assert_eq!(lead.result_channel, ResultChannel::Mcp);
         assert_eq!(lead.mcp_injection, McpInjection::Argv);
         assert_eq!(lead.state, MemberState::Spawned);
-        assert_eq!(lead.terminal_id, None, "还没起进程");
+        assert_eq!(
+            lead.sealed_at, None,
+            "新建成员未封存；进程句柄不在成员行上（v22 起由 `live_sessions` 回答）"
+        );
         assert_eq!(lead.token_hash, "", "凭证由执行层签发，计划里没有明文");
         assert_eq!(lead.joined_at, NOW);
     }
@@ -393,6 +407,7 @@ mod tests {
             PROJECT,
             Path::new(ROOT),
             None,
+            None,
             TEAM,
             NOW,
             &TeamConfig::default(),
@@ -410,6 +425,7 @@ mod tests {
             PROJECT,
             Path::new(ROOT),
             None,
+            None,
             TEAM,
             NOW,
             &TeamConfig::default(),
@@ -422,6 +438,7 @@ mod tests {
             "grok",
             PROJECT,
             Path::new(ROOT),
+            None,
             None,
             TEAM,
             NOW,
@@ -443,6 +460,7 @@ mod tests {
                 "claude-code",
                 project_id,
                 Path::new(ROOT),
+                None,
                 None,
                 TEAM,
                 NOW,
@@ -470,12 +488,46 @@ mod tests {
         );
     }
 
+    /// v23：调用方给的工作树**原样**落行（不从 `project_path` 反推）。
+    ///
+    /// 这一列与 `project_id` 合成工作区身份：历史归属与侧栏分组都读它。计划层是纯函数，
+    /// 地址的**校验**在命令层（`resolve_workspace`，含 `canonicalize`）—— 这里只证明
+    /// 「给什么落什么」，否则「团队跑在工作树、记录说主仓」这类偏差会在别处被蒙起来。
+    #[test]
+    fn planning_a_team_records_the_workspace_it_was_given() {
+        let main = plan("claude-code").team;
+        assert_eq!(
+            main.workspace_worktree, None,
+            "`None` = 主 checkout（不是「未知」）"
+        );
+
+        let worktree = PathBuf::from(ROOT).join("wt-feature");
+        let plan = plan_team(
+            "claude-code",
+            PROJECT,
+            Path::new(ROOT),
+            Some(worktree.clone()),
+            None,
+            TEAM,
+            NOW,
+            &TeamConfig::default(),
+        )
+        .expect("claude-code 可以当队长");
+        assert_eq!(plan.team.workspace_worktree, Some(worktree));
+        assert_eq!(
+            plan.team.project_path,
+            PathBuf::from(ROOT),
+            "团队根仍是团队根：工作树维度是它的身份分量，不是它的替代"
+        );
+    }
+
     #[test]
     fn a_relative_project_path_is_refused() {
         let err = plan_team(
             "claude-code",
             PROJECT,
             Path::new("relative/dir"),
+            None,
             None,
             TEAM,
             NOW,
@@ -492,6 +544,7 @@ mod tests {
             "claude-code",
             PROJECT,
             Path::new(ROOT),
+            None,
             Some("  小队  "),
             TEAM,
             NOW,
@@ -504,6 +557,7 @@ mod tests {
             "claude-code",
             PROJECT,
             Path::new(ROOT),
+            None,
             Some("   "),
             TEAM,
             NOW,
@@ -523,6 +577,7 @@ mod tests {
             "claude-code",
             PROJECT,
             root,
+            None,
             None,
             TEAM,
             NOW,
@@ -572,6 +627,7 @@ mod tests {
             "claude-code",
             PROJECT,
             Path::new(ROOT),
+            None,
             None,
             TEAM,
             NOW,

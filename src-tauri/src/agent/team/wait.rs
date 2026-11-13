@@ -132,7 +132,7 @@ pub struct WaitSnapshot {
     pub members: Vec<WaitMemberRow>,
     /// 目标任务行（按目标顺序）。
     pub tasks: Vec<WaitTaskRow>,
-    /// 建快照时就发现的不可达目标（`Dead` / `Failed` / 已不在团队里）。
+    /// 建快照时就发现的不可达目标（`Offline` / `Failed` / 已不在团队里）。
     ///
     /// 不进序列化载荷：它只是**循环的控制信号**，不是给模型看的事实（成员行里已经带着
     /// `state: dead` 这个事实本身）。
@@ -154,7 +154,7 @@ pub enum WaitOutcome {
         /// 超时时刻的最新快照。
         snapshot: WaitSnapshot,
     },
-    /// 目标已不可达（`Dead` / `Failed` / 已从团队移除）—— 必须**立刻**返回，
+    /// 目标已不可达（`Offline` / `Failed` / 已从团队移除）—— 必须**立刻**返回，
     /// 否则队长会为一个永远不会到来的完成白等满 timeout。
     TargetGone {
         /// 消逝的那个成员 id（**不是**接手者的 id —— 这正是「钉住」的含义）。
@@ -310,7 +310,7 @@ fn build_snapshot(
                     break;
                 };
                 let gone = member.team_id != team_id
-                    || matches!(member.state, MemberState::Dead | MemberState::Failed);
+                    || matches!(member.state, MemberState::Offline | MemberState::Failed);
                 snapshot.members.push(WaitMemberRow {
                     member_id: member.id.clone(),
                     name: member.name,
@@ -392,6 +392,7 @@ mod tests {
             body: "body".into(),
             state: TeamTaskState::Pending,
             owner: None,
+            assignee: None,
             workspace: Workspace::Shared,
             depends_on: vec![],
             claimed_at: None,
@@ -554,14 +555,14 @@ mod tests {
         }
     }
 
-    /// `TargetGone` 只对 `Dead` / `Failed` 生效（`Idle` / `Done` / `Stalled` 都不算）。
+    /// `TargetGone` 只对 `Offline` / `Failed` 生效（`Idle` / `Done` / `Stalled` 都不算）。
     ///
     /// 保护的不变量：把「空闲」「已完成」判成消亡会让队长在最该高兴的时候收到错误结论；
     /// 把 `Stalled` 判成消亡则会让它放弃一个还能被租约回收后重试的成员。
     #[test]
     fn gone_covers_only_dead_and_failed() {
         for (state, gone) in [
-            (MemberState::Dead, true),
+            (MemberState::Offline, true),
             (MemberState::Failed, true),
             (MemberState::Idle, false),
             (MemberState::Done, false),
@@ -584,7 +585,7 @@ mod tests {
     /// 把成员推进到指定状态所需的信号（只覆盖本测试用到的态）。
     fn signal_for(state: MemberState) -> MemberSignal {
         match state {
-            MemberState::Dead => MemberSignal::Exited,
+            MemberState::Offline => MemberSignal::Exited,
             MemberState::Failed => MemberSignal::Failed,
             MemberState::Idle | MemberState::Done => MemberSignal::TurnCompleted,
             MemberState::Awaiting => MemberSignal::ApprovalRequested,
@@ -719,7 +720,7 @@ mod tests {
         );
     }
 
-    /// 目标成员 `Dead` → 立即 `TargetGone`（不等 timeout）。
+    /// 目标成员 `Offline` → 立即 `TargetGone`（不等 timeout）。
     ///
     /// 保护的不变量：队长为一个永远不会到来的完成白等满 30 分钟是纯损失；进程已死是
     /// 板上可判定的事实，没有理由让等待继续。

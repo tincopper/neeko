@@ -215,6 +215,10 @@ pub enum ToolReply {
 /// 本函数刻意只在测试期存在：留一个可在 async 上下文直接调的同步入口，等于给
 /// 「把 SQLite 写回 tokio worker」留一道后门 —— 那正是红线 3 要防的。将来若真有同步
 /// 调用方（如 stdio bridge 的同步分支），它应当**自己**在阻塞池里调 [`dispatch_tool`]。
+/// 测试入口：成员一律「有活会话」（绝大多数工具语义与活性无关）。
+///
+/// 要测「没有活会话」的分支用 `call_with(..., &view::NoSessions, ...)` —— 明确写出
+/// 来的那一行就是「本用例与活性有关」的标记。
 #[cfg(test)]
 fn call(
     manager: &TeamManager,
@@ -222,10 +226,27 @@ fn call(
     wire: &str,
     args: &serde_json::Value,
 ) -> Result<ToolReply, AppError> {
+    call_with(
+        manager,
+        principal,
+        &crate::agent::team::fixtures::AllLiveSessions,
+        wire,
+        args,
+    )
+}
+
+#[cfg(test)]
+fn call_with(
+    manager: &TeamManager,
+    principal: &TeamPrincipal,
+    sessions: &dyn view::MemberSessionLookup,
+    wire: &str,
+    args: &serde_json::Value,
+) -> Result<ToolReply, AppError> {
     let tool = resolve(wire)?;
     authorize(principal, tool)?;
     ensure_team_accepts(manager, principal, tool)?;
-    dispatch_tool(manager, principal, tool, args)
+    dispatch_tool(manager, principal, sessions, tool, args)
 }
 
 /// 异步入口：与 [`call`] 共用**同一份**翻译、授权与入参校验，只多两条分支。
@@ -249,6 +270,7 @@ pub async fn call_async(
     runtime: &crate::common::runtime::AppRuntime,
     manager: &std::sync::Arc<TeamManager>,
     principal: &TeamPrincipal,
+    sessions: std::sync::Arc<dyn view::MemberSessionLookup>,
     wire: &str,
     args: &serde_json::Value,
 ) -> Result<ToolReply, AppError> {
@@ -260,9 +282,14 @@ pub async fn call_async(
         other => {
             let manager = std::sync::Arc::clone(manager);
             let principal = principal.clone();
+            // 读接口以 `Arc` 搬进阻塞池（`&dyn` 不是 `'static`）：它本身无状态、
+            // 每次询问都现场读注册表，所以搬过去不会引入「两个时刻的两个答案」。
+            let sessions = std::sync::Arc::clone(&sessions);
             let args = args.clone();
             runtime
-                .spawn_blocking(move || dispatch_tool(&manager, &principal, other, &args))
+                .spawn_blocking(move || {
+                    dispatch_tool(&manager, &principal, sessions.as_ref(), other, &args)
+                })
                 .await
                 .map_err(|err| {
                     AppError::Storage(format!(
@@ -290,15 +317,16 @@ fn resolve(wire: &str) -> Result<ToolName, AppError> {
 fn dispatch_tool(
     manager: &TeamManager,
     principal: &TeamPrincipal,
+    sessions: &dyn view::MemberSessionLookup,
     tool: ToolName,
     args: &serde_json::Value,
 ) -> Result<ToolReply, AppError> {
     match tool {
-        ToolName::TeamStatus => status(manager, principal),
+        ToolName::TeamStatus => status(manager, principal, sessions),
         ToolName::TeamList => Ok(ToolReply::TeamList(view::list_teams(manager))),
         ToolName::TeamOptions => options(manager, principal),
         ToolName::TeamSpawn => spawn(manager, principal, args),
-        ToolName::TeamSend => send(manager, principal, args),
+        ToolName::TeamSend => send(manager, principal, sessions, args),
         ToolName::TaskCreate => create(manager, principal, args),
         ToolName::TaskClaim => claim(manager, principal, args),
         ToolName::TaskUpdate => update(manager, principal, args),
@@ -320,7 +348,7 @@ fn dispatch_tool(
 ///
 /// # 为什么是一张表而不是在每个 handler 里判
 ///
-/// 「哪些工具在关闭中还能调」是一条域规则（design 的 `active → closing → closed` 状态机），
+/// 「哪些工具在关闭中还能调」是一条域规则（design 的 `open → closing → sealed` 状态机），
 /// 而不是 11 个工具各自的巧合。写在表里还有一个直接收益：新增工具时它必须在**两种状态里**
 /// 各被想一次 —— 否则新工具会静默地绕过整条状态机（表驱动测试守着这件事）。
 ///
@@ -328,8 +356,8 @@ fn dispatch_tool(
 /// - `team_status` / `task_list` / `team_list`：只读，关完还要能查现状（面板的重开与归档
 ///   也靠它们）。
 ///
-/// `closed` 与 `closing` 用同一张表：`closed` 只多一层「写操作已经不是 `Conflict` 而是
-/// 无意义」的差别，而 `team_close` 本身对 `closed` 是幂等的。
+/// `sealed` 与 `closing` 用同一张表：`sealed` 只多一层「写操作已经不是 `Conflict` 而是
+/// 无意义」的差别，而 `team_close` 本身对 `sealed` 是幂等的。
 const ALLOWED_WHILE_CLOSING: [ToolName; 4] = [
     ToolName::TeamStatus,
     ToolName::TaskList,
@@ -337,9 +365,9 @@ const ALLOWED_WHILE_CLOSING: [ToolName; 4] = [
     ToolName::TeamClose,
 ];
 
-/// 非 `active` 的团队只接受 [`ALLOWED_WHILE_CLOSING`] 里的工具。
+/// 非 `open` 的团队只接受 [`ALLOWED_WHILE_CLOSING`] 里的工具。
 ///
-/// 错误里带上**当前状态**：队长看到 `closing` 就知道「有人在关队」，看到 `closed` 就知道
+/// 错误里带上**当前状态**：队长看到 `closing` 就知道「有人在关队」，看到 `sealed` 就知道
 /// 「这个队已经完了」—— 两者的下一步不同，把它们归成一句「不能写」会让模型去猜。
 fn ensure_team_accepts(
     manager: &TeamManager,
@@ -350,11 +378,11 @@ fn ensure_team_accepts(
         return Ok(());
     }
     let team = team_of(manager, &principal.team_id)?;
-    if team.state == TeamState::Active {
+    if team.state == TeamState::Open {
         return Ok(());
     }
     Err(AppError::Conflict(format!(
-        "team `{}` is {}; `{}` is not accepted in that state (allowed while closing/closed: {})",
+        "team `{}` is {}; `{}` is not accepted in that state (allowed while closing/sealed: {})",
         team.id,
         team_state_text(team.state),
         spec_for(tool).wire,
@@ -369,9 +397,9 @@ fn ensure_team_accepts(
 /// 状态的线上文本（与 serde 的 `snake_case` 口径一致，错误信息与载荷因此不漂移）。
 const fn team_state_text(state: TeamState) -> &'static str {
     match state {
-        TeamState::Active => "active",
+        TeamState::Open => "open",
         TeamState::Closing => "closing",
-        TeamState::Closed => "closed",
+        TeamState::Sealed => "sealed",
     }
 }
 
@@ -384,10 +412,15 @@ const fn team_state_text(state: TeamState) -> &'static str {
 /// **载荷构造不在本层**：[`crate::agent::team::view::team_status_view`] 是唯一构造点，
 /// 本地 Tauri 命令（`commands::team_snapshot`）用的是同一个函数。让 MCP 侧拥有一份构造，
 /// 面板就会长出第二份 —— 而「租约剩余秒怎么算」这类推导漂移是静默的。
-fn status(manager: &TeamManager, principal: &TeamPrincipal) -> Result<ToolReply, AppError> {
+fn status(
+    manager: &TeamManager,
+    principal: &TeamPrincipal,
+    sessions: &dyn view::MemberSessionLookup,
+) -> Result<ToolReply, AppError> {
     Ok(ToolReply::Status(team_status_view(
         manager,
         &principal.team_id,
+        sessions,
     )?))
 }
 
@@ -414,6 +447,7 @@ fn options(manager: &TeamManager, principal: &TeamPrincipal) -> Result<ToolReply
 fn send(
     manager: &TeamManager,
     principal: &TeamPrincipal,
+    sessions: &dyn view::MemberSessionLookup,
     args: &serde_json::Value,
 ) -> Result<ToolReply, AppError> {
     let wire = spec_for(ToolName::TeamSend).wire;
@@ -422,6 +456,24 @@ fn send(
     let target = member_of_team(manager, &principal.team_id, to)?;
     if target.state == MemberState::Awaiting {
         return Err(AppError::Conflict("target_blocked".into()));
+    }
+    // 没有活会话 ⇒ 这条消息**投不进去**。分开成一条明确的 `Conflict` 而不是让它
+    // 掉进 `deliver` 的通道错误里：模型据此该做的事完全不同（先 `team_resume` 把它拉起来，
+    // 而不是换通道或重试同一句话）。
+    //
+    // 与 `target.state == Awaiting` 同一类判据：**当下的状态不允许这个动作**，
+    // 而两者都是「等一等/换个动作就好了」，所以都用 `Conflict`（不是 `Unsupported`：
+    // 后者读起来是「这个通道永远不行」）。
+    if sessions
+        .live_terminal_of(&principal.team_id, &target.id)
+        .is_none()
+    {
+        return Err(AppError::Conflict(format!(
+            "target_offline: member `{}` has no live pty session, so nothing can be written to \
+             its stdin; bring it back first (`team_resume` resumes the whole team from each \
+             member's recorded native session id)",
+            target.id
+        )));
     }
     Ok(ToolReply::NeedsDelivery {
         to: target.id,
@@ -553,10 +605,9 @@ fn spawn(
         role: MemberRole::Worker,
         agent_id,
         model,
-        // `session_id` 是 Chat 成员的位置（design §7.4，本期恒 None）；
-        // `terminal_id` 由 2.5b 起 PTY 后回填 —— 本层不得声称进程已就绪。
+        // `session_id` 是 Chat 成员的位置（design §7.4，本期恒 None）。
         session_id: None,
-        terminal_id: None,
+        sealed_at: None,
         workspace,
         // CLI 成员的唯一通道是 PTY（`WorkerChannel::CLI_MEMBER` 的文档记了为什么
         // 「有 MCP 面」不等于「能往它嘴里推消息」）。
@@ -578,6 +629,24 @@ fn spawn(
         // 原生会话 id 由观察者从 hook 事件记录（首次见到即写）。
         agent_session_id: None,
     };
+    // 人数护栏：只为板上**已指派的**成员起进程。
+    //
+    // 放在所有既有参数校验之后、`add_member` 之前：池子 / 上限 / 名字 / persona / workspace
+    // 等既有拒绝路径的错误类别不会被这一步抢先改写（15 条参数校验用例靠这个顺序守住）。
+    //
+    // 为什么是结构护栏而不是只改 preamble：preamble 是给模型看的提示词，模型可以不遵守；
+    // 而「2 个任务只起 2 位成员」是板上事实能判定的 —— 未终结任务的 assignee 集合就是
+    // 允许起的人数上界。现场事故（4 个 CLI 全起、assignee 全空）正是只靠提示词的后果。
+    if !manager.has_open_assignment(&principal.team_id, &member_id) {
+        return Err(AppError::Conflict(format!(
+            "member `{member_id}` has no open task assigned to it. Staff to the plan: every \
+             task created with `{}` MUST name `assignee`, and spawn exactly those distinct \
+             assignees (one member per task) — the CLI pool is a menu, not a roster to fill. \
+             Create the task first with `assignee=\"{member_id}\"`, then spawn this member.",
+            spec_for(ToolName::TaskCreate).wire
+        )));
+    }
+
     // 重名 / 团队不存在都由 `add_member` 报（成员 id 唯一性只在一处裁决）。
     manager.add_member(member)?;
 
@@ -593,6 +662,9 @@ fn spawn(
 }
 
 /// `task_create`：派活（队长）。
+///
+/// `assignee` 是**计划事实**（谁该做），不是认领：它只写进任务行，`state` / `owner` /
+/// `claimed_at` 一律不动（起租约的是 `task_claim`，见 design §1）。
 fn create(
     manager: &TeamManager,
     principal: &TeamPrincipal,
@@ -604,6 +676,7 @@ fn create(
     let workspace = workspace_arg(wire, args)?;
     let depends_on = depends_on_arg(manager, &principal.team_id, wire, args)?;
     let lease_ttl = lease_ttl_arg(wire, args)?;
+    let assignee = Some(assignee_arg(manager, &principal.team_id, wire, args)?);
 
     let task = TeamTask {
         // 任务 id 形如 `t{seq}`（design §2），seq 是**本队板**的水位线
@@ -617,6 +690,8 @@ fn create(
         body: body.to_owned(),
         state: TeamTaskState::Pending,
         owner: None,
+        // 指派 ≠ 认领：这里只写计划事实，`state` / `owner` / `claimed_at` 保持初值。
+        assignee,
         workspace,
         depends_on,
         claimed_at: None,
@@ -840,7 +915,7 @@ fn wait_timeout(wire: &str, args: &serde_json::Value) -> Result<std::time::Durat
 ///
 /// # 两相位（design §7.1）
 ///
-/// 本层只决定「关谁」并把团队推到正确的状态（整队关闭时先 `active → closing`），
+/// 本层只决定「关谁」并把团队推到正确的状态（整队关闭时先 `open → closing`），
 /// **进程副作用与成员归档不做** —— 它们在
 /// [`crate::agent::team::execution::apply_effect`] 里，那里才有 `MemberExecutor` 与
 /// 状态迁移的成套动作。两个理由：① 本层必须能单测（不需要 `AppHandle`）；
@@ -851,7 +926,7 @@ fn wait_timeout(wire: &str, args: &serde_json::Value) -> Result<std::time::Durat
 /// | 入参 | 含义 | 本层做的状态迁移 |
 /// | --- | --- | --- |
 /// | `member_id` 有值 | 关**一个**成员（不能是队长：关队长 = 关队） | 无（归档在执行层）|
-/// | `member_id` 缺省 | 关**整队** → `active → closing`，返回待关的成员列表 | `begin_team_close` |
+/// | `member_id` 缺省 | 关**整队** → `open → closing`，返回待关的成员列表 | `begin_team_close` |
 ///
 /// # `graceful`：本期不兑现（红线 14）
 ///
@@ -1382,6 +1457,67 @@ fn depends_on_arg(
     Ok(out)
 }
 
+/// 可选的 `assignee`：给了就必须是本队成员（与 `team_send.to` 同一种寻址：
+/// `name@team_id`）。
+///
+/// # 为什么拒绝必须在写入之前，且必须列出本队成员
+///
+/// `claim_task` 的指派闸门只比对 member id、不查队 —— 一个「别队的 `x9@tm_2`」会把这件活
+/// 锁给一个永远不会来认领的人：板上出现一张永远没人接的卡，而没有任何报错。所以校验点
+/// 在这里（决定层），与 `team_send` 同一处判据（`member_of_team`）。
+///
+/// 清单也要真列出来：只说「不行」不说「有谁」，队长只能把回合花在枚举花名册上。
+/// 拼法复用 [`execution::join_ids`]（错误信息里的 id 清单只有一份实现）。
+/// `assignee`（**必填**）：一个成员 id，可以是已落库的成员，也可以是**计划中的**
+/// `name@<team_id>`（成员行还没 spawn）。
+///
+/// # 为什么必须允许「计划中的成员」
+///
+/// 参与人数由任务板决定，而不是由可用 CLI 池决定。要能做到「先写任务带指派 → 只为板上
+/// 出现的指派起人」，`assignee` 就不能要求成员已落库 —— 否则顺序被倒过来，队长只能先把
+/// 池子填满再派活（真实现场：2 个任务起了 4 个成员，且 `assignee` 全部留空）。
+/// 名字用 [`member_name`] 的同一套 sanitize（与 `team_spawn.name` 同源），队后缀必须与
+/// `principal.team_id` 逐字相等 —— 跨队 id 会把这块活锁给一个永远不会来认领的人。
+fn assignee_arg(
+    manager: &TeamManager,
+    team_id: &str,
+    wire: &str,
+    args: &serde_json::Value,
+) -> Result<String, AppError> {
+    let raw = required_str(wire, args, "assignee")?;
+    // 已落库成员：归属判据只有一份（`member_of_team`）。
+    if let Ok(member) = member_of_team(manager, team_id, raw) {
+        return Ok(member.id);
+    }
+    let roster: Vec<String> = manager
+        .members_of(team_id)
+        .into_iter()
+        .map(|member| member.id)
+        .collect();
+    let Some((name, suffix)) = raw.rsplit_once('@') else {
+        return Err(AppError::InvalidInput(format!(
+            "`assignee` for {wire} must be a member id `name@{team_id}`; \
+             got `{raw}`. Members of this team: {}",
+            execution::join_ids(&roster)
+        )));
+    };
+    if suffix != team_id {
+        return Err(AppError::NotFound(format!(
+            "member `{raw}` belongs to another team, so it cannot be assigned a task in \
+             `{team_id}`; members of this team: {}",
+            execution::join_ids(&roster)
+        )));
+    }
+    // 名字与 `team_spawn.name` 同一个 sanitize + trim，两侧生成的 id 因此必然一致。
+    let name = member_name(wire, name)?;
+    if name.is_empty() {
+        return Err(AppError::InvalidInput(format!(
+            "`assignee` for {wire} must have a non-empty name before `@{team_id}`"
+        )));
+    }
+    Ok(format!("{name}@{team_id}"))
+}
+
 /// 可选的 `lease_ttl`（秒）：必须是正整数（`<= 0` 会让任务一被认领就到期）。
 fn lease_ttl_arg(wire: &str, args: &serde_json::Value) -> Result<i64, AppError> {
     match args.get("lease_ttl") {
@@ -1416,6 +1552,7 @@ mod tests {
         WorkerChannel, Workspace,
     };
     use serde_json::json;
+    use std::sync::Arc;
 
     /// 建出来的成员**必须可投递**（这就是把 CLI 通道定为 `Pty` 的全部理由）。
     ///
@@ -1429,7 +1566,8 @@ mod tests {
         let manager = seeded();
         let spawned = spawn_ok(&manager, &lead(), &spawn_args("claude-code", "w9"));
         let member = manager.member(&spawned.member_id).expect("member");
-        match delivery::route(member.channel, "claim t1") {
+        let submit = crate::agent::team::admission::pty_submit_for(&member.agent_id);
+        match delivery::route(member.channel, submit, "claim t1") {
             DeliveryRoute::Pty(plan) => {
                 assert_eq!(plan.text, b"claim t1", "正文与回车是两笔（AC14）");
                 assert_eq!(plan.enter, b"\r");
@@ -1438,8 +1576,9 @@ mod tests {
         }
         // 与之并列：队长的行也一样（同一条执行路径）。
         let lead_member = manager.member(LEAD).expect("lead");
+        let submit = crate::agent::team::admission::pty_submit_for(&lead_member.agent_id);
         assert!(matches!(
-            delivery::route(lead_member.channel, "hi"),
+            delivery::route(lead_member.channel, submit, "hi"),
             DeliveryRoute::Pty(_)
         ));
     }
@@ -1479,6 +1618,7 @@ mod tests {
             body: "body".into(),
             state: TeamTaskState::Pending,
             owner: None,
+            assignee: None,
             workspace: Workspace::Shared,
             depends_on: vec![],
             claimed_at: None,
@@ -1544,6 +1684,36 @@ mod tests {
         principal(id, MemberRole::Worker, TEAM)
     }
 
+    /// 没有活会话的成员 → `team_send` 必须**明确** `Conflict`，并指出该做什么。
+    ///
+    /// 反例（本用例挡的正是它）：把消息交给执行层，让「PTY 不在了」冒成一个通道错误。
+    /// 模型看到的那样一句话分不清「换个通道」还是「把它拉起来」—— 而正确答案是后者
+    /// （`team_resume` 按原生会话 id 恢复整个队）。
+    ///
+    /// 与「沉默成功」的对比是本用例的第二种失败模式：`Ok` 意味着队长以为成员收到了。
+    #[test]
+    fn sending_to_a_member_without_a_live_session_is_an_explicit_conflict() {
+        let manager = seeded();
+        let err = call_with(
+            &manager,
+            &lead(),
+            &view::NoSessions,
+            "team_send",
+            &json!({"to": W1, "message": "在吗"}),
+        )
+        .expect_err("没有活会话必须拒绝");
+
+        let AppError::Conflict(message) = err else {
+            panic!("必须 Conflict（状态不允许，等一等/换个动作就好），实际 {err:?}");
+        };
+        assert!(message.contains("target_offline"), "{message}");
+        assert!(message.contains(W1), "必须点名哪个成员：{message}");
+        assert!(
+            message.contains("team_resume"),
+            "必须指出下一步（模型据此才可能自我纠正）：{message}"
+        );
+    }
+
     /// 未知 wire → `NotFound`，且错误里逐条列出已知工具名。
     ///
     /// 保护的不变量：模型调错名字时必须能自我纠正（列出已知工具），
@@ -1583,7 +1753,10 @@ mod tests {
     fn worker_cannot_create_tasks_or_close_the_team() {
         let manager = seeded();
         let cases = [
-            ("task_create", json!({"title": "t", "body": "b"})),
+            (
+                "task_create",
+                json!({"title": "t", "body": "b", "assignee": W1}),
+            ),
             ("team_close", json!({"member_id": W2})),
         ];
         for (wire, args) in cases {
@@ -1595,7 +1768,7 @@ mod tests {
             &manager,
             &lead(),
             "task_create",
-            &json!({"title":"t","body":"b"})
+            &json!({"title":"t","body":"b","assignee":W1})
         )
         .is_ok());
         assert!(call(&manager, &lead(), "team_close", &json!({"member_id": W2})).is_ok());
@@ -1773,9 +1946,16 @@ mod tests {
         let manager = seeded();
         manager.create_task(task("t1", OTHER)).unwrap();
         for wire in ["task_claim", "task_update"] {
+            // `task_claim` 现在是 worker 专属；`task_update` 两个角色都能调，用队长验证
+            // 才能证明「换角色也一样挡住跨队」。
+            let principal = if wire == "task_claim" {
+                worker(W1)
+            } else {
+                lead()
+            };
             let err = call(
                 &manager,
-                &lead(),
+                &principal,
                 wire,
                 &json!({"task_id": "t1", "state": "done"}),
             )
@@ -1794,7 +1974,7 @@ mod tests {
                 &manager,
                 &lead(),
                 "task_create",
-                &json!({"title": "t", "body": "b", "depends_on": [dependency]}),
+                &json!({"title": "t", "body": "b", "depends_on": [dependency], "assignee": W1}),
             )
             .unwrap_err();
             assert!(
@@ -1846,7 +2026,7 @@ mod tests {
             panic!("team_status 必须返回 Status，实际 {reply:?}");
         };
         assert_eq!(view.team_id, TEAM);
-        assert_eq!(view.team_state, TeamState::Active);
+        assert_eq!(view.team_state, TeamState::Open);
         assert_eq!(view.members.len(), 3);
         assert_eq!(view.task_total, 2);
         assert_eq!(view.task_done, 1);
@@ -1886,9 +2066,11 @@ mod tests {
         // `verification` 是 AC2 的判据（见 `view::MemberStatusView` 的文档）：花名册必须能
         // 区分「空闲」与「空闲但未声明」，而这两者的 `state` 完全相同。
         //
-        // 另外四项是「这一行能干什么」：`agentId` + `tier`（能力边界）、`workspace`（在哪干活）、
-        // `channel`（怎么发消息）、`terminalId`（**点开它的唯一凭据**）。少了最后一项，
-        // 成员进程虽然在跑，面板却只能看队长 —— 花名册成了只读名单。
+        // 另外几项是「这一行能干什么 / 现在是什么样」：`agentId` + `tier`（能力边界）、
+        // `workspace`（在哪干活）、`channel`（怎么发消息）、`session`（**点开它的唯一凭据**）、
+        // `sealed`（用户关掉过没有）。少了 `session`，成员进程虽然在跑、面板却只能看队长 ——
+        // 花名册成了只读名单；少了 `sealed`，面板无法区分「跑到一半退了」与「用户关掉了」
+        // （两者的恢复动作相反）。
         assert_eq!(
             member_keys,
             vec![
@@ -1899,9 +2081,11 @@ mod tests {
                 "memberId",
                 "name",
                 "persona",
+                "resumable",
                 "role",
+                "sealed",
+                "session",
                 "state",
-                "terminalId",
                 "tier",
                 "verification",
                 "workspace"
@@ -2069,7 +2253,7 @@ mod tests {
                 "status",
                 ToolReply::Status(TeamStatusView {
                     team_id: TEAM.into(),
-                    team_state: TeamState::Active,
+                    team_state: TeamState::Open,
                     members: Vec::new(),
                     task_total: 0,
                     task_open: 0,
@@ -2197,7 +2381,7 @@ mod tests {
                 member_id: None,
                 members_closed: vec![W1.into()],
                 members_failed: Vec::new(),
-                team_state: TeamState::Closed,
+                team_state: TeamState::Sealed,
                 notes: vec!["n".into()],
             }),
         );
@@ -2208,7 +2392,7 @@ mod tests {
                 member_id: None,
                 members_closed: vec![W1.into()],
                 members_failed: Vec::new(),
-                team_state: TeamState::Closed,
+                team_state: TeamState::Sealed,
                 notes: vec!["n".into()],
             },
             "执行之后的事实必须覆盖决定层的意图（teamState / membersClosed 都是）"
@@ -2223,7 +2407,7 @@ mod tests {
             &manager,
             &lead(),
             "task_create",
-            &json!({"title": "build", "body": "run cargo build", "lease_ttl": 60}),
+            &json!({"title": "build", "body": "run cargo build", "lease_ttl": 60, "assignee": W1}),
         )
         .unwrap();
         let ToolReply::Task(task) = reply else {
@@ -2239,13 +2423,229 @@ mod tests {
             &manager,
             &lead(),
             "task_create",
-            &json!({"title": "test", "body": "run tests"}),
+            &json!({"title": "test", "body": "run tests", "assignee": W1}),
         )
         .unwrap() else {
             panic!("必须是 Task");
         };
         assert_eq!(second.id, "t2");
         assert_eq!(second.lease_ttl, DEFAULT_LEASE_TTL_SECS);
+    }
+
+    /// `task_create` 的 `assignee`（R1 / R2 / AC2 / AC3）：指派是**计划事实**。
+    ///
+    /// 三件事必须同时成立，每一条各自防一个事故：
+    ///
+    /// | 断言 | 漏了会怎样 |
+    /// | --- | --- |
+    /// | 回包与落库都是被指派者 | 队长以为派给了 w1，而板上没有任何人 |
+    /// | `state` / `owner` / `claimed_at` 不变 | 「指派 = 自动认领」会让排队任务被租约回收器抢走 owner（design §1）|
+    /// | 板上有且只有一张卡 | 校验失败时已写了一半（两相位里「被拒的请求不得留下行」）|
+    #[test]
+    fn task_create_persists_the_assignee_without_claiming_the_task() {
+        let manager = seeded();
+        let reply = call(
+            &manager,
+            &lead(),
+            "task_create",
+            &json!({"title": "build", "body": "run cargo build", "assignee": W1}),
+        )
+        .unwrap();
+        let ToolReply::Task(task) = reply else {
+            panic!("task_create 必须返回 Task，实际 {reply:?}");
+        };
+        assert_eq!(task.assignee.as_deref(), Some(W1), "回包必须带被指派者");
+        // 指派 ≠ 认领：三个执行事实一个都不许被改写。
+        assert_eq!(task.state, TeamTaskState::Pending);
+        assert_eq!(task.owner, None);
+        assert_eq!(task.claimed_at, None);
+
+        // 落库一致（不是只改了回包）：读路径拿到的必须是同一个事实。
+        let stored = manager
+            .store()
+            .get_task(&TaskRef::new(TEAM, &task.id))
+            .unwrap()
+            .expect("任务必须已落库");
+        assert_eq!(stored.assignee.as_deref(), Some(W1));
+        assert_eq!(stored.state, TeamTaskState::Pending);
+        assert_eq!(manager.tasks(TEAM).len(), 1);
+    }
+
+    /// R3.2：`assignee` 允许「**计划中的**成员」—— 成员行还没 spawn，但 id 形状合法。
+    ///
+    /// 这是解开顺序死锁的关键：参与人数由任务板决定，所以必须能「先写任务带指派 →
+    /// 再为这些指派起人」。要求成员已落库会反过来逼队长先把 CLI 池填满。
+    #[test]
+    fn task_create_accepts_a_planned_member_id() {
+        let manager = seeded();
+        for planned in ["solver@tm_1", "reviewer@tm_1"] {
+            let ToolReply::Task(task) = call(
+                &manager,
+                &lead(),
+                "task_create",
+                &json!({"title": "t", "body": "b", "assignee": planned}),
+            )
+            .unwrap() else {
+                panic!("计划成员必须能先被指派");
+            };
+            assert_eq!(task.assignee.as_deref(), Some(planned));
+            assert!(manager.member(planned).is_none(), "指派不得顺手建成员行");
+        }
+        assert_eq!(manager.tasks(TEAM).len(), 2);
+    }
+
+    /// R3.2：跨队 id / 畸形 id 仍必须拒，且理由可行动（列本队成员）。
+    #[test]
+    fn task_create_rejects_a_foreign_assignee_and_lists_the_roster() {
+        let manager = seeded();
+        for outsider in [OUTSIDER, "nobody", "x9@tm_9"] {
+            let err = call(
+                &manager,
+                &lead(),
+                "task_create",
+                &json!({"title": "t", "body": "b", "assignee": outsider}),
+            )
+            .unwrap_err();
+            assert!(
+                matches!(&err, AppError::NotFound(_) | AppError::InvalidInput(_)),
+                "不合格的 assignee 必须被拒绝，实际 {err:?}"
+            );
+            let message = err.to_string();
+            assert!(message.contains(outsider), "必须点名谁不合格：{message}");
+            for member in [LEAD, W1, W2] {
+                assert!(
+                    message.contains(member),
+                    "必须列出本队成员 {member}（模型据此自我纠正）：{message}"
+                );
+            }
+        }
+        // 被拒的请求不得留下任务行（否则板上多一张没人能认领的卡）。
+        assert!(manager.tasks(TEAM).is_empty(), "拒绝路径不得落库");
+    }
+
+    /// R3.1：`assignee` **必填**。缺省不是「未指派」，而是一个会被拒绝的坏请求 ——
+    /// 没有指派的任务无法为任何成员提供 spawn 依据，队长必须先把活分给人。
+    #[test]
+    fn task_create_without_an_assignee_is_rejected() {
+        let manager = seeded();
+        let err = call(
+            &manager,
+            &lead(),
+            "task_create",
+            &json!({"title": "t", "body": "b"}),
+        )
+        .unwrap_err();
+        let AppError::InvalidInput(message) = &err else {
+            panic!("缺 assignee 必须 InvalidInput，实际 {err:?}");
+        };
+        assert!(message.contains("assignee"), "{message}");
+        assert!(manager.tasks(TEAM).is_empty(), "拒绝路径不得落库");
+    }
+
+    /// R3.3 / G2（本轮核心）：**只起被指派到的成员**。
+    ///
+    /// 现场事故：2 个任务起了 4 个 worker —— 因为 `team_spawn` 没有任何「这块活是谁的」
+    /// 约束，队长把 CLI 池当成必须填满的花名册。这里用板上的 assignee 集合当硬闸门：
+    /// 没有指派的 spawn 必须被拒且不留成员行。
+    #[test]
+    fn spawn_requires_an_open_assignment() {
+        let manager = seeded();
+        let err = call(
+            &manager,
+            &lead(),
+            "team_spawn",
+            &spawn_args("claude-code", "w9"),
+        )
+        .unwrap_err();
+        let AppError::Conflict(message) = &err else {
+            panic!("未指派的成员必须 Conflict，实际 {err:?}");
+        };
+        assert!(message.contains("w9@tm_1"), "要点名被拒的成员：{message}");
+        assert!(
+            message.contains("assignee"),
+            "理由要指向 task_create(assignee=…)：{message}"
+        );
+        assert!(manager.member("w9@tm_1").is_none(), "拒绝路径不得落库");
+    }
+
+    /// R3.3 / AC3.4：起的人数 = 板上不同指派人数。
+    ///
+    /// 3 个任务只指派了 2 个不同的成员（其中一人承接有依赖的两件活）⇒ 只能起 2 次，
+    /// 第 3 个名字（不在任何 assignee 里）必须被拒。这也同时证明「同一成员承接多个
+    /// 有顺序的任务」没有被「一人一任务」之类的硬约束误杀。
+    #[test]
+    fn spawn_count_is_bounded_by_distinct_assignees() {
+        let manager = seeded();
+        for (title, assignee, depends_on) in [
+            ("design", "solver@tm_1", json!([])),
+            ("review", "reviewer@tm_1", json!(["t1"])),
+            ("ship", "solver@tm_1", json!(["t2"])),
+        ] {
+            call(
+                &manager,
+                &lead(),
+                "task_create",
+                &json!({"title": title, "body": "b", "assignee": assignee, "depends_on": depends_on}),
+            )
+            .unwrap();
+        }
+        assert_eq!(manager.tasks(TEAM).len(), 3, "依赖链复用必须能写进板");
+
+        spawn_ok(&manager, &lead(), &spawn_args("claude-code", "solver"));
+        spawn_ok(&manager, &lead(), &spawn_args("codex", "reviewer"));
+        let err = call(
+            &manager,
+            &lead(),
+            "team_spawn",
+            &spawn_args("pi", "checker"),
+        )
+        .unwrap_err();
+        let AppError::Conflict(message) = &err else {
+            panic!("第 3 个（无指派的）成员必须被拒，实际 {err:?}");
+        };
+        assert!(message.contains("checker@tm_1"), "{message}");
+        assert!(
+            manager.member("solver@tm_1").is_some(),
+            "被指派的 solver 必须起了"
+        );
+        assert!(
+            manager.member("reviewer@tm_1").is_some(),
+            "被指派的 reviewer 必须起了"
+        );
+        assert!(
+            manager.member("checker@tm_1").is_none(),
+            "没有指派的 checker 不许起"
+        );
+    }
+
+    /// R3.3：任务终结后不再构成 spawn 依据（重试/改派是另一条路径）。
+    ///
+    /// 直接打 [`TeamManager::has_open_assignment`] 这条纯判据：spawn 侧的拒绝已由
+    /// `spawn_requires_an_open_assignment` 钉住，这里只证明「未终结」这个口径没写反。
+    #[test]
+    fn a_terminal_assignment_does_not_justify_a_spawn() {
+        let manager = seeded();
+        call(
+            &manager,
+            &lead(),
+            "task_create",
+            &json!({"title": "t", "body": "b", "assignee": W1}),
+        )
+        .unwrap();
+        let key = TaskRef::new(TEAM, "t1");
+        let now = crate::agent::team::manager::now_millis();
+        assert!(
+            manager.has_open_assignment(TEAM, W1),
+            "pending 的指派必须允许起人"
+        );
+        manager.claim_task(&key, W1, now).unwrap();
+        manager
+            .force_done(&key, LEAD, "fixture: task settled", now)
+            .unwrap();
+        assert!(
+            !manager.has_open_assignment(TEAM, W1),
+            "done 的任务不该再为它起新进程"
+        );
     }
 
     /// 任务 id 的命名空间是**队内**的：另一个队建的第一个任务**必须**是 `t1`。
@@ -2268,7 +2668,7 @@ mod tests {
                 &manager,
                 &lead(),
                 "task_create",
-                &json!({"title": title, "body": "work"}),
+                &json!({"title": title, "body": "work", "assignee": W1}),
             )
             .unwrap() else {
                 panic!("必须是 Task");
@@ -2283,7 +2683,7 @@ mod tests {
             &manager,
             &other_lead,
             "task_create",
-            &json!({"title": "first", "body": "work"}),
+            &json!({"title": "first", "body": "work", "assignee": OUTSIDER}),
         )
         .unwrap() else {
             panic!("必须是 Task（新团队的第一个任务不得 Conflict）");
@@ -2427,7 +2827,7 @@ mod tests {
             &manager,
             &lead(),
             "task_create",
-            &json!({"title": "next", "body": "work"}),
+            &json!({"title": "next", "body": "work", "assignee": W1}),
         )
         .unwrap() else {
             panic!("必须是 Task");
@@ -2554,11 +2954,7 @@ mod tests {
             reply.members_closed
         );
         assert!(reply.members_failed.is_empty());
-        assert_eq!(
-            reply.team_state,
-            TeamState::Active,
-            "关一个成员不改团队状态"
-        );
+        assert_eq!(reply.team_state, TeamState::Open, "关一个成员不改团队状态");
         assert!(
             reply.notes.iter().any(|note| note.contains("graceful")),
             "graceful 没兑现必须写在 notes 里：{:?}",
@@ -2583,7 +2979,7 @@ mod tests {
         );
     }
 
-    /// 整队关闭：`active → closing`，返回待关列表（**不含队长**）。
+    /// 整队关闭：`open → closing`，返回待关列表（**不含队长**）。
     #[test]
     fn team_close_without_a_member_id_closes_the_whole_team() {
         let manager = seeded();
@@ -2635,8 +3031,10 @@ mod tests {
                 "team_spawn",
                 json!({"agent_id": "claude-code", "name": "w9"}),
             ),
-            ("task_create", json!({"title": "t", "body": "b"})),
-            ("task_claim", json!({"task_id": "t1"})),
+            (
+                "task_create",
+                json!({"title": "t", "body": "b", "assignee": W1}),
+            ),
             ("task_update", json!({"task_id": "t1", "state": "done"})),
             ("team_send", json!({"to": W1, "message": "hi"})),
             ("team_wait", json!({"on": {"members": [W1]}})),
@@ -2654,6 +3052,22 @@ mod tests {
                 "{wire} 的错误必须点名工具：{message}"
             );
         }
+
+        // `task_claim` 是 worker 专属工具：队长这一格已被授权矩阵关掉（见
+        // `authorize::tests::matrix_is_enforced_cell_by_cell`），所以 closing 判据要用
+        // worker 主体来验证 —— 否则量到的是授权拒绝而不是状态拒绝。
+        let err = call(
+            &manager,
+            &worker(W1),
+            "task_claim",
+            &json!({"task_id": "t1"}),
+        )
+        .unwrap_err();
+        let AppError::Conflict(message) = err else {
+            panic!("task_claim 在 closing 里必须 Conflict，实际 {err:?}");
+        };
+        assert!(message.contains("closing"), "{message}");
+        assert!(message.contains("task_claim"), "{message}");
 
         // 读仍然可用（关队期间要看还剩谁）。
         for wire in ["team_status", "task_list", "team_list"] {
@@ -2724,7 +3138,7 @@ mod tests {
         assert_eq!(ids, vec![TEAM, OTHER], "同毫秒建队时按 id 升序");
         assert!(!list.truncated);
         let team = &list.teams[0];
-        assert_eq!(team.state, TeamState::Active);
+        assert_eq!(team.state, TeamState::Open);
         assert_eq!(team.member_count, 2, "成员数不含队长");
         assert_eq!(team.lead_agent_id, "claude-code");
     }
@@ -2744,7 +3158,7 @@ mod tests {
             &manager,
             &lead(),
             "task_create",
-            &json!({"title": "t", "body": "b", "depends_on": "t1"}),
+            &json!({"title": "t", "body": "b", "depends_on": "t1", "assignee": W1}),
         )
         .unwrap_err();
         let AppError::InvalidInput(message) = err else {
@@ -2774,7 +3188,7 @@ mod tests {
             &manager,
             &lead(),
             "task_create",
-            &json!({"title": "t", "body": "b", "workspace": "shared"}),
+            &json!({"title": "t", "body": "b", "workspace": "shared", "assignee": W1}),
         )
         .unwrap() else {
             panic!("必须是 Task");
@@ -2785,7 +3199,7 @@ mod tests {
             &manager,
             &lead(),
             "task_create",
-            &json!({"title": "t", "body": "b", "workspace": "read_only"}),
+            &json!({"title": "t", "body": "b", "workspace": "read_only", "assignee": W1}),
         )
         .unwrap() else {
             panic!("必须是 Task");
@@ -2796,7 +3210,7 @@ mod tests {
             &manager,
             &lead(),
             "task_create",
-            &json!({"title": "t", "body": "b", "workspace": "worktree"}),
+            &json!({"title": "t", "body": "b", "workspace": "worktree", "assignee": W1}),
         )
         .unwrap_err();
         let AppError::InvalidInput(message) = err else {
@@ -2820,7 +3234,7 @@ mod tests {
         let cases = [
             (
                 "task_create",
-                json!({"title": "t", "body": "b", "workspace": 42}),
+                json!({"title": "t", "body": "b", "workspace": 42, "assignee": W1}),
                 "workspace",
             ),
             (
@@ -3328,6 +3742,7 @@ mod tests {
             &rt(),
             &manager,
             &lead(),
+            Arc::new(view::NoSessions),
             "team_wait",
             &json!({"on": {"members": [W1]}, "until": "idle", "timeout_s": 5}),
         )
@@ -3353,6 +3768,7 @@ mod tests {
             &rt(),
             &manager,
             &lead(),
+            Arc::new(view::NoSessions),
             "team_wait",
             &json!({"on": {"members": [W1]}, "until": "declared", "timeout_s": 1}),
         )
@@ -3383,6 +3799,7 @@ mod tests {
             &rt(),
             &manager,
             &worker(W1),
+            Arc::new(view::NoSessions),
             "team_wait",
             &json!({"on": {"members": [W2]}, "until": "idle", "timeout_s": 5}),
         )
@@ -3432,9 +3849,16 @@ mod tests {
             json!({"on": {"members": [7]}}),
         ];
         for args in cases {
-            let err = call_async(&rt(), &manager, &lead(), "team_wait", &args)
-                .await
-                .unwrap_err();
+            let err = call_async(
+                &rt(),
+                &manager,
+                &lead(),
+                Arc::new(view::NoSessions),
+                "team_wait",
+                &args,
+            )
+            .await
+            .unwrap_err();
             let AppError::InvalidInput(message) = err else {
                 panic!("{args} 必须是 InvalidInput，实际 {err:?}");
             };
@@ -3450,6 +3874,7 @@ mod tests {
             &rt(),
             &manager,
             &lead(),
+            Arc::new(view::NoSessions),
             "team_wait",
             &json!({"on": {"members": [W1]}, "until": "finished"}),
         )
@@ -3502,9 +3927,16 @@ mod tests {
             json!({"on": {"members": ["nobody@tm_1"]}}),
             json!({"on": {"tasks": ["t404"]}}),
         ] {
-            let err = call_async(&rt(), &manager, &lead(), "team_wait", &args)
-                .await
-                .unwrap_err();
+            let err = call_async(
+                &rt(),
+                &manager,
+                &lead(),
+                Arc::new(view::NoSessions),
+                "team_wait",
+                &args,
+            )
+            .await
+            .unwrap_err();
             assert!(matches!(err, AppError::NotFound(_)), "{args}: {err:?}");
         }
     }
@@ -3531,6 +3963,7 @@ mod tests {
             &rt(),
             &manager,
             &lead(),
+            Arc::new(view::NoSessions),
             "team_wait",
             &json!({"on": {"tasks": ["t1"]}, "until": "declared", "timeout_s": 1}),
         )
@@ -3574,11 +4007,27 @@ mod tests {
     }
 
     /// 队长 spawn 成功，并把 `MemberCreated` 摊平。
+    ///
+    /// **前置**：人数护栏要求「板上已有未终结任务指派给这个成员」（`team_spawn` 只为
+    /// 被指派到的人起进程）。这里按 `name` 先写一张带 `assignee` 的任务 —— 模拟队长
+    /// 的真实顺序（先写计划再起人）。护栏本身的拒绝路径用 `call` 直测，不走本夹具。
     fn spawn_ok(
         manager: &TeamManager,
         principal: &TeamPrincipal,
         args: &serde_json::Value,
     ) -> Spawned {
+        let name = args["name"].as_str().expect("fixture name").trim();
+        call(
+            manager,
+            principal,
+            "task_create",
+            &json!({
+                "title": format!("work for {name}"),
+                "body": "fixture task",
+                "assignee": format!("{name}@{}", principal.team_id),
+            }),
+        )
+        .expect("fixture: 先写带指派的任务");
         match call(manager, principal, "team_spawn", args) {
             Ok(ToolReply::MemberCreated {
                 member_id,
@@ -3626,8 +4075,8 @@ mod tests {
         // 默认审批策略是 Queue（design §6.1：不冒泡进队长对话）。
         assert_eq!(member.approval_policy, ApprovalPolicy::Queue);
         assert_eq!(member.last_seq, 0);
-        // 进程尚未起：没有 terminal 关联。
-        assert_eq!(member.terminal_id, None);
+        // 未封存（进程状态不在成员行上：v22 起由 `live_sessions` 回答）。
+        assert_eq!(member.sealed_at, None);
         assert_eq!(member.workspace, Workspace::Shared);
         // 凭证尚未签发：空 hash ⇒ 不可认证。明文由执行层取一次，不经过模型上下文。
         assert!(

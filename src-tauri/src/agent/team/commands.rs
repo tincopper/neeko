@@ -1,6 +1,6 @@
 //! 团队域的 `#[tauri::command]`（**极薄**，红线 6）。
 //!
-//! 九条命令：
+//! 十条命令：
 //!
 //! | 命令 | 方向 | 载荷 |
 //! | --- | --- | --- |
@@ -12,11 +12,13 @@
 //! | `team_launchable_agents` | 读 | **这台机器上**每个可选 agent 一条 `{ agentId, refusal }`（面板置灰依据）|
 //! | `team_options` | 读 | **这个队**允许谁 / 还能加几个 / 缺省值（建队前 `team_id = None` → 全部可启动）|
 //! | `team_close` | 写 | 关进程 → 归档成员 → 作废凭证（失败停在 `closing`，可重试）|
+//! | `team_resume` | 写 | 用成员**自己的原生会话 id**重建进程（`team_id` + 可选 `member_id`）|
 //! | `team_delete` | 写 | **永久删除**一个 `closed` 的队（`active` / `closing` 一律拒，返回 `()`）|
 //!
-//! 九条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，可选项面在
+//! 十条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，可选项面在
 //! [`crate::agent::team::options`]，建队/起进程在 `bootstrap` + `execution`，准入判定在
-//! [`crate::agent::team::admission`]，删除的状态判据在 [`crate::agent::team::manager`]（红线 6）。
+//! [`crate::agent::team::admission`]，删除的状态判据在 [`crate::agent::team::manager`]，
+//! 恢复的语义在 [`crate::agent::team::resume`]（红线 6：命令里不留一条恢复规则）。
 //!
 //! # 两条写命令的不可逆程度不同
 //!
@@ -54,6 +56,8 @@
 //! 端点门面        → 没有它，队长起来了也连不上工具面 ⇒ 先拒（此时库里什么也没有）
 //! 项目环境         → 未知 project_id 直接拒：环境归属是项目的事实，不是从路径猜的
 //!                    （v16；与端点同一台阶——两件都是「有没有能力做这件事」）
+//! 工作区地址       → `(project_id, workspace_worktree)` → 已校验的 WorkspaceRef（v23）：
+//!                    未注册的工作树在这里拒，团队根必须等于该工作区的根
 //! 规范化项目路径   → 信任根（红线 8），I/O ⇒ 阻塞池
 //! plan_team        → 纯函数：准入 + 空 project_id + 两行装配（拒绝都发生在写库之前）
 //! create_team_with_lead → 一次写入，不留「没有队长的团队」
@@ -75,6 +79,7 @@ use crate::agent::team::bootstrap::{self, new_team_id, plan_team};
 use crate::agent::team::execution;
 use crate::agent::team::manager::now_millis;
 use crate::agent::team::options::{self, TeamOptions};
+use crate::agent::team::resume::{self, TeamResumeReport};
 use crate::agent::team::types::{MemberRole, RolePreset, TaskRef, TeamConfig, TeamState};
 use crate::agent::team::view::{self, MemberDetail, TaskDetail, TeamSnapshot};
 use crate::common::error::AppError;
@@ -117,6 +122,11 @@ pub struct TeamSession {
 /// - `agent_id`：队长用哪个 CLI（必须是准入表里的 A 档，注入方式已实现，**且能收到角色
 ///   preamble** —— `prompt_argv` 为空的行会在这里被拒绝，理由原样返回）。
 /// - `project_path`：团队根（**绝对**路径；会被规范化成信任根）。
+/// - `workspace_worktree`：团队所在的**工作树**（前端 `activeWorkspace.worktreePath`）；
+///   `None` = 主 checkout。它是**地址**（工作区身份的一半），不是随便一个目录：
+///   校验在 [`AppStateWrapper::resolve_workspace`]（worktree 归属的唯一校验入口），
+///   且规范化后的团队根必须**等于**该地址给出的根 —— 否则「团队跑在 A 单元、记录说 B 单元」，
+///   历史会把它归到错的工作区（而那种错在面板上看不出来）。
 /// - `name`：团队显示名（缺省取项目目录名）。
 /// - `config`：团队组成配置（候选池 / 成员上限 / 三个缺省值）；`None` = 全默认。
 ///   校验在**写库之前**（同 `plan_team` 的拒绝顺序）：池内每一项必须真能当成员、上限在
@@ -128,6 +138,7 @@ pub async fn start_team_session(
     project_id: String,
     agent_id: String,
     project_path: String,
+    workspace_worktree: Option<String>,
     name: Option<String>,
     config: Option<TeamConfig>,
 ) -> Result<TeamSession, AppError> {
@@ -141,6 +152,16 @@ pub async fn start_team_session(
     // 这一步同时取代了原来那条晚到的失败（执行层拿路径反查不到项目），
     // 并且把「项目认不认这个根」这件事从执行层的猜变成命令层的断言。
     state.project_environment(&project_id)?;
+
+    // 工作区地址：`(project_id, workspace_worktree)` → 已校验的 [`WorkspaceRef`]。
+    // 它同时回答两件事：这个工作树确实属于这个项目；团队根该是哪个（`repo.root()`）。
+    // **在写入之前**拒绝未注册的地址（与端点 / 项目环境同一台阶：都是「有没有能力做这件事」）。
+    //
+    // 走 `resolve_workspace_target`（地址 → 已解析 ref 的唯一入口）：地址是一个值对象，
+    // 命令层不持有 `(project_id, worktree_path)` 两个散参（护栏 A1）。
+    let workspace =
+        crate::common::git::WorkspaceSession::of(project_id.clone(), workspace_worktree.clone());
+    let (_target, repo) = state.resolve_workspace_target(&workspace).await?;
 
     // 信任根（红线 8）+ 配置校验：两者都是 I/O 或依赖规范化后的根 ⇒ 同一个阻塞池任务
     // （红线 3）。顺序即契约：先有根，再判「默认 worktree 是否落在根内」。
@@ -156,12 +177,27 @@ pub async fn start_team_session(
         .await
         .map_err(|err| AppError::Unknown(format!("resolving the project path failed: {err}")))??;
 
+    // 团队根必须**就是**调用方点名的工作区：两个事实（跑在哪 / 记成哪个单元）指向不同的
+    // 目录时，历史归属与侧栏分组会各说一套，而两套界面都在「说实话」。
+    if root != Path::new(repo.root()) {
+        return Err(AppError::InvalidInput(format!(
+            "the team root must be the workspace you named: `project_path` resolves to {} but the \
+             workspace `{}` is {}",
+            root.display(),
+            repo.key(),
+            repo.root()
+        )));
+    }
+
     // 纯计划：准入拒绝（包括「起得来但连不上工具面」）全部发生在写库之前。
+    // `workspace_worktree` 用 **`repo` 给出的身份**（而不是前端原样传的字符串）：
+    // 地址的规范化只在一处发生（`WorkspaceRef::resolve`），团队行存的是那个身份。
     let now = now_millis();
     let plan = plan_team(
         &agent_id,
         &project_id,
         &root,
+        repo.worktree_path().map(PathBuf::from),
         name.as_deref(),
         &new_team_id(now),
         now,
@@ -178,17 +214,16 @@ pub async fn start_team_session(
 
     // 与成员**完全同一条**执行路径：签发凭证（并认门）→ 起 PTY → 回填句柄。
     // 这里只调动作、不碰工具回复的类型 —— 本地入口不该依赖 MCP 的词汇。
-    execution::start_member(
+    // 返回的句柄**只用于本次响应**（前端据此立刻开队长 tab）；它不再进成员行 ——
+    // 之后要问「队长在哪」一律走 `live_sessions`（归属已在登记时写入）。
+    // `None` = 新开一个对话（建队的第一句话没有「原来的会话」可续）。
+    let terminal_id = execution::start_member(
         surface.credentials.as_ref(),
         surface.executor.as_ref(),
         &plan.lead.id,
+        None,
     )
     .await?;
-
-    let terminal_id = state
-        .team_manager
-        .member(&plan.lead.id)
-        .and_then(|member| member.terminal_id);
 
     log::info!(
         "[agent-team] team {} started with lead {} ({})",
@@ -199,7 +234,7 @@ pub async fn start_team_session(
     Ok(TeamSession {
         team_id: plan.team.id,
         member_id: plan.lead.id,
-        terminal_id,
+        terminal_id: Some(terminal_id),
         endpoint_url: surface.endpoint_url,
         lead_agent_id: plan.lead.agent_id,
     })
@@ -364,6 +399,54 @@ pub async fn team_close(
     ClosedReply::from_outcome(outcome)
 }
 
+/// **恢复**一个团队（或其中一名成员）的**进程**，续接各自的原生会话。
+///
+/// # 恢复不是「把旧进程找回来」
+///
+/// 进程句柄是进程期资源（跨重启必死），可恢复的只有成员行（身份）与 `agent_session_id`
+/// （这个成员的对话）。所以本命令的动作是**重建资源**：`admit` → `provision` → `spawn`，
+/// 唯一差别是启动行开头多一段该 CLI 自己的续接片段（`--resume <id>` / `resume <id>` /
+/// `--session <id>` …）。片段由会话域的适配器给（红线 15），位置由执行层定。
+///
+/// # 两个入口，一个命令
+///
+/// `member_id = None` ⇒ 整个队（每个未封存成员）；`Some` ⇒ 只恢复那一个。不新增第二个
+/// 命令名：成员级恢复与整队恢复是同一件事的两个范围，拆成两个命令会让「幂等 / 拒绝理由 /
+/// 报告形状」各写两遍。
+///
+/// # 幂等与拒绝（判据不在这一层）
+///
+/// 已 live 的成员跳过（活性问 `live_sessions`，红线 17）；`sealed` 团队 / `closing` 团队
+/// 拒绝；封存成员不在候选集里。全部在 [`resume::resume_team`]（域内唯一实现）。
+///
+/// # 为什么要 `team_surface`
+///
+/// 执行那一半要 `credentials`（签发并认门）与 `executor`（起 PTY）。端点没起来时它们不存在，
+/// 此时**不假装能恢复**（一个「恢复了但起不来」的队比报错更糟）。
+#[tauri::command]
+pub async fn team_resume(
+    state: tauri::State<'_, AppStateWrapper>,
+    team_id: String,
+    member_id: Option<String>,
+) -> Result<TeamResumeReport, AppError> {
+    let team_id = require_id(team_id, "team_id")?;
+    let member_id = match member_id {
+        Some(id) => Some(require_id(id, "member_id")?),
+        None => None,
+    };
+    let surface = state.team_surface().ok_or_else(no_endpoint)?;
+    let sessions = crate::app::RegistryMemberSessions::new(Arc::clone(&state.live_sessions));
+    resume::resume_team(
+        &state.team_manager,
+        &sessions,
+        surface.credentials.as_ref(),
+        surface.executor.as_ref(),
+        &team_id,
+        member_id.as_deref(),
+    )
+    .await
+}
+
 /// **永久删除**一个已关闭的团队（面板列表行上的「删除」）。
 ///
 /// # 为什么这是第八个入口，而不是 `team_close` 的一个参数
@@ -524,7 +607,8 @@ pub async fn team_snapshot(
 ) -> Result<TeamSnapshot, AppError> {
     let team_id = require_id(team_id, "team_id")?;
     let manager = Arc::clone(&state.team_manager);
-    run_blocking_result(move || view::team_snapshot(&manager, &team_id)).await
+    let sessions = crate::app::RegistryMemberSessions::new(Arc::clone(&state.live_sessions));
+    run_blocking_result(move || view::team_snapshot(&manager, &team_id, &sessions)).await
 }
 
 /// 单个任务的详情（**点开才拉**）：列视图 + 派活正文。
@@ -578,7 +662,8 @@ pub async fn team_member_detail(
 ) -> Result<MemberDetail, AppError> {
     let member_id = require_id(member_id, "member_id")?;
     let manager = Arc::clone(&state.team_manager);
-    run_blocking_result(move || view::member_detail(&manager, &member_id)).await
+    let sessions = crate::app::RegistryMemberSessions::new(Arc::clone(&state.live_sessions));
+    run_blocking_result(move || view::member_detail(&manager, &member_id, &sessions)).await
 }
 
 /// id 入参的**唯一**校验：不能为空。
@@ -595,12 +680,12 @@ fn require_id(value: String, field: &str) -> Result<String, AppError> {
 
 /// 一条统一的拒绝：「团队端点没起来」。
 ///
-/// 两类调用（凭证 / URL）拿到**同一句**话：它们缺的是同一个东西，给两种措辞只会让
-/// 排查者以为是两个故障。
+/// 三个写入口（建队 / 恢复 / 关闭）拿到**同一句**话：它们缺的是同一个东西（凭证面与执行者
+/// 都由端点提供），给几种措辞只会让排查者以为是几个故障。所以文案刻意不绑定某一个动作。
 fn no_endpoint() -> AppError {
     AppError::Unsupported(
-        "the team mcp endpoint is not running, so a lead could not reach the tool surface; \
-         refusing to create a team that has no way to be driven"
+        "the team mcp endpoint is not running, so a lead or member could not reach the tool \
+         surface; refusing an action that would leave a team with no way to be driven"
             .to_string(),
     )
 }
@@ -660,8 +745,8 @@ mod tests {
         let source = include_str!("commands.rs");
         let declared = tauri_command_names(source);
         assert!(
-            declared.len() >= 9,
-            "只抽到 {} 条 `#[tauri::command]`（{:?}）：解析规则漂了，早先 9 条",
+            declared.len() >= 10,
+            "只抽到 {} 条 `#[tauri::command]`（{:?}）：解析规则漂了，早先 10 条",
             declared.len(),
             declared
         );
@@ -835,6 +920,22 @@ mod tests {
             events_truncated: true,
         };
 
+        // 恢复报告（`team_resume`）：四个桶 + 团队 id。前端按 `resumed` / `skippedAlreadyLive`
+        // 分支渲染，所以键名是跨栈契约（与 `ClosedReply` 同一纪律）。
+        let resumed = TeamResumeReport {
+            team_id: "tm_1".into(),
+            resumed: vec!["w1@tm_1".into()],
+            skipped_already_live: vec!["w2@tm_1".into()],
+            cold: vec![resume::ColdMember {
+                member_id: "lead@tm_1".into(),
+                reason: resume::ColdReason::NoNativeSession,
+            }],
+            failed: vec![resume::MemberFailure {
+                member_id: "w3@tm_1".into(),
+                error: "pty refused".into(),
+            }],
+        };
+
         // 角色库命令的载荷（v19）：`team_role_list` 的行形态。
         let role = RolePreset {
             name: "研究员".into(),
@@ -859,6 +960,15 @@ mod tests {
             ),
             ("TeamList", serde_json::to_value(&teams).unwrap()),
             ("ClosedReply", serde_json::to_value(&closed).unwrap()),
+            ("TeamResumeReport", serde_json::to_value(&resumed).unwrap()),
+            (
+                "TeamResumeReport.cold",
+                serde_json::to_value(&resumed.cold[0]).unwrap(),
+            ),
+            (
+                "TeamResumeReport.failed",
+                serde_json::to_value(&resumed.failed[0]).unwrap(),
+            ),
             (
                 "MemberDetail",
                 serde_json::to_value(&member_detail).unwrap(),

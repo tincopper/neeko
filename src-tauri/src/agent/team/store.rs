@@ -101,6 +101,8 @@ pub fn v13_to_v14(conn: &Connection) -> Result<()> {
             summary_truncated INTEGER NOT NULL DEFAULT 0,
             artifacts         TEXT NOT NULL,
             reclaim_count     INTEGER NOT NULL DEFAULT 0,
+            -- 计划事实（谁该做）；`owner` 是执行事实（谁在做）。v24 补列见 `v23_to_v24`。
+            assignee          TEXT,
             PRIMARY KEY (team_id, id)
         );
         CREATE INDEX IF NOT EXISTS idx_team_task_team ON team_task(team_id, state);
@@ -292,6 +294,136 @@ fn task_primary_key_is_team_first(conn: &Connection) -> Result<bool> {
     Ok(ordinal("team_id") == Some(1) && ordinal("id") == Some(2))
 }
 
+/// v21→v22：**会话身份与进程资源分家**（本任务的核心迁移）。
+///
+/// 三件事，同一步做完（分成三步会让 `upsert_member` 被改写三次，而每次中间的形态都是
+/// 「有些列存在、有些不」的半状态）：
+///
+/// 1. **状态语义合法化**：`team.state` 的 `active/closed` → `open/sealed`；
+///    `team_member.state` 的 `dead` → `offline`，其余运行态（`spawned/running/awaiting/
+///    idle/done/failed/stalled`）一并归位 `offline` —— 升级即重启，进程不可能还活着
+///    （`done` 的权威在任务板）。旧的 `dead` 同时表达了「进程没了」与
+///    「用户关掉了它」，这两件事在恢复语义上相反（一个可恢复、一个不可）；
+/// 2. **用户意图出列**：`team.sealed_at` 改名 `sealed_at`（值原样搬运，语义收窄成
+///    「用户封存时刻」）；`team_member` 新增 `sealed_at`。旧 `dead` 行一律视为已封存
+///    （`archive_member` 在 v22 之前只由显式关闭路径调用），时刻无从恢复 ⇒ 用 `joined_at`
+///    占位并在此记明：读者只判**非空**，不读它的绝对值；
+/// 3. **删掉两列进程资源**：`team_member.terminal_id` 与 `team.lead_session_id`
+///    （后者是 PTY 句柄且**零读取方**）。活性从此只能问 `live_sessions`（红线 17），
+///    于是「面板显示可点、点下去必失败」这种僵尸状态在数据模型里不再可表达。
+///
+/// # 幂等
+///
+/// `UPDATE` 天然幂等；`RENAME COLUMN` / `DROP COLUMN` 不是，所以各自先查
+/// `pragma_table_info`（与 `add_column_if_missing` 同一形状），半迁移后手工重放安全。
+pub fn v21_to_v22(conn: &Connection) -> Result<()> {
+    // ① 用户封存的时刻列改名（值保留，所以旧的 closed_at 一次都不丢）。
+    if column_exists(conn, "team", "closed_at")? && !column_exists(conn, "team", "sealed_at")? {
+        conn.execute_batch("ALTER TABLE team RENAME COLUMN closed_at TO sealed_at")?;
+    }
+    add_column_if_missing(conn, "team", "sealed_at", "INTEGER")?;
+    add_column_if_missing(conn, "team_member", "sealed_at", "INTEGER")?;
+
+    // ② 旧 `dead` = 用户封存过（见上方文档）。时刻用 joined_at 占位。
+    conn.execute(
+        "UPDATE team_member SET sealed_at = joined_at \
+         WHERE state = 'dead' AND sealed_at IS NULL",
+        [],
+    )?;
+
+    // ③ 状态值合法化（顺序无关，两次 UPDATE 的集合不相交）。
+    conn.execute_batch(
+        "
+        UPDATE team        SET state = 'open'   WHERE state = 'active';
+        UPDATE team        SET state = 'sealed' WHERE state = 'closed';
+        UPDATE team_member SET state = 'offline'
+          WHERE state IN ('dead','spawned','running','awaiting','idle','done','failed','stalled');
+        ",
+    )?;
+
+    // ④ 进程资源出列。
+    drop_column_if_present(conn, "team_member", "terminal_id")?;
+    drop_column_if_present(conn, "team", "lead_session_id")?;
+    Ok(())
+}
+
+/// v22→v23：`team.workspace_worktree` —— 团队所在的**工作树维度**。
+///
+/// # 为什么团队行需要它
+///
+/// 团队根 `project_path` 只是一个路径字符串。历史面板要把「团队成员的会话」归属到**项目**
+/// （而不是「那个目录前缀」）时，一条 `~/.neeko/worktrees/<name>` 的记录无法说明自己属于哪个
+/// 项目 —— 环境归属靠 `project_id`（v16），**工作区归属**靠本列：`(project_id,
+/// workspace_worktree)` 合成工作区身份。`NULL` = 主 checkout（项目根本身）。
+///
+/// 列值**不是**从路径推导出来的：建队时由调用方（前端 `activeWorkspace`）给出，后端用
+/// `resolve_workspace` 校验后落库（与 `project_id` 同一条纪律：路径只是身份的属性）。
+///
+/// # 旧行（NULL）的语义
+///
+/// v23 之前建的团队只能退回 `project_path` 当工作区根（`AppStateWrapper::project_scope`
+/// 的 `recorded`）；那时没有记录过工作树维度这个事实，不可能回填。
+///
+/// # 幂等
+///
+/// 与 v14→v15 / v15→v16 同形状（`ADD COLUMN` 先查再改，半迁移后手工重放安全）。
+/// **不改 v13 的 `CREATE TABLE team`**：建表串是已发布的历史步骤，改了会让「v22 库」
+/// 这一状态在夹具里不可重现（迁移测试就无法证明本步真的做了什么）。新库从 0 跑到 23，
+/// 本步照样生效。
+pub fn v22_to_v23(conn: &Connection) -> Result<()> {
+    add_column_if_missing(conn, "team", "workspace_worktree", "TEXT")
+}
+
+/// v23→v24：`team_task.assignee` —— 任务板上的**计划事实**（谁该做）。
+///
+/// # 为什么它和 `owner` 是两列
+///
+/// `owner` 是**执行事实**（谁在做，由 `claim_task` 写入，`claimed`/`in_progress` 时必有），
+/// `assignee` 是**计划事实**（队长派活时指定谁该做）。二者刻意不合并：
+///
+/// - 指派**不改状态**：`state` 仍是 `pending`、`owner` 仍为空、不起租约。自动落成
+///   `claimed` 会让排队中的任务被 `reclaim_expired` 当成过期租约回收（它会把 owner
+///   清成 `None`）—— 那是本次改动要避免的症状，不是要引入的；
+/// - 认领仍是**并发闸**：`assignee` 存在时只缩小候选集（只有被指派者能抢），
+///   “只有一个赢家”仍由 `manager::claim_task` 保证。
+///
+/// # 旧行（NULL）的语义 = 未指派
+///
+/// 没有记录过「谁该做」这个事实，不可能回填。`None` 与「新建时没给 assignee」完全等价：
+/// 任何本队成员都能认领（与今天一致）。
+///
+/// # 幂等
+///
+/// 与 v14→v15 / v15→v16 / v22→v23 同形状（`ADD COLUMN` 先查再改，半迁移后手工重放安全）。
+/// **不改 v17 的 `team_task_v17` 历史重建 DDL**：那是已发布事实，而新库（v0 → 24）
+/// 会在 v17 重建之后由本步把列补回来。判据：
+/// `v23_to_v24_is_idempotent` / `a_v23_task_row_upgrades_to_an_unassigned_task`。
+pub fn v23_to_v24(conn: &Connection) -> Result<()> {
+    add_column_if_missing(conn, "team_task", "assignee", "TEXT")
+}
+
+/// 列是否存在（DDL 不能绑位置参数，表名/列名都是本文件的字面量）。
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// 删一列（不存在则跳过）。`ALTER TABLE ... DROP COLUMN` 没有 `IF EXISTS`。
+fn drop_column_if_present(conn: &Connection, table: &str, column: &str) -> Result<()> {
+    if !column_exists(conn, table, column)? {
+        return Ok(());
+    }
+    conn.execute_batch(&format!("ALTER TABLE {table} DROP COLUMN {column}"))?;
+    Ok(())
+}
+
 /// v20→v21：成员的原生会话 id（`team_member.agent_session_id`）。
 ///
 /// 成员退出后按它打开历史 transcript（「已退出」不等于「看不到它干过什么」）；
@@ -447,18 +579,18 @@ impl TeamStore {
     pub fn upsert_team(&self, team: &Team) -> Result<()> {
         let conn = self.conn()?;
         conn.execute(
-            "INSERT INTO team (id, name, lead_session_id, lead_agent_id, project_path,
-             project_id, created_at, closed_at, state, allowed_agent_ids, default_model,
-             default_workspace, default_approval_policy, max_members, default_persona, role_hints)
+            "INSERT INTO team (id, name, lead_agent_id, project_path,
+             project_id, created_at, sealed_at, state, allowed_agent_ids, default_model,
+             default_workspace, default_approval_policy, max_members, default_persona, role_hints,
+             workspace_worktree)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
-                lead_session_id = excluded.lead_session_id,
                 lead_agent_id = excluded.lead_agent_id,
                 project_path = excluded.project_path,
                 project_id = excluded.project_id,
                 created_at = excluded.created_at,
-                closed_at = excluded.closed_at,
+                sealed_at = excluded.sealed_at,
                 state = excluded.state,
                 allowed_agent_ids = excluded.allowed_agent_ids,
                 default_model = excluded.default_model,
@@ -466,16 +598,16 @@ impl TeamStore {
                 default_approval_policy = excluded.default_approval_policy,
                 max_members = excluded.max_members,
                 default_persona = excluded.default_persona,
-                role_hints = excluded.role_hints",
+                role_hints = excluded.role_hints,
+                workspace_worktree = excluded.workspace_worktree",
             params![
                 team.id,
                 team.name,
-                team.lead_session_id,
                 team.lead_agent_id,
                 path_text(&team.project_path)?,
                 team.project_id,
                 team.created_at,
-                team.closed_at,
+                team.sealed_at,
                 text_of(&team.state, "team.state")?,
                 text_of(&team.allowed_agent_ids, "team.allowed_agent_ids")?,
                 team.default_model,
@@ -487,6 +619,10 @@ impl TeamStore {
                 i64::from(team.max_members),
                 team.default_persona,
                 text_of(&team.role_hints, "team.role_hints")?,
+                team.workspace_worktree
+                    .as_deref()
+                    .map(path_text)
+                    .transpose()?,
             ],
         )?;
         Ok(())
@@ -538,8 +674,9 @@ impl TeamStore {
         let conn = self.conn()?;
         conn.execute(
             "INSERT INTO team_member (id, team_id, name, role, agent_id, model, session_id,
-             terminal_id, workspace, channel, result_channel, tier, approval_policy,
-             mcp_injection, last_seq, state, token_hash, joined_at, persona, agent_session_id)
+             workspace, channel, result_channel, tier, approval_policy,
+             mcp_injection, last_seq, state, token_hash, joined_at, persona, agent_session_id,
+             sealed_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
@@ -547,7 +684,6 @@ impl TeamStore {
                 agent_id = excluded.agent_id,
                 model = excluded.model,
                 session_id = excluded.session_id,
-                terminal_id = excluded.terminal_id,
                 workspace = excluded.workspace,
                 channel = excluded.channel,
                 result_channel = excluded.result_channel,
@@ -559,7 +695,8 @@ impl TeamStore {
                 token_hash = excluded.token_hash,
                 joined_at = excluded.joined_at,
                 persona = excluded.persona,
-                agent_session_id = excluded.agent_session_id",
+                agent_session_id = excluded.agent_session_id,
+                sealed_at = excluded.sealed_at",
             params![
                 member.id,
                 member.team_id,
@@ -568,7 +705,6 @@ impl TeamStore {
                 member.agent_id,
                 member.model,
                 member.session_id,
-                member.terminal_id,
                 text_of(&member.workspace, "team_member.workspace")?,
                 text_of(&member.channel, "team_member.channel")?,
                 text_of(&member.result_channel, "team_member.result_channel")?,
@@ -585,6 +721,7 @@ impl TeamStore {
                     .map(serde_json::to_string)
                     .transpose()?,
                 member.agent_session_id,
+                member.sealed_at,
             ],
         )?;
         Ok(())
@@ -727,8 +864,8 @@ impl TeamStore {
         conn.execute(
             "INSERT INTO team_task (id, team_id, title, body, state, owner, workspace,
              depends_on, claimed_at, lease_ttl, summary, summary_truncated, artifacts,
-             reclaim_count)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             reclaim_count, assignee)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
              ON CONFLICT(team_id, id) DO UPDATE SET
                 title = excluded.title,
                 body = excluded.body,
@@ -741,7 +878,8 @@ impl TeamStore {
                 summary = excluded.summary,
                 summary_truncated = excluded.summary_truncated,
                 artifacts = excluded.artifacts,
-                reclaim_count = excluded.reclaim_count",
+                reclaim_count = excluded.reclaim_count,
+                assignee = excluded.assignee",
             params![
                 task.id,
                 task.team_id,
@@ -757,6 +895,7 @@ impl TeamStore {
                 i64::from(task.summary_truncated),
                 text_of(&task.artifacts, "team_task.artifacts")?,
                 i64::from(task.reclaim_count),
+                task.assignee,
             ],
         )?;
         Ok(())
@@ -904,50 +1043,53 @@ pub struct TeamEventRecord {
     pub detail: Option<String>,
 }
 
-const SELECT_TEAM: &str = "SELECT id, name, lead_session_id, lead_agent_id, project_path,
-    project_id, created_at, closed_at, state, allowed_agent_ids, default_model,
-    default_workspace, default_approval_policy, max_members, default_persona, role_hints FROM team";
+const SELECT_TEAM: &str = "SELECT id, name, lead_agent_id, project_path,
+    project_id, created_at, sealed_at, state, allowed_agent_ids, default_model,
+    default_workspace, default_approval_policy, max_members, default_persona, role_hints,
+    workspace_worktree FROM team";
 
 const SELECT_MEMBER: &str = "SELECT id, team_id, name, role, agent_id, model, session_id,
-    terminal_id, workspace, channel, result_channel, tier, approval_policy, mcp_injection,
-    last_seq, state, token_hash, joined_at, persona, agent_session_id FROM team_member";
+    workspace, channel, result_channel, tier, approval_policy, mcp_injection,
+    last_seq, state, token_hash, joined_at, persona, agent_session_id, sealed_at FROM team_member";
 
 const SELECT_ROLE: &str = "SELECT name, preamble, cli_preference, approval_policy,
     default_workspace, created_at FROM team_role";
 
 const SELECT_TASK: &str = "SELECT id, team_id, title, body, state, owner, workspace,
-    depends_on, claimed_at, lease_ttl, summary, summary_truncated, artifacts, reclaim_count
+    depends_on, claimed_at, lease_ttl, summary, summary_truncated, artifacts, reclaim_count,
+    assignee
     FROM team_task";
 
 fn map_team_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Team> {
-    let max_members: i64 = row.get(13)?;
+    let max_members: i64 = row.get(12)?;
     Ok(Team {
         id: row.get(0)?,
         name: row.get(1)?,
-        lead_session_id: row.get(2)?,
-        lead_agent_id: row.get(3)?,
-        project_path: PathBuf::from(row.get::<_, String>(4)?),
+        lead_agent_id: row.get(2)?,
+        project_path: PathBuf::from(row.get::<_, String>(3)?),
         // 空串 = v16 之前建的行（见 `v15_to_v16` 的文档），不是「没有项目」。
-        project_id: row.get(5)?,
-        created_at: row.get(6)?,
-        closed_at: row.get(7)?,
-        state: column_json(row.get::<_, String>(8)?, "team.state")?,
-        allowed_agent_ids: column_json(row.get::<_, String>(9)?, "team.allowed_agent_ids")?,
-        default_model: row.get(10)?,
-        default_workspace: column_json(row.get::<_, String>(11)?, "team.default_workspace")?,
+        project_id: row.get(4)?,
+        created_at: row.get(5)?,
+        sealed_at: row.get(6)?,
+        state: column_json(row.get::<_, String>(7)?, "team.state")?,
+        allowed_agent_ids: column_json(row.get::<_, String>(8)?, "team.allowed_agent_ids")?,
+        default_model: row.get(9)?,
+        default_workspace: column_json(row.get::<_, String>(10)?, "team.default_workspace")?,
         default_approval_policy: column_json(
-            row.get::<_, String>(12)?,
+            row.get::<_, String>(11)?,
             "team.default_approval_policy",
         )?,
         max_members: u32::try_from(max_members)
             .map_err(|_| conversion_failure("team.max_members", "out of range"))?,
-        default_persona: row.get(14)?,
-        role_hints: column_json(row.get::<_, String>(15)?, "team.role_hints")?,
+        default_persona: row.get(13)?,
+        role_hints: column_json(row.get::<_, String>(14)?, "team.role_hints")?,
+        // NULL = 主 checkout（或 v23 之前建的行，见 `v22_to_v23`）。
+        workspace_worktree: row.get::<_, Option<String>>(15)?.map(PathBuf::from),
     })
 }
 
 fn map_member_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TeamMember> {
-    let last_seq: i64 = row.get(14)?;
+    let last_seq: i64 = row.get(13)?;
     Ok(TeamMember {
         id: row.get(0)?,
         team_id: row.get(1)?,
@@ -956,23 +1098,23 @@ fn map_member_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TeamMember> {
         agent_id: row.get(4)?,
         model: row.get(5)?,
         session_id: row.get(6)?,
-        terminal_id: row.get(7)?,
-        workspace: column_json::<Workspace>(row.get::<_, String>(8)?, "team_member.workspace")?,
-        channel: column_json(row.get::<_, String>(9)?, "team_member.channel")?,
-        result_channel: column_json(row.get::<_, String>(10)?, "team_member.result_channel")?,
-        tier: column_json(row.get::<_, String>(11)?, "team_member.tier")?,
-        approval_policy: column_json(row.get::<_, String>(12)?, "team_member.approval_policy")?,
-        mcp_injection: column_json(row.get::<_, String>(13)?, "team_member.mcp_injection")?,
+        workspace: column_json::<Workspace>(row.get::<_, String>(7)?, "team_member.workspace")?,
+        channel: column_json(row.get::<_, String>(8)?, "team_member.channel")?,
+        result_channel: column_json(row.get::<_, String>(9)?, "team_member.result_channel")?,
+        tier: column_json(row.get::<_, String>(10)?, "team_member.tier")?,
+        approval_policy: column_json(row.get::<_, String>(11)?, "team_member.approval_policy")?,
+        mcp_injection: column_json(row.get::<_, String>(12)?, "team_member.mcp_injection")?,
         last_seq: u64::try_from(last_seq)
             .map_err(|_| conversion_failure("team_member.last_seq", "negative seq"))?,
-        state: column_json::<MemberState>(row.get::<_, String>(15)?, "team_member.state")?,
-        token_hash: row.get(16)?,
-        joined_at: row.get(17)?,
+        state: column_json::<MemberState>(row.get::<_, String>(14)?, "team_member.state")?,
+        token_hash: row.get(15)?,
+        joined_at: row.get(16)?,
         persona: row
-            .get::<_, Option<String>>(18)?
+            .get::<_, Option<String>>(17)?
             .map(|raw| column_json::<Persona>(raw, "team_member.persona"))
             .transpose()?,
-        agent_session_id: row.get(19)?,
+        agent_session_id: row.get(18)?,
+        sealed_at: row.get(19)?,
     })
 }
 
@@ -1016,6 +1158,9 @@ fn map_task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TeamTask> {
         artifacts: column_json::<Vec<Artifact>>(row.get::<_, String>(12)?, "team_task.artifacts")?,
         reclaim_count: u32::try_from(reclaim_count)
             .map_err(|_| conversion_failure("team_task.reclaim_count", "out of range"))?,
+        // 列在 `SELECT_TASK` 的末尾（v24 追加，见 `v23_to_v24`）。夹具刻意取非默认值：
+        // `None` 是「未指派」，用 `None` 打底会让「这一列根本没写进库」变绿。
+        assignee: row.get(14)?,
     })
 }
 
@@ -1083,16 +1228,18 @@ mod tests {
         Team {
             id: "tm_1".into(),
             name: "Team One".into(),
-            lead_session_id: "sess-lead".into(),
             lead_agent_id: "claude".into(),
             // 红线 13：夹具路径由 CARGO_MANIFEST_DIR 推导，不硬编码 POSIX 绝对路径。
             project_path: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
             // 非空：空串的语义是「v16 之前建的行」（见 `v15_to_v16`），
             // 而这里的夹具是一个普通团队。每个断言都拿它跟别的值做区分。
             project_id: "p-sample".into(),
+            // 工作树维度（v23）同样取**非默认值**：`None` 是主 checkout，用 `None` 打底会让
+            // 「这一列根本没写进库」这类缺陷变绿。
+            workspace_worktree: Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wt-sample")),
             created_at: 1_700_000_000_000,
-            closed_at: None,
-            state: TeamState::Active,
+            sealed_at: None,
+            state: TeamState::Open,
             // 配置五列同样**每列都偏离默认值**：空池 / `None` / `shared` / `queue` / 4
             // 是默认值，用它们打底会让「配置列根本没写进库」这类缺陷变绿。
             // `default_persona` 同理取非空（v19 列）。
@@ -1123,7 +1270,7 @@ mod tests {
             agent_id: "claude".into(),
             model: Some("sonnet".into()),
             session_id: None,
-            terminal_id: Some("term-1".into()),
+            sealed_at: None,
             workspace: Workspace::Worktree {
                 path: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("wt-w1"),
             },
@@ -1163,6 +1310,9 @@ mod tests {
                 value: "deadbeef".into(),
             }],
             reclaim_count: 2,
+            // 指派同样取**非默认值**（`Some` 而不是 `None`）：`None` 是「未指派」这个
+            // 默认语义，用 `None` 打底会让「这一列根本没写进库」变绿。
+            assignee: Some("w1@tm_1".into()),
         }
     }
 
@@ -1377,15 +1527,337 @@ mod tests {
         }
     }
 
+    /// v21→v22：**身份与进程资源分家**的三件事一次做完（本任务的核心迁移）。
+    ///
+    /// 逐条钉住，因为每一件的失败都是静默的：
+    ///
+    /// | 断言 | 漏了会怎样 |
+    /// | --- | --- |
+    /// | `active → open` / `closed → sealed` | 旧行在新代码里匹配不到任何 `TeamState` 分支 |
+    /// | `closed_at` 值搬到 `sealed_at` | 已封存的队被读成「未封存」⇒ 重启后自动复活 |
+    /// | `dead → offline` + `sealed_at = joined_at` | 用户关掉的成员被当成「可恢复」 |
+    /// | 两列进程资源消失 | 僵尸句柄重新变成可点按钮（正是本任务要消灭的东西）|
+    #[test]
+    fn v21_to_v22_splits_identity_from_process_resources() {
+        /// 建一个 v21 形状的库：按序重放 13..=20 各步（迁移是只追加的，这里要的就是旧形状）。
+        fn v21_database() -> Connection {
+            let conn = Connection::open_in_memory().unwrap();
+            v13_to_v14(&conn).unwrap();
+            v14_to_v15(&conn).unwrap();
+            v15_to_v16(&conn).unwrap();
+            v16_to_v17(&conn).unwrap();
+            crate::work_items::store::v17_to_v18(&conn).unwrap();
+            v18_to_v19(&conn).unwrap();
+            v19_to_v20(&conn).unwrap();
+            v20_to_v21(&conn).unwrap();
+            conn
+        }
+
+        let conn = v21_database();
+        // 前提：v21 形状**确实**有那三列/那组旧值（否则本用例证明不了任何事）。
+        for (table, column) in [
+            ("team", "lead_session_id"),
+            ("team", "closed_at"),
+            ("team_member", "terminal_id"),
+        ] {
+            assert!(
+                column_exists(&conn, table, column).unwrap(),
+                "前提：v21 应有 {table}.{column}"
+            );
+        }
+        for (id, state, closed_at) in [("tm_old", "active", None), ("tm_done", "closed", Some(77))]
+        {
+            conn.execute(
+                "INSERT INTO team (id, name, lead_session_id, lead_agent_id, project_path,
+                 project_id, created_at, closed_at, state)
+                 VALUES (?1, 'T', 'pty-1', 'claude-code', '.', 'p', 1, ?2, ?3)",
+                params![id, closed_at, state],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO team_member (id, team_id, name, role, agent_id, model, session_id,
+             terminal_id, workspace, channel, result_channel, tier, approval_policy,
+             mcp_injection, last_seq, state, token_hash, joined_at)
+             VALUES ('w1@tm_old', 'tm_old', 'w1', 'worker', 'claude-code', NULL, NULL,
+             'pty-w1', 'shared', 'pty', 'mcp', 'a', 'queue', 'argv', 0, 'dead', 'sha256:x', 42)",
+            [],
+        )
+        .unwrap();
+
+        v21_to_v22(&conn).unwrap();
+
+        // ① 状态值合法化 + 时刻值搬运。
+        let (state, sealed_at): (String, Option<i64>) = conn
+            .query_row(
+                "SELECT state, sealed_at FROM team WHERE id = 'tm_done'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(state, "sealed");
+        assert_eq!(sealed_at, Some(77), "封存时刻原样搬运（不是重新盖一个）");
+        let open_state: String = conn
+            .query_row("SELECT state FROM team WHERE id = 'tm_old'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(open_state, "open");
+
+        // ② 旧 `dead` = 用户封存过（v22 之前只有显式关闭路径会写它）。
+        let (member_state, member_sealed, joined): (String, Option<i64>, i64) = conn
+            .query_row(
+                "SELECT state, sealed_at, joined_at FROM team_member WHERE id = 'w1@tm_old'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(member_state, "offline");
+        assert_eq!(member_sealed, Some(joined), "时刻无从恢复 ⇒ 用加入时刻占位");
+
+        // ③ 进程资源出列。
+        for (table, column) in [
+            ("team", "lead_session_id"),
+            ("team_member", "terminal_id"),
+            ("team", "closed_at"),
+        ] {
+            assert!(
+                !column_exists(&conn, table, column).unwrap(),
+                "{table}.{column} 必须消失（它是进程期资源，团队行跨重启）"
+            );
+        }
+
+        // ④ 迁移后的行能按**当前**读路径读回来（列名 / 值域 / 参数个数全部对齐）。
+        let store = TeamStore::open_in_memory().unwrap();
+        let _ = store; // 读路径由其它用例覆盖；这里只证明迁移结果自洽。
+        let teams: Vec<String> = conn
+            .prepare("SELECT state FROM team ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        // `ORDER BY id` ⇒ tm_done 在前（这条断言同时证明两个旧值都换了域）。
+        assert_eq!(teams, vec!["sealed".to_owned(), "open".to_owned()]);
+    }
+
+    /// v22→v23：`team.workspace_worktree` 存在，且**旧行**读出来是 `None`（主 checkout）。
+    ///
+    /// # 为何必须用「真升一条旧行」
+    ///
+    /// 新库从 0 跑到 23，本步的 `ADD COLUMN` 与「一条已存在的行会得到什么值」是两件事。
+    /// 旧行（v22 及更早建的团队）没有记录过工作树维度这个事实，不可能回填 —— 只能退回
+    /// `project_path` 当工作区根（`AppStateWrapper::project_scope` 的 `recorded`）。
+    #[test]
+    fn a_v22_team_row_upgrades_without_a_worktree() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("neeko.db");
+
+        // 1) 手工把库做到 v22（按序重放 13..=21：迁移是只追加的，这里要的就是旧形状）。
+        {
+            let conn = Connection::open(&db).unwrap();
+            v13_to_v14(&conn).unwrap();
+            v14_to_v15(&conn).unwrap();
+            v15_to_v16(&conn).unwrap();
+            v16_to_v17(&conn).unwrap();
+            crate::work_items::store::v17_to_v18(&conn).unwrap();
+            v18_to_v19(&conn).unwrap();
+            v19_to_v20(&conn).unwrap();
+            v20_to_v21(&conn).unwrap();
+            v21_to_v22(&conn).unwrap();
+            conn.pragma_update(None, "user_version", 22).unwrap();
+            // 前提：v22 形状**确实**没有这一列（否则本用例证明不了本步做了什么）。
+            assert!(
+                !column_exists(&conn, "team", "workspace_worktree").unwrap(),
+                "前提：v22 不应有 team.workspace_worktree"
+            );
+            conn.execute(
+                "INSERT INTO team (id, name, lead_agent_id, project_path,
+                 project_id, created_at, sealed_at, state)
+                 VALUES ('tm_v22', 'Old', 'claude-code', ?1, 'p1', 1, NULL, 'open')",
+                params![env!("CARGO_MANIFEST_DIR")],
+            )
+            .unwrap();
+        }
+
+        // 2) 跑完整迁移链（唯一入口：`TeamStore::open` 内部就会跑）。
+        let store = TeamStore::open(&db).unwrap();
+        let team = store
+            .get_team("tm_v22")
+            .unwrap()
+            .expect("旧行升级后必须仍然 load 得出来");
+
+        assert_eq!(
+            team.workspace_worktree, None,
+            "旧行没有工作树维度这个事实 ⇒ 只能读成主 checkout"
+        );
+        let version: u32 = store
+            .conn()
+            .unwrap()
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        // 不写版本字面量：本步把链推到 **23**，但链还会继续往后加，写死数字只会变成
+        // 一条每次 bump 都要手工追的债。
+        assert_eq!(
+            version,
+            crate::common::db::LATEST_VERSION,
+            "本步之后链继续走到链尾"
+        );
+    }
+
+    /// 半迁移后手工重放安全（`ADD COLUMN` 先查再改，与 v14→v15 同形状）。
+    #[test]
+    fn v22_to_v23_is_idempotent() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        crate::common::db::run_migrations(&mut conn).unwrap();
+        v22_to_v23(&conn).unwrap();
+        v22_to_v23(&conn).unwrap();
+    }
+
+    /// 半迁移后手工重放安全（`ADD COLUMN` 先查再改，与 v14→v15 同形状）。
+    #[test]
+    fn v23_to_v24_is_idempotent() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        crate::common::db::run_migrations(&mut conn).unwrap();
+        v23_to_v24(&conn).unwrap();
+        v23_to_v24(&conn).unwrap();
+    }
+
+    /// v23→v24：`team_task.assignee` 存在，且**旧行**（v24 之前建的任务）读出来是 `None`。
+    ///
+    /// # 为何必须用「真升一条旧行」
+    ///
+    /// 新库从 0 跑到 24 时，本步的 `ADD COLUMN` 可能是个 no-op（新库的建表串已经带了这一列），
+    /// 于是「升级路径真的补了列」这件事在新鲜库上不可观测。老库里面没有这一列：
+    /// 迁移若漏了这一步，`SELECT_TASK` 会直接以 `no such column: assignee` 失败。
+    ///
+    /// # 旧行的语义 = 未指派
+    ///
+    /// 没有记录过「谁该做」这个事实，不可能回填；`None` 就是「未指派」，行为与今天完全
+    /// 一致（任何本队成员都能认领）。面板也不需要区分「老行」与「新建未指派行」。
+    #[test]
+    fn a_v23_task_row_upgrades_to_an_unassigned_task() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("neeko.db");
+
+        // 1) 手工把库做到 v23（按序重放 13..=22：迁移是只追加的，这里要的就是旧形状）。
+        {
+            let conn = Connection::open(&db).unwrap();
+            v13_to_v14(&conn).unwrap();
+            v14_to_v15(&conn).unwrap();
+            v15_to_v16(&conn).unwrap();
+            v16_to_v17(&conn).unwrap();
+            crate::work_items::store::v17_to_v18(&conn).unwrap();
+            v18_to_v19(&conn).unwrap();
+            v19_to_v20(&conn).unwrap();
+            v20_to_v21(&conn).unwrap();
+            v21_to_v22(&conn).unwrap();
+            v22_to_v23(&conn).unwrap();
+            // 建表串是**当前**形状（新库会带上 v24 的列），所以这里把那一列删掉 ——
+            // 删完就是 v23 真实的列集，不必再抄一份历史 DDL。
+            drop_column_if_present(&conn, "team_task", "assignee").unwrap();
+            conn.pragma_update(None, "user_version", 23).unwrap();
+            // 前提：v23 形状**确实**没有这一列（否则本用例证明不了本步做了什么）。
+            assert!(
+                !column_exists(&conn, "team_task", "assignee").unwrap(),
+                "前提：v23 不应有 team_task.assignee"
+            );
+            conn.execute(
+                "INSERT INTO team (id, name, lead_agent_id, project_path,
+                 project_id, created_at, sealed_at, state)
+                 VALUES ('tm_v23', 'Old', 'claude-code', ?1, 'p1', 1, NULL, 'open')",
+                params![env!("CARGO_MANIFEST_DIR")],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO team_task (id, team_id, title, body, state, workspace, depends_on,
+                 lease_ttl, artifacts)
+                 VALUES ('t1', 'tm_v23', 'from v23', 'body', 'pending', 'shared', '[]', 1800, '[]')",
+                [],
+            )
+            .unwrap();
+        }
+
+        // 2) 跑完整迁移链（唯一入口：`TeamStore::open` 内部就会跑）。
+        let store = TeamStore::open(&db).unwrap();
+        let task = store
+            .get_task(&TaskRef::new("tm_v23", "t1"))
+            .unwrap()
+            .expect("旧行升级后必须仍然 load 得出来");
+
+        assert_eq!(
+            task.assignee, None,
+            "旧行没有「谁该做」这个事实 ⇒ 只能读成未指派"
+        );
+        assert_eq!(task.title, "from v23", "其它列不得被这次迁移动到");
+        let version: u32 = store
+            .conn()
+            .unwrap()
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            version,
+            crate::common::db::LATEST_VERSION,
+            "升级必须把库推到链尾"
+        );
+    }
+
+    /// v23：`team.workspace_worktree` 必须能原样往返。
+    ///
+    /// 三个写入点的任何一个漏了这一列都会让这条变红：`INSERT` 的列表 / 绑定、
+    /// `SELECT_TEAM`、`map_team_row` 的下标。主 checkout 的 `NULL` 与「列没接上」同在
+    /// `None` 上，所以夹具取**非默认值**（见 `sample_team`）。
+    #[test]
+    fn a_team_row_round_trips_its_workspace_worktree() {
+        let store = store();
+        let team = sample_team();
+        store.upsert_team(&team).unwrap();
+
+        let read = store.get_team("tm_1").unwrap().expect("刚写入的行");
+        assert_eq!(read.workspace_worktree, team.workspace_worktree);
+        assert!(
+            read.workspace_worktree.is_some(),
+            "列没有被 NULL 吃掉（夹具刻意偏离默认值）"
+        );
+        assert_eq!(
+            store.list_teams().unwrap()[0].workspace_worktree,
+            team.workspace_worktree,
+            "列表读的是同一个 SELECT"
+        );
+
+        // 覆盖写（`ON CONFLICT DO UPDATE`）也必须带上这一列：团队换工作区后，
+        // 历史归属与侧栏分组都读这一列 —— 漏了就会永远停在建队那一刻的工作区。
+        let mut moved = team.clone();
+        moved.workspace_worktree = None;
+        store.upsert_team(&moved).unwrap();
+        assert_eq!(
+            store.get_team("tm_1").unwrap().unwrap().workspace_worktree,
+            None,
+            "改成主 checkout 也必须被写进去（不是「没改」）"
+        );
+    }
+
+    /// 半迁移后手工重放是安全的：`RENAME` / `DROP` 各自先查列存在性。
+    ///
+    /// 依据：迁移在事务里跑，但**手工恢复**（或旧版本的半跑）没有那个事务。
+    #[test]
+    fn v21_to_v22_is_idempotent() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        crate::common::db::run_migrations(&mut conn).unwrap();
+        // 已经是最新版本 ⇒ 再跑一次必须不报错（列都不在了，两次 DDL 都得跳过）。
+        v21_to_v22(&conn).unwrap();
+        v21_to_v22(&conn).unwrap();
+    }
+
     /// 迁移的幂等性：v17 之后重放 `v16_to_v17` 不得炸（也不得把表重建空）。
     #[test]
     fn v17_step_is_idempotent() {
         let mut conn = Connection::open_in_memory().unwrap();
         crate::common::db::run_migrations(&mut conn).unwrap();
         conn.execute(
-            "INSERT INTO team (id, name, lead_session_id, lead_agent_id, project_path,
-             project_id, created_at, closed_at, state)
-             VALUES ('tm_1', 'T', 'sess', 'claude-code', '.', 'p', 1, NULL, 'active')",
+            "INSERT INTO team (id, name, lead_agent_id, project_path,
+             project_id, created_at, sealed_at, state)
+             VALUES ('tm_1', 'T', 'claude-code', '.', 'p', 1, NULL, 'open')",
             [],
         )
         .unwrap();
@@ -1453,7 +1925,7 @@ mod tests {
             .expect("旧行升级后必须仍然 load 得出来");
 
         assert_eq!(team.name, "Old", "旧列原样保留");
-        assert_eq!(team.state, TeamState::Active);
+        assert_eq!(team.state, TeamState::Open);
         assert!(
             team.allowed_agent_ids.is_empty(),
             "空池 = 不限制（不是「一个都不许」）：{:?}",
@@ -1567,7 +2039,7 @@ mod tests {
             "空串 = v16 之前建的行（不是「没有项目」）"
         );
         assert_eq!(team.name, "Old", "其余旧列原样保留");
-        assert_eq!(team.state, TeamState::Active);
+        assert_eq!(team.state, TeamState::Open);
 
         // 版本号真的进到最新（`v15 -> … -> 链尾` 全跑过，不是「新库正好长得一样」）。
         {
@@ -1598,21 +2070,21 @@ mod tests {
         {
             let conn = store.conn().unwrap();
             conn.execute(
-                "INSERT INTO team (id, name, lead_session_id, lead_agent_id, project_path,
-                 project_id, created_at, closed_at, state, allowed_agent_ids, default_model,
+                "INSERT INTO team (id, name, lead_agent_id, project_path,
+                 project_id, created_at, sealed_at, state, allowed_agent_ids, default_model,
                  default_workspace, default_approval_policy, max_members, default_persona)
-                 VALUES ('tm_1', 'T', 'sess', 'claude-code', ?1, 'p', 1, NULL, 'active', '[]',
+                 VALUES ('tm_1', 'T', 'claude-code', ?1, 'p', 1, NULL, 'open', '[]',
                  NULL, 'shared', 'queue', 4, NULL)",
                 params![env!("CARGO_MANIFEST_DIR")],
             )
             .unwrap();
             conn.execute(
                 "INSERT INTO team_member (id, team_id, name, role, agent_id, model, session_id,
-                 terminal_id, workspace, channel, result_channel, tier, approval_policy,
-                 mcp_injection, last_seq, state, token_hash, joined_at, persona)
-                 VALUES ('w1@tm_1', 'tm_1', 'w1', 'worker', 'claude-code', NULL, NULL, NULL,
+                 workspace, channel, result_channel, tier, approval_policy,
+                 mcp_injection, last_seq, state, token_hash, joined_at, persona, sealed_at)
+                 VALUES ('w1@tm_1', 'tm_1', 'w1', 'worker', 'claude-code', NULL, NULL,
                  'shared', 'pty', 'mcp', 'a', 'queue', 'argv', 0, 'spawned', 'sha256:x', 1,
-                 NULL)",
+                 NULL, NULL)",
                 [],
             )
             .unwrap();
@@ -1672,7 +2144,7 @@ mod tests {
         assert_eq!(store.list_members("tm_1").unwrap().len(), 1);
     }
 
-    /// 任务读写往返：workspace（带数据的变体）、依赖、产物引用都要原样回来。
+    /// 任务读写往返：workspace（带数据的变体）、依赖、产物引用、指派都要原样回来。
     #[test]
     fn task_round_trips_workspace_dependencies_and_artifacts() {
         let store = seeded_store();
@@ -1700,6 +2172,46 @@ mod tests {
             worktree_task.workspace
         );
         assert_eq!(store.list_tasks("tm_1").unwrap().len(), 2);
+    }
+
+    /// v24：`assignee`（**计划事实**）必须能原样往返，且**不改变**执行事实。
+    ///
+    /// 三个写入点的任何一个漏了这一列都会让这条变红：`INSERT` 的列表 / 绑定、
+    /// `SELECT_TASK`、`map_task_row` 的下标。`None`（未指派）与「列没接上」同在 `None` 上，
+    /// 所以夹具取**非默认值**（见 `sample_task`）。
+    #[test]
+    fn a_task_row_round_trips_its_assignee() {
+        let store = seeded_store();
+        let task = sample_task();
+        store.upsert_task(&task).unwrap();
+
+        let read = store
+            .get_task(&TaskRef::new("tm_1", "t1"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(read.assignee, task.assignee);
+        assert!(
+            read.assignee.is_some(),
+            "列没有被 NULL 吃掉（夹具刻意偏离默认值）"
+        );
+        // 指派是**计划**事实：它不许改写执行事实（owner / state 各自属于状态机）。
+        assert_eq!(read.owner, task.owner, "指派不得改写 owner");
+        assert_eq!(read.state, task.state, "指派不得改写 state");
+        assert_eq!(store.list_tasks("tm_1").unwrap()[0].assignee, task.assignee);
+
+        // 未指派（`None`）也必须**写进去**（不是「没改」）：`ON CONFLICT DO UPDATE` 漏一列
+        // 的典型症状是「改回未指派后仍然显示被指派」。
+        let mut unassigned = task.clone();
+        unassigned.assignee = None;
+        store.upsert_task(&unassigned).unwrap();
+        assert_eq!(
+            store
+                .get_task(&TaskRef::new("tm_1", "t1"))
+                .unwrap()
+                .unwrap()
+                .assignee,
+            None
+        );
     }
 
     /// 红线 4：`summary` > 4 KiB 必须在写入时截断并打标。

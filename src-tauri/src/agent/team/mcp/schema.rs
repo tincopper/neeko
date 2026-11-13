@@ -122,8 +122,8 @@ pub static TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: ToolName::TaskCreate,
         wire: "task_create",
-        summary: "Create a task on the shared board (lead only).",
-        input_schema: r#"{"type":"object","properties":{"title":{"type":"string","minLength":1},"body":{"type":"string","minLength":1},"workspace":{"type":"string","enum":["shared","read_only"]},"depends_on":{"type":"array","items":{"type":"string","minLength":1}},"lease_ttl":{"type":"integer","minimum":1}},"required":["title","body"],"additionalProperties":false}"#,
+        summary: "Create a task on the shared board (lead only). `assignee` is REQUIRED: name the member who should do it (\"<name>@<team_id>\"); the member may still be only planned. It does not claim the task for them.",
+        input_schema: r#"{"type":"object","properties":{"title":{"type":"string","minLength":1},"body":{"type":"string","minLength":1},"workspace":{"type":"string","enum":["shared","read_only"]},"depends_on":{"type":"array","items":{"type":"string","minLength":1}},"lease_ttl":{"type":"integer","minimum":1},"assignee":{"type":"string","minLength":1}},"required":["title","body","assignee"],"additionalProperties":false}"#,
     },
     ToolSpec {
         name: ToolName::TaskClaim,
@@ -363,6 +363,49 @@ mod tests {
         assert_eq!(
             properties["workspace"]["additionalProperties"],
             serde_json::json!(false)
+        );
+    }
+
+    /// `task_create` 的入参 Schema 必须与 dispatch **真的会读**的字段逐字对齐（红线 14）。
+    ///
+    /// `assignee` 是 v24 引入、第 3 轮起**必填**的参数：写在 Schema 里而 `dispatch::create`
+    /// 不读，就是向模型声明一个「传了也没用」的能力（而它看起来像已经把活派出去了）；
+    /// 反过来只有代码不声明，队长永远不知道可以用它。两边同 diff 才算兑现。
+    #[test]
+    fn task_create_schema_matches_the_documented_shape() {
+        let spec = spec_for(ToolName::TaskCreate);
+        assert_eq!(spec.wire, "task_create");
+        let schema: serde_json::Value = serde_json::from_str(spec.input_schema).unwrap();
+
+        // `assignee` 在 required 里：参与人数由任务板上的指派决定，没有指派的任务
+        // 无法为任何人提供 spawn 的依据（见 `dispatch::tests::spawn_requires_an_assignment`）。
+        assert_eq!(
+            schema["required"],
+            serde_json::json!(["title", "body", "assignee"])
+        );
+        assert_eq!(schema["additionalProperties"], serde_json::json!(false));
+
+        let properties = schema["properties"]
+            .as_object()
+            .expect("task_create 必须有 properties");
+        let mut declared: Vec<&str> = properties.keys().map(String::as_str).collect();
+        declared.sort_unstable();
+        // 只有这 6 个参数：多一个都是「传了也没用」的声明。
+        assert_eq!(
+            declared,
+            [
+                "assignee",
+                "body",
+                "depends_on",
+                "lease_ttl",
+                "title",
+                "workspace"
+            ]
+        );
+        assert_eq!(
+            properties["assignee"],
+            serde_json::json!({"type": "string", "minLength": 1}),
+            "assignee 是成员 id（`name@team_id`），空串不是合法寻址"
         );
     }
 

@@ -35,12 +35,25 @@ use crate::common::error::AppError;
 /// | 工具 | Lead | Worker |
 /// |---|---|---|
 /// | `team_status` / `team_list` / `team_options` / `team_send` / `task_list` | ✅ | ✅ |
-/// | `task_claim` / `task_update` | ✅ | ✅（自有任务；归属判定在 dispatch） |
+/// | `task_claim` | ❌ | ✅（自有任务；归属判定在 dispatch） |
+/// | `task_update` | ✅ | ✅（自有任务；归属判定在 dispatch） |
 /// | `team_wait` | ✅ | ✅（design §3.2：通常只有队长用，但成员等同伴是合法的） |
 /// | `task_create` / `team_close` / `team_spawn` | ✅ | ❌ |
 pub fn authorize(principal: &TeamPrincipal, tool: ToolName) -> Result<(), AppError> {
     // 队长全通（含 `force_done` 那条越权路径 —— 它自带审计，由 manager 负责）。
     if principal.role == MemberRole::Lead {
+        // 队长不能自己领活：真实现场 `t2.owner = lead@…` —— 队长把一块本该派给成员的活
+        // 抢了，板上于是「有一个成员在干活」的假象，而任务数没变、成员却闲着。
+        // 队长的工作是 plan / spawn / wait，不是 claim。
+        if tool == ToolName::TaskClaim {
+            return Err(AppError::Conflict(format!(
+                "tool `{}` is for workers; you are the lead of team `{}`. Assign the task with \
+                 `{}` and let its assignee claim it",
+                spec_for(tool).wire,
+                principal.team_id,
+                spec_for(ToolName::TaskCreate).wire
+            )));
+        }
         return Ok(());
     }
     // Worker 列：只有「建任务」「关团队」「建成员」三格被拒。其余放行 —— 其中
@@ -111,7 +124,7 @@ mod tests {
             (MemberRole::Lead, ToolName::TeamSpawn, true),
             (MemberRole::Lead, ToolName::TeamSend, true),
             (MemberRole::Lead, ToolName::TaskCreate, true),
-            (MemberRole::Lead, ToolName::TaskClaim, true),
+            (MemberRole::Lead, ToolName::TaskClaim, false),
             (MemberRole::Lead, ToolName::TaskUpdate, true),
             (MemberRole::Lead, ToolName::TaskList, true),
             (MemberRole::Lead, ToolName::TeamWait, true),

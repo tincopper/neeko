@@ -45,7 +45,7 @@ pub const fn advance(
 const fn is_terminal(state: MemberState) -> bool {
     matches!(
         state,
-        MemberState::Done | MemberState::Failed | MemberState::Dead
+        MemberState::Done | MemberState::Failed | MemberState::Offline
     )
 }
 
@@ -54,7 +54,7 @@ const fn next_member_state(member: MemberState, signal: MemberSignal) -> MemberS
     // 「任意 ──进程退出 / SessionDone──▶ Dead」：连终态也照走。
     // `Done → Dead` 不丢信息，因为 done 的权威是任务板而不是 member.state（硬规则 3）。
     if matches!(signal, MemberSignal::Exited) {
-        return MemberState::Dead;
+        return MemberState::Offline;
     }
     // 其余信号对终态一律吸收：迟到的信号不得让一个已报废的成员重新看起来健康。
     if is_terminal(member) {
@@ -70,7 +70,7 @@ const fn next_member_state(member: MemberState, signal: MemberSignal) -> MemberS
         MemberSignal::Failed => MemberState::Failed,
         // 上面已提前返回；写同值分支是为了让 match 保持穷尽（不加 `_ =>`，
         // 新增信号变体会强制在此处被处理）。
-        MemberSignal::Exited => MemberState::Dead,
+        MemberSignal::Exited => MemberState::Offline,
     }
 }
 
@@ -122,7 +122,7 @@ mod tests {
         MemberState::Idle,
         MemberState::Done,
         MemberState::Failed,
-        MemberState::Dead,
+        MemberState::Offline,
         MemberState::Stalled,
     ];
 
@@ -158,7 +158,7 @@ mod tests {
                 MemberState::Awaiting,
                 MemberState::Awaiting,
                 MemberState::Failed,
-                MemberState::Dead,
+                MemberState::Offline,
             ],
         ),
         (
@@ -168,7 +168,7 @@ mod tests {
                 MemberState::Awaiting,
                 MemberState::Awaiting,
                 MemberState::Failed,
-                MemberState::Dead,
+                MemberState::Offline,
             ],
         ),
         (
@@ -178,7 +178,7 @@ mod tests {
                 MemberState::Awaiting,
                 MemberState::Awaiting,
                 MemberState::Failed,
-                MemberState::Dead,
+                MemberState::Offline,
             ],
         ),
         (
@@ -188,7 +188,7 @@ mod tests {
                 MemberState::Awaiting,
                 MemberState::Awaiting,
                 MemberState::Failed,
-                MemberState::Dead,
+                MemberState::Offline,
             ],
         ),
         (
@@ -198,7 +198,7 @@ mod tests {
                 MemberState::Awaiting,
                 MemberState::Awaiting,
                 MemberState::Failed,
-                MemberState::Dead,
+                MemberState::Offline,
             ],
         ),
         (
@@ -208,7 +208,7 @@ mod tests {
                 MemberState::Done,
                 MemberState::Done,
                 MemberState::Done,
-                MemberState::Dead,
+                MemberState::Offline,
             ],
         ),
         (
@@ -218,17 +218,17 @@ mod tests {
                 MemberState::Failed,
                 MemberState::Failed,
                 MemberState::Failed,
-                MemberState::Dead,
+                MemberState::Offline,
             ],
         ),
         (
-            MemberState::Dead,
+            MemberState::Offline,
             [
-                MemberState::Dead,
-                MemberState::Dead,
-                MemberState::Dead,
-                MemberState::Dead,
-                MemberState::Dead,
+                MemberState::Offline,
+                MemberState::Offline,
+                MemberState::Offline,
+                MemberState::Offline,
+                MemberState::Offline,
             ],
         ),
     ];
@@ -408,7 +408,7 @@ mod tests {
         }
     }
 
-    /// 规则 4：`Failed` → `Failed`；`Exited` → `Dead`。
+    /// 规则 4：`Failed` → `Failed`；`Exited` → `Offline`。
     #[test]
     fn failed_and_exited_have_distinct_signatures() {
         let (member, _, _) = advance(
@@ -425,14 +425,14 @@ mod tests {
             DoneVerification::Unverified,
             MemberSignal::Exited,
         );
-        assert_eq!(member, MemberState::Dead);
+        assert_eq!(member, MemberState::Offline);
     }
 
-    /// 规则 5：终态对 `TurnCompleted` 吸收 —— 迟到的回合信号不得把 `Failed` / `Dead`
+    /// 规则 5：终态对 `TurnCompleted` 吸收 —— 迟到的回合信号不得把 `Failed` / `Offline`
     /// 洗回 `Idle`（那会让「已报废的成员」在板上重新看起来健康）。
     #[test]
     fn terminal_member_states_absorb_turn_completed() {
-        for state in [MemberState::Done, MemberState::Failed, MemberState::Dead] {
+        for state in [MemberState::Done, MemberState::Failed, MemberState::Offline] {
             let (member, _, _) = advance(
                 state,
                 TeamTaskState::InProgress,
@@ -443,19 +443,19 @@ mod tests {
         }
     }
 
-    /// 规则 6：没有任何信号能把 `Dead` 拉回 `Running`（这正是「幽灵成员」的来源）。
+    /// 规则 6：没有任何信号能把 `Offline` 拉回 `Running`（这正是「幽灵成员」的来源）。
     #[test]
-    fn dead_never_returns_to_running() {
+    fn offline_never_returns_to_running() {
         for signal in ALL_SIGNALS {
             let (member, _, _) = advance(
-                MemberState::Dead,
+                MemberState::Offline,
                 TeamTaskState::InProgress,
                 DoneVerification::Unverified,
                 signal,
             );
             assert_eq!(
                 member,
-                MemberState::Dead,
+                MemberState::Offline,
                 "{signal:?} resurrected a dead member"
             );
         }

@@ -151,23 +151,35 @@ export function createDirTreeResult(nodes: FileNode[], truncated = false): DirTr
 export function createMemberStatus(
   overrides: Partial<MemberStatusView> & Pick<MemberStatusView, 'memberId'>,
 ): MemberStatusView {
+  // 「可恢复」的默认值从**原生会话 id** 派生（`true` ⇔ 有 id）：与后端 `view.rs` 的推导同方向
+  // ——后端还多一个「该 CLI 有没有续接形态」的条件，而夹具不建模逐 CLI 的形态表。所以
+  // 「有 id 但不可恢复」（qoder / gemini）的用例必须显式传 `resumable: false`，否则它测到的
+  // 会是「恢复会话」而不是「查看记录」。
+  // 先算（不在展开之后再覆盖）：`...overrides` 里的 `agentSessionId` 必须参与这个推导。
+  const agentSessionId = overrides.agentSessionId ?? null;
+  // `resumable ⇒ agentSessionId 非空` 是后端不变量：只传 `{ resumable: true }` 会组合出
+  // 后端不可能发出的形状，所以这里在展开之后**再**归一一次（显式 false 保留）。
+  const resumable = overrides.resumable ?? agentSessionId !== null;
   return {
     name: overrides.memberId,
     role: 'worker',
     state: 'idle',
     verification: 'verified',
     leaseRemainingSecs: null,
-    // 默认值选「有终端的 CLI 成员」：绝大多数用例关心的是「能打开它」那条路径，
-    // 「无进程」必须在用例里**显式**传 `terminalId: null` —— 否则「忘了设」会变成
-    // 「以为测了置灰路径、其实测的是可点路径」。
+    // 默认值选「有活会话的 CLI 成员」：绝大多数用例关心的是「能打开它」那条路径，
+    // 「没有进程」必须在用例里**显式**传 `session: { live: false, terminalId: null }` ——
+    // 否则「忘了设」会变成「以为测了置灰路径、其实测的是可点路径」。
     agentId: 'pi',
-    terminalId: 'term-w1',
+    session: { live: true, terminalId: 'term-w1' },
+    sealed: false,
     workspace: 'shared',
     persona: null,
-    agentSessionId: null,
+    agentSessionId,
     channel: 'pty',
     tier: 'a',
     ...overrides,
+    // 放在 `...overrides` 之后：没有原生 id 的成员不可能「可恢复」。
+    resumable: resumable && agentSessionId !== null,
   };
 }
 
@@ -183,6 +195,8 @@ export function createTaskCard(overrides: Partial<TaskCard> & Pick<TaskCard, 'id
     title: `task ${overrides.id}`,
     state: 'pending',
     owner: null,
+    // 计划事实（谁该做）：缺省 = 未指派，需要它的用例显式传。
+    assignee: null,
     workspace: 'shared',
     dependsOn: [],
     claimedAt: null,
@@ -195,15 +209,21 @@ export function createTaskCard(overrides: Partial<TaskCard> & Pick<TaskCard, 'id
   };
 }
 
-/** 任务详情夹具（列视图 + 派活正文）。 */
+/**
+ * 任务详情夹具（列视图 + 派活正文）。
+ *
+ * 字段名必须与 `view.rs::TaskDetail` 的 serde 输出一致（`events` / `eventsTruncated`）。
+ * 但**别拿它当跨栈契约的锤子** —— 夹具是照 TS 类型手写的，类型错时它跟着错。
+ * 验证「后端真的发这个形状」的是 `TeamTaskCenterView.test.tsx` 里的手写电线载荷。
+ */
 export function createTaskDetail(
   overrides: Partial<TaskDetail> & Pick<TaskDetail, 'id'>,
 ): TaskDetail {
   return {
     ...createTaskCard(overrides),
     body: '派活正文',
-    steps: [],
-    stepsTruncated: false,
+    events: [],
+    eventsTruncated: false,
     ...overrides,
   };
 }
@@ -215,7 +235,6 @@ export function createTeam(overrides?: Partial<Team>): Team {
   const base: Team = {
     id: 'tm_1',
     name: 'refactor',
-    leadSessionId: 'sess-lead',
     leadAgentId: 'claude-code',
     projectPath: '/repo/main',
     // 与 `projectPath` 是两个事实（见 `shared/types/team.ts::Team.projectId`）：缺省的
@@ -223,14 +242,16 @@ export function createTeam(overrides?: Partial<Team>): Team {
     // 用例必须显式把两者叉开。
     projectId: 'p1' as ProjectId,
     createdAt: 1_700_000_000_000,
-    closedAt: null,
-    state: 'active',
+    sealedAt: null,
+    state: 'open',
     // 配置列（建队时的 `TeamConfig` 写入，之后由 `team_options` 读回）。
     allowedAgentIds: [],
     defaultModel: null,
     defaultWorkspace: 'shared',
     defaultApprovalPolicy: 'queue',
     maxMembers: 4,
+    // 工作区身份的另一半（缺省 = 主 checkout，不是「未知」）。
+    workspaceWorktree: null,
   };
   return { ...base, ...overrides };
 }
@@ -353,11 +374,11 @@ export function createTeamSummary(
 ): TeamSummary {
   return {
     name: 'refactor',
-    state: 'active',
+    state: 'open',
     projectPath: '/repo/main',
     leadAgentId: 'claude-code',
     createdAt: 1_700_000_000_000,
-    closedAt: null,
+    sealedAt: null,
     memberCount: 2,
     taskTotal: 5,
     taskOpen: 2,
@@ -383,7 +404,7 @@ export function createClosedReply(overrides?: Partial<ClosedReply>): ClosedReply
     membersClosed: ['w1@tm_1'],
     // 成功路径恒空（Rust 是 `Vec<(String, String)>` ⇒ 二元数组，不是对象）。
     membersFailed: [],
-    teamState: 'closed',
+    teamState: 'sealed',
     notes: [],
     ...overrides,
   };
