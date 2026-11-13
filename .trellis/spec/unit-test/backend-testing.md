@@ -677,3 +677,20 @@ CI `backend-coverage` 红**，差异只来自线程调度与核数 —— 这类
 - 回归钉（变异验证：把复位改回不返回闸 → 必红）：
   `scan_cache::tests::concurrent_reset_must_not_break_a_put_then_get_pair`。
 - 只给**触碰该全局的**用例加闸；纯函数用例别跟着串行化，否则白白丢掉并发。
+
+**2026-11-12 第二例（同一族的「进程表」形态）**：`common::executor::child_registry` 是**进程级**
+收敛表，`kill_all_live()` 会杀掉**任何**已登记的 `kill_tree` 子进程 —— 包括**别的用例**刚
+spawn 的那个。`common/executor/local.rs` 的四个用例都会 spawn 子进程，其中一个还直接调
+`kill_all_live()`，于是「谁先跑」决定了别人家的 fixture 是否被提前杀掉：包装器 + 孙进程那条
+用例因此可能拿到空 stdout（或反向**假绿** —— 孙进程被别人顺手杀了，断言「已死」自然通过），
+用户侧表现为「偶发红」。
+
+两条落地（照抄即可）：
+
+- 串行闸用 **`tokio::sync::Mutex`**（`Mutex::const_new(())` + `lock().await`）；async 用例本就
+  跨 `await` 持有，`std::sync::MutexGuard` 会被 `clippy::await_holding_lock` 拒绝 —— 那不是
+  误报，是真错用。同步用例用同一把锁的 `blocking_lock()`。
+- **判据改成事件，不要 sleep 轮询**：包装器与孙进程都继承同一条 stdout 管道，「就绪」= 读到
+  fixture 打印的一行，「收口」= 管道 EOF（两者的写端都关闭）。超时值只是**失败预算**
+  （5s），不是调度窗口 —— 健康路径是毫秒级。用 `kill(pid, 0)` 轮询 + `sleep` 既慢又会把
+  「zombie 未被 reap」误判成活着的竞态。变异验证：摘掉 `.with_kill_tree()` → 用例必须红。
