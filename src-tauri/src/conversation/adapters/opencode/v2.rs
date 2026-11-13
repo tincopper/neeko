@@ -50,9 +50,9 @@ const USER_ROLE: &str = CONVERSATION_ROLES[0];
 pub(super) fn parse_db(
     conn: &Connection,
     db_path: &Path,
-    project_path: Option<&str>,
+    project_roots: Option<&[PathBuf]>,
 ) -> Result<Vec<(ParsedMeta, PathBuf)>> {
-    let (sql, params) = session_query(project_path);
+    let (sql, params) = session_query(project_roots);
     let mut stmt = conn
         .prepare(&sql)
         .context("Failed to prepare v2 session query")?;

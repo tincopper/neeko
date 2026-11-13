@@ -134,6 +134,8 @@ impl ResumeCursor {
         Some(SessionEntry {
             session_id: self.session_id.clone(),
             kind,
+            // 持久化行不存归属：用户手机会话（团队成员的会话不走这条恢复路径）。
+            attribution: crate::live_sessions::SessionAttribution::User,
             agent_id: (!self.agent_id.is_empty()).then(|| self.agent_id.clone()),
             workspace: WorkspaceSession::of(self.project_id.clone(), self.worktree_path.clone()),
             cwd: self.cwd.clone(),

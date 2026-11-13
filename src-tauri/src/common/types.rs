@@ -384,7 +384,7 @@ pub struct PRInfo {
     /// ISO 8601 merge timestamp.
     #[serde(default)]
     pub merged_at: Option<String>,
-    /// ISO 8601 close timestamp.
+    /// ISO 8601 close timestamp（GitHub 的 `closedAt`，与团队域「封存」无关，勿随其改名）。
     #[serde(default)]
     pub closed_at: Option<String>,
 }
@@ -537,4 +537,37 @@ pub struct GitStatusFile {
     pub path: String,
     /// Status string (Modified, Added, Deleted, Untracked, Renamed).
     pub status: String,
+}
+
+#[cfg(test)]
+mod pr_info_wire_contract_tests {
+    use super::*;
+
+    /// gh CLI（`pr view --json ...,closedAt`）返回的键是 `closedAt`，前端 `git.ts` 消费的也是
+    /// `closedAt`。这条 wire 契约曾被团队域「closed → sealed」术语迁移误伤（改名导致反序列化
+    /// 静默丢值、前端 UI 静默失效），此处钉死双端形状。
+    #[test]
+    fn pr_info_keeps_the_gh_closed_at_wire_name_on_both_sides() {
+        let gh_payload = serde_json::json!({
+            "number": 1,
+            "title": "t",
+            "state": "closed",
+            "body": null,
+            "author": { "login": "octocat" },
+            "headRefName": "feat",
+            "baseRefName": "main",
+            "url": "https://example.test/pr/1",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "closedAt": "2026-01-02T00:00:00Z",
+        });
+        let info: PRInfo = serde_json::from_value(gh_payload).expect("gh payload deserializes");
+        assert_eq!(info.closed_at.as_deref(), Some("2026-01-02T00:00:00Z"));
+
+        let wire = serde_json::to_value(&info).expect("serializes");
+        assert!(
+            wire.get("closedAt").is_some(),
+            "wire key must stay `closedAt`"
+        );
+        assert!(wire.get("sealedAt").is_none());
+    }
 }

@@ -53,3 +53,34 @@ pub(super) const fn normalize_timestamp(ts: i64) -> i64 {
         ts * 1000
     }
 }
+
+/// `session.directory` 属于**任一**已注册根的 SQL 片段 + 绑定参数。
+///
+/// v1 / v2 两条读取路径共用这一份（判据相同、只有列名不同）：项目的范围是**根集合**
+/// （主 checkout + 全部 linked worktree，见 [`crate::common::git::ProjectScope`]），
+/// 只认第一个根会让工作树里的会话在历史列表里消失 —— 而那正是本函数要防的缺陷。
+///
+/// 绑定参数从 `?1` 开始（两个调用点的查询里这是唯一的过滤条件）。`roots` 为空 ⇒
+/// 恒假片段（扫 0 条，不是「全收」：没有已知工作区的项目不该把别人的会话算成自己的）。
+pub(super) fn directory_owns_any_clause(column: &str, roots: &[PathBuf]) -> (String, Vec<String>) {
+    let mut clauses: Vec<String> = Vec::with_capacity(roots.len());
+    let mut params: Vec<String> = Vec::with_capacity(roots.len() * 2);
+    for root in roots {
+        // 与改造前逐字一致的口径：去尾斜杠 + `LIKE '<root>/%'` 判后代。
+        let base = root.to_string_lossy().trim_end_matches('/').to_string();
+        if base.is_empty() {
+            continue;
+        }
+        let index = params.len() + 1;
+        clauses.push(format!(
+            "({column} = ?{index} OR {column} LIKE ?{})",
+            index + 1
+        ));
+        params.push(base.clone());
+        params.push(format!("{base}/%"));
+    }
+    if clauses.is_empty() {
+        return ("0".to_string(), params);
+    }
+    (format!("({})", clauses.join(" OR ")), params)
+}

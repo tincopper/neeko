@@ -41,7 +41,7 @@ pub use opencode::OpenCodeAdapter;
 pub use pi::PiAdapter;
 pub use qoder::QoderAdapter;
 pub use reasonix::ReasonixAdapter;
-pub use registry::all_adapters;
+pub use registry::{all_adapters, resume_argv_for};
 pub(crate) use shared::{
     linearize_tree_entries, message_role, parse_timestamp, read_jsonl, saturating_count,
     unsanitize_project_dir, CONVERSATION_ROLES,

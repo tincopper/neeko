@@ -12,7 +12,6 @@ import {
   type ConversationMeta,
 } from '@/features/conversation';
 import { deleteConversation } from '@/features/conversation/api/conversationApi';
-import { useActiveProject } from '@/features/project';
 import { createTaskTerminal } from '@/features/terminal';
 import { useAppContext } from '@/shared/contexts';
 import { isViewVisible, panelView } from '@/shared/dock';
@@ -29,11 +28,21 @@ import { logFrontendError } from '@/shared/utils/errorReporting';
 const CONVERSATIONS_VIEW = panelView('conversations');
 
 /**
- * Conversations dock 面板适配层：读取 project context + agent 列表透传
- * ConversationPanel；处理会话恢复（原生 resume 命令 → terminal tab）。
+ * Conversations dock 面板适配层：读取 agent 列表与项目身份透传 ConversationPanel；
+ * 处理会话恢复（原生 resume 命令 → terminal tab）。
+ *
+ * # 两件事在这里分开，不许再合到一起
+ *
+ * | 问题 | 答案 |
+ * | --- | --- |
+ * | 历史**归属哪个项目** | `activeProjectId`（项目身份；后端把它解析成全部注册根）|
+ * | **在哪里执行**恢复 | `tabKey` / `activeWorkspaceSession`（当前单元）|
+ *
+ * 以前这里把两者混成一条路径（`worktreePath ?? project.path`）喂给列表：那个范围是「当前单元」，
+ * 而工作树按设计落在项目目录之外 —— 于是「在这个工作树上开的团队」的 transcript 在 History 里
+ * 结构上不存在。路径是项目的一个属性，不是它的身份（红线 12）。
  */
 const ConversationsPanelWrapper: React.FC = React.memo(() => {
-  const { project, worktreePath } = useActiveProject();
   const { agents, showToast } = useAppContext();
 
   /**
@@ -48,7 +57,6 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
     [chatResumableAgents],
   );
 
-  const projectPath = worktreePath ?? project?.path ?? null;
   const isActive = useDockStore((s) => isViewVisible(s, CONVERSATIONS_VIEW));
 
   // Determine project ID and tab key for opening conversation tabs
@@ -189,7 +197,6 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
 
   return (
     <ConversationPanel
-      projectPath={projectPath}
       projectId={currentProjectId}
       agents={agents}
       isActive={isActive}

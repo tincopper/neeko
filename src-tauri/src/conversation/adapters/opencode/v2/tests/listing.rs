@@ -25,9 +25,46 @@ fn filters_by_project_directory_and_nested_prefix() {
     let path = create_v2_fixture(&dir);
     let conn = open(&path);
 
-    let metas = parse_db(&conn, &path, Some("/proj")).unwrap();
+    let metas = parse_db(&conn, &path, Some(&[PathBuf::from("/proj")])).unwrap();
 
     assert_eq!(ids(&metas), vec!["ses_main", "ses_untitled", "ses_nested"]);
+}
+
+/// 项目的范围是**根集合**（主 checkout + 工作树）：SQL 过滤必须是「属于任一」，
+/// 只看第一个根会让另一个工作区的会话整批消失。
+#[test]
+fn filters_by_every_registered_root_not_only_the_first() {
+    let dir = TempDir::new().unwrap();
+    let path = create_v2_fixture(&dir);
+    let conn = open(&path);
+
+    let metas = parse_db(
+        &conn,
+        &path,
+        Some(&[PathBuf::from("/elsewhere"), PathBuf::from("/proj")]),
+    )
+    .unwrap();
+
+    assert_eq!(
+        ids(&metas),
+        vec!["ses_main", "ses_untitled", "ses_nested"],
+        "第二个根下的会话必须仍然在结果里（只看第一个根 = 整批丢弃）"
+    );
+
+    let both = parse_db(
+        &conn,
+        &path,
+        Some(&[PathBuf::from("/other"), PathBuf::from("/proj")]),
+    )
+    .unwrap();
+    assert_eq!(
+        ids(&both),
+        vec!["ses_main", "ses_untitled", "ses_other", "ses_nested"],
+        "两个根各自的会话都在结果里（并集，不是交集也不是第一个）"
+    );
+
+    let none = parse_db(&conn, &path, Some(&[])).unwrap();
+    assert!(none.is_empty(), "空根集合 = 扫 0 条（不是全收）");
 }
 
 #[test]
@@ -152,7 +189,7 @@ fn preview_window_reaches_past_tool_only_turns() {
         seq += 1;
     }
 
-    let metas = parse_db(&conn, &path, Some("/proj")).unwrap();
+    let metas = parse_db(&conn, &path, Some(&[PathBuf::from("/proj")])).unwrap();
     let session = metas
         .iter()
         .find(|(m, _)| m.native_session_id == "ses_tools")
@@ -208,7 +245,7 @@ fn first_user_message_comes_from_the_earliest_turn_not_the_preview_window() {
         .unwrap();
     }
 
-    let metas = parse_db(&conn, &path, Some("/proj")).unwrap();
+    let metas = parse_db(&conn, &path, Some(&[PathBuf::from("/proj")])).unwrap();
     let session = metas
         .iter()
         .find(|(m, _)| m.native_session_id == "ses_long")

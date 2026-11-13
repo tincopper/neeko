@@ -141,6 +141,14 @@ fn unlisted_entry(id: &str, cwd: &str) -> SessionEntry {
     entry
 }
 
+/// 团队成员起的 PTY：归属在登记时写入（生产路径：`app/team_executor`）。
+fn member_entry(id: &str, cwd: &str, team_id: &str, member_id: &str) -> SessionEntry {
+    terminal_entry(id, cwd).with_attribution(crate::live_sessions::SessionAttribution::TeamMember {
+        team_id: team_id.to_owned(),
+        member_id: member_id.to_owned(),
+    })
+}
+
 fn terminal_entry(id: &str, cwd: &str) -> SessionEntry {
     SessionEntry::new(
         id,
@@ -1010,4 +1018,80 @@ fn user_rename_does_not_engage_the_session() {
     assert_eq!(entry.title, "/model", "用户改名不套任何清理 / 准入拒绝");
     assert_eq!(entry.title_source, TitleSource::User);
     assert!(!entry.has_user_input, "改名不是「用过」");
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 成员归属：团队的「它在哪」只有一个权威（红线 17）
+// ─────────────────────────────────────────────────────────────────
+
+/// 归属写对了就查得到；查不到别的成员，也查不到别的团队。
+#[test]
+fn a_members_live_session_is_found_by_its_attribution() {
+    let (registry, _store) = registry();
+    registry.register(member_entry("s-w1", "/w", "tm_1", "w1@tm_1"));
+    registry.register(member_entry("s-w2", "/w", "tm_1", "w2@tm_1"));
+    registry.register(member_entry("s-o1", "/o", "tm_2", "w1@tm_2"));
+
+    assert_eq!(
+        registry
+            .live_session_for_member("tm_1", "w1@tm_1")
+            .as_deref(),
+        Some("s-w1")
+    );
+    assert_eq!(
+        registry
+            .live_session_for_member("tm_1", "w2@tm_1")
+            .as_deref(),
+        Some("s-w2")
+    );
+    // 同名的成员在不同队里是**两个人**：团队 id 是键的一半。
+    assert_eq!(
+        registry
+            .live_session_for_member("tm_2", "w1@tm_2")
+            .as_deref(),
+        Some("s-o1")
+    );
+    assert_eq!(registry.live_session_for_member("tm_2", "w1@tm_1"), None);
+    // 用户自己的终端不属任何成员（归属默认 `User`）。
+    registry.register(terminal_entry("s-user", "/w"));
+    assert_eq!(
+        registry.live_session_for_member("tm_1", "w1@tm_1"),
+        Some("s-w1".to_owned())
+    );
+    assert_eq!(registry.live_session_for_member("tm_1", "user@tm_1"), None);
+}
+
+/// 终止态的条目不算活会话 —— 否则「点开一个已经退出的成员」会拿到一个死句柄。
+///
+/// 两种终止形态都覆盖：显式关闭保留 `Stopped` 行（点回来的入口），自然退出整行删除。
+#[test]
+fn a_terminal_session_is_not_live_anymore() {
+    let (registry, _store) = registry();
+    registry.register(member_entry("s-w1", "/w", "tm_1", "w1@tm_1"));
+    assert_eq!(
+        registry
+            .live_session_for_member("tm_1", "w1@tm_1")
+            .as_deref(),
+        Some("s-w1")
+    );
+
+    // ① 显式关闭：状态变了，行还在（夹具直接给状态，省掉一次真实关闭）。
+    registry.unregister("s-w1");
+    let mut stopped = member_entry("s-w1", "/w", "tm_1", "w1@tm_1");
+    stopped.state = SessionState::Stopped;
+    registry.register(stopped);
+    assert!(
+        registry.entry("s-w1").is_some(),
+        "前提：行还在（这是「点回来」的入口）"
+    );
+    assert_eq!(
+        registry.live_session_for_member("tm_1", "w1@tm_1"),
+        None,
+        "Stopped 的会话不是活会话（哪怕行仍在侧栏里可点）"
+    );
+
+    // ② 自然退出：整行消失（同一判据，另一个形态）。
+    registry.register(member_entry("s-w2", "/w", "tm_1", "w2@tm_1"));
+    registry.unregister("s-w2");
+    assert_eq!(registry.live_session_for_member("tm_1", "w2@tm_1"), None);
 }

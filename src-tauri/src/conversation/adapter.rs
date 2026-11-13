@@ -176,11 +176,14 @@ pub trait AgentSessionAdapter: Send + Sync {
     ///
     /// Adapters that can cheaply restrict discovery (e.g. OpenCode SQL `directory`)
     /// should override this so scan work stays proportional to the active project.
+    ///
+    /// `project_roots` 是项目的**注册根集合**（主 checkout + 全部 linked worktree）：一个会话
+    /// 只要落在**任一**根下就属于本项目。`None` = 不限制（全量）。
     fn parse_all_metas_for_project(
         &self,
-        project_path: Option<&str>,
+        project_roots: Option<&[PathBuf]>,
     ) -> Option<Result<Vec<(ParsedMeta, PathBuf)>>> {
-        let _ = project_path;
+        let _ = project_roots;
         self.parse_all_metas()
     }
 
@@ -191,8 +194,8 @@ pub trait AgentSessionAdapter: Send + Sync {
     /// - `Some(empty)` → early stop: no sessions for this project without a full walk.
     ///
     /// Bulk adapters (`parse_all_metas*`) ignore this; they scope inside SQL / bulk parse.
-    fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<PathBuf>> {
-        let _ = project_path;
+    fn discovery_roots(&self, project_roots: Option<&[PathBuf]>) -> Option<Vec<PathBuf>> {
+        let _ = project_roots;
         None
     }
 }

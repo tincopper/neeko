@@ -434,6 +434,50 @@ impl AppStateWrapper {
             .map_err(AppError::from)
     }
 
+    /// 项目身份 → **项目的归属范围**（History 列表 / 搜索 / 扫描的唯一解析入口）。
+    ///
+    /// 一个项目有 1+N 个工作区（主 checkout + linked worktree），而 Neeko 的工作树按设计落在
+    /// 项目目录**之外**（`~/.neeko/worktrees/<name>`）。「整个项目的历史」因此不能用一条路径
+    /// 表达：根集合 = 项目登记根 + `git worktree list` + **团队行记录过的工作区根**。
+    ///
+    /// # 为什么团队记录也算注册事实
+    ///
+    /// 成员会话的 cwd 是团队根，而团队根可能是一个已经 `git worktree remove` 掉的工作树
+    /// （转录还在）。团队行记录的 `workspace_worktree` 是「这个目录属于本项目」的**登记事实**
+    /// —— 不靠字符串反推（红线 12）。v16 之前的旧行（空 `project_id`）不属于任何项目，跳过。
+    ///
+    /// # Errors
+    /// 未知 `project_id` ⇒ `NotFound`（与 [`Self::resolve_workspace_core`] 同一台阶：
+    /// 「有没有这个项目」是能力前置，不是一次事后失败）。
+    pub async fn project_scope(
+        &self,
+        project_id: &str,
+    ) -> Result<crate::common::git::ProjectScope, AppError> {
+        let (environment, project_root) = self.project_context(project_id)?;
+
+        // 团队记录的工作区根（内存镜像的锁内无 I/O）。同一个路径可能被多个队记录，去重交给
+        // `ProjectScope`（它按身份去重，不在这里再写一份判据）。
+        let recorded: Vec<std::path::PathBuf> = self
+            .team_manager
+            .teams()
+            .into_iter()
+            .filter(|team| !team.project_id.is_empty() && team.project_id == project_id)
+            .map(|team| {
+                team.workspace_worktree
+                    .clone()
+                    .unwrap_or_else(|| team.project_path.clone())
+            })
+            .collect();
+
+        crate::common::git::ProjectScope::resolve(
+            &environment.to_exec_target(),
+            std::path::Path::new(&project_root),
+            &recorded,
+        )
+        .await
+        .map_err(AppError::from)
+    }
+
     /// 文件/通用命令的统一入口：**Workspace 目标 → (执行环境, 已解析 [`WorkspaceRef`])**。
     ///
     /// 与 [`Self::resolve_workspace`] 同源（委托），使「按 Workspace 寻址」的命令不必各自拼
@@ -845,7 +889,7 @@ mod tests {
         let second = state_on_db(&db, &tmp);
         assert_eq!(
             second.team_manager.team(TEAM).map(|t| t.state),
-            Some(TeamState::Active),
+            Some(TeamState::Open),
             "重启后团队必须可见（`TeamManager::new` 会让这里是 None）"
         );
         assert_eq!(
@@ -900,6 +944,61 @@ mod tests {
             state.project_environment_for_path(&root).await,
             Ok(crate::core::project::ProjectEnvironment::Local)
         ));
+    }
+
+    /// 项目范围 = 项目登记根 + **团队记录过的工作区根**（S3/AC-10 的组合根一半）。
+    ///
+    /// 团队根按设计可以落在项目目录**之外**（`~/.neeko/worktrees/<name>`），那时
+    /// 「按路径前缀反推项目」结构上不可能成立。归属的唯一依据是登记事实：
+    /// 项目自己的根、`git worktree list`、以及团队行记录的工作树。
+    ///
+    /// 反证面：不把团队记录的根收进范围时，工作树里的成员会话在 History 里会整批消失 ——
+    /// 所以第一条断言必须成立（它读的正是 `recorded`）。
+    #[tokio::test]
+    async fn the_project_scope_covers_a_team_workspace_outside_the_project() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_id) = crate::common::testing::plain_project_state(&tmp);
+        let project_dir = tmp.path().join("proj");
+
+        // 团队跑在项目目录**之外**的工作树上（Neeko 的默认布局）。
+        let worktree = tmp.path().join("neeko-worktrees").join("wt");
+        std::fs::create_dir_all(&worktree).expect("worktree dir");
+        state
+            .team_manager
+            .create_team(crate::agent::team::types::Team {
+                project_id: project_id.clone(),
+                workspace_worktree: Some(worktree.clone()),
+                ..fixture_team("tm_scope")
+            })
+            .expect("create_team");
+
+        let scope = state
+            .project_scope(&project_id)
+            .await
+            .expect("project scope");
+        assert!(
+            scope.owns(Some(&project_dir.to_string_lossy())),
+            "项目登记根属于它自己"
+        );
+        assert!(
+            scope.owns(Some(&worktree.to_string_lossy())),
+            "团队记录过的工作树属于同一个项目（否则成员会话在 History 里消失）"
+        );
+        assert!(
+            scope.roots().iter().any(|root| root == &worktree
+                || std::fs::canonicalize(root).ok() == std::fs::canonicalize(&worktree).ok()),
+            "记录的根同时进**发现**清单（否则路径编码的 CLI 根本扫不到它）：{:?}",
+            scope.roots()
+        );
+
+        // 别的项目目录不属于它（分量边界，fail-closed）。
+        let other = tmp.path().join("proj-other");
+        std::fs::create_dir_all(&other).expect("other dir");
+        assert!(!scope.owns(Some(&other.to_string_lossy())));
+
+        // 未知项目 ⇒ NotFound（与 `project_context` 同一台阶）。
+        let err = state.project_scope("nope").await.expect_err("未知项目");
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
     }
 
     /// 不变量：`team_manager` 与 `library_store` 是**同一个池**（不是同一文件的两个池）。

@@ -430,7 +430,14 @@ mod tests {
         })]);
         let reports = manager.scan_all(None).unwrap();
         assert_eq!(reports[0].sessions_found, 1);
-        let list = manager.list(Some("/Users/tomgs/project"), None).unwrap();
+        let list = manager
+            .list(
+                crate::conversation::manager::ListScope::Project(
+                    &crate::common::git::ProjectScope::for_test(&["/Users/tomgs/project"]),
+                ),
+                None,
+            )
+            .unwrap();
         assert_eq!(list.len(), 1);
         assert!(list[0].supports_resume);
     }

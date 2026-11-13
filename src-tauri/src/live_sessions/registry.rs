@@ -562,6 +562,24 @@ impl Registry {
         entries
     }
 
+    /// 这个成员此刻**真的有进程**的会话 id；`None` = 没有。
+    ///
+    /// # 为什么活性只能问这里
+    ///
+    /// 进程自然退出会整行删除条目（`wiring::pty::on_exit`），显式关闭会把状态置为
+    /// `Stopped` 但保留行（那是「点回来」的入口）—— 两种都满足 `state.is_terminal()`。
+    /// 而 `terminal_router::TerminalRouter` 的路由表**不**在自然退出时摘除（退出路径只有
+    /// 注册表句柄），所以那里答的是「这个 id 曾经登记过」，拿它当活性会得到「死会话可点」。
+    #[must_use]
+    pub fn live_session_for_member(&self, team_id: &str, member_id: &str) -> Option<String> {
+        self.guard()
+            .values()
+            .find(|entry| {
+                !entry.state.is_terminal() && entry.attribution.is_member_of(team_id, member_id)
+            })
+            .map(|entry| entry.session_id.clone())
+    }
+
     /// 版本未变则挂起，直到版本变化或 `timeout` 到期；返回**当前**版本号。
     ///
     /// 调用方（薄命令）负责默认值与钳制；这里只做语义（超时返回当前版本，不空转）。

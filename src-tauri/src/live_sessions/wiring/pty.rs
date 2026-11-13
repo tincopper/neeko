@@ -82,6 +82,11 @@ pub(crate) struct TerminalRegistration {
     pub cwd: String,
     /// 该终端跑的是哪个 agent（纯 shell 为 `None`）—— **只用于图标**，不进标题。
     pub agent_id: Option<String>,
+    /// 这条会话是谁开的（团队成员的 PTY 由执行层写 `TeamMember`）。
+    ///
+    /// 与 `workspace` / `agent_id` 同一个写入时刻：登记就在进程创建处，
+    /// 所以归属不需要任何登后修复或反推。
+    pub attribution: super::super::entry::SessionAttribution,
 }
 
 /// 「注册表 + 本次登记的原生事实」的绑定：登记的**唯一**入口。
@@ -159,7 +164,8 @@ fn register_terminal(registry: &Registry, session_id: &str, input: &TerminalRegi
             input.cwd.as_str(),
         )
         // 进程已存活 ⇒ Running；静默 1.5s 后由 `OutputActivity` 落到 Ready。
-        .with_state(SessionState::Running),
+        .with_state(SessionState::Running)
+        .with_attribution(input.attribution.clone()),
     )
 }
 
@@ -316,6 +322,7 @@ mod tests {
             workspace: WorkspaceSession::of("p1", Some("/proj-wt".into())),
             cwd: "/proj-wt/src".into(),
             agent_id: agent_id.map(str::to_string),
+            attribution: crate::live_sessions::SessionAttribution::User,
         }
     }
 

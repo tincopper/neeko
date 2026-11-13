@@ -56,6 +56,44 @@ impl SessionState {
     }
 }
 
+/// 会话归属：这条会话是**谁开的**。
+///
+/// # 为什么它必须是持久在条目上的一列，而不是从别处推导
+///
+/// 「哪条 PTY 属于哪个团队成员」只在**起进程的那一刻** 100% 已知：hook 可能没装 / 被用户关掉 /
+/// 进程在发任何事件前就退出；而路径与标题都不是身份（红线 12）。所以归属由起进程的一方
+/// 在 [`crate::live_sessions::wiring::pty::TerminalRegistration`] 里写入。
+///
+/// 生命周期与条目完全一致（自然退出删行、显式关闭 → `Stopped`），**不需要第二套清理逻辑**。
+/// 名字避开 `SessionOwner`：那个名字在 `terminal::router` 里已表示「哪个后端持有会话」。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum SessionAttribution {
+    /// 用户自己开的终端 / 会话。
+    #[default]
+    User,
+    /// 团队成员：起进程时由团队执行层写入。
+    TeamMember {
+        /// 所属团队。
+        team_id: String,
+        /// 成员 id。
+        member_id: String,
+    },
+}
+
+impl SessionAttribution {
+    /// 这条会话是不是**这个成员**的。
+    #[must_use]
+    pub fn is_member_of(&self, team_id: &str, member_id: &str) -> bool {
+        matches!(
+            self,
+            Self::TeamMember {
+                team_id: t,
+                member_id: m,
+            } if t == team_id && m == member_id
+        )
+    }
+}
+
 /// 一条 live session 条目（注册表的 value）。
 #[derive(Debug, Clone)]
 pub struct SessionEntry {
@@ -63,6 +101,8 @@ pub struct SessionEntry {
     pub session_id: String,
     /// 会话种类。
     pub kind: SessionKind,
+    /// 这条会话是谁开的（见 [`SessionAttribution`]）。
+    pub attribution: SessionAttribution,
     /// 该会话使用的 agent（纯 shell terminal 为 `None`）。
     pub agent_id: Option<String>,
     /// **执行地址**（红线 12：地址是身份，不是字符串前缀）。
@@ -126,6 +166,7 @@ impl SessionEntry {
         Self {
             session_id: session_id.into(),
             kind,
+            attribution: SessionAttribution::User,
             agent_id,
             workspace,
             cwd: cwd.into(),
@@ -153,6 +194,14 @@ impl SessionEntry {
     #[must_use]
     pub const fn with_user_input(mut self, has_user_input: bool) -> Self {
         self.has_user_input = has_user_input;
+        self
+    }
+
+    /// 登记归属。终端与 chat 默认都是 [`SessionAttribution::User`]；
+    /// 团队执行层是**唯一**写入 `TeamMember` 的地方。
+    #[must_use]
+    pub fn with_attribution(mut self, attribution: SessionAttribution) -> Self {
+        self.attribution = attribution;
         self
     }
 

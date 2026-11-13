@@ -10,8 +10,8 @@ import {
 } from '@/features/conversation/utils/conversationListLoad';
 
 describe('conversationListLoad', () => {
-  it('builds stable load keys', () => {
-    expect(listLoadKey('/a', 'claude-code')).toBe('/a::claude-code');
+  it('builds stable load keys（键是项目身份，不是路径）', () => {
+    expect(listLoadKey('p1', 'claude-code')).toBe('p1::claude-code');
     expect(listLoadKey(null)).toBe('::');
   });
 

@@ -48,6 +48,8 @@ pub async fn create_terminal_session(
         workspace,
         cwd,
         agent_id,
+        // 用户自己开的终端：不是任何成员的会话。
+        attribution: crate::live_sessions::SessionAttribution::User,
     };
     state
         .terminal_router

@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
@@ -9,7 +10,7 @@ use regex::Regex;
 use walkdir::WalkDir;
 
 use crate::common::agent::title::{admit_candidates, TitleCandidate};
-use crate::common::git::UnitScope;
+use crate::common::git::{ProjectScope, UnitScope};
 use crate::conversation::adapter::{is_owned_path, AgentSessionAdapter, ParsedMessage};
 use crate::conversation::adapters::saturating_count;
 use crate::conversation::normalize::build_preview_messages;
@@ -21,17 +22,31 @@ use crate::AppError;
 
 /// 会话列表的**范围**（已解析形态）。
 ///
-/// 一个概念三个值，而不是两个可空参数：`project_path` 与 `unit` 并存时必然要定「谁优先」，
+/// 一个概念三个值，而不是两个可空参数：`project` 与 `unit` 并存时必然要定「谁优先」，
 /// 那条隐式优先级就是「传了地址却按项目根过滤」的入口。命令层负责把 wire 形态
 /// （[`crate::conversation::types::ConversationListScope`]）解析成本枚举。
+///
+/// 项目级收的是**已解析的范围对象**而不是一个路径字符串：项目 = 主 checkout + 全部 linked
+/// worktree（[`ProjectScope`]），一个字符串表达不了它（红线 12：不为路径→项目身份再造一套
+/// 前缀规则）。
 #[derive(Debug, Clone, Copy)]
 pub enum ListScope<'a> {
     /// 不过滤（全量）。仅内部诊断 / 测试使用 —— 命令层要求调用方显式给出范围。
     All,
-    /// 项目级（History 面板）：会话 cwd 等于该项目根或其后代。
-    Project(&'a str),
+    /// 项目级（History 面板）：会话 cwd 落在该项目的**任一**注册根下。
+    Project(&'a ProjectScope),
     /// 单元级（agent-chat 恢复列表）：会话归属该 Workspace 单元（最深根胜出）。
     Unit(&'a UnitScope),
+}
+
+/// 扫描进度事件里的 `project_path`：**显示用**的代表根（wire 字段名不变）。
+///
+/// 真正的范围是根**集合**（主 checkout + 全部 linked worktree）；事件载荷只能放一个字符串，
+/// 取第一个（项目根）。它不是任何判据 —— 只是「正在扫哪个项目」的提示。
+fn progress_project_path(project_roots: Option<&[PathBuf]>) -> Option<String> {
+    project_roots
+        .and_then(|roots| roots.first())
+        .map(|root| root.to_string_lossy().to_string())
 }
 
 /// 会话标题解析（供 `scan` 循环与单测复用）。
@@ -98,7 +113,10 @@ pub struct ScanProgressEvent {
     pub phase: String,
     /// Sessions found for this agent after `done` (0 on start/error).
     pub sessions_found: u32,
-    /// Optional project scope for this scan.
+    /// **显示用**的代表根（项目根）；`None` = 全量扫描。
+    ///
+    /// wire 字段名保持 `projectPath`（前端已按它渲染进度）：真正的范围是根**集合**
+    /// （主 checkout + 全部 linked worktree），见 [`progress_project_path`]。
     pub project_path: Option<String>,
 }
 
@@ -202,10 +220,11 @@ impl ConversationManager {
         crate::conversation::disk_index::save_default_index(snapshot)
     }
 
-    /// Scan every registered agent. When `project_path` is `Some`, adapters that
-    /// support scoped discovery only parse sessions for that project.
-    pub fn scan_all(&self, project_path: Option<&str>) -> Result<Vec<ScanReport>> {
-        self.scan_agents(project_path, None)
+    /// Scan every registered agent. When `project_roots` is `Some`, adapters that
+    /// support scoped discovery only parse sessions for those roots (the project's
+    /// main checkout **plus every linked worktree**).
+    pub fn scan_all(&self, project_roots: Option<&[PathBuf]>) -> Result<Vec<ScanReport>> {
+        self.scan_agents(project_roots, None)
     }
 
     /// Scan a subset of agents (or all when `only_agent_ids` is `None`).
@@ -214,7 +233,7 @@ impl ConversationManager {
     /// manager to `AgentManager`.
     pub fn scan_agents(
         &self,
-        project_path: Option<&str>,
+        project_roots: Option<&[PathBuf]>,
         only_agent_ids: Option<&[String]>,
     ) -> Result<Vec<ScanReport>> {
         use std::thread;
@@ -251,15 +270,15 @@ impl ConversationManager {
                         agent_id: agent_id.clone(),
                         phase: "start".into(),
                         sessions_found: 0,
-                        project_path: project_path.map(|s| s.to_string()),
+                        project_path: progress_project_path(project_roots),
                     });
-                    match self.scan_agent_inner(agent_id, adapter.as_ref(), project_path) {
+                    match self.scan_agent_inner(agent_id, adapter.as_ref(), project_roots) {
                         Ok(report) => {
                             self.emit_progress(ScanProgressEvent {
                                 agent_id: agent_id.clone(),
                                 phase: "done".into(),
                                 sessions_found: report.sessions_found,
-                                project_path: project_path.map(|s| s.to_string()),
+                                project_path: progress_project_path(project_roots),
                             });
                             Ok(report)
                         }
@@ -268,7 +287,7 @@ impl ConversationManager {
                                 agent_id: agent_id.clone(),
                                 phase: "error".into(),
                                 sessions_found: 0,
-                                project_path: project_path.map(|s| s.to_string()),
+                                project_path: progress_project_path(project_roots),
                             });
                             Err(e)
                         }
@@ -312,7 +331,13 @@ impl ConversationManager {
     }
 
     /// 扫描指定 Agent 的会话文件，更新内存缓存
-    pub fn scan_agent(&self, agent_id: &str, project_path: Option<&str>) -> Result<ScanReport> {
+    ///
+    /// `project_roots` 是项目的注册根集合（`None` = 全量；`Some(&[])` = 早停）。
+    pub fn scan_agent(
+        &self,
+        agent_id: &str,
+        project_roots: Option<&[PathBuf]>,
+    ) -> Result<ScanReport> {
         let adapter = self
             .adapters
             .get(agent_id)
@@ -321,15 +346,15 @@ impl ConversationManager {
             agent_id: agent_id.to_string(),
             phase: "start".into(),
             sessions_found: 0,
-            project_path: project_path.map(|s| s.to_string()),
+            project_path: progress_project_path(project_roots),
         });
-        match self.scan_agent_inner(agent_id, adapter.as_ref(), project_path) {
+        match self.scan_agent_inner(agent_id, adapter.as_ref(), project_roots) {
             Ok(report) => {
                 self.emit_progress(ScanProgressEvent {
                     agent_id: agent_id.to_string(),
                     phase: "done".into(),
                     sessions_found: report.sessions_found,
-                    project_path: project_path.map(|s| s.to_string()),
+                    project_path: progress_project_path(project_roots),
                 });
                 Ok(report)
             }
@@ -338,7 +363,7 @@ impl ConversationManager {
                     agent_id: agent_id.to_string(),
                     phase: "error".into(),
                     sessions_found: 0,
-                    project_path: project_path.map(|s| s.to_string()),
+                    project_path: progress_project_path(project_roots),
                 });
                 Err(e)
             }
@@ -349,10 +374,10 @@ impl ConversationManager {
         &self,
         agent_id: &str,
         adapter: &dyn AgentSessionAdapter,
-        project_path: Option<&str>,
+        project_roots: Option<&[PathBuf]>,
     ) -> Result<ScanReport> {
         // 优先使用批量解析（如 SQLite 单文件多会话适配器）
-        if let Some(bulk) = adapter.parse_all_metas_for_project(project_path) {
+        if let Some(bulk) = adapter.parse_all_metas_for_project(project_roots) {
             let metas = bulk?;
             let mut sessions_found: u32 = 0;
             let errors: Vec<String> = Vec::new();
@@ -384,7 +409,7 @@ impl ConversationManager {
 
         // 默认逐文件扫描（可被 discovery_roots 收窄到项目目录）
         let session_root = adapter.session_root();
-        let walk_roots: Vec<std::path::PathBuf> = match adapter.discovery_roots(project_path) {
+        let walk_roots: Vec<PathBuf> = match adapter.discovery_roots(project_roots) {
             // Adapter opted into scoped discovery for this project.
             Some(roots) if roots.is_empty() => {
                 // 单元级扫描：该项目下没有该 agent 的编码目录（正常形态，不是缺陷）。
@@ -555,18 +580,14 @@ impl ConversationManager {
 
     /// 列出缓存的会话（全量，兼容旧调用方 / 测试）。
     ///
-    /// - `project_path`: 严格匹配会话所属项目（见 [`matches_project_path`]）
+    /// - `scope`: 范围（见 [`ListScope`]）；项目级收**已解析的** [`ProjectScope`]
     /// - `agent_id`: 按 agent 过滤（为 None 时不过滤）
     /// - 结果按 `updated_at` 倒序排列
     pub fn list(
         &self,
-        project_path: Option<&str>,
+        scope: ListScope<'_>,
         agent_id: Option<&str>,
     ) -> Result<Vec<ConversationMeta>> {
-        let scope = match project_path {
-            Some(path) => ListScope::Project(path),
-            None => ListScope::All,
-        };
         let page = self.list_page(scope, agent_id, 0, 0)?;
         Ok(page.items)
     }
@@ -593,9 +614,7 @@ impl ConversationManager {
             .filter(|m| {
                 let matches_project = match &scope {
                     ListScope::Unit(unit) => unit.owns(m.project_path.as_deref()),
-                    ListScope::Project(project) => {
-                        matches_project_path(m.project_path.as_deref(), project)
-                    }
+                    ListScope::Project(project) => project.owns(m.project_path.as_deref()),
                     ListScope::All => true,
                 };
                 let matches_agent = match agent_id {
@@ -928,9 +947,13 @@ impl ConversationManager {
     /// 搜索会话
     ///
     /// - `query`: 搜索关键词，为空时返回空列表
-    /// - `project_path`: 按项目路径过滤
+    /// - `project`: 按**项目身份**过滤（`None` = 全量）
     /// - 匹配字段：title（含 user_title）和 preview
-    pub fn search(&self, query: &str, project_path: Option<&str>) -> Result<Vec<ConversationMeta>> {
+    pub fn search(
+        &self,
+        query: &str,
+        project: Option<&ProjectScope>,
+    ) -> Result<Vec<ConversationMeta>> {
         if query.is_empty() {
             return Ok(Vec::new());
         }
@@ -944,9 +967,9 @@ impl ConversationManager {
         let mut results: Vec<ConversationMeta> = cache
             .values()
             .filter(|m| {
-                // project_path: strict project ownership (History is project-scoped)
-                if let Some(pp) = project_path {
-                    if !matches_project_path(m.project_path.as_deref(), pp) {
+                // 项目归属：History 是项目级的（会话落在该项目任一注册根下即属于它）。
+                if let Some(project) = project {
+                    if !project.owns(m.project_path.as_deref()) {
                         return false;
                     }
                 }
@@ -1308,31 +1331,6 @@ fn build_conversation_meta(
         supports_resume,
         delete_support: adapter.delete_support(),
     }
-}
-
-/// Strict project ownership for History list/search.
-///
-/// A session belongs to `project` when its recorded path equals the project or
-/// is nested under it (`/proj` matches `/proj` and `/proj/sub`, not `/proj-other`).
-/// Missing session project path never matches a concrete project filter.
-///
-/// **这不是单元归属判据**：单元级问的是「哪个执行上下文拥有它」，需要身份字母表与
-/// 「最深根胜出」（`crate::common::git::unit_scope`）。两者判据不同是有意的 ——
-/// 项目级要的是「整个项目的历史」，单元级要的是「这个 cwd 的会话」。
-pub(crate) fn matches_project_path(session_project: Option<&str>, project: &str) -> bool {
-    let Some(raw) = session_project.map(str::trim).filter(|s| !s.is_empty()) else {
-        return false;
-    };
-    let project = project.trim().trim_end_matches('/');
-    if project.is_empty() {
-        return false;
-    }
-    let session = raw.trim_end_matches('/');
-    if session == project {
-        return true;
-    }
-    // Require boundary so `/proj` does not match `/proj-other`.
-    session.starts_with(project) && session[project.len()..].starts_with('/')
 }
 
 /// Adapters signal intentional noise filters with `bail!("skip: ...")`.
@@ -1820,7 +1818,12 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let results = manager.list(Some("/projects/alpha"), None).unwrap();
+        let results = manager
+            .list(
+                ListScope::Project(&ProjectScope::for_test(&["/projects/alpha"])),
+                None,
+            )
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].project_path.as_deref(), Some("/projects/alpha"));
     }
@@ -1834,17 +1837,17 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let results = manager.list(None, Some("test-agent")).unwrap();
+        let results = manager.list(ListScope::All, Some("test-agent")).unwrap();
         assert_eq!(results.len(), 1);
 
-        let results = manager.list(None, Some("nonexistent")).unwrap();
+        let results = manager.list(ListScope::All, Some("nonexistent")).unwrap();
         assert!(results.is_empty());
     }
 
     #[test]
     fn should_list_return_empty_when_cache_empty() {
         let manager = ConversationManager::new(Vec::new());
-        let results = manager.list(None, None).unwrap();
+        let results = manager.list(ListScope::All, None).unwrap();
         assert!(results.is_empty());
     }
 
@@ -1857,7 +1860,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let list = manager.list(None, None).unwrap();
+        let list = manager.list(ListScope::All, None).unwrap();
         let conv_id = &list[0].id;
 
         let messages = manager.get_messages(conv_id).unwrap();
@@ -1913,7 +1916,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let list = manager.list(None, None).unwrap();
+        let list = manager.list(ListScope::All, None).unwrap();
         let conv_id = &list[0].id;
 
         manager
@@ -1924,7 +1927,7 @@ mod tests {
             )
             .unwrap();
 
-        let updated = manager.list(None, None).unwrap();
+        let updated = manager.list(ListScope::All, None).unwrap();
         assert_eq!(updated[0].user_title.as_deref(), Some("Custom Title"));
         assert_eq!(updated[0].tags, vec!["bug"]);
     }
@@ -1938,7 +1941,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let list = manager.list(None, None).unwrap();
+        let list = manager.list(ListScope::All, None).unwrap();
         let conv_id = &list[0].id;
 
         let cmd = manager.get_resume_command(conv_id).unwrap();
@@ -1955,7 +1958,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let list = manager.list(None, None).unwrap();
+        let list = manager.list(ListScope::All, None).unwrap();
         let conv_id = &list[0].id;
 
         let context = manager.build_resume_context(conv_id, 2).unwrap();
@@ -1973,7 +1976,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let list = manager.list(None, None).unwrap();
+        let list = manager.list(ListScope::All, None).unwrap();
         let conv_id = &list[0].id;
 
         let md = manager.export_markdown(conv_id).unwrap();
@@ -2062,7 +2065,7 @@ mod tests {
             reports[0].errors
         );
 
-        let list = manager.list(None, None).unwrap();
+        let list = manager.list(ListScope::All, None).unwrap();
         assert_eq!(list.len(), 1);
         assert!(list[0].native_session_id.contains("rollout-"));
     }
@@ -2087,7 +2090,12 @@ mod tests {
             reports[0].sessions_found, 1,
             "*.jsonl must discover nested sanitized-path sessions"
         );
-        let list = manager.list(Some("/Users/tomgs/project"), None).unwrap();
+        let list = manager
+            .list(
+                ListScope::Project(&ProjectScope::for_test(&["/Users/tomgs/project"])),
+                None,
+            )
+            .unwrap();
         assert_eq!(list.len(), 1);
     }
 
@@ -2124,7 +2132,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let list = manager.list(None, None).unwrap();
+        let list = manager.list(ListScope::All, None).unwrap();
         let conv = &list[0];
         assert!(
             conv.supports_resume,
@@ -2205,7 +2213,7 @@ mod tests {
             inner: TestAdapter::new("test-agent", dir.path().to_path_buf()),
         })]);
         manager.scan_all(None).unwrap();
-        let list = manager.list(None, None).unwrap();
+        let list = manager.list(ListScope::All, None).unwrap();
         assert!(!list[0].supports_resume);
         assert!(manager.get_resume_command(&list[0].id).unwrap().is_none());
     }
@@ -2310,7 +2318,12 @@ mod tests {
         assert!(reports[0].errors.is_empty());
 
         // 列表：按 project_path 过滤
-        let results = manager.list(Some("/Users/tomgs/my-project"), None).unwrap();
+        let results = manager
+            .list(
+                ListScope::Project(&ProjectScope::for_test(&["/Users/tomgs/my-project"])),
+                None,
+            )
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].agent_id, "claude-code");
         assert_eq!(results[0].message_count, 2);
@@ -2321,7 +2334,7 @@ mod tests {
         );
 
         // 列表：无过滤
-        let all = manager.list(None, None).unwrap();
+        let all = manager.list(ListScope::All, None).unwrap();
         assert_eq!(all.len(), 1);
     }
 
@@ -2430,7 +2443,7 @@ mod tests {
         })]);
         manager.scan_all(None).unwrap();
 
-        let list = manager.list(None, None).unwrap();
+        let list = manager.list(ListScope::All, None).unwrap();
         assert!(!list.is_empty(), "should find at least one conversation");
         let conv_id = &list[0].id;
 
@@ -2507,7 +2520,7 @@ mod tests {
 
         let first = manager.scan_all(None).unwrap();
         assert_eq!(first[0].sessions_found, 1);
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
         manager
             .update_meta(&id, Some("My Title".into()), Some(vec!["tag1".into()]))
             .unwrap();
@@ -2515,21 +2528,177 @@ mod tests {
         // Second scan: fingerprint hit path should still restore user_title/tags.
         let second = manager.scan_all(None).unwrap();
         assert_eq!(second[0].sessions_found, 1);
-        let listed = manager.list(None, None).unwrap();
+        let listed = manager.list(ListScope::All, None).unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].user_title.as_deref(), Some("My Title"));
         assert_eq!(listed[0].tags, vec!["tag1".to_string()]);
     }
 
+    /// 一个**带项目级发现**的夹具：目录编码走 Claude 字母表（与真实 claude-code 适配器
+    /// 同一函数），会话的 `project_path` 从转录内容读（同真实适配器的 `cwd` 口径）。
+    ///
+    /// 存在的理由：`TestAdapter` 不覆写 `discovery_roots`，用它写「扫描范围」的用例只能证明
+    /// 「没有范围」，而缺陷恰恰在**有范围**那一支。
+    struct ScopedJsonlAdapter {
+        root: PathBuf,
+    }
+
+    impl AgentSessionAdapter for ScopedJsonlAdapter {
+        fn agent_id(&self) -> &str {
+            "scoped-jsonl"
+        }
+        fn session_root(&self) -> PathBuf {
+            self.root.clone()
+        }
+        fn file_pattern(&self) -> &str {
+            "*.jsonl"
+        }
+        fn discovery_roots(&self, project_roots: Option<&[PathBuf]>) -> Option<Vec<PathBuf>> {
+            crate::conversation::scope::discovery_roots_for(
+                self.root.clone(),
+                project_roots,
+                crate::conversation::scope::EncodeStyle::Claude,
+            )
+        }
+        fn parse_meta(&self, file_path: &Path) -> Result<ParsedMeta> {
+            let entries = TestAdapter::read_jsonl_entries(file_path)?;
+            let first = entries.first().context("Empty file")?;
+            Ok(ParsedMeta {
+                native_session_id: file_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("x")
+                    .to_string(),
+                title: Some("hello".into()),
+                first_user_message: None,
+                recent_messages: vec![],
+                model: None,
+                started_at: 1,
+                updated_at: 2,
+                message_count: 1,
+                project_path: first
+                    .get("project_path")
+                    .and_then(|p| p.as_str())
+                    .map(str::to_string),
+            })
+        }
+        fn parse_messages(&self, _file_path: &Path) -> Result<Vec<ParsedMessage>> {
+            Ok(vec![])
+        }
+        fn extract_session_id(&self, file_path: &Path) -> Option<String> {
+            file_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(str::to_string)
+        }
+        fn resume_command(&self, _id: &str, _pp: &str) -> Option<Vec<String>> {
+            None
+        }
+    }
+
+    /// 写一条「某 cwd 下的会话」：目录名按 CLI 的编码规则，正文里记着那个 cwd。
+    ///
+    /// 路径全部由 `tempdir()` 推导（红线 13）。
+    fn write_scoped_fixture(transcript_root: &Path, cwd: &Path, name: &str) {
+        let encoded =
+            crate::conversation::scope::encode_claude_project_path(&cwd.to_string_lossy());
+        let dir = transcript_root.join(encoded);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(format!("{name}.jsonl")),
+            format!(
+                "{{\"role\":\"user\",\"content\":\"hello\",\"timestamp\":1,\"project_path\":{}}}\n",
+                serde_json::to_string(&cwd.to_string_lossy()).unwrap()
+            ),
+        )
+        .unwrap();
+    }
+
+    /// 项目范围是**根集合**：团队在外部工作树（`~/.neeko/worktrees/<name>` 的形态）里跑出来的
+    /// 转录，只要把该工作树的根也算进来就能被发现、被归属。
+    ///
+    /// 反证面：只给项目根时那条转录**根本不会被发现**（路径编码的目录不在项目根编码的前缀扩展
+    /// 里）—— 这正是本任务修复的缺陷，所以第一段断言必须成立。
     #[test]
-    fn matches_project_path_requires_boundary_and_non_empty_session() {
-        assert!(matches_project_path(Some("/proj"), "/proj"));
-        assert!(matches_project_path(Some("/proj/"), "/proj"));
-        assert!(matches_project_path(Some("/proj/sub"), "/proj"));
-        assert!(!matches_project_path(Some("/proj-other"), "/proj"));
-        assert!(!matches_project_path(None, "/proj"));
-        assert!(!matches_project_path(Some(""), "/proj"));
-        assert!(!matches_project_path(Some("/proj"), ""));
+    fn a_worktree_scan_finds_sessions_encoded_under_the_worktree() {
+        let dir = TempDir::new().unwrap();
+        // 工作树刻意放在项目目录**之外**（Neeko 的默认布局）。
+        let project = dir.path().join("project");
+        let worktree = dir.path().join("neeko-worktrees").join("wt");
+        let transcripts = dir.path().join("transcripts");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&worktree).unwrap();
+        write_scoped_fixture(&transcripts, &project, "main");
+        write_scoped_fixture(&transcripts, &worktree, "wt");
+
+        let manager =
+            ConversationManager::new(vec![Box::new(ScopedJsonlAdapter { root: transcripts })]);
+
+        // ① 只给项目根：工作树的会话扫不到（缺陷形态）。
+        let project_only = [project.clone()];
+        manager.scan_all(Some(&project_only)).unwrap();
+        assert_eq!(
+            manager.list(ListScope::All, None).unwrap().len(),
+            1,
+            "前提：只用项目根编码时，工作树的转录不在发现范围内"
+        );
+
+        // ② 根集合（项目根 + 工作树）：两条都进缓存。
+        let roots = [project.clone(), worktree.clone()];
+        manager.scan_all(Some(&roots)).unwrap();
+        assert_eq!(
+            manager.list(ListScope::All, None).unwrap().len(),
+            2,
+            "每个根都要编码（只拿第一个 = 工作树那半漏掉）"
+        );
+
+        // ③ 归属：工作树的会话属于**同一个项目**（History 面板要的就是这个）。
+        let project_s = project.to_string_lossy().to_string();
+        let worktree_s = worktree.to_string_lossy().to_string();
+        let scope = ProjectScope::for_test(&[&project_s, &worktree_s]);
+        let page = manager
+            .list_page(ListScope::Project(&scope), None, 0, 0)
+            .unwrap();
+        assert_eq!(page.total, 2, "工作树里的会话属于同一个项目");
+
+        // ④ 搜索用同一份范围（否则「列表看得到、搜索搜不到」）。
+        assert_eq!(manager.search("hello", Some(&scope)).unwrap().len(), 2);
+    }
+
+    /// 扫描范围收窄到本项目时，**别的项目**的会话不会被算成本项目的。
+    ///
+    /// 注意判据的位置：CLI 的目录编码天生歧义（`-a-proj-other` 以 `-a-proj-` 开头，
+    /// `dir_matches_project_scope` 会把它一起走进来 —— 那是既有行为，见 `scope.rs`）。
+    /// **归属**不由编码决定，而由 `ProjectScope::owns` 的分量边界决定 —— 这条用例钉住的
+    /// 是用户可见的那一半。
+    #[test]
+    fn a_scan_scoped_to_the_project_does_not_pick_up_a_sibling_project() {
+        let dir = TempDir::new().unwrap();
+        let project = dir.path().join("proj");
+        let sibling = dir.path().join("proj-other");
+        let transcripts = dir.path().join("transcripts");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        write_scoped_fixture(&transcripts, &project, "mine");
+        write_scoped_fixture(&transcripts, &sibling, "theirs");
+
+        let manager =
+            ConversationManager::new(vec![Box::new(ScopedJsonlAdapter { root: transcripts })]);
+        let roots = [project.clone()];
+        manager.scan_all(Some(&roots)).unwrap();
+
+        let project_s = project.to_string_lossy().to_string();
+        let scope = ProjectScope::for_test(&[&project_s]);
+        let page = manager
+            .list_page(ListScope::Project(&scope), None, 0, 0)
+            .unwrap();
+        assert_eq!(page.total, 1, "同名前缀的另一个项目不属于本项目：{page:?}");
+        assert_eq!(page.items[0].native_session_id, "mine");
+        assert_eq!(
+            manager.search("hello", Some(&scope)).unwrap().len(),
+            1,
+            "搜索与列表同一份归属判据"
+        );
     }
 
     #[test]
@@ -2554,10 +2723,10 @@ mod tests {
             fn file_pattern(&self) -> &str {
                 "*.jsonl"
             }
-            fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<PathBuf>> {
+            fn discovery_roots(&self, project_roots: Option<&[PathBuf]>) -> Option<Vec<PathBuf>> {
                 crate::conversation::scope::discovery_roots_for(
                     self.root.clone(),
-                    project_path,
+                    project_roots,
                     crate::conversation::scope::EncodeStyle::Claude,
                 )
             }
@@ -2623,9 +2792,8 @@ mod tests {
             parse_calls: parse_calls.clone(),
         })]);
 
-        let reports = manager
-            .scan_all(Some("/Users/tomgs/proj"))
-            .expect("scoped scan");
+        let roots = [PathBuf::from("/Users/tomgs/proj")];
+        let reports = manager.scan_all(Some(&roots)).expect("scoped scan");
         assert_eq!(reports[0].sessions_found, 1);
         assert_eq!(
             parse_calls.load(Ordering::SeqCst),
@@ -2633,13 +2801,14 @@ mod tests {
             "must not parse out-of-scope project dir"
         );
 
+        let project = ProjectScope::for_test(&["/Users/tomgs/proj"]);
         let page = manager
-            .list_page(ListScope::Project("/Users/tomgs/proj"), None, 0, 10)
+            .list_page(ListScope::Project(&project), None, 0, 10)
             .unwrap();
-        // project_path from dir name is sanitized form, list filter uses session project_path
-        // Our parse sets project_path to dir name; matches_project_path won't match.
-        // Still assert cache size via unfiltered list.
-        let all = manager.list(None, None).unwrap();
+        // 夹具把会话的 `project_path` 设成**目录名**（编码后的形态），所以项目归属不成立 ——
+        // 这条断言用的是未过滤列表（缓存里有 1 条）。
+        assert_eq!(page.total, 0);
+        let all = manager.list(ListScope::All, None).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].native_session_id, "a");
         let _ = page;
@@ -2737,10 +2906,15 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let all = manager.list(None, None).unwrap();
+        let all = manager.list(ListScope::All, None).unwrap();
         assert_eq!(all.len(), 2);
 
-        let filtered = manager.list(Some("/projects/alpha"), None).unwrap();
+        let filtered = manager
+            .list(
+                ListScope::Project(&ProjectScope::for_test(&["/projects/alpha"])),
+                None,
+            )
+            .unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].project_path.as_deref(), Some("/projects/alpha"));
     }
@@ -2758,7 +2932,12 @@ mod tests {
         manager.scan_all(None).unwrap();
 
         let page0 = manager
-            .list_page(ListScope::Project("/projects/p"), None, 0, 2)
+            .list_page(
+                ListScope::Project(&ProjectScope::for_test(&["/projects/p"])),
+                None,
+                0,
+                2,
+            )
             .unwrap();
         assert_eq!(page0.items.len(), 2);
         assert_eq!(page0.total, 3);
@@ -2767,7 +2946,12 @@ mod tests {
         assert!(page0.has_more);
 
         let page1 = manager
-            .list_page(ListScope::Project("/projects/p"), None, 2, 2)
+            .list_page(
+                ListScope::Project(&ProjectScope::for_test(&["/projects/p"])),
+                None,
+                2,
+                2,
+            )
             .unwrap();
         assert_eq!(page1.items.len(), 1);
         assert_eq!(page1.total, 3);
@@ -2775,7 +2959,12 @@ mod tests {
 
         // limit=0 returns all remaining from offset.
         let all = manager
-            .list_page(ListScope::Project("/projects/p"), None, 0, 0)
+            .list_page(
+                ListScope::Project(&ProjectScope::for_test(&["/projects/p"])),
+                None,
+                0,
+                0,
+            )
             .unwrap();
         assert_eq!(all.items.len(), 3);
         assert!(!all.has_more);
@@ -2796,7 +2985,12 @@ mod tests {
 
         // 项目级（History 面板）仍看到两个单元。
         let project = manager
-            .list_page(ListScope::Project("/projects/p"), None, 0, 0)
+            .list_page(
+                ListScope::Project(&ProjectScope::for_test(&["/projects/p"])),
+                None,
+                0,
+                0,
+            )
             .unwrap();
         assert_eq!(project.items.len(), 2);
 
@@ -2926,7 +3120,7 @@ mod tests {
             dir.path().to_path_buf(),
         ))]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         let hits = manager.search_messages(&id, "rotate").unwrap();
         assert_eq!(
@@ -2982,7 +3176,7 @@ mod tests {
             dir.path().to_path_buf(),
         ))]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         let stats = manager.conversation_stats(&id).unwrap();
         assert_eq!(stats.total_messages, 4);
@@ -3008,7 +3202,7 @@ mod tests {
             dir.path().to_path_buf(),
         ))]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         let hits = manager.search_messages(&id, "TESTS").unwrap();
         assert_eq!(hits.len(), 2, "case-insensitive match on both user turns");
@@ -3065,7 +3259,7 @@ mod tests {
             dir.path().to_path_buf(),
         ))]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         let tail = manager.get_messages_page_from_end(&id, 0).unwrap();
         assert_eq!(tail.total, 900);
@@ -3095,7 +3289,7 @@ mod tests {
             dir.path().to_path_buf(),
         ))]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         let full = manager.get_messages(&id).unwrap();
         assert_eq!(full.len(), 900);
@@ -3129,7 +3323,7 @@ mod tests {
             TestAdapter::new("pi", dir.path().to_path_buf()).counting(counter.clone()),
         )]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         let _ = manager.get_messages_page(&id, 0).unwrap();
         let _ = manager.get_messages_page(&id, 800).unwrap();
@@ -3146,7 +3340,7 @@ mod tests {
             TestAdapter::new("pi", dir.path().to_path_buf()).counting(counter.clone()),
         )]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         assert_eq!(manager.get_messages_page(&id, 0).unwrap().total, 3);
 
@@ -3301,7 +3495,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let list = manager.list(None, None).unwrap();
+        let list = manager.list(ListScope::All, None).unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].delete_support, SessionDeleteSupport::Storage);
     }
@@ -3355,7 +3549,7 @@ mod tests {
         manager.scan_all(None).unwrap();
 
         // 污染缓存：把已登记会话的文件路径改到根之外。
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
         {
             let mut cache = manager.cache.lock().unwrap();
             cache.get_mut(&id).unwrap().file_path = victim.clone();
@@ -3406,7 +3600,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
         {
             let mut cache = manager.cache.lock().unwrap();
             cache.get_mut(&id).unwrap().file_path = dir.path().join("elsewhere.jsonl");
@@ -3433,7 +3627,7 @@ mod tests {
             .with_delete(TestDelete::Storage);
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
         // 先让正文缓存装上这份会话，验证删除后不会命中。
         assert_eq!(manager.get_messages(&id).unwrap().len(), 3);
 
@@ -3441,7 +3635,7 @@ mod tests {
 
         assert!(!fixture.exists(), "session file must be gone");
         assert!(
-            manager.list(None, None).unwrap().is_empty(),
+            manager.list(ListScope::All, None).unwrap().is_empty(),
             "cache must drop it"
         );
         assert!(
@@ -3469,7 +3663,7 @@ mod tests {
         );
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         manager.delete(&id).await.expect("delete should succeed");
 
@@ -3510,7 +3704,7 @@ mod tests {
         );
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         manager
             .delete(&id)
@@ -3522,7 +3716,7 @@ mod tests {
             "delete abc123",
             "argv must reach the CLI unchanged (no shell re-quoting)"
         );
-        assert!(manager.list(None, None).unwrap().is_empty());
+        assert!(manager.list(ListScope::All, None).unwrap().is_empty());
     }
 
     /// `Native` 失败分支：进程起不来 → `AppError::Io`，且缓存**未**移除（AC7）。
@@ -3542,7 +3736,7 @@ mod tests {
         );
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         let err = manager
             .delete(&id)
@@ -3550,7 +3744,7 @@ mod tests {
             .expect_err("must not fake success");
         assert!(matches!(err, AppError::Io(_)), "expected Io, got {err:?}");
         assert_eq!(
-            manager.list(None, None).unwrap().len(),
+            manager.list(ListScope::All, None).unwrap().len(),
             1,
             "failure must not optimistically drop the row"
         );
@@ -3583,7 +3777,7 @@ mod tests {
         );
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         let err = manager
             .delete(&id)
@@ -3602,7 +3796,7 @@ mod tests {
             }
             other => panic!("expected Agent error, got {other:?}"),
         }
-        assert_eq!(manager.list(None, None).unwrap().len(), 1);
+        assert_eq!(manager.list(ListScope::All, None).unwrap().len(), 1);
     }
 
     /// `Unsupported`：没有安全路径时明确拒绝，不猜、不降级成删文件。
@@ -3616,7 +3810,7 @@ mod tests {
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
-        let id = manager.list(None, None).unwrap()[0].id.clone();
+        let id = manager.list(ListScope::All, None).unwrap()[0].id.clone();
 
         let err = manager
             .delete(&id)

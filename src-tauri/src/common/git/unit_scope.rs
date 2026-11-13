@@ -6,7 +6,10 @@
 //! （agent 会话的 cwd、搜索根、LSP 根……），它属于**包含它且最深**的那个单元根。
 //! 这是 git 语义的直接推论，与调用方域（会话 / LSP / 任务）无关 —— 所以它住在这里，
 //! 而不是住在任何一个消费方（消费方各写一份是 `agent/hooks/ingest/attribution.rs`、
-//! `conversation::matches_project_path` 与本模块并存的那段历史）。
+//! `conversation::manager` 与本模块并存的那段历史）。
+//!
+//! **项目级归属**（「这条路径属于哪个项目」，含全部工作区）是另一个问题，见
+//! [`crate::common::git::project_scope`]；两者共用 [`deepest_root`] 的包含规则。
 //!
 //! # 为什么「前缀包含」不够
 //!
@@ -57,7 +60,10 @@ impl PathAlphabet {
     }
 
     /// 渲染为身份串（幂等；只做字母表转换，不做 canonicalize —— 那是 [`CheckoutPath`] 的职责）。
-    fn render(self, raw: &str) -> String {
+    ///
+    /// `pub(crate)`：需要「同一批路径在身份空间里长什么样」的域（单元归属 / 项目归属）
+    /// 必须共用这一个渲染，不得各自写一套分隔符与驱动器规则（红线 12）。
+    pub(crate) fn render(self, raw: &str) -> String {
         let trimmed = raw.trim();
         match self {
             Self::Host => path_identity::portable_render(trimmed),
@@ -125,7 +131,7 @@ impl UnitScope {
     /// 该路径是否属于本单元。
     ///
     /// 无路径（或空串）一律**不属于**任何单元：单元是 git 事实，缺 cwd 就无法判定
-    /// （与 `conversation::matches_project_path` 对空路径的 fail-closed 一致）。
+    /// （与 [`crate::common::git::ProjectScope::owns`] 对空路径的 fail-closed 一致）。
     #[must_use]
     pub fn owns(&self, session_project: Option<&str>) -> bool {
         let Some(raw) = session_project.map(str::trim).filter(|s| !s.is_empty()) else {
