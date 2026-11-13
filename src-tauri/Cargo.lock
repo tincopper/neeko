@@ -3496,7 +3496,7 @@ dependencies = [
 
 [[package]]
 name = "neeko"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "anyhow",
  "arboard",

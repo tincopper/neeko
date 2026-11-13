@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.12] - 2026-11-13
+
+### 🐛 Bug Fixes
+
+- **conversation**: Serialize tests that reset the scan cache
+- **lsp**: Close every server through one protocol-compliant sequence
+- **shutdown**: Run the process reaper after graceful teardown
+- **lsp**: Carry the declared request timeout to the client
+- **lsp**: Classify request failures instead of restarting the server
+- **lsp**: Keep open documents across a restart
+- **lsp**: Bound IPC responses and tighten two contract gaps
+- **lsp**: Judge the installed binary where it actually lands
+- **file-drop**: Deliver dropped paths through insert ports
+
+### 📚 Documentation
+
+- **spec**: Record the process-global state serialisation gate
+- **spec**: Record the single close sequence and the reaper phase
+- **task**: Record the LSP close protocol task and the audit backlog
+- **spec**: Record request-level vs session-level LSP failures
+- **task**: Record the LSP request channel task
+- **spec**: Record the two document-registry operations
+- **task**: Record the LSP document identity task
+- **spec**: Record the LSP IPC budget and the dropped capability claim
+- **task**: Record the LSP cross-layer contract task
+- **spec**: Record where downloaded LSP servers are judged
+- **task**: Record the LSP install lifecycle task
+- **spec**: Record the insert-port model for dropped content
+- **task**: Record the file-drop insert port task
+- **spec**: Record the child-registry serialisation and event-based waits
+
+### 🧪 Testing
+
+- **shared**: Pin the LSP event names across the stack
+- **executor**: Wait for events instead of polling sleeps
+
+### ⚙️ Miscellaneous Tasks
+
+- **task**: Archive 11-12-lsp-graceful-shutdown
+- **task**: Archive 11-12-lsp-request-channel-integrity
+- **task**: Archive 11-12-lsp-document-identity
+- **task**: Archive 11-12-lsp-cross-layer-contracts
+- **task**: Archive 11-12-lsp-install-lifecycle
+- **task**: Archive 11-10-session-title-observation-pipeline
+- **task**: Archive 11-12-file-drop-insert-ports
+
 ## [1.0.11] - 2026-11-12
 
 ### 🚀 Features
@@ -61,6 +107,7 @@ All notable changes to this project will be documented in this file.
 - **build**: Keep only the rlib crate type and trim dev debug info
 - **guards**: Raise the test_fe budget to match its measured cost
 - **changelog**: Skip journal-record commits
+- Release v1.0.11
 
 ## [1.0.10] - 2026-11-06
 
