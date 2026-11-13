@@ -29,6 +29,13 @@ interface TaskCardRowProps {
   task: TaskCard;
   /** 持有者对应的成员行（`null` = 板上没有这个 owner，不猜）。 */
   owner: MemberStatusView | null;
+  /**
+   * 被指派者的成员行（`null` = 未指派，或指派者不在花名册里）。
+   *
+   * 只在**未认领**时显示「已指派 · {name}」：已认领的卡片上持有者 chip 已经是「谁在做」，
+   * 再挂一张指派标签会在 300px 的列里说两遍“谁负责”。
+   */
+  assignee: MemberStatusView | null;
   /** 时间基准（**注入**，纯函数才算得出来：「剩余」是派生值，不是状态）。 */
   now: number;
   /**
@@ -40,84 +47,93 @@ interface TaskCardRowProps {
   onOpen: (teamId: string, taskId: string, title: string) => void;
 }
 
-const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(({ task, owner, now, onOpen }) => {
-  const handleClick = useCallback(
-    () => onOpen(task.teamId, task.id, task.title),
-    [onOpen, task.teamId, task.id, task.title],
-  );
-  const lease = useMemo(() => taskLease(task, now), [task, now]);
-  const ownerBadge = owner ? memberBadge(owner) : null;
+const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(
+  ({ task, owner, assignee, now, onOpen }) => {
+    const handleClick = useCallback(
+      () => onOpen(task.teamId, task.id, task.title),
+      [onOpen, task.teamId, task.id, task.title],
+    );
+    const lease = useMemo(() => taskLease(task, now), [task, now]);
+    const ownerBadge = owner ? memberBadge(owner) : null;
 
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={handleClick}
-        data-task-id={task.id}
-        aria-label={`打开任务 ${task.id} 的详情：${task.title}`}
-        className={cn(
-          'w-full rounded-md border border-border bg-bg-primary px-2 py-1.5 text-left',
-          'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
-        )}
-      >
-        <div className="flex items-start gap-1.5">
-          <span className="min-w-0 flex-1 text-meta font-medium text-text-primary">
-            {task.title}
-          </span>
-          <span className="shrink-0 font-mono text-micro text-text-muted">{task.id}</span>
-        </div>
-
-        <div className="mt-1 flex flex-wrap items-center gap-1">
-          {/* 列已经表达了状态，但同一列里 `claimed` 与 `in_progress` 是两个阶段 */}
-          <Chip tone="outline">{taskStateLabel(task.state)}</Chip>
-          <Chip tone="outline">{workspaceLabel(task.workspace)}</Chip>
-          {owner ? (
-            <Chip tone="accent" title={`持有者 ${owner.memberId}`}>
-              {owner.name}
-            </Chip>
-          ) : null}
-          {task.dependsOn.length > 0 ? (
-            <Chip tone="default">{`依赖 ${task.dependsOn.length}`}</Chip>
-          ) : null}
-          {task.reclaimCount > 0 ? (
-            <Chip tone="warn">{`被回收 ${task.reclaimCount} 次`}</Chip>
-          ) : null}
-          {task.summaryTruncated ? <Chip tone="warn">摘要已截断</Chip> : null}
-        </div>
-
-        {lease === null && ownerBadge === null ? null : (
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-micro">
-            {lease === null ? null : (
-              <span
-                className={cn(
-                  'whitespace-nowrap',
-                  lease.urgent ? 'font-semibold text-accent-yellow' : 'text-text-muted',
-                )}
-              >
-                {lease.text}
-              </span>
-            )}
-            {ownerBadge === null ? null : (
-              // 持有者的真实状态：`空闲 ⚠ 未声明` 与「已完成」在这里长得完全不同（AC2）
-              <span
-                data-tone={ownerBadge.tone}
-                title={ownerBadge.ariaLabel}
-                className={cn(
-                  ownerBadge.tone === 'unverified'
-                    ? 'border border-dashed border-accent-yellow text-accent-yellow'
-                    : 'text-text-muted',
-                  'whitespace-nowrap',
-                )}
-              >
-                {ownerBadge.text}
-              </span>
-            )}
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={handleClick}
+          data-task-id={task.id}
+          aria-label={`打开任务 ${task.id} 的详情：${task.title}`}
+          className={cn(
+            'w-full rounded-md border border-border bg-bg-primary px-2 py-1.5 text-left',
+            'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
+          )}
+        >
+          <div className="flex items-start gap-1.5">
+            <span className="min-w-0 flex-1 text-meta font-medium text-text-primary">
+              {task.title}
+            </span>
+            <span className="shrink-0 font-mono text-micro text-text-muted">{task.id}</span>
           </div>
-        )}
-      </button>
-    </li>
-  );
-});
+
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {/* 列已经表达了状态，但同一列里 `claimed` 与 `in_progress` 是两个阶段 */}
+            <Chip tone="outline">{taskStateLabel(task.state)}</Chip>
+            <Chip tone="outline">{workspaceLabel(task.workspace)}</Chip>
+            {owner ? (
+              <Chip tone="accent" title={`持有者 ${owner.memberId}`}>
+                {owner.name}
+              </Chip>
+            ) : null}
+            {owner === null && assignee ? (
+              // 指派是**计划事实**（谁该做）：尚未认领时才值得占位 —— 它告诉用户
+              // 「这张卡在等谁」，而 `title` 带完整成员 id（名字可能重）。
+              <Chip tone="outline" title={`被指派者 ${assignee.memberId}`}>
+                {`已指派 · ${assignee.name}`}
+              </Chip>
+            ) : null}
+            {task.dependsOn.length > 0 ? (
+              <Chip tone="default">{`依赖 ${task.dependsOn.length}`}</Chip>
+            ) : null}
+            {task.reclaimCount > 0 ? (
+              <Chip tone="warn">{`被回收 ${task.reclaimCount} 次`}</Chip>
+            ) : null}
+            {task.summaryTruncated ? <Chip tone="warn">摘要已截断</Chip> : null}
+          </div>
+
+          {lease === null && ownerBadge === null ? null : (
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-micro">
+              {lease === null ? null : (
+                <span
+                  className={cn(
+                    'whitespace-nowrap',
+                    lease.urgent ? 'font-semibold text-accent-yellow' : 'text-text-muted',
+                  )}
+                >
+                  {lease.text}
+                </span>
+              )}
+              {ownerBadge === null ? null : (
+                // 持有者的真实状态：`空闲 ⚠ 未声明` 与「已完成」在这里长得完全不同（AC2）
+                <span
+                  data-tone={ownerBadge.tone}
+                  title={ownerBadge.ariaLabel}
+                  className={cn(
+                    ownerBadge.tone === 'unverified'
+                      ? 'border border-dashed border-accent-yellow text-accent-yellow'
+                      : 'text-text-muted',
+                    'whitespace-nowrap',
+                  )}
+                >
+                  {ownerBadge.text}
+                </span>
+              )}
+            </div>
+          )}
+        </button>
+      </li>
+    );
+  },
+);
 TaskCardRow.displayName = 'TaskCardRow';
 
 export default TaskCardRow;

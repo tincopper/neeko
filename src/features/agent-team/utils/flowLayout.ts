@@ -19,12 +19,12 @@ import type { MemberStatusView, TaskCard } from '@/shared/types/team';
  *   卡住）。布局函数必须自己兜住，否则一个环 = 栈溢出，整个面板白屏。
  *
  * 成员行按「它认领的任务最早出现在板的哪一行」排序（先派谁一目了然），空闲成员按
- * 名字排最后。
+ * 名字排最后。第 2 轮起图上暂不渲染这一行，但布局结果仍对外提供（见下方注释）。
  */
 export interface FlowEdge {
-  /** `create` = lead 派发任务；`dep` = 任务间依赖；`claim` = 成员认领任务。 */
-  kind: 'create' | 'dep' | 'claim';
-  /** `create`/`dep`：任务 → 任务（create 的 from 是 lead 的哨兵 id）；`claim`：成员 → 任务。 */
+  /** `create` = lead 派发任务；`dep` = 任务间依赖。 */
+  kind: 'create' | 'dep';
+  /** `create`：from 是 lead 的哨兵 id；`dep`：from 是上游任务 id。`to` 恒为任务 id。 */
   from: string;
   to: string;
 }
@@ -44,7 +44,7 @@ export interface FlowWorker {
 export interface FlowLayout {
   /** `layers[i]` = 第 i 层的任务 id（按板的输入顺序稳定排序）。 */
   layers: string[][];
-  /** lead → 首层任务的派发边（用户要看见「一个需求拆成了哪些任务」）。 */
+  /** lead → **首层任务**的派发边（用户要看见「一个需求拆出了哪些入口任务」）。 */
   dispatched: string[];
   /** 底行成员（按角色分组：同角色相邻，便于读「谁负责什么」）。 */
   workerRow: FlowWorker[];
@@ -87,31 +87,35 @@ export function flowLayout(
   // 但 `??=` 按需建层天然无洞；这里只是把可能存在的稀疏数组压实。
   const dense = layers.filter((layer) => layer !== undefined);
 
-  // 三类边，顺序固定（create → dep → claim）：渲染时认领线压在依赖线上，且同一布局
-  // 两次计算给出同一个边序（diff 不出噪音）。
+  // 两类边，顺序固定（create → dep）：同一布局两次计算给出同一个边序（diff 不出噪音）。
   //
-  // `create` 边是用户要的「一个需求 → 拆成哪些任务」：**每个任务都由 lead 派发**，
-  // 所以每个任务都有一条来自 lead 的边；首层之外的任务同时还有 dep 边（依赖关系），
-  // 两者不冲突 —— 一条说「谁派的」，一条说「谁等谁」。
-  const edges: FlowEdge[] = [];
-  const dispatched: string[] = [];
-  for (const task of dense.flat()) {
-    edges.push({ kind: 'create', from: FLOW_LEAD_ID, to: task });
-    dispatched.push(task);
-  }
+  // 派发这个动作只发生一次：队长拆出的是**入口任务**（layer 0）；下游任务由 `dependsOn`
+  // 连到上游，`t2 ← t1 ← lead` 的因果链已经完整。给第 1 层及更深的任务再拉一条从 lead
+  // 出发的曲线，它必须跨过整个第 0 层才能落到目标，会**穿过中间层节点**、与依赖边糊成
+  // 一束（第 2 轮用户反馈 #2）。
+  //
+  // **没有 `claim` 边**（用户裁决）：谁该做由任务行上的 `assignee`（计划事实）/ `owner`
+  // （执行事实）直接表达，再画一条成员→任务的实线只是把同一份信息投影第二遍，
+  // 而且它与「谁该做」会给出两个可能不一致的答案。
+  // 拷贝一份：不与 `layers[0]` 共享可变数组（消费者改一个不该悄悄改另一个）。
+  const dispatched = [...(dense[0] ?? [])];
+  const edges: FlowEdge[] = dispatched.map((task) => ({
+    kind: 'create',
+    from: FLOW_LEAD_ID,
+    to: task,
+  }));
   for (const task of tasks) {
     for (const dep of task.dependsOn) {
       if (byId.has(dep)) edges.push({ kind: 'dep', from: dep, to: task.id });
     }
   }
-  // 认领边按**任务顺序**（不是成员顺序）：同一张图的边序稳定，且读起来是
-  // 「t1 被谁认领、t2 被谁认领」而不是按人聚合。
-  for (const task of tasks) {
-    if (task.owner !== null) edges.push({ kind: 'claim', from: task.owner, to: task.id });
-  }
 
   // 成员行：**按角色分组**（同 persona 相邻），组内按「最早持有的任务板序」再按名字；
   // 空闲成员排在组后 —— 「谁负责什么」在图上要能一眼扫出来。
+  //
+  // 第 2 轮用户说「成员平铺在最下面，**先**不要了」：图上**暂不消费** `workerRow` /
+  // `memberRow`，但纯计算与判据都保留（恢复只需在 `TeamFlowGraph` 加回一块 JSX）。
+  // 不为「先不要」删掉一整套已测能力。
   const firstIndex = new Map<string, number>();
   const taskCount = new Map<string, number>();
   tasks.forEach((task, index) => {

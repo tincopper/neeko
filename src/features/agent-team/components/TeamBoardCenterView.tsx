@@ -8,6 +8,7 @@ import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { useTeamPanel } from '../hooks/useTeamPanel';
 import { useTeamTaskTab } from '../hooks/useTeamTaskTab';
 import { useTeamStore } from '../store/teamStore';
+import { clampZoom } from '../utils/flowViewport';
 
 import TeamFlowGraph from './TeamFlowGraph';
 import TeamTaskBoard from './TeamTaskBoard';
@@ -35,10 +36,12 @@ interface TeamBoardCenterViewProps {
   projectId: ProjectId;
 }
 
-/** 缩放步长与边界（渲染精度 2 位小数；常量化以免散落魔法数字）。 */
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 2.5;
-const ZOOM_STEP = 0.25;
+/**
+ * 按钮步长 0.25 与 wheel 步长 0.1（[`flowViewport`]）**各自独立**：
+ * 一个是点一下走一大格、一个是滚一格微调，手感不是同一件事，别硬合成一个常量。
+ * 边界与钳制仍只有一份实现（ZOOM_MIN / ZOOM_MAX / clampZoom），避免两个真相源。
+ */
+const ZOOM_BUTTON_STEP = 0.25;
 /** 图区高度：扣掉 header / 缩放条等固定高度后的可视高。 */
 const FLOW_HEIGHT = 'calc(100vh - 220px)';
 
@@ -165,9 +168,7 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
                     type="button"
                     aria-label="缩小"
                     className="grid size-6 place-items-center rounded-md text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
-                    onClick={() =>
-                      setZoom((z) => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100))
-                    }
+                    onClick={() => setZoom((z) => clampZoom(z - ZOOM_BUTTON_STEP))}
                   >
                     <Minus size={12} aria-hidden="true" />
                   </button>
@@ -178,9 +179,7 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
                     type="button"
                     aria-label="放大"
                     className="grid size-6 place-items-center rounded-md text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
-                    onClick={() =>
-                      setZoom((z) => Math.min(ZOOM_MAX, Math.round((z + ZOOM_STEP) * 100) / 100))
-                    }
+                    onClick={() => setZoom((z) => clampZoom(z + ZOOM_BUTTON_STEP))}
                   >
                     <Plus size={12} aria-hidden="true" />
                   </button>
@@ -205,6 +204,7 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
                       members={snap?.members ?? []}
                       onOpenTask={handleOpenTask}
                       zoom={zoom}
+                      onZoomChange={setZoom}
                     />
                   </div>
                 </div>

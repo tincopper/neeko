@@ -87,6 +87,8 @@ const TeamTaskBoard: React.FC<TeamTaskBoardProps> = React.memo(
                       key={task.id}
                       task={task}
                       owner={task.owner === null ? null : (memberById.get(task.owner) ?? null)}
+                      // 指派者同样从花名册解析：查不到（已退出 / 不在本次载荷里）就不猜名字。
+                      assignee={task.assignee ? (memberById.get(task.assignee) ?? null) : null}
                       now={now}
                       onOpen={onOpenTask}
                     />

@@ -106,7 +106,8 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
           <>
             <div className="flex flex-col gap-1">
               <span className="text-micro text-text-muted">
-                成员池：允许哪些 CLI 当成员（点开名单后队长只能从这里挑）
+                成员池：允许哪些 CLI 当成员（队长只能从这里挑）。 这是候选菜单，不是要起满的人数 ——
+                实际启动几位由队长按任务数指派决定。
               </span>
               {options.members.length === 0 ? (
                 <p className="text-meta text-text-muted">

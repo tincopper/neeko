@@ -45,23 +45,30 @@ describe('flowLayout', () => {
     expect(layout.layers.length).toBeLessThanOrEqual(tasks.length);
   });
 
-  it('画出完整的三层关系：lead 派发每个任务 + 依赖 + 成员认领', () => {
+  it('三层结构：派发边只连首层，依赖边保留，且**不再画认领边**', () => {
     const tasks = [
       createTaskCard({ id: 't1', owner: 'w1@tm', state: 'in_progress' }),
       createTaskCard({ id: 't2', owner: 'w2@tm', state: 'done' }),
       createTaskCard({ id: 't3', dependsOn: ['t1'] }),
+      createTaskCard({ id: 't4', dependsOn: ['t3'] }),
     ];
     const layout = flowLayout(tasks, []);
-    // create 边：**每个任务都由 lead 派发**（这是「一个需求拆成哪些任务」的那条线）。
-    expect(layout.dispatched).toEqual(['t1', 't2', 't3']);
+    expect(layout.layers).toEqual([['t1', 't2'], ['t3'], ['t4']]);
+    // 派发只发生一次：队长拆出的是**入口任务**（layer 0）。下游任务由 dep 边追溯，
+    // 再给 t3/t4 拉一条从 lead 出发、跨过中间层节点的曲线只会穿过节点、糊成线束。
+    expect(layout.dispatched).toEqual(['t1', 't2']);
     expect(layout.edges).toEqual([
       { kind: 'create', from: FLOW_LEAD_ID, to: 't1' },
       { kind: 'create', from: FLOW_LEAD_ID, to: 't2' },
-      { kind: 'create', from: FLOW_LEAD_ID, to: 't3' },
       { kind: 'dep', from: 't1', to: 't3' },
-      { kind: 'claim', from: 'w1@tm', to: 't1' },
-      { kind: 'claim', from: 'w2@tm', to: 't2' },
+      { kind: 'dep', from: 't3', to: 't4' },
     ]);
+    // **认领边已取消**（用户裁决）：谁该做由 `assignee` 这个字段本身表达，
+    // 再画一条成员→任务的实线就是把同一份信息投影了两遍。
+    const kinds: string[] = layout.edges.map((edge) => edge.kind);
+    expect(kinds).not.toContain('claim');
+    expect(kinds.filter((kind) => kind === 'create')).toHaveLength(layout.layers[0].length);
+    expect(kinds.filter((kind) => kind === 'dep')).toHaveLength(2);
   });
 
   it('成员行按角色分组：同 persona 相邻，无人设排在后面但仍可见', () => {
