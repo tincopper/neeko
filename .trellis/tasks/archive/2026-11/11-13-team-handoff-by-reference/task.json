@@ -3,7 +3,7 @@
   "name": "team-handoff-by-reference",
   "title": "成员间交接改为引用制：共享区路径 + artifacts 可写 + 取消静默截断",
   "description": "长内容不再挤在 summary / team_send 里：团队共享区（Neeko 状态根，不污染仓库）落地文件，工具只传路径；team_task.artifacts 变成可写；summary 超限从「静默截断」改为「拒绝并给出可行动路径」。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-11-13",
-  "completedAt": null,
+  "completedAt": "2026-11-15",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,8 @@
   "parent": "10-30-multi-agent-orchestration",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "status": "completed",
+    "completedAt": "2026-11-15"
+  }
 }
