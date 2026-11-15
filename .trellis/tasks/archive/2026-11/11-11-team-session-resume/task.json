@@ -3,7 +3,7 @@
   "name": "team-session-resume",
   "title": "团队会话恢复：让团队的会话身份与进程生命周期解耦",
   "description": "团队退出/进程消失后可以按原生会话 id 恢复（lead 与成员），团队/成员的会话身份不再由 PTY 句柄与 token 定义；原生会话 id 由唯一所有者无条件记录；历史会话按项目身份而不是路径字符串归属。",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-11-11",
-  "completedAt": null,
+  "completedAt": "2026-11-15",
   "branch": "feat-team",
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,8 @@
   "parent": "10-30-multi-agent-orchestration",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "status": "completed",
+    "completedAt": "2026-11-15"
+  }
 }
