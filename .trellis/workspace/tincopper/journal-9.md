@@ -767,3 +767,31 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 467: team 分配流程梳理与收尾：关账 assignee-and-graph、修正过时文档
+<!-- trellis-session: v=2 fp=162471c85f4fde6b -->
+
+**Date**: 2026-11-15
+**Task**: team 分配流程梳理与收尾：关账 assignee-and-graph、修正过时文档
+**Branch**: `feat-team`
+
+### Summary
+
+梳理团队域「无 lead 进程」状态与任务分配流（assignee 计划事实 / owner 执行事实），产出交互式 flow 图；核对 11-13-team-task-assignee-and-graph 全部 41 项后勾账关任务（check:quick 14/14 绿）；修正 mcp/mod.rs 模块文档（loopback listener 已 mount）与 team-domain.md §6.1 残留面措辞（归因裁决已拆 RefuseIncomplete/NotTeamContext）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e26b749b` | feat(team)!: require assignees and bound spawned members to the board |
+| `4e8a41ad` | feat(agent-team): show assignee and owner in flow nodes with viewport controls |
+| `50bf95e2` | docs(spec): record team board, session, and interaction contracts |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 按 planning 顺序做 11-13-team-task-actions（retry 闭环，补 blocked 出路与改派入口）；C11「重试起队长进程」入口建议单独立项。

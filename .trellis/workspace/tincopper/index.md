@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 466
-- **Last Active**: 2026-11-13
+- **Total Sessions**: 467
+- **Last Active**: 2026-11-15
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~769 | Active |
+| `journal-9.md` | ~797 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 467 | 2026-11-15 | team 分配流程梳理与收尾：关账 assignee-and-graph、修正过时文档 | `e26b749b`, `4e8a41ad`, `50bf95e2` | `feat-team` |
 | 466 | 2026-11-13 | 第3轮：只启动被指派到的成员（assignee 必填/计划成员/spawn 人数护栏/队长禁 claim），并收口第2轮视口抽取 | - | `feat-team` |
 | 465 | 2026-11-13 | 团队任务板：assignee（派活即指派）+ 分配图去认领边；规划 handoff-by-reference / task-actions | - | `feat-team` |
 | 458 | 2026-11-12 | 修复 codex 成员：MCP 鉴权形状不一致（403 → 无工具面）+ Pty 投递被 paste-burst 吞回车 | - | `feat-team` |
