@@ -822,3 +822,27 @@ Session summary was not supplied.
 ### Next Steps
 
 - 进入 11-13-team-task-actions 实施。
+
+
+## Session 469: 实施 task-actions retry 闭环（TDD）
+<!-- trellis-session: v=2 fp=91e39996ba1f9b5d -->
+
+**Date**: 2026-11-15
+**Task**: 实施 task-actions retry 闭环（TDD）
+**Branch**: `feat-team`
+
+### Summary
+
+按 PRD R1-R6/AC1-AC6 落地：manager::retry_task（failed/blocked→pending，reclaim_count 归零=人工新预算，done 拒绝并指向建新任务，summary/body 保留，改派走 assignee_value 唯一实现且在锁外调用防死锁）；MCP task_retry（授权矩阵 12×2=24 格，Worker ❌）+ 本地命令 team_task_retry（actor=lead@{team}）+ lib.rs 注册；前端 canRetry 8 态穷尽判据（卡片+详情共用）、卡片兄弟按钮（避免嵌套 button）、详情头部动作、useTaskRetry（失败不清数据、成功补刷新）、TeamTask TS 镜像。cargo test agent::team 482 全绿；vitest agent-team 303 全绿；check:quick 28/28（中途修掉 rustfmt/clippy：unused import、多余 mut、prettier/eslint 格式）；spec §2.5 补重试段、三处格数 22→24。
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 下一步候选：11-13-team-handoff-by-reference（共享区+artifacts 可写+拒绝截断）；C11「重试起队长进程」入口。
