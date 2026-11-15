@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 469
+- **Total Sessions**: 470
 - **Last Active**: 2026-11-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~848 | Active |
+| `journal-9.md` | ~872 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 470 | 2026-11-15 | 实施 handoff-by-reference：共享区 + artifacts 可写 + 拒绝截断（TDD） | - | `feat-team` |
 | 469 | 2026-11-15 | 实施 task-actions retry 闭环（TDD） | - | `feat-team` |
 | 468 | 2026-11-15 | 关账两个滞留任务：session-resume 与 codex-member-mcp | `55146c83`, `b2aa5eae` | `feat-team` |
 | 467 | 2026-11-15 | team 分配流程梳理与收尾：关账 assignee-and-graph、修正过时文档 | `e26b749b`, `4e8a41ad`, `50bf95e2` | `feat-team` |

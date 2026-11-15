@@ -846,3 +846,27 @@ Session summary was not supplied.
 ### Next Steps
 
 - 下一步候选：11-13-team-handoff-by-reference（共享区+artifacts 可写+拒绝截断）；C11「重试起队长进程」入口。
+
+
+## Session 470: 实施 handoff-by-reference：共享区 + artifacts 可写 + 拒绝截断（TDD）
+<!-- trellis-session: v=2 fp=244f4c72d6be1b80 -->
+
+**Date**: 2026-11-15
+**Task**: 实施 handoff-by-reference：共享区 + artifacts 可写 + 拒绝截断（TDD）
+**Branch**: `feat-team`
+
+### Summary
+
+按 PRD R1-R6/AC1-AC7 落地：paths::team_share_dir(_under) 唯一拼装；NEEKO_TEAM_SHARE_DIR 事实 env（member_env 第三对）；执行层 ensure_share_dir 起进程前创建（失败即拒）；summary 超 4KiB 入口 InvalidInput（闭区间通过）且 store clamp 降级为兜底、老行 truncated 标记不再被重写洗掉（含 retry）；task_update artifacts 可写（追加+去重+空数组清空；path 类绝对+canonicalize+团队根∪共享区；根也 canonicalize 修 macOS /var 身份）；team_send 2KiB 限长（前缀不计入）；preamble 两角色共享区说明（唯一落点）；前端 artifacts 点击复制 + 截断提示测试。cargo team 492 绿 / paths 7 绿 / vitest 305 绿 / check:quick 29:29（中途修 fmt/clippy）。spec §2.5 新增交接段 + load 签名 + member_env 三件套。
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 全部 planning 任务已清。后续候选：C11「重试起队长进程」入口单独立项；阶段 C 手工验证（codex 403/粘贴）随下次手测。
