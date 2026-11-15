@@ -795,3 +795,30 @@ Session summary was not supplied.
 ### Next Steps
 
 - 按 planning 顺序做 11-13-team-task-actions（retry 闭环，补 blocked 出路与改派入口）；C11「重试起队长进程」入口建议单独立项。
+
+
+## Session 468: 关账两个滞留任务：session-resume 与 codex-member-mcp
+<!-- trellis-session: v=2 fp=a1c57b0afd6e4330 -->
+
+**Date**: 2026-11-15
+**Task**: 关账两个滞留任务：session-resume 与 codex-member-mcp
+**Branch**: `feat-team`
+
+### Summary
+
+核对后关账：resume 任务 36/36 已勾（代码在 resume.rs + spec §5b）；codex 任务代码证据全在（gate BearerToken、PtySubmit、admission pty_submit_for、spec 三处修订、提交 b2aa5eae），C 阶段手工验证保留未勾并留注记。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `55146c83` | feat(team): resume member sessions from native session ids |
+| `b2aa5eae` | fix(team): accept bearer credentials and wrap codex PTY input as paste |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 进入 11-13-team-task-actions 实施。
