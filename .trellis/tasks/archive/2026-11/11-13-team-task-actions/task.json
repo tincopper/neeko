@@ -3,7 +3,7 @@
   "name": "team-task-actions",
   "title": "任务动作：重试（retry）与恢复，暂停由 stop 代替",
   "description": "看板/任务详情支持重试任务（failed/blocked → pending，可改 assignee），MCP 与本地命令各一条入口；暂停（pause）不做，用既有的停止/关闭代替。恢复成员沿用 team_resume。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-11-13",
-  "completedAt": null,
+  "completedAt": "2026-11-15",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,8 @@
   "parent": "10-30-multi-agent-orchestration",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "status": "completed",
+    "completedAt": "2026-11-15"
+  }
 }
