@@ -28,7 +28,7 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `resume.rs` | `team_resume` 的**全部语义** + `TeamResumeReport`（四个桶）| 恢复语义（见 §5b）|
 | `delivery.rs` | 投递：通道路由 + 两笔写入协议（纯函数） | 投递协议 |
 | `boot.rs` | 域级 boot 入口：独立 loopback listener + 活集合门 | 端点坐标 |
-| `authorize.rs` | 授权矩阵（工具数 × 角色数，**当前 11 × 2 = 22 格**；格数由 `ALL_TOOL_NAMES` 自算，见 `matrix_is_enforced_cell_by_cell`） | 加减工具 |
+| `authorize.rs` | 授权矩阵（工具数 × 角色数，**当前 12 × 2 = 24 格**；格数由 `ALL_TOOL_NAMES` 自算，见 `matrix_is_enforced_cell_by_cell`） | 加减工具 |
 | `observe.rs` / `deliver.rs` | hook 事件的团队投影 / 投递入口（见 §6）；**原生会话 id 的登记在键过滤之前**（见 §5a） | 新信号 |
 | `events.rs` | 前端事件：`TEAM_EVENT` 常量 + 失效脉冲载荷 + `TeamNotifier` 端口（见 §8） | 改事件名 / 载荷 |
 | `view.rs` | **视图构造的唯一落点**：`TeamStatusView`（MCP 读者）/ `TeamSnapshot` / `TaskCard` / `TaskDetail`（前端读者） | 加读字段 / 改列载荷（见 §8） |
@@ -57,7 +57,7 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 `TeamManager` 同时持有内存镜像（`HashMap`）与 SQLite。**唯一允许的真相源是库**；
 内存镜像只是缓存，所以它的初始化（hydrate）是启动的硬步骤。
 
-- 生产构造必须走 `TeamManager::load(store)`，**不是** `TeamManager::new(store)`。
+- 生产构造必须走 `TeamManager::load(store, share_root)`（2026-11-15 起多一个共享区根参数，传 **`storage_manager.get_config_dir()`** —— 与成员隔离配置目录同一个来源），**不是** `TeamManager::new(store)`。
   `new` 给的是空镜像：第二次启动起 `team()` / `member()` 恒 `None`，而 `add_member` 的
   团队存在性判据读的正是空镜像 —— 于是它对一个库里真实存在的团队报 `NotFound`。
 - 机器判据：`app_state::tests::a_restart_hydrates_the_team_domain_from_the_database`
@@ -102,7 +102,7 @@ ToolReply ──effect_for──▶ Option<Effect> ──apply_effect──▶ E
 
 | 执行层需要 | 推导式 |
 | --- | --- |
-| env | `identity::member_env(team_id, member_id)` |
+| env | `identity::member_env(team_id, member_id, share_dir)`（第三对是 `NEEKO_TEAM_SHARE_DIR`，从**同一个 state_root** 派生 —— env、校验、磁盘三方一个字符串）|
 | 注入方式 / 传输 | `admission_for(member.agent_id)` |
 | 旁路参数 | 上一行 `.bypass_args(member.approval_policy)` |
 | token 明文 | `TeamManager::issue_token(member_id, now)` |
@@ -146,7 +146,7 @@ ToolReply ──effect_for──▶ Option<Effect> ──apply_effect──▶ E
 | 字段 | 推导 | 拒绝条件 |
 | --- | --- | --- |
 | `cwd` | `Workspace::Shared`/`ReadOnly` → 团队根；`Worktree{path}` → 该路径 | 路径不存在；**不在团队根之下** |
-| `env` | `identity::member_env(team_id, member_id)` | —（不含凭证） |
+| `env` | `identity::member_env(team_id, member_id, share_dir)` | —（不含凭证；share_dir 是事实不是凭证） |
 | `args` | `AgentAdmission.mcp_argv` 模板，`{{mcp_config}}` 换成配置 JSON | 准入档不是 `Argv`；该 CLI 无 MCP 面 |
 
 **团队根无条件 `canonicalize`**（不只是 worktree 分支）：它是 `starts_with` 判据的信任边界，
@@ -436,6 +436,76 @@ the pool is a menu, not a roster」。**提示词是第二道防线，状态校�
 `a_terminal_assignment_does_not_justify_a_spawn` / `task_create_accepts_a_planned_member_id` /
 `task_create_without_an_assignee_is_rejected` / `the_lead_is_told_to_plan_first_and_match_personas`
 （含「不得再出现 parallelize where the plan allows」的反证断言）。
+
+### 任务重试：`task_retry` / `team_task_retry`（2026-11-15）
+
+失败 / 冻结任务的**人工重试**闭环（2026-11-13 用户裁决：pause 用 stop 代替，本轮只做 retry）：
+
+- **状态门**：只接 `failed`（成员显式声明的失败）与 `blocked`（回收超限冻结 —— 自动回收
+  对它已永久关闭，人工重试是唯一出路）。`done` 拒绝 —— 重开等于撤销「完成」声明，正确
+  动作是**建新任务并声明依赖**（拒绝文案点名这条路）；其余在飞态（pending / claimed /
+  in_progress / awaiting_approval / proposed）不是「失败了」。
+- **`reclaim_count = 0` 是人工重试 = 新预算**：计数衡量「这块板自己反复失败」，人已介入
+  裁决；归零之后仍受 `MAX_RECLAIM_COUNT` 约束 —— 重试不引入无限重试。
+- **交接内容不动**：`summary` / `body`（以及未改派时的 `assignee`）原样保留。
+- **两个入口同一份判据**：MCP `task_retry`（授权矩阵 Lead 专属格，Worker ❌）与本地命令
+  `team_task_retry`（actor = 队长成员行 `lead@{team}`）。改派校验只有一份实现
+  （`dispatch::assignee_value` —— `task_create` 的必填指派与这里的可选改派共用），且
+  manager 在**锁外**调它：它内部读成员镜像，写锁内调用 = 同线程读锁死锁。
+- **前端判据唯一落点** `taskBoard.ts::canRetry`（卡片与详情共用，8 态穷尽测试与后端
+  状态门对齐）；只渲染可重试状态的按钮，不做灰按钮。
+
+判据：`retry_puts_a_failed_task_back_to_pending_with_a_fresh_budget` /
+`retry_also_frees_a_blocked_task` / `a_done_task_cannot_be_retried` /
+`retry_rejects_every_state_other_than_failed_and_blocked` / `retry_by_a_worker_is_rejected` /
+`retry_records_an_audit_row_with_the_previous_state` /
+`retry_can_reassign_and_validates_the_assignee` /
+`task_retry_by_the_lead_returns_the_task_and_clears_the_runtime` /
+`task_retry_by_a_worker_is_rejected_by_the_matrix` /
+`task_retry_rejects_a_done_task_with_an_actionable_message` /
+`task_retry_reassigns_when_given_an_assignee`。
+
+### 交接改引用制：共享区 + artifacts 可写 + summary 拒绝截断（2026-11-15）
+
+长内容不再挤在 `summary`（4 KiB）与 `team_send`（2 KiB）两条窄管道里（事故：`pi-arch` 的
+t1 摘要在「现根目」三个字处被截断，t2/t3 的硬约束整段丢失且 done 不可再改）：
+
+- **共享区**：`paths::team_share_dir_under(root, team_id)` 是唯一拼装
+  （`<root>/team/<team_id>/share/`；生产 root = storage 根，与成员隔离配置目录同一个
+  base，团队删除时随目录一起收走）。执行层在成员启动**之前**创建（`ensure_share_dir`，
+  失败即拒绝启动 —— 成员拿着不存在的路径交接 = 文件写丢了）；路径经
+  `NEEKO_TEAM_SHARE_DIR` 注入（**事实 env**，不是凭证 —— 走 `member_env`，不走
+  `credentials_env`）。
+- **artifacts 可写**（R2）：`task_update` 可带 `artifacts`（`{kind, value}`，kind 封闭枚举
+  `path | commit | pull_request`）。语义 = **声明当前产物集的增量**：按 (kind, value) 去重
+  追加，空数组 = 显式清空，`None` = 不动。`path` 类必须**绝对** + canonicalize + 落在允许根
+  （团队根 ∪ 共享区）之内（红线 8；根也 canonicalize —— macOS `/var` ↔ `/private/var` 的
+  两种字符串身份会让成员写进团队根的文件被判越界）。manager 持 share root
+  （`load(store, share_root)` / 测试用 `with_share_root`）。
+- **summary 超限拒绝**（R3）：`manager::update_task` 入口 `InvalidInput`，文案含
+  `NEEKO_TEAM_SHARE_DIR` 与 artifacts 指引；**恰好等于上限通过**（闭区间）。
+  `summary_truncated` 字段保留（老数据才有）；新写入置 false；store 层 `upsert_task` 的
+  clamp **降级为兜底**且未发生截断时**保留行上既有标记** —— 老标记不得被一次无关的重写
+  （含重试）无声洗掉，否则「摘要已截断」的提示会静默消失。
+- **`team_send` 限长**（R4）：正文 2 KiB（`delivery::MESSAGE_MAX_BYTES`），入口拒绝；
+  **前缀 `[team] {from}: ` 不计入预算** —— 算法钉在
+  `the_prefix_does_not_count_toward_the_message_budget`。
+- **preamble**（R5）：两种角色的身份块都说明共享区交接（env 名引用，不写死绝对路径）——
+  **唯一落点** `identity::preamble::identity_block`，工具描述与错误文案不重复地址。
+- **前端**（R6）：任务详情的 artifacts 点击复制路径；`summaryTruncated` 提示可见（老数据）。
+
+判据：`team_share_dir_is_absolute_under_app_dir` / `team_share_dir_delegates_to_the_under_assembly` /
+`ensure_share_dir_creates_the_dir_idempotently_under_the_state_root` /
+`an_oversized_summary_is_rejected_with_an_actionable_message` /
+`a_summary_of_exactly_the_cap_is_accepted` /
+`retry_and_flagless_updates_preserve_a_legacy_truncation_flag` /
+`task_update_accepts_artifacts_and_dedupes` /
+`task_update_rejects_relative_missing_and_out_of_root_artifacts` /
+`task_update_persists_artifacts_from_the_wire` /
+`task_update_rejects_an_unknown_artifact_kind` /
+`the_prefix_does_not_count_toward_the_message_budget` /
+`an_oversized_message_is_rejected_pointing_at_the_share_area` /
+`the_preamble_tells_both_roles_where_the_share_area_is`。
 
 ## 2.6 团队记录它所在的**工作区身份**（v23），不只是路径
 
@@ -950,9 +1020,11 @@ hook 都走 `NotTeamContext` → 静默跳过：成员 `state` 永远 `spawned`�
 落盘不必手工重装：`shim_is_current` 比**内容**，`install` 在内容变化时原子重写；app 重启时的
 `reconcile`（`hooks/boot.rs`）会把新 shim 刷到已安装的 CLI 上。
 
-**仍未修**：`team::deliver` 的 `SkippedUnknownAgent` 把「身份缺失」与「非团队上下文」压成同一个
-结论——它让本次事故难查（如果日志能分开，一开始就能看出是模板没发 env）。那是观察者层的改动，
-要单独做。
+**残留面（2026-11-15 核对）**：裁决层已把两者拆开 —— `identity::verdict::attribution_verdict`
+区分 `RefuseIncomplete`（残缺身份，warn 日志）与 `NotTeamContext`（非团队上下文，静默），
+日志上已能分辨「模板没发 env」和「普通终端」。未拆的只剩 outcome 层：两个分支仍返回同一个
+`ObserveOutcome::SkippedUnknownAgent`。要不要把 outcome 也拆成两个变体（取决于消费方是否需要
+区分这两种跳过），单独立项再定。
 
 ## 7. 验证入口
 
@@ -1010,7 +1082,7 @@ cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / serv
 
 ### 8.4 本地 Tauri 入口 vs MCP 工具：授权分界
 
-`authorize.rs` 的**工具数 × 角色数**矩阵（当前 11 工具 × 2 角色 = 22 格，由
+`authorize.rs` 的**工具数 × 角色数**矩阵（当前 12 工具 × 2 角色 = 24 格，由
 `mcp/schema.rs::ALL_TOOL_NAMES` 派生，见 `matrix_is_enforced_cell_by_cell`）回答的是
 「**成员（模型进程）能不能对队友做某事**」—— 那是不可信主体。
 `team_snapshot` / `team_task_detail` / `start_team_session` 是**本机用户**的入口，不做 principal 校验
@@ -1047,7 +1119,7 @@ cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / serv
 
 新增工具的清单：`ToolName` 变体 → `ALL_TOOL_NAMES` → `TOOLS`（含 `input_schema`）→
 `dispatch_tool` 的 `match` → `authorize.rs` 的矩阵表（格数 = `ALL_TOOL_NAMES` 长度 × 2 个角色，
-当前 22 格；编译器与 `matrix_is_enforced_cell_by_cell` 会同时追着你补）。
+当前 24 格；编译器与 `matrix_is_enforced_cell_by_cell` 会同时追着你补）。
 
 ### 8.6 成员详情与**有界事件读法**（`team_member_detail`）
 

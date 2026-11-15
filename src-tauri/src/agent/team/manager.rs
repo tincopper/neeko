@@ -41,6 +41,7 @@
 use parking_lot::{Mutex, MutexGuard, RwLock};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::Notify;
@@ -49,11 +50,12 @@ use crate::agent::team::completion::advance;
 use crate::agent::team::events::TeamNotifier;
 use crate::agent::team::identity::preamble::MAX_PERSONA_CHARS;
 use crate::agent::team::lease::{lease_expired, next_reclaim_count, should_auto_release};
-use crate::agent::team::mcp::dispatch::reject_control_chars;
-use crate::agent::team::store::{clamp_task_summary, TeamEventRecord, TeamStore};
+use crate::agent::team::mcp::dispatch::{assignee_value, reject_control_chars};
+use crate::agent::team::mcp::schema::{spec_for, ToolName};
+use crate::agent::team::store::{TeamEventRecord, TeamStore};
 use crate::agent::team::types::{
-    DoneVerification, MemberRole, MemberSignal, MemberState, RolePreset, TaskRef, Team, TeamMember,
-    TeamState, TeamTask, TeamTaskState, Workspace,
+    Artifact, ArtifactKind, DoneVerification, MemberRole, MemberSignal, MemberState, RolePreset,
+    TaskRef, Team, TeamMember, TeamState, TeamTask, TeamTaskState, Workspace,
 };
 use crate::common::error::AppError;
 
@@ -63,6 +65,8 @@ pub const EVENT_CLAIM: &str = "claim";
 pub const EVENT_UPDATE: &str = "update";
 /// 审计事件类别：队长越过 owner 判 done。
 pub const EVENT_FORCE_DONE: &str = "force_done";
+/// 审计事件类别：失败 / 冻结的任务被队长重试回 `pending`（人工重试 = 新预算）。
+pub const EVENT_RETRY: &str = "retry";
 /// 审计事件类别：租约到期，任务回到 `pending`。
 pub const EVENT_RECLAIM: &str = "reclaim";
 /// 审计事件类别：回收次数超限，任务被冻结。
@@ -204,6 +208,10 @@ pub struct TaskCounts {
 /// 内存镜像 + 共享库。
 pub struct TeamManager {
     store: TeamStore,
+    /// 团队共享区的**根**（`team/<team_id>/share` 的 base）。组合根传 storage 根 ——
+    /// 与成员隔离配置目录、成员 env 里的 `NEEKO_TEAM_SHARE_DIR` 同一个来源；管理器对
+    /// artifacts 的路径校验用它（红线 8）。默认根 = `paths::app_dir()`（生产装配）。
+    share_root: PathBuf,
     inner: Mutex<Inner>,
     /// 变更唤醒句柄（`team_wait` 的等待者挂在它上面，design §4.3）。
     wake: TeamWake,
@@ -361,8 +369,16 @@ impl TeamManager {
     /// 用给定的库建一个空的内存镜像。
     #[must_use]
     pub fn new(store: TeamStore) -> Self {
+        Self::with_share_root(store, crate::common::paths::app_dir())
+    }
+
+    /// 测试 / 隔离场景：共享区根指向给定目录（通常是 tempdir），不要往真实
+    /// `~/.neeko` 里写校验用的路径。
+    #[must_use]
+    pub fn with_share_root(store: TeamStore, share_root: PathBuf) -> Self {
         Self {
             store,
+            share_root,
             inner: Mutex::new(Inner::default()),
             wake: TeamWake::default(),
             notifier: RwLock::new(None),
@@ -413,8 +429,8 @@ impl TeamManager {
     }
 
     /// 从库恢复（启动路径）：团队 / 成员 / 任务 / 角色库全部读进内存，取证按任务板推导。
-    pub fn load(store: TeamStore) -> Result<Self, AppError> {
-        let manager = Self::new(store);
+    pub fn load(store: TeamStore, share_root: PathBuf) -> Result<Self, AppError> {
+        let manager = Self::with_share_root(store, share_root);
         let teams = manager.store.list_teams()?;
         let mut members = Vec::new();
         let mut tasks = Vec::new();
@@ -790,7 +806,6 @@ impl TeamManager {
                 task.lease_ttl
             )));
         }
-        let task = clamp_task_summary(&task);
         self.store.upsert_task(&task)?;
         inner.tasks.insert(task.key(), task.clone());
         Ok(task)
@@ -941,6 +956,7 @@ impl TeamManager {
         actor: &str,
         new_state: TeamTaskState,
         summary: Option<&str>,
+        artifacts: Option<&[Artifact]>,
         now: i64,
     ) -> Result<TeamTask, AppError> {
         let mut inner = self.lock_writing();
@@ -988,11 +1004,33 @@ impl TeamManager {
             )));
         }
 
+        // R3：summary 超限在**入口拒绝**（不是静默截断）—— 拒绝文案给出可行动的下一步
+        // （写进共享区，artifacts 带路径，summary 只留结论）。恰好等于上限通过（闭区间）。
+        // 校验在锁内做不了 I/O 之外的事，纯长度判定无副作用。
+        if let Some(summary) = summary {
+            Self::ensure_summary_fits(summary)?;
+        }
         task.state = new_state;
         if let Some(summary) = summary {
             task.summary = Some(summary.to_owned());
+            // 新写入不再产生截断：能写进来就是没截（store 层的 clamp 降级为兜底）。
+            task.summary_truncated = false;
         }
-        let mut task = clamp_task_summary(&task);
+        // R2：artifacts 是**声明当前产物集的增量**（追加 + 按 (kind, value) 去重）——
+        // 逐轮汇报不丢早先引用过的路径；`None` = 本轮不动既有产物。
+        if let Some(incoming) = artifacts {
+            self.validate_artifacts(&inner, &task.team_id, incoming)?;
+            if incoming.is_empty() {
+                // 空数组 = 声明「当前产物集为空」：显式清空，不是 no-op。
+                task.artifacts.clear();
+            } else {
+                for artifact in incoming {
+                    if !task.artifacts.contains(artifact) {
+                        task.artifacts.push(artifact.clone());
+                    }
+                }
+            }
+        }
         // 显式更新本身就是活性证据（见 `renew_lease`）。
         renew_lease(&mut task, now);
 
@@ -1067,6 +1105,191 @@ impl TeamManager {
             Some(format!("{previous} reason={reason} at={now}")),
         )?;
         Ok(task)
+    }
+
+    /// 重试一个**失败或冻结**的任务：放回 `pending`，预算清零（R1-R3，2026-11-13 裁决）。
+    ///
+    /// # 状态门与「预算」语义
+    ///
+    /// 允许的起点只有 `failed` / `blocked`：前者是成员显式声明的失败，后者是自动回收
+    /// 超限后的冻结（自动回收对它已永久关闭，人工重试是唯一出路）。`done` 拒绝 ——
+    /// 重开等于撤销「完成」这一声明，正确动作是建新任务并声明依赖；其余在飞态
+    /// （`pending` / `claimed` / `in_progress` / `awaiting_approval` / `proposed`）
+    /// 不是「失败了」，重试它们只会把还活着的活搅乱。
+    ///
+    /// `reclaim_count = 0` 是**人工重试 = 新预算**：计数衡量的是「这块板自己反复失败」，
+    /// 人已经介入并做了裁决，让旧计数压着新尝试只会逼用户重建任务、丢掉上下文。
+    /// 归零之后仍受 [`MAX_RECLAIM_COUNT`] 约束 —— 重试不引入无限重试（R6）。
+    ///
+    /// `summary` / `body`（以及未改派时的 `assignee`）一律不动：交接内容是重试的
+    /// 价值本身。
+    ///
+    /// # 改派校验只有一份
+    ///
+    /// `assignee` 的寻址与校验（本队成员 / 计划成员 `name@{team}`）在
+    /// [`crate::agent::team::mcp::dispatch::assignee_value`] —— `task_create` 的必填
+    /// 指派与这里的可选改派共用同一实现，本地命令不再需要第二份。它在**锁外**调用：
+    /// 它自己要读成员镜像，在写锁内调它会死锁。
+    pub fn retry_task(
+        &self,
+        key: &TaskRef,
+        actor: &str,
+        assignee: Option<&str>,
+        now: i64,
+    ) -> Result<TeamTask, AppError> {
+        // R3 改派：先在锁外校验（它内部读镜像；写锁内调用 = 同线程读锁死锁）。
+        let assignee = match assignee {
+            None => None,
+            Some(raw) => Some(assignee_value(
+                self,
+                &key.team_id,
+                spec_for(ToolName::TaskRetry).wire,
+                raw,
+            )?),
+        };
+        let mut inner = self.lock_writing();
+        let mut task = inner
+            .tasks
+            .get(key)
+            .cloned()
+            .ok_or_else(|| not_found(format!("task {key}")))?;
+        let actor_member = inner
+            .members
+            .get(actor)
+            .cloned()
+            .ok_or_else(|| not_found(format!("member {actor}")))?;
+
+        // 授权矩阵（design §3.2）：只有本队队长能重试。MCP 侧另有逐格授权；manager
+        // 侧与 `force_done` 同一条判据 —— 本地命令与工具面共用它，谁都不能绕开。
+        if actor_member.role != MemberRole::Lead || actor_member.team_id != task.team_id {
+            return Err(conflict(format!(
+                "member {actor} is not the lead of {}",
+                task.team_id
+            )));
+        }
+        // 状态门：`done` 单独一条文案（它要指出「建新任务」这个可行动的下一步），
+        // 其余非 failed/blocked 一条总述 —— 两者都是 `Conflict`（等一等 / 换个动作就好）。
+        let previous = task.state;
+        if previous == TeamTaskState::Done {
+            return Err(conflict(format!(
+                "task {key} is done; done is final — create a new task with \
+                 `task_create` and declare `depends_on` on this one instead of reopening it"
+            )));
+        }
+        if !matches!(previous, TeamTaskState::Failed | TeamTaskState::Blocked) {
+            return Err(conflict(format!(
+                "task {key} is {previous:?}; only failed/blocked tasks can be retried"
+            )));
+        }
+        if let Some(assignee) = assignee {
+            task.assignee = Some(assignee);
+        }
+
+        task.state = TeamTaskState::Pending;
+        task.owner = None;
+        task.claimed_at = None;
+        task.reclaim_count = 0;
+        // summary 与 `summary_truncated` 一律不动：重试的价值就是交接内容原样留给下一个人
+        // —— 老行（曾被静默截断）的标记也不能被一次无关的重写洗掉。
+        self.store.upsert_task(&task)?;
+        inner.tasks.insert(task.key(), task.clone());
+        self.audit(
+            &mut inner,
+            &task.team_id,
+            actor,
+            EVENT_RETRY,
+            Some(task.id.clone()),
+            Some(format!("{previous:?} → pending at={now}")),
+        )?;
+        Ok(task)
+    }
+
+    /// R3：summary 的 4 KiB 上限在**写入入口拒绝**（不是静默截断）。
+    ///
+    /// 文案给出可行动的下一步：长内容写进共享区（成员 env 里的 `NEEKO_TEAM_SHARE_DIR`），
+    /// 用 `task_update` 的 `artifacts`（kind `"path"`）带路径，summary 只留结论。
+    /// 恰好等于上限通过（闭区间 —— 「正好 4 KiB 的结论」是合法的）。
+    fn ensure_summary_fits(summary: &str) -> Result<(), AppError> {
+        if summary.len() <= crate::agent::team::store::SUMMARY_MAX_BYTES {
+            return Ok(());
+        }
+        Err(AppError::InvalidInput(format!(
+        "summary is {} bytes, over the {}-byte hard cap. Keep the summary to a conclusion only, \
+         and hand off long content by reference: write the details into the team share area \
+         (${}) and attach the file path via `task_update` `artifacts` (kind \"path\")",
+        summary.len(),
+        crate::agent::team::store::SUMMARY_MAX_BYTES,
+        crate::agent::team::identity::TEAM_SHARE_DIR_ENV,
+    )))
+    }
+
+    /// R2 / 红线 8：`path` 类 artifacts 必须是**绝对路径**，canonicalize 之后必须落在允许根
+    /// （团队根 / 共享区）之内；`commit` / `pull_request` 只做非空校验。相对路径明确拒绝 ——
+    /// 「按 cwd 猜」会把同一个文件在两个成员嘴里变成两个身份。
+    ///
+    /// I/O（canonicalize）在 manager 的调用方都已在阻塞池里（红线 3）；共享区根取
+    /// [`TeamManager` 的 `share_root`](Self::with_share_root)，与执行层的 provisioning 同源。
+    fn validate_artifacts(
+        &self,
+        inner: &Inner,
+        team_id: &str,
+        artifacts: &[Artifact],
+    ) -> Result<(), AppError> {
+        let team = inner
+            .teams
+            .get(team_id)
+            .ok_or_else(|| not_found(format!("team {team_id}")))?;
+        // 根也走 canonicalize（红线 8 的同一条）：macOS 上 `/var/...` 与 `/private/var/...`
+        // 是同一个目录的两种字符串身份，不规范化就是「成员写进了团队根却被判越界」。
+        let team_root =
+            std::fs::canonicalize(&team.project_path).unwrap_or_else(|_| team.project_path.clone());
+        let share_dir = crate::common::paths::team_share_dir_under(&self.share_root, team_id);
+        let share_root = std::fs::canonicalize(&share_dir).ok();
+        for artifact in artifacts {
+            match artifact.kind {
+                ArtifactKind::Commit | ArtifactKind::PullRequest => {
+                    if artifact.value.trim().is_empty() {
+                        return Err(AppError::InvalidInput(format!(
+                            "artifact value for kind `{:?}` must be non-empty",
+                            artifact.kind
+                        )));
+                    }
+                }
+                ArtifactKind::Path => {
+                    let raw = Path::new(&artifact.value);
+                    if !raw.is_absolute() {
+                        return Err(AppError::InvalidInput(format!(
+                        "artifact path `{}` must be absolute (relative paths are rejected — the \
+                         member's cwd is not part of the contract); write it under the team root \
+                         or the share area (${})",
+                        artifact.value,
+                        crate::agent::team::identity::TEAM_SHARE_DIR_ENV,
+                    )));
+                    }
+                    let resolved = std::fs::canonicalize(raw).map_err(|err| {
+                        AppError::InvalidInput(format!(
+                        "artifact path `{}` does not exist ({err}): reference a file you actually \
+                         wrote, under the team root or the share area (${})",
+                        artifact.value,
+                        crate::agent::team::identity::TEAM_SHARE_DIR_ENV,
+                    ))
+                    })?;
+                    let under_share = share_root
+                        .as_ref()
+                        .is_some_and(|root| resolved.starts_with(root));
+                    if !resolved.starts_with(&team_root) && !under_share {
+                        return Err(AppError::InvalidInput(format!(
+                        "artifact path `{}` resolves outside the allowed roots (team root {} or \
+                         the share area {})",
+                        artifact.value,
+                        team_root.display(),
+                        share_dir.display(),
+                    )));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// 为成员签发一个新凭证：**明文只返回给调用方一次**，库里只留 `sha256`。
@@ -2346,6 +2569,7 @@ Q",
                 W1,
                 TeamTaskState::InProgress,
                 None,
+                None,
                 2_000,
             )
             .unwrap();
@@ -2474,6 +2698,7 @@ Q",
                 W1,
                 TeamTaskState::Done,
                 None,
+                None,
                 1_100,
             )
             .unwrap();
@@ -2536,6 +2761,7 @@ Q",
                 W2,
                 TeamTaskState::Done,
                 None,
+                None,
                 1_100,
             )
             .unwrap_err();
@@ -2551,6 +2777,7 @@ Q",
                 W1,
                 TeamTaskState::Done,
                 Some("ok"),
+                None,
                 1_200,
             )
             .unwrap();
@@ -2621,6 +2848,7 @@ Q",
                 W1,
                 TeamTaskState::Done,
                 None,
+                None,
                 1_100,
             )
             .unwrap();
@@ -2630,6 +2858,7 @@ Q",
                 &TaskRef::new(TEAM, "t1"),
                 W1,
                 TeamTaskState::InProgress,
+                None,
                 None,
                 1_200,
             )
@@ -2719,6 +2948,596 @@ Q",
             .any(|e| e.kind == EVENT_BLOCKED));
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // retry_task（任务动作 R1-R3，2026-11-13 用户裁决）
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// R1 / AC2：`failed → pending` 是一次**人工重试 = 新预算** —— owner / claimed_at
+    /// 清空、`reclaim_count` 归零，而 `summary` 与 `body`（交接内容）**保留**：
+    /// 重试的全部价值就是让下一个接手的人读到上一轮留下了什么。
+    #[test]
+    fn retry_puts_a_failed_task_back_to_pending_with_a_fresh_budget() {
+        let manager = seeded();
+        let mut t = task("t1");
+        t.assignee = Some(W1.into());
+        manager.create_task(t).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Failed,
+                Some("blocked on X"),
+                None,
+                1_100,
+            )
+            .unwrap();
+
+        let retried = manager
+            .retry_task(&TaskRef::new(TEAM, "t1"), LEAD, None, 1_200)
+            .unwrap();
+
+        assert_eq!(retried.state, TeamTaskState::Pending);
+        assert_eq!(retried.owner, None);
+        assert_eq!(retried.claimed_at, None);
+        assert_eq!(retried.reclaim_count, 0);
+        // 计划事实与交接内容都保留：assignee 不动、summary 不洗掉。
+        assert_eq!(retried.assignee.as_deref(), Some(W1));
+        assert_eq!(retried.summary.as_deref(), Some("blocked on X"));
+        assert_eq!(retried.body, "body");
+    }
+
+    /// R1：`blocked`（回收超限的冻结态）也能被人工重试拉回 —— 那是它唯一的出路
+    /// （自动回收对它已永久关闭）。
+    #[test]
+    fn retry_also_frees_a_blocked_task() {
+        let manager = seeded();
+        let mut t = task("t1");
+        t.reclaim_count = 3;
+        manager.create_task(t).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager.reclaim_expired(1_000 + 1_800_000).unwrap();
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Blocked
+        );
+
+        let retried = manager
+            .retry_task(&TaskRef::new(TEAM, "t1"), LEAD, None, 2_800_000)
+            .unwrap();
+        assert_eq!(retried.state, TeamTaskState::Pending);
+        assert_eq!(retried.reclaim_count, 0);
+    }
+
+    /// R1：`done` 是终态 —— 重开它等于撤销「完成」这一声明。正确动作是
+    /// **建新任务并声明依赖**，拒绝信息必须把这条路指出来。
+    #[test]
+    fn a_done_task_cannot_be_retried() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                None,
+                None,
+                1_100,
+            )
+            .unwrap();
+
+        let err = manager
+            .retry_task(&TaskRef::new(TEAM, "t1"), LEAD, None, 1_200)
+            .unwrap_err();
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+        let message = format!("{err}");
+        assert!(
+            message.contains("task_create"),
+            "done 的拒绝要给出可行动下一步（建新任务）：{message}"
+        );
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Done
+        );
+    }
+
+    /// R1：其余五个状态一律拒绝（穷尽；谁被重试成功说明状态门漏了）。
+    #[test]
+    fn retry_rejects_every_state_other_than_failed_and_blocked() {
+        let mut seq = 0;
+        for state in [
+            TeamTaskState::Pending,
+            TeamTaskState::Claimed,
+            TeamTaskState::InProgress,
+            TeamTaskState::AwaitingApproval,
+            TeamTaskState::Proposed,
+        ] {
+            seq += 1;
+            let id = format!("t{seq}");
+            let manager = seeded();
+            // 只有 pending / proposed 能作为初态落库（`create_task` 的判据）；
+            // claimed / in_progress / awaiting_approval 走真实迁移到达。
+            let mut t = task(&id);
+            t.state = match state {
+                TeamTaskState::Pending | TeamTaskState::Proposed => state,
+                _ => TeamTaskState::Pending,
+            };
+            manager.create_task(t).unwrap();
+            if matches!(
+                state,
+                TeamTaskState::Claimed
+                    | TeamTaskState::InProgress
+                    | TeamTaskState::AwaitingApproval
+            ) {
+                manager
+                    .claim_task(&TaskRef::new(TEAM, &id), W1, 1_000)
+                    .unwrap();
+            }
+            if matches!(
+                state,
+                TeamTaskState::InProgress | TeamTaskState::AwaitingApproval
+            ) {
+                manager
+                    .update_task(&TaskRef::new(TEAM, &id), W1, state, None, None, 1_100)
+                    .unwrap();
+            }
+
+            let err = manager
+                .retry_task(&TaskRef::new(TEAM, &id), LEAD, None, 1_200)
+                .unwrap_err();
+            assert!(matches!(err, AppError::Conflict(_)), "{state:?}: {err:?}");
+        }
+    }
+
+    /// 授权（design §3.2）：重试是**队长**的动作 —— 成员不得重试，状态原地不动。
+    #[test]
+    fn retry_by_a_worker_is_rejected() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Failed,
+                None,
+                None,
+                1_100,
+            )
+            .unwrap();
+
+        let err = manager
+            .retry_task(&TaskRef::new(TEAM, "t1"), W2, None, 1_200)
+            .unwrap_err();
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Failed
+        );
+    }
+
+    /// AC3：审计行 `kind = retry`、actor、subject = 队内 task id、detail 带**原状态**
+    /// （面板的步骤轨迹靠它回答「这次重试是从哪来的」）。
+    #[test]
+    fn retry_records_an_audit_row_with_the_previous_state() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Failed,
+                None,
+                None,
+                1_100,
+            )
+            .unwrap();
+
+        manager
+            .retry_task(&TaskRef::new(TEAM, "t1"), LEAD, None, 1_200)
+            .unwrap();
+
+        let audit = manager
+            .events(TEAM)
+            .unwrap()
+            .into_iter()
+            .find(|e| e.kind == EVENT_RETRY)
+            .expect("retry must leave an audit row");
+        assert_eq!(audit.actor, LEAD);
+        assert_eq!(audit.subject.as_deref(), Some("t1"));
+        assert!(audit
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Failed"));
+    }
+
+    /// R3：改派走 `task_retry` 的可选 `assignee` —— 校验与 `task_create` 同一条规则
+    /// （本队成员；尚未 spawn 的**计划成员** `name@{team}` 也合法）。别队 / 乱写 ⇒ 拒绝
+    /// 并列出花名册。
+    #[test]
+    fn retry_can_reassign_and_validates_the_assignee() {
+        let manager = seeded();
+        let mut t = task("t1");
+        t.assignee = Some(W1.into());
+        manager.create_task(t).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Failed,
+                None,
+                None,
+                1_100,
+            )
+            .unwrap();
+
+        let retried = manager
+            .retry_task(&TaskRef::new(TEAM, "t1"), LEAD, Some(W2), 1_200)
+            .unwrap();
+        assert_eq!(retried.assignee.as_deref(), Some(W2));
+
+        // 重新失败（改派后的认领闸门要求 W2 来认领），再试「计划成员」分支。
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W2, 2_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W2,
+                TeamTaskState::Failed,
+                None,
+                None,
+                2_100,
+            )
+            .unwrap();
+        let replanned = manager
+            .retry_task(&TaskRef::new(TEAM, "t1"), LEAD, Some("planned@tm_1"), 2_200)
+            .unwrap();
+        assert_eq!(replanned.assignee.as_deref(), Some("planned@tm_1"));
+
+        // 别队成员 / 乱写 ⇒ 拒绝并列出本队花名册。用第二个失败任务承载：
+        // 上面的 t1 已被合法改派回 `pending`，状态门会先拒绝（那是它自己的判据）。
+        manager.create_task(task("t2")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t2"), W1, 3_000)
+            .unwrap();
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t2"),
+                W1,
+                TeamTaskState::Failed,
+                None,
+                None,
+                3_100,
+            )
+            .unwrap();
+
+        let err = manager
+            .retry_task(&TaskRef::new(TEAM, "t2"), LEAD, Some("w1@other"), 3_200)
+            .unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+        assert!(
+            format!("{err}").contains("w1@tm_1"),
+            "拒绝信息应列出本队花名册：{err}"
+        );
+
+        // 连 `@` 都没有：InvalidInput（同一份判据的另一条腿）。
+        let err = manager
+            .retry_task(&TaskRef::new(TEAM, "t2"), LEAD, Some("nope"), 3_300)
+            .unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 交接改引用制（R2-R3：summary 入口拒绝 / artifacts 可写 + 路径校验）
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// 交接用例的夹具：团队根 = `team_root`，共享区根 = `share_root`（都在 tempdir 里，
+    /// 不碰真实 `~/.neeko`）。判据与生产同一份：`update_task` 的校验路径。
+    fn handoff_seeded(team_root: &Path, share_root: &Path) -> TeamManager {
+        let manager = TeamManager::with_share_root(
+            TeamStore::open_in_memory().unwrap(),
+            share_root.to_path_buf(),
+        );
+        let mut team = fixture_team(TEAM);
+        team.project_path = team_root.to_path_buf();
+        manager.create_team(team).unwrap();
+        manager
+            .add_member(member(LEAD, "lead", MemberRole::Lead, TEAM))
+            .unwrap();
+        manager
+            .add_member(member(W1, "w1", MemberRole::Worker, TEAM))
+            .unwrap();
+        manager
+    }
+
+    /// AC3：超长 `summary` ⇒ `InvalidInput`（**不是**静默截断），文案含共享区变量名
+    /// 与 artifacts 指引；被拒的请求不在板上留下半个状态。
+    #[test]
+    fn an_oversized_summary_is_rejected_with_an_actionable_message() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+
+        // 中文 3 字节/字：4096 个字远超 4096 字节上限。
+        let long = "长".repeat(crate::agent::team::store::SUMMARY_MAX_BYTES);
+        let err = manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                Some(&long),
+                None,
+                1_100,
+            )
+            .unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        let message = format!("{err}");
+        assert!(
+            message.contains(crate::agent::team::identity::TEAM_SHARE_DIR_ENV),
+            "文案必须指向共享区 env：{message}"
+        );
+        assert!(
+            message.contains("artifacts"),
+            "文案必须给出 artifacts 指引：{message}"
+        );
+        assert_eq!(
+            manager.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
+            TeamTaskState::Claimed
+        );
+    }
+
+    /// AC3：恰好等于上限 ⇒ 通过（闭区间），且新写入不再产生 `summary_truncated`。
+    #[test]
+    fn a_summary_of_exactly_the_cap_is_accepted() {
+        let manager = seeded();
+        manager.create_task(task("t1")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+
+        let exact = "x".repeat(crate::agent::team::store::SUMMARY_MAX_BYTES);
+        let updated = manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                Some(&exact),
+                None,
+                1_100,
+            )
+            .unwrap();
+        assert_eq!(updated.summary.as_deref(), Some(exact.as_str()));
+        assert!(!updated.summary_truncated);
+        assert!(
+            !manager
+                .task(&TaskRef::new(TEAM, "t1"))
+                .unwrap()
+                .summary_truncated
+        );
+    }
+
+    /// R3：重试 / 无 summary 的更新都**不得**洗掉老行的截断标记 ——
+    /// 「摘要已截断」的可见提示要活到有人真的写入新 summary 为止。
+    #[test]
+    fn retry_and_flagless_updates_preserve_a_legacy_truncation_flag() {
+        let manager = seeded();
+        let mut t = task("t1");
+        t.summary = Some("旧的被截摘要".to_owned());
+        t.summary_truncated = true;
+        manager.create_task(t).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+
+        // 无 summary 的状态更新：标记不动。
+        manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Failed,
+                None,
+                None,
+                1_100,
+            )
+            .unwrap();
+        assert!(
+            manager
+                .task(&TaskRef::new(TEAM, "t1"))
+                .unwrap()
+                .summary_truncated
+        );
+
+        // 重试：summary 一并原样保留。
+        manager
+            .retry_task(&TaskRef::new(TEAM, "t1"), LEAD, None, 1_200)
+            .unwrap();
+        let after = manager.task(&TaskRef::new(TEAM, "t1")).unwrap();
+        assert!(after.summary_truncated, "重试不得洗掉老标记");
+        assert_eq!(after.summary.as_deref(), Some("旧的被截摘要"));
+    }
+
+    /// R2 / AC2：`artifacts` 落库并可读回；按 (kind, value) 去重；`None` 不动既有产物。
+    /// 团队根内与共享区内的文件都是合法引用。
+    #[test]
+    fn task_update_accepts_artifacts_and_dedupes() {
+        let team_root = tempfile::tempdir().unwrap();
+        let share_base = tempfile::tempdir().unwrap();
+        let manager = handoff_seeded(team_root.path(), share_base.path());
+        manager.create_task(task("t1")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+
+        let in_root = team_root.path().join("out.md");
+        std::fs::write(&in_root, b"hi").unwrap();
+        let in_share =
+            crate::common::paths::team_share_dir_under(share_base.path(), TEAM).join("a.md");
+        std::fs::create_dir_all(in_share.parent().unwrap()).unwrap();
+        std::fs::write(&in_share, b"hi").unwrap();
+
+        let first = vec![
+            Artifact {
+                kind: ArtifactKind::Path,
+                value: in_root.display().to_string(),
+            },
+            Artifact {
+                kind: ArtifactKind::Commit,
+                value: "abc123".to_owned(),
+            },
+        ];
+        let updated = manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::InProgress,
+                None,
+                Some(&first),
+                1_100,
+            )
+            .unwrap();
+        assert_eq!(updated.artifacts.len(), 2);
+
+        // 再带一条共享区路径 + 重复的 commit ⇒ 只增 1（去重）。
+        let share_ref = Artifact {
+            kind: ArtifactKind::Path,
+            value: in_share.display().to_string(),
+        };
+        let more = vec![
+            Artifact {
+                kind: ArtifactKind::Commit,
+                value: "abc123".to_owned(),
+            },
+            share_ref.clone(),
+        ];
+        let updated = manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::InProgress,
+                None,
+                Some(&more),
+                1_200,
+            )
+            .unwrap();
+        assert_eq!(updated.artifacts.len(), 3);
+        assert!(updated.artifacts.contains(&share_ref));
+
+        // `None` = 本轮不动既有产物。
+        let untouched = manager
+            .update_task(
+                &TaskRef::new(TEAM, "t1"),
+                W1,
+                TeamTaskState::Done,
+                None,
+                None,
+                1_300,
+            )
+            .unwrap();
+        assert_eq!(untouched.artifacts.len(), 3);
+        assert_eq!(
+            manager
+                .task(&TaskRef::new(TEAM, "t1"))
+                .unwrap()
+                .artifacts
+                .len(),
+            3
+        );
+    }
+
+    /// R2 / 红线 8：相对路径 / 不存在的路径 / 存在但在允许根之外的路径都被拒。
+    #[test]
+    fn task_update_rejects_relative_missing_and_out_of_root_artifacts() {
+        let team_root = tempfile::tempdir().unwrap();
+        let share_base = tempfile::tempdir().unwrap();
+        let manager = handoff_seeded(team_root.path(), share_base.path());
+        manager.create_task(task("t1")).unwrap();
+        manager
+            .claim_task(&TaskRef::new(TEAM, "t1"), W1, 1_000)
+            .unwrap();
+        let key = TaskRef::new(TEAM, "t1");
+
+        // 相对路径：明确拒绝（不按 cwd 猜）。
+        let relative = vec![Artifact {
+            kind: ArtifactKind::Path,
+            value: "out.md".to_owned(),
+        }];
+        let err = manager
+            .update_task(
+                &key,
+                W1,
+                TeamTaskState::InProgress,
+                None,
+                Some(&relative),
+                1_100,
+            )
+            .unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(format!("{err}").contains("must be absolute"), "{err}");
+
+        // 路径不存在：拒绝（引用一个真的写出来的文件）。
+        let missing = vec![Artifact {
+            kind: ArtifactKind::Path,
+            value: team_root.path().join("nope.md").display().to_string(),
+        }];
+        let err = manager
+            .update_task(
+                &key,
+                W1,
+                TeamTaskState::InProgress,
+                None,
+                Some(&missing),
+                1_150,
+            )
+            .unwrap_err();
+        assert!(format!("{err}").contains("does not exist"), "{err}");
+
+        // 存在但越界（允许根 = 团队根 ∪ 共享区）。
+        let outside_dir = tempfile::tempdir().unwrap();
+        let outside_file = outside_dir.path().join("x.md");
+        std::fs::write(&outside_file, b"hi").unwrap();
+        let outside = vec![Artifact {
+            kind: ArtifactKind::Path,
+            value: outside_file.display().to_string(),
+        }];
+        let err = manager
+            .update_task(
+                &key,
+                W1,
+                TeamTaskState::InProgress,
+                None,
+                Some(&outside),
+                1_200,
+            )
+            .unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(
+            format!("{err}").contains("outside the allowed roots"),
+            "{err}"
+        );
+
+        // 板上没有留下任何产物。
+        assert!(manager.task(&key).unwrap().artifacts.is_empty());
+    }
+
     /// AC3：成员被杀 → 租约到期 → 任务回 `pending`、owner 清空、成员落 `Stalled`，
     /// 依赖它的任务因此不会被永久堵死。
     #[test]
@@ -2772,6 +3591,7 @@ Q",
                 W1,
                 TeamTaskState::InProgress,
                 None,
+                None,
                 1_050,
             )
             .unwrap();
@@ -2805,6 +3625,7 @@ Q",
                 &TaskRef::new(TEAM, "t1"),
                 W1,
                 TeamTaskState::Done,
+                None,
                 None,
                 1_100,
             )
@@ -2967,6 +3788,7 @@ Q",
                 W1,
                 TeamTaskState::Done,
                 None,
+                None,
                 1_100,
             )
             .unwrap();
@@ -3060,12 +3882,17 @@ Q",
                     W1,
                     TeamTaskState::Done,
                     Some("done"),
+                    None,
                     1_100,
                 )
                 .unwrap();
         }
 
-        let reloaded = TeamManager::load(TeamStore::open(&db).unwrap()).unwrap();
+        let reloaded = TeamManager::load(
+            TeamStore::open(&db).unwrap(),
+            crate::common::paths::app_dir(),
+        )
+        .unwrap();
         assert_eq!(
             reloaded.task(&TaskRef::new(TEAM, "t1")).unwrap().state,
             TeamTaskState::Done
@@ -3125,6 +3952,7 @@ Q",
                 W1,
                 TeamTaskState::InProgress,
                 Some("half"),
+                None,
                 1_000 + 1_700_000,
             )
             .unwrap();
@@ -3346,6 +4174,7 @@ Q",
                 W1,
                 TeamTaskState::Done,
                 None,
+                None,
                 2_000,
             )
             .unwrap();
@@ -3357,6 +4186,7 @@ Q",
                 &TaskRef::new(TEAM, "t2"),
                 W1,
                 TeamTaskState::Failed,
+                None,
                 None,
                 2_000,
             )

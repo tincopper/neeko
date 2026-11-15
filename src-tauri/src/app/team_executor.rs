@@ -139,6 +139,9 @@ impl MemberExecutor for PtyMemberExecutor {
         let token_for_plan = token.to_owned();
         let resume_for_plan = resume_argv;
         let state_root = state.storage_manager.get_config_dir().to_path_buf();
+        // 共享区的创建在 plan 之后（见下）：root 先克隆一份给 plan 闭包，本函数留下
+        // 原件继续用 —— 两个消费点必须拿到**同一个**根。
+        let state_root_for_plan = state_root.clone();
         let plan = state
             .runtime
             .spawn_blocking(move || {
@@ -147,7 +150,7 @@ impl MemberExecutor for PtyMemberExecutor {
                     &member_for_plan,
                     &endpoint_for_plan,
                     &token_for_plan,
-                    &state_root,
+                    &state_root_for_plan,
                     member_count,
                     resume_for_plan.as_deref(),
                 )
@@ -188,6 +191,22 @@ impl MemberExecutor for PtyMemberExecutor {
             }
             None => None,
         };
+
+        // 团队共享区：成员启动**之前**创建（失败即拒绝启动 —— 成员拿着一个不存在的
+        // 路径交接，症状是「文件写丢了」而不是任何报错）。与成员隔离配置目录同一个
+        // state_root（`paths::team_share_dir_under` 是唯一拼装）；create_dir_all 幂等。
+        // I/O ⇒ 阻塞池（红线 3）。
+        {
+            let team_id_for_share = member.team_id.clone();
+            let root_for_share = state_root.clone();
+            state
+                .runtime
+                .spawn_blocking(move || ensure_share_dir(&root_for_share, &team_id_for_share))
+                .await
+                .map_err(|err| {
+                    AppError::Unknown(format!("creating the team share area failed: {err}"))
+                })??;
+        }
 
         // 启动 argv = 程序 + **执行层算好的整段参数**（resume → MCP → preamble → 旁路）。
         // 顺序只在一个地方定（`execution::plan_member_spawn`）：组合根不再认识 argv 的语义，
@@ -413,6 +432,25 @@ fn provision_config_dir(
         return Err(err);
     }
     Ok(())
+}
+
+/// 团队共享区：成员启动**之前**创建（幂等）。
+///
+/// 目录由 [`crate::common::paths::team_share_dir_under`] 唯一拼装，root 与成员隔离配置
+/// 目录同源（组合根传入的 storage 根）—— 成员 env 里的 `NEEKO_TEAM_SHARE_DIR`、管理器
+/// 对 artifacts 的路径校验、磁盘上真实创建的目录，三者是同一个字符串。
+///
+/// 失败即拒绝启动：成员 env 里拿着一个不存在的路径交接，症状是「文件写丢了」而不是
+/// 任何报错 —— 那正是交接改引用制要消灭的静默失败形态。
+fn ensure_share_dir(state_root: &Path, team_id: &str) -> Result<PathBuf, AppError> {
+    let dir = crate::common::paths::team_share_dir_under(state_root, team_id);
+    std::fs::create_dir_all(&dir).map_err(|err| {
+        AppError::Io(format!(
+            "cannot create the team share area {}: {err}",
+            dir.display()
+        ))
+    })?;
+    Ok(dir)
 }
 
 /// [`provision_config_dir`] 的正体（失败后的清理留给调用层）。
@@ -681,6 +719,26 @@ mod tests {
             std::fs::remove_file(&path).expect("remove fixture file");
         }
         home
+    }
+
+    /// AC1（执行层）：共享区在成员启动前创建 —— 幂等、路径来自唯一拼装、
+    /// 与成员隔离配置目录同一个 root。
+    #[test]
+    fn ensure_share_dir_creates_the_dir_idempotently_under_the_state_root() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().join("storage");
+
+        let first = ensure_share_dir(&root, "tm_1").expect("第一次创建");
+        assert_eq!(
+            first,
+            crate::common::paths::team_share_dir_under(&root, "tm_1"),
+            "目录必须来自唯一拼装（与配置目录同一个 root）"
+        );
+        assert!(first.is_dir(), "{first:?} 必须真实存在");
+
+        // 第二次是幂等（成员重启 / resume 不会再撞一次）。
+        let second = ensure_share_dir(&root, "tm_1").expect("幂等重建");
+        assert_eq!(first, second);
     }
 
     fn plan_at(dir: &Path, spec: ConfigDirSpec, source: &Path) -> ConfigDirPlan {

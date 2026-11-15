@@ -8,6 +8,7 @@ import {
   TASK_COLUMN_ORDER,
   awaitingApprovalCount,
   buildTaskBoard,
+  canRetry,
   columnOf,
   taskStateLabel,
 } from '../taskBoard';
@@ -108,5 +109,13 @@ describe('awaitingApprovalCount', () => {
     ];
     expect(awaitingApprovalCount(tasks)).toBe(2);
     expect(awaitingApprovalCount([])).toBe(0);
+  });
+});
+
+describe('canRetry — 重试动作的唯一判据', () => {
+  it('8 态穷尽：只有 failed / blocked 可重试（与后端 manager::retry_task 的状态门同源）', () => {
+    for (const state of ALL_TASK_STATES) {
+      expect(canRetry(state)).toBe(state === 'failed' || state === 'blocked');
+    }
   });
 });

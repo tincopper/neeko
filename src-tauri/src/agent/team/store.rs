@@ -510,20 +510,19 @@ pub fn clamp_summary(summary: &str) -> (String, bool) {
     (summary[..end].to_owned(), true)
 }
 
-/// 返回 `summary` 已按红线 4 收敛后的**任务副本**。
+/// 返回 `summary` 已按红线 4 收敛后的**任务副本**（写入的最后一道兜底）。
 ///
-/// manager 用它同步内存态与库里那一行：只给 store 截断而内存留着原文，会让
-/// 「板上显示的长度」与「重启后的长度」不一致 —— 那正是两份真相源。
+/// 正常路径在 `manager::update_task` 的入口校验就拒了（R3：拒绝，不是截断）；这里是
+/// 防线兜底。语义变化（2026-11-15）：**未发生截断时保留行上既有的 `summary_truncated`**
+/// —— 老行（曾被静默截断）的标记不得被一次无关的重写无声洗掉，否则「摘要已截断」的
+/// 提示会随重试 / 状态更新消失；发生截断则一律置 `true`。
 #[must_use]
 pub fn clamp_task_summary(task: &TeamTask) -> TeamTask {
     let mut out = task.clone();
-    match &task.summary {
-        Some(summary) => {
-            let (clamped, truncated) = clamp_summary(summary);
-            out.summary = Some(clamped);
-            out.summary_truncated = truncated;
-        }
-        None => out.summary_truncated = false,
+    if let Some(summary) = &task.summary {
+        let (clamped, truncated) = clamp_summary(summary);
+        out.summary = Some(clamped);
+        out.summary_truncated = truncated || task.summary_truncated;
     }
     out
 }

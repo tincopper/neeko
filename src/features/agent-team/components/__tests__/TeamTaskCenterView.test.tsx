@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +8,12 @@ import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
 import { invoke } from '@/testing/tauriCore';
 
 import TeamTaskCenterView from '../TeamTaskCenterView';
+
+// 统一复制走 Tauri 插件（useCopyToClipboard 的第一优先通道）—— 在文件顶层 mock
+// （vi.mock 会被提升；写在测试体内不生效）。
+vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
+  writeText: vi.fn(async () => undefined),
+}));
 
 /**
  * 任务详情 tab 的**线上载荷契约**。
@@ -22,6 +29,7 @@ import TeamTaskCenterView from '../TeamTaskCenterView';
  */
 
 const mockInvoke = vi.mocked(invoke);
+const mockWriteText = vi.mocked(writeText);
 
 /**
  * 后端 `view.rs::TaskDetail` 的**真实** JSON（`#[serde(rename_all = "camelCase")]`
@@ -136,5 +144,114 @@ describe('TeamTaskCenterView — 线上载荷', () => {
     expect(await screen.findByRole('heading', { name: '派活正文' })).toBeInTheDocument();
     // 重试成功后旧错误必须消失
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('TeamTaskCenterView — 重试动作', () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+    mockWriteText.mockClear();
+  });
+
+  it('failed 详情头部出现重试；点击发 team_task_retry 并重载本地详情', async () => {
+    let detailLoads = 0;
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_task_detail') {
+        detailLoads += 1;
+        // 头部重试按钮只挂在可重试状态上 —— 详情必须是 failed。
+        return { ...wireTaskDetail(), state: 'failed' } as unknown as TaskDetail;
+      }
+      if (cmd === 'team_task_retry') {
+        // 回包是重试后的任务行（TeamTask）—— 详情 tab 不消费它，刷新靠重载。
+        return { ...wireTaskDetail(), state: 'pending', owner: null } as unknown as TaskDetail;
+      }
+      return undefined;
+    });
+    renderView();
+
+    const retryButton = await screen.findByTestId('task-retry');
+    fireEvent.click(retryButton);
+
+    expect(mockInvoke).toHaveBeenCalledWith('team_task_retry', {
+      teamId: 'tm_1',
+      taskId: 't1',
+      assignee: null,
+    });
+    // 详情是自持数据（不进 store）：重试成功后必须 reload 一次，否则界面停在旧状态。
+    await waitFor(() => expect(detailLoads).toBe(2));
+  });
+
+  it('不可重试（in_progress）详情不渲染重试按钮 —— 不做灰按钮', async () => {
+    mockInvoke.mockImplementation(async (cmd) =>
+      cmd === 'team_task_detail' ? (wireTaskDetail() as unknown as TaskDetail) : undefined,
+    );
+    renderView();
+
+    expect(await screen.findByRole('heading', { name: '派活正文' })).toBeInTheDocument();
+    expect(screen.queryByTestId('task-retry')).not.toBeInTheDocument();
+  });
+
+  it('重试失败：错误可见（role=alert），详情数据不清（失败不清数据）', async () => {
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_task_detail') {
+        return { ...wireTaskDetail(), state: 'failed' } as unknown as TaskDetail;
+      }
+      if (cmd === 'team_task_retry') throw 'task tm_1/t1 is done';
+      return undefined;
+    });
+    renderView();
+
+    fireEvent.click(await screen.findByTestId('task-retry'));
+
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts.some((a) => a.textContent?.includes('task tm_1/t1 is done'))).toBe(true);
+    // 详情仍可读：被拒的重试不动任何本地状态。
+    expect(screen.getByRole('heading', { name: '派活正文' })).toBeInTheDocument();
+  });
+});
+
+describe('TeamTaskCenterView — 交接改引用制（R6）', () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+    mockWriteText.mockClear();
+  });
+
+  it('artifacts 渲染路径值，点击复制（引用制：对端按路径读取）', async () => {
+    mockInvoke.mockImplementation(async (cmd) =>
+      cmd === 'team_task_detail'
+        ? ({
+            ...wireTaskDetail(),
+            artifacts: [
+              { kind: 'path', value: '/tmp/team/tm_1/share/report.md' },
+              { kind: 'commit', value: 'abc123' },
+            ],
+          } as unknown as TaskDetail)
+        : undefined,
+    );
+    renderView();
+
+    const chips = await screen.findAllByTestId('artifact-chip');
+    expect(chips).toHaveLength(2);
+    expect(chips[0]).toHaveTextContent('/tmp/team/tm_1/share/report.md');
+    expect(screen.getByText('abc123')).toBeInTheDocument();
+    fireEvent.click(chips[0]);
+    await waitFor(() =>
+      expect(mockWriteText).toHaveBeenCalledWith('/tmp/team/tm_1/share/report.md'),
+    );
+  });
+
+  it('summaryTruncated（老数据）给出可见提示', async () => {
+    mockInvoke.mockImplementation(async (cmd) =>
+      cmd === 'team_task_detail'
+        ? ({
+            ...wireTaskDetail(),
+            summary: '旧的一轮回报（长）',
+            summaryTruncated: true,
+          } as unknown as TaskDetail)
+        : undefined,
+    );
+    renderView();
+
+    expect(await screen.findByText('（已截断到 4KB）')).toBeInTheDocument();
   });
 });

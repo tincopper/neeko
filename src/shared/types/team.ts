@@ -453,6 +453,18 @@ export interface TaskDetail extends TaskCard {
 }
 
 /**
+ * 任务行本体 —— `team_task_retry` 的返回值（与 Rust `types::TeamTask` 的 serde 输出
+ * 逐字一致，`rename_all = "camelCase"`）。
+ *
+ * 与 [`TaskDetail`] 的差别是**没有步骤轨迹**：重试只改状态与执行事实，面板刷新靠
+ * 快照脉冲（`refresh`），不靠这个回包携带历史 —— 所以这里不发明第二个事件载荷。
+ */
+export interface TeamTask extends TaskCard {
+  /** 派活正文（回包里带着；面板不渲染它 —— 详情仍走 `team_task_detail`，红线 4）。 */
+  body: string;
+}
+
+/**
  * 一条审计记录的**成员详情视图**（真相源 `view.rs::MemberEventView`）。
  *
  * `kind` 是**开集字符串**（后端：新增事件类别不该要求一次迁移，也不要求一次 TS 改动）：

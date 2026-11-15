@@ -215,14 +215,28 @@ fn worker_preamble(team: &Team, member: &TeamMember) -> String {
 ///
 /// 项目根按原样嵌入（它已经由 `plan_team` / `bootstrap` 规范化为绝对路径）。
 fn identity_block(role: &str, team: &Team, member: &TeamMember) -> String {
+    // 长内容交接（R5）：**唯一**落点 —— preamble 用 env 名引用，不写死绝对路径
+    // （路径随机器/用户而变；env 由执行层注入，校验与文案引用同一个常量）。
     format!(
         "You are {role} of Neeko team \"{}\" (team_id {}), the CLI agent `{}`.\n\
-         Your member id is {}, and the team's project root is {}.\n",
+         Your member id is {}, and the team's project root is {}.\n\
+         Hand off long content by reference: write files into the team share area at \
+         ${} (already mounted) and pass the path via `{}` `artifacts` or a short `{}`; \
+         keep `summary` to a conclusion - it is capped.\n",
         team.name,
         team.id,
         member.agent_id,
         member.id,
         team.project_path.display(),
+        crate::agent::team::identity::TEAM_SHARE_DIR_ENV,
+        crate::agent::team::mcp::schema::spec_for(
+            crate::agent::team::mcp::schema::ToolName::TaskUpdate,
+        )
+        .wire,
+        crate::agent::team::mcp::schema::spec_for(
+            crate::agent::team::mcp::schema::ToolName::TeamSend,
+        )
+        .wire,
     )
 }
 
@@ -391,10 +405,14 @@ mod tests {
             "成员版必须说明回合结束 ≠ 任务完成：{worker}"
         );
         assert!(worker.contains("`task_update`"), "{worker}");
-        // 顺序：claim 出现在 update 之前（它是工作顺序，不是一句并列的建议）。
-        let claim = worker.find("`task_claim`").expect("claim");
-        let update = worker.find("`task_update`").expect("update");
-        assert!(claim < update, "claim 必须出现在 update 之前：{worker}");
+        // 顺序：在「Order of work」段里 claim 出现在 update 之前（它是工作顺序）。
+        // 身份块的交接说明也会提到 `task_update`（共享区契约）—— 那不是工作顺序，
+        // 所以顺序断言只看工作段，不看全文。
+        let order_start = worker.find("Order of work").expect("order section");
+        let order = &worker[order_start..];
+        let claim = order.find("`task_claim`").expect("claim");
+        let update = order.find("`task_update`").expect("update");
+        assert!(claim < update, "claim 必须出现在 update 之前：{order}");
     }
 
     /// 队长必须先**规划**再派人，并且知道每个 CLI 的角色（用户报障：lead 直接派一个
@@ -607,5 +625,35 @@ mod tests {
             "骨架 + 最长 persona = {len} 字符，超出 {MAX_PREAMBLE_CHARS} 的预算 —— \
              先调 MAX_PERSONA_CHARS 或瘦身骨架，不要放宽断言"
         );
+    }
+}
+
+#[cfg(test)]
+mod share_area_tests {
+    use super::*;
+    use crate::agent::team::fixtures::{fixture_member, fixture_team};
+    use crate::agent::team::identity::TEAM_SHARE_DIR_ENV;
+    use crate::agent::team::options::options_for;
+
+    /// R5 / AC5：两种角色的 preamble 都说清共享区在哪、怎么交接 —— 断言的是常量**值**
+    /// （与 hooks 模板的内容守卫同一纪律：断言字面量等于多一份可漂移的真相）。
+    #[test]
+    fn the_preamble_tells_both_roles_where_the_share_area_is() {
+        let team = fixture_team("tm_1");
+        let lead = fixture_member("lead@tm_1", "tm_1");
+        let worker = fixture_member("w1@tm_1", "tm_1");
+        let members = options_for(&team, 0).members;
+        let lead_text = preamble(MemberRole::Lead, &team, &lead, &members);
+        let worker_text = preamble(MemberRole::Worker, &team, &worker, &members);
+        for text in [lead_text, worker_text] {
+            assert!(
+                text.contains(TEAM_SHARE_DIR_ENV),
+                "preamble 必须用共享区 env 名说明交接落点：{text}"
+            );
+            assert!(
+                text.contains("artifacts"),
+                "preamble 必须提到 artifacts 这条交接通道：{text}"
+            );
+        }
     }
 }

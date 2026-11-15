@@ -2,9 +2,10 @@ import { Columns3, GitBranch, Minus, Plus, RefreshCw, RotateCcw } from 'lucide-r
 import React, { useCallback, useEffect } from 'react';
 
 import { cn } from '@/lib/utils';
-import type { TeamSnapshot } from '@/shared/types/team';
+import type { TaskCard, TeamSnapshot } from '@/shared/types/team';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 
+import { useTaskRetry } from '../hooks/useTaskRetry';
 import { useTeamPanel } from '../hooks/useTeamPanel';
 import { useTeamTaskTab } from '../hooks/useTeamTaskTab';
 import { useTeamStore } from '../store/teamStore';
@@ -53,6 +54,14 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
     const [view, setView] = React.useState<'board' | 'flow'>(initialView);
     const [zoom, setZoom] = React.useState(1);
     const { openTaskTab } = useTeamTaskTab();
+    // 看板卡片上的「重试」：判据在 canRetry（卡片内部判），这里只接动作与错误可见面。
+    const { retry: retryTaskAction, error: retryError } = useTaskRetry();
+    const handleRetryTask = useCallback(
+      (task: TaskCard) => {
+        void retryTaskAction(task.teamId, task.id);
+      },
+      [retryTaskAction],
+    );
 
     // tab data 的 view 变了（用户从面板再点一次「在中间打开」，`mergeTabData` 合并了
     // view）→ 本组件要跟着切。只在 prop 真的变化时同步，不覆盖用户在本 tab 内的切换。
@@ -155,12 +164,20 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
                 {error}
               </p>
             ) : view === 'board' ? (
-              <TeamTaskBoard
-                tasks={snap?.tasks ?? []}
-                members={snap?.members ?? []}
-                tasksTruncated={snap?.tasksTruncated ?? false}
-                onOpenTask={handleOpenTask}
-              />
+              <div className="flex flex-col gap-1.5">
+                {retryError ? (
+                  <p role="alert" className="px-1 text-micro text-accent-red">
+                    {retryError}
+                  </p>
+                ) : null}
+                <TeamTaskBoard
+                  tasks={snap?.tasks ?? []}
+                  members={snap?.members ?? []}
+                  tasksTruncated={snap?.tasksTruncated ?? false}
+                  onOpenTask={handleOpenTask}
+                  onRetryTask={handleRetryTask}
+                />
+              </div>
             ) : (
               <div className="flow-zoom-wrap">
                 <div className="mb-1 flex items-center gap-1" role="group" aria-label="分配图缩放">

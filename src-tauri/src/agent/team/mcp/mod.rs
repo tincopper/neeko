@@ -3,10 +3,12 @@
 //! 本目录只做「模型说要做 X」到「`TeamManager` 的方法」之间的翻译、授权与入参校验。
 //! 唯一会**阻塞**的工具是 `team_wait`（P2.4）：它的等待循环在
 //! [`crate::agent::team::wait`]，本目录只负责入参校验与把结局包成 [`ToolReply::Wait`]。
-//! 传输分两半：[`server`] 是 HTTP/JSON-RPC 端点（`POST /team/mcp`）——路由组与鉴权已就绪
-//! （`server::route_group`），但**组合根尚未 mount 到独立 listener**（2.5b），所以今天
-//! 没有任何 CLI 能看到这份工具清单；stdio bridge 仍未落。身份**签发**在 `identity::token`，
-//! 本目录只做**解析后的使用**（`server::authenticate`）。PTY 投递属 P2.5b（接线段）。
+//! 传输是 HTTP/JSON-RPC 端点（`POST /team/mcp`）：[`server`] 提供路由组与鉴权
+//! （`server::route_group`），组合根在启动序列经 [`crate::agent::team::boot_endpoint`]
+//! 把它 mount 到**独立 loopback listener**（`app/boot.rs`；为什么与 hooks 分开端口、
+//! 门的活集合与凭证形状，见 `team-domain.md` §2.3）。stdio bridge **刻意不落**——
+//! `admission::McpTransport` 的变体集合就是本仓已实现的传输集合（红线 14）。
+//! 身份**签发**在 `identity::token`，本目录只做**解析后的使用**（`server::authenticate`）。
 //!
 //! # 生产入口只有 [`call_async`]
 //!

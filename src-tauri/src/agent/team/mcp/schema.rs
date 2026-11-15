@@ -36,6 +36,8 @@ pub enum ToolName {
     TaskClaim,
     /// 更新任务状态。
     TaskUpdate,
+    /// 重试失败 / 冻结的任务（队长专属；放回 `pending`，可改派）。
+    TaskRetry,
     /// 读任务板。
     TaskList,
     /// **后端阻塞**地等（P2.4）。
@@ -48,7 +50,7 @@ pub enum ToolName {
 ///
 /// 与 [`TOOLS`] 故意分成两份而不是由 `TOOLS` 派生：只有「两份独立清单」才能让
 /// 「新增变体却忘了登记」变成测试失败，而不是被派生逻辑自动吞掉。
-pub const ALL_TOOL_NAMES: [ToolName; 11] = [
+pub const ALL_TOOL_NAMES: [ToolName; 12] = [
     ToolName::TeamStatus,
     ToolName::TeamList,
     ToolName::TeamOptions,
@@ -57,6 +59,7 @@ pub const ALL_TOOL_NAMES: [ToolName; 11] = [
     ToolName::TaskCreate,
     ToolName::TaskClaim,
     ToolName::TaskUpdate,
+    ToolName::TaskRetry,
     ToolName::TaskList,
     ToolName::TeamWait,
     ToolName::TeamClose,
@@ -74,8 +77,8 @@ pub struct ToolSpec {
     pub input_schema: &'static str,
 }
 
-/// 工具清单 —— **恰好 11 条**，与 [`ALL_TOOL_NAMES`] 一一对应
-/// （design §4.2 的 9 条 + `team_options` + `team_list`）。
+/// 工具清单 —— **恰好 12 条**，与 [`ALL_TOOL_NAMES`] 一一对应
+/// （design §4.2 的 9 条 + `team_options` + `team_list` + `task_retry`）。
 ///
 /// `input_schema` 只声明本层**真的会读**的字段：Schema 里写一个 dispatch 不校验的参数，
 /// 就是向模型声明一个「传了也没用」的能力（红线 14 的同族违规）。
@@ -136,6 +139,12 @@ pub static TOOLS: &[ToolSpec] = &[
         wire: "task_update",
         summary: "Declare progress on a task you own: done, failed, or blocked.",
         input_schema: r#"{"type":"object","properties":{"task_id":{"type":"string","minLength":1},"state":{"type":"string","enum":["done","failed","blocked"]},"summary":{"type":"string"}},"required":["task_id","state"],"additionalProperties":false}"#,
+    },
+    ToolSpec {
+        name: ToolName::TaskRetry,
+        wire: "task_retry",
+        summary: "Retry a failed or blocked task (lead only): put it back on the board as pending, clear its owner and reclaim budget, optionally reassign it with `assignee`. `done` is final — create a new task and declare `depends_on` instead.",
+        input_schema: r#"{"type":"object","properties":{"task_id":{"type":"string","minLength":1},"assignee":{"type":"string","minLength":1}},"required":["task_id"],"additionalProperties":false}"#,
     },
     ToolSpec {
         name: ToolName::TaskList,
@@ -290,6 +299,7 @@ mod tests {
             "task_create",
             "task_claim",
             "task_update",
+            "task_retry",
             "task_list",
             "team_wait",
             "team_close",
@@ -298,9 +308,10 @@ mod tests {
         }
         assert_eq!(
             TOOLS.len(),
-            11,
+            12,
             "design §4.2 的 9 条 + `team_options`（团队组成配置的只读面）+ `team_list`\
-             （重启后重开自己的队 / 关队前的清点）"
+             （重启后重开自己的队 / 关队前的清点）+ `task_retry`（失败/冻结任务的\
+             人工重试，2026-11-13 裁决）"
         );
         assert_eq!(lookup("team_spawn"), Some(ToolName::TeamSpawn));
         // 反向：清单里不得有形如 `team_*` 的遗留别名（wire 名是协议）。

@@ -209,6 +209,11 @@ pub fn plan_member_spawn(
         Vec::new()
     };
 
+    // 团队共享区的**路径**在这里算好（进 env；目录本身由组合根在起进程前创建）。
+    // 必须与组合根的 provisioning 同一个 state_root —— 管理器对 artifacts 的路径校验、
+    // 成员 env 里的 `NEEKO_TEAM_SHARE_DIR`、磁盘上真实创建的目录，三者是同一个字符串。
+    let share_dir = crate::common::paths::team_share_dir_under(state_root, &team.id);
+
     // resume 片段是**第一个**参数：codex 的 `resume` 是子命令，必须紧跟 program
     // （追加到末尾会被当成 PROMPT —— 2026-11-11 实测）。它是会话域来的事实（「接着哪个
     // 对话」），不是准入表的一部分，所以只在这里并入，不与 `mcp_argv` / `prompt_argv` 混排。
@@ -256,7 +261,7 @@ pub fn plan_member_spawn(
         // 凭证明文只出现在启动参数的 MCP 配置里（`ConfigDir` 档则是那个隔离目录里的
         // `mcp.json`）。唯一的例外是 `bearer_token_env_var` 那一族，见
         // [`SpawnPlan::credentials_env`] 的文档。
-        env: identity::member_env(&member.team_id, &member.id),
+        env: identity::member_env(&member.team_id, &member.id, &share_dir),
         args,
         credentials_env,
         config_dir,
@@ -1283,7 +1288,14 @@ mod tests {
             std::fs::canonicalize(tmp.path()).expect("canonical"),
             "cwd 必须是规范化后的团队根（与 `starts_with` 判据同一个字符串身份）"
         );
-        assert_eq!(plan.env, identity::member_env(TEAM, W1));
+        assert_eq!(
+            plan.env,
+            identity::member_env(
+                TEAM,
+                W1,
+                &crate::common::paths::team_share_dir_under(&state_root(&tmp), TEAM,)
+            )
+        );
         // MCP 参数（两条）+ 角色 preamble 的参数（两条）。
         assert_eq!(plan.args.len(), 4, "{:?}", plan.args);
         assert_eq!(plan.args[0], "--mcp-config");

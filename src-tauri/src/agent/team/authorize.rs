@@ -6,7 +6,7 @@
 //! （`ToolName`）。把它做成纯函数有三个直接收益：
 //!
 //! 1. 矩阵的 **工具数 × 角色数** 格（工具数 = `mcp::schema::ALL_TOOL_NAMES` 的长度，角色数 =
-//!    `MemberRole` 的两个变体；**当前** 11 × 2 = 22 格）可以在一条表驱动测试里逐格断言
+//!    `MemberRole` 的两个变体；**当前** 12 × 2 = 24 格）可以在一条表驱动测试里逐格断言
 //!    （不需要起库、锁、线程）；格数不在文档里写死：`matrix_is_enforced_cell_by_cell` 用
 //!    `table.len() == ALL_TOOL_NAMES.len() * 2` 自算 + 逐对覆盖，加减工具时它自己跟着变；
 //! 2. 「谁能 close 团队」这类问题的答案只有一处，新增工具时 `match` 会强制补格；
@@ -38,7 +38,7 @@ use crate::common::error::AppError;
 /// | `task_claim` | ❌ | ✅（自有任务；归属判定在 dispatch） |
 /// | `task_update` | ✅ | ✅（自有任务；归属判定在 dispatch） |
 /// | `team_wait` | ✅ | ✅（design §3.2：通常只有队长用，但成员等同伴是合法的） |
-/// | `task_create` / `team_close` / `team_spawn` | ✅ | ❌ |
+/// | `task_create` / `task_retry` / `team_close` / `team_spawn` | ✅ | ❌ |
 pub fn authorize(principal: &TeamPrincipal, tool: ToolName) -> Result<(), AppError> {
     // 队长全通（含 `force_done` 那条越权路径 —— 它自带审计，由 manager 负责）。
     if principal.role == MemberRole::Lead {
@@ -56,7 +56,7 @@ pub fn authorize(principal: &TeamPrincipal, tool: ToolName) -> Result<(), AppErr
         }
         return Ok(());
     }
-    // Worker 列：只有「建任务」「关团队」「建成员」三格被拒。其余放行 —— 其中
+    // Worker 列：只有「建任务」「重试任务」「关团队」「建成员」四格被拒。其余放行 —— 其中
     // `task_claim` / `task_update` 的安全边界是**任务归属**（需要读任务表，判定在
     // `mcp::dispatch`）；`team_wait` 的边界是**团队归属**（只等得到本队成员/任务，
     // 判定在 `wait::build_snapshot` 的 `team_id` 过滤）。
@@ -78,7 +78,7 @@ pub fn authorize(principal: &TeamPrincipal, tool: ToolName) -> Result<(), AppErr
         | ToolName::TaskUpdate
         | ToolName::TaskList
         | ToolName::TeamWait => Ok(()),
-        ToolName::TaskCreate | ToolName::TeamClose | ToolName::TeamSpawn => {
+        ToolName::TaskCreate | ToolName::TaskRetry | ToolName::TeamClose | ToolName::TeamSpawn => {
             Err(AppError::Conflict(format!(
                 "tool `{}` requires the lead role; member `{}` is a worker in team `{}`",
                 spec_for(tool).wire,
@@ -108,16 +108,16 @@ mod tests {
         }
     }
 
-    /// **逐格**：11 工具 × 2 角色 = 22 格，一格一行断言。
+    /// **逐格**：12 工具 × 2 角色 = 24 格，一格一行断言。
     ///
     /// 保护的不变量：design §3.2 的两列（Lead 全通、Worker 除 `task_create` /
-    /// `team_close` / `team_spawn` 外全通）逐格落地。写表而不是写「worker 被拒的三条」
-    /// 是因为**多给权限**是最难在 code review 里看出来的缺陷 —— 表驱动会让新增工具的
-    /// 人必须先回答「worker 能不能调」。
+    /// `task_retry` / `team_close` / `team_spawn` 外全通）逐格落地。写表而不是写「worker
+    /// 被拒的四条」是因为**多给权限**是最难在 code review 里看出来的缺陷 —— 表驱动会让
+    /// 新增工具的人必须先回答「worker 能不能调」。
     #[test]
     fn matrix_is_enforced_cell_by_cell() {
-        let table: [(MemberRole, ToolName, bool); 22] = [
-            // ── Lead 列（11 格，全通过）──
+        let table: [(MemberRole, ToolName, bool); 24] = [
+            // ── Lead 列（12 格，全通过）──
             (MemberRole::Lead, ToolName::TeamStatus, true),
             (MemberRole::Lead, ToolName::TeamList, true),
             (MemberRole::Lead, ToolName::TeamOptions, true),
@@ -126,10 +126,11 @@ mod tests {
             (MemberRole::Lead, ToolName::TaskCreate, true),
             (MemberRole::Lead, ToolName::TaskClaim, false),
             (MemberRole::Lead, ToolName::TaskUpdate, true),
+            (MemberRole::Lead, ToolName::TaskRetry, true),
             (MemberRole::Lead, ToolName::TaskList, true),
             (MemberRole::Lead, ToolName::TeamWait, true),
             (MemberRole::Lead, ToolName::TeamClose, true),
-            // ── Worker 列（11 格：只差 task_create / team_close / team_spawn）──
+            // ── Worker 列（12 格：只差 task_create / task_retry / team_close / team_spawn）──
             (MemberRole::Worker, ToolName::TeamStatus, true),
             (MemberRole::Worker, ToolName::TeamList, true),
             (MemberRole::Worker, ToolName::TeamOptions, true),
@@ -138,6 +139,7 @@ mod tests {
             (MemberRole::Worker, ToolName::TaskCreate, false),
             (MemberRole::Worker, ToolName::TaskClaim, true),
             (MemberRole::Worker, ToolName::TaskUpdate, true),
+            (MemberRole::Worker, ToolName::TaskRetry, false),
             (MemberRole::Worker, ToolName::TaskList, true),
             (MemberRole::Worker, ToolName::TeamWait, true),
             (MemberRole::Worker, ToolName::TeamClose, false),

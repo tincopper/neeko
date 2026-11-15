@@ -61,8 +61,9 @@ use crate::agent::team::manager::{now_millis, TeamManager};
 use crate::agent::team::mcp::schema::{self, spec_for, ToolName, UPDATABLE_STATES};
 use crate::agent::team::options::{options_for, TeamOptions};
 use crate::agent::team::types::{
-    AdmissionTier, ApprovalPolicy, MemberRole, MemberState, Persona, RolePreset, TaskRef, Team,
-    TeamMember, TeamPrincipal, TeamState, TeamTask, TeamTaskState, WorkerChannel, Workspace,
+    AdmissionTier, ApprovalPolicy, Artifact, ArtifactKind, MemberRole, MemberState, Persona,
+    RolePreset, TaskRef, Team, TeamMember, TeamPrincipal, TeamState, TeamTask, TeamTaskState,
+    WorkerChannel, Workspace,
 };
 use crate::agent::team::view::{self, team_status_view, TeamStatusView};
 use crate::agent::team::wait::{WaitOutcome, WaitTargets, WaitUntil};
@@ -330,6 +331,7 @@ fn dispatch_tool(
         ToolName::TaskCreate => create(manager, principal, args),
         ToolName::TaskClaim => claim(manager, principal, args),
         ToolName::TaskUpdate => update(manager, principal, args),
+        ToolName::TaskRetry => retry(manager, principal, args),
         ToolName::TaskList => list(manager, principal, args),
         // 阻塞需要 `.await`：同步入口拿到它只能是编程错误（调用方选错了入口）。
         ToolName::TeamWait => Err(AppError::Unsupported(format!(
@@ -453,6 +455,8 @@ fn send(
     let wire = spec_for(ToolName::TeamSend).wire;
     let to = required_str(wire, args, "to")?;
     let message = required_str(wire, args, "message")?;
+    // R4：正文超限在入口拒绝（前缀不占预算 —— 那是本层拼的）。拒绝文案指向共享区。
+    delivery::ensure_message_fits(message)?;
     let target = member_of_team(manager, &principal.team_id, to)?;
     if target.state == MemberState::Awaiting {
         return Err(AppError::Conflict("target_blocked".into()));
@@ -746,11 +750,35 @@ fn update(
 
     let state = parse_updatable_state(wire, raw_state)?;
     let summary = optional_str(wire, args, "summary")?;
+    let artifacts = artifacts_arg(wire, args)?;
     Ok(ToolReply::Task(manager.update_task(
         &key,
         &principal.member_id,
         state,
         summary,
+        artifacts.as_deref(),
+        now_millis(),
+    )?))
+}
+
+/// `task_retry`：重试失败 / 冻结的任务（队长专属）。
+///
+/// 状态门、预算清零与改派校验全部在 `manager::retry_task`（本地命令与工具面共用同一条
+/// 判据）；本层只做入参翻译与授权。**无副作用**（不碰进程）—— `ToolReply::Task` 在
+/// `effect_for` 里本就映射 `None`，不新增回复变体。
+fn retry(
+    manager: &TeamManager,
+    principal: &TeamPrincipal,
+    args: &serde_json::Value,
+) -> Result<ToolReply, AppError> {
+    let wire = spec_for(ToolName::TaskRetry).wire;
+    let task_id = required_str(wire, args, "task_id")?;
+    let assignee = optional_str(wire, args, "assignee")?;
+    let (key, _) = task_of_team(manager, &principal.team_id, task_id)?;
+    Ok(ToolReply::Task(manager.retry_task(
+        &key,
+        &principal.member_id,
+        assignee,
         now_millis(),
     )?))
 }
@@ -1485,6 +1513,20 @@ fn assignee_arg(
     args: &serde_json::Value,
 ) -> Result<String, AppError> {
     let raw = required_str(wire, args, "assignee")?;
+    assignee_value(manager, team_id, wire, raw)
+}
+
+/// `assignee` 的**唯一**校验实现：`task_create` 的必填指派与 `task_retry` 的可选改派
+/// 都走这里 —— 校验规则（本队成员 / 未 spawn 的计划成员 `name@{team_id}`）只写一遍，
+/// 两个入口不许各写一份。`manager::retry_task` 也会调它（本地命令没有本文件的 vocabulary，
+/// 但校验不能因此变成两份 —— manager → dispatch 的 import 与 `reject_control_chars`
+/// 同一条先例）。
+pub(crate) fn assignee_value(
+    manager: &TeamManager,
+    team_id: &str,
+    wire: &str,
+    raw: &str,
+) -> Result<String, AppError> {
     // 已落库成员：归属判据只有一份（`member_of_team`）。
     if let Ok(member) = member_of_team(manager, team_id, raw) {
         return Ok(member.id);
@@ -1516,6 +1558,55 @@ fn assignee_arg(
         )));
     }
     Ok(format!("{name}@{team_id}"))
+}
+
+/// R2：`task_update.artifacts` 的 wire 解析（`[{"kind": "...", "value": "..."}]`）。
+///
+/// kind 是**封闭枚举**（`ArtifactKind` 的三个变体）；value 必须非空。路径安全（红线 8）
+/// 在 manager 的 `validate_artifacts` —— 本层只负责把 wire 翻译成类型，不重复判据。
+fn artifacts_arg(wire: &str, args: &serde_json::Value) -> Result<Option<Vec<Artifact>>, AppError> {
+    let Some(raw) = args.get("artifacts") else {
+        return Ok(None);
+    };
+    let Some(arr) = raw.as_array() else {
+        return Err(AppError::InvalidInput(format!(
+            "`artifacts` for {wire} must be an array of {{kind, value}}"
+        )));
+    };
+    let mut out = Vec::with_capacity(arr.len());
+    for item in arr {
+        let kind_raw = item.get("kind").and_then(|v| v.as_str()).ok_or_else(|| {
+            AppError::InvalidInput(format!(
+                "each artifact for {wire} needs a string `kind` (path | commit | pull_request)"
+            ))
+        })?;
+        let value = item.get("value").and_then(|v| v.as_str()).ok_or_else(|| {
+            AppError::InvalidInput(format!(
+                "each artifact for {wire} needs a non-empty string `value`"
+            ))
+        })?;
+        if value.is_empty() {
+            return Err(AppError::InvalidInput(format!(
+                "`artifacts[].value` for {wire} must be non-empty"
+            )));
+        }
+        let kind = match kind_raw {
+            "path" => ArtifactKind::Path,
+            "commit" => ArtifactKind::Commit,
+            "pull_request" => ArtifactKind::PullRequest,
+            other => {
+                return Err(AppError::InvalidInput(format!(
+                    "`artifacts[].kind` for {wire} must be one of path | commit | pull_request, \
+                     got `{other}`"
+                )))
+            }
+        };
+        out.push(Artifact {
+            kind,
+            value: value.to_owned(),
+        });
+    }
+    Ok(Some(out))
 }
 
 /// 可选的 `lease_ttl`（秒）：必须是正整数（`<= 0` 会让任务一被认领就到期）。
@@ -2016,6 +2107,7 @@ mod tests {
                 W1,
                 TeamTaskState::Done,
                 Some("ok"),
+                None,
                 now + 10,
             )
             .unwrap();
@@ -2471,6 +2563,222 @@ mod tests {
         assert_eq!(manager.tasks(TEAM).len(), 1);
     }
 
+    /// `task_retry`（任务动作 R1/R2，AC4）：工具面只做授权与寻址；状态门、预算清零、
+    /// 交接内容保留全部由 `manager::retry_task` 兑现 —— 两个入口一条判据。
+    #[test]
+    fn task_retry_by_the_lead_returns_the_task_and_clears_the_runtime() {
+        let manager = seeded();
+        let ToolReply::Task(created) = call(
+            &manager,
+            &lead(),
+            "task_create",
+            &json!({"title": "build", "body": "run cargo build", "assignee": W1}),
+        )
+        .unwrap() else {
+            panic!("必须是 Task");
+        };
+        manager.claim_task(&created.key(), W1, 1_000).unwrap();
+        manager
+            .update_task(
+                &created.key(),
+                W1,
+                TeamTaskState::Failed,
+                Some("boom"),
+                None,
+                1_100,
+            )
+            .unwrap();
+
+        let ToolReply::Task(retried) = call(
+            &manager,
+            &lead(),
+            "task_retry",
+            &json!({"task_id": created.id}),
+        )
+        .unwrap() else {
+            panic!("task_retry 必须返回 Task");
+        };
+        assert_eq!(retried.state, TeamTaskState::Pending);
+        assert_eq!(retried.owner, None);
+        assert_eq!(retried.claimed_at, None);
+        assert_eq!(retried.reclaim_count, 0);
+        // 交接内容不洗掉：summary 是下一轮接手者的输入。
+        assert_eq!(retried.summary.as_deref(), Some("boom"));
+    }
+
+    /// 授权矩阵：`task_retry` 是 Lead 专属格 —— worker 调用被拒，任务原地不动。
+    #[test]
+    fn task_retry_by_a_worker_is_rejected_by_the_matrix() {
+        let manager = seeded();
+        let ToolReply::Task(created) = call(
+            &manager,
+            &lead(),
+            "task_create",
+            &json!({"title": "t", "body": "b", "assignee": W1}),
+        )
+        .unwrap() else {
+            panic!("必须是 Task");
+        };
+        manager.claim_task(&created.key(), W1, 1_000).unwrap();
+        manager
+            .update_task(&created.key(), W1, TeamTaskState::Failed, None, None, 1_100)
+            .unwrap();
+
+        let err = call(
+            &manager,
+            &worker(W1),
+            "task_retry",
+            &json!({"task_id": created.id}),
+        )
+        .unwrap_err();
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+        assert_eq!(
+            manager.task(&created.key()).unwrap().state,
+            TeamTaskState::Failed
+        );
+    }
+
+    /// `done` 拒绝的文案穿过工具面原样可达 —— 模型据此换动作（建新任务 + 声明依赖）
+    /// 而不是重试到死。
+    #[test]
+    fn task_retry_rejects_a_done_task_with_an_actionable_message() {
+        let manager = seeded();
+        let ToolReply::Task(created) = call(
+            &manager,
+            &lead(),
+            "task_create",
+            &json!({"title": "t", "body": "b", "assignee": W1}),
+        )
+        .unwrap() else {
+            panic!("必须是 Task");
+        };
+        manager.claim_task(&created.key(), W1, 1_000).unwrap();
+        manager
+            .update_task(&created.key(), W1, TeamTaskState::Done, None, None, 1_100)
+            .unwrap();
+
+        let err = call(
+            &manager,
+            &lead(),
+            "task_retry",
+            &json!({"task_id": created.id}),
+        )
+        .unwrap_err();
+        assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+        assert!(
+            format!("{err}").contains("task_create"),
+            "done 的拒绝要指向建新任务：{err}"
+        );
+    }
+
+    /// R2 穿过工具面：`task_update.artifacts` 的 wire 形状解析（kind 封闭枚举）。
+    /// 路径安全（红线 8）在 manager 判 —— 这里用 commit 类覆盖 wire→落库 这条腿。
+    #[test]
+    fn task_update_persists_artifacts_from_the_wire() {
+        let manager = seeded();
+        let ToolReply::Task(created) = call(
+            &manager,
+            &lead(),
+            "task_create",
+            &json!({"title": "t", "body": "b", "assignee": W1}),
+        )
+        .unwrap() else {
+            panic!("必须是 Task");
+        };
+        manager.claim_task(&created.key(), W1, 1_000).unwrap();
+
+        let ToolReply::Task(updated) = call(
+            &manager,
+            &worker(W1),
+            "task_update",
+            &json!({
+                "task_id": created.id,
+                "state": "done",
+                "summary": "conclusion only",
+                "artifacts": [
+                    {"kind": "commit", "value": "abc123"},
+                    {"kind": "pull_request", "value": "PR-42"}
+                ]
+            }),
+        )
+        .unwrap() else {
+            panic!("必须是 Task");
+        };
+        assert_eq!(updated.artifacts.len(), 2);
+        assert_eq!(updated.artifacts[0].kind, ArtifactKind::Commit);
+        assert_eq!(updated.artifacts[1].value, "PR-42");
+    }
+
+    /// R2：未知 kind 在 wire 层就被拒（封闭枚举，不留给 manager 二次裁决）。
+    #[test]
+    fn task_update_rejects_an_unknown_artifact_kind() {
+        let manager = seeded();
+        let ToolReply::Task(created) = call(
+            &manager,
+            &lead(),
+            "task_create",
+            &json!({"title": "t", "body": "b", "assignee": W1}),
+        )
+        .unwrap() else {
+            panic!("必须是 Task");
+        };
+        manager.claim_task(&created.key(), W1, 1_000).unwrap();
+
+        let err = call(
+            &manager,
+            &worker(W1),
+            "task_update",
+            &json!({
+                "task_id": created.id,
+                "state": "done",
+                "artifacts": [{"kind": "url", "value": "https://example.com"}]
+            }),
+        )
+        .unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(
+            format!("{err}").contains("path | commit | pull_request"),
+            "{err}"
+        );
+    }
+
+    /// R3 改派穿过工具面：带 `assignee` 时落库成新的被指派者（同一份 `assignee_value`
+    /// 校验 —— 计划成员也合法）。
+    #[test]
+    fn task_retry_reassigns_when_given_an_assignee() {
+        let manager = seeded();
+        let ToolReply::Task(created) = call(
+            &manager,
+            &lead(),
+            "task_create",
+            &json!({"title": "t", "body": "b", "assignee": W1}),
+        )
+        .unwrap() else {
+            panic!("必须是 Task");
+        };
+        manager.claim_task(&created.key(), W1, 1_000).unwrap();
+        manager
+            .update_task(&created.key(), W1, TeamTaskState::Failed, None, None, 1_100)
+            .unwrap();
+
+        let ToolReply::Task(retried) = call(
+            &manager,
+            &lead(),
+            "task_retry",
+            &json!({"task_id": created.id, "assignee": W2}),
+        )
+        .unwrap() else {
+            panic!("必须是 Task");
+        };
+        assert_eq!(retried.assignee.as_deref(), Some(W2));
+        let stored = manager
+            .store()
+            .get_task(&TaskRef::new(TEAM, &created.id))
+            .unwrap()
+            .expect("任务必须已落库");
+        assert_eq!(stored.assignee.as_deref(), Some(W2));
+    }
+
     /// R3.2：`assignee` 允许「**计划中的**成员」—— 成员行还没 spawn，但 id 形状合法。
     ///
     /// 这是解开顺序死锁的关键：参与人数由任务板决定，所以必须能「先写任务带指派 →
@@ -2726,7 +3034,7 @@ mod tests {
         // 队 A 的 t1 由 W1 认领并声明完成。
         manager.claim_task(&a_key, W1, 1_000).unwrap();
         manager
-            .update_task(&a_key, W1, TeamTaskState::Done, Some("ok"), 1_100)
+            .update_task(&a_key, W1, TeamTaskState::Done, Some("ok"), None, 1_100)
             .unwrap();
         assert_eq!(manager.task(&a_key).unwrap().state, TeamTaskState::Done);
         assert_eq!(
@@ -2774,7 +3082,14 @@ mod tests {
         let other_key = TaskRef::new(OTHER, "t1");
         manager.claim_task(&other_key, "x9@tm_2", 1_000).unwrap();
         manager
-            .update_task(&other_key, "x9@tm_2", TeamTaskState::Done, None, 1_100)
+            .update_task(
+                &other_key,
+                "x9@tm_2",
+                TeamTaskState::Done,
+                None,
+                None,
+                1_100,
+            )
             .unwrap();
 
         // 队 A 的 t2 依赖 `t1`，而**队 A 根本没有 t1**。
@@ -2808,6 +3123,7 @@ mod tests {
                 W1,
                 TeamTaskState::Done,
                 Some("ok"),
+                None,
                 1_500,
             )
             .unwrap();
@@ -3955,6 +4271,7 @@ mod tests {
                 W1,
                 TeamTaskState::Done,
                 Some("ok"),
+                None,
                 1_100,
             )
             .unwrap();
@@ -4124,7 +4441,11 @@ mod tests {
         let member = manager.member(&spawned.member_id).expect("member");
 
         // ① env：只由两个 id 决定（不依赖任何请求态）。
-        let env = identity::member_env(&member.team_id, &member.id);
+        let env = identity::member_env(
+            &member.team_id,
+            &member.id,
+            &crate::common::paths::team_share_dir_under(&std::env::temp_dir(), &member.team_id),
+        );
         let keys: Vec<&str> = env.iter().map(|(key, _)| key.as_str()).collect();
         assert!(keys.contains(&identity::TEAM_ID_ENV), "{env:?}");
         assert!(keys.contains(&identity::TEAM_MEMBER_ID_ENV), "{env:?}");
@@ -4167,10 +4488,13 @@ mod tests {
             .expect("落库的成员行");
         // 主体表由**库里的 hash** 作 key（与 2.5b 的 `principals` 同形状）。
         // env 的值也从两个 id 推导（`member_env` 是唯一实现处，不靠回复传），
-        let env: std::collections::HashMap<String, String> =
-            identity::member_env(&member.team_id, &member.id)
-                .into_iter()
-                .collect();
+        let env: std::collections::HashMap<String, String> = identity::member_env(
+            &member.team_id,
+            &member.id,
+            &crate::common::paths::team_share_dir_under(&std::env::temp_dir(), &member.team_id),
+        )
+        .into_iter()
+        .collect();
         let expected = TeamPrincipal {
             team_id: env
                 .get(identity::TEAM_ID_ENV)

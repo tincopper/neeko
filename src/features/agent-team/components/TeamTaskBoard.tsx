@@ -33,10 +33,17 @@ interface TeamTaskBoardProps {
   tasksTruncated: boolean;
   /** 打开任务详情（`teamId` 在前：任务 id 只在队内唯一）。 */
   onOpenTask: (teamId: string, taskId: string, title: string) => void;
+  /**
+   * 重试任务（`undefined` = 宿主没接，卡片不渲染重试按钮）。
+   *
+   * 可重试判据在 `taskBoard.ts::canRetry`（卡片内部判，与任务详情共用同一份），
+   * 这里只把动作接进来 —— 宿主注入 handler，卡片不知道「重试之后会发生什么」。
+   */
+  onRetryTask?: (task: TaskCard) => void;
 }
 
 const TeamTaskBoard: React.FC<TeamTaskBoardProps> = React.memo(
-  ({ tasks, members, tasksTruncated, onOpenTask }) => {
+  ({ tasks, members, tasksTruncated, onOpenTask, onRetryTask }) => {
     const board = useMemo(() => buildTaskBoard(tasks), [tasks]);
     const memberById = useMemo(
       () => new Map(members.map((member) => [member.memberId, member])),
@@ -91,6 +98,7 @@ const TeamTaskBoard: React.FC<TeamTaskBoardProps> = React.memo(
                       assignee={task.assignee ? (memberById.get(task.assignee) ?? null) : null}
                       now={now}
                       onOpen={onOpenTask}
+                      onRetry={onRetryTask}
                     />
                   ))}
                 </ul>

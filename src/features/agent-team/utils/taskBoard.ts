@@ -128,6 +128,19 @@ export function taskStateLabel(state: TeamTaskState): string {
 }
 
 /**
+ * 「重试」动作的**唯一**判据（看板卡片与任务详情共用）。
+ *
+ * 只有 `failed`（成员显式声明失败）与 `blocked`（回收超限的冻结态）能重试：
+ * 前者是「这一轮没做成」，后者已经对自动回收永久关闭 —— 人工重试是它唯一的出路。
+ * `done` 是终态（重开等于撤销「完成」声明，正确动作是建新任务并声明依赖）；
+ * 其余在飞态不是「失败了」。与后端 `manager::retry_task` 的状态门**同源**：
+ * 后端集合变了，这里先在 `canRetry` 的 8 态穷尽测试里红。
+ */
+export function canRetry(state: TeamTaskState): boolean {
+  return state === 'failed' || state === 'blocked';
+}
+
+/**
  * 待批的任务数（面板头部的「M 待批」）。
  *
  * 与「列的计数」**同源但不同用途**：列计数是「这一列有几行」，这里是「有多少条活在等人动手」。

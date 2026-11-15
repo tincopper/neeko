@@ -681,6 +681,7 @@ mod tests {
                         A,
                         TeamTaskState::Done,
                         Some("ok"),
+                        None,
                         1_100,
                     )
                     .unwrap();
@@ -787,6 +788,7 @@ mod tests {
                         B,
                         TeamTaskState::Done,
                         Some("b 做的"),
+                        None,
                         2_000_100,
                     )
                     .unwrap();

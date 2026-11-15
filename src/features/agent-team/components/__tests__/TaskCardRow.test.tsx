@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { MemberStatusView } from '@/shared/types/team';
 import { createTaskCard } from '@/testing/factories';
@@ -48,5 +48,53 @@ describe('TaskCardRow — 已指派标签', () => {
   it('指派者不在花名册里 ⇒ 不猜名字（与 owner 的「查不到就不显示」同一纪律）', () => {
     renderCard(createTaskCard({ id: 't1', assignee: 'gone@tm_1' }), null);
     expect(screen.queryByText(/已指派/)).not.toBeInTheDocument();
+  });
+});
+
+describe('TaskCardRow — 重试动作', () => {
+  it('failed 卡渲染重试按钮，点击回调带完整任务（且不触发打开详情）', () => {
+    const onRetry = vi.fn();
+    const onOpen = vi.fn();
+    const task = createTaskCard({ id: 't9', state: 'failed' });
+    render(
+      <TaskCardRow
+        task={task}
+        owner={null}
+        assignee={null}
+        now={0}
+        onOpen={onOpen}
+        onRetry={onRetry}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '重试任务 t9' }));
+    expect(onRetry).toHaveBeenCalledWith(task);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('不可重试（pending）卡没有重试按钮 —— 不做灰按钮', () => {
+    render(
+      <TaskCardRow
+        task={createTaskCard({ id: 't1' })}
+        owner={null}
+        assignee={null}
+        now={0}
+        onOpen={() => {}}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /重试任务/ })).not.toBeInTheDocument();
+  });
+
+  it('宿主没接重试动作 ⇒ 可重试状态也不渲染（不承诺一个没接线的动作）', () => {
+    render(
+      <TaskCardRow
+        task={createTaskCard({ id: 't1', state: 'blocked' })}
+        owner={null}
+        assignee={null}
+        now={0}
+        onOpen={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /重试任务/ })).not.toBeInTheDocument();
   });
 });

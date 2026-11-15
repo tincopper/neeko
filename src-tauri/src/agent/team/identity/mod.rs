@@ -21,7 +21,7 @@ pub mod preamble;
 pub mod token;
 pub mod verdict;
 
-pub use env::{member_env, TEAM_ID_ENV, TEAM_MEMBER_ID_ENV, TEAM_TOKEN_ENV};
+pub use env::{member_env, TEAM_ID_ENV, TEAM_MEMBER_ID_ENV, TEAM_SHARE_DIR_ENV, TEAM_TOKEN_ENV};
 pub use preamble::{preamble, with_persona, MAX_PERSONA_CHARS, MAX_PREAMBLE_CHARS};
 pub use token::{hash_token, new_token, resolve_principal};
 pub use verdict::{attribution_verdict, AttributionVerdict};

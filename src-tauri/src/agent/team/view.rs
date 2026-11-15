@@ -834,6 +834,7 @@ mod tests {
                 W1,
                 TeamTaskState::Done,
                 Some("完成回报：全部通过"),
+                None,
                 1_000,
             )
             .unwrap();
@@ -1324,6 +1325,7 @@ mod tests {
                 W1,
                 TeamTaskState::InProgress,
                 None,
+                None,
                 now,
             )
             .expect("in_progress");
@@ -1364,6 +1366,7 @@ mod tests {
                 W1,
                 TeamTaskState::Done,
                 Some("done"),
+                None,
                 now + 20,
             )
             .expect("done");
@@ -1487,6 +1490,7 @@ mod tests {
                 W1,
                 TeamTaskState::InProgress,
                 None,
+                None,
                 1_100,
             )
             .expect("in_progress");
@@ -1498,6 +1502,7 @@ mod tests {
                 &TaskRef::new(TEAM, "t_await"),
                 W1,
                 TeamTaskState::AwaitingApproval,
+                None,
                 None,
                 1_100,
             )
@@ -1511,6 +1516,7 @@ mod tests {
                 W1,
                 TeamTaskState::Done,
                 Some("done"),
+                None,
                 1_100,
             )
             .expect("done");
@@ -1547,6 +1553,7 @@ mod tests {
                     W1,
                     TeamTaskState::InProgress,
                     None,
+                    None,
                     1_100,
                 )
                 .expect("in_progress");
@@ -1562,6 +1569,7 @@ mod tests {
                 &TaskRef::new(TEAM, last),
                 W1,
                 TeamTaskState::AwaitingApproval,
+                None,
                 None,
                 1_100,
             )
@@ -1715,6 +1723,7 @@ mod tests {
                     &TaskRef::new(TEAM, &id),
                     W1,
                     TeamTaskState::Done,
+                    None,
                     None,
                     1_100,
                 )
@@ -1888,6 +1897,7 @@ mod tests {
                 &TaskRef::new(TEAM, "t1"),
                 W1,
                 TeamTaskState::Done,
+                None,
                 None,
                 2_000,
             )

@@ -196,6 +196,29 @@ pub fn delivery_text(from: &str, message: &str) -> String {
     format!("[team] {from}: {message}")
 }
 
+/// `team_send.message` **正文**的字节上限（初值 2 KiB，2026-11-15 裁决）。
+///
+/// 只算正文：投递文本的前缀 `[team] {from}: ` 由本层拼装、不占模型的表达预算 ——
+/// 这条算法钉在 `tests::the_prefix_does_not_count_toward_the_message_budget`。
+pub const MESSAGE_MAX_BYTES: usize = 2048;
+
+/// R4：message 超限在**入口拒绝**，不是截断 —— 截掉半条指令比拒绝它危险得多。
+///
+/// 文案指向共享区（成员 env 里的 `NEEKO_TEAM_SHARE_DIR`）：把长内容写成文件，
+/// `team_send` 只发结论 + 路径。恰好等于上限通过（闭区间，与 summary 同一条纪律）。
+pub fn ensure_message_fits(message: &str) -> Result<(), AppError> {
+    if message.len() <= MESSAGE_MAX_BYTES {
+        return Ok(());
+    }
+    Err(AppError::InvalidInput(format!(
+        "message is {} bytes, over the {}-byte cap. Do not paste long content here: write it \
+         into the team share area (${}) and send only the conclusion plus the file path",
+        message.len(),
+        MESSAGE_MAX_BYTES,
+        crate::agent::team::identity::TEAM_SHARE_DIR_ENV,
+    )))
+}
+
 /// 真正投递：两笔写入 + 中间的间隔。
 ///
 /// 阻塞 150ms，调用方必须在阻塞池里调（红线 3）。
@@ -356,5 +379,36 @@ mod tests {
                 other => panic!("None 通道不得得到写入计划（{submit:?}）：{other:?}"),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod message_budget_tests {
+    use super::*;
+
+    /// R4：**前缀不占预算** —— 正好 2 KiB 的正文合法，投递文本（带 `[team] {from}: `）
+    /// 比它长得多。这条边界是「模型能用的表达量」的定义，钉死在测试里。
+    #[test]
+    fn the_prefix_does_not_count_toward_the_message_budget() {
+        let body = "x".repeat(MESSAGE_MAX_BYTES);
+        ensure_message_fits(&body).expect("恰好等于上限必须通过（闭区间）");
+        let delivered = delivery_text("w1@tm_1", &body);
+        assert!(
+            delivered.len() > MESSAGE_MAX_BYTES,
+            "投递文本带前缀，本来就比正文长 —— 预算只看正文"
+        );
+    }
+
+    /// AC4：超限 ⇒ `InvalidInput`，文案指向共享区 env。
+    #[test]
+    fn an_oversized_message_is_rejected_pointing_at_the_share_area() {
+        let body = "x".repeat(MESSAGE_MAX_BYTES + 1);
+        let err = ensure_message_fits(&body).unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        let message = format!("{err}");
+        assert!(
+            message.contains(crate::agent::team::identity::TEAM_SHARE_DIR_ENV),
+            "文案必须指向共享区：{message}"
+        );
     }
 }

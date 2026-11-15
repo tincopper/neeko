@@ -1,12 +1,16 @@
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, RotateCcw } from 'lucide-react';
 import React from 'react';
 
+import { cn } from '@/lib/utils';
 import { useConfig } from '@/shared/contexts';
+import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import type { TaskDetail } from '@/shared/types/team';
 import { invokeErrorMessage } from '@/shared/utils/invokeError';
 import { MarkdownPreview } from '@/ui/MarkdownPreview';
 
 import { fetchTaskDetail } from '../api/teamApi';
+import { useTaskRetry } from '../hooks/useTaskRetry';
+import { canRetry } from '../utils/taskBoard';
 
 import Chip from './Chip';
 
@@ -75,6 +79,19 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
     load();
   }, [load]);
 
+  // R6：产物路径点击复制（交接改引用制 —— 路径就是要被下一个成员使用的实体）。
+  const copy = useCopyToClipboard();
+
+  // 详情头部的「重试」：判据 canRetry 与看板卡片同源（failed / blocked 才渲染）。
+  // 成功后除了 hook 里的快照刷新，还要 reload 本地详情 —— 这个 tab 的数据是自持的
+  // （点开才拉），不经过 store，脉冲刷不到它。
+  const { busy: retryBusy, error: retryError, retry } = useTaskRetry();
+  const handleRetry = React.useCallback(() => {
+    void retry(teamId, taskId).then((ok) => {
+      if (ok) reload();
+    });
+  }, [retry, teamId, taskId, reload]);
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg-secondary">
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
@@ -83,6 +100,22 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
         </span>
         <span className="shrink-0 font-mono text-micro text-text-muted">{taskId}</span>
         <span className="ml-auto" />
+        {detail && canRetry(detail.state) ? (
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={retryBusy}
+            data-testid="task-retry"
+            className={cn(
+              'flex items-center gap-1 rounded-md border border-border px-2 py-1 text-micro font-semibold text-text-secondary',
+              'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
+              retryBusy && 'cursor-default opacity-60',
+            )}
+          >
+            <RotateCcw size={12} aria-hidden="true" />
+            重试
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={reload}
@@ -92,6 +125,14 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
           <RefreshCw size={13} aria-hidden="true" />
         </button>
       </header>
+      {retryError ? (
+        <p
+          role="alert"
+          className="shrink-0 border-b border-border px-3 py-1.5 text-micro text-accent-red"
+        >
+          {retryError}
+        </p>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading && !detail ? (
@@ -127,17 +168,29 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
               </section>
             ) : null}
 
-            {/* 产物引用 */}
+            {/* 产物引用（R6）：点击复制路径 —— 交接改引用制后，路径就是要被下一个成员
+                使用的实体；chip 上带 kind 标注。不新开 tab 类型（PRD 的边界）。 */}
             {detail.artifacts.length > 0 ? (
               <section aria-label="产物" className="flex flex-col gap-1.5">
                 <h3 className="text-meta font-semibold text-text-secondary">产物</h3>
                 <div className="flex flex-wrap gap-1">
                   {detail.artifacts.map((artifact) => (
-                    <Chip key={`${artifact.kind}-${artifact.value}`} tone="outline">
+                    <button
+                      key={`${artifact.kind}-${artifact.value}`}
+                      type="button"
+                      onClick={() => copy(artifact.value, 'Artifact path')}
+                      data-testid="artifact-chip"
+                      title={`${artifact.kind}：点击复制 ${artifact.value}`}
+                      className={cn(
+                        'rounded-md border border-border bg-bg-primary px-2 py-0.5 text-micro text-text-secondary',
+                        'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
+                      )}
+                    >
                       {artifact.value}
-                    </Chip>
+                    </button>
                   ))}
                 </div>
+                <p className="text-micro text-text-muted">点击复制路径（引用制：对端按路径读取）</p>
               </section>
             ) : null}
 

@@ -1,6 +1,6 @@
 //! 团队域的 `#[tauri::command]`（**极薄**，红线 6）。
 //!
-//! 十条命令：
+//! 十一条命令：
 //!
 //! | 命令 | 方向 | 载荷 |
 //! | --- | --- | --- |
@@ -8,6 +8,7 @@
 //! | `team_list` | 读 | **这台机器上**的团队清单（重启后重开自己的队靠它；有界 + `truncated`）|
 //! | `team_snapshot` | 读 | 团队行 + 花名册 + 任务板列（**无 `body`**，红线 4）|
 //! | `team_task_detail` | 读 | 列视图 + 派活正文（点开才拉）|
+//! | `team_task_retry` | 写 | 失败 / 冻结的任务重试回 `pending`（人工重试 = 新预算；可改派；`done` 拒绝）|
 //! | `team_member_detail` | 读 | 成员行 + 它的任务 + 待批队列 + 最近 50 条事件（点开才拉）|
 //! | `team_launchable_agents` | 读 | **这台机器上**每个可选 agent 一条 `{ agentId, refusal }`（面板置灰依据）|
 //! | `team_options` | 读 | **这个队**允许谁 / 还能加几个 / 缺省值（建队前 `team_id = None` → 全部可启动）|
@@ -15,9 +16,9 @@
 //! | `team_resume` | 写 | 用成员**自己的原生会话 id**重建进程（`team_id` + 可选 `member_id`）|
 //! | `team_delete` | 写 | **永久删除**一个 `closed` 的队（`active` / `closing` 一律拒，返回 `()`）|
 //!
-//! 十条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，可选项面在
+//! 十一条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，可选项面在
 //! [`crate::agent::team::options`]，建队/起进程在 `bootstrap` + `execution`，准入判定在
-//! [`crate::agent::team::admission`]，删除的状态判据在 [`crate::agent::team::manager`]，
+//! [`crate::agent::team::admission`]，删除与重试的状态判据在 [`crate::agent::team::manager`]，
 //! 恢复的语义在 [`crate::agent::team::resume`]（红线 6：命令里不留一条恢复规则）。
 //!
 //! # 两条写命令的不可逆程度不同
@@ -80,7 +81,7 @@ use crate::agent::team::execution;
 use crate::agent::team::manager::now_millis;
 use crate::agent::team::options::{self, TeamOptions};
 use crate::agent::team::resume::{self, TeamResumeReport};
-use crate::agent::team::types::{MemberRole, RolePreset, TaskRef, TeamConfig, TeamState};
+use crate::agent::team::types::{MemberRole, RolePreset, TaskRef, TeamConfig, TeamState, TeamTask};
 use crate::agent::team::view::{self, MemberDetail, TaskDetail, TeamSnapshot};
 use crate::common::error::AppError;
 use crate::common::runtime::run_blocking_result;
@@ -637,6 +638,37 @@ pub async fn team_task_detail(
     run_blocking_result(move || view::task_detail(&manager, &TaskRef::new(team_id, task_id))).await
 }
 
+/// 重试一个失败 / 冻结的任务（**本机用户**的面板入口）。
+///
+/// 与队长经 MCP 调 `task_retry` 是**同一条** `manager::retry_task` 判据：状态门
+/// （只接 `failed` / `blocked`，`done` 拒绝并指向建新任务）、预算清零（人工重试 =
+/// 新预算，仍受 [`crate::agent::team::lease::MAX_RECLAIM_COUNT`] 约束）与改派校验
+/// （`assignee` 走 `assignee_value`，与 `task_create` 同一份）都在 manager —— 本层
+/// 只做寻址与调度（红线 6）。actor 是本队的队长成员行（`lead@{team}`，id 形状由
+/// [`crate::agent::team::bootstrap::LEAD_NAME`] 固定）—— 审计行因此与工具面的重试
+/// 同构，面板的步骤轨迹不用区分「谁点的」。
+#[tauri::command]
+pub async fn team_task_retry(
+    state: tauri::State<'_, AppStateWrapper>,
+    team_id: String,
+    task_id: String,
+    assignee: Option<String>,
+) -> Result<TeamTask, AppError> {
+    let team_id = require_id(team_id, "team_id")?;
+    let task_id = require_id(task_id, "task_id")?;
+    let manager = Arc::clone(&state.team_manager);
+    let actor = format!("{}@{team_id}", crate::agent::team::bootstrap::LEAD_NAME);
+    run_blocking_result(move || {
+        manager.retry_task(
+            &TaskRef::new(team_id, task_id),
+            &actor,
+            assignee.as_deref(),
+            now_millis(),
+        )
+    })
+    .await
+}
+
 /// 单个**成员**的详情（**点开才拉**）：花名册行 + 任务 + 待批队列 + 最近事件。
 ///
 /// 与 `team_snapshot` 的分工是红线 4 的时间维度：花名册是「每行恒定小字段」，每次脉冲都要
@@ -946,9 +978,29 @@ mod tests {
             created_at: 1,
         };
 
+        // 重试命令的载荷：`team_task_retry` 返回更新后的**任务行**（前端据此就地刷新）。
+        let retried_task = TeamTask {
+            id: "t1".into(),
+            team_id: "tm_1".into(),
+            title: "do it".into(),
+            body: "body".into(),
+            state: crate::agent::team::types::TeamTaskState::Pending,
+            owner: None,
+            assignee: Some("w1@tm_1".into()),
+            workspace: crate::agent::team::types::Workspace::Shared,
+            depends_on: vec![],
+            claimed_at: None,
+            lease_ttl: 1800,
+            summary: None,
+            summary_truncated: false,
+            artifacts: vec![],
+            reclaim_count: 0,
+        };
+
         let payloads = [
             ("TeamSession", serde_json::to_value(&session).unwrap()),
             ("RolePreset", serde_json::to_value(&role).unwrap()),
+            ("TeamTask", serde_json::to_value(&retried_task).unwrap()),
             (
                 "LaunchableAgent",
                 serde_json::to_value(&launchable).unwrap(),

@@ -636,6 +636,9 @@ impl AppStateWrapper {
 
         // Live session registry：与 `AgentChatManager` 共用同一个 store 实例（同一张 cursor 表）。
         // 它在组合根组装、被两个生产者（chat 事件流 / 终端 PTY）与三条命令共享。
+        // 团队共享区的根也在这里取一次（与成员隔离配置目录同一个来源）：结构体字面量里
+        // `storage_manager` 会被 move 进字段，取晚了就是 borrow-after-move。
+        let team_share_root = storage_manager.get_config_dir().to_path_buf();
         let live_sessions = Arc::new(
             crate::live_sessions::Registry::new(session_store.clone())
                 .with_history(Arc::clone(&terminal_history)
@@ -694,10 +697,12 @@ impl AppStateWrapper {
             //
             // `load` 而不是 `new`：它与 `new` 的唯一区别就是多一步 hydrate，而团队域
             // 的内存镜像就是库的缓存。用 `new` 会得到「库里有、内存里没有」的第二个真相源。
+            // 共享区根与成员隔离配置目录同源（`get_config_dir`）：env、校验、磁盘三方一个字符串。
             team_manager: Arc::new(
-                crate::agent::team::TeamManager::load(crate::agent::team::TeamStore::with_pool(
-                    library_store.pool().clone(),
-                ))
+                crate::agent::team::TeamManager::load(
+                    crate::agent::team::TeamStore::with_pool(library_store.pool().clone()),
+                    team_share_root,
+                )
                 .expect("Failed to hydrate the team manager from the library pool"),
             ),
             // 同上：池在 `library_store` 里已经跑过迁移链（含 v18 的工作项建表），

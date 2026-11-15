@@ -16,6 +16,7 @@ import type {
   TeamResumeReport,
   TeamSession,
   TeamSnapshot,
+  TeamTask,
 } from '@/shared/types/team';
 
 /**
@@ -31,6 +32,7 @@ import type {
  * | [`fetchTeamOptions`] | `team_options` | 这个队允许谁当成员 / 上限 / 三个缺省值 |
  * | [`fetchTeamSnapshot`] | `team_snapshot` | 团队 + 花名册 + 任务板列（**无 task body**）|
  * | [`fetchTaskDetail`] | `team_task_detail` | 列视图 + 派活正文（**点开才拉**）|
+ * | [`retryTask`] | `team_task_retry` | 重试后的任务行（failed/blocked → pending，可改派）|
  * | [`fetchMemberDetail`] | `team_member_detail` | 成员行 + 它的任务 + 待批队列 + 最近 50 条事件（**点开才拉**）|
  * | [`closeTeam`] | `team_close` | 本次真关掉了谁 + 诚实面 `notes` |
  * | [`resumeTeam`] | `team_resume` | 一次恢复的四个桶（真的起了 / 已有进程 / 只能新开 / 失败）|
@@ -228,6 +230,30 @@ export function deleteTeam(teamId: string): Promise<void> {
  */
 export function fetchTaskDetail(teamId: string, taskId: string): Promise<TaskDetail> {
   return invoke<TaskDetail>('team_task_detail', { teamId, taskId });
+}
+
+/**
+ * 重试一个失败 / 冻结的任务（`team_task_retry`）。
+ *
+ * # 判据全部在后端（前端不重算）
+ *
+ * 只接 `failed` / `blocked`；`done` 是终态（错误文本会指向「建新任务 + 声明依赖」）；
+ * 重试把任务放回 `pending`、清 owner 与回收计数，**交接内容（`summary` / `body`）保留**。
+ * 面板的动作入口按 [`canRetry`](../utils/taskBoard.ts) 渲染 —— 它与后端状态门同源，
+ * 别在这里再判一遍。
+ *
+ * # 两个参数都必填 + 显式 null
+ *
+ * 与 [`fetchTaskDetail`] 同一条寻址纪律（任务 id 只在队内唯一）；
+ * `assignee` 缺省传 `null` = 保留原指派，给了 = 改派（校验在后端，与 `task_create`
+ * 同一份规则 —— 允许尚不存在的计划成员）。
+ */
+export function retryTask(
+  teamId: string,
+  taskId: string,
+  assignee?: string | null,
+): Promise<TeamTask> {
+  return invoke<TeamTask>('team_task_retry', { teamId, taskId, assignee: assignee ?? null });
 }
 
 /**

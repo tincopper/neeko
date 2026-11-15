@@ -1,3 +1,4 @@
+import { RotateCcw } from 'lucide-react';
 import React, { useCallback, useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -5,7 +6,7 @@ import type { MemberStatusView, TaskCard } from '@/shared/types/team';
 
 import { taskLease } from '../utils/leaseText';
 import { memberBadge } from '../utils/memberBadge';
-import { taskStateLabel } from '../utils/taskBoard';
+import { canRetry, taskStateLabel } from '../utils/taskBoard';
 import { workspaceLabel } from '../utils/workspaceLabel';
 
 import Chip from './Chip';
@@ -45,26 +46,38 @@ interface TaskCardRowProps {
    * 调用点不必知道当前在哪个队。
    */
   onOpen: (teamId: string, taskId: string, title: string) => void;
+  /**
+   * 重试任务（`team_task_retry`；`undefined` = 宿主没接重试动作）。
+   *
+   * 只在 [`canRetry`]（`failed` / `blocked`）为真时渲染 —— **不做灰按钮**：
+   * 一个灰掉的「重试」会让用户去找一个不存在的动作，而不渲染只说「这个状态下没有
+   * 这个动作」。判据是纯函数，卡片与任务详情共用同一份。
+   */
+  onRetry?: (task: TaskCard) => void;
 }
 
 const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(
-  ({ task, owner, assignee, now, onOpen }) => {
+  ({ task, owner, assignee, now, onOpen, onRetry }) => {
     const handleClick = useCallback(
       () => onOpen(task.teamId, task.id, task.title),
       [onOpen, task.teamId, task.id, task.title],
     );
     const lease = useMemo(() => taskLease(task, now), [task, now]);
     const ownerBadge = owner ? memberBadge(owner) : null;
+    const retryable = onRetry !== undefined && canRetry(task.state);
+    const handleRetry = useCallback(() => onRetry?.(task), [onRetry, task]);
 
     return (
-      <li>
+      // 重试是卡片的**兄弟**元素而不是子元素：卡片整体是一个 button，嵌套 button
+      // 是无效 HTML（浏览器会把内层剥出来，行为变得不可预测）。
+      <li className="flex items-stretch gap-1">
         <button
           type="button"
           onClick={handleClick}
           data-task-id={task.id}
           aria-label={`打开任务 ${task.id} 的详情：${task.title}`}
           className={cn(
-            'w-full rounded-md border border-border bg-bg-primary px-2 py-1.5 text-left',
+            'w-full min-w-0 rounded-md border border-border bg-bg-primary px-2 py-1.5 text-left',
             'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
           )}
         >
@@ -130,6 +143,20 @@ const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(
             </div>
           )}
         </button>
+        {retryable ? (
+          <button
+            type="button"
+            onClick={handleRetry}
+            data-retry-task-id={task.id}
+            aria-label={`重试任务 ${task.id}`}
+            className={cn(
+              'shrink-0 self-center rounded-md border border-border p-1.5 text-text-secondary',
+              'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
+            )}
+          >
+            <RotateCcw size={13} aria-hidden="true" />
+          </button>
+        ) : null}
       </li>
     );
   },
