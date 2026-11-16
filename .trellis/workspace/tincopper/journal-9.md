@@ -902,3 +902,34 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 472: team: 成员图标复用 tab 栏的 agent 图标
+<!-- trellis-session: v=2 fp=1ef1d2822c7ad4a0 -->
+
+**Date**: 2026-11-16
+**Task**: team: 成员图标复用 tab 栏的 agent 图标
+**Branch**: `feat-team`
+
+### Summary
+
+团队花名册/选择卡的 agent 图标改为从 AgentConfig.icon 解析（与 tab 栏同源），删除手写品牌表
+
+### Main Changes
+
+- agent-team/AgentIcon: 新增 useMemberAgentIcon（按 agentId 从 agentStore 取 icon），图标交给 features/agent 的 AgentIcon
+- agent-team/MemberAvatar: 有没有图标与图标本身共用同一派生点（去掉 hasBrandIcon 手写表）
+- 测试: 新增 AgentIcon.test.tsx（pi/codebuddy/png preset/无图标/未知 agent/装饰场景）+ 花名册图标用例
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team: 317 passed
+- [OK] pnpm check:quick: 15/15 护栏通过
+
+### Status
+
+[OK] **Completed**

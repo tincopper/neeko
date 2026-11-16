@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 471
+- **Total Sessions**: 472
 - **Last Active**: 2026-11-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~904 | Active |
+| `journal-9.md` | ~935 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 472 | 2026-11-16 | team: 成员图标复用 tab 栏的 agent 图标 | - | `feat-team` |
 | 471 | 2026-11-16 | team: 成员级恢复会话即打开会话 | - | `feat-team` |
 | 470 | 2026-11-15 | 实施 handoff-by-reference：共享区 + artifacts 可写 + 拒绝截断（TDD） | - | `feat-team` |
 | 469 | 2026-11-15 | 实施 task-actions retry 闭环（TDD） | - | `feat-team` |
