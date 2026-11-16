@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 473
+- **Total Sessions**: 474
 - **Last Active**: 2026-11-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~967 | Active |
+| `journal-9.md` | ~1000 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 474 | 2026-11-16 | team: 团队改名（team_rename + 列表行内编辑） | - | `feat-team` |
 | 473 | 2026-11-16 | team: 建队时可自定义团队名称 | - | `feat-team` |
 | 472 | 2026-11-16 | team: 成员图标复用 tab 栏的 agent 图标 | - | `feat-team` |
 | 471 | 2026-11-16 | team: 成员级恢复会话即打开会话 | - | `feat-team` |

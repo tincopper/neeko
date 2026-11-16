@@ -965,3 +965,36 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 474: team: 团队改名（team_rename + 列表行内编辑）
+<!-- trellis-session: v=2 fp=3971a8928de361b0 -->
+
+**Date**: 2026-11-16
+**Task**: team: 团队改名（team_rename + 列表行内编辑）
+**Branch**: `feat-team`
+
+### Summary
+
+新增 team_rename 命令与列表行内重命名；任何状态都可改（名字不参与判据）
+
+### Main Changes
+
+- manager::rename_team: trim + 空名 InvalidInput + 同名幂等 + 先库后镜像 + rename_team 审计
+- commands::team_rename + lib.rs 注册（阻塞池，返回 ()）
+- 前端: api renameTeam / hooks useTeamRename / TeamListRow 行内编辑（InlineRenameInput）
+- spec: team-domain.md §3.5.3 改名判据表
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test --lib agent::team: 495 passed
+- [OK] pnpm vitest run src/features/agent-team: 330 passed
+- [OK] pnpm check:quick: 28/28 护栏通过
+
+### Status
+
+[OK] **Completed**
