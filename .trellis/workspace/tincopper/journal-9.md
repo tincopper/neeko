@@ -1030,3 +1030,35 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 476: team: 改名同步已打开的 tab 标题
+<!-- trellis-session: v=2 fp=6957ac21973df903 -->
+
+**Date**: 2026-11-16
+**Task**: team: 改名同步已打开的 tab 标题
+**Branch**: `feat-team`
+
+### Summary
+
+team_rename 成功后重写队长终端 tab 与看板 tab 的标题（跨域投影追上）
+
+### Main Changes
+
+- shared/utils/teamTabTitles: 队长/看板 tab 标题的唯一构造点（建 tab 与改名共用）
+- app/dock/wrappers/teamRenameTabs: 按 ptySessionId / data.teamId 认人后重写标题
+- editorStore: team-board 允许合并 teamName（显示名跟随改名，teamId 仍是地址）
+- useTeamRename.onRenamed 只在成功后调；TeamPanel/wrapper 接线
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] vitest src/app/dock/wrappers + src/features/agent-team: 357 passed
+- [OK] pnpm check:quick: 28/28 护栏通过
+
+### Status
+
+[OK] **Completed**

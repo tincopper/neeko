@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 475
+- **Total Sessions**: 476
 - **Last Active**: 2026-11-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~1032 | Active |
+| `journal-9.md` | ~1064 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 476 | 2026-11-16 | team: 改名同步已打开的 tab 标题 | - | `feat-team` |
 | 475 | 2026-11-16 | team: 面板头也能改名 + 双击手势 | - | `feat-team` |
 | 474 | 2026-11-16 | team: 团队改名（team_rename + 列表行内编辑） | - | `feat-team` |
 | 473 | 2026-11-16 | team: 建队时可自定义团队名称 | - | `feat-team` |
