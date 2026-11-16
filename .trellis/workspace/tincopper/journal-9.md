@@ -1062,3 +1062,33 @@ team_rename 成功后重写队长终端 tab 与看板 tab 的标题（跨域投�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 477: team: 删除分配图头部图例
+<!-- trellis-session: v=2 fp=33754e3665870e4c -->
+
+**Date**: 2026-11-16
+**Task**: team: 删除分配图头部图例
+**Branch**: `feat-team`
+
+### Summary
+
+TeamFlowGraph 头部只留标题，删掉「实线 = 派发 · 虚线 = 依赖」图例
+
+### Main Changes
+
+- TeamFlowGraph: 移除图例 span
+- 测试: 图例断言反转为「不再存在」（挡回潮），describe 改为「边」
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team: 334 passed
+- [OK] pnpm check:quick: 28/28 护栏通过
+
+### Status
+
+[OK] **Completed**
