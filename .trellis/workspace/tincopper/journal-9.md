@@ -870,3 +870,35 @@ Session summary was not supplied.
 ### Next Steps
 
 - 全部 planning 任务已清。后续候选：C11「重试起队长进程」入口单独立项；阶段 C 手工验证（codex 403/粘贴）随下次手测。
+
+
+## Session 471: team: 成员级恢复会话即打开会话
+<!-- trellis-session: v=2 fp=65e4c6e25e3a3288 -->
+
+**Date**: 2026-11-16
+**Task**: team: 成员级恢复会话即打开会话
+**Branch**: `feat-team`
+
+### Summary
+
+成员级 team_resume 成功后自动接管新 PTY；整队恢复仍然只起进程
+
+### Main Changes
+
+- memberTerminal: 新增 resumedTerminalTarget（恢复后要接管哪个句柄的唯一判据）
+- useTeamResume: resume 回传 TeamResumeReport|null，onSettled 可 await 且被 await
+- useTeamResumePanel: 吸收 refreshSnapshot/reloadList/onOpenTerminal，成员级成功后落到新 PTY
+- TeamPanel: 接线收窄，恢复组合点整体下沉到 hook（行数回到 300 红线内）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team src/app/dock/wrappers src/features/agent-chat: 900 passed
+- [OK] pnpm check:quick: 15/15 护栏通过
+
+### Status
+
+[OK] **Completed**
