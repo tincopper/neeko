@@ -1092,3 +1092,34 @@ TeamFlowGraph 头部只留标题，删掉「实线 = 派发 · 虚线 = 依赖�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 478: team: 建队面板页首先填团队名
+<!-- trellis-session: v=2 fp=999eb3b644b27cba -->
+
+**Date**: 2026-11-16
+**Task**: team: 建队面板页首先填团队名
+**Branch**: `feat-team`
+
+### Summary
+
+团队名从配置区移到建队页首，排在队长选择之前
+
+### Main Changes
+
+- 新增 TeamNameField 组件（可选名 + 留空 = 工作区目录名）
+- TeamLaunchPanel: 页首第一格 + 副标题改为「先起名，三步…」
+- TeamConfigSection: 移除名字字段（本区只装 TeamConfig 字段）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] vitest src/features/agent-team: 335 passed（含 DOM 顺序断言）
+- [OK] pnpm check:quick: 28/28 护栏通过
+
+### Status
+
+[OK] **Completed**
