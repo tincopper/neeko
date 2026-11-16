@@ -933,3 +933,35 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 473: team: 建队时可自定义团队名称
+<!-- trellis-session: v=2 fp=a50a319e99f1c81a -->
+
+**Date**: 2026-11-16
+**Task**: team: 建队时可自定义团队名称
+**Branch**: `feat-team`
+
+### Summary
+
+建队表单新增「团队名称（可选）」；留空仍由后端取工作区目录名
+
+### Main Changes
+
+- useTeamConfigDraft: 草稿新增 name（原文）+ name 投影（trim，全空白归 null）
+- useStartTeam: start() 增加 name 入参 → start_team_session.name
+- TeamConfigSection: 团队名称输入框排在第一行（身份字段，不是 TeamConfig 的键）
+- utils/teamCreateSummary: 摘要从组件抽成纯函数（名字在最前），并加单测
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team: 327 passed
+- [OK] pnpm check:quick: 15/15 护栏通过
+
+### Status
+
+[OK] **Completed**
