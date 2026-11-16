@@ -998,3 +998,35 @@ Session summary was not supplied.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 475: team: 面板头也能改名 + 双击手势
+<!-- trellis-session: v=2 fp=81a746ae142483ee -->
+
+**Date**: 2026-11-16
+**Task**: team: 面板头也能改名 + 双击手势
+**Branch**: `feat-team`
+
+### Summary
+
+改名入口同步到团队视图头部；两处共用同一份提交判据并加双击手势
+
+### Main Changes
+
+- utils/renameDraft: renameDraftCommit 单一判据（空名/未改 ⇒ null）
+- TeamHeader: 内联编辑 + 改名按钮（可选 prop onRenameTeam）+ 双击队名
+- TeamView: 绑定 teamId 后下传（useCallback 保持 memo）
+- TeamListRow: 改用共享判据 + 双击队名；useTeamRename.rename 收窄为 void
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team: 334 passed
+- [OK] pnpm check:quick: 28/28 护栏通过
+
+### Status
+
+[OK] **Completed**
