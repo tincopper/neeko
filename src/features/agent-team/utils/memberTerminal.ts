@@ -146,3 +146,41 @@ export function hasResumableMember(
 ): boolean {
   return members.some((member) => openTerminalAction(member).kind === 'resume');
 }
+
+/** 恢复成功后要接管的东西（`openExistingTerminalTab` 的三个参数，projectId 由宿主补）。 */
+export interface ResumedTerminalTarget {
+  /** **新铸的** PTY 句柄（旧的那个已随进程消失）。 */
+  terminalId: string;
+  /** tab 标题：成员名（用户要在 tab 栏认出是谁）。 */
+  title: string;
+  /** 会话所属 agent（tab 栏品牌图标）；没有就是通用终端图标。 */
+  agentId: string | undefined;
+}
+
+/**
+ * 「恢复会话 = 打开会话」的第二半：恢复之后要接管**哪个** PTY（`null` = 什么都不开）。
+ *
+ * # 输入是**重取之后**的花名册，不是那份报告
+ *
+ * `TeamResumeReport.resumed` 只说「这几个成员的进程起来了」。新的 `terminalId` 是后端在
+ * 这次恢复里**新铸的**，只存在于重取后的快照里 —— 所以调用方必须先等刷新落地
+ * （`useTeamResume` 会 `await onSettled`），再拿新快照问本函数。
+ *
+ * # 为什么没有句柄就返回 `null`，而不是退一步
+ *
+ * 两种退步都会骗人：拿旧的（已随进程消失的）`terminalId` 去接管，症状是用户报的
+ * 「会话 id 找不到」；退到只读历史，症状是「点了恢复，对话没有回来」。`cold` / `failed`
+ * 的成员就是真的没有新进程 —— 那时**零点一个东西**才是诚实的。
+ */
+export function resumedTerminalTarget(
+  members: readonly Pick<MemberStatusView, 'memberId' | 'name' | 'agentId' | 'session'>[],
+  memberId: string,
+): ResumedTerminalTarget | null {
+  const member = members.find((candidate) => candidate.memberId === memberId);
+  if (member === undefined) return null;
+  // 句柄只在 live 时非空（`session` 是注册表现场查的结果），所以这一个判据就够了 ——
+  // 与花名册 / 抽屉取句柄的口径相同。
+  const terminalId = member.session.terminalId;
+  if (terminalId === null) return null;
+  return { terminalId, title: member.name, agentId: member.agentId };
+}

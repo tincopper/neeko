@@ -426,11 +426,84 @@ describe('花名册 — 恢复会话（第三态）', () => {
         memberId: 'w1@tm_1',
       }),
     );
-    // 恢复**不**接管一个不存在的 PTY，也**不**降级成只读历史。
+    // 恢复**不**接管一个不存在的 PTY，也**不**降级成只读历史（这里重取的快照仍没有进程：
+    // 后端还没在成员行上写 terminalId ⇒ 没有可接管的东西）。
     expect(onOpenTerminal).not.toHaveBeenCalled();
     expect(onOpenHistory).not.toHaveBeenCalled();
     // 结果必须被说出来（四个桶的一句话；这里是「恢复了 1 个」）。
     await waitFor(() => expect(onShowToast).toHaveBeenCalledWith('恢复 1 个成员', 'info'));
+  });
+
+  /**
+   * 「恢复会话就是打开会话」—— 用户报障：点了恢复，进程起来了，按钮变成「打开会话」，
+   * 但屏幕上什么都没变（还得再点一次）。
+   *
+   * 判据：一次点击落到**那个成员自己的**新 PTY 上（句柄来自重取后的快照，不是旧的那一个）。
+   * 恢复只对**成员级**这一个动作成立；整队恢复不这么做（见下一个 describe —— 一次弹 N 个
+   * tab 会盖住用户正在看的东西）。
+   */
+  it('成员级恢复成功 ⇒ 刷新后自动接管它**新起**的那个 PTY（不用再点一次）', async () => {
+    const liveAfter = createMemberStatus({
+      memberId: 'w1@tm_1',
+      name: 'backend',
+      state: 'idle',
+      session: { live: true, terminalId: 'term-w1-new' },
+      agentId: 'qoder',
+      agentSessionId: 'native-w1',
+      resumable: true,
+    });
+    const before = createTeamSnapshot({ members: [RESUMABLE] });
+    const after = createTeamSnapshot({ members: [liveAfter] });
+    // 首拉给离线快照（按钮就是「恢复会话」），恢复后的那次重取才给活进程。
+    let snapshotPulls = 0;
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_resume') return EMPTY_REPORT;
+      snapshotPulls += 1;
+      return snapshotPulls === 1 ? before : after;
+    });
+
+    useTeamStore.setState({ teamId: 'tm_1', snapshot: before });
+    const onOpenTerminal = vi.fn();
+    render(<TeamPanel onOpenTerminal={onOpenTerminal} />);
+
+    fireEvent.click(within(rowOf('backend')).getByRole('button', { name: '恢复会话：backend' }));
+
+    // 句柄是**新铸的**（`term-w1-new`）：拿旧 id 去接管会得到用户报的「会话 id 找不到」。
+    await waitFor(() =>
+      expect(onOpenTerminal).toHaveBeenCalledWith('term-w1-new', 'backend', 'qoder', 'p1'),
+    );
+    expect(onOpenTerminal).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * 面板头也能改名（同一个 `team_rename`，同一份提交判据）。
+   *
+   * 列表行与头部是**两条入口、一条动作**：在队里发现名字起错了，不该先「返回列表」再改。
+   */
+  it('头部「改名」→ 行内编辑 → Enter ⇒ team_rename(当前 teamId, 新名)', async () => {
+    const snapshot = createTeamSnapshot({ members: [RESUMABLE] });
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_rename') return undefined;
+      return snapshot;
+    });
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+
+    render(<TeamPanel onShowToast={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '重命名团队 refactor' }));
+
+    // 编辑态：输入框预填当前名字
+    const input = screen.getByRole('textbox');
+    expect(input).toHaveValue('refactor');
+    fireEvent.change(input, { target: { value: '  新队名  ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('team_rename', {
+        teamId: 'tm_1',
+        name: '新队名',
+      }),
+    );
   });
 
   it('封存 + 有原生 id：只有「查看记录」，没有「恢复会话」（意图不许被撤销）', () => {
@@ -506,6 +579,53 @@ describe('面板头 — 恢复团队', () => {
         memberId: null,
       }),
     );
+  });
+
+  /**
+   * 整队恢复**不**自动接管任何终端 —— 与成员级刻意不同。
+   *
+   * 一个 4 人队会同时起 4 个进程；再自动开 4 个 tab，用户面前那一屏就被换掉了（他刚才在看
+   * 什么已经不重要了）。整队恢复只回答「几个回来了」，具体开哪个由用户自己按 「打开会话」
+   * —— 那时那些行已经是可点的。
+   */
+  it('整队恢复即使成员都回来了也不弹 tab（开哪个由用户自己按）', async () => {
+    const liveAfter = createMemberStatus({
+      memberId: 'w1@tm_1',
+      name: 'backend',
+      session: { live: true, terminalId: 'term-w1-new' },
+      agentSessionId: 'native-w1',
+      resumable: true,
+    });
+    const before = createTeamSnapshot({ members: [resumableMember] });
+    const after = createTeamSnapshot({ members: [liveAfter] });
+    let snapshotPulls = 0;
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_resume') {
+        return {
+          teamId: 'tm_1',
+          resumed: ['w1@tm_1'],
+          skippedAlreadyLive: [],
+          cold: [],
+          failed: [],
+        };
+      }
+      snapshotPulls += 1;
+      return snapshotPulls === 1 ? before : after;
+    });
+    useTeamStore.setState({ teamId: 'tm_1', snapshot: before });
+
+    const onOpenTerminal = vi.fn();
+    render(<TeamPanel onOpenTerminal={onOpenTerminal} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '恢复团队 refactor' }));
+
+    // 等这次恢复整个落地（花名册已按新快照重画成可点），再断言一个 tab 都没开。
+    await waitFor(() =>
+      expect(
+        within(rowOf('backend')).getByRole('button', { name: '打开会话：backend' }),
+      ).toBeInTheDocument(),
+    );
+    expect(onOpenTerminal).not.toHaveBeenCalled();
   });
 
   it('封存的团队没有这个入口（只读快照，恢复会撤销用户的决定）', () => {

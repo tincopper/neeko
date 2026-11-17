@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createMemberStatus } from '@/testing/factories';
 
-import { hasResumableMember, openTerminalAction } from '../memberTerminal';
+import { hasResumableMember, openTerminalAction, resumedTerminalTarget } from '../memberTerminal';
 
 /**
  * 「打开会话」的**五态**判据。
@@ -213,5 +213,51 @@ describe('hasResumableMember', () => {
 
   it('空花名册 ⇒ false（不渲染一个点了只会「恢复 0 个成员」的按钮）', () => {
     expect(hasResumableMember([])).toBe(false);
+  });
+});
+
+/**
+ * 恢复成功之后要接管**哪个** PTY。
+ *
+ * 「恢复会话 = 打开会话」是一条动作，但它跨两次事实：`team_resume` 只回答「起了几个进程」
+ * （`TeamResumeReport.resumed` 是成员 id），新 PTY 的句柄是**后端在这次恢复里新铸的**，
+ * 只出现在重取后的快照里。所以这条判据的输入是「刷新之后的花名册」，不是那份报告。
+ */
+describe('resumedTerminalTarget', () => {
+  it('刷新后成员已活 ⇒ 给出可接管的句柄（标题用成员名，agentId 给 tab 图标）', () => {
+    const members = [
+      createMemberStatus({ memberId: 'lead@tm_1', name: 'lead' }),
+      createMemberStatus({
+        memberId: 'w1@tm_1',
+        name: 'backend',
+        agentId: 'qoder',
+        session: { live: true, terminalId: 'term-w1-new' },
+      }),
+    ];
+
+    expect(resumedTerminalTarget(members, 'w1@tm_1')).toEqual({
+      terminalId: 'term-w1-new',
+      title: 'backend',
+      agentId: 'qoder',
+    });
+  });
+
+  it('刷新后仍没有进程（`cold` / `failed` / 快照还没跟上）⇒ `null`', () => {
+    // 没有句柄就什么都不开：拿旧的（已随进程消失的）terminalId 去接管，症状是用户报的
+    // 「会话 id 找不到」；退到只读历史则是「点了恢复，对话没有回来」。
+    const members = [
+      createMemberStatus({
+        memberId: 'w1@tm_1',
+        session: { live: false, terminalId: null },
+      }),
+    ];
+
+    expect(resumedTerminalTarget(members, 'w1@tm_1')).toBeNull();
+  });
+
+  it('成员不在花名册里（换队 / 已被删）⇒ `null`，不猜一个别人的终端', () => {
+    const members = [createMemberStatus({ memberId: 'other@tm_1' })];
+
+    expect(resumedTerminalTarget(members, 'w1@tm_1')).toBeNull();
   });
 });

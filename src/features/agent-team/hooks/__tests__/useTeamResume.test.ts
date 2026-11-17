@@ -72,6 +72,73 @@ describe('useTeamResume', () => {
     });
   });
 
+  /**
+   * 报告必须回给调用方（不只是变成一句 toast）。
+   *
+   * 「恢复会话 = 打开会话」需要知道**这一次真的起来了谁**：`resumed` 里的成员才有新 PTY 可接管，
+   * `cold` / `failed` 没有 —— 那些成员如果也去接管，用户会得到一次空点击。
+   * 只读 toast 字符串反推是不可能的（那是给人读的句子）。
+   */
+  it('成功 ⇒ 返回报告（调用方据此决定接管谁的终端），失败 / 被闸门忽略 ⇒ `null`', async () => {
+    mockInvoke.mockResolvedValue({
+      teamId: 'tm_1',
+      resumed: ['w1@tm_1'],
+      skippedAlreadyLive: ['w2@tm_1'],
+      cold: [],
+      failed: [],
+    });
+
+    const { result } = renderHook(() => useTeamResume());
+    const ok = await act(() => result.current.resume('tm_1', 'w1@tm_1'));
+
+    expect(ok).toEqual({
+      teamId: 'tm_1',
+      resumed: ['w1@tm_1'],
+      skippedAlreadyLive: ['w2@tm_1'],
+      cold: [],
+      failed: [],
+    });
+
+    mockInvoke.mockImplementation(async () => {
+      throw 'Conflict: team `tm_1` is sealed';
+    });
+    const failed = await act(() => result.current.resume('tm_1', 'w1@tm_1'));
+    // 失败没有报告：调用方不得从一次失败里推导出「该打开谁的终端」。
+    expect(failed).toBeNull();
+  });
+
+  /**
+   * `onSettled` 必须是**可 await** 的，并且在 `resume` 落地之前跑完。
+   *
+   * 恢复之后要接管的 terminalId 是**后端在这次恢复里新铸的**，它只存在于重取后的快照里。
+   * 不 await 刷新，调用方拿着上一条快照去找句柄，看到的是 null（成员那时还没活）——
+   * 于是「恢复会话 = 打开会话」退化成「起了一个进程，用户什么也没看到」。
+   */
+  it('`onSettled` 被 await（刷新先于报告交回调用方）', async () => {
+    mockInvoke.mockResolvedValue({
+      teamId: 'tm_1',
+      resumed: ['w1@tm_1'],
+      skippedAlreadyLive: [],
+      cold: [],
+      failed: [],
+    });
+
+    let settled = false;
+    const onSettled = vi.fn(async () => {
+      await Promise.resolve();
+      settled = true;
+    });
+    const { result } = renderHook(() => useTeamResume({ onSettled }));
+
+    await act(async () => {
+      await result.current.resume('tm_1', 'w1@tm_1');
+    });
+
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    // 报告交回时刷新已经完成（否则调用方读到的是旧快照）。
+    expect(settled).toBe(true);
+  });
+
   it('失败 ⇒ 后端原文渲染 + toast error + 仍然 `onSettled`（事实可能已经变了）', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
       if (cmd === 'team_resume') {
@@ -106,8 +173,8 @@ describe('useTeamResume', () => {
     );
 
     const { result } = renderHook(() => useTeamResume());
-    let first: Promise<void> | null = null;
-    let second: Promise<void> | null = null;
+    let first: Promise<unknown> | null = null;
+    let second: Promise<unknown> | null = null;
     act(() => {
       first = result.current.resume('tm_1', 'w1@tm_1');
       second = result.current.resume('tm_1', 'w2@tm_1');
@@ -120,7 +187,8 @@ describe('useTeamResume', () => {
     await act(async () => {
       releases[0]();
       await first;
-      await second;
+      // 被闸门忽略的那一次没有报告（不是「恢复了 0 个」—— 它根本没发生）。
+      expect(await second).toBeNull();
     });
     expect(result.current.resuming).toBe(false);
   });

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 
+import type { TeamResumeReport } from '@/shared/types/team';
 import { invokeErrorMessage } from '@/shared/utils/invokeError';
 
 import { resumeTeam as resumeTeamCommand } from '../api/teamApi';
@@ -25,6 +26,12 @@ import { describeResumeReport } from '../utils/resumeReport';
  * 整队恢复会一次起 N 个进程。N 条 toast 会把屏幕刷满而且只存在两秒；而「恢复了几个、几个
  * 只能新开、谁失败了」恰好是一句话能装下的 —— 装不下时那句里也点了名（见 `resumeReport`）。
  *
+ * # 为什么报告也**回给调用方**（不只是变成一句话）
+ *
+ * 「恢复会话 = 打开会话」需要知道这一次**真的起来了谁**：`resumed` 里的成员才有新 PTY
+ * 可接管。从 toast 那句话反推是不可能的（那是给人读的句子），所以在同一份报告上多给一个
+ * 出口。
+ *
  * # 一次只编排一个恢复（入口共用一个实例）
  *
  * 恢复的入口有两个（头部的整队、花名册 / 抽屉的成员级），它们共用 TeamPanel 里**同一个**
@@ -34,8 +41,14 @@ import { describeResumeReport } from '../utils/resumeReport';
  */
 export interface ResumeTeamOptions {
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
-  /** 一次恢复请求落地后的通知（**成败都发**）：让宿主持有的快照 / 清单重取。 */
-  onSettled?: () => void;
+  /**
+   * 一次恢复请求落地后的通知（**成败都发**）：让宿主持有的快照 / 清单重取。
+   *
+   * 返回 Promise 时会被 **await**：恢复之后要接管的 `terminalId` 是后端这次新铸的，只
+   * 存在于重取后的快照里。不 await 就让调用方去拿句柄，它看到的是上一条快照（那时成员
+   * 还没活）—— 「恢复会话 = 打开会话」会静默地退化成「起了一个进程，屏幕上什么都没变」。
+   */
+  onSettled?: () => void | Promise<void>;
 }
 
 export interface ResumeTeamState {
@@ -53,8 +66,12 @@ export interface ResumeTeamState {
    *
    * 从不向调用方抛错（面板的事件处理器里抛错只会变成 unhandled rejection）：失败通过
    * `resumeError` + toast 呈现，成功通过 toast 呈现。在飞期间调用是**无操作**（见文件头）。
+   *
+   * @returns 这次恢复的报告（四个桶）；**失败 / 被在飞闸门忽略 ⇒ `null`** ——
+   *          两者都没有「该接管谁的终端」这个答案，调用方不得从 `null` 推导任何东西。
+   *          交回报告时 `onSettled`（若有）已 await 完毕，所以快照已经是恢复之后的。
    */
-  resume: (teamId: string, memberId?: string | null) => Promise<void>;
+  resume: (teamId: string, memberId?: string | null) => Promise<TeamResumeReport | null>;
 }
 
 export function useTeamResume(options: ResumeTeamOptions = {}): ResumeTeamState {
@@ -71,13 +88,14 @@ export function useTeamResume(options: ResumeTeamOptions = {}): ResumeTeamState 
   const inflight = useRef(false);
 
   const resume = useCallback(
-    async (teamId: string, memberId?: string | null): Promise<void> => {
-      if (inflight.current) return;
+    async (teamId: string, memberId?: string | null): Promise<TeamResumeReport | null> => {
+      if (inflight.current) return null;
       inflight.current = true;
       setResuming(true);
       setResumeError(null);
+      let report: TeamResumeReport | null = null;
       try {
-        const report = await resumeTeamCommand(teamId, memberId);
+        report = await resumeTeamCommand(teamId, memberId);
         // 报告 → 一句话：四个桶都可能非空，只报 `resumed.length` 会把「3 个只能新开」藏起来。
         onShowToast?.(describeResumeReport(report), 'info');
       } catch (err) {
@@ -88,8 +106,11 @@ export function useTeamResume(options: ResumeTeamOptions = {}): ResumeTeamState 
         inflight.current = false;
         setResuming(false);
         // 成败都通知宿主重取：失败也可能已经改了别的成员。
-        onSettled?.();
+        // `await`：报告里的成员刚起进程，新 `terminalId` 只在重取后的快照里。
+        await onSettled?.();
       }
+      // 失败时 `report` 仍是 `null`（try 里没赋值成功）—— 失败没有「该开谁」这个答案。
+      return report;
     },
     [onShowToast, onSettled],
   );

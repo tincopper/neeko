@@ -57,15 +57,13 @@ import TeamView from './TeamView';
  * 实例，所以「有没有恢复在飞」只有一个答案。它的错误与关闭错误同族：入口在团队视图里，
  * 所以错误也挂在团队视图的顶栏（与 `closeError` 并列，不互相遮蔽）。
  *
- * 三个裁决都落在「失败时不假装成功」上：
+ * # 「恢复会话 = 打开会话」（只对成员级）
  *
- * 1. **二次确认**（[`TeamConfirmDialog`]）：后果在按下去之前就说清 —— 关闭侧与后端 `notes`
- *    同口径（直接关进程 / 在飞任务回 `pending` / worktree 保留 / 队长终端不关），删除侧
- *    与 `manager::delete_team` 同口径（只对 `closed` 可用 / 级联删成员与审计 / 不可撤销 /
- *    worktree 仍保留）；
- * 2. **失败不清 store**：有成员关不掉时团队停在 `closing`，那是可查询、可重试的真实状态；
- *    清掉面板只会让「成员还在跑」这件事不可见（见 [`useTeamClose`]）；
- * 3. **`closing` 是一条横幅**：带「重试关闭」，走同一条关闭路径（同一次确认）。
+ * 成员级恢复的落点是它那个终端（开关与判据都在 `useTeamResumePanel`，含整队为什么不这么做）。
+ *
+ * 三个裁决都落在「失败时不假装成功」上（细则见 [`TeamConfirmDialog`] / [`useTeamClose`] /
+ * [`TeamView`] 各自的文档）：二次确认说清后果；失败不清 store（团队停在可查询的 `closing`）；
+ * `closing` 是一条带「重试关闭」的横幅。
  */
 interface TeamPanelProps {
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
@@ -143,19 +141,13 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
     const { list, loading: listLoading, error: listError, reload: reloadList } = useTeamList();
 
     /**
-     * 用户按了「返回列表」的那个队。
+     * 导航状态（就近管理，不进 store）：
      *
-     * 视图由「当前队」与「从哪个队返回」**派生**，不另存一个 `showList` 布尔：两个字段
-     * 同时存在就会有不一致的那一帧（换了队但布尔还是 true）。
+     * - `browsingFrom`：用户按了「返回列表」的那个队 —— 视图由「当前队」与它**派生**
+     *   （另存一个 `showList` 布尔会多出一帧不一致）；
+     * - `creating`：列表态里**推入的创建流**（建队是一次性动作，不该永久占着首屏）。
      */
     const [browsingFrom, setBrowsingFrom] = useState<string | null>(null);
-    /**
-     * 列表态的两种形态：清单（主面）与**推入的创建流**。
-     *
-     * 「列表优先 + 视图推入」取代旧的上下分栏 —— 建队是一次性动作，不该永久占着
-     * 面板首屏；列表才是主人，创建是一个按钮推入的整屏视图，做完（成功 openTeam）
-     * 或返回（导航，不清草稿）即走。
-     */
     const [creating, setCreating] = useState(false);
 
     // 破坏性动作（关闭 / 删除）的组合点：确认状态 + 两个执行 hook + 唯一分派。
@@ -177,26 +169,8 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
 
     const showingTeamId = teamId !== null && browsingFrom !== teamId ? teamId : null;
 
-    /**
-     * 恢复（`team_resume`）的组合点：一个面板级在飞闸门 + 两个入口（整队 / 单成员）。
-     *
-     * 放在这里（与 `useTeamDestructives` 并列）而不是分散在两个入口的组件里：头部只恢复
-     * 整队、花名册只恢复成员，但「有没有一次恢复在飞」是一个面板级的事实 —— 两个入口
-     * 共用同一道闸门，在飞期间再按只会被忽略（不会起第二个编排）。
-     */
-    const handleResumeSettled = useCallback(() => {
-      // 快照与列表都要重取：成员活性变了（花名册的判据就靠它），列表行的徽标也变了。
-      void refresh();
-      reloadList();
-    }, [refresh, reloadList]);
-
-    const { resuming, resumeError, resumeTeam, resumeMember } = useTeamResumePanel({
-      showingTeamId,
-      onShowToast,
-      onSettled: handleResumeSettled,
-    });
-
     // 跨域回调的绑定层（项目落键 / 历史会话三参→四参）：四个落键点同口径，见 hook 文档。
+    // 它必须比恢复的组合早定义一步：恢复成功后的落点就是它里面的 `onOpenTerminal`。
     const crossDomain = useTeamCrossDomainCallbacks({
       showingTeamId,
       snapshot,
@@ -207,6 +181,20 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
       onOpenLeaderTerminal,
     });
 
+    /**
+     * 恢复（`team_resume`）的组合点：一个面板级在飞闸门 + 两个入口（整队 / 单成员）。
+     *
+     * 放在这里（与 `useTeamDestructives` 并列）而不是分散在两个入口的组件里：头部只恢复
+     * 整队、花名册只恢复成员，但「有没有一次恢复在飞」是一个面板级的事实。成员级的落点
+     * （恢复完直接接管新 PTY）也在那个 hook 里 —— 它要求刷新已 await 落地。
+     */
+    const { resuming, resumeError, resumeTeam, resumeMember } = useTeamResumePanel({
+      showingTeamId,
+      onShowToast,
+      refreshSnapshot: refresh,
+      reloadList,
+      onOpenTerminal: crossDomain.onOpenTerminal,
+    });
     const handleOpenTeam = useCallback(
       (id: string) => {
         // 先在**列表里打开**的那个队：`openTeam` 对同一个 id 是幂等的，所以「返回列表后再点开
