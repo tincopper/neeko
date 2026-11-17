@@ -169,6 +169,22 @@ describe('UnitTeamEntries — 行内容（AC1 / AC3）', () => {
     expect(within(teamRow('refactor')).getByText('Lead · 把任务板接上')).toBeInTheDocument();
   });
 
+  /**
+   * 队长活着但**还没有真标题**（占位标题形如 `claude-code · neeko`）：那是身份回显，不是名字。
+   *
+   * 印到行上就是侧栏早就消灭过的那种噪声行（design §10：占位只负责让 tab / 历史有字可读）。
+   * 也不能退成「Lead not running」—— 那是在说假话（进程确实活着）。
+   */
+  it('活队长但只有占位标题 ⇒ `Lead · running`，不把占位串当名字', () => {
+    seedTeams(team());
+    seedSessions(session({ title: 'claude-code · neeko', titleSource: 'placeholder' }));
+    renderEntries();
+
+    const row = teamRow('refactor');
+    expect(within(row).getByText('Lead · running')).toBeInTheDocument();
+    expect(within(row).queryByText(/claude-code · neeko/)).not.toBeInTheDocument();
+  });
+
   it('队长未运行（会话已停止 / 该队没有队长行）⇒ Lead not running', () => {
     seedTeams(
       team({ teamId: 'tm_stopped', name: 'stopped crew' }),

@@ -102,14 +102,25 @@ export function isListedSession(session: SessionView): boolean {
 }
 
 /**
- * 前台会话已实际列出的单元集合（父行据此让出选中态）。
+ * 前台会话已被某个**子项**代表的单元集合（父行据此让出选中态）。
  *
  * 父行不能只看 tab 身份：未输入 / 还没名字的会话不会出现在子列表，
- * 此时让出填充色会让「当前」在整个侧栏消失。判据与 `sessionsByUnit` 同源。
+ * 此时让出填充色会让「当前」在整个侧栏消失。
  *
- * **成员会话照样计入**（它同样「有标题、被用过」）：父行让出选中底之后，
- * 「当前」的提示由**团队行**承担（`foregroundTeamId` → 团队行标「当前」）。
- * 若把成员会话排除在外，父行会与团队行**同时**高亮，变成两条「当前」。
+ * # 两种子项都算（就是这一条决定了会不会双亮）
+ *
+ * | 前台会话 | 代表它的子项 | 判据 |
+ * | --- | --- | --- |
+ * | 用户自己的、已列出的会话 | `SessionListRow` | `isListedSession` |
+ * | **团队成员**的会话（**不看** `hasUserInput`） | 单元下的**团队行** | `isTeamMemberSession` |
+ *
+ * 成员会话不能靠 `isListedSession`：刚接管的那一刻它 `hasUserInput` 还是 `false`
+ * （接管只是 attach，不是「用户在用它」），而**团队行已经亮着**（`foregroundTeamId`
+ * 只看归属与 `isLiveSession`）。两个判据一严一松，症状就是父行与团队行**同时**高亮
+ * —— 侧栏有两条「当前」。
+ *
+ * 与 [`foregroundTeamId`] 用**同一条**「命中的第一条 ref 说了算」规则：两者对「当前」的
+ * 认定必须逐字一致，否则又回到两条判据。
  */
 export function unitsWithListedActiveSession(
   refs: readonly SessionRef[],
@@ -117,16 +128,12 @@ export function unitsWithListedActiveSession(
 ): Set<string> {
   const units = new Set<string>();
   for (const ref of refs) {
-    if (
-      sessions.some(
-        (session) =>
-          session.workspaceKey === ref.workspaceKey &&
-          isSameSession(session, ref) &&
-          isListedSession(session),
-      )
-    ) {
-      units.add(ref.workspaceKey);
-    }
+    const found = sessions.find(
+      (session) => session.workspaceKey === ref.workspaceKey && isSameSession(session, ref),
+    );
+    if (found === undefined) continue;
+    // 成员会话归**团队行**，所以它不需要「已命名 / 已被用过」——那是会话子行的门槛。
+    if (isTeamMemberSession(found) || isListedSession(found)) units.add(found.workspaceKey);
   }
   return units;
 }
@@ -204,7 +211,10 @@ export function selectLatestSessionForUnit(
  * 顺序即前台优先），它属于谁由快照的 `attribution` 说 —— 本地再记一份「我打开了谁的会话」
  * 就是第二份真相（红线 17），而且两份一旦漂移，症状只是「高亮错行」，没人会报。
  *
- * 外层循环是 `refs`（不是 `sessions`）：前台优先级在 `refs` 的顺序里，先命中的那个说了算。
+ * 外层循环是 `refs`（不是 `sessions`）：前台优先级在 `refs` 的顺序里，**先命中那条会话的说了算**
+ * —— 与 `UnitSessionList.activeSession`（子行高亮）/ `SessionListRow` 同一条规则：中心前台存在时
+ * 它就是「当前」，此时停靠槽里的成员会话**不是**（否则用户自己的中心会话行与团队行会同时亮）。
+ * 只有该 ref 在快照里**没有**对应会话（未注册 / 已消失）时才看下一个 ref。
  * 单元隔离靠 `workspaceKey` 相等 + `isSameSession`（同 id 的另一单元 / 另一 kind 不算命中）。
  *
  * **不**在这里判「队长」：谁是队长是 `TeamSummary.leadMemberId` 的事实，会话层不存队长身份。
@@ -219,7 +229,8 @@ export function foregroundTeamId(
     );
     if (found === undefined) continue;
     // 类型窄化：`isTeamMemberSession` 是布尔判据，拿不到 discriminated union 的窄化。
-    if (found.attribution.kind === 'teamMember') return found.attribution.teamId;
+    // 命中的**第一**条会话就是「当前」，它是不是成员会话在此一次判定（不得越过它继续找）。
+    return found.attribution.kind === 'teamMember' ? found.attribution.teamId : null;
   }
   return null;
 }

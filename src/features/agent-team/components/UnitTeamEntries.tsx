@@ -3,7 +3,11 @@ import React, { useCallback, useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
 import { useActiveSessionRefs } from '@/shared/hooks/useActiveSessionRefs';
-import { foregroundTeamId, isLiveSession } from '@/shared/selectors/liveSessionSelectors';
+import {
+  foregroundTeamId,
+  isLiveSession,
+  isNamedSession,
+} from '@/shared/selectors/liveSessionSelectors';
 import { useLiveSessionsStore } from '@/shared/store/liveSessionsStore';
 import type { SessionView } from '@/shared/types/liveSessions';
 import type { TeamSummary } from '@/shared/types/team';
@@ -95,7 +99,14 @@ function liveLeadSession(team: TeamSummary, sessions: readonly SessionView[]): S
 
 interface UnitTeamRowProps {
   team: TeamSummary;
-  /** 活队长会话的标题；`null` = 队长未运行（副文案据此换一句话）。 */
+  /**
+   * 活队长会话的**名字**：`null` = 没有活会话；`''` = 活着但还没有真标题。
+   *
+   * 两种 `null`-ish 必须分开：占位标题（`titleSource === 'placeholder'`，形如
+   * `claude-code · neeko`）不是名字 —— 把它印在行上就是侧栏早就消灭过的那种噪声行
+   * （design §10：占位只用来让 tab / 历史有字可读，不进侧栏）。所以那里写
+   * `Lead · running` 而不是那串身份回显。
+   */
   leadTitle: string | null;
   /** 前台正是这个队的某条会话（由 `foregroundTeamId` 单点派生，红线 17）。 */
   isCurrent: boolean;
@@ -108,7 +119,12 @@ const UnitTeamRow: React.FC<UnitTeamRowProps> = React.memo(
     const handleOpen = useCallback(() => onOpen(team), [onOpen, team]);
     const handleBoard = useCallback(() => onOpenBoard(team), [onOpenBoard, team]);
 
-    const leadLine = leadTitle === null ? 'Lead not running' : `Lead · ${leadTitle}`;
+    const leadLine =
+      leadTitle === null
+        ? 'Lead not running'
+        : leadTitle === ''
+          ? 'Lead · running'
+          : `Lead · ${leadTitle}`;
 
     return (
       // 一行 = 「一个团队」。行主按钮是点击区，看板按钮是它的**兄弟**节点（按钮不嵌套）。
@@ -218,7 +234,8 @@ const UnitTeamRows: React.FC<UnitTeamRowsProps> = React.memo(
             <UnitTeamRow
               key={team.teamId}
               team={team}
-              leadTitle={lead === null ? null : lead.title}
+              // 占位标题不进侧栏（`isNamedSession`）；活着但没名字时副文案退成 `Lead · running`。
+              leadTitle={lead === null ? null : isNamedSession(lead) ? lead.title : ''}
               isCurrent={team.teamId === currentTeamId}
               onOpen={handleOpen}
               onOpenBoard={onOpenBoard}

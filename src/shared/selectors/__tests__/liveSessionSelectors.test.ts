@@ -272,6 +272,18 @@ describe('unitsWithListedActiveSession', () => {
       ]),
     ).toEqual(new Set());
   });
+
+  /**
+   * **刚接管的**成员会话：`hasUserInput` 还是 `false`（接管只是 attach，不是「用户在用它」），
+   * 而团队行已经按归属 + `isLiveSession` 亮起。若这里按 `isListedSession` 卡住，父行与团队行
+   * 会**同时**高亮 —— 侧栏出现两条「当前」。成员会话的代表者是团队行，所以不受会话子行的门槛约束。
+   */
+  it('前台的成员会话（刚接管，还没被用过）⇒ 父行照样让出，团队行承担「当前」', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'lead' }];
+    expect(
+      unitsWithListedActiveSession(refs, [memberSession('lead', { hasUserInput: false })]),
+    ).toEqual(new Set([MAIN_KEY]));
+  });
 });
 
 describe('isSameSession', () => {
@@ -496,5 +508,22 @@ describe('foregroundTeamId —— 侧栏团队行的「当前」提示', () => {
       memberSession('lead-a', { workspaceKey: MAIN_KEY }, 'tm_a'),
     ];
     expect(foregroundTeamId(refs, sessions)).toBe('tm_a');
+  });
+
+  /**
+   * 中心前台是**用户自己的**会话、停靠槽里是成员会话 ⇒ 团队行**不**标「当前」。
+   *
+   * 与 `UnitSessionList.activeSession` 同一条「第一个命中的 ref 说了算」规则：越过中心那条
+   * 去停靠槽里找成员会话，会让「当前」同时出现在用户的会话行与团队行上（停靠不改「当前」事实，
+   * 但停靠槽的会话在前有中心前台时并不是用户在看的那个）。
+   */
+  it('中心前台是用户会话、停靠槽是成员会话 ⇒ null（不得越过中心那条）', () => {
+    const refs = [
+      { workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'mine' },
+      { workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'lead' },
+    ];
+    expect(
+      foregroundTeamId(refs, [session({ sessionId: 'mine' }), memberSession('lead')]),
+    ).toBeNull();
   });
 });
