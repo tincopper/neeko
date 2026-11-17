@@ -63,6 +63,24 @@ export default React.memo(AgentIcon);
 > 所以容器住 `features/agent`；纯展示的 `<img>` + 加载失败兼底收敛在
 > `shared/components/FallbackImage.tsx`。多 feature 消费的纯展示组件才住 shared。
 
+#### agent 图标**只有一个**来源：`AgentConfig.icon`（2026-11-14）
+
+凡是“这是哪个 agent”的地方（tab 栏 / agent 列表 / 团队花名册头像 / 选择卡），图标都来自
+**数据**：`useAgentStore` 里那个 agent 的 `icon` 字段 → `features/agent` 的 `AgentIcon`
+（preset 文件或上传路径由 `resolveAgentIconSrc` 解析）。
+
+**禁止在任何 feature 里再维护一张品牌表**。反例（真实故障）：团队花名册曾手抄一张 Simple
+Icons 表（只有 claude-code / codex 两项），其余一律回退首字母 —— 于是 `pi` / `codebuddy` 的
+成员在花名册上是「P」「C」，而同一个 agent 在 tab 栏上有完整图标。图标资源本来就在，错的只是
+“又造了一份判据”。
+
+- 团队侧的投影点：`features/agent-team/hooks/useMemberAgentIcon.ts::useMemberAgentIcon`
+  （按 `agentId` 从 store 取 `icon`；只选原始值，不返回 agent 对象 —— 否则每行一个新对象会让
+  花名册在每次 store 变动时全量重画），**不**新增第二套解析。
+- 回退仍然存在，但只在**真的没有图标**时：`icon === null`（自定义 agent 允许）或 `agentId`
+  不在配置里（已删 / store 未加载）⇒ 首字母 + 按成员身份派生的颜色。两种情况都**不**渲染
+  一块空白方框（用户分不清“加载失败”与“没有图标”）。
+
 **模式 B —— 具名函数**（用于较大的组件）：
 
 ```tsx

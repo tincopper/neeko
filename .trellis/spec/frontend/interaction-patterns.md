@@ -879,11 +879,76 @@ textarea 且弹层是自己实现的状态机，这个契约就成立**（返回
 - 能力与意图是两个维度：`resumable`（CLI 有没有续接形态）与 `sealed`（用户关没关过）。
   合成一个布尔会让「已封存」显示成「可恢复」，而后端会拒绝 —— 判据必须与执行同源。
 
+### 恢复会话 = 打开会话（2026-11-13，只对成员级）
+
+`kind === 'resume'` 走完不能就停在「进程起来了」这一步：用户指的是**一个成员**，他要的是
+回到那个成员的对话里，而那一瞬间行上的按钮已经变成「打开会话」—— 让用户再点一次就是把
+一次意图拆成两次。
+
+| 范围 | `team_resume` 之后 |
+| --- | --- |
+| 成员级（花名册行 / 抽屉头 / 待批队列）| 自动接管它**新起**的那个 PTY |
+| 整队（头部「恢复团队」）| **只**起进程，一个 tab 都不开（N 个 tab 会换掉用户眼前那一屏）|
+
+三条实现契约：
+
+1. `team_resume` 只回成员 id（`TeamResumeReport.resumed`），新 `terminalId` 是后端在这次恢复里
+   **新铸的**，只存在于重取后的快照 ⇒ `useTeamResume.onSettled` 必须可 await、且被 await，
+   否则调用方拿到的是恢复前的快照（句柄 `null`，静默退化为「屏幕上什么都没变」）。
+2. 「要开谁」的判据是 `utils/memberTerminal.ts::resumedTerminalTarget(members, memberId)`：
+   没有句柄就返回 `null` 并**什么都不做**（`cold` / `failed` / 快照滞后）。绝不拿旧 id 去接管
+   （症状：「会话 id 找不到」），也绝不降级成只读历史（症状：「点了恢复，对话没有回来」）。
+3. 只有 `report.resumed` 里的成员才落点（`useTeamResumePanel` 的成员级入口）：报告是事实，
+   `cold` / `failed` 的成员没有新进程可开。
+
 ### 测试
 
-`utils/__tests__/memberTerminal.test.ts`（五态 + `resumable × sealed` 正交矩阵）、
+`utils/__tests__/memberTerminal.test.ts`（五态 + `resumable × sealed` 正交矩阵 +
+`resumedTerminalTarget` 的三种落点）、
 `RosterRow`/`MemberDetailDrawer`/`MemberApprovalQueue` 的派发用例（点击 ⇒ `team_resume(teamId, memberId)`）、
-`TeamHeader` 的「恢复团队」显隐（`open` + 至少一个可恢复成员）。
+`TeamHeader` 的「恢复团队」显隐（`open` + 至少一个可恢复成员）、
+`TeamPanel.roster.test.tsx`（成员级恢复 ⇒ 自动接管**新**句柄；整队恢复 ⇒ 零 tab）、
+`hooks/__tests__/useTeamResume.test.ts`（报告回传 / `onSettled` 被 await）。
+
+---
+
+## 改名 = 改名（2026-11-14，跨域：团队行 → tab 标题）
+
+团队名在后端只有一处（`Team.name`，判据见 `backend/team-domain.md` §3.5.3），而它在**两个域**
+各有一份投影：dock 面板（读快照）与 tab 栏（`title` 是建 tab 那一刻的快照）。改名只改后端那
+一行，投影不追的症状是「列表叫新名字，tab 上还写着『队长 · 旧名』」—— 而它在任何单域测试里
+都是绿的。
+
+| tab | 展示位 | 靠什么认「这是这支队」 |
+| --- | --- | --- |
+| 看板 / 分配图（`team-board`）| `title`（`看板 · <队名>`）+ **`data.teamName`** | `data.teamId`（tab 自己的地址）|
+| 队长终端（`terminal`）| `title`（`队长 · <队名>`）| `data.ptySessionId` 等于快照里队长的句柄（后端全局铸造）|
+
+三条实现契约（`app/dock/wrappers/teamRenameTabs.ts` + `TeamPanelWrapper.handleTeamRenamed`）：
+
+1. **判据只读 tab 自己的地址，不读环境**。不要从「当前打开哪支队」（`teamStore.snapshot`）或
+   「当前激活哪个工作区」（`activeWorkspaceSession`）推：列表态改名时前者是**上一个打开过的
+   队**，切过工作树时后者**不是 tab 所在的那个**。两者都只在「环境恰好等于事实」时成立，
+   症状分别是「改 A 的名，B 的队长 tab 变成了 A 的新名字」与「改名只改了一半」。投影因此
+   **扫全部 tab 空间键**，空间键只用于写回（`updateTab(key, …)`），不参与判定。
+2. **队长句柄必须来自「就是这一队」的快照**：`snapshot.team.id === teamId` 不成立 = 不知道该开
+   谁 ⇒ `leaderTerminalId: null`（终端一个都不碰，看板 tab 不受影响）。
+   **这个空值是有代价的**：在列表里改一支**未在面板打开**的队的名，它的队长终端 tab 标题
+   会留在旧名字（句柄只在快照里，而 live-sessions 的读接口不带团队归属）。这个代价是故意
+   付的 —— “不猜”比“改错另一支队的 tab”便宜，而且后者是不可见的错误（面板 / 单测全绿）。
+   真要补上它，正确的路子是让**快照携带**它（已经带了）而不是往 `TeamSummary` 里塞一个
+   活句柄：列表载荷装资源态，下次就会有人拿它当“这个成员还在跑”的判据。
+3. **`data.teamName` 与 `title` 一起写**：`teamName` 不只是渲染副本 —— 重新打开 / 去重 / 宿主
+   展示都读它，只改 `title` 会留下「标题新、数据旧」的两份事实。
+
+### 测试
+
+`app/dock/wrappers/__tests__/teamRenameTabs.test.ts`（句柄认人 / `data.teamId` 认看板 /
+`teamName` 同步 / **跨工作区照样命中**）、
+`TeamPanelWrapper.wiring.test.tsx`（头部改名 ⇒ 两种 tab 都跟上；**在列表里改另一支队的名 ⇒
+不碰当前打开那支队的队长终端**，这条没守住就会跨队写错数据）、
+`features/agent-team/components/__tests__/TeamPanel.teamList.test.tsx`（行内提交 / 取消 /
+空名不请求）。
 
 ---
 

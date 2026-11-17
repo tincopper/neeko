@@ -18,6 +18,7 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `wait.rs` | `team_wait` 的阻塞等待（只读内存快照） | 等待语义 |
 | `identity/` | `env`（注入）/ `token`（签发与解析）/ `verdict`（归因）/ **`preamble`（角色上下文）** | 四者无共同变化理由，故分文件 |
 | `options.rs` | **只读可选项面的唯一推导**：池子 / 上限 / 三个缺省值（面板、`team_options`、preamble 三个消费者） | 团队组成的读法变了 |
+| `name.rs` | 团队**显示名**的唯一判据与派生点（`validate_team_name` / `resolve_name`）：建队与**改名**共用一份（见 §3.5.3） | 名字规则变了 |
 | `admission.rs` | **红线 15 落点**：per-CLI 准入事实表 + 纯函数推导 | P0 实测结果变了 |
 | `mcp/schema.rs` | 工具清单（`TOOLS`）与入参 Schema | 新增工具 |
 | `mcp/dispatch.rs` | 工具调用：翻译 → 授权 → 入参校验 → 委派 | 工具语义 |
@@ -32,7 +33,7 @@ Neeko 不做 LLM，只做「板 + 身份 + 可观测」。
 | `observe.rs` / `deliver.rs` | hook 事件的团队投影 / 投递入口（见 §6）；**原生会话 id 的登记在键过滤之前**（见 §5a） | 新信号 |
 | `events.rs` | 前端事件：`TEAM_EVENT` 常量 + 失效脉冲载荷 + `TeamNotifier` 端口（见 §8） | 改事件名 / 载荷 |
 | `view.rs` | **视图构造的唯一落点**：`TeamStatusView`（MCP 读者）/ `TeamSnapshot` / `TaskCard` / `TaskDetail`（前端读者） | 加读字段 / 改列载荷（见 §8） |
-| `commands.rs` | 本地 Tauri 入口（九条：建队开场 / 快照 / 任务详情 / 可启动清单 / 团队配置面 / 团队清单 / 关闭 / **删除**），保持极薄（红线 6） | 新入口命令 |
+| `commands.rs` | 本地 Tauri 入口（十二条：建队开场 / 快照 / 任务详情 / 可启动清单 / 团队配置面 / 团队清单 / 关闭 / **改名** / **删除** …），保持极薄（红线 6） | 新入口命令 |
 | `fixtures.rs` | `#[cfg(test)]` 夹具单一源（`Team` / `TeamMember` 全字段）；`store.rs` 的 round-trip 夹具是**刻意例外**（每列都要偏离默认值，否则"某列没写进库"会变绿） | 加字段时只改一处 |
 
 ## 0. 租约 = **活性**信号，不是时长上限
@@ -671,6 +672,35 @@ t1 摘要在「现根目」三个字处被截断，t2/t3 的硬约束整段丢�
   `finish_member_close_archives_and_releases_without_touching_reclaim_count` /
   `closing_a_member_revokes_its_credential_before_the_gate_is_rebuilt` /
   `a_closing_team_refuses_writes_but_answers_reads`
+
+### 3.5.3 改名（`team_rename`）—— 唯一没有状态前置条件的团队级写
+
+`name` 是**显示名**，不参与任何判据：派活、恢复、授权矩阵都不看它（那是 `role` /
+`token_hash` / `state` 的事）。所以「已封存 = 只读快照」这条纪律在它这里不成立 —— 封存锁住
+的是**进程与恢复**，不是用户给这一行贴的标签；而列表里大多数行正是封存的队，拒绝它们等于让
+「名字起错了」永远修不回来。
+
+**名字的判据只有一份**（`agent/team/name.rs::validate_team_name`），建队与改名共用：
+
+| 判据 | 为什么 | 结果 |
+| --- | --- | --- |
+| 裁剪后非空 | 列表里会是一块点不中的空白行，而 `Team.name` 不是 `Option` | `InvalidInput` |
+| 无控制字符 | 名字进成员 preamble 的**明文**（`identity::preamble::identity_block`）：换行打断那一行结构（判据复用 `mcp::dispatch::reject_control_chars`）| `InvalidInput` |
+| ≤ `MAX_TEAM_NAME_CHARS` = 64 | 它随每次 `team_list` / `team_snapshot` 过 IPC，没有上界就是一个能把单次载荷推过 2MB 的口子（红线 4）| `InvalidInput`（**拒绝**，不截断）|
+
+**建队的「没填」不是「填错」**：`Some("  ")` 与 `None` 同义（都取工作区目录名），非空但
+不合规才拒绝 —— 与前端 `useTeamConfigDraft.name` 把全空白归 `null` 是同一条语义。派生段
+（目录名 / 团队 id）不校验：用户没有手写它们，也没有改正的入口。
+
+| 其余判据 | 结果 |
+| --- | --- |
+| 未知 `team_id` | `NotFound` |
+| 改成同名 | `Ok` 且**不写审计**（重复提交不该在事件流里刷出 N 条记录） |
+| 其余 | `upsert_team`（先库后镜像）+ 一条 `rename_team` 审计（`旧名 → 新名`，actor = `neeko:local`）|
+
+载荷是 `()`：新名字经脉冲 + `team_list` 重取到达列表，不在命令层再造第二个事实源（与
+`team_close` / `team_delete` 同一口径）。表头的 tab 标题由前端投影跟上 —— 那条跨域契约在
+`frontend/interaction-patterns.md`「改名 = 改名」。
 
 ### 3.5.2 删除协议（`team_delete`）—— 与关闭的边界
 
