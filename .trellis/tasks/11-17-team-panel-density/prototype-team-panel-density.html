@@ -130,6 +130,11 @@ button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1p
   font-size: 11px; color: var(--text-secondary);
 }
 .ico:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ico svg { display: block; }
+.ico-action { color: var(--accent-blue); }
+.ico-action:disabled { color: var(--text-muted); cursor: not-allowed; }
+.seg-mini button svg { display: block; }
+.seg-mini button { display: grid; place-items: center; height: 18px; padding: 0 4px; }
 .divider { height: 1px; background: var(--border); }
 
 /* ── 头部 ─────────────────────────────────────────────────────── */
@@ -268,8 +273,17 @@ button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1p
 .panel[data-mode="after"] .b-group { border: none; background: none; padding: 0; margin: 0 0 6px; }
 .panel[data-mode="after"] .b-ghead { padding: 1px 2px 2px; }
 .panel[data-mode="after"] .card { padding: 3px 5px; border-radius: 5px; }
-.panel[data-mode="after"] .m-list { gap: 1px; margin-top: 4px; }
-.panel[data-mode="after"] .m-row { padding: 2px 4px; }
+.panel[data-mode="after"] .m-list { gap: 3px; margin-top: 4px; }
+.panel[data-mode="after"] .m-list.flat { gap: 1px; }
+.panel[data-mode="after"] .m-list.flat .m-row { border-color: transparent; background: transparent; }
+/* 花名册行：一条**卡片**（与老一版同样的表面层次：岛内卡片 = bg-primary + border），
+   只是内容从四层压到两行 —— 好读的不是「没有框」，而是框里有重点。 */
+.panel[data-mode="after"] .m-row {
+  padding: 3px 5px; border: 1px solid var(--border); background: var(--bg-primary);
+}
+.panel[data-mode="after"] .m-row[data-lead] {
+  border-color: color-mix(in oklab, var(--accent-blue) 45%, transparent);
+}
 .panel[data-mode="after"] .note-warn { margin-top: 4px; padding: 4px 6px; line-height: 1.35; }
 /* r12 关掉时：分组退回带框形态（对照用） */
 .panel[data-mode="after"] .boxed .b-group { border: 1px solid var(--border); border-radius: 7px; background: var(--bg-secondary); padding: 4px 5px 5px; margin: 0 0 5px; }
@@ -422,7 +436,7 @@ button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1p
         <li>AC2：<code>空闲 ⚠ 未声明</code> 与 <code>空闲 ✓ 已声明</code> 文案与 tone 都不同</li>
         <li>列映射封闭枚举不动；<code>unplaced</code> 报警仍能出现</li>
         <li>截断要说出来（<code>只显示前 200 条</code>）</li>
-        <li>打开会话五态与「理由可见文字」不变</li>
+        <li>打开会话五态判据不变（图标化后动作名进 <code>aria-label</code>，置灰理由仍可见）</li>
         <li>抽屉是对话框：Esc / 焦点陷阱 / 焦点归还</li>
       </ul>
     </section>
@@ -498,10 +512,25 @@ const CHANNEL_TEXT = { pty: 'CLI · PTY', mcp: 'MCP', none: '无通道' };
 const TIER_FULL = { a: 'A 档', b: 'B 档', c: 'C 档 · sentinel only' };
 const MAX_BOARD_TASKS = 200;
 
+/* 行内动作 / 工具栏的图标（真实实现用 lucide-react 的同名图标） */
+const svg = (d, extra = '') =>
+  `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${d}</svg>`;
+const ICONS = {
+  // 打开会话：接管活着的 PTY
+  terminal: svg('<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>'),
+  // 恢复会话：起一个新进程续接同一个原生会话
+  play: svg('<path d="M6 3v18l14-9z" fill="currentColor" stroke="none"/>'),
+  // 查看记录：只读历史
+  history: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'),
+  // 任务视图切换
+  columns: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/>'),
+  branch: svg('<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>'),
+};
+
 /* ============================================================================
    状态：UI 开关全部集中在这一个对象里（渲染是纯函数）。
    ============================================================================ */
-const FLAGS = { r1: true, r2: true, r3: true, r4: true, r5: true, r6: true, r7: true, r8: true, r9: true, r10: true, r12: true };
+const FLAGS = { r1: true, r2: true, r3: true, r4: true, r5: true, r6: true, r7: true, r8: true, r9: true, r10: true, r12: true, r13: true, r14: true, r15: true };
 const ui = {
   mode: 'after', width: 280, cTier: 'compact',
   menuOpen: false, drawerOpen: false, boardCollapsed: false, boardView: 'board',
@@ -685,7 +714,7 @@ function afterPanel() {
             ? ''
             : `<span class="spacer"></span><span class="micro muted">${t.members.length} 人（含队长）</span>`}
         </div>
-        <ul class="m-list">${t.members.map(afterMember).join('')}</ul>
+        <ul class="m-list ${FLAGS.r13 ? '' : 'flat'}">${t.members.map(afterMember).join('')}</ul>
         ${t.members.some((m) => m.tier === 'c')
           ? `<p class="note-warn" data-region="cflag">C 档成员（sentinel only）：完成能报，但卡住永远不可知 → 只会写「可能等待输入」</p>`
           : ''}
@@ -775,18 +804,23 @@ function afterMember(m) {
     </li>`;
   }
 
+  const persona =
+    FLAGS.r14 && m.persona ? `<span class="chip chip-accent">${esc(m.persona)}</span>` : '';
   return `<li class="m-row" data-region="mrow" ${lead ? 'data-lead' : ''}>
     <span class="av" style="background:${m.tint}">${initials(m.name)}</span>
     <span class="m-main">
       <span class="m-line">
         <span class="m-name" title="${esc(m.name)}">${esc(m.name)}</span>
         ${lead ? '<span class="tag-lead">队长</span>' : ''}
+        ${persona}
         ${cFlag}
         <span class="badge ${badge.cls}">${esc(badge.text)}</span>
       </span>
       ${sub ? `<span class="m-sub" ${m.lease !== null && m.lease <= 120 ? 'data-urgent="true"' : ''}>${sub}</span>` : ''}
     </span>
-    <button class="ico" aria-label="打开会话：${esc(m.name)}" title="打开会话">↗</button>
+    ${FLAGS.r15
+      ? `<button class="ico ico-action" aria-label="打开会话：${esc(m.name)}" title="打开会话">${ICONS.terminal}</button>`
+      : `<button class="tbtn blue">打开会话</button>`}
   </li>`;
 }
 
@@ -816,10 +850,15 @@ function afterBoard() {
   return `<section data-region="board-anchor" class="${FLAGS.r12 ? '' : 'boxed'}">
     <div class="b-head">
       <h4 class="sec">任务 <span class="count">${total}</span></h4>
-      <span class="seg-mini" role="group" aria-label="任务视图">
-        <button aria-pressed="${ui.boardView === 'board'}" data-bview="board">看板</button>
-        <button aria-pressed="${ui.boardView === 'flow'}" data-bview="flow">分配图</button>
-      </span>
+      ${FLAGS.r15
+        ? `<span class="seg-mini" role="group" aria-label="任务视图">
+             <button aria-pressed="${ui.boardView === 'board'}" data-bview="board" aria-label="看板" title="看板">${ICONS.columns}</button>
+             <button aria-pressed="${ui.boardView === 'flow'}" data-bview="flow" aria-label="分配图" title="分配图">${ICONS.branch}</button>
+           </span>`
+        : `<span class="seg-mini" role="group" aria-label="任务视图">
+             <button aria-pressed="${ui.boardView === 'board'}" data-bview="board">看板</button>
+             <button aria-pressed="${ui.boardView === 'flow'}" data-bview="flow">分配图</button>
+           </span>`}
       <button class="ico" aria-label="在中间区域打开" title="在中间区域打开（完整宽度）">↗</button>
       ${FLAGS.r10 ? `<button class="ico" id="board-toggle" aria-label="收起任务板" title="收起任务板">▾</button>` : ''}
     </div>
@@ -920,7 +959,10 @@ const CHANGES = [
   { id: 'r5', tier: 'A', region: 'empty', text: '空列折叠成一行汇总；列映射表不动，<code>unplaced</code> 报警仍会出现' },
   { id: 'r6', tier: 'A', region: 'card', text: '卡片状态 chip 只在同列多态时渲染（<code>claimed</code> vs <code>in_progress</code> 才需要）' },
   { id: 'r7', tier: 'A', region: 'card-meta', text: '卡片去掉 id / 依赖数 / 缺省 workspace（<code>shared</code> 不渲染，worktree 仍显示）' },
-  { id: 'r8', tier: 'B', region: 'mrow', text: '花名册行单行化：agent / persona / 通道 / 档位 / 租约移入详情抽屉（抽屉本来就有这些块）' },
+  { id: 'r8', tier: 'B', region: 'mrow', text: '花名册行单行化：agent / 通道 / 档位 / 租约移入详情抽屉（抽屉本来就有这些块）' },
+  { id: 'r13', tier: 'B', region: 'mrow', text: '行是**卡片**（border + bg-primary + 3px 行距），不是纯列表 —— 老一版的读感' },
+  { id: 'r14', tier: 'B', region: 'mrow', text: 'persona（角色 / 人设）留在行内当可见 chip；`null` 不占位' },
+  { id: 'r15', tier: 'B', region: 'board-anchor', text: '动作与视图切换用图标（Terminal / Play / History、Columns3 / GitBranch）；五态文案进 aria-label，置灰理由仍可见' },
   { id: 'r9', tier: 'B', region: 'cflag', text: 'C 档可见性（红线 14）：行内 <code>⚠ C</code> + 分区固定说明，替代整枚 chip' },
   { id: 'r12', tier: 'A', region: 'board-anchor', text: '任务板分组去掉外框 / 底色 / 内边距（列语义与计数保留）—— 280px 下每列省 ~12px' },
   { id: 'r10', tier: 'B', region: 'board-anchor', text: '任务板分区可折叠（默认展开），折叠后为一行摘要，▸ 展开' },

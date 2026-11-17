@@ -152,3 +152,25 @@ pnpm check:quick
   标签才出 chip）。若后续觉得这一枚多余，改成逐卡判即可（判据仍在 `taskBoard.ts` 的封闭枚举）。
 - **AC2 的高度实测未在 CLI 里做**：jsdom 无布局，`0.42` 的降幅只能靠原型口径回归；实现逐条
   对齐了原型的三处结构（两行头 / 单行花名册 / 扁平分组 + 空列汇总）。需要人工开面板复核。
+
+## 执行记录 · B+ 档追加（2026-11-17 复评，R13 / R14 / R15）
+
+用户复评三条：「成员列表显示还没有老一版的好看」「当前没有角色信息」「工具栏使用 icon 图标，
+不要使用文字按钮」。落地：
+
+- **R13 卡片外壳**：`RosterRow` 的外部 `role="group"` 容器保持 `rounded-md border bg-bg-primary`
+  （队长行 `border-accent-blue/45`），`TeamRoster` 的行间距 `gap-1` → `gap-[3px]`；内容仍是
+  两行（不回退到四层 chip）。测试钉住类名（`行与行看得出是一条（R13）`）。
+- **R14 persona 回到行内**：`memberRowMeta` 增加 `persona: string | null`；行内用 `Chip
+tone="accent"` 渲染，`null` 不占位。`title` 与抽屉那枚 chip **同一句话**
+  （新增 `memberChips.personaChipTitle`，两处共用 —— 否则同一个字段会有两种措辞）。
+- **R15 图标按钮**：行内动作按 `action.kind` 选 `Terminal` / `Play` / `History`，
+  `aria-label` 仍是 `${action.label}：${name}`、`title` 是 `action.label`，置灰理由仍是图标旁的
+  **可见文字**；`TeamTaskSection` 的视图切换换成 `Columns3` / `GitBranch`（`aria-pressed` +
+  `aria-label`/`title` 保留，`TeamView.boardCollapse.test.tsx` 钉住按钮里没有可见文字）。
+- **未动**：`MemberDetailDrawer`（行内与抽屉共用 `personaChipTitle`，抽屉的 chip 排不变）、
+  `TeamBoardCenterView`（宽面仍图标 + 文字）。
+- **验证**：`pnpm vitest run src/features/agent-team src/app/dock` = 51 files / 442 tests 全绿；
+  `pnpm check:quick` 15/15 护栏通过。
+- **spec 同步**：`component-guidelines.md` 的花名册表（persona 行 / 图标按钮 / 卡片外壳）与
+  任务板视图切换；`team-domain.md` §8.7 的事实表（persona 改「行内 chip（null 不渲染）」）。

@@ -102,25 +102,35 @@ export function memberRowMeta(member: Pick<MemberStatusView, 'workspace' | 'tier
 ### 3.4 `RosterRow`
 
 ```
-[头像] 名字 [队长] [⚠ C]                        [六态徽标]
-       worktree feat-auth-ui · 租约剩 8:41        [暂无会话]
-                                                  [打开会话]
+┌───────────────────────────────────────────────────┐
+│ [头像] researcher 研究员 ⚠ C            运行中  [>_] │
+│        租约 27:14                                  │
+└───────────────────────────────────────────────────┘
 ```
+
+- **2026-11-17 复评（R13/R14/R15）**：行外壳回到卡片（`rounded-md border bg-bg-primary`，
+  队长行 `border-accent-blue/45`），`persona` 以可见 chip 回到行内，动作改图标按钮。
+- 动作图标：`live → Terminal` / `resume → Play` / `archive → History`；`aria-label` 仍是
+  `${action.label}：${name}`，`title` 是 `action.label`；置灰态图标变灰，`action.reason`
+  仍是按钮左侧的可见文字（`暂无会话` / `已关闭`）。
 
 - 主体仍是 `<button>`（点行开抽屉），右列是动作按钮（不许嵌套）。
 - 第二行 = `memberRowMeta().workspace` 与 `leaseText(...)`（`null` 时**省略**，R3）用 ` · ` 连接；
   两者都为空时整行不渲染第二行。
 - `workspace` 只有末段（`title` 放完整 `workspaceLabel`）。
 - 租约 `urgent` 时 `text-accent-yellow font-semibold`（与卡片同一份 `leaseText`）。
-- 动作按钮**文案不变**（五态：`打开会话` / `恢复会话` / `查看记录` / 置灰 `打开会话`），
-  `action.reason` 仍是可见文字（放在按钮上方，`text-micro`）。
+- 动作按钮是**图标**（R15）：`Terminal` / `Play` / `History`；五态文案进 `aria-label` / `title`，
+  `action.reason` 仍是可见文字（放在图标左侧，`text-micro`）。
 - 徽标、抽屉、动作判据全部沿用现有纯函数，不重算。
 
 ### 3.5 `TeamView`（任务区头 + 折叠）
 
 ```
-任务 4                        [看板|分配图] [↗] [▾]
+任务 4                        [▦|⑂] [↗] [▾]
 ```
+
+- 看板 / 分配图是**图标按钮**（`Columns3` / `GitBranch`，`aria-pressed` + `aria-label`），
+  与中央 tab 的 `TeamBoardCenterView` 用同一对图标（窄列里省掉两个词）。
 
 - 标题与计数：`tasks.length`。
 - 视图切换与「在中间打开」沿用现有回调（`onOpenBoard(taskView)`）。
