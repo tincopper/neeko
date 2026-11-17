@@ -12,6 +12,7 @@ import {
 } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
+import { __resetTeamListStoreForTests } from '../../store/teamListStore';
 import {
   __resetTeamGenerationForTests,
   __resetTeamPulseForTests,
@@ -58,6 +59,7 @@ const TASK = createTaskCard({
 
 function resetStores(): void {
   __resetTeamGenerationForTests();
+  __resetTeamListStoreForTests();
   __resetTeamPulseForTests();
   useTeamStore.setState({
     teamId: 'tm_1',

@@ -20,6 +20,7 @@ import {
 } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
+import { __resetTeamListStoreForTests } from '../../store/teamListStore';
 import { __resetTeamGenerationForTests, useTeamStore } from '../../store/teamStore';
 import TeamPanel from '../TeamPanel';
 
@@ -43,9 +44,18 @@ function setActiveProject(path = PROJECT_PATH): void {
   useProjectStore.setState({ activeProjectId: project.id, activeProject: project });
 }
 
+/**
+ * `team_list` 的空夹具（这些用例只关心**快照面**）。
+ *
+ * 面板挂载时照样会拉一次 `team_list`；不给这条命令一个真形状，mock 就会把 TeamSnapshot
+ * 当成清单返回 —— 那是一个后端永远不会发出的形状。
+ */
+const EMPTY_TEAM_LIST = createTeamList({ teams: [] });
+
 /** 每个用例都从「干净的三个 store」开始，否则上一个用例的团队/项目会串进来。 */
 function resetStores(): void {
   __resetTeamGenerationForTests();
+  __resetTeamListStoreForTests();
   useTeamStore.setState({
     teamId: null,
     snapshot: null,
@@ -223,7 +233,9 @@ describe('TeamPanel — 花名册', () => {
 
   it('按快照渲染行数、六态文案与租约三态', async () => {
     useTeamStore.setState({ teamId: 'tm_1', snapshot });
-    mockInvoke.mockResolvedValue(snapshot);
+    mockInvoke.mockImplementation(async (cmd) =>
+      cmd === 'team_list' ? EMPTY_TEAM_LIST : snapshot,
+    );
 
     render(<TeamPanel />);
     const rows = within(region('Member roster')).getAllByRole('listitem');
@@ -247,7 +259,9 @@ describe('TeamPanel — 花名册', () => {
 
   it('AC2：idle+unverified 与 idle+verified 的可访问文本不同（视觉可区分）', () => {
     useTeamStore.setState({ teamId: 'tm_1', snapshot });
-    mockInvoke.mockResolvedValue(snapshot);
+    mockInvoke.mockImplementation(async (cmd) =>
+      cmd === 'team_list' ? EMPTY_TEAM_LIST : snapshot,
+    );
 
     render(<TeamPanel />);
     const roster = region('Member roster');
@@ -300,7 +314,10 @@ describe('TeamPanel — 共享任务板', () => {
       teamId: 'tm_1',
       snapshot: createTeamSnapshot({ tasks, tasksTruncated: true }),
     });
-    mockInvoke.mockResolvedValue(createTeamSnapshot({ tasks, tasksTruncated: true }));
+    const snapshot = createTeamSnapshot({ tasks, tasksTruncated: true });
+    mockInvoke.mockImplementation(async (cmd) =>
+      cmd === 'team_list' ? EMPTY_TEAM_LIST : snapshot,
+    );
 
     render(<TeamPanel />);
     const board = region('Shared task board');
@@ -325,7 +342,9 @@ describe('TeamPanel — 共享任务板', () => {
   it('未截断时不显示「只显示前 N 条」（否则提示永远亮着，等于没有提示）', async () => {
     const snapshot = createTeamSnapshot({ tasks: [tasks[0]], tasksTruncated: false });
     useTeamStore.setState({ teamId: 'tm_1', snapshot });
-    mockInvoke.mockResolvedValue(snapshot);
+    mockInvoke.mockImplementation(async (cmd) =>
+      cmd === 'team_list' ? EMPTY_TEAM_LIST : snapshot,
+    );
 
     render(<TeamPanel />);
     expect(
@@ -348,6 +367,7 @@ describe('TeamPanel — 任务详情（红线 4：点开才拉）', () => {
       team: createTeam({ id: 'tm_1' }),
     });
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return EMPTY_TEAM_LIST;
       if (cmd === 'team_snapshot') return snapshot;
       return undefined;
     });

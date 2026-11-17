@@ -10,10 +10,12 @@ import {
   createProject,
   createTaskCard,
   createTeam,
+  createTeamList,
   createTeamSnapshot,
 } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
+import { __resetTeamListStoreForTests } from '../../store/teamListStore';
 import { __resetTeamGenerationForTests, useTeamStore } from '../../store/teamStore';
 import TeamPanel from '../TeamPanel';
 
@@ -68,6 +70,7 @@ const MEMBERS = [
 
 function resetStores(): void {
   __resetTeamGenerationForTests();
+  __resetTeamListStoreForTests();
   useTeamStore.setState({
     teamId: null,
     snapshot: null,
@@ -85,9 +88,18 @@ function resetStores(): void {
   useAgentStore.setState({ agents: null, loading: false });
 }
 
+/**
+ * `team_list` 的空夹具。
+ *
+ * 这些用例只关心**快照面**，但面板挂载时照样会拉一次 `team_list`（列表读面在 store 里）。
+ * 不给这条命令一个真形状，mock 就会把 TeamSnapshot 当成清单返回 —— 那是一个后端永远不会
+ * 发出的形状，前端在它上面崩溃只会掩盖用例真正要测的东西。
+ */
+const EMPTY_TEAM_LIST = createTeamList({ teams: [] });
+
 function renderWithSnapshot(snapshot = createTeamSnapshot({ members: MEMBERS })) {
   useTeamStore.setState({ teamId: 'tm_1', snapshot });
-  mockInvoke.mockResolvedValue(snapshot);
+  mockInvoke.mockImplementation(async (cmd) => (cmd === 'team_list' ? EMPTY_TEAM_LIST : snapshot));
   const onOpenTerminal = vi.fn();
   const onOpenHistory = vi.fn();
   const view = render(<TeamPanel onOpenTerminal={onOpenTerminal} onOpenHistory={onOpenHistory} />);
@@ -515,6 +527,7 @@ describe('花名册 — 恢复会话（第三态）', () => {
   it('离线 + 可恢复：按钮是「恢复会话」，点击 ⇒ team_resume(teamId, memberId)', async () => {
     const snapshot = createTeamSnapshot({ members: [RESUMABLE] });
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return EMPTY_TEAM_LIST;
       if (cmd === 'team_resume') return EMPTY_REPORT;
       return snapshot;
     });
@@ -572,6 +585,7 @@ describe('花名册 — 恢复会话（第三态）', () => {
     // 首拉给离线快照（按钮就是「恢复会话」），恢复后的那次重取才给活进程。
     let snapshotPulls = 0;
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return EMPTY_TEAM_LIST;
       if (cmd === 'team_resume') return EMPTY_REPORT;
       snapshotPulls += 1;
       return snapshotPulls === 1 ? before : after;
@@ -600,6 +614,7 @@ describe('花名册 — 恢复会话（第三态）', () => {
   it('头部「改名」→ 行内编辑 → Enter ⇒ team_rename(当前 teamId, 新名)', async () => {
     const snapshot = createTeamSnapshot({ members: [RESUMABLE] });
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return EMPTY_TEAM_LIST;
       if (cmd === 'team_rename') return undefined;
       return snapshot;
     });
@@ -639,7 +654,9 @@ describe('花名册 — 恢复会话（第三态）', () => {
         }),
       ],
     });
-    mockInvoke.mockResolvedValue(snapshot);
+    mockInvoke.mockImplementation(async (cmd) =>
+      cmd === 'team_list' ? EMPTY_TEAM_LIST : snapshot,
+    );
     useTeamStore.setState({ teamId: 'tm_1', snapshot });
 
     const onOpenHistory = vi.fn();
@@ -674,6 +691,7 @@ describe('面板头 — 恢复团队', () => {
   it('open + 有可恢复的离线成员 ⇒ 出现「恢复团队」；点击是**整队**恢复（memberId: null）', async () => {
     const snapshot = createTeamSnapshot({ members: [resumableMember] });
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return EMPTY_TEAM_LIST;
       if (cmd === 'team_resume') {
         return {
           teamId: 'tm_1',
@@ -720,6 +738,7 @@ describe('面板头 — 恢复团队', () => {
     const after = createTeamSnapshot({ members: [liveAfter] });
     let snapshotPulls = 0;
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return EMPTY_TEAM_LIST;
       if (cmd === 'team_resume') {
         return {
           teamId: 'tm_1',
@@ -754,7 +773,9 @@ describe('面板头 — 恢复团队', () => {
       team: createTeam({ state: 'sealed', sealedAt: 1_700_000_000_000 }),
       members: [resumableMember],
     });
-    mockInvoke.mockResolvedValue(snapshot);
+    mockInvoke.mockImplementation(async (cmd) =>
+      cmd === 'team_list' ? EMPTY_TEAM_LIST : snapshot,
+    );
     useTeamStore.setState({ teamId: 'tm_1', snapshot });
 
     render(<TeamPanel />);
@@ -774,7 +795,9 @@ describe('面板头 — 恢复团队', () => {
         }),
       ],
     });
-    mockInvoke.mockResolvedValue(snapshot);
+    mockInvoke.mockImplementation(async (cmd) =>
+      cmd === 'team_list' ? EMPTY_TEAM_LIST : snapshot,
+    );
     useTeamStore.setState({ teamId: 'tm_1', snapshot });
 
     render(<TeamPanel />);
@@ -804,6 +827,7 @@ describe('恢复失败 — 后端原文必须看得见', () => {
       ],
     });
     mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return EMPTY_TEAM_LIST;
       if (cmd === 'team_resume') {
         throw 'Conflict: team `tm_1` is sealed; a sealed team cannot be resumed';
       }

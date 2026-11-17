@@ -20,6 +20,7 @@ import {
 } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
+import { __resetTeamListStoreForTests } from '../../store/teamListStore';
 import {
   __resetTeamGenerationForTests,
   __resetTeamPulseForTests,
@@ -73,6 +74,7 @@ function emitPulse(rev: number): void {
 function resetStores(): void {
   __resetTeamGenerationForTests();
   __resetTeamPulseForTests();
+  __resetTeamListStoreForTests();
   handlers = [];
   useTeamStore.setState({
     teamId: null,

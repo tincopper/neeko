@@ -12,6 +12,7 @@ vi.mock('@/shared/contexts', () => ({
   useAppContext: () => ({ showToast: vi.fn() }),
 }));
 
+import { __resetTeamListStoreForTests } from '@/features/agent-team/store/teamListStore';
 import { __resetTeamGenerationForTests, useTeamStore } from '@/features/agent-team/store/teamStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -84,6 +85,7 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
     openExistingTerminalTab.mockReset();
     mockInvoke.mockReset();
     __resetTeamGenerationForTests();
+    __resetTeamListStoreForTests();
     useTeamStore.setState({
       teamId: 'tm_1',
       snapshot: SNAPSHOT,
@@ -221,6 +223,7 @@ describe('TeamPanelWrapper — 改名同步 tab 标题', () => {
     openExistingTerminalTab.mockReset();
     mockInvoke.mockReset();
     __resetTeamGenerationForTests();
+    __resetTeamListStoreForTests();
     useEditorStore.setState({ tabs: {}, editorLayout: {} });
     useWorkspaceStore.setState({ byProject: {} });
     useTeamStore.setState({

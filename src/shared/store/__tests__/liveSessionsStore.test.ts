@@ -7,6 +7,7 @@ function session(sessionId: string): SessionView {
   return {
     sessionId,
     kind: 'terminal',
+    attribution: { kind: 'user' },
     agentId: null,
     workspaceKey: 'p1\0',
     title: sessionId,

@@ -27,6 +27,7 @@ function session(overrides: Partial<SessionView> = {}): SessionView {
   return {
     sessionId: 'pty-1',
     kind: 'terminal',
+    attribution: { kind: 'user' },
     agentId: 'claude-code',
     workspaceKey: KEY,
     title: '修复登录竞态',

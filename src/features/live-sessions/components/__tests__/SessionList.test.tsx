@@ -11,6 +11,7 @@ import SessionList from '../SessionList';
 function session(overrides: Partial<SessionView> & { sessionId: string }): SessionView {
   return {
     kind: 'terminal',
+    attribution: { kind: 'user' },
     agentId: null,
     workspaceKey: 'p1\0',
     title: 'Terminal',

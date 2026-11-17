@@ -14,6 +14,7 @@ import {
 } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
+import { __resetTeamListStoreForTests } from '../../store/teamListStore';
 import { __resetTeamGenerationForTests, useTeamStore } from '../../store/teamStore';
 import { LEASE_TICK_MS } from '../MemberDetailDrawer';
 import TeamPanel from '../TeamPanel';
@@ -53,6 +54,7 @@ const MEMBERS = [
 
 function resetStores(): void {
   __resetTeamGenerationForTests();
+  __resetTeamListStoreForTests();
   useTeamStore.setState({
     teamId: null,
     snapshot: null,

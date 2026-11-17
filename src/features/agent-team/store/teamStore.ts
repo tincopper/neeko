@@ -6,6 +6,8 @@ import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import { fetchTeamSnapshot, subscribeTeamPulse } from '../api/teamApi';
 
+import { useTeamListStore } from './teamListStore';
+
 /**
  * 团队面板状态（`snapshot` 是**唯一**渲染真相）。
  *
@@ -33,8 +35,8 @@ import { fetchTeamSnapshot, subscribeTeamPulse } from '../api/teamApi';
  * ```text
  * listen(AGENT_TEAM_EVENT)  ← 只有这里
  *   → applyPulse(rev)       ← 去重（陈旧脉冲不改状态，也就不会惊动任何读面）
- *   → lastRev 变化           ← 唯一的通知通道
- *     → usePulseRefresh     ← 合并窗口 / 在飞排队 / 卸载闩（一份实现，三处共用）
+ *   → lastRev 变化           ← 唯一的通知通道（快照面 + 清单面各一份水位）
+ *     → usePulseRefresh     ← 合并窗口 / 在飞排队 / 卸载闩（一份实现，多处共用）
  * ```
  *
  * 「通知」不用回调注册表而用 `lastRev` 这个状态本身：zustand 的订阅已经是回调分发层，
@@ -171,6 +173,9 @@ export function ensureTeamPulseListener(): void {
     // 陈旧脉冲（一次动作会连发多条）不改 `lastRev`，于是没有读面被惊动 ——
     // 去重与通知是同一件事的两个面。
     useTeamStore.getState().applyPulse(rev);
+    // 清单是**另一块**数据面（一个问「这台机器上有哪些队」，一个问「这个队长什么样」），
+    // 所以它有自己的水位；但仍然只有**这一个** `listen`（红线 17：不建第二份订阅）。
+    useTeamListStore.getState().applyPulse(rev);
   });
 }
 

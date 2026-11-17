@@ -23,7 +23,9 @@ import type {
   TeamSummary,
   DiscoveredSkillDto,
 } from '@/shared/types';
+import type { SessionView } from '@/shared/types/liveSessions';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 export function createProject(overrides?: Partial<Project>): Project {
   return {
@@ -105,6 +107,35 @@ export function createDiscoveredSkill(overrides?: Partial<DiscoveredSkillDto>): 
     name_guess: 'discovered-skill',
     ...overrides,
   };
+}
+
+/**
+ * 一条 live session 夹具（`SessionView`）。
+ *
+ * 默认是**用户自己的、已被侧栏列出的**会话（有真标题 + 用户发过输入）：绝大多数派生层用例
+ * 关心的是「这条会话出现在列表里」，而「不该出现」必须显式覆盖一个判据（`attribution` /
+ * `hasUserInput` / `titleSource`）—— 否则「忘了设」会变成「以为测了过滤、其实测的是直通」。
+ *
+ * `workspaceKey` 只能来自 `WorkspaceSession.key()`（红线 12：禁止拼分隔符），默认值是
+ * 主 checkout 的铸造结果；工作树单元要在用例里显式传 `WorkspaceSession.of(id, path).key`。
+ */
+export function createSessionView(
+  overrides: Partial<SessionView> & Pick<SessionView, 'sessionId'>,
+): SessionView {
+  const base: Omit<SessionView, 'sessionId'> = {
+    kind: 'terminal',
+    attribution: { kind: 'user' },
+    agentId: null,
+    workspaceKey: WorkspaceSession.of('p1', null).key,
+    title: 'fix the parser',
+    titleSource: 'prompt',
+    state: 'running',
+    startedAt: '2026-10-31T10:00:00.000Z',
+    updatedAt: '2026-10-31T10:00:00.000Z',
+    turnCount: 1,
+    hasUserInput: true,
+  };
+  return { ...base, ...overrides };
 }
 
 /** 变更行夹具（`path` 必填，其余取中性默认；git 状态过滤测试与列表渲染共用）。 */

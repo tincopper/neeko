@@ -20,6 +20,16 @@ export interface PulseRefreshOptions {
    * 一次注定被丢弃的请求。
    */
   enabled?: boolean;
+  /**
+   * 代数来源（默认 `teamStore.lastRev`）。
+   *
+   * 团队脉冲会同时推进两块数据面的水位（快照面 / 清单面，见
+   * `store/teamStore::ensureTeamPulseListener`）—— 两块数据各有一份 `lastRev`，
+   * 而订阅仍然只有**一个**。读面自己有水位时把它的值传进来，本 hook 就不再读快照面的。
+   *
+   * 不传 = 快照面（`useTeamPanel` / `useMemberDetail` 的老用法，零改动）。
+   */
+  rev?: number;
 }
 
 /**
@@ -101,7 +111,8 @@ function cancel(engine: PulseEngine): void {
 export function usePulseRefresh(refresh: () => unknown, opts: PulseRefreshOptions = {}): void {
   const enabled = opts.enabled ?? true;
   /** 已应用的脉冲代数（store 只在**更新**的代数上推它，所以这里不需要再判重）。 */
-  const rev = useTeamStore((s) => s.lastRev);
+  const teamRev = useTeamStore((s) => s.lastRev);
+  const rev = opts.rev ?? teamRev;
 
   /**
    * 引擎实例（**每个 hook 实例一个**，惰性创建）。

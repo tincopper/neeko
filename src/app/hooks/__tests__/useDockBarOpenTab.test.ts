@@ -397,6 +397,7 @@ function listedSession(projectId: string, overrides: Partial<SessionView> = {}):
   return {
     sessionId: `sess-${projectId}`,
     kind: 'chat',
+    attribution: { kind: 'user' },
     agentId: 'a1',
     workspaceKey: spaceOf(projectId),
     title: 'fix the parser',

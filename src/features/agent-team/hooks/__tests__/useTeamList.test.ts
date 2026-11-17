@@ -2,9 +2,12 @@ import { listen } from '@tauri-apps/api/event';
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useProjectStore } from '@/shared/store/projectStore';
+import type { ProjectId } from '@/shared/utils/workspaceRef';
 import { createTeamList, createTeamSummary } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
+import { __resetTeamListStoreForTests } from '../../store/teamListStore';
 import {
   __resetTeamGenerationForTests,
   __resetTeamPulseForTests,
@@ -65,6 +68,10 @@ describe('useTeamList — 列表的失效源', () => {
     }) as unknown as typeof listen);
     __resetTeamGenerationForTests();
     __resetTeamPulseForTests();
+    // 清单面（app 级 store）：两个用例之间必须清干净，否则上一个用例的清单会漏进下一个
+    __resetTeamListStoreForTests();
+    // 面板的「跟随项目」：夹具团队的 projectId 是 `p1`
+    useProjectStore.setState({ activeProjectId: 'p1' as ProjectId });
     // **列表态**：没有打开的团队（这正是 F1 失效的那一态）
     useTeamStore.setState({
       teamId: null,
@@ -160,5 +167,99 @@ describe('useTeamList — 列表的失效源', () => {
 
     expect(result.current.error).toBe('Failed to open the team database');
     expect(result.current.list?.teams).toHaveLength(1);
+  });
+
+  it('只显示激活项目的团队（全量清单在 store，裁剪在本 hook）', async () => {
+    mockInvoke.mockImplementation(async () =>
+      createTeamList({
+        teams: [
+          createTeamSummary({ teamId: 'tm_p1', projectId: 'p1' }),
+          createTeamSummary({ teamId: 'tm_p2', projectId: 'p2' }),
+        ],
+      }),
+    );
+
+    const { result } = renderHook(() => useTeamList());
+    await flush(0);
+
+    // 请求口径是「全部项目」（侧栏要列所有项目下的团队）
+    expect(mockInvoke).toHaveBeenCalledWith('team_list', { projectId: null });
+    expect(result.current.list?.teams.map((team) => team.teamId)).toEqual(['tm_p1']);
+  });
+
+  it('切项目 = 换视图（同一份全量清单，不重拉）', async () => {
+    mockInvoke.mockImplementation(async () =>
+      createTeamList({
+        teams: [
+          createTeamSummary({ teamId: 'tm_p1', projectId: 'p1' }),
+          createTeamSummary({ teamId: 'tm_p2', projectId: 'p2' }),
+        ],
+      }),
+    );
+
+    const { result } = renderHook(() => useTeamList());
+    await flush(0);
+    const callsAfterFirst = countCalls('team_list');
+
+    act(() => useProjectStore.setState({ activeProjectId: 'p2' as ProjectId }));
+
+    expect(result.current.list?.teams.map((team) => team.teamId)).toEqual(['tm_p2']);
+    // 清单本来就是全量的 ⇒ 切项目不靠重拉（否则切一次项目一次 IPC）
+    expect(countCalls('team_list')).toBe(callsAfterFirst);
+  });
+
+  it('旧行（空 project_id，v16 之前）不出现：它无法归属到任何项目', async () => {
+    mockInvoke.mockImplementation(async () =>
+      createTeamList({
+        teams: [
+          createTeamSummary({ teamId: 'tm_legacy', projectId: '' }),
+          createTeamSummary({ teamId: 'tm_p1', projectId: 'p1' }),
+        ],
+      }),
+    );
+
+    const { result } = renderHook(() => useTeamList());
+    await flush(0);
+
+    expect(result.current.list?.teams.map((team) => team.teamId)).toEqual(['tm_p1']);
+  });
+
+  it('没有激活项目 ⇒ 空清单（没有项目就没有可归属的团队）', async () => {
+    useProjectStore.setState({ activeProjectId: null });
+
+    const { result } = renderHook(() => useTeamList());
+    await flush(0);
+
+    expect(result.current.list?.teams).toEqual([]);
+  });
+
+  it('三个状态互相可区分（还没问到 / 失败 / 空清单）', async () => {
+    // ① 还没问到：list = null 且 loading
+    mockInvoke.mockImplementation(() => new Promise(() => undefined));
+    const first = renderHook(() => useTeamList());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(first.result.current.list).toBeNull();
+    expect(first.result.current.loading).toBe(true);
+    first.unmount();
+
+    // ② 失败且从未成功：list = null 且不 loading（＋错误原文）
+    __resetTeamListStoreForTests();
+    mockInvoke.mockRejectedValueOnce('Failed to open the team database');
+    const second = renderHook(() => useTeamList());
+    await flush(0);
+    expect(second.result.current.list).toBeNull();
+    expect(second.result.current.loading).toBe(false);
+    expect(second.result.current.error).toBe('Failed to open the team database');
+    second.unmount();
+
+    // ③ 空清单：list 有值、teams 为空（不是 null）
+    __resetTeamListStoreForTests();
+    mockInvoke.mockImplementation(async () => createTeamList({ teams: [] }));
+    const third = renderHook(() => useTeamList());
+    await flush(0);
+    expect(third.result.current.list?.teams).toEqual([]);
+    expect(third.result.current.error).toBeNull();
   });
 });
