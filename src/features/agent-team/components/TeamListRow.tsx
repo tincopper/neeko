@@ -1,8 +1,10 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 
+import InlineRenameInput from '@/shared/components/InlineRenameInput';
 import type { TeamRef, TeamSummary } from '@/shared/types/team';
 
 import { memberCountOf } from '../utils/memberCount';
+import { renameDraftCommit } from '../utils/renameDraft';
 import { formatCreatedAt, projectRootTail } from '../utils/teamList';
 
 import TeamStateBadge from './TeamStateBadge';
@@ -31,6 +33,15 @@ import TeamStateBadge from './TeamStateBadge';
  *
  * `memberCount` / `taskOpen` / `taskTotal` 都是后端算好的一行（列表里**没有**花名册与任务行，
  * 那正是 `team_list` 与 `team_snapshot` 分开的理由）。前端数不出这些数，也不该试着数。
+ *
+ * # 改名是行内编辑，不是弹窗
+ *
+ * 入口是一个真按钮（不是双击隐藏手势）：键盘用户与读屏用户必须能「点」到它，而隐藏手势
+ * 对他们等于不存在。点下去名字那一格换成 [`InlineRenameInput`]（共享件：Enter / Esc / blur
+ * 三个键路与「点输入框不要冒泡成选中行」都在那份实现里）。
+ *
+ * **空名 / 没改 ⇒ 不发请求**：空名在后端是 `InvalidInput`（列表会出现一个点不中的空行），
+ * 而没改就重写一遍只是白写一条审计。
  */
 interface TeamListRowProps {
   team: TeamSummary;
@@ -48,18 +59,32 @@ interface TeamListRowProps {
    * （`team.teamId === deletingTeamId`）—— 行自己知道自己的 id，这是最近的共同祖先。
    */
   deletingTeamId: string | null;
+  /** 改名（宿主负责落地与失败处理；本行只提交一次「裁过的、且真的变了」的名字）。 */
+  onRename: (teamId: string, name: string) => void;
 }
 
 const TeamListRow: React.FC<TeamListRowProps> = React.memo(
-  ({ team, onOpen, onRequestClose, onRequestDelete, deletingTeamId }) => {
+  ({ team, onOpen, onRequestClose, onRequestDelete, deletingTeamId, onRename }) => {
     const { teamId, name, state } = team;
     const sealed = state === 'sealed';
     // 只有**这一行**正在被删时按钮才置灰（见 `deletingTeamId` 的文档）。
     const deleting = teamId === deletingTeamId;
 
+    /** `null` = 不在编辑态。编辑态的生命周期就是那个输入框的挂载期。 */
+    const [draft, setDraft] = useState<string | null>(null);
+
     const handleOpen = useCallback(() => onOpen(teamId), [onOpen, teamId]);
     const handleClose = useCallback(() => onRequestClose(team), [onRequestClose, team]);
     const handleDelete = useCallback(() => onRequestDelete(team), [onRequestDelete, team]);
+    const handleStartRename = useCallback(() => setDraft(name), [name]);
+    const handleCancelRename = useCallback(() => setDraft(null), []);
+    const handleCommitRename = useCallback(() => {
+      if (draft === null) return;
+      const next = renameDraftCommit(draft, name);
+      setDraft(null);
+      if (next === null) return;
+      onRename(teamId, next);
+    }, [draft, name, onRename, teamId]);
 
     const rootTail = projectRootTail(team.projectPath);
 
@@ -69,9 +94,22 @@ const TeamListRow: React.FC<TeamListRowProps> = React.memo(
         className="flex flex-col gap-1 rounded-md border border-border bg-bg-primary px-2 py-1.5"
       >
         <div className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-ui font-medium text-text-primary">
-            {name}
-          </span>
+          {draft === null ? (
+            <span
+              className="min-w-0 flex-1 truncate text-ui font-medium text-text-primary"
+              // 双击改名：与侧栏会话行 / 工作树行同一手感（按钮仍是主入口）
+              onDoubleClick={handleStartRename}
+            >
+              {name}
+            </span>
+          ) : (
+            <InlineRenameInput
+              value={draft}
+              onChange={setDraft}
+              onCommit={handleCommitRename}
+              onCancel={handleCancelRename}
+            />
+          )}
           <TeamStateBadge state={state} />
         </div>
 
@@ -101,6 +139,15 @@ const TeamListRow: React.FC<TeamListRowProps> = React.memo(
             className="rounded px-1.5 py-0.5 text-micro text-accent-blue hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
             {sealed ? '查看' : '打开'}
+          </button>
+          {/* 改名在**任何状态**都成立：名字不参与任何判据（封存锁的是进程与恢复）。 */}
+          <button
+            type="button"
+            onClick={handleStartRename}
+            aria-label={`重命名团队 ${name}`}
+            className="rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+          >
+            改名
           </button>
           {/* 关闭与删除**互斥**：可关的是还开着的队，可删的是已经封存的队。 */}
           {sealed ? (

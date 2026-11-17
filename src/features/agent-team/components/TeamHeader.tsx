@@ -1,10 +1,12 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 
 import { cn } from '@/lib/utils';
+import InlineRenameInput from '@/shared/components/InlineRenameInput';
 import type { TeamSnapshot } from '@/shared/types/team';
 
 import { memberCountOf } from '../utils/memberCount';
 import { hasResumableMember } from '../utils/memberTerminal';
+import { renameDraftCommit } from '../utils/renameDraft';
 import { awaitingApprovalCount } from '../utils/taskBoard';
 import { projectRootTail } from '../utils/teamList';
 
@@ -53,6 +55,12 @@ interface TeamHeaderProps {
    * `undefined` = 宿主未注入这条连线（测试环境）：按钮不渲染，而不是渲染一个点了没反应的。
    */
   onResumeTeam?: () => void;
+  /**
+   * 改名（`team_rename`）：行内编辑提交一次「裁过且真的变了」的名字。
+   *
+   * `undefined` = 宿主未注入这条连线（测试环境）：入口不渲染，而不是渲染一个点了没反应的。
+   */
+  onRenameTeam?: (name: string) => void;
   onRefresh: () => void;
   /** 回列表视图（**不清** store）。 */
   onBack: () => void;
@@ -60,7 +68,17 @@ interface TeamHeaderProps {
 }
 
 const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
-  ({ teamId, snapshot, closing, resuming, onResumeTeam, onRefresh, onBack, onRequestClose }) => {
+  ({
+    teamId,
+    snapshot,
+    closing,
+    resuming,
+    onResumeTeam,
+    onRenameTeam,
+    onRefresh,
+    onBack,
+    onRequestClose,
+  }) => {
     const state = snapshot?.team.state ?? null;
     const teamName = snapshot?.team.name ?? teamId;
     // 成员数只有一份产出点（`utils/memberCount`）：列表行用后端的 `TeamSummary.memberCount`，
@@ -75,12 +93,37 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
     const handleRequestClose = useCallback(() => onRequestClose(), [onRequestClose]);
     const handleRequestResume = useCallback(() => onResumeTeam?.(), [onResumeTeam]);
 
+    /** `null` = 不在编辑态（编辑态的生命周期就是那个输入框的挂载期）。 */
+    const [draft, setDraft] = useState<string | null>(null);
+    const handleStartRename = useCallback(() => setDraft(teamName), [teamName]);
+    const handleCancelRename = useCallback(() => setDraft(null), []);
+    const handleCommitRename = useCallback(() => {
+      if (draft === null) return;
+      const next = renameDraftCommit(draft, teamName);
+      setDraft(null);
+      if (next === null) return;
+      onRenameTeam?.(next);
+    }, [draft, onRenameTeam, teamName]);
+
     return (
       <header className="flex flex-col gap-1 border-b border-border px-2 py-1.5">
         <div className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-ui font-semibold text-text-primary">
-            {teamName}
-          </span>
+          {draft === null ? (
+            <span
+              className="min-w-0 flex-1 truncate text-ui font-semibold text-text-primary"
+              // 双击改名（按钮仍是主入口：双击对键盘 / 读屏用户不存在）
+              onDoubleClick={handleStartRename}
+            >
+              {teamName}
+            </span>
+          ) : (
+            <InlineRenameInput
+              value={draft}
+              onChange={setDraft}
+              onCommit={handleCommitRename}
+              onCancel={handleCancelRename}
+            />
+          )}
           {/* 徽标文案来自唯一映射点（`teamStateBadge`），不在这里另写一份 */}
           {state === null ? null : <TeamStateBadge state={state} />}
           <button
@@ -118,6 +161,16 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
         </div>
 
         <div className="flex items-center gap-1.5">
+          {onRenameTeam === undefined ? null : (
+            <button
+              type="button"
+              onClick={handleStartRename}
+              aria-label={`重命名团队 ${teamName}`}
+              className="rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+            >
+              改名
+            </button>
+          )}
           {state === 'sealed' ? (
             <span className="text-micro text-text-muted">只读快照：已封存，不随重启恢复</span>
           ) : (

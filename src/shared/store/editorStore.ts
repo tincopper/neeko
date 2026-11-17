@@ -246,15 +246,16 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
       };
     }
     case 'team-board': {
-      // 唯一可合并的字段是 view（面板「在中间打开」会带当前视图重开同一个 tab）。
-      // teamId / teamName 是 tab 的**地址**（建 tab 时写一次，无更新路径 —— 同
-      // terminal 的 `attachSessionId`：`partial` 里的同名字段故意不读）。
+      // `teamId` 是 tab 的**地址**（建 tab 时写一次，永不更新；`partial` 里的同名字段
+      // 故意不读）；`teamName` 只是**显示名** —— 用户改名后 tab 标题必须跟上
+      // （`app/dock/wrappers/teamRenameTabs.ts`），否则 tab 栏会长期挂着一个已经不存在的队名。
+      // `view` 由「在中间打开」原地合并。
       const p = partial as Record<string, unknown>;
       const d = data as TeamBoardTabData;
       return {
         kind: 'team-board' as const,
         teamId: d.teamId,
-        teamName: d.teamName,
+        teamName: p.teamName !== undefined ? (p.teamName as string) : d.teamName,
         view: 'view' in p ? (p.view as 'board' | 'flow') : d.view,
       };
     }

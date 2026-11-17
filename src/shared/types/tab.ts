@@ -70,7 +70,12 @@ export interface TeamBoardTabData {
   kind: 'team-board';
   /** 团队 id（`tm_*`）。 */
   teamId: string;
-  /** 展示名（建 tab 时快照；面板刷新后可能改名，不追）。 */
+  /**
+   * 展示名（建 tab 时快照）。
+   *
+   * **会跟随改名**：`app/dock/wrappers/teamRenameTabs.ts` 在 `team_rename` 成功后重写标题与
+   * 本字段（两处一起写，否则标题新 / 数据旧）。`teamId` 才是地址，本字段只用于展示。
+   */
   teamName: string;
   /** 默认视图：看板 / 分配图。 */
   view: 'board' | 'flow';

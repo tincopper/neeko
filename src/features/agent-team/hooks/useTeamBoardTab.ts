@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
+import { teamBoardTabTitle } from '@/shared/utils/teamTabTitles';
 import type { ProjectId, WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /**
@@ -57,7 +58,7 @@ export function useTeamBoardTab() {
     state.addTab({
       id: tabId,
       scope: { kind: 'workspace', session },
-      title: `看板 · ${spec.teamName}`,
+      title: teamBoardTabTitle(spec.teamName),
       data: { kind: 'team-board', teamId: spec.teamId, teamName: spec.teamName, view: spec.view },
     });
     state.activateTab(key, tabId);

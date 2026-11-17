@@ -77,6 +77,13 @@ interface TeamViewProps {
   onResumeMember?: (memberId: string) => void;
   /** 恢复**整个队**（`team_resume` 不带 memberId）。`undefined` = 头部不渲染这个入口。 */
   onResumeTeam?: () => void;
+  /**
+   * 改团队名（`team_rename`）：头部行内编辑提交一次「裁过且真的变了」的名字。
+   *
+   * 两参（`teamId` + 名字）而不是只给名字：入口在头部、落键在面板 —— 与
+   * `onOpenTask` 同一口径（下层不自己回答「是哪个队」）。
+   */
+  onRenameTeam?: (teamId: string, name: string) => void;
 }
 
 const TeamView: React.FC<TeamViewProps> = React.memo(
@@ -96,6 +103,7 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
     onOpenHistory,
     onResumeMember,
     onResumeTeam,
+    onRenameTeam,
   }) => {
     const teamName = snapshot?.team.name ?? teamId;
     /**
@@ -130,6 +138,12 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
       setOpenMember(null);
     }, []);
 
+    // `TeamHeader` 是 memo 组件：内联箭头会让它每次重渲染（与 `handleRequestClose` 同一条）。
+    const handleRenameTeam = useCallback(
+      (name: string) => onRenameTeam?.(teamId, name),
+      [onRenameTeam, teamId],
+    );
+
     // 换队时抽屉自动失效（存的是打开那一刻的 `teamId`，不是从成员 id 反解的）。
     const showingMemberId =
       openMember !== null && openMember.teamId === teamId ? openMember.memberId : null;
@@ -137,11 +151,16 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
     return (
       <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
         <TeamHeader
+          // 换队时**重新挂载**：行内改名的草稿是「这一行的编辑态」，它的生命周期就是挂载期
+          // （同 `openMember` 在换队时失效那条）。留着它的话，换队之后的第一次 Enter
+          // 可能提交上一条队的时间点草稿。
+          key={teamId}
           teamId={teamId}
           snapshot={snapshot}
           closing={closing}
           resuming={resuming}
           onResumeTeam={onResumeTeam}
+          onRenameTeam={onRenameTeam === undefined ? undefined : handleRenameTeam}
           onRefresh={onRefresh}
           onBack={onBack}
           onRequestClose={handleRequestClose}

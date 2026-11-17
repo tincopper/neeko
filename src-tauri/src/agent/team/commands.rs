@@ -1,6 +1,6 @@
 //! 团队域的 `#[tauri::command]`（**极薄**，红线 6）。
 //!
-//! 十一条命令：
+//! 十二条命令：
 //!
 //! | 命令 | 方向 | 载荷 |
 //! | --- | --- | --- |
@@ -15,8 +15,9 @@
 //! | `team_close` | 写 | 关进程 → 归档成员 → 作废凭证（失败停在 `closing`，可重试）|
 //! | `team_resume` | 写 | 用成员**自己的原生会话 id**重建进程（`team_id` + 可选 `member_id`）|
 //! | `team_delete` | 写 | **永久删除**一个 `closed` 的队（`active` / `closing` 一律拒，返回 `()`）|
+//! | `team_rename` | 写 | 改**显示名**（任何状态都允许：名字不参与任何判据，返回 `()`）|
 //!
-//! 十一条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，可选项面在
+//! 十二条都只做「接收参数 → 校验 → 调度」：视图构造在 [`crate::agent::team::view`]，可选项面在
 //! [`crate::agent::team::options`]，建队/起进程在 `bootstrap` + `execution`，准入判定在
 //! [`crate::agent::team::admission`]，删除与重试的状态判据在 [`crate::agent::team::manager`]，
 //! 恢复的语义在 [`crate::agent::team::resume`]（红线 6：命令里不留一条恢复规则）。
@@ -480,6 +481,31 @@ pub async fn team_delete(
     let team_id = require_id(team_id, "team_id")?;
     let manager = Arc::clone(&state.team_manager);
     run_blocking_result(move || manager.delete_team(&team_id)).await
+}
+
+/// 改团队的**显示名**（列表行上的「重命名」）。
+///
+/// # 状态判据不在本层（名字不参与任何判据）
+///
+/// 与 `team_close` / `team_resume` 不同，它**没有**状态前置条件：封存的队也能改名
+/// （封存锁住的是进程与恢复，不是用户给这一行贴的标签）。名字的判据（空 / 控制字符 /
+/// 超预算）与未知团队都在 [`TeamManager::rename_team`] 里（域内唯一写入口，红线 6）。
+///
+/// # 阻塞池（红线 3）
+///
+/// 改名是一次 SQLite 写（`TeamStore::upsert_team` + 一条审计行），放进阻塞池。
+///
+/// 成功后**不回载荷**：名字的新值经脉冲 + `team_list` 重取到达列表，与 `team_close` / `team_delete`
+/// 的回报口径一致（不在命令层再造第二个事实源）。
+#[tauri::command]
+pub async fn team_rename(
+    state: tauri::State<'_, AppStateWrapper>,
+    team_id: String,
+    name: String,
+) -> Result<(), AppError> {
+    let team_id = require_id(team_id, "team_id")?;
+    let manager = Arc::clone(&state.team_manager);
+    run_blocking_result(move || manager.rename_team(&team_id, &name)).await
 }
 
 /// 面板的**团队配置面**：这个队允许谁当成员 / 还能加几个 / 缺省值是什么。

@@ -234,6 +234,7 @@ macro_rules! neeko_invoke_handler {
             $crate::agent::team::commands::team_close,
             $crate::agent::team::commands::team_resume,
             $crate::agent::team::commands::team_delete,
+            $crate::agent::team::commands::team_rename,
             $crate::agent::team::commands::team_snapshot,
             $crate::agent::team::commands::team_task_detail,
             $crate::agent::team::commands::team_task_retry,

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,7 +13,11 @@ vi.mock('@/shared/contexts', () => ({
 }));
 
 import { __resetTeamGenerationForTests, useTeamStore } from '@/features/agent-team/store/teamStore';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import type { Tab } from '@/shared/types/tab';
+import { leaderTerminalTabTitle, teamBoardTabTitle } from '@/shared/utils/teamTabTitles';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
 import {
   createMemberStatus,
@@ -21,6 +25,7 @@ import {
   createTeam,
   createTeamList,
   createTeamSnapshot,
+  createTeamSummary,
 } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
@@ -187,5 +192,143 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
     expect(button).toBeDisabled();
     fireEvent.click(button);
     expect(openExistingTerminalTab).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 改名之后**已打开的 tab** 标题要跟上（生产接线级）。
+ *
+ * 这一层正是「面板测试绿、用户仍看到旧名字」的缺口：`useTeamRename` 只改后端那一行，
+ * 而 tab 标题是它在**另一个域**的投影 —— 接线漏了，两个域就各说各话。
+ *
+ * 两种 tab 各自靠什么认人（`teamRenameTabs` 的三条判据）：
+ *
+ * | tab | 靠什么 |
+ * | --- | --- |
+ * | 队长终端 | `ptySessionId` 相等（**不是**标题字符串：标题就是要被重写的东西）|
+ * | 看板 | `data.teamId`（同一台机器上有多个队）|
+ */
+describe('TeamPanelWrapper — 改名同步 tab 标题', () => {
+  beforeEach(() => {
+    openExistingTerminalTab.mockReset();
+    mockInvoke.mockReset();
+    __resetTeamGenerationForTests();
+    useEditorStore.setState({ tabs: {}, editorLayout: {} });
+    useWorkspaceStore.setState({ byProject: {} });
+    useTeamStore.setState({
+      teamId: 'tm_1',
+      snapshot: SNAPSHOT,
+      detail: null,
+      loading: false,
+      error: null,
+      lastRev: 0,
+    });
+    useProjectStore.setState({
+      activeProjectId: PROJECT_ID,
+      activeProject: createProject({ id: PROJECT_ID, path: '/repo/main' }),
+    });
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') return createTeamList({ teams: [] });
+      if (cmd === 'team_snapshot') return SNAPSHOT;
+      if (cmd === 'team_rename') return undefined;
+      return undefined;
+    });
+  });
+
+  function addTab(tab: Tab): void {
+    useEditorStore.getState().addTab(tab);
+  }
+
+  function tabTitle(id: string): string | undefined {
+    const key = activeWorkspaceSession(PROJECT_ID).key;
+    return useEditorStore.getState().tabs[key]?.tabs.find((tab) => tab.id === id)?.title;
+  }
+
+  it('队长终端 + 看板 tab 的标题都换成新队名（别的队 / 别的终端一个字节都不动）', async () => {
+    const scope = { kind: 'workspace' as const, session: activeWorkspaceSession(PROJECT_ID) };
+    addTab({
+      id: 't-lead',
+      scope,
+      title: leaderTerminalTabTitle('refactor'),
+      data: { kind: 'terminal', agentId: 'pi', ptySessionId: 'term-lead' },
+    });
+    addTab({
+      id: 't-other',
+      scope,
+      title: 'npm test',
+      data: { kind: 'terminal', agentId: null, ptySessionId: 'term-other' },
+    });
+    addTab({
+      id: 'team-board_tm_1',
+      scope,
+      title: teamBoardTabTitle('refactor'),
+      data: { kind: 'team-board', teamId: 'tm_1', teamName: 'refactor', view: 'board' },
+    });
+
+    render(<TeamPanelWrapper />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '重命名团队 refactor' }));
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: '新队名' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(tabTitle('t-lead')).toBe(leaderTerminalTabTitle('新队名')));
+    expect(tabTitle('team-board_tm_1')).toBe(teamBoardTabTitle('新队名'));
+    expect(tabTitle('t-other')).toBe('npm test');
+  });
+
+  /**
+   * 列表态改**另一支队**的名：不能拿「当前打开过的那支队」的队长句柄去投影。
+   *
+   * 这是这条接线上最容易写错的一处：`store.snapshot` 在列表态仍指着上一个打开过的队
+   * （返回列表只改面板的局部导航态）。用它找队长句柄的话，A 的队长 tab 会被改成 B 的新名字，
+   * 而 B 自己的终端一个都不会变 —— 两条都是错的，而且面板测试 / 单测全绿。
+   */
+  it('在列表里改**另一个队**的名 ⇒ 不碰当前打开的那支队的队长终端', async () => {
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_list') {
+        return createTeamList({
+          teams: [createTeamSummary({ teamId: 'tm_2', name: '另一个队' })],
+        });
+      }
+      // 快照仍属于**上一次打开过的 tm_1**（列表态不换队）—— 这正是本条要防的前提。
+      if (cmd === 'team_snapshot') return SNAPSHOT;
+      if (cmd === 'team_rename') return undefined;
+      return undefined;
+    });
+
+    const scope = { kind: 'workspace' as const, session: activeWorkspaceSession(PROJECT_ID) };
+    addTab({
+      id: 't-lead',
+      scope,
+      title: leaderTerminalTabTitle('refactor'),
+      data: { kind: 'terminal', agentId: 'pi', ptySessionId: 'term-lead' },
+    });
+    addTab({
+      id: 'team-board_tm_2',
+      scope,
+      title: teamBoardTabTitle('另一个队'),
+      data: { kind: 'team-board', teamId: 'tm_2', teamName: '另一个队', view: 'board' },
+    });
+
+    render(<TeamPanelWrapper />);
+
+    // 返回列表（store 里那支 tm_1 仍是「当前队」，返回列表只是面板的局部导航态）。
+    fireEvent.click(await screen.findByRole('button', { name: '返回列表' }));
+    fireEvent.click(await screen.findByRole('button', { name: '重命名团队 另一个队' }));
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: '新名字' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('team_rename', {
+        teamId: 'tm_2',
+        name: '新名字',
+      }),
+    );
+    // tm_2 的看板 tab 跟上（它按 `data.teamId` 认人，与快照无关）
+    await waitFor(() => expect(tabTitle('team-board_tm_2')).toBe(teamBoardTabTitle('新名字')));
+    // tm_1 的队长终端**不能**被改名：它不属于被改名的那支队
+    expect(tabTitle('t-lead')).toBe(leaderTerminalTabTitle('refactor'));
   });
 });

@@ -303,6 +303,23 @@ export function deleteTeamRole(name: string): Promise<void> {
 }
 
 /**
+ * 改团队的**显示名**（列表行上的「重命名」）。
+ *
+ * # 任何状态都能改（与关闭 / 删除不同）
+ *
+ * 名字不参与任何判据：它不影响派活、不影响恢复、也不影响授权矩阵。所以封存的队照样能
+ * 改名 —— 封存锁住的是**进程与恢复**，不是用户给这一行贴的标签（后端 `rename_team` 同一句）。
+ * 前端**不**按 `state` 置灰这个入口：那是第二份判据，而它一旦与后端漂移，症状是「入口亮着
+ * 但永远失败」。
+ *
+ * 空名 / 未改动不发请求（判据在调用方 `TeamListRow`）—— 后端仍会拒绝空名，这里只是
+ * 不把必然失败的请求送出去。
+ */
+export function renameTeam(teamId: string, name: string): Promise<void> {
+  return invoke<void>('team_rename', { teamId, name });
+}
+
+/**
  * 订阅团队变更脉冲。
  *
  * 事件名只能来自 `src/shared/events.ts` 的 [`AGENT_TEAM_EVENT`]（红线 5：双端同源，

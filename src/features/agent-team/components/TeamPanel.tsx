@@ -8,6 +8,7 @@ import { useTeamCrossDomainCallbacks } from '../hooks/useTeamCrossDomainCallback
 import { useTeamDestructives } from '../hooks/useTeamDestructives';
 import { useTeamList } from '../hooks/useTeamList';
 import { useTeamPanel } from '../hooks/useTeamPanel';
+import { useTeamRename } from '../hooks/useTeamRename';
 import { useTeamResumePanel } from '../hooks/useTeamResumePanel';
 import { useTeamStore } from '../store/teamStore';
 
@@ -123,6 +124,13 @@ interface TeamPanelProps {
     title: string,
     projectId: ProjectId | null,
   ) => void;
+  /**
+   * 改名落地后把**已经打开的 tab 标题**跟上（跨域动作，wrapper 注入）。
+   *
+   * 不注入 = 只改后端那一行（tab 上的「队长 · 旧名」留着）—— 测试环境与「还没有任何 tab」
+   * 是同一个形状。宿主要自己解析团队（teamId / 队长的 terminalId），本组件只报事实。
+   */
+  onTeamRenamed?: (teamId: string, name: string) => void;
 }
 
 const TeamPanel: React.FC<TeamPanelProps> = React.memo(
@@ -133,6 +141,7 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
     onOpenBoard,
     onOpenTaskTab,
     onOpenHistory,
+    onTeamRenamed,
   }) => {
     const { teamId, snapshot, loading, error } = useTeamPanel();
     const refresh = useTeamStore((s) => s.refresh);
@@ -195,6 +204,13 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
       reloadList,
       onOpenTerminal: crossDomain.onOpenTerminal,
     });
+
+    // 列表行的改名：写就完事 —— 名字的真相随 `reloadList`（与脉冲）回到列表行。
+    const { rename: renameTeam } = useTeamRename({
+      onShowToast,
+      onRenamed: onTeamRenamed,
+      onSettled: reloadList,
+    });
     const handleOpenTeam = useCallback(
       (id: string) => {
         // 先在**列表里打开**的那个队：`openTeam` 对同一个 id 是幂等的，所以「返回列表后再点开
@@ -244,6 +260,7 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
             onOpenHistory={crossDomain.onOpenHistory}
             onResumeMember={resumeMember}
             onResumeTeam={resumeTeam}
+            onRenameTeam={renameTeam}
           />
         ) : creating ? (
           // 创建态：整面板推入的创建流（原型 ②）。做完或返回即退栈回列表。
@@ -264,6 +281,7 @@ const TeamPanel: React.FC<TeamPanelProps> = React.memo(
             onRequestClose={handleRequestClose}
             onRequestDelete={handleRequestDelete}
             deletingTeamId={deletingTeamId}
+            onRequestRename={renameTeam}
             onCreate={() => setCreating(true)}
           />
         )}

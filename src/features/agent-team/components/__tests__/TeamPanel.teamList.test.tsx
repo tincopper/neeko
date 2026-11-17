@@ -929,3 +929,88 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
     expect(text).toContain('close failed for');
   });
 });
+
+/**
+ * 行内重命名（`team_rename`）。
+ *
+ * 三条判据：
+ *
+ * 1. **提交才写**：Enter 提交 → 一条 `team_rename({ teamId, name })`；两端空白由后端裁，
+ *    这里只保证**空名/没改**不发请求（空名不是名字，`admit` 同一条纪律）。
+ * 2. **取消是零调用**：Esc 回到显示态，后端什么也没发生。
+ * 3. **成功后重取列表**：名字的真相是 `team_list`（脉冲也会唤醒它，但这里钉的是
+ *    「这条动作自己负责收尾」，与关闭 / 删除同一个 `onSettled` 口径）。
+ */
+describe('TeamPanel — 列表行内重命名', () => {
+  const renameLabel = (name: string): string => `重命名团队 ${name}`;
+
+  beforeEach(() => {
+    resetStores();
+    mockInvoke.mockReset();
+    setActiveProject();
+  });
+
+  function mockListWith(name: string): void {
+    const list = createTeamList({ teams: [createTeamSummary({ teamId: 'tm_1', name })] });
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_role_list') return { roles: [], truncated: false };
+      if (cmd === 'team_list') return list;
+      if (cmd === 'team_rename') return undefined;
+      return emptyLaunchSurface(cmd);
+    });
+  }
+
+  it('点「重命名」→ 输入新名 → Enter ⇒ team_rename(teamId, 裁过的名字) + 重取列表', async () => {
+    mockListWith('running-team');
+    render(<TeamPanel />);
+    await screen.findByText('running-team');
+    const pullsBefore = countCalls('team_list');
+
+    fireEvent.click(screen.getByRole('button', { name: renameLabel('running-team') }));
+
+    // 编辑态：输入框预填当前名字（改名不是重新起名）
+    const input = within(rowOf('tm_1')).getByRole('textbox');
+    expect(input).toHaveValue('running-team');
+    fireEvent.change(input, { target: { value: '  求和小队  ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('team_rename', {
+        teamId: 'tm_1',
+        name: '求和小队',
+      }),
+    );
+    // 名字的真相仍是 `team_list`：这条动作自己收尾，不指望脉冲顺手帮它
+    await waitFor(() => expect(countCalls('team_list')).toBeGreaterThan(pullsBefore));
+  });
+
+  it('Esc 取消 ⇒ 零调用（名字没改，后端不该收到任何东西）', async () => {
+    mockListWith('running-team');
+    render(<TeamPanel />);
+    await screen.findByText('running-team');
+
+    fireEvent.click(screen.getByRole('button', { name: renameLabel('running-team') }));
+    fireEvent.change(within(rowOf('tm_1')).getByRole('textbox'), {
+      target: { value: '改了但又反悔' },
+    });
+    fireEvent.keyDown(within(rowOf('tm_1')).getByRole('textbox'), { key: 'Escape' });
+
+    expect(countCalls('team_rename')).toBe(0);
+    expect(within(rowOf('tm_1')).getByText('running-team')).toBeInTheDocument();
+  });
+
+  it('清空后 Enter ⇒ 不发请求（空名不是名字，后端也会拒）', async () => {
+    mockListWith('running-team');
+    render(<TeamPanel />);
+    await screen.findByText('running-team');
+
+    fireEvent.click(screen.getByRole('button', { name: renameLabel('running-team') }));
+    const input = within(rowOf('tm_1')).getByRole('textbox');
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(countCalls('team_rename')).toBe(0);
+    // 回到显示态（旧名字还在，界面不假装改过）
+    expect(within(rowOf('tm_1')).getByText('running-team')).toBeInTheDocument();
+  });
+});

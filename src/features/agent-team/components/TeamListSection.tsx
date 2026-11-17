@@ -56,6 +56,8 @@ interface TeamListSectionProps {
   onRequestDelete: (team: TeamRef) => void;
   /** 正在删哪个队（`null` = 没有删除在飞）；只有那一行的按钮置灰。 */
   deletingTeamId: string | null;
+  /** 改名（行内提交一次「裁过且真的变了」的名字；落地由宿主负责）。 */
+  onRename: (teamId: string, name: string) => void;
 }
 
 const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
@@ -69,6 +71,7 @@ const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
     onRequestClose,
     onRequestDelete,
     deletingTeamId,
+    onRename,
   }) => {
     const retry = useCallback(() => onRetry(), [onRetry]);
 
@@ -129,6 +132,7 @@ const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
                   onRequestClose={onRequestClose}
                   onRequestDelete={onRequestDelete}
                   deletingTeamId={deletingTeamId}
+                  onRename={onRename}
                 />
               ))}
             </ul>

@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 
 import { TeamPanel, useTeamBoardTab, useTeamTaskTab } from '@/features/agent-team';
+import { useTeamStore } from '@/features/agent-team/store/teamStore';
 import { conversationIdOf, conversationTabTitle } from '@/features/conversation';
 import { useTerminalTabs } from '@/features/terminal';
 import { useAppContext } from '@/shared/contexts';
@@ -10,6 +11,8 @@ import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types/tab';
 import type { TeamSession } from '@/shared/types/team';
 import type { ProjectId } from '@/shared/utils/workspaceRef';
+
+import { retitleTeamTabs } from './teamRenameTabs';
 
 /**
  * Team dock 面板适配层：把两个**跨域**的东西接上。
@@ -134,6 +137,36 @@ const TeamPanelWrapper: React.FC = React.memo(() => {
     [projectId, openTaskTab],
   );
 
+  /**
+   * 改名之后把**已打开的 tab** 标题跟上（「改名 = 改名」而不是「改了一半」）。
+   *
+   * 这里只提供投影**唯一无法自己回答**的那一样东西：队长的 PTY 句柄。其余判据（哪些 tab
+   * 属于这队）完全在 [`retitleTeamTabs`] 里，读 tab 自己的地址。
+   *
+   * 句柄取自现取的 store（`getState()`）而不是渲染期闭包：改名是一次异步落地，那一刻的
+   * 队长可能是刚被 `team_resume` 换过的新进程。
+   *
+   * # 快照**不是这一队**时不给句柄
+   *
+   * 列表态的「当前队」是面板的局部导航态，`store.teamId` 仍指着**上一个打开过的队** ——
+   * 于是「打开 A → 返回列表 → 改 B 的名」时，`snapshot` 是 A 的。拿 A 的队长句柄去投影，
+   * 结果是 A 的队长 tab 被改成 B 的新名字（而 B 自己的终端一个都没变）。所以先问身份：
+   * 不是这一队 = 不知道该开谁 = `null`（不猜，终端一个都不碰；看板 tab 不受影响，它认
+   * `data.teamId`）。
+   */
+  const handleTeamRenamed = useCallback((teamId: string, name: string) => {
+    const snapshot = useTeamStore.getState().snapshot;
+    const leader =
+      snapshot?.team.id === teamId
+        ? snapshot.members.find((member) => member.role === 'lead')
+        : undefined;
+    retitleTeamTabs({
+      teamId,
+      teamName: name,
+      leaderTerminalId: leader?.session.terminalId ?? null,
+    });
+  }, []);
+
   return (
     <TeamPanel
       onShowToast={showToast}
@@ -142,6 +175,7 @@ const TeamPanelWrapper: React.FC = React.memo(() => {
       onOpenBoard={handleOpenBoard}
       onOpenTaskTab={handleOpenTaskTab}
       onOpenHistory={handleOpenMemberHistory}
+      onTeamRenamed={handleTeamRenamed}
     />
   );
 });

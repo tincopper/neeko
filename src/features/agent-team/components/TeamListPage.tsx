@@ -19,6 +19,7 @@ interface TeamListPageProps {
   onRequestClose: React.ComponentProps<typeof TeamListSection>['onRequestClose'];
   onRequestDelete: React.ComponentProps<typeof TeamListSection>['onRequestDelete'];
   deletingTeamId: string | null;
+  onRequestRename: React.ComponentProps<typeof TeamListSection>['onRename'];
   onCreate: () => void;
 }
 
@@ -33,6 +34,7 @@ const TeamListPage: React.FC<TeamListPageProps> = React.memo(
     onRequestClose,
     onRequestDelete,
     deletingTeamId,
+    onRequestRename,
     onCreate,
   }) => (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -47,6 +49,7 @@ const TeamListPage: React.FC<TeamListPageProps> = React.memo(
         onRequestClose={onRequestClose}
         onRequestDelete={onRequestDelete}
         deletingTeamId={deletingTeamId}
+        onRename={onRequestRename}
       />
     </div>
   ),

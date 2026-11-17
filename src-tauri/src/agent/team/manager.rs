@@ -86,6 +86,11 @@ pub const EVENT_CLOSE_BEGIN: &str = "close_begin";
 /// 审计事件类别：团队落终态 `Sealed`（`sealed_at` 写入的那一次）。
 pub const EVENT_CLOSE_TEAM: &str = "close_team";
 
+/// 审计事件类别：团队显示名被用户改过（`旧名 → 新名`）。
+///
+/// 与关闭类事件同族（团队级的账），但**不是**生命周期的一部分：名字不参与任何判据。
+pub const EVENT_RENAME_TEAM: &str = "rename_team";
+
 /// 审计事件类别：启动归位（把上一个进程的运行态改成事实）。
 ///
 /// 与关闭类事件**分开**：重启不是用户动作，混进 `close_*` 会让「谁关掉了这个成员」
@@ -1898,6 +1903,52 @@ impl TeamManager {
         inner.tasks.retain(|key, _| key.team_id != team_id);
         inner.verification.retain(|id, _| !member_ids.contains(id));
         Ok(())
+    }
+
+    /// 改团队的**显示名**（面板列表行上的「重命名」）。
+    ///
+    /// # 为什么它是唯一「任何状态都允许」的团队级写
+    ///
+    /// 名字**不参与任何判据**：`team_close` 不看它、`team_resume` 不看它、授权矩阵也不看它
+    /// （那是 `role` 与 `token_hash` 的事）。所以「已封存的队是只读快照」这条纪律在这里
+    /// 不成立 —— 封存锁住的是**进程与恢复**，不是用户给这一行贴的标签；而列表里大多数行
+    /// 正是封存的队，拒绝它们等于让「名字起错了」永远修不回来。
+    ///
+    /// 唯一的拒绝条件是**名字本身不合规**（[`crate::agent::team::name::validate_team_name`]：
+    /// 空 / 控制字符 / 超长 ⇒ `InvalidInput`）：空串会渲染成一个点不中的空行，换行会打断
+    /// 成员 preamble 的行结构，而超长名字能把 `team_list` 的单次载荷推过红线 4 的上界。
+    /// 判据与**建队**是同一份（`name::resolve_name` → 同一个校验器）。
+    /// 缺省名在**建队**那一步派生，本层不派生。
+    ///
+    /// # 幂等
+    ///
+    /// 改成同名 ⇒ `Ok` 且**不写审计**：面板的重复提交不该在事件流里刷出 N 条记录。
+    /// （写锁仍在，所以代数照推、脉冲照发 —— 那是 [`Self::lock_writing`] 的结构事实，
+    /// 一次 no-op 写不会让任何人看到错的状态。）
+    pub fn rename_team(&self, team_id: &str, name: &str) -> Result<(), AppError> {
+        // 校验在锁外：它是纯函数，没必要抱着写锁跑。
+        let next = crate::agent::team::name::validate_team_name("team_rename", name)?;
+        let mut inner = self.lock_writing();
+        let mut team = inner
+            .teams
+            .get(team_id)
+            .cloned()
+            .ok_or_else(|| not_found(format!("team {team_id}")))?;
+        if team.name == next {
+            return Ok(());
+        }
+        let previous = std::mem::replace(&mut team.name, next.clone());
+        // 库先写、镜像后改（与本文件其它写路径同一纪律）。
+        self.store.upsert_team(&team)?;
+        inner.teams.insert(team.id.clone(), team);
+        self.audit(
+            &mut inner,
+            team_id,
+            crate::agent::team::resume::LOCAL_ACTOR,
+            EVENT_RENAME_TEAM,
+            None,
+            Some(format!("name: `{previous}` → `{next}`")),
+        )
     }
 
     /// 归档一名成员（**调用方已持锁**）：`Offline` + `sealed_at` 落定 + 凭证作废 + 在飞任务回
@@ -4156,6 +4207,82 @@ Q",
         assert_eq!(recorder.pulses().len(), 1, "写路径恰好一次脉冲");
         assert!(manager.epoch() > before, "代数必须被推过");
         assert_eq!(recorder.pulses()[0], manager.epoch());
+    }
+
+    /// 改名：落库 + 镜像 + **恰好一次**脉冲 + 一条 `rename_team` 审计。
+    ///
+    /// 三条一起断言，因为少了任何一条都是一种真实的静默缺陷：
+    /// - 只改镜像 ⇒ 重启后名字回去；
+    /// - 只写库不改镜像 ⇒ 面板（与 `team_list`）继续显示旧名，直到重启；
+    /// - 忘发脉冲 ⇒ 列表不重取，用户看到的是「点了改名，名字没变」。
+    #[test]
+    fn rename_team_updates_the_row_and_emits_exactly_one_pulse() {
+        use crate::agent::team::fixtures::RecordingNotifier;
+
+        let manager = seeded();
+        let recorder = Arc::new(RecordingNotifier::new());
+        manager.set_notifier(recorder.clone());
+        let before = manager.epoch();
+        let old_name = manager.team(TEAM).unwrap().name;
+
+        manager.rename_team(TEAM, "  求和小队  ").unwrap();
+
+        // 两端空白被裁掉（否则列表里会多出一对看不见的空格）
+        assert_eq!(manager.team(TEAM).unwrap().name, "求和小队");
+        assert_eq!(recorder.pulses().len(), 1, "写路径恰好一次脉冲");
+        assert!(manager.epoch() > before, "代数必须被推过");
+
+        let events = manager.events(TEAM).unwrap();
+        let renamed = events
+            .iter()
+            .find(|event| event.kind == EVENT_RENAME_TEAM)
+            .expect("改名要留一条审计（谁把旧名改成了什么）");
+        assert_eq!(renamed.actor, crate::agent::team::resume::LOCAL_ACTOR);
+        assert!(
+            renamed
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains(&old_name) && detail.contains("求和小队")),
+            "审计要点名旧名与新名：{:?}",
+            renamed.detail,
+        );
+    }
+
+    /// 名字不合规（空 / 控制字符 / 超预算）与未知团队都拒，两条都不写库。
+    #[test]
+    fn rename_team_rejects_invalid_names_and_unknown_teams() {
+        let manager = seeded();
+        let before = manager.team(TEAM).unwrap().name;
+
+        // 判据只有一份（`name::validate_team_name`）：空、控制字符、超预算都是 `InvalidInput`。
+        let too_long = "队".repeat(crate::agent::team::name::MAX_TEAM_NAME_CHARS + 1);
+        for bad in [
+            "",
+            "   ",
+            "\t\n",
+            "前半\n后半",
+            "零字节\u{0}",
+            too_long.as_str(),
+        ] {
+            let err = manager.rename_team(TEAM, bad).unwrap_err();
+            assert!(matches!(err, AppError::InvalidInput(_)), "{bad:?}: {err:?}");
+        }
+        assert_eq!(manager.team(TEAM).unwrap().name, before, "被拒的改名不写库");
+
+        let err = manager.rename_team("tm_missing", "任意名字").unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+    }
+
+    /// 改成同名 ⇒ `Ok` 且**不写审计**（重复提交不该在事件流里刷出 N 条记录）。
+    #[test]
+    fn rename_team_to_the_same_name_is_a_noop() {
+        let manager = seeded();
+        let name = manager.team(TEAM).unwrap().name.clone();
+        let events_before = manager.events(TEAM).unwrap().len();
+
+        manager.rename_team(TEAM, &name).unwrap();
+
+        assert_eq!(manager.events(TEAM).unwrap().len(), events_before);
     }
 
     /// 三个计数与板上的行一致，且**不改**代数（读路径）。
