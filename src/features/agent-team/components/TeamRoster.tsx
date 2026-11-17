@@ -15,6 +15,12 @@ import RosterRow from './RosterRow';
  * 成员按 id 排序是后端的决定：前端重排会让「同一个人在列表里位置漂移」，而眨眼扫视面板时
  * 位置本身是记忆线索。头像色因此**不能**依赖位置（见 `utils/memberTint`）。
  *
+ * # 标题右侧不再重复人数
+ *
+ * 面板头的 pill 已经是「团队有几个成员」的唯一口径（后端口径，不含队长）。花名册这里再写
+ * 「N 人（含队长）」就是在同一屏上给出两个不同的「人数」—— 用户没有理由知道哪一个该信。
+ * 行数列举自己就在下面，不需要一个计数旁白。
+ *
  * # C 档说明为什么只在有 C 档成员时出现
  *
  * 「卡住永远不可知」这句话如果没有 C 档成员也在，就成了永久装饰 —— 用户读两次之后就不再读它，
@@ -38,21 +44,13 @@ const TeamRoster: React.FC<TeamRosterProps> = React.memo(
 
     return (
       <section aria-label="成员花名册" className="flex flex-col gap-1 p-2">
-        <header className="flex items-center justify-between px-1 pb-1">
+        <header className="flex items-center px-1 pb-1">
           <h3 className="text-meta font-semibold text-text-secondary">成员</h3>
-          {/*
-            这是**花名册行数**（含队长），不是「团队有几个成员」—— 后者是后端口径
-            （不含队长，见 `utils/memberCount`），显示在面板头的 pill 里。两个数字对不上是
-            设计如此，所以这里把口径写进文案：不写清楚就变成「同一个队有第三个成员数」。
-          */}
-          <span className="text-micro text-text-muted" title="花名册行数，含队长">
-            {`${members.length} 人（含队长）`}
-          </span>
         </header>
         {members.length === 0 ? (
           <p className="px-1 py-2 text-meta text-text-muted">还没有成员</p>
         ) : (
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col gap-[3px]">
             {members.map((member) => (
               <RosterRow
                 key={member.memberId}

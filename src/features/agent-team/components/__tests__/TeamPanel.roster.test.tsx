@@ -38,6 +38,7 @@ const MEMBERS = [
     session: { live: true, terminalId: 'term-lead' },
     // 无官方品牌图标的 CLI：头像走「首字母 + 派生色」回退路径（品牌图标的判据单独钉）。
     agentId: 'omp',
+    persona: '架构师',
     leaseRemainingSecs: 1374,
   }),
   createMemberStatus({
@@ -47,6 +48,7 @@ const MEMBERS = [
     verification: 'unverified',
     session: { live: true, terminalId: 'term-w1' },
     agentId: 'qoder',
+    persona: '前端工程师',
     workspace: { worktree: { path: '/repo/worktrees/feat-auth-ui' } },
     leaseRemainingSecs: 0,
   }),
@@ -56,6 +58,8 @@ const MEMBERS = [
     state: 'awaiting',
     session: { live: false, terminalId: null },
     agentId: 'qoder',
+    // persona === null：行内不占位（与「无人设 = 逐字节不变」同一口径）
+    persona: null,
     workspace: 'read_only',
     tier: 'c',
     leaseRemainingSecs: null,
@@ -177,6 +181,8 @@ describe('花名册 — 打开成员终端', () => {
     const button = within(rowOf('backend')).getByRole('button', { name: '打开会话：backend' });
 
     expect(button).toBeDisabled();
+    // R15：按钮本体是图标，五态文案落在 aria-label / title（可访问名不变）
+    expect(button).toHaveAttribute('title', '打开会话');
     // 理由必须是**可见文字**，不能只进 title（disabled 元素不可聚焦，等于没有理由）
     expect(within(rowOf('backend')).getByText('暂无会话')).toBeInTheDocument();
 
@@ -191,24 +197,60 @@ describe('花名册 — 信息密度（谁 / 在哪 / 在等什么）', () => {
     mockInvoke.mockReset();
   });
 
-  it('每行都有 身份 / 通道 / 工作区 / 档位 四枚 chip', () => {
+  it('行内只留「名字 + 角色 + 队长 + 六态 + 工作区末段」：身份 / 通道 / 档位进抽屉', () => {
     renderWithSnapshot();
     const row = within(rowOf('frontend'));
 
-    expect(row.getByText('qoder')).toBeInTheDocument();
-    expect(row.getByText('CLI · PTY')).toBeInTheDocument();
-    // worktree 只显示末段路径
+    // 身份与能力细节**不在行内**（280px 下 5 枚 chip 会把名字挤成 `researc…`）
+    expect(row.queryByText('qoder')).not.toBeInTheDocument();
+    expect(row.queryByText('CLI · PTY')).not.toBeInTheDocument();
+    expect(row.queryByText('A 档')).not.toBeInTheDocument();
+    // R14：角色 / 人设回到行内（用户：「当前没有角色信息」），但 title 要说清它与权限无关
+    expect(row.getByText('前端工程师')).toHaveAttribute(
+      'title',
+      expect.stringContaining('与权限无关'),
+    );
+    // 「它在哪干活」仍是行内事实（worktree 只显示末段路径）
     expect(row.getByText('worktree feat-auth-ui')).toBeInTheDocument();
-    expect(row.getByText('A 档')).toBeInTheDocument();
+    // 只读同理：它改变「这个人能不能改文件」的判断，不能被当成缺省值吃掉
+    expect(within(rowOf('backend')).getByText('只读')).toBeInTheDocument();
   });
 
-  it('C 档带上可见的「sentinel only」警告，且面板把这句为什么说清楚', () => {
+  it('persona === null 的行不占位（不留一个空 chip 或占位符）', () => {
     renderWithSnapshot();
     const row = within(rowOf('backend'));
 
-    expect(row.getByText('C 档 · sentinel only')).toBeInTheDocument();
+    // 该行没有任何 persona 文案，也没有空的 chip 容器
+    expect(row.queryByText('前端工程师')).not.toBeInTheDocument();
+    expect(row.queryByText('架构师')).not.toBeInTheDocument();
+  });
+
+  it('行与行看得出是一条（R13）：卡片外壳回来了，内容仍只两行', () => {
+    renderWithSnapshot();
+
+    const row = rowOf('frontend');
+    // 外壳 = 岛内卡片（border + bg-primary），不是「没有框的一排文字」
+    expect(row).toHaveClass('rounded-md', 'border', 'bg-bg-primary');
+    // 队长行用 accent 描边区分（同老一版）
+    expect(rowOf('lead')).toHaveClass('border-accent-blue/45');
+  });
+
+  it('缺省工作区（shared）不渲染 —— 每行都写「共享工作区」等于没有信息', () => {
+    renderWithSnapshot();
+
+    expect(within(rowOf('lead')).queryByText('共享工作区')).not.toBeInTheDocument();
+    expect(within(rowOf('frontend')).queryByText('共享工作区')).not.toBeInTheDocument();
+  });
+
+  it('C 档带上可见的行内警示，且面板把「为什么」说清楚（红线 14 两处都在）', () => {
+    renderWithSnapshot();
+    const row = within(rowOf('backend'));
+
+    // 行内警示必须是**可见文字**（缩成颜色 / 只进 title 就是降级，红线 14）
+    const flag = row.getByText('⚠ C');
+    expect(flag).toHaveAttribute('title', expect.stringContaining('卡住永远不可知'));
     expect(row.getByText('只读')).toBeInTheDocument();
-    // 红线 14：C 档「卡住永远不可知」必须在面板上说一次，而不是只留在 chip 的 title 里
+    // 分区说明常显（两处缺一即违规）
     expect(within(roster()).getByRole('note')).toHaveTextContent('卡住永远不可知');
   });
 
@@ -220,7 +262,20 @@ describe('花名册 — 信息密度（谁 / 在哪 / 在等什么）', () => {
     expect(within(rowOf('frontend')).getByText('空闲 ⚠ 未声明')).toBeInTheDocument();
     expect(within(rowOf('frontend')).getByText('租约已超时')).toBeInTheDocument();
     expect(within(rowOf('backend')).getByText('待批准')).toBeInTheDocument();
-    expect(within(rowOf('backend')).getByText('无在飞任务')).toBeInTheDocument();
+  });
+
+  it('没有租约时**不渲染**租约文案（R3：不再恒亮「无在飞任务」）', () => {
+    renderWithSnapshot();
+
+    const backend = rowOf('backend');
+    expect(within(backend).queryByText('无在飞任务')).not.toBeInTheDocument();
+    expect(within(backend).queryByText(/租约/)).not.toBeInTheDocument();
+  });
+
+  it('花名册标题旁没有重复的人数（头部 pill 是唯一口径）', () => {
+    renderWithSnapshot();
+
+    expect(within(roster()).queryByText(/人（含队长）/)).not.toBeInTheDocument();
   });
 
   it('头像色按 memberId 派生：重排后同一个人还是同一个颜色', () => {

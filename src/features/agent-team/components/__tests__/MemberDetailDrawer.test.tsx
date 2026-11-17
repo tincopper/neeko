@@ -519,3 +519,48 @@ describe('成员详情抽屉 — 五态里的恢复与历史（含待批队列�
     expect(mockInvoke).not.toHaveBeenCalledWith('team_resume', expect.anything());
   });
 });
+
+/**
+ * R8 的「去处」：花名册行内删掉的 agent / 通道 / 档位 / 工作区必须在抽屉里仍可见 ——
+ * 否则「去噪」就会悄悄变成「丢信息」。
+ *
+ * 行内断言在 `TeamPanel.roster.test.tsx`（断言这些 chip **不在**行内）；这里补反面：
+ * 同一批事实在抽屉里**在**。`C 档 · sentinel only` 尤其重要：行内只剩 `⚠ C` 之后，
+ * 完整语义（完成能报、卡住永远不可知）的可见文字承载就在这一排 chip 与抽屉的 warn 块。
+ */
+describe('成员详情抽屉 — 身份 chip 排（R8 行内去噪的去处）', () => {
+  beforeEach(() => {
+    resetStores();
+    mockInvoke.mockReset();
+  });
+
+  it('agent / 通道 / 档位 / 工作区 在抽屉里；C 档仍是完整的可见文字', async () => {
+    const sentinel = createMemberStatus({
+      memberId: 'w2@tm_1',
+      name: 'researcher',
+      agentId: 'gemini',
+      channel: 'pty',
+      tier: 'c',
+      workspace: 'shared',
+      state: 'running',
+    });
+    const snapshot = createTeamSnapshot({ members: [sentinel] });
+    useTeamStore.setState({ teamId: 'tm_1', snapshot });
+    mockInvoke.mockImplementation(async (cmd) => {
+      if (cmd === 'team_member_detail') return createMemberDetail({ member: sentinel });
+      if (cmd === 'team_list') return createTeamList({ teams: [] });
+      return snapshot;
+    });
+    render(<TeamPanel onOpenTerminal={vi.fn()} />);
+
+    fireEvent.click(openDetailButton('researcher'));
+    const panel = await screen.findByRole('dialog', { name: '成员详情 researcher' });
+
+    expect(within(panel).getByText('gemini')).toBeInTheDocument();
+    expect(within(panel).getByText('CLI · PTY')).toBeInTheDocument();
+    // 行内只剩 `⚠ C`；完整语义（sentinel only）在这里仍是可见文字，不是只进 title
+    expect(within(panel).getByText('C 档 · sentinel only')).toBeInTheDocument();
+    // `shared` 只在**行内**是噪音（缺省值）；抽屉是完整信息面，照常写出来
+    expect(within(panel).getByText('共享工作区')).toBeInTheDocument();
+  });
+});

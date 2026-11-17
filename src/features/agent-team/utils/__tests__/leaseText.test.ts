@@ -9,18 +9,15 @@ import { LEASE_URGENT_SECS, leaseText, remainingSecsOf, taskLease } from '../lea
  *
  * 两条判据：
  *
- * 1. **三态不可合并**：`null`（无在飞任务）/ `<= 0`（已超时）/ `> 0`（剩余）三件事，
- *    合成两句会让「没有租约」和「租约已经过期」长得一样；
+ * 1. **两态不可合并**：`<= 0`（已超时）/ `> 0`（剩余）是两件事，合成一句会让
+ *    「租约已经过期」看起来像正常剩余；`null`（没有租约）由调用方**不渲染**这一行
+ *    （R3：不再恒亮「无在飞任务」），因此不在这里的输入域里；
  * 2. **两个读面同格式**：花名册吃后端快照值（`leaseRemainingSecs`）、卡片与抽屉吃现算的
  *    实时值（`remainingSecsOf`）。它们的**来源**不同（一个随脉冲更新、一个每秒 tick），
  *    但同一个剩余秒必须给出同一句话 —— 否则同一个任务在两处说两个数字。
  */
-describe('leaseText — 租约三态', () => {
-  it('null = 无在飞任务（不是 0，也不是「已超时」）', () => {
-    expect(leaseText(null)).toEqual({ text: '无在飞任务', urgent: false });
-  });
-
-  it('<= 0 = 已超时（与「无在飞任务」是两件事），且紧急', () => {
+describe('leaseText — 租约两态', () => {
+  it('<= 0 = 已超时（与「没有租约」是两件事：后者根本不渲染），且紧急', () => {
     expect(leaseText(0)).toEqual({ text: '租约已超时', urgent: true });
     expect(leaseText(-5)).toEqual({ text: '租约已超时', urgent: true });
   });

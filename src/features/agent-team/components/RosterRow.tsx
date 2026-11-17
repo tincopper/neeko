@@ -1,3 +1,4 @@
+import { History, Play, Terminal } from 'lucide-react';
 import React, { useCallback } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -5,7 +6,7 @@ import type { MemberStatusView } from '@/shared/types/team';
 
 import { leaseText } from '../utils/leaseText';
 import { memberRoleLabel } from '../utils/memberBadge';
-import { memberChips } from '../utils/memberChips';
+import { memberRowMeta, personaChipTitle } from '../utils/memberChips';
 import { openTerminalAction } from '../utils/memberTerminal';
 
 import Chip from './Chip';
@@ -13,15 +14,26 @@ import MemberAvatar from './MemberAvatar';
 import MemberStateBadge from './MemberStateBadge';
 
 /**
- * 花名册一行 = 一屏之内回答三件事：
+ * 花名册一行 = 一条卡片里两行内容，回答三件事（R13/R14 后的口径）：
  *
  * | 问题 | 字段 |
  * | --- | --- |
- * | 这是谁 | `memberId` → 头像色 / `name` + `agentId` chip + 档位 chip |
- * | 它在哪干活 | `workspace` chip（worktree 显示末段路径）|
- * | 它在等什么 | `state` + `verification` → 六态徽标；`leaseRemainingSecs` → 租约 |
+ * | 这是谁 | 头像 + 名字 + 队长标记 + persona（`null` 不占位）+ `⚠ C` + 六态徽标 |
+ * | 它在哪干活 / 还要多久 | 非缺省工作区末段 + 租约（`null` 时**不渲染**）|
  *
- * 三个派生输入（chip 文案 / 头像色 / 按钮判据）全部来自 `utils/` 的纯函数，这里只读结果。
+ * agent / 通道 / 档位**不在行内**：它们是「能力边界」，低频且长，住成员详情抽屉
+ * （`MemberDetailDrawer` 用同一张 `memberChips` 表）。行内只读 [`memberRowMeta`]。
+ *
+ * # 为什么是卡片（border + bg-primary）而不是裸列表
+ *
+ * 同一屏上「一条成员」得先看得出是**一条**。裸列表在 280px 下变成一片文字，用户反馈
+ * 「还没有老一版的好看」—— 老一版的读感来自卡片外壳，不来自把 chip 堆回去（R13）。
+ * 外壳是岛内卡片：`bg-bg-primary` + `border`，与所在分区不同色（表面层级契约）。
+ *
+ * # 红线 14 的两处承载（缺一即违规）
+ *
+ * C 档成员在行内有 `⚠ C` 这枚**可见文字**徽标（`title` 带完整句），同时 `TeamRoster`
+ * 的分区底部常显那句「卡住永远不可知」。缩成颜色或只留 `title` 都算降级。
  *
  * # 三个动作不许合并
  *
@@ -41,8 +53,8 @@ import MemberStateBadge from './MemberStateBadge';
  *
  * 键盘用户与读屏用户必须能「点」到这一行。`role="group"` + `onClick` 的做法（配
  * `eslint-disable jsx-a11y/...`）在键盘上什么都不会发生，而「补一个 onKeyDown」只是让它
- * 看起来合规。用真按钮包住主体（头像 / 名字 / 徽标 / chips / 租约），终端按钮留在**同一行
- * 但不嵌套** —— 按钮不能包按钮，这是结构约束，不是选择。
+ * 看起来合规。用真按钮包住主体（头像 / 名字 / `⚠ C` / 徽标 / 工作区 · 租约），终端按钮留在
+ * **同一行但不嵌套** —— 按钮不能包按钮，这是结构约束，不是选择。
  *
  * # 「打不开」必须带可见理由
  *
@@ -50,6 +62,12 @@ import MemberStateBadge from './MemberStateBadge';
  * 只放 `title` 等于没有理由 —— `disabled` 元素不可聚焦，键盘与读屏用户拿不到它。
  * 判据同时作为点击守卫：置灰只是 UI，**零调用**是行为（[`openTerminalAction`]）。
  * 五态（活进程 / 可恢复 / 只看记录 / 两种置灰）文案见该函数的文档 —— 这里不重算任何一条。
+ *
+ * # 工具栏用图标（R15）
+ *
+ * 按钮本体是 `Terminal` / `Play` / `History`（按 `action.kind` 选），不再占一个词宽：
+ * 五态文案落在 `aria-label` / `title`（可访问名仍是 `${label}：${name}`），置灰理由仍是
+ * 图标旁的**可见文字**。图标化不许把理由搬到 `title` 里 —— 那等于删了它。
  *
  * # 队长行不特殊对待
  *
@@ -87,8 +105,17 @@ interface RosterRowProps {
 const RosterRow: React.FC<RosterRowProps> = React.memo(
   ({ member, onOpenTerminal, onOpenMember, onOpenHistory, onResumeMember }) => {
     const action = openTerminalAction(member);
-    const chips = memberChips(member);
+    const rowMeta = memberRowMeta(member);
     const isLead = member.role === 'lead';
+    // 一个动作一个图标（R15）：三态是同一条路的不同分支，图标只表达「这条路通向什么」，
+    // 文案仍在 `aria-label` / `title`（两处都不许省，置灰时读屏只剩 aria-label）。
+    const ActionIcon =
+      action.kind === 'resume' ? Play : action.kind === 'archive' ? History : Terminal;
+    // R3：`leaseRemainingSecs === null` = 没有在飞任务 ⇒ **不渲染**租约文案。
+    // 早先恒亮一句「无在飞任务」，于是最常见的行（没活的人）每行都多一行灰字。
+    const lease = member.leaseRemainingSecs === null ? null : leaseText(member.leaseRemainingSecs);
+    // 第二行只有「在哪干活 / 还要多久」两个可变事实；两者都没有时整行不渲染。
+    const hasSubline = rowMeta.workspace !== null || lease !== null;
     // 句柄来自**同一份**判据输入（`session.terminalId` 只在 live 时非空）。
     const terminalId = member.session.terminalId;
 
@@ -123,8 +150,8 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
           role="group"
           aria-label={`成员 ${member.name}`}
           className={cn(
-            'flex items-start gap-1.5 rounded-md border bg-bg-primary',
-            isLead ? 'border-accent-blue/40' : 'border-border',
+            'flex items-center gap-1 rounded-md border bg-bg-primary',
+            isLead ? 'border-accent-blue/45' : 'border-border',
           )}
         >
           {/* 点行 = 看详情（主体块）；终端按钮在同一行但**不嵌套**在这里面 */}
@@ -132,14 +159,15 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
             type="button"
             onClick={handleOpenDetail}
             aria-label={`查看成员 ${member.name} 的详情`}
-            className="flex min-w-0 flex-1 flex-col gap-1 rounded-md px-2 py-1.5 text-left hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+            className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-md px-1.5 py-1 text-left hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
-            <div className="flex items-center gap-1.5">
+            <span className="flex min-w-0 items-center gap-1.5">
               <MemberAvatar
                 memberId={member.memberId}
                 name={member.name}
                 agentId={member.agentId}
               />
+              {/* 名字吃掉剩余宽度并截断；徽标与按钮 `shrink-0`，260px 下先压名字而不是压徽标 */}
               <span className="min-w-0 flex-1 truncate text-ui font-semibold text-text-primary">
                 {member.name}
               </span>
@@ -148,29 +176,54 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
                   {memberRoleLabel(member.role)}
                 </span>
               ) : null}
-              <MemberStateBadge member={member} />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1">
-              {chips.map((chip) => (
-                <Chip key={chip.key} tone={chip.tone} title={chip.title}>
-                  {chip.text}
+              {rowMeta.persona === null ? null : (
+                // R14：角色 / 人设回到行内（与抽屉那枚 chip 同一句话的 title，不另写一份）
+                <Chip tone="accent" title={personaChipTitle(rowMeta.persona)}>
+                  {rowMeta.persona}
                 </Chip>
-              ))}
-            </div>
-
-            {/*
-              花名册的租约是**快照值**（随脉冲更新，两脉冲之间数字不动）；卡片 / 抽屉是实时值。
-              文案函数只有一份（`utils/leaseText`），所以两处的三态与格式一致。
-              `null`（无在飞任务）/ `<=0`（已超时）/ `>0`（剩余）三态文案不同。
-            */}
-            <span className="min-w-0 truncate text-micro text-text-muted">
-              {leaseText(member.leaseRemainingSecs).text}
+              )}
+              {rowMeta.sentinelOnly ? (
+                // 红线 14 的行内承载：可见文字 + 完整句在 title
+                <span
+                  title="C 档 · sentinel only：完成能报，但卡住永远不可知"
+                  className="shrink-0 rounded border border-accent-yellow px-1 text-micro font-semibold text-accent-yellow"
+                >
+                  ⚠ C
+                </span>
+              ) : null}
+              <MemberStateBadge member={member} />
             </span>
+
+            {hasSubline ? (
+              /*
+                第二行只有两个可变事实：非缺省工作区（末段）+ 租约。
+                租约是**快照值**（随脉冲更新，两脉冲之间数字不动），文案函数只有一份
+                （`utils/leaseText`），所以与卡片 / 抽屉的两态与格式一致；`null` 时这一行不渲染。
+              */
+              <span className="flex min-w-0 items-center gap-1 text-micro text-text-muted">
+                {rowMeta.workspace === null ? null : (
+                  <span className="min-w-0 truncate">{rowMeta.workspace}</span>
+                )}
+                {rowMeta.workspace !== null && lease !== null ? (
+                  <span aria-hidden="true">·</span>
+                ) : null}
+                {lease === null ? null : (
+                  <span
+                    data-urgent={lease.urgent ? 'true' : undefined}
+                    className={cn(
+                      'shrink-0 whitespace-nowrap',
+                      lease.urgent && 'font-semibold text-accent-yellow',
+                    )}
+                  >
+                    {lease.text}
+                  </span>
+                )}
+              </span>
+            ) : null}
           </button>
 
-          <div className="flex shrink-0 flex-col items-end gap-0.5 py-1.5 pr-2">
-            {/* 置灰时理由以**可见文字**贴在按钮上方：`disabled` 元素不可聚焦，title 等于没有 */}
+          <div className="flex shrink-0 items-center gap-1 pr-1.5">
+            {/* 置灰时理由以**可见文字**贴在图标旁：`disabled` 元素不可聚焦，title 等于没有 */}
             {action.reason === null ? null : (
               <span className="text-micro text-text-muted">{action.reason}</span>
             )}
@@ -179,13 +232,14 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
               onClick={handleOpenTerminal}
               disabled={!action.enabled}
               aria-label={`${action.label}：${member.name}`}
+              title={action.label}
               className={cn(
-                'shrink-0 rounded px-1.5 py-0.5 text-micro font-semibold',
+                'grid size-5 shrink-0 place-items-center rounded',
                 'text-accent-blue hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
                 'disabled:cursor-not-allowed disabled:text-text-muted disabled:hover:bg-transparent',
               )}
             >
-              {action.label}
+              <ActionIcon size={12} aria-hidden="true" />
             </button>
           </div>
         </div>

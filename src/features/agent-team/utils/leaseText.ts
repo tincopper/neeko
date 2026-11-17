@@ -20,13 +20,17 @@ import type { TaskCard } from '@/shared/types/team';
  * 注释里写清这两种节奏是必要的：它们会让「同一时刻两处相差几秒」变成预期行为，
  * 而不是一个待修的 bug；真正的缺陷是**格式或三态语义**分叉。
  *
- * # 三态（后端 `view.rs::lease_remaining_secs` 的语义）
+ * # 两态（后端 `view.rs::lease_remaining_secs` 的**有租约**部分）
  *
  * | 剩余秒 | 文案 | 含义 |
  * | --- | --- | --- |
- * | `null` | 无在飞任务 | 这个人 / 这个任务没有租约 |
  * | `<= 0` | 租约已超时 | 到期了但还没被回收（回收是静默的，得提前有一抹颜色）|
  * | `> 0` | 租约剩 M:SS | 正常剩余量 |
+ *
+ * `null`（这个人 / 这个任务没有租约）**不进这个函数**：调用方直接**不渲染**这一行
+ * （R3，2026-11-17）。早先它渲染成「无在飞任务」，于是最常见的行（没活的人）每行多一句
+ * 灰字；把 `null` 从签名里去掉，是为了让「必须先判空」由类型系统保证，而不是靠每个调用点
+ * 记得判。
  */
 export interface LeaseText {
   text: string;
@@ -42,9 +46,8 @@ export interface LeaseText {
  */
 export const LEASE_URGENT_SECS = 120;
 
-/** 剩余秒 → 人读文案（三态，见文件头）。 */
-export function leaseText(remainingSecs: number | null): LeaseText {
-  if (remainingSecs === null) return { text: '无在飞任务', urgent: false };
+/** 剩余秒 → 人读文案（两态，见文件头）。`null` 由调用方处理成「不渲染」。 */
+export function leaseText(remainingSecs: number): LeaseText {
   if (remainingSecs <= 0) return { text: '租约已超时', urgent: true };
   const minutes = Math.floor(remainingSecs / 60);
   const secs = remainingSecs % 60;

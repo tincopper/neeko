@@ -230,7 +230,8 @@ describe('TeamPanel — 花名册', () => {
     expect(rows).toHaveLength(4);
 
     expect(within(rows[0]).getByText('运行中')).toBeInTheDocument();
-    expect(within(rows[0]).getByText('无在飞任务')).toBeInTheDocument();
+    // `leaseRemainingSecs === null` ⇒ 行内**没有**任何租约文字（R3：不恒亮一个「无在飞任务」）
+    expect(within(rows[0]).queryByText(/租约|无在飞任务/)).not.toBeInTheDocument();
     expect(within(rows[0]).getByText('队长')).toBeInTheDocument();
 
     // 空闲 + 未声明（AC2）

@@ -24,7 +24,8 @@ import type { TeamSnapshot, TeamSummary } from '@/shared/types/team';
  * 前端因此**不**自己数花名册：`members.filter(role === 'worker').length` 看起来与后端等价，
  * 但那是一份平行实现 —— 后端哪天改了口径，前端会静默给出另一个数，而两个数都「看起来对」。
  *
- * 花名册的「N 人」是另一件事（`members.length`，含队长，文案里写明），不要拿它当成员数。
+ * 花名册标题**不再**另摆一个「N 人（含队长）」（2026-11-17，R4）：同屏两个「人数」正是上面
+ * 这段要杜绝的事。成员数只在面板头的 meta 行出现一次，口径就是本函数。
  */
 export type MemberCountSource = TeamSummary | TeamSnapshot;
 

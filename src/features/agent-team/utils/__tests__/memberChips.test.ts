@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { memberChips } from '../memberChips';
+import { memberChips, memberRowMeta, personaChipTitle } from '../memberChips';
 
 /**
  * 花名册那排 chip 的判据。
@@ -18,6 +18,11 @@ const base = {
 
 function chip(member: typeof base, key: string) {
   return memberChips(member).find((row) => row.key === key);
+}
+
+/** 行内 persona chip 的 `title` 与抽屉那枚**同一句话**（同一个表示点，不写两份）。 */
+function personaTitle(persona: string): string {
+  return memberChips({ ...base, persona }).find((row) => row.key === 'persona')?.title ?? '';
 }
 
 describe('memberChips — 谁 / 在哪 / 能力边界', () => {
@@ -42,6 +47,8 @@ describe('memberChips — 谁 / 在哪 / 能力边界', () => {
     const row = memberChips(withPersona).find((item) => item.key === 'persona');
     expect(row?.text).toBe('研究员');
     expect(row?.title).toContain('与权限无关');
+    // 行内那枚 chip 的 title 必须是同一句话（`personaChipTitle` 是唯一来源）
+    expect(personaChipTitle('研究员')).toBe(personaTitle('研究员'));
   });
 
   it('agentId 原样出现在 chip 上（不翻译、不缩写）', () => {
@@ -86,5 +93,41 @@ describe('memberChips — 谁 / 在哪 / 能力边界', () => {
   it('只读工作区说「只读」，不说「shared」', () => {
     expect(chip({ ...base, workspace: 'read_only' }, 'workspace')?.text).toBe('只读');
     expect(chip(base, 'workspace')?.text).toBe('共享工作区');
+  });
+});
+
+/**
+ * 行内只留 `memberRowMeta`（B 档 R8）：身份 / 能力细节进抽屉，行内回答「在哪干活 + 要不要紧」。
+ *
+ * 两条判据与红线挂钩：
+ *
+ * - `shared` 是**缺省值**，每行都写「共享工作区」等于没有信息（R7/R8 同一条规则）；
+ * - C 档的警示不许因为从 chip 缩成徽标而消失（红线 14：必须有可见文字承载）。
+ */
+describe('memberRowMeta — 行内的最小元信息', () => {
+  it('C 档 ⇒ sentinelOnly（行内徽标 + 分区说明两处承载红线 14）；A / B 档 ⇒ false', () => {
+    expect(memberRowMeta({ ...base, tier: 'c' }).sentinelOnly).toBe(true);
+    expect(memberRowMeta({ ...base, tier: 'a' }).sentinelOnly).toBe(false);
+    expect(memberRowMeta({ ...base, tier: 'b' }).sentinelOnly).toBe(false);
+  });
+
+  it('shared 是缺省值 ⇒ workspace 为 null（不渲染，不是渲染一个「共享工作区」）', () => {
+    expect(memberRowMeta({ ...base, workspace: 'shared' }).workspace).toBeNull();
+  });
+
+  it('只读工作区 ⇒ 「只读」（它是一条真的事实，不能被当成缺省值吃掉）', () => {
+    expect(memberRowMeta({ ...base, workspace: 'read_only' }).workspace).toBe('只读');
+  });
+
+  it('worktree ⇒ 只留路径末段（与 workspaceLabel 同源，不另写一份拆分）', () => {
+    expect(
+      memberRowMeta({ ...base, workspace: { worktree: { path: '/repo/wt/feat-auth-ui' } } })
+        .workspace,
+    ).toBe('worktree feat-auth-ui');
+  });
+
+  it('persona 回到行内（R14）：有值 ⇒ 原样带出；`null` ⇒ null（不占位）', () => {
+    expect(memberRowMeta({ ...base, persona: '研究员' }).persona).toBe('研究员');
+    expect(memberRowMeta({ ...base, persona: null }).persona).toBeNull();
   });
 });
