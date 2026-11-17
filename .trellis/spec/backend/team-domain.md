@@ -532,6 +532,12 @@ t1 摘要在「现根目」三个字处被截断，t2/t3 的硬约束整段丢�
 
   反过来读：**`entry.cwd` 与 `entry.workspace` 不是同一件事**（执行根 vs 地址），但生产代码里
   两者必须指向同一个单元 —— 这条偏差是 `history-scope-and-identity.md` §2.4 第 7 条。
+4. **成员会话不归侧栏生命周期管**（判据在 `agent-chat-transports.md`，不在这里复制第二份）：
+   ① 归属为团队成员的会话不写 `session_cursors`（进程没了就没有入口，恢复归 `team_resume`）；
+   ② `delete_live_session` 对它们判负（成员只能由 `team_close` / 归档 / 花名册结束）；
+   ③ `Registry::adopt` 拒绝团队成员作 `from` —— 那个条目可能 `Stopped` 但进程还活着
+   （成员终端 tab 以「后台运行」关掉），放行就摘掉条目、进程变无主。
+   归属（`SessionAttribution::TeamMember`）在**起进程那一刻**写入，因此三条守卫都不需要猜测。
 
 ## 3. 准入表（红线 15 落点）## 3. 准入表（红线 15 落点）
 
