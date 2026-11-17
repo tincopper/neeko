@@ -3,7 +3,7 @@
   "name": "sidebar-lead-session",
   "title": "侧栏展示队长会话与团队入口",
   "description": "左侧会话列表支持团队归属：队长会话行作为团队入口（点击打开队长终端、行尾打开看板），队员会话留在花名册",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-11-17",
-  "completedAt": null,
+  "completedAt": "2026-11-17",
   "branch": "feat-team",
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,7 @@
   "parent": "10-30-multi-agent-orchestration",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "commit": "bc1eadf3"
+  }
 }
