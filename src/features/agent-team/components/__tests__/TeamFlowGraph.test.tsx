@@ -193,19 +193,20 @@ describe('TeamFlowGraph — 视口（wheel zoom + pointer pan）', () => {
   });
 });
 
-describe('TeamFlowGraph — 图例与边', () => {
+describe('TeamFlowGraph — 边', () => {
   const tasks = [
     createTaskCard({ id: 't1', assignee: 'w1@tm_1' }),
     createTaskCard({ id: 't2', dependsOn: ['t1'], owner: 'w2@tm_1', state: 'in_progress' }),
   ];
 
-  it('图例只讲「实线 = 派发 · 虚线 = 依赖」，不再宣称「实线 = 认领」', () => {
+  it('头部只有标题：线型图例已删除', () => {
     render(<TeamFlowGraph tasks={tasks} members={members} />);
-    const legend = screen.getByText(/实线 = 派发/);
-    expect(legend).toHaveTextContent('虚线 = 依赖');
-    // 只断言图例本身：节点副标题现在本来就会写「已认领 / 待认领」，
-    // 对整块 section 断言「不出现认领」会把本轮 #1 的修复当成退化。
-    expect(legend).not.toHaveTextContent('认领');
+
+    expect(screen.getByRole('heading', { name: '任务分配图' })).toBeInTheDocument();
+    // 实线 / 虚线在图上自己就是可读的事实，再写一行解释只是占位噪音（2026-11-16 用户裁决）。
+    // 这条断言挡的是「又把它加回去」——那种改动不会让任何别的用例失败。
+    expect(screen.queryByText(/实线 = 派发/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/虚线 = 依赖/)).not.toBeInTheDocument();
   });
 
   it('派发连首层、依赖仍是虚线，不再画成员→任务的实线', () => {

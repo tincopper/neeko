@@ -105,7 +105,6 @@ const TeamFlowGraph: React.FC<TeamFlowGraphProps> = React.memo(
       <section aria-label="任务分配图" className="flex flex-col gap-2 p-2">
         <header className="flex flex-wrap items-center justify-between gap-1 px-1">
           <h3 className="text-meta font-semibold text-text-secondary">任务分配图</h3>
-          <span className="text-micro text-text-muted">实线 = 派发 · 虚线 = 依赖</span>
         </header>
         <div
           ref={viewportRef}
