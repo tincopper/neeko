@@ -93,8 +93,27 @@ pub struct TeamSummary {
     pub state: TeamState,
     /// 团队根（归一化后的绝对路径）。
     pub project_path: std::path::PathBuf,
+    /// 拥有这个团队**执行环境**的项目 id（与 `Team::project_id` 同源）。
+    ///
+    /// 侧栏靠它与 [`Self::workspace_worktree`] 把团队行挂到正确的单元下（单元身份由
+    /// `WorkspaceSession { project_id, worktree_path }` 铸造 —— 红线 12：禁止用路径前缀猜归属）。
+    ///
+    /// **空串 = v16 之前的旧行**（那时环境只能靠路径前缀猜）：前端**不渲染**它，
+    /// 与 `list_teams_scoped(Some(project))` 的过滤口径一致 —— 挂到哪都是猜。
+    pub project_id: String,
+    /// 团队所在的工作树（`Team::workspace_worktree`）；`None` = 主 checkout。
+    ///
+    /// 与 [`Self::project_id`] 合起来才是单元身份：同一个项目的主仓与多个工作树各有各的
+    /// 团队，而它们分属不同的 Workspace 单元。
+    pub workspace_worktree: Option<std::path::PathBuf>,
     /// 队长用哪个 CLI（面板显示「这个队是 claude-code 带的」）。
     pub lead_agent_id: String,
+    /// 队长**成员行**的 id；`None` = 该队没有队长行（数据缺陷，不是「没有队长」这个正常状态）。
+    ///
+    /// 真相源是 `team_member.role == Lead`（经 `TeamManager::lead_member_id` 那一份读法）。
+    /// 侧栏用它把「哪个成员是队长」与 live 会话的归属（`SessionAttribution::TeamMember`）
+    /// 求交，从而认出**活着的队长会话** —— 会话层不存队长身份（红线 17：那会是一份会陈旧的副本）。
+    pub lead_member_id: Option<String>,
     /// 建队时间（epoch 毫秒）。
     pub created_at: i64,
     /// 用户封存时刻；`None` = 未封存（团队可恢复）。
@@ -499,7 +518,10 @@ pub fn list_teams_scoped(manager: &TeamManager, project_id: Option<&str>) -> Tea
                 name: team.name.clone(),
                 state: team.state,
                 project_path: team.project_path.clone(),
+                project_id: team.project_id.clone(),
+                workspace_worktree: team.workspace_worktree.clone(),
                 lead_agent_id: team.lead_agent_id.clone(),
+                lead_member_id: manager.lead_member_id(&team.id),
                 created_at: team.created_at,
                 sealed_at: team.sealed_at,
                 // 与 `team_options` / `team_spawn` 上限判据同一个数（见字段文档）。
@@ -936,6 +958,94 @@ mod tests {
         let scoped = list_teams_scoped(&manager, Some("p1"));
         assert_eq!(scoped.teams.len(), 50, "过滤后按 MAX_LISTED_TEAMS 截断");
         assert!(scoped.truncated, "52 支 p1 队 > 50 ⇒ 必须置截断标记");
+    }
+
+    /// 清单行携带**单元身份**（`project_id` + `workspace_worktree`）与**队长行 id**。
+    ///
+    /// 侧栏要靠这三列回答两件事：「这个团队属于哪个单元」（红线 12：不从 `projectPath`
+    /// 拼前缀猜）与「哪条活会话是队长的」。三列都是 `Team` / `team_member` 行上的事实，
+    /// 本用例钉的是 `list_teams_scoped` 真的把它们**投影**出来了（不是从路径反推）。
+    #[test]
+    fn team_list_projects_the_workspace_identity_and_the_lead_row() {
+        let manager = seeded();
+        // 工作树团队：`workspace_worktree` 是行上的事实，不是从 `project_path` 推的。
+        let mut in_worktree = fixture_team("tm_wt");
+        in_worktree.workspace_worktree = Some(std::path::PathBuf::from("wt"));
+        manager.create_team(in_worktree).unwrap();
+        manager
+            .add_member(TeamMember {
+                role: MemberRole::Lead,
+                ..fixture_member("lead@tm_wt", "tm_wt")
+            })
+            .unwrap();
+        // 没有队长行的团队（数据缺陷）：`leadMemberId` 必须是 `null`，不能编一个出来。
+        manager.create_team(fixture_team("tm_nolead")).unwrap();
+        manager
+            .add_member(fixture_member("w9@tm_nolead", "tm_nolead"))
+            .unwrap();
+
+        let list = list_teams(&manager);
+        let row = |team_id: &str| {
+            list.teams
+                .iter()
+                .find(|row| row.team_id == team_id)
+                .unwrap_or_else(|| panic!("清单里没有 {team_id}"))
+        };
+
+        // 主 checkout 团队：`None`（不是空串、不是 `project_path`）。
+        let main = row(TEAM);
+        assert_eq!(main.project_id, "p1");
+        assert_eq!(main.workspace_worktree, None, "主 checkout 是 None");
+        assert_eq!(main.lead_member_id.as_deref(), Some(LEAD));
+
+        let worktree = row("tm_wt");
+        assert_eq!(worktree.project_id, "p1");
+        assert_eq!(
+            worktree.workspace_worktree.as_deref(),
+            Some(std::path::Path::new("wt"))
+        );
+        assert_eq!(worktree.lead_member_id.as_deref(), Some("lead@tm_wt"));
+
+        let leadless = row("tm_nolead");
+        assert_eq!(leadless.lead_member_id, None, "没有队长行 ⇒ null");
+        assert_eq!(leadless.workspace_worktree, None);
+    }
+
+    /// 清单行的**线上键集**就是跨栈契约（TS `TeamSummary`）：三列新字段必须是 camelCase。
+    ///
+    /// 为什么值得一条：`#[serde(rename_all = "camelCase")]` 漏在结构体上时类型仍能编译，
+    /// 前端读 `undefined` 也不会报错 —— 侧栏的团队行只是**静默不出现**。
+    #[test]
+    fn the_team_summary_json_matches_the_frontend_type() {
+        let manager = seeded();
+        let list = list_teams(&manager);
+        let json = serde_json::to_value(&list.teams[0]).expect("serialize");
+        let mut keys: Vec<&str> = json
+            .as_object()
+            .expect("object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec![
+                "createdAt",
+                "leadAgentId",
+                "leadMemberId",
+                "memberCount",
+                "name",
+                "projectId",
+                "projectPath",
+                "sealedAt",
+                "state",
+                "taskDone",
+                "taskOpen",
+                "taskTotal",
+                "teamId",
+                "workspaceWorktree",
+            ]
+        );
     }
 
     /// 花名册的**可恢复性**是派生字段：原生 id（成员行）× 续接形态（适配器）。

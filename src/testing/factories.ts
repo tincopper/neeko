@@ -376,7 +376,12 @@ export function createTeamSummary(
     name: 'refactor',
     state: 'open',
     projectPath: '/repo/main',
+    // 单元身份的两分量：主 checkout（`workspaceWorktree: null`）+ 一个项目 id。
+    projectId: 'p1',
+    workspaceWorktree: null,
     leadAgentId: 'claude-code',
+    // 夹具团队有队长行（`{name}@{team}` 形态，同 Rust 侧 `fixture_member`）。
+    leadMemberId: 'lead@tm_1',
     createdAt: 1_700_000_000_000,
     sealedAt: null,
     memberCount: 2,

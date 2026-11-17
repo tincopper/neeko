@@ -66,7 +66,24 @@ impl SessionState {
 ///
 /// 生命周期与条目完全一致（自然退出删行、显式关闭 → `Stopped`），**不需要第二套清理逻辑**。
 /// 名字避开 `SessionOwner`：那个名字在 `terminal::router` 里已表示「哪个后端持有会话」。
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+///
+/// # 它进 wire，但只回答「这条会话属于谁」
+///
+/// 序列化形态是判别联合（`{"kind":"user"}` / `{"kind":"teamMember",teamId,memberId}`），
+/// 前端**只**用它把成员会话从侧栏会话列表里摘出去、并给团队行标「当前」。
+/// 成员的**状态 / 租约 / 队长身份**一概不在这里 —— 那些是花名册的事实（红线 17）。
+/// 尤其**不**加 `role`：那会让 `live_sessions` 反向依赖 `agent::team`（本模块今天零依赖它，
+/// 而它刻意只经 `view::MemberSessionLookup` 端口问会话域），并给「谁是队长」造一份会陈旧的副本。
+///
+/// 注意 `rename_all` 只改**variant 名**，struct variant 的**字段名**要另用
+/// `rename_all_fields` —— 少了它 wire 上是 `team_id` / `member_id` 而 TS 声明 `teamId`
+/// （前端读 `undefined`，静默不报错）：判据 `view_serializes_attribution`。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum SessionAttribution {
     /// 用户自己开的终端 / 会话。
     #[default]

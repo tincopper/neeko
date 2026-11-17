@@ -573,8 +573,25 @@ export interface TeamSummary {
   state: TeamState;
   /** 团队根（后端**已规范化**的绝对路径）。 */
   projectPath: string;
+  /**
+   * 拥有这个团队**执行环境**的项目 id（与 `Team.projectId` 同源）。
+   *
+   * 与 `workspaceWorktree` 合起来是该团队的单元身份（经 `WorkspaceSession.key()` 铸造）：
+   * 侧栏靠它把团队行挂到正确的单元下。**空串** = v16 之前的旧行 —— 侧栏**不渲染**它
+   * （挂到哪都是猜），与 `team_list(projectId)` 的过滤口径一致。
+   */
+  projectId: string;
+  /** 团队所在的工作树；`null` = 主 checkout（与 `WorkspaceSession.worktreePath` 同形）。 */
+  workspaceWorktree: string | null;
   /** 队长用哪个 CLI。 */
   leadAgentId: string;
+  /**
+   * 队长**成员行**的 id；`null` = 该队没有队长行（数据缺陷，不是“没有队长”这个正常状态）。
+   *
+   * 侧栏用它与会话归属（`SessionAttribution.memberId`）求交以认出“活着的队长会话”。
+   * 真相源是 `team_member.role == lead` —— 会话层不存队长身份（红线 17）。
+   */
+  leadMemberId: string | null;
   /** 建队时间（epoch 毫秒）。 */
   createdAt: number;
   /** 用户封存时刻；`null` = 未封存（可恢复）。 */

@@ -609,6 +609,20 @@ impl TeamManager {
         u32::try_from(count).unwrap_or(u32::MAX)
     }
 
+    /// 团队的**队长成员 id**（`None` = 该队没有队长行）。
+    ///
+    /// 真相源是 `team_member.role == Lead`，与关闭路径上的审计 `actor`（[`lead_of`]）
+    /// 共用同一个判据函数（[`lead_id_in`]）—— 两处各数一遍会造出「两个队长」。
+    ///
+    /// 侧栏用它把“谁是队长”与 live 会话归属求交（红线 17：会话层不存队长身份，
+    /// 那份副本一旦陈旧就会让侧栏接管一个已经不存在的队长会话）。
+    /// 与 [`Self::member_count`] 同一种镜像读法（锁内无 I/O）。
+    #[must_use]
+    pub fn lead_member_id(&self, team_id: &str) -> Option<String> {
+        let inner = self.inner.lock();
+        lead_id_in(&inner, team_id)
+    }
+
     /// 任务板的三个计数（`team_list` 这类**只需要数字**的读路径用它）。
     ///
     /// # 为什么不是 `tasks(team_id).len()`
@@ -2226,16 +2240,25 @@ pub(crate) fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
+/// 团队的队长行 id（`None` = 没有队长行，**数据缺陷**）。
+///
+/// 收 `&Inner`：两个调用方都在持锁处用它 —— 关闭路径的审计 `actor`（[`lead_of`]）与
+/// 对外只读访问器 [`TeamManager::lead_member_id`]。共享这一份查找（不是两边各写一遍
+/// `find(..)`）是因为“谁是队长”在审计与 UI 两处必须同源。
+fn lead_id_in(inner: &Inner, team_id: &str) -> Option<String> {
+    inner
+        .members
+        .values()
+        .find(|member| member.team_id == team_id && member.role == MemberRole::Lead)
+        .map(|member| member.id.clone())
+}
+
 /// 团队的队长 id（审计的 `actor`）。
 ///
 /// 只有队长能触发关闭（授权矩阵），所以「谁关的」在关闭路径上恒等于队长；队长行缺失时
 /// 退化为 `system`（数据缺陷，不 panic —— 审计失败不该让一次关闭卡住）。
 fn lead_of(inner: &Inner, team_id: &str) -> String {
-    inner
-        .members
-        .values()
-        .find(|member| member.team_id == team_id && member.role == MemberRole::Lead)
-        .map_or_else(|| "system".to_owned(), |member| member.id.clone())
+    lead_id_in(inner, team_id).unwrap_or_else(|| "system".to_owned())
 }
 
 const fn conflict(message: String) -> AppError {
