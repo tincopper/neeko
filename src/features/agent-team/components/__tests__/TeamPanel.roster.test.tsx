@@ -534,10 +534,12 @@ describe('花名册 — 恢复会话（第三态）', () => {
 
     render(<TeamPanel onShowToast={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '重命名团队 refactor' }));
+    // 低频入口在 `⋯` 菜单里（R1）：开菜单 → 「改名」，双入口共用同一个 handleStartRename
+    fireEvent.pointerDown(await screen.findByRole('button', { name: '团队操作：refactor' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '改名' }));
 
-    // 编辑态：输入框预填当前名字
-    const input = screen.getByRole('textbox');
+    // 编辑态：输入框预填当前名字（菜单卸载之后才挂载）
+    const input = await screen.findByRole('textbox');
     expect(input).toHaveValue('refactor');
     fireEvent.change(input, { target: { value: '  新队名  ' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -614,8 +616,9 @@ describe('面板头 — 恢复团队', () => {
 
     render(<TeamPanel />);
 
-    // 可访问名点名团队：同一个屏幕上的「恢复会话」是成员级的，两者不能混淆。
-    fireEvent.click(screen.getByRole('button', { name: '恢复团队 refactor' }));
+    // 两项都只出现在 `⋯` 菜单里；菜单项的可访问名点名团队/动作，不会与成员级混淆。
+    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '恢复团队' }));
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('team_resume', {
@@ -661,7 +664,8 @@ describe('面板头 — 恢复团队', () => {
     const onOpenTerminal = vi.fn();
     render(<TeamPanel onOpenTerminal={onOpenTerminal} />);
 
-    fireEvent.click(screen.getByRole('button', { name: '恢复团队 refactor' }));
+    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '恢复团队' }));
 
     // 等这次恢复整个落地（花名册已按新快照重画成可点），再断言一个 tab 都没开。
     await waitFor(() =>
@@ -682,7 +686,9 @@ describe('面板头 — 恢复团队', () => {
 
     render(<TeamPanel />);
 
-    expect(screen.queryByRole('button', { name: /恢复团队/ })).not.toBeInTheDocument();
+    // 菜单是「恢复团队」唯一的入口：开菜单也没有这一项（不是藏在一个永远不来的状态里）
+    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
+    expect(screen.queryByRole('menuitem', { name: '恢复团队' })).not.toBeInTheDocument();
   });
 
   it('没有可恢复的成员（全在跑）⇒ 不渲染一个「恢复 0 个成员」的按钮', () => {
@@ -700,7 +706,8 @@ describe('面板头 — 恢复团队', () => {
 
     render(<TeamPanel />);
 
-    expect(screen.queryByRole('button', { name: /恢复团队/ })).not.toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
+    expect(screen.queryByRole('menuitem', { name: '恢复团队' })).not.toBeInTheDocument();
   });
 });
 

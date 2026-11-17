@@ -452,6 +452,11 @@ describe('TeamPanel — 关闭团队', () => {
     await waitFor(() => expect(useTeamStore.getState().teamId).toBe('tm_1'));
   }
 
+  /** 打开面板头的 `⋯` 菜单（团队视图里的注销入口，R1 后不再是一枚常驻按钮）。 */
+  function openTeamMenu(): void {
+    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
+  }
+
   it('二次确认后才调 team_close；成功后清空 store 并重取列表', async () => {
     mockInvoke.mockImplementation(async (cmd) => {
       if (cmd === 'team_role_list') return { roles: [], truncated: false }; // 角色库（v19）：面板挂载时拉一次
@@ -464,7 +469,9 @@ describe('TeamPanel — 关闭团队', () => {
     await openFirstTeam();
     const listCallsBefore = countCalls('team_list');
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭团队' }));
+    // 关闭进 `⋯` 菜单（R1：低频入口收起来），走的是同一条二次确认
+    openTeamMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /关闭团队/ }));
 
     // 二次确认：后果在按下去之前就写清楚（不靠关闭成功后的 notes 才揭示）
     const dialog = await screen.findByRole('dialog');
@@ -512,7 +519,8 @@ describe('TeamPanel — 关闭团队', () => {
     // 关闭失败后重取的快照会变成 closing（后端的真实状态）
     snapshot = closingSnapshot;
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭团队' }));
+    openTeamMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: /关闭团队/ }));
     fireEvent.click(await screen.findByRole('button', { name: '确认关闭' }));
 
     const alert = await screen.findByRole('alert');

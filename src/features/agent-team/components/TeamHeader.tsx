@@ -1,6 +1,6 @@
+import { ArrowLeft } from 'lucide-react';
 import React, { useCallback, useState } from 'react';
 
-import { cn } from '@/lib/utils';
 import InlineRenameInput from '@/shared/components/InlineRenameInput';
 import type { TeamSnapshot } from '@/shared/types/team';
 
@@ -10,25 +10,45 @@ import { renameDraftCommit } from '../utils/renameDraft';
 import { awaitingApprovalCount } from '../utils/taskBoard';
 import { projectRootTail } from '../utils/teamList';
 
+import TeamHeaderMenu from './TeamHeaderMenu';
 import TeamStateBadge from './TeamStateBadge';
 
 /**
- * 团队视图的头部：**一眼看清「哪个队、几个人、有几件事等人动手」**。
+ * 团队视图的头部：**两行说清「哪个队、几个人、有几件事等人动手」**（R1 / R2）。
  *
- * | 元素 | 来源 |
+ * ```
+ * [←]  队名（双击改名）              [状态徽标] [⋯]
+ * 4 成员 · 1 待批 · feat-team
+ * ```
+ *
+ * | 元素 | 来源 | 为什么在这一行 |
+ * | --- | --- | --- |
+ * | 队名 | `snapshot.team.name`（拉不到时退化成 teamId）| 身份 |
+ * | 状态徽标 | `teamStateBadge`（三态，`closing` 不许并进 `active`）| 能不能派活 |
+ * | `N 成员` | `memberCountOf(snapshot)`（**后端口径**：不含队长）| 规模（降级成 meta 文字）|
+ * | `M 待批` | `awaitingApprovalCount(snapshot.tasks)`（**只有 > 0 时出现**）| 有多少件事等人动手 |
+ * | 项目根末段 | `projectRootTail(projectPath)`，完整路径进 `title` | 多个 worktree 之间区分团队 |
+ *
+ * # 为什么低頻入口进了 `⋯` 菜单
+ *
+ * dock 右栏只有 260–300px。`返回列表` 之后还要排 `改名` / `恢复团队` / `关闭团队` 三个文字
+ * 按钮，队名就被压到十几个字符。它们各自的替代入口也都还在：
+ *
+ * | 动作 | 替代入口 |
  * | --- | --- |
- * | 队名 | `snapshot.team.name`（拉不到时退化成 teamId，不显示一个空白头）|
- * | 状态徽标 | `teamStateBadge`（三态，`closing` 不许并进 `active`）|
- * | `N 成员` | `memberCountOf(snapshot)`（**后端口径**：不含队长、含已退出的成员）|
- * | `M 待批` | `awaitingApprovalCount(snapshot.tasks)`（**只有 > 0 时出现**）|
- * | 「恢复团队」 | `open` 且有可恢复成员（`hasResumableMember`）时才出现 |
- * | 「关闭团队」 | `sealed` 时不存在（只读快照没有可关的东西，见 `TeamListRow` 同一判定）|
+ * | 改名 | **双击队名**（同一份 `handleStartRename`）|
+ * | 刷新 | `usePulseRefresh` 自动刷新；菜单里的「刷新快照」是通道异常时的手动恢复路径 |
+ * | 恢复团队 | 只在 `open` 且存在可恢复成员时成立（判据同花名册按钮）|
+ * | 关闭团队 | 菜单项，破坏性动作单独着色 + 分隔线（见 [`TeamHeaderMenu`]）|
+ *
+ * 菜单项**走同一批回调 prop**（不新增状态、不新写实现）：`onRenameTeam` / `onResumeTeam` /
+ * `onRefresh` / `onRequestClose` 全部来自 `TeamView` → `TeamPanel` 的既有接线。
  *
  * # 为什么「恢复团队」不是「关闭团队」的对称按钮
  *
  * 恢复**只能**发生在 `open` 的队上，而且只在「至少一个成员有原生会话 id、进程不在、未被
  * 封存」时才有意义（判据来自 `hasResumableMember` —— 它与花名册的按钮**同一份**推导）。
- * 一个「没有可恢复成员」的队渲染这个按钮，用户点下去得到的是一句「恢复 0 个成员」；
+ * 一个「没有可恢复成员」的队渲染这个入口，用户点下去得到的是一句「恢复 0 个成员」；
  * 永远亮着的入口与「0 待批」同一条纪律：提示只在它成立时出现。
  *
  * # 为什么「M 待批」只在 > 0 时出现
@@ -39,20 +59,21 @@ import TeamStateBadge from './TeamStateBadge';
  * # 项目根只摆末段
  *
  * 完整路径进 `title`：dock 右栏放不下绝对路径，而末段（分支 / 工作树目录名）才是用户在
- * 多个 worktree 之间区分团队的线索（同 `TeamListRow`）。
+ * 多个 worktree 之间区分团队的线索（同 `TeamListRow`）。`sealed` 时 meta 行末尾补
+ * 「只读快照（不随重启恢复）」——**可见文字**，不进 title（那会变成 hover-only 信息）。
  */
 interface TeamHeaderProps {
   /** 当前打开的团队（`teamStore.teamId`）。 */
   teamId: string;
   snapshot: TeamSnapshot | null;
-  /** 有关闭请求在飞（按钮置灰，避免连点）。 */
+  /** 有关闭请求在飞（菜单项置灰，避免连点）。 */
   closing: boolean;
-  /** 有恢复请求在飞（整队 / 成员级共用；按钮置灰，避免连点出两个恢复编排）。 */
+  /** 有恢复请求在飞（整队 / 成员级共用；菜单项置灰，避免连点出两个恢复编排）。 */
   resuming: boolean;
   /**
    * 整队恢复（`team_resume`，不带 memberId）。
    *
-   * `undefined` = 宿主未注入这条连线（测试环境）：按钮不渲染，而不是渲染一个点了没反应的。
+   * `undefined` = 宿主未注入这条连线（测试环境）：菜单项不渲染，而不是渲染一个点了没反应的。
    */
   onResumeTeam?: () => void;
   /**
@@ -90,9 +111,6 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
     // 可恢复成员的判据与花名册按钮**同源**（`openTerminalAction`）—— 不在这里重算 `!live && resumable`。
     const resumable = snapshot !== null && hasResumableMember(snapshot.members);
 
-    const handleRequestClose = useCallback(() => onRequestClose(), [onRequestClose]);
-    const handleRequestResume = useCallback(() => onResumeTeam?.(), [onResumeTeam]);
-
     /** `null` = 不在编辑态（编辑态的生命周期就是那个输入框的挂载期）。 */
     const [draft, setDraft] = useState<string | null>(null);
     const handleStartRename = useCallback(() => setDraft(teamName), [teamName]);
@@ -106,13 +124,24 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
     }, [draft, onRenameTeam, teamName]);
 
     return (
-      <header className="flex flex-col gap-1 border-b border-border px-2 py-1.5">
-        <div className="flex items-center gap-1.5">
+      // 两行：身份 + meta。第三行会让 260–300px 的列白掉 30+ px（R1）
+      <header className="flex flex-col gap-0.5 border-b border-border px-2 py-1.5">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="返回列表"
+            title="返回列表"
+            className="grid size-5 shrink-0 place-items-center rounded text-text-muted hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+          >
+            <ArrowLeft size={13} aria-hidden="true" />
+          </button>
           {draft === null ? (
             <span
               className="min-w-0 flex-1 truncate text-ui font-semibold text-text-primary"
-              // 双击改名（按钮仍是主入口：双击对键盘 / 读屏用户不存在）
+              // 双击改名（菜单里的「改名」仍是主入口：双击对键盘 / 读屏用户不存在）
               onDoubleClick={handleStartRename}
+              title="双击改名"
             >
               {teamName}
             </span>
@@ -126,85 +155,41 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
           )}
           {/* 徽标文案来自唯一映射点（`teamStateBadge`），不在这里另写一份 */}
           {state === null ? null : <TeamStateBadge state={state} />}
-          <button
-            type="button"
-            onClick={onBack}
-            className="shrink-0 rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
-          >
-            返回列表
-          </button>
-          <button
-            type="button"
-            onClick={onRefresh}
-            aria-label="重新拉取团队快照"
-            className="shrink-0 rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
-          >
-            刷新
-          </button>
+          <TeamHeaderMenu
+            teamName={teamName}
+            state={state}
+            resumable={resumable}
+            closing={closing}
+            resuming={resuming}
+            // 「改名」与双击共用**同一个** handler（不产生第二个编辑态来源）
+            onRename={onRenameTeam === undefined ? undefined : handleStartRename}
+            onRefresh={onRefresh}
+            onResumeTeam={onResumeTeam}
+            onRequestClose={onRequestClose}
+          />
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-micro text-text-muted">
-          <span className="rounded-full bg-bg-tertiary px-1.5 py-0.5 font-semibold">
-            {`${memberCount} 成员`}
-          </span>
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-micro text-text-muted">
+          <span>{`${memberCount} 成员`}</span>
           {awaiting > 0 ? (
-            <span
-              data-awaiting={awaiting}
-              className="rounded-full bg-accent-yellow/10 px-1.5 py-0.5 font-semibold text-accent-yellow"
-            >
-              {`${awaiting} 待批`}
-            </span>
+            <>
+              <span aria-hidden="true">·</span>
+              <span data-awaiting={awaiting} className="font-semibold text-accent-yellow">
+                {`${awaiting} 待批`}
+              </span>
+            </>
           ) : null}
+          <span aria-hidden="true">·</span>
           <span className="min-w-0 truncate font-mono" title={projectPath}>
             {projectRootTail(projectPath)}
           </span>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          {onRenameTeam === undefined ? null : (
-            <button
-              type="button"
-              onClick={handleStartRename}
-              aria-label={`重命名团队 ${teamName}`}
-              className="rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
-            >
-              改名
-            </button>
-          )}
           {state === 'sealed' ? (
-            <span className="text-micro text-text-muted">只读快照：已封存，不随重启恢复</span>
-          ) : (
             <>
-              {state === 'open' && resumable && onResumeTeam !== undefined ? (
-                <button
-                  type="button"
-                  onClick={handleRequestResume}
-                  disabled={resuming}
-                  aria-label={`恢复团队 ${teamName}`}
-                  title="用每个成员自己的原生会话 id 把它们接回来（没有会话记录的成员只能新开）"
-                  className={cn(
-                    'rounded px-1.5 py-0.5 text-micro text-accent-blue hover:bg-bg-hover',
-                    'focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
-                    'disabled:cursor-not-allowed disabled:text-text-muted',
-                  )}
-                >
-                  {resuming ? '正在恢复…' : '恢复团队'}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={handleRequestClose}
-                disabled={closing}
-                className={cn(
-                  'rounded px-1.5 py-0.5 text-micro text-accent-red hover:bg-bg-hover',
-                  'focus-visible:ring-2 focus-visible:ring-accent-red focus-visible:outline-none',
-                  'disabled:cursor-not-allowed disabled:text-text-muted',
-                )}
-              >
-                关闭团队
-              </button>
+              <span aria-hidden="true">·</span>
+              {/* 这句话不能只进 title：它解释「为什么这里什么都不能做」 */}
+              <span>只读快照（不随重启恢复）</span>
             </>
-          )}
+          ) : null}
         </div>
       </header>
     );

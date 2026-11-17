@@ -37,21 +37,26 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof TeamHeader>
   return { onRenameTeam };
 }
 
-/** 点「改名」进编辑态（编辑态的生命周期就是那个输入框的挂载期）。 */
-function startEditing(): HTMLInputElement {
-  fireEvent.click(screen.getByRole('button', { name: `重命名团队 ${SNAPSHOT.team.name}` }));
-  return screen.getByRole('textbox') as HTMLInputElement;
+/**
+ * 开 `⋯` 菜单 → 点「改名」进编辑态（R1：低频入口收进菜单）。
+ *
+ * `await`：编辑态在菜单**卸载之后**才开（菜单的焦点陷阱会把输入框的焦点抢走 → blur → 关掉）。
+ */
+async function startEditing(): Promise<HTMLInputElement> {
+  fireEvent.pointerDown(screen.getByRole('button', { name: `团队操作：${SNAPSHOT.team.name}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '改名' }));
+  return (await screen.findByRole('textbox')) as HTMLInputElement;
 }
 
 describe('TeamHeader — 行内改名', () => {
-  it('编辑态预填当前名字（改名不是重新起名）', () => {
+  it('编辑态预填当前名字（改名不是重新起名）', async () => {
     renderHeader();
-    expect(startEditing()).toHaveValue(SNAPSHOT.team.name);
+    expect(await startEditing()).toHaveValue(SNAPSHOT.team.name);
   });
 
-  it('Enter 提交 ⇒ 回调收到裁过的新名字', () => {
+  it('Enter 提交 ⇒ 回调收到裁过的新名字', async () => {
     const { onRenameTeam } = renderHeader();
-    const input = startEditing();
+    const input = await startEditing();
 
     fireEvent.change(input, { target: { value: '  求和小队  ' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -61,9 +66,9 @@ describe('TeamHeader — 行内改名', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
-  it('没改就 Enter ⇒ 零回调（白写一条审计没有意义）', () => {
+  it('没改就 Enter ⇒ 零回调（白写一条审计没有意义）', async () => {
     const { onRenameTeam } = renderHeader();
-    const input = startEditing();
+    const input = await startEditing();
 
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -71,9 +76,9 @@ describe('TeamHeader — 行内改名', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
-  it('清空后 Enter ⇒ 零回调（空名不是名字，后端也会拒）', () => {
+  it('清空后 Enter ⇒ 零回调（空名不是名字，后端也会拒）', async () => {
     const { onRenameTeam } = renderHeader();
-    const input = startEditing();
+    const input = await startEditing();
 
     fireEvent.change(input, { target: { value: '   ' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -81,9 +86,9 @@ describe('TeamHeader — 行内改名', () => {
     expect(onRenameTeam).not.toHaveBeenCalled();
   });
 
-  it('Esc 取消 ⇒ 零回调，旧名字照旧显示', () => {
+  it('Esc 取消 ⇒ 零回调，旧名字照旧显示', async () => {
     const { onRenameTeam } = renderHeader();
-    const input = startEditing();
+    const input = await startEditing();
 
     fireEvent.change(input, { target: { value: '改了但又反悔' } });
     fireEvent.keyDown(input, { key: 'Escape' });
@@ -98,10 +103,9 @@ describe('TeamHeader — 行内改名', () => {
     expect(screen.getByRole('textbox')).toHaveValue(SNAPSHOT.team.name);
   });
 
-  it('宿主没注入回调 ⇒ 入口不渲染（而不是渲染一个点了没反应的按钮）', () => {
+  it('宿主没注入回调 ⇒ 菜单里没有「改名」（而不是一个点了没反应的项）', () => {
     renderHeader({ onRenameTeam: undefined });
-    expect(
-      screen.queryByRole('button', { name: `重命名团队 ${SNAPSHOT.team.name}` }),
-    ).not.toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole('button', { name: `团队操作：${SNAPSHOT.team.name}` }));
+    expect(screen.queryByRole('menuitem', { name: '改名' })).not.toBeInTheDocument();
   });
 });

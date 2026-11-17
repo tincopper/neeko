@@ -267,8 +267,11 @@ describe('TeamPanelWrapper — 改名同步 tab 标题', () => {
 
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '重命名团队 refactor' }));
-    const input = screen.getByRole('textbox');
+    // 改名的第二入口在 `⋯` 菜单里（R1）；它走的仍是同一个 `handleStartRename`
+    fireEvent.pointerDown(await screen.findByRole('button', { name: '团队操作：refactor' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '改名' }));
+    // 编辑态在菜单卸载之后才开（焦点陷阱会抢走输入框焦点）
+    const input = await screen.findByRole('textbox');
     fireEvent.change(input, { target: { value: '新队名' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
