@@ -367,6 +367,27 @@ fn adopt_refuses_a_live_source() {
     assert_eq!(registry.snapshot().len(), 2);
 }
 
+/// 团队成员会话**不得**被侧栏的续写路径继承掉（归属守卫的第三条）。
+///
+/// 触发路径：把成员终端 tab 以「后台运行」关掉 ⇒ 条目变 `Stopped`（进程还活着）⇒ 从侧栏
+/// 点回那一行 ⇒ `sessionTabFactory` 走「已结束 ⇒ 起新进程 + adopt」。放它通过的后果是
+/// 成员条目消失、进程变成**无主孤儿**，而团队侧只剩「成员 offline」—— 与「CLI 自己崩了」
+/// 无法区分（与删除守卫同一个危害类别，只是触发器不同）。
+#[test]
+fn adopt_refuses_a_team_member_source() {
+    let (registry, _store) = registry();
+    registry.register(member_entry("m1", "/proj", "tm_1", "w1@tm_1"));
+    registry.apply("m1", Signal::Stopped);
+    registry.register(terminal_entry("new", "/proj"));
+
+    assert!(
+        !registry.adopt("m1", "new"),
+        "成员会话只能由团队域接管（team_resume），侧栏续写不得摘掉它的条目"
+    );
+    assert!(registry.entry("m1").is_some(), "成员条目不得退场");
+    assert_eq!(registry.snapshot().len(), 2);
+}
+
 /// 继承是否发生与「新条目是否已进侧栏」是两件事：`from` 没进过侧栏（`has_user_input = false`）
 /// 时也要真正继承并 bump，只是不需要写库 —— 不能把「无可落盘快照」误当成「没继承」。
 #[test]
@@ -613,6 +634,38 @@ fn terminal_rows_are_persisted_only_once_they_are_listed() {
     registry.apply("t1", Signal::TurnStarted);
     registry.apply("t1", Signal::TurnFinished);
     assert_eq!(store.cursor("t1").expect("cursor").turn_count, 1);
+}
+
+/// 团队成员的会话**永不落盘** —— 哪怕它跑过一轮、`has_user_input` 已置位。
+///
+/// 落盘的后果是重启后它以「用户手机会话」的身份回到侧栏：点下去续写的是没有团队
+/// MCP 端点 / 凭证 / 隔离配置目录的裸 CLI（它以为自己是队长，却调不到任何 `team_*`）。
+/// 写门只有一份实现（`cursor::from_entry`），本用例守的是「没有第二个入口」——
+/// `register` / `report_user_input` / `persist_entry` 都不得绕过它。
+#[test]
+fn a_team_members_live_session_is_never_persisted() {
+    let (registry, store) = registry();
+    let mut member = member_entry("s-w1", "/w", "tm_1", "w1@tm_1");
+    member.has_user_input = false;
+    registry.register(member);
+
+    // 用户输入 / 权威事件都会走 `persist_entry`；两条路径都试一遍。
+    assert!(registry.report_user_input("s-w1", "实现登录页"));
+    assert!(registry.report_authoritative("s-w1", None, Signal::TurnFinished));
+    assert!(
+        store.stored_ids().is_empty(),
+        "成员会话不得写入任何 cursor 行（含 Closed）：{:?}",
+        store.stored_ids()
+    );
+    assert!(store.list_restorable().is_empty());
+
+    assert_eq!(registry.restore_from_store(), 0, "不得把它投影回侧栏");
+    assert!(registry.entry("s-w1").is_some(), "本次运行的条目照常保留");
+
+    // 重启形态：同一个库里再也找不到这一行（不靠「本次运行已登记」的覆盖来掩盖）。
+    let reborn = Registry::new(store);
+    assert_eq!(reborn.restore_from_store(), 0);
+    assert!(reborn.entry("s-w1").is_none(), "重启后不得出现幽灵行");
 }
 
 /// hook 的完成态是权威事实：之后 Codex TUI 重绘产生的 PTY 输出不得把 Ready 推回 Running。

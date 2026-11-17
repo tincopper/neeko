@@ -354,6 +354,14 @@ impl Registry {
     /// 两条硬规则：
     /// - `from` 必须是**终止态**：把还活着的会话合并掉，等于让用户点一次就丢一条正在跑的会话；
     /// - 只搬 `into` 缺的字段（新条目本来就是空的），不覆盖它已经拿到的更新事实。
+    ///
+    /// # 第三条：团队成员会话不得被继承（归属守卫）
+    ///
+    /// 团队成员的条目`from` 可能是 `Stopped` 但**进程还活着**（用户把成员终端 tab 以
+    /// 「后台运行」关掉，走 `close_and_notify` 只标状态不注销）。此时侧栏「点回那一行」会走
+    /// `sessionTabFactory` 的「已结束 ⇒ 起新进程 + adopt」分支，而 `adopt` 一通过就摘掉成员
+    /// 条目 ⇒ 进程变成**无主孤儿**，团队侧只剩「成员 offline」，与「CLI 自己崩了」无法区分。
+    /// 成员的接管只有一条路：团队域（`team_resume`，它会铸新的 terminal id 并重建配置）。
     pub fn adopt(&self, from_session_id: &str, into_session_id: &str) -> bool {
         if from_session_id == into_session_id {
             return false;
@@ -364,6 +372,13 @@ impl Registry {
                 return false;
             };
             if !from.state.is_terminal() {
+                return false;
+            }
+            // 归属守卫（与写门 / 删除守卫同一原则）：成员会话不归侧栏生命周期管。
+            if matches!(
+                from.attribution,
+                crate::live_sessions::SessionAttribution::TeamMember { .. }
+            ) {
                 return false;
             }
             let Some(into) = sessions.get_mut(into_session_id) else {
