@@ -1,14 +1,11 @@
-import { Maximize2 } from 'lucide-react';
 import React, { useCallback, useState } from 'react';
 
-import { cn } from '@/lib/utils';
 import type { TeamRef, TeamSnapshot } from '@/shared/types/team';
 
 import MemberDetailDrawer from './MemberDetailDrawer';
-import TeamFlowGraph from './TeamFlowGraph';
 import TeamHeader from './TeamHeader';
 import TeamRoster from './TeamRoster';
-import TeamTaskBoard from './TeamTaskBoard';
+import TeamTaskSection from './TeamTaskSection';
 
 /**
  * 「已经打开的那个队」的视图：头部（见 [`TeamHeader`]）+ closing 横幅 + 花名册 + 任务板。
@@ -34,6 +31,12 @@ import TeamTaskBoard from './TeamTaskBoard';
  * 不进 store —— 成员详情是「点开一次才拉」的载荷（任务 + 50 条事件），而 store 里存的就是
  * “面板一直在看的那份快照”。放在本组件是因为花名册与抽屉的共同祖先就是这里：
  * 再往上放就会把「导航状态」和「数据面」接到同一个存储里，而它们的生命周期不同。
+ *
+ * # 任务区是独立单元
+ *
+ * 头（`任务 N` + 视图切换 + 折叠）+ 看板 / 分配图 一起交给 [`TeamTaskSection`]：
+ * 那两个导航态（`taskView` / `boardCollapsed`）属于它自己，不该和「在读哪份快照」混在
+ * 同一个组件里（本组件已经承载头部接线 + 抽屉导航）。
  */
 interface TeamViewProps {
   /** 当前打开的团队（`teamStore.teamId`）。 */
@@ -115,11 +118,6 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
      * 但那是身份而不是导航事实（红线 12：不许从字符串拼/反解身份）。
      */
     const [openMember, setOpenMember] = useState<{ teamId: string; memberId: string } | null>(null);
-
-    // 任务区的两种读法（看板 = 按状态分组；分配图 = 按 dependsOn 拓扑）。
-    // 是**导航**（就近 state，不进 store）：它不改变快照，只改变同一份快照怎么画；
-    // 换队时回到看板（两种读法对任何一个队都同样成立，没有「记住」的价值）。
-    const [taskView, setTaskView] = useState<'board' | 'flow'>('board');
 
     // 一个回调两处用（头部与横幅）：`TeamHeader` 是 memo 组件，内联箭头会让它每次重渲染。
     const handleRequestClose = useCallback(() => {
@@ -204,59 +202,14 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
             onResumeMember={onResumeMember}
           />
           <div className="border-t border-border" />
-          <div className="flex items-center gap-1 px-2 pt-2">
-            <span className="sr-only">任务区视图</span>
-            {onOpenBoard ? (
-              <button
-                type="button"
-                onClick={() => onOpenBoard(taskView)}
-                aria-label="在中间区域打开任务视图"
-                title="在中间区域打开（完整宽度）"
-                className={cn(
-                  'mr-auto grid size-5 place-items-center rounded text-text-muted',
-                  'hover:bg-bg-hover hover:text-text-primary',
-                  'focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
-                )}
-              >
-                <Maximize2 size={12} aria-hidden="true" />
-              </button>
-            ) : null}
-            {(
-              [
-                ['board', '看板'],
-                ['flow', '分配图'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={taskView === value}
-                onClick={() => setTaskView(value)}
-                className={cn(
-                  'rounded px-1.5 py-0.5 text-micro font-semibold',
-                  taskView === value
-                    ? 'bg-bg-selected text-accent-blue'
-                    : 'text-text-muted hover:bg-bg-hover',
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {taskView === 'board' ? (
-            <TeamTaskBoard
-              tasks={snapshot?.tasks ?? []}
-              members={snapshot?.members ?? []}
-              tasksTruncated={snapshot?.tasksTruncated ?? false}
-              onOpenTask={onOpenTask}
-            />
-          ) : (
-            <TeamFlowGraph
-              tasks={snapshot?.tasks ?? []}
-              members={snapshot?.members ?? []}
-              onOpenTask={onOpenTask}
-            />
-          )}
+          {/* 任务区（头 + 看板 / 分配图 + 折叠）是一个单元，自己的两个导航态也住在那里 */}
+          <TeamTaskSection
+            tasks={snapshot?.tasks ?? []}
+            members={snapshot?.members ?? []}
+            tasksTruncated={snapshot?.tasksTruncated ?? false}
+            onOpenTask={onOpenTask}
+            onOpenBoard={onOpenBoard}
+          />
         </div>
 
         {showingMemberId === null ? null : (

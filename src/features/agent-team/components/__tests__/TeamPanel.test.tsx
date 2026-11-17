@@ -311,8 +311,8 @@ describe('TeamPanel — 共享任务板', () => {
     expect(within(column('已完成')).getByText('做完的活')).toBeInTheDocument();
     expect(within(column('阻塞')).getByText('反复失败的活')).toBeInTheDocument();
 
-    // 依赖数 + 回收次数 + 摘要截断都必须在卡片上说清楚
-    expect(within(column('待批准')).getByText('依赖 2')).toBeInTheDocument();
+    // 依赖数 / id 属于详情（卡片只留「这张卡是什么、归谁」）
+    expect(within(column('待批准')).queryByText('依赖 2')).not.toBeInTheDocument();
     expect(within(column('阻塞')).getByText('被回收 2 次')).toBeInTheDocument();
     expect(within(column('阻塞')).getByText('摘要已截断')).toBeInTheDocument();
 

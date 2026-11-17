@@ -431,22 +431,32 @@ describe('任务板 — 列计数与持有者状态', () => {
     createTaskCard({ id: 't6', title: '阻塞了', state: 'blocked' }),
   ];
 
-  /** 某一列上显示的计数（`data-count` 是机器钩子，文案会变）。 */
-  const countOf = (label: string): number => {
-    const column = within(screen.getByRole('region', { name: '共享任务板' })).getByRole('group', {
-      name: label,
-    });
-    return Number(within(column).getByText(/^\d+$/, { selector: '[data-count]' }).textContent);
+  /**
+   * 某一列的计数（`data-column` + `data-count` 是机器钩子，文案会变）。
+   *
+   * 空列现在**不进 `role="group"`**（收进末尾一行汇总），所以不能按 `role=group` 取；
+   * 但「这一列有几行」这个不变量仍必须可读 —— 汇总项同样带 `data-count="0"`。
+   */
+  const countOf = (label: string, columnId: string): number => {
+    const board = screen.getByRole('region', { name: '共享任务板' });
+    // 非空列：分组内的计数 span；空列：汇总行里的 `<label> 0`（两个属性在同一个节点上）。
+    const group = within(board).queryByRole('group', { name: label });
+    const counter = group
+      ? within(group).getByText(/^\d+$/, { selector: '[data-count]' })
+      : within(board).getByText(`${label} 0`);
+    // 空列的汇总项是**唯一**能读 `data-column` 的节点（非空列的分组自己带它）
+    if (!group) expect(counter).toHaveAttribute('data-column', columnId);
+    return Number(counter.getAttribute('data-count'));
   };
 
   it('每列计数等于这一列的**行数**（不是常量，也不是全板总数）', () => {
     renderWithSnapshot(createTeamSnapshot({ members: MEMBERS, tasks }));
 
-    expect(countOf('待认领')).toBe(1);
-    expect(countOf('进行中')).toBe(2);
-    expect(countOf('待批准')).toBe(0);
-    expect(countOf('已完成')).toBe(2);
-    expect(countOf('阻塞')).toBe(1);
+    expect(countOf('待认领', 'pending')).toBe(1);
+    expect(countOf('进行中', 'in_progress')).toBe(2);
+    expect(countOf('待批准', 'awaiting_approval')).toBe(0);
+    expect(countOf('已完成', 'done')).toBe(2);
+    expect(countOf('阻塞', 'frozen')).toBe(1);
   });
 
   it('「成员已空闲但没人认可完成」在卡片上看得出来（任务仍留在进行中列）', () => {

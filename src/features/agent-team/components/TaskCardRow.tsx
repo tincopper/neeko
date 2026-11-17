@@ -2,29 +2,43 @@ import { RotateCcw } from 'lucide-react';
 import React, { useCallback, useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
-import type { MemberStatusView, TaskCard } from '@/shared/types/team';
+import type { MemberState, MemberStatusView, TaskCard, TeamTaskState } from '@/shared/types/team';
 
 import { taskLease } from '../utils/leaseText';
-import { memberBadge } from '../utils/memberBadge';
+import { memberBadge, type MemberBadge } from '../utils/memberBadge';
 import { canRetry, taskStateLabel } from '../utils/taskBoard';
-import { workspaceLabel } from '../utils/workspaceLabel';
+import { nonDefaultWorkspaceLabel } from '../utils/workspaceLabel';
 
 import Chip from './Chip';
 
 /**
- * 任务板上的一张卡片：标题 + owner chip + 租约 / 「成员已空闲但没人认可」提示。
+ * 任务板上的一张卡片：标题 + 「归谁 / 在哪 / 要不要紧」。
  *
  * # 没有正文
  *
  * 列路径没有 `body`（红线 4，类型层面也没有这个字段）。正文只在**点开**之后从
  * `team_task_detail` 来。
  *
+ * # 卡片上不重复列与花名册已经说过的话（R6 / R7）
+ *
+ * | 不再渲染 | 为什么 |
+ * | --- | --- |
+ * | 状态 chip（列唯一确定状态时）| 卡片在「进行中」列里再写一次「进行中」是零信息 |
+ * | 缺省工作区（`shared`）| 建队缺省值，几乎每张卡都有 —— 等于没有信息 |
+ * | 可见的 `task.id` | 只在队内唯一的内部标识，属于详情（仍在 `aria-label` / `data-task-id`）|
+ * | `依赖 N` | 依赖关系是详情里的事；窄列里它抢的是标题的位置 |
+ *
+ * 保留：持有者 / 指派（谁在做、在等谁）· 被回收次数 · 摘要截断 · 重试。
+ *
  * # 「成员已空闲，但没人认可完成」必须看得出来
  *
  * 这是 design §6 硬规则 1 的 UI 侧：`idle` 只说「它这一轮说完了」，**不等于**做完了。
- * 任务仍留在「进行中」列时，卡片上要能看到持有者当前的状态（`空闲 ⚠ 未声明`），
- * 否则用户会以为「它空闲了，这活应该完了吧」。持有者由 `owner`（member id）查到——
- * 查不到就不显示，不猜。
+ * 任务仍留在列里（未终结）时，卡片上要能看到持有者当前的状态（`空闲 ⚠ 未声明`），
+ * 否则用户会以为「它空闲了，这活应该完了吧」。
+ *
+ * 反过来，`运行中` / `待批准` 不在这里重复：花名册行上已经有同一枚徽标，而 `done` /
+ * `failed` / `blocked` 的任务已经终结 —— 持有者现在是什么状态不再影响这张卡该不该被处理。
+ * 持有者由 `owner`（member id）查到；查不到就不显示，不猜。
  */
 interface TaskCardRowProps {
   task: TaskCard;
@@ -39,6 +53,13 @@ interface TaskCardRowProps {
   assignee: MemberStatusView | null;
   /** 时间基准（**注入**，纯函数才算得出来：「剩余」是派生值，不是状态）。 */
   now: number;
+  /**
+   * 这一列是否**无法唯一确定**卡片状态（`TeamTaskBoard` 按 `column.states.length > 1` 算）。
+   *
+   * 为 `false` 时卡片不渲染状态 chip：列标签已经说完了。为 `true` 时（`claimed` /
+   * `in_progress` 同列、`failed` / `blocked` 同列）必须渲染，否则同一列里的两个阶段不可区分。
+   */
+  showState: boolean;
   /**
    * 打开详情：**两个参数一起给**（`teamId` 在前）。
    *
@@ -56,14 +77,34 @@ interface TaskCardRowProps {
   onRetry?: (task: TaskCard) => void;
 }
 
+/** 已终结的任务：它还在列里，但「持有者现在什么状态」不再改变用户该做的事。 */
+const TERMINAL_STATES: ReadonlySet<TeamTaskState> = new Set(['done', 'failed', 'blocked']);
+
+/**
+ * 持有者里**需要人看一眼**的那几种（`运行中` / `待批准` / `完成` 不在其中）。
+ *
+ * `idle + unverified` 要单算：`idle` 本身正常，只有「没人认可这次完成」时才值得说。
+ */
+const ATTENTION_STATES: ReadonlySet<MemberState> = new Set(['stalled', 'offline', 'failed']);
+
+function ownerAttention(owner: MemberStatusView | null, task: TaskCard): MemberBadge | null {
+  if (owner === null) return null;
+  if (TERMINAL_STATES.has(task.state)) return null;
+  const attention =
+    (owner.state === 'idle' && owner.verification === 'unverified') ||
+    ATTENTION_STATES.has(owner.state);
+  return attention ? memberBadge(owner) : null;
+}
+
 const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(
-  ({ task, owner, assignee, now, onOpen, onRetry }) => {
+  ({ task, owner, assignee, now, showState, onOpen, onRetry }) => {
     const handleClick = useCallback(
       () => onOpen(task.teamId, task.id, task.title),
       [onOpen, task.teamId, task.id, task.title],
     );
     const lease = useMemo(() => taskLease(task, now), [task, now]);
-    const ownerBadge = owner ? memberBadge(owner) : null;
+    const workspace = nonDefaultWorkspaceLabel(task.workspace);
+    const attention = ownerAttention(owner, task);
     const retryable = onRetry !== undefined && canRetry(task.state);
     const handleRetry = useCallback(() => onRetry?.(task), [onRetry, task]);
 
@@ -77,21 +118,18 @@ const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(
           data-task-id={task.id}
           aria-label={`打开任务 ${task.id} 的详情：${task.title}`}
           className={cn(
-            'w-full min-w-0 rounded-md border border-border bg-bg-primary px-2 py-1.5 text-left',
+            'w-full min-w-0 rounded-md border border-border bg-bg-primary px-2 py-1 text-left',
             'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
           )}
         >
-          <div className="flex items-start gap-1.5">
-            <span className="min-w-0 flex-1 text-meta font-medium text-text-primary">
-              {task.title}
-            </span>
-            <span className="shrink-0 font-mono text-micro text-text-muted">{task.id}</span>
-          </div>
+          <span className="block min-w-0 truncate text-meta font-medium text-text-primary">
+            {task.title}
+          </span>
 
-          <div className="mt-1 flex flex-wrap items-center gap-1">
-            {/* 列已经表达了状态，但同一列里 `claimed` 与 `in_progress` 是两个阶段 */}
-            <Chip tone="outline">{taskStateLabel(task.state)}</Chip>
-            <Chip tone="outline">{workspaceLabel(task.workspace)}</Chip>
+          <span className="mt-0.5 flex flex-wrap items-center gap-1">
+            {/* 列已经表达了状态；只有同列多态（claimed / in_progress、failed / blocked）才需要 */}
+            {showState ? <Chip tone="outline">{taskStateLabel(task.state)}</Chip> : null}
+            {workspace === null ? null : <Chip tone="outline">{workspace}</Chip>}
             {owner ? (
               <Chip tone="accent" title={`持有者 ${owner.memberId}`}>
                 {owner.name}
@@ -104,43 +142,37 @@ const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(
                 {`已指派 · ${assignee.name}`}
               </Chip>
             ) : null}
-            {task.dependsOn.length > 0 ? (
-              <Chip tone="default">{`依赖 ${task.dependsOn.length}`}</Chip>
-            ) : null}
             {task.reclaimCount > 0 ? (
               <Chip tone="warn">{`被回收 ${task.reclaimCount} 次`}</Chip>
             ) : null}
             {task.summaryTruncated ? <Chip tone="warn">摘要已截断</Chip> : null}
-          </div>
+            {/* 租约并入这一行：它和时间一样是「还要多久」的派生值，不值得单起一行 */}
+            {lease === null ? null : (
+              <span
+                className={cn(
+                  'text-micro whitespace-nowrap',
+                  lease.urgent ? 'font-semibold text-accent-yellow' : 'text-text-muted',
+                )}
+              >
+                {lease.text}
+              </span>
+            )}
+          </span>
 
-          {lease === null && ownerBadge === null ? null : (
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-micro">
-              {lease === null ? null : (
-                <span
-                  className={cn(
-                    'whitespace-nowrap',
-                    lease.urgent ? 'font-semibold text-accent-yellow' : 'text-text-muted',
-                  )}
-                >
-                  {lease.text}
-                </span>
+          {attention === null ? null : (
+            // 持有者的真实状态：`空闲 ⚠ 未声明` 与「已完成」在这里长得完全不同（AC2）
+            <span
+              data-tone={attention.tone}
+              title={attention.ariaLabel}
+              className={cn(
+                'mt-0.5 block text-micro whitespace-nowrap',
+                attention.tone === 'unverified'
+                  ? 'border border-dashed border-accent-yellow text-accent-yellow'
+                  : 'text-text-muted',
               )}
-              {ownerBadge === null ? null : (
-                // 持有者的真实状态：`空闲 ⚠ 未声明` 与「已完成」在这里长得完全不同（AC2）
-                <span
-                  data-tone={ownerBadge.tone}
-                  title={ownerBadge.ariaLabel}
-                  className={cn(
-                    ownerBadge.tone === 'unverified'
-                      ? 'border border-dashed border-accent-yellow text-accent-yellow'
-                      : 'text-text-muted',
-                    'whitespace-nowrap',
-                  )}
-                >
-                  {ownerBadge.text}
-                </span>
-              )}
-            </div>
+            >
+              {attention.text}
+            </span>
           )}
         </button>
         {retryable ? (
