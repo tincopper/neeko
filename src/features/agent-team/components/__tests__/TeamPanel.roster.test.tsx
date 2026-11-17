@@ -2,8 +2,10 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useAgentStore } from '@/shared/store/agentStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import {
+  createAgent,
   createMemberStatus,
   createProject,
   createTaskCard,
@@ -74,6 +76,9 @@ function resetStores(): void {
     activeProjectId: null,
     activeProject: createProject({ path: '/repo/main' }),
   });
+  // agent 图标现在是**从 agent 配置里取的**（与 tab 栏同源）：未加载 ⇒ 首字母回退。
+  // 这里显式置空，否则上一个用例 seed 的图标会漏进这一个（下面的图标用例自己 seed）。
+  useAgentStore.setState({ agents: null, loading: false });
 }
 
 function renderWithSnapshot(snapshot = createTeamSnapshot({ members: MEMBERS })) {
@@ -242,7 +247,27 @@ describe('花名册 — 信息密度（谁 / 在哪 / 在等什么）', () => {
     }
   });
 
-  it('成员头像显示对应 agent 的品牌图标（claude-code → Claude 官方路径）；无品牌的回退首字母', () => {
+  it('成员头像用 tab 栏的同一份 agent 图标（pi / codebuddy 不再退化成首字母）', () => {
+    useAgentStore.setState({
+      agents: [
+        createAgent({
+          id: 'claude-code',
+          name: 'Claude Code',
+          command: 'claude',
+          icon: 'claude-code.png',
+        }),
+        createAgent({ id: 'pi', name: 'Pi', command: 'pi', icon: 'pi.svg' }),
+        createAgent({
+          id: 'codebuddy',
+          name: 'CodeBuddy',
+          command: 'codebuddy',
+          icon: 'codebuddy.svg',
+        }),
+        createAgent({ id: 'custom-plain', name: 'Plain', command: 'plain', icon: null }),
+      ],
+      loading: false,
+    });
+
     renderWithSnapshot(
       createTeamSnapshot({
         members: [
@@ -254,22 +279,41 @@ describe('花名册 — 信息密度（谁 / 在哪 / 在等什么）', () => {
           }),
           createMemberStatus({
             memberId: 'b2@tm_1',
+            name: 'pi-worker',
+            agentId: 'pi',
+            state: 'running',
+          }),
+          createMemberStatus({
+            memberId: 'b3@tm_1',
+            name: 'cb-worker',
+            agentId: 'codebuddy',
+            state: 'running',
+          }),
+          createMemberStatus({
+            memberId: 'b4@tm_1',
             name: 'plain',
-            agentId: 'omp',
+            agentId: 'custom-plain',
             state: 'idle',
           }),
         ],
       }),
     );
 
-    // 品牌路径：图标带可访问名（读屏听到「哪个 agent」），不再是首字母文本
-    const brandRow = rowOf('brand');
-    expect(within(brandRow).getByRole('img', { name: 'claude-code' })).toBeInTheDocument();
-    expect(within(brandRow).queryByText('B')).not.toBeInTheDocument();
-    // 无品牌的 CLI 走「首字母 + 派生色」回退（没有 img 角色）
+    // 图标带可访问名（读屏听到「哪个 agent」），不再是首字母文本。
+    // 两个以前就没有图标的 CLI（pi / codebuddy）现在与 tab 栏一致。
+    for (const [name, agentId] of [
+      ['brand', 'claude-code'],
+      ['pi-worker', 'pi'],
+      ['cb-worker', 'codebuddy'],
+    ] as const) {
+      const row = rowOf(name);
+      expect(within(row).getByRole('img', { name: agentId })).toBeInTheDocument();
+      expect(within(row).queryByText(name[0].toUpperCase())).not.toBeInTheDocument();
+    }
+
+    // 配置里**显式没有图标**的 agent ⇒ 首字母 + 派生色（回退字形来自名字，不是 agentId）
     const plainRow = rowOf('plain');
-    expect(within(plainRow).queryByRole('img', { name: 'omp' })).not.toBeInTheDocument();
-    // 回退字形来自**名字**首字母（memberInitial），不是 agentId
+    expect(within(plainRow).queryByRole('img')).not.toBeInTheDocument();
     expect(within(plainRow).getByText('P')).toBeInTheDocument();
   });
 });

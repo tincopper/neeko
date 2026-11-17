@@ -2,9 +2,10 @@ import React from 'react';
 
 import { cn } from '@/lib/utils';
 
+import { useMemberAgentIcon } from '../hooks/useMemberAgentIcon';
 import { memberInitial, memberTint, MEMBER_TINT_CLASS } from '../utils/memberTint';
 
-import { AgentIcon, hasBrandIcon } from './AgentIcon';
+import { AgentIcon } from './AgentIcon';
 
 /**
  * 成员头像：首字母 + **按 `memberId` 派生**的身份色。
@@ -16,20 +17,25 @@ import { AgentIcon, hasBrandIcon } from './AgentIcon';
  * `MemberStateBadge` 的事），所以它不必也不可能与状态对齐。
  *
  * `data-tint` 是测试与将来做筛选用稳定钩子：token class 会随主题变，tone 不会。
+ *
+ * 有没有 agent 图标来自 [`useMemberAgentIcon`]（与图标本身**同一个**派生点：同一个函数，
+ * 不是同一份数据的两份拷贝）：有图标就把图标装在中性底的盒子里，没有就是原来那枚首字母 +
+ * 身份色 —— 两种都不是错误。
  */
 interface MemberAvatarProps {
   /** 派生身份色的唯一输入。 */
   memberId: string;
   /** 取首字母的唯一输入。 */
   name: string;
-  /** 跑的是哪个 CLI —— 有官方品牌图标时用它（`undefined` = 调用方不知道，走回退）。 */
+  /** 跑的是哪个 CLI —— 该 agent 配了图标时用它（`undefined` / 配置里没图标 = 首字母回退）。 */
   agentId?: string;
 }
 
 const MemberAvatar: React.FC<MemberAvatarProps> = React.memo(({ memberId, name, agentId }) => {
   const tint = memberTint(memberId);
-  // 品牌 icon 覆盖首字母：图标的辨识度高于字母，而 tint 色仍是身份的兜底（无品牌时）。
-  if (agentId !== undefined && hasBrandIcon(agentId)) {
+  const icon = useMemberAgentIcon(agentId);
+  // 图标覆盖首字母：图标的辨识度高于字母，而 tint 色仍是身份的兜底（无图标时）。
+  if (agentId !== undefined && icon !== null) {
     return (
       <span
         data-tint={tint}
