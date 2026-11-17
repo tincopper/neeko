@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/agent-chat-transports.md", "reason": "SessionView wire 契约 + 侧栏列表判据"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "派生层/store 纪律、禁止影子副本、单元身份"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "侧栏行密度与交互契约"}
+{"file": ".trellis/spec/backend/team-domain.md", "reason": "TeamSummary 投影与团队读接口"}

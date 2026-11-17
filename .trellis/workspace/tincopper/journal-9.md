@@ -1187,3 +1187,36 @@ Session summary was not supplied.
 ### Next Steps
 
 - 人工目测 280px 面板对照原型（AC2 唯一未勾项）；用户确认后提交
+
+
+## Session 481: 团队成员会话的侧栏生命周期修复 + 侧栏团队入口规划
+<!-- trellis-session: v=2 fp=bc8e8bcd426be75e -->
+
+**Date**: 2026-11-17
+**Task**: 团队成员会话的侧栏生命周期修复 + 侧栏团队入口规划
+**Branch**: `feat-team`
+
+### Summary
+
+修三条归属守卫（写门/删除/adopt），规划侧栏团队行
+
+### Main Changes
+
+- src-tauri: cursor 写门排除 TeamMember；delete_session 拒绝成员会话；Registry::adopt 拒绝成员 from。spec: agent-chat-transports + team-domain 补三条判据
+
+### Git Commits
+
+- `2dbd8932` fix(live-sessions): fence team member sessions out of sidebar lifecycle
+- `bcc0cee1` docs(spec): record the three team member session guards
+
+### Testing
+
+- [OK] cargo test live_sessions(143) / session_lifecycle(4) 全绿；pnpm check:quick 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- S2 wire（SessionView.attribution + TeamSummary.projectId/workspaceWorktree）→ S3 UI（UnitTeamEntries + 过滤成员会话）

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 480
+- **Total Sessions**: 481
 - **Last Active**: 2026-11-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~1189 | Active |
+| `journal-9.md` | ~1221 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 481 | 2026-11-17 | 团队成员会话的侧栏生命周期修复 + 侧栏团队入口规划 | - | `feat-team` |
 | 480 | 2026-11-17 | team-panel-density: A+B 档落地（原型 → 实现 → 复核） | - | `feat-team` |
 | 479 | 2026-11-17 | review fixes: team rename projection / name validator / contract cleanup | - | `feat-team` |
 | 478 | 2026-11-16 | team: 建队面板页首先填团队名 | - | `feat-team` |
