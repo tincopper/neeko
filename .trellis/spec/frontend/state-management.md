@@ -2333,6 +2333,35 @@ hasUserInput && isNamedSession &&
 
 单元角标与子列表同源（`sessionsByUnit` 是唯一分组入口，过滤在那里做），不会一个有一个没有。
 
+### 成员会话不进侧栏，团队行是**团队派生**的（2026-11-17）
+
+`isListedSession` 回答的是「有没有真标题 / 用户用没用过」，**不是**「归谁管」。接上团队域之后
+侧栏多了一条与它正交的判据：`isTeamMemberSession(session)` = `SessionView.attribution.kind ===
+'teamMember'`（归属在**起进程那一刻**写入，与标题无关 —— 一个已有标题的成员会话仍然是成员会话）。
+
+| 消费者 | 成员会话 | 理由 |
+| --- | --- | --- |
+| `sessionsByUnit`（侧栏子列表） | **跳过** | 它归花名册管（六态 / 租约 / 待批队列只在团队面板），而一行「图标 + 标题 + 时间」表达不了团队状态，只会让用户以为它和自己的会话同类 |
+| `selectLatestSessionForUnit`（点种类图标「接回上一次」） | **跳过** | 点是用户的动作；接回一个成员的 PTY 等于让用户接管了他管不着的会话（生命周期只由团队域结束） |
+| `unitsWithListedActiveSession`（父行让出选中底） | **照常计入，且不看 `hasUserInput`** | 代表成员会话的是**团队行**，不是会话子行：刚接管那一刻 `hasUserInput` 还是 `false`（接管只是 attach），按 `isListedSession` 卡住会让父行与团队行**同时**高亮（侧栏两条「当前」）。判据落地：`isTeamMemberSession(found) \|\| isListedSession(found)` |
+| `foregroundTeamId(refs, sessions)` | **就是它的输入** | 前台会话的归属 → 团队 id，侧栏**团队行**据此标「当前」 |
+
+**团队行不能用会话派生**：以「队长会话」为身份的方案在队长进程死了 / 重启之后**刚好没有行**，
+而那正是最需要入口的时刻。它由 `team_list` 的一行派生（`teamsByUnit`，单元归属只做
+`WorkspaceSession.of(projectId, workspaceWorktree).key` 的相等比较，红线 12），队长的 PTY 只是它
+的一个**动作**：活 ⇒ 接管（`openExistingTerminalTab`，不新建进程）；不活 ⇒ 把团队面板切到该队，
+由花名册的五态判据（`utils/memberTerminal.ts`）给出可行动作。侧栏**不重算**那五档 —— 它缺
+`resumable` / `sealed` 两列，重算必然造出第二套判据，而错分的症状是「以为在恢复，其实起了个
+没有团队 MCP 的裸 CLI」。
+
+两侧数据**互不镜像**（红线 17）：队名 / 状态 / 任务计数只来自 `team_list`；队长会话活没活只来自
+live 快照的 `state` + 归属；「谁是队长」只来自 `TeamSummary.leadMemberId`（`team_member.role`
+的投影）——`SessionAttribution` 里刻意**没有** `role`。
+
+**团队清单只有一个 store**（`features/agent-team/store/teamListStore.ts`）：侧栏常驻而面板不常驻，
+各拉一份就是同一资源两套轮询 + 两份「上次成功的结果」。请求口径是**全部项目**
+（`fetchTeamList(null)`），按项目裁剪在消费侧 —— 用激活项目顶替会把别的项目的团队凭空藏起来。
+
 **tab 是另一条判据**：`resolveTabTitle(tab, session)` 要求 `session.hasUserInput && isNamedSession`
 —— 直接用 `hasUserInput` 而不是 `isListedSession`，否则 chat 在首轮运行期间（侧栏还没列它）
 tab 会一直停在 `Agent Chat` 占位名上。tab 标题不能是空串，无名时回落创建期标题。tab 的

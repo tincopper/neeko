@@ -538,8 +538,24 @@ t1 摘要在「现根目」三个字处被截断，t2/t3 的硬约束整段丢�
    ③ `Registry::adopt` 拒绝团队成员作 `from` —— 那个条目可能 `Stopped` 但进程还活着
    （成员终端 tab 以「后台运行」关掉），放行就摘掉条目、进程变无主。
    归属（`SessionAttribution::TeamMember`）在**起进程那一刻**写入，因此三条守卫都不需要猜测。
+5. **归属上 wire，但只说「归谁管」**：`SessionView.attribution` = `{"kind":"user"}` |
+   `{"kind":"teamMember", teamId, memberId}`（`SessionAttribution` 加 `Serialize` + `tag = "kind"`
+   + **`rename_all_fields`** —— 少了最后那条，struct variant 的字段仍序列化成 `team_id` / `member_id`，
+   TS 侧读 `undefined` 且不报错）。前端只用它把成员会话从侧栏会话列表里摘掉、并给团队行标「当前」。
+   成员的六态 / 租约 / 待办不在里面（花名册是唯一展示面）。
 
-## 3. 准入表（红线 15 落点）## 3. 准入表（红线 15 落点）
+   **刻意没有 `role`**：`live_sessions` 今天零依赖 `agent::team`，而 `agent::team` 反过来只经
+   `view::MemberSessionLookup` 端口问会话域 —— 这是一条**双向防火墙**。往归属里加
+   `role: MemberRole` 会造出反向边，并把「谁是队长」变成会话层的一份会陈旧的副本。
+   侧栏改为在 `TeamSummary.leadMemberId` 上读那个事实，再与归属按 `(teamId, memberId)` **求交**。
+
+6. **`TeamSummary` 带单元身份与队长行**：`projectId` / `workspaceWorktree`（`null` = 主 checkout）/
+   `leadMemberId`（`null` = 该队没有队长行，数据缺陷）。前两者是单元身份的两半 —— 侧栏用
+   `WorkspaceSession.of(projectId, workspaceWorktree).key` 落位，**不从 `projectPath` 拼前缀猜**
+   （红线 12）；空 `projectId`（v16 之前的旧行）前端不渲染。`lead_member_id` 与关闭路径的审计
+   `actor` 共用同一个查法（`lead_id_in(&Inner, team_id)`）：两处各 `find(..)` 一遍就会造出「两个队长」。
+
+## 3. 准入表（红线 15 落点）
 
 「这个 CLI 能不能当成员、走哪条通道」是 **per-CLI 数据**，只允许是 `ADMISSIONS` 里的一行：
 

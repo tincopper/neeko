@@ -401,6 +401,14 @@ Claude Code / Codex 会把**任务标题**写进 OSC（`✳ Fix login bug`），
   落库的旧行只会成为永久孤儿。若落库了，重启后它会以 `User` 归属回到侧栏（持久化行不存归属），
   点击走 `--resume` 拉起一个**没有团队 MCP 端点 / 凭证 / 隔离配置目录**的裸 CLI。
   写门只有这一处实现（`Registry::write_entry` / `persist_entry` 只调用它）。
+- **归属上 wire，只回答「这条会话属于谁」**（2026-11-17）：`SessionView.attribution` =
+  `{"kind":"user"}` | `{"kind":"teamMember",teamId,memberId}`。前端把它用于两件事：把成员会话从
+  侧栏会话列表里摘掉、给团队行标「当前」。成员的**状态 / 租约 / 待办不在里面**（那是花名册的
+  事实，经 `MemberSessionLookup` 端口问本域），**队长身份也不在里面**（归属加 `role` 会让本域
+  反向依赖 `agent::team`，而那条防火墙是双向的 —— 详见 `team-domain.md` §2.6 第 5 条）。
+  serde 侧必须同时写 `rename_all = "camelCase"`（variant）与 **`rename_all_fields = "camelCase"`**
+  （struct variant 的字段）：少了后者 wire 上是 `team_id` / `member_id` 而 TS 声明 `teamId`，
+  前端读 `undefined` 且**不报错**（判据 `view_serializes_attribution` 断言真实 JSON 键）。
 - 侧栏列出**跑完一轮且拿到真标题**的会话（chat / terminal 同一条规则，见
   `.trellis/spec/frontend/state-management.md`）：`hasUserInput && isNamedSession &&
   (titleSource ∈ {native, user} || turnCount > 0 || 终止态)`。agent 终端的首条输入恒被判负，
