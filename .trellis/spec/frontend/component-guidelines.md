@@ -1948,3 +1948,84 @@ const handleTogglePanel = useCallback(() => {
 // 错误：复制一份 worktree 专用组件
 const WorktreeBranchStatusBarWidget = () => { ... };
 ```
+
+## 团队面板密度契约（2026-11-17，A + B 档）
+
+> 触发任务：`.trellis/tasks/11-17-team-panel-density`（原型实测 280px 下内容高度 1041 → 600px）。
+> 视觉契约是 `prototype-team-panel-density.html`；这里的条目是**判据**，不是配色说明。
+> 改 `src/features/agent-team/**` 的这几个组件时按本节验收。
+
+### 头部：两行，低频入口进 `⋯` 菜单
+
+`TeamHeader` 的 `header` **恰好两个直接子元素**（一行身份 + 一行 meta），由
+`__tests__/TeamHeader.test.tsx` 的 `children` 长度钉住 —— 回退到三行在任何内容断言里都看不出来，
+但会白掉 30+ px。
+
+| 行 | 内容 |
+| --- | --- |
+| 身份行 | `←`（`aria-label="返回列表"`）+ 队名（双击改名）+ 状态徽标 + `⋯`（`aria-label={`团队操作：${teamName}`}`）|
+| meta 行 | `N 成员` · `M 待批`（仅 > 0，保留 `data-awaiting`）· 项目根末段（完整路径进 `title`）· `sealed` 时补「只读快照（不随重启恢复）」 |
+
+`TeamHeaderMenu`（`@/ui/DropdownMenu`）只**转发既有回调**：改名 / 刷新快照 / 恢复团队 /
+关闭团队…。出现条件见组件注释；不新增动作、不持有 hook —— 否则「关闭团队」会长出第二份实现。
+
+**Radix 菜单的焦点陷阱坑（真实踩过）**：菜单还挂着时把行内编辑输入框挂上去，菜单的 `focusin`
+监听会把焦点抢回容器；菜单卸载时又会把焦点还给触发按钮。两者都会让刚挂载的输入框立刻
+`blur` —— 而 `InlineRenameInput` 的 blur 是「提交」（草稿没变 ⇒ 关掉编辑态，用户看到一闪而过）。
+正确写法：`onSelect` 只记标记，到 `onCloseAutoFocus` 里 `preventDefault()` 并**这时才**开编辑
+（见 `TeamHeaderMenu`）。
+
+### 花名册行：一条卡片 + 两行内容
+
+行本身是**卡片**（`rounded-md border bg-bg-primary`，队长行 `border-accent-blue/45`），行间 3px ——
+用户能先认出「这是一条成员」，再读里面的两行。裸列表（无框、无间距）在 280px 下会变成一片文字
+（2026-11-17 复评：「成员列表显示还没有老一版的好看」）。卡片外壳**不等于**把 chip 堆回去。
+
+| 位置 | 内容 | 唯一来源 |
+| --- | --- | --- |
+| 第一行 | 头像 + 名字 + 队长标记 + persona chip（`null` 不占位）+ `⚠ C`（仅 C 档）+ 六态徽标 | `memberBadge` / `memberRowMeta().persona` |
+| 第二行 | 非缺省工作区末段 · 租约 —— **两者都空则整行不渲染**；租约 `null` 时**不渲染**（不写「无在飞任务」）| `memberRowMeta` / `leaseText` |
+| 右列 | **图标按钮**（`Terminal` / `Play` / `History`）+ 置灰理由（可见文字）| `openTerminalAction` |
+
+- 动作按钮的**可访问名**仍是 `${action.label}：${name}`（五态文案），`title` 是 `action.label`；
+  置灰时图标变灰，`action.reason`（`暂无会话` / `已关闭`）是图标旁的**可见文字**。
+  图标化**不许**把理由搬进 `title`：`disabled` 元素不可聚焦，等于删了理由。
+- persona 的 `title` 与抽屉那枚 chip **同一句话**（`personaChipTitle` 是唯一来源）。
+- agent / 通道 / 档位**只在抽屉**（`MemberDetailDrawer`，用 `memberChips` 那一排）。
+  行内只有 `memberRowMeta` —— 两个口径分开，是因为「这是谁」低频而「它在等什么」每行都看；
+  persona 是复评后**回到行内**的例外（用户：「当前没有角色信息」），agent / 通道 / 档位不进。
+- 主体仍是 `<button>`（点行开抽屉），动作按钮是它的**兄弟**（按钮不嵌按钮）。
+- 花名册标题旁不摆人数：面板头 pill 是「有几个成员」的唯一口径（后端口径，不含队长）。
+
+### 任务板：紧凑分组 + 空列汇总
+
+- 列是**紧凑分组**，不是盒子：`role="group"` 容器没有 `border` / `bg-bg-*` / 内边距，
+  只留「标题行 + 卡片列表」。`data-column` / `aria-label` / `data-count` 一个不少（机器标识
+  不随样式变；`__tests__/TeamTaskBoard.emptyColumns.test.tsx` 钉住类名里不出现框/底色）。
+- 空列**不进** `role="group"`，收进末尾一行汇总；汇总项仍带 `data-column` + `data-count="0"`
+  —— 「这一列有几行」这个不变量必须还能被机器读到。
+- 板内不再渲染标题行（标题 + 总计数在 `TeamTaskSection` 的头与 `TeamBoardCenterView` 的头部）。
+  `aria-label="共享任务板"` 是稳定锚点。
+- 折叠（`TeamTaskSection` 的 `boardCollapsed`）**默认展开**、局部 state、不进 store；
+  折叠后只剩一行摘要（`N 个任务 · 列 计数 …`）+ 展开按钮，`aria-expanded` 随状态变。
+- 视图切换是**图标按钮**（`Columns3` / `GitBranch`），`aria-pressed` 保留、
+  `aria-label` / `title` 是「看板 / 分配图」；中央 tab 的 `TeamBoardCenterView` 宽面仍可图标 + 文字。
+- `unplaced` 的 `role="alert"` 与 `tasksTruncated` 的 `role="status"`（`只显示前 200 条`）永远保留。
+
+### 卡片：不重复列与花名册已经说过的话
+
+| 不渲染 | 条件 / 去处 |
+| --- | --- |
+| 状态 chip | `showState === false`。板按「列多态 **且** 卡片状态文案 ≠ 列标签」计算（`column.states.length > 1 && taskStateLabel(state) !== column.label`）—— 两层条件缺一，`进行中` 列里的 `in_progress` 卡片仍会重复一遍 |
+| `shared` 工作区 | 建队缺省值；`nonDefaultWorkspaceLabel` 返回 `null` 即不渲染（`read_only` / worktree 仍渲染）|
+| 可见 `task.id` / `依赖 N` | 属于详情；`id` 仍在 `aria-label` 与 `data-task-id`（可访问性 / 测试钩子，不是 hover-only）|
+| 持有者状态 | 仅「未终结任务 + 持有者 `idle+unverified` / `stalled` / `offline` / `failed`」时单独一行 |
+
+最后一条是 design §6 硬规则 1 的 UI 侧：`idle` 只说「这一轮说完了」，**不等于**做完了。
+`运行中` / `待批准` 在花名册与列上已经说过，不在卡片上重复。
+
+### C 档（红线 14）在 UI 上的**两处**承载
+
+`tier === 'c'` ⇒ 行内 `⚠ C`（可见文字，`title` 带完整句）+ `TeamRoster` 的 `role="note"`
+分区说明常显。两者缺一即违规；缩成颜色或只留 `title` 都算降级。
+`memberRowMeta().sentinelOnly` 是这一条的行内判据点。

@@ -1218,6 +1218,36 @@ cargo test --lib agent::team::mcp   # 只跑工具面（schema / dispatch / serv
   同 `teamStore.refresh`）。
 
 
+### 8.7 面板信息密度契约（前端 UI 侧，2026-11-17）
+
+> 后端命令与载荷**零改动**。这一节只记「哪些字段在哪一层可见」——它是跨栈契约的 UI 端，
+> 因为「C 档必须有可见文字承载」（红线 14）和「空闲 ⚠ 未声明 ≠ 已完成」（AC2）都落在这里。
+> 组件级判据见 `.trellis/spec/frontend/component-guidelines.md`「团队面板密度契约」。
+
+| 事实 | 行内（花名册 / 卡片）| 抽屉 / 详情 |
+| --- | --- | --- |
+| 六态徽标（`member_badge`）| 花名册行内常显 | 抽屉头部 |
+| 租约剩余 | 花名册行内（三态；`null` = **不渲染**）| 抽屉「当前任务」逐条 + 秒级 tick |
+| persona（角色 / 人设）| **行内可见 chip**（`null` 不占位；`title` 说明与权限无关）| 抽屉身份 chip 排 |
+| 身份 / 通道 / 档位 | **只在抽屉**（`memberChips`）| 抽屉身份 chip 排 |
+| 非缺省工作区 | 行内末段（`shared` 不渲染）| 抽屉（全量文案）|
+| C 档 sentinel-only | **行内 `⚠ C`**（可见文字）+ 分区 `role="note"` 常显 | 抽屉 warn 块 |
+
+- **`memberChips` 的用途收窄为「抽屉的身份 chip 排」**：它不是花名册那排 chip 了。
+  行内只读 `memberRowMeta`（workspace + persona + sentinelOnly），否则 280px 下 5 枚 chip 会把名字挤成
+  `researc…`（原型实拍）。persona 是 2026-11-17 复评后回到行内的**唯一一枚**（R14）：
+  用户：「当前没有角色信息」。agent / 通道 / 档位仍只在抽屉。
+- **C 档两处承载**（红线 14 的 UI 侧）：行内 `⚠ C` 与分区说明**缺一即违规**。只靠 `title`
+  或颜色 = 降级（`disabled` / 视觉用户都拿不到）。判据：`TeamPanel.roster.test.tsx` 的
+  「C 档带上可见的行内警示…」。
+- **「成员已空闲但没人认可完成」仍必须看得见**：卡片上仅对**未终结**任务（非
+  `done` / `failed` / `blocked`）且持有者处于 `idle+unverified` / `stalled` / `offline` /
+  `failed` 时单独一行显示。`running` / `awaiting` 不重复花名册已说的状态 —— 去重的前提是
+  「同一事实仍有唯一可见处」，撤回花名册的徽标时这一条要一起重审。
+- **列映射是封闭枚举**（`COLUMN_OF` / `TASK_COLUMN_ORDER` / `MAX_BOARD_TASKS` 一字不动）：
+  空列折叠只是渲染层，`unplaced` 报警与「只显示前 200 条」仍必须出现。
+
+
 ## 9a. 成员位角色预设（role_hints，v20）与导航模型（前端）
 
 ### 9a.1 role_hints：解析链多了一层「面板预设」
