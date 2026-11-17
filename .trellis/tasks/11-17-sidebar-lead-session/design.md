@@ -22,28 +22,36 @@ A 的代价是团队行不知道"队长会话此刻是哪条"，需要一次归�
 不用于展示成员状态（那是花名册的事）。
 
 ```
-attribution: { kind: 'teamMember', teamId, memberId, role: 'lead' | 'worker' }
-           | { kind: 'user' }        // 或直接 null；二选一，见下
+attribution: { kind: 'teamMember', teamId, memberId }
+           | { kind: 'user' }
 ```
 
 - Rust：`entry::SessionAttribution` 加 `Serialize`（`#[serde(tag = "kind", rename_all = "camelCase")]`，
-  variant `User` → `{"kind":"user"}`、`TeamMember { .. }` → `{"kind":"teamMember", teamId, memberId, role}`）。
-  `role` 需要从 entry 带上 —— `SessionAttribution::TeamMember` 目前只有 `team_id` / `member_id`，
-  **加 `role: MemberRole`**（写入点是 `team_executor.rs` 起进程那一刻，`member.role` 就在手上）。
-- **`role` 为什么可以进归属**：它没有变更路径（`grep` 结果：`team_member.role` 无任何 UPDATE），
-  与 `agent_id` 同属**创建期事实**。若将来出现"转让队长"，必须删掉这个字段改走花名册读接口 ——
-  这条写进 spec，不然下一个人会把它当缓存用。
+  variant `User` → `{"kind":"user"}`、`TeamMember { .. }` → `{"kind":"teamMember", teamId, memberId}`）。
+  两个字段**已经在 entry 上**，本变更只是把它们接上 wire —— 不新增任何归属字段。
+- **不把 `role` 放进归属**（2026-11-17 实现前修正，原设计与它冲突）：
+  `live_sessions` 今天**完全不依赖** `agent::team`，而 `agent::team` 反过来刻意**不依赖**
+  `live_sessions` —— 它定义端口 `view::MemberSessionLookup`，由组合根
+  `app::RegistryMemberSessions` 实现（见 `agent/team/view.rs:685`）。这是双向防火墙，不是巧合。
+  往归属里加 `role: MemberRole` 会造出 `live_sessions → agent::team::types` 这条反向边，
+  把「谁是谁的队长」变成会话层的副本 —— 而那件事的真相源是 `team_member.role`。
+  侧栏改为在 `TeamSummary` 上拿 `leadMemberId`（§2.2），按 `(teamId, memberId)` 与归属求交。
 - TS 镜像在 `shared/types/liveSessions.ts`，同 diff 改。
 
-**不做**：把 `role` 之外的成员事实（name / state / lease）塞进归属 —— 那是花名册的影子副本（红线 17）。
+**不做**：把 `role` / name / state / lease 等成员事实塞进归属 —— 那是花名册的影子副本（红线 17）。
 
-### 2.2 `TeamSummary.projectId` + `TeamSummary.workspaceWorktree`
+### 2.2 `TeamSummary` 加三个字段：`projectId` / `workspaceWorktree` / `leadMemberId`
 
-团队行要挂到单元下，而单元身份由 `WorkspaceSession { projectId, worktreePath }` 铸造（红线 12：
-禁止拼路径前缀猜归属）。`TeamSummary` 今天只有 `projectPath`，无法回答"哪个项目 / 哪个工作树"。
+团队行要挂到单元下，并要从 `live_sessions` 快照里认出"队长那条会话"。
 
-- 两列都已在 `Team` 行上（`project_id` v16、`workspace_worktree` v23），`list_teams_scoped` 只是没投影。
-- `workspaceWorktree: string | null`（`null` = 主 checkout，与 `Team` 同语义）。
+- **`projectId` + `workspaceWorktree`**：单元身份由 `WorkspaceSession { projectId, worktreePath }`
+  铸造（红线 12：禁止拼路径前缀猜归属）。`TeamSummary` 今天只有 `projectPath`，无法回答
+  "哪个项目 / 哪个工作树"。两列都已在 `Team` 行上（`project_id` v16、`workspace_worktree` v23），
+  `list_teams_scoped` 只是没投影。`workspaceWorktree: string | null`（`null` = 主 checkout）。
+- **`leadMemberId: string | null`**：侧栏用它把"哪个成员是队长"与
+  `attribution.memberId` 求交，从而认出活着的队长会话。来源是 `team_member.role == Lead`
+  （`TeamManager` 新增只读访问器，与 `member_count` 同一个镜像读法）。`null` = 该队没有队长行
+  （数据缺陷，不是"没有队长"这个正常状态）。
 - **旧行**（v16 前空 `project_id`）：`projectId` 为空串 ⇒ 前端**不渲染**团队行（挂到哪都是猜）。
   与 `useTeamList` 现有的"空 project_id 行被后端排除"口径一致 —— 若 `team_list(None)` 仍返回它们，
   侧栏按空串过滤。
@@ -81,7 +89,7 @@ attribution: { kind: 'teamMember', teamId, memberId, role: 'lead' | 'worker' }
 
 | 状态 | 点击团队行 | 依据 |
 | --- | --- | --- |
-| 会话快照里存在该队的**活队长会话**（归属 `teamMember{teamId, role:lead}` 且 `state` 非终止）| `openExistingTerminalTab(team.projectId, sessionId, title, agentId)` —— 接管 PTY，**不**新建进程 | 与花名册"打开会话"**同一个原语** |
+| 会话快照里存在该队的**活队长会话**（归属 `teamMember{teamId, memberId}` 且 `memberId === team.leadMemberId`、`state` 非终止）| `openExistingTerminalTab(team.projectId, sessionId, title, agentId)` —— 接管 PTY，**不**新建进程 | 与花名册"打开会话"**同一个原语** |
 | 否则 | `teamStore.openTeam(teamId)` + `dockStore.activateView(panelView('team'))`；**不**创建任何终端 tab | 侧栏不知道"为什么开不了"（未起过 / 已退出 / 已封存 / 可续接），这些事实只在花名册行上 |
 
 这条边界是刻意的：侧栏**不**重写 `memberTerminal.openTerminalAction` 的五态判据（缺 `resumable` / `sealed`
@@ -107,13 +115,19 @@ attribution: { kind: 'teamMember', teamId, memberId, role: 'lead' | 'worker' }
 单行、两段式（与会话行同一档字号，比单元行小一档）：
 
 ```
-[Users] 队名 · open              3 人 · 2/5   [看板]
-        队长 · <会话标题 或 「队长未运行」>
+[Users] 队名 · open            2/5   [看板]
+        Lead · <会话标题 或 「Lead not running」>
 ```
 
-- 队名截断优先；`N 人` 与任务计数是 mono + `tabular-nums`（数字行对齐，同 `SessionListRow` 的相对时间）。
-- 看板按钮常驻（不做 hover 覆盖）——它是本任务的核心入口，藏起来就白做了；行点击区域让开右侧按钮。
+- 队名截断优先；任务计数 `未终结/总数` 是 mono + `tabular-nums`（数字行对齐，同 `SessionListRow` 的相对时间）。
+- **不显示成员数**（2026-11-17 实现前修正，原设计写的是 `N 人`）：`TeamSummary.memberCount`
+  **不含队长**（`member_count` 只数 `Worker`），而用户心里的人数含队长 —— 侧栏写「3 人」
+  与面板头的「3 成员」并列就会变成两个口径里的同一个词。而它在本行的决策价值低于任务进度：
+  一个团队「还差几个活」比「几个人」更能回答「要不要点进去看」。人数留在面板头（唯一口径）。
+- 看板按钮常驻（不做 hover 覆盖）——它是本任务的核心入口，藏起来就白做了；行点击区域让开右侧按钮
+  （结构同 `SessionListRow`：行内容是一个 `<button>`，看板按钮是它的**兄弟**节点，不嵌套）。
 - 状态徽标复用 `TeamStateBadge`（不新造第三套状态词表）。
+- 文案英文（与 `156be73f` 起的团队面板口径一致）。
 
 ## 8. 风险 / 回滚
 
@@ -127,7 +141,7 @@ attribution: { kind: 'teamMember', teamId, memberId, role: 'lead' | 'worker' }
 
 | 层 | 用例 |
 | --- | --- |
-| Rust | `view_serializes_attribution`（两种归属形状）；`team_list` 投影带 `projectId` / `workspaceWorktree`（含主 checkout 的 `null`） |
+| Rust | `view_serializes_attribution`（两种归属形状）；`team_list` 投影带 `projectId` / `workspaceWorktree` / `leadMemberId`（含主 checkout 的 `null` 与无队长行团队的 `null`） |
 | selector | `sessionsByUnit` 跳过成员会话；`getRecentSessionOfKind` 跳过；`unitsWithListedActiveSession` 行为不变 |
 | 组件 | `UnitTeamEntries`：有活队长 → 副文案是会话标题、点击走 `openExistingTerminalTab`；无活队长 → 副文案「队长未运行」、点击把面板切到该队（断言**未**创建终端 tab）；看板按钮 → `openBoardTab`（同队幂等） |
 | 装配 | `UnitSessionList` 在无团队时渲染结果与今天一致（快照式断言）|

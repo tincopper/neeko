@@ -1220,3 +1220,39 @@ Session summary was not supplied.
 ### Next Steps
 
 - S2 wire（SessionView.attribution + TeamSummary.projectId/workspaceWorktree）→ S3 UI（UnitTeamEntries + 过滤成员会话）
+
+
+## Session 482: 侧栏团队入口：团队行 + 队长会话 + 看板入口
+<!-- trellis-session: v=2 fp=b4bafb467feecc31 -->
+
+**Date**: 2026-11-17
+**Task**: 侧栏团队入口：团队行 + 队长会话 + 看板入口
+**Branch**: `feat-team`
+
+### Summary
+
+四刀落地：wire 归属/单元身份、teamListStore、团队行组件、双亮修复
+
+### Main Changes
+
+- SessionView.attribution + TeamSummary.projectId/workspaceWorktree/leadMemberId；teamListStore（全量拉取、消费侧裁剪）；UnitTeamEntries + useTeamEntryActions；selectors 过滤成员会话 / foregroundTeamId；WorktreeRowList extraChildCount + ProjectsPanel 首拉
+
+### Git Commits
+
+- `252be77e` feat(live-sessions): expose session attribution and the team's unit identity
+- `4a23a7c2` feat(agent-team): own the team list in a store and filter member sessions
+- `99a55392` feat(agent-team): show a team row under each workspace unit
+- `bc1eadf3` fix(agent-team): stop double-highlighting the unit and the team row
+- `1dca99a6` docs(spec): record the sidebar team entry contract
+
+### Testing
+
+- [OK] vitest 213 文件 2268 通过；cargo test live_sessions 144 / team 530；pnpm check:quick 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 提交 spec + 任务归档；遗留记录在 prd（attach 竞态、跨项目点团队行不切项目）

@@ -5,15 +5,17 @@
 ## S2 · Wire（不改任何渲染行为）
 
 - [ ] **Red** `src-tauri/src/live_sessions/view.rs` 测试：成员归属的条目序列化出
-      `attribution = { kind: "teamMember", teamId, memberId, role: "lead" }`，用户归属为 `{ kind: "user" }`。
-- [ ] **Green** `entry::SessionAttribution`：`TeamMember` 加 `role: MemberRole`；`#[derive(Serialize)]`
-      （`#[serde(tag = "kind", rename_all = "camelCase")]`）；`SessionView` 加 `attribution` 字段。
-      写入点 `app/team_executor.rs:243` 补 `role: member.role`；`cursor.rs` 里 `into_entry` 的
-      `SessionAttribution::User` 不变（构造点全量编译即可发现遗漏）。
-- [ ] **Red/Green** `agent/team/view.rs`：`TeamSummary` 加 `project_id` + `workspace_worktree`，
-      `list_teams_scoped` 投影它们；用例覆盖「主 checkout 团队 `workspaceWorktree = null`」与「工作树团队」。
+      `attribution = { kind: "teamMember", teamId, memberId }`，用户归属为 `{ kind: "user" }`。
+- [ ] **Green** `entry::SessionAttribution` 加 `Serialize`（`#[serde(tag = "kind", rename_all = "camelCase")]`）；
+      `SessionView` 加 `attribution` 字段。**不新增任何字段到 `SessionAttribution`**（见 design §2.1：
+      加 `role` 会造出 `live_sessions → agent::team` 的反向边，而那条防火墙是双向的）。
+      `cursor.rs` 里 `into_entry` 的 `SessionAttribution::User` 不变（全量编译可发现遗漏）。
+- [ ] **Red/Green** `agent/team/view.rs`：`TeamSummary` 加 `project_id` / `workspace_worktree` / `lead_member_id`，
+      `list_teams_scoped` 投影它们；`TeamManager` 新增 `pub fn lead_member_id(&self, team_id) -> Option<String>`
+      （与 `lead_of` 共用同一个纯函数查法，但不得在持锁处调它 —— `lead_of` 收 `&Inner`）。
+      用例覆盖：主 checkout 团队 `workspaceWorktree = null`；工作树团队带路径；无队长行团队 `leadMemberId = null`。
 - [ ] TS 镜像同 diff 改：`src/shared/types/liveSessions.ts`（`SessionAttribution` + `SessionView.attribution`）、
-      `src/shared/types/team.ts`（`TeamSummary.projectId` / `workspaceWorktree`）。
+      `src/shared/types/team.ts`（`TeamSummary.projectId` / `workspaceWorktree` / `leadMemberId`）。
 - [ ] 前端测试夹具补字段（`tsc` 会点名所有构造点；逐个补真实值，不要 `as any`）。
 - [ ] 验证：`cd src-tauri && cargo test live_sessions`、`cargo test team`；`pnpm exec tsc --noEmit`。
 
