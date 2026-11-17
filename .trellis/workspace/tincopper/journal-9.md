@@ -1155,3 +1155,35 @@ Session summary was not supplied.
 ### Next Steps
 
 - 可选：把 TeamSummary 的 projectId/workspaceWorktree 补上以支持列表态直接派生（当前不需要）
+
+
+## Session 480: team-panel-density: A+B 档落地（原型 → 实现 → 复核）
+<!-- trellis-session: v=2 fp=f64018280d1eec2b -->
+
+**Date**: 2026-11-17
+**Task**: team-panel-density: A+B 档落地（原型 → 实现 → 复核）
+**Branch**: `feat-team`
+
+### Summary
+
+团队面板密度：头部 2 行 + ⋯ 菜单、花名册单行、任务板扁平分组 + 空列汇总 + 可折叠；原型实测 280px 1041→600px（-42%），域内 439 测试与 check:quick 全绿
+
+### Main Changes
+
+- TeamHeader 两行 + TeamHeaderMenu（复用既有回调）；RosterRow 单行 + memberRowMeta；TeamTaskBoard 扁平分组/空列汇总；TeamTaskSection 任务区头 + 折叠；TaskCardRow showState/缺省值不渲染；leaseText 收窄为两态
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team src/app/dock（439 passed）；pnpm check:quick（15/15 护栏 + tsc + related）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 人工目测 280px 面板对照原型（AC2 唯一未勾项）；用户确认后提交
