@@ -26,7 +26,7 @@ describe('openTerminalAction', () => {
   it('① 有活会话：可点，接管那个 PTY', () => {
     const action = openTerminalAction(createMemberStatus({ memberId: 'w1@tm_1' }));
 
-    expect(action).toEqual({ enabled: true, label: '打开会话', reason: null, kind: 'live' });
+    expect(action).toEqual({ enabled: true, label: 'Open session', reason: null, kind: 'live' });
   });
 
   it('② 没有活会话、有原生会话 id 且可恢复、未被封存：可点，走 `resume`（起新进程续接）', () => {
@@ -38,7 +38,12 @@ describe('openTerminalAction', () => {
       resumable: true,
     });
 
-    expect(action).toEqual({ enabled: true, label: '恢复会话', reason: null, kind: 'resume' });
+    expect(action).toEqual({
+      enabled: true,
+      label: 'Resume session',
+      reason: null,
+      kind: 'resume',
+    });
   });
 
   it('③ 没有活会话、有原生会话 id 但**不可恢复**：可点，退到「查看记录」而不是置灰', () => {
@@ -51,7 +56,7 @@ describe('openTerminalAction', () => {
       resumable: false,
     });
 
-    expect(action).toEqual({ enabled: true, label: '查看记录', reason: null, kind: 'archive' });
+    expect(action).toEqual({ enabled: true, label: 'View history', reason: null, kind: 'archive' });
   });
 
   it('④ 没有活会话、没有被封存、也没有原生会话 id：置灰，理由「暂无会话」', () => {
@@ -64,9 +69,9 @@ describe('openTerminalAction', () => {
 
     expect(action.enabled).toBe(false);
     // 文案是中性措辞：只说「此刻没有可接管的终端」，不等于「这个成员不存在」。
-    expect(action.reason).toBe('暂无会话');
+    expect(action.reason).toBe('No session yet');
     // 按钮文案保持不变：变的是「能不能点」，理由单独说 —— 否则按钮自己变成理由，动作就没了
-    expect(action.label).toBe('打开会话');
+    expect(action.label).toBe('Open session');
   });
 
   it('⑤ 被封存且没有活会话、也没有原生会话 id：置灰，理由是「已关闭」', () => {
@@ -81,7 +86,7 @@ describe('openTerminalAction', () => {
     );
 
     expect(action.enabled).toBe(false);
-    expect(action.reason).toBe('已关闭');
+    expect(action.reason).toBe('Closed');
   });
 
   it('封存 + 有原生 id + 可恢复：`查看记录`，**不给** `恢复会话`（意图不许被撤销）', () => {
@@ -94,7 +99,7 @@ describe('openTerminalAction', () => {
       resumable: true,
     });
 
-    expect(action).toEqual({ enabled: true, label: '查看记录', reason: null, kind: 'archive' });
+    expect(action).toEqual({ enabled: true, label: 'View history', reason: null, kind: 'archive' });
   });
 
   it('封存但有原生会话 id：仍可查看记录（意图不等于删档）', () => {
@@ -105,7 +110,7 @@ describe('openTerminalAction', () => {
       resumable: false,
     });
 
-    expect(action).toEqual({ enabled: true, label: '查看记录', reason: null, kind: 'archive' });
+    expect(action).toEqual({ enabled: true, label: 'View history', reason: null, kind: 'archive' });
   });
 
   it('收尾窗口里的封存成员：活会话优先（那时能用的是接管它，不是看记录）', () => {
@@ -118,7 +123,7 @@ describe('openTerminalAction', () => {
       resumable: true,
     });
 
-    expect(action).toEqual({ enabled: true, label: '打开会话', reason: null, kind: 'live' });
+    expect(action).toEqual({ enabled: true, label: 'Open session', reason: null, kind: 'live' });
   });
 
   it('`resumable` 但没有原生 id（不该出现的组合）：不给恢复，只置灰', () => {
@@ -133,7 +138,7 @@ describe('openTerminalAction', () => {
 
     expect(action.enabled).toBe(false);
     expect(action.kind).toBe('live');
-    expect(action.reason).toBe('暂无会话');
+    expect(action.reason).toBe('No session yet');
   });
 
   it('判据只看会话与意图（role / state 都不影响能不能看到终端）', () => {

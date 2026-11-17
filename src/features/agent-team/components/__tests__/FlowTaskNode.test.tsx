@@ -25,28 +25,28 @@ function renderNode(overrides: Partial<TaskCard>): void {
 describe('FlowTaskNode — 两行副标题各自独立', () => {
   it('只有 assignee：指派者 + 待认领', () => {
     renderNode({ assignee: 'A@tm_1' });
-    expect(screen.getByText('t1 · 指派 A')).toBeInTheDocument();
-    expect(screen.getByText('待认领')).toBeInTheDocument();
+    expect(screen.getByText('t1 · assigned to A')).toBeInTheDocument();
+    expect(screen.getByText('Unclaimed')).toBeInTheDocument();
   });
 
   it('只有 owner：空指派槽 + 已认领（老数据没有 assignee）', () => {
     renderNode({ owner: 'B@tm_1', state: 'in_progress' });
-    expect(screen.getByText('t1 · 指派 —')).toBeInTheDocument();
-    expect(screen.getByText('已认领 B')).toBeInTheDocument();
+    expect(screen.getByText('t1 · assigned —')).toBeInTheDocument();
+    expect(screen.getByText('Claimed by B')).toBeInTheDocument();
   });
 
   it('两者都有且不同：两行分别出现两个名字，互不覆盖', () => {
     renderNode({ assignee: 'A@tm_1', owner: 'B@tm_1', state: 'in_progress' });
-    expect(screen.getByText('t1 · 指派 A')).toBeInTheDocument();
-    expect(screen.getByText('已认领 B')).toBeInTheDocument();
+    expect(screen.getByText('t1 · assigned to A')).toBeInTheDocument();
+    expect(screen.getByText('Claimed by B')).toBeInTheDocument();
     // 反证：任一名字被 `??` 挪到另一行都算退化。
-    expect(screen.queryByText('已认领 A')).not.toBeInTheDocument();
-    expect(screen.queryByText('t1 · 指派 B')).not.toBeInTheDocument();
+    expect(screen.queryByText('Claimed by A')).not.toBeInTheDocument();
+    expect(screen.queryByText('t1 · assigned to B')).not.toBeInTheDocument();
   });
 
   it('两者都没有：未指派 + 待认领', () => {
     renderNode({});
-    expect(screen.getByText('t1 · 未指派')).toBeInTheDocument();
-    expect(screen.getByText('待认领')).toBeInTheDocument();
+    expect(screen.getByText('t1 · unassigned')).toBeInTheDocument();
+    expect(screen.getByText('Unclaimed')).toBeInTheDocument();
   });
 });

@@ -92,8 +92,8 @@ describe('buildTaskBoard', () => {
 
 describe('workspaceLabel', () => {
   it('区分共享 / 只读 / worktree', () => {
-    expect(workspaceLabel('shared')).toBe('共享工作区');
-    expect(workspaceLabel('read_only')).toBe('只读');
+    expect(workspaceLabel('shared')).toBe('Shared workspace');
+    expect(workspaceLabel('read_only')).toBe('Read-only');
     expect(workspaceLabel({ worktree: { path: '/tmp/wt-a' } })).toBe('worktree wt-a');
   });
 });

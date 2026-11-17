@@ -71,7 +71,7 @@ export function useTeamDelete(options: DeleteTeamOptions = {}): DeleteTeamState 
         // 面板会挂在一句 `NotFound` 上（那是「删成功了，界面反而坏了」）。
         // 规则本体在 store（`forgetTeamIfShowing`），与关闭共用同一个判据。
         forgetTeamIfShowing(teamId);
-        onShowToast?.(`团队「${name}」已删除`, 'info');
+        onShowToast?.(`Team "${name}" deleted`, 'info');
         onSettled?.();
         return true;
       } catch (err) {

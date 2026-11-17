@@ -9,10 +9,10 @@
 
 /** 队长终端 tab 的标题（建队打开 / 改名后重写共用）。 */
 export function leaderTerminalTabTitle(teamName: string): string {
-  return `队长 · ${teamName}`;
+  return `Lead · ${teamName}`;
 }
 
 /** 团队看板 / 分配图 tab 的标题（同上）。 */
 export function teamBoardTabTitle(teamName: string): string {
-  return `看板 · ${teamName}`;
+  return `Board · ${teamName}`;
 }

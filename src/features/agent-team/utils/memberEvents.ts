@@ -14,18 +14,18 @@ import type { MemberEventView } from '@/shared/types/team';
  * 全部类别（它也不该成为第二份真相源），只在文案层面跟着走。
  */
 const KIND_TEXT: Record<string, string> = {
-  claim: '认领任务',
-  update: '更新任务',
-  force_done: '队长判定完成',
-  reclaim: '租约回收',
-  blocked: '任务冻结',
-  signal: '状态信号',
-  issue_token: '签发凭证',
-  bind_terminal: '绑定终端',
-  close_request: '关闭请求',
-  close_begin: '开始解散',
-  close_team: '团队已关闭',
-  close_member: '归档成员',
+  claim: 'Claimed task',
+  update: 'Updated task',
+  force_done: 'Lead marked done',
+  reclaim: 'Lease reclaimed',
+  blocked: 'Task frozen',
+  signal: 'State signal',
+  issue_token: 'Credential issued',
+  bind_terminal: 'Terminal bound',
+  close_request: 'Close requested',
+  close_begin: 'Tearing down',
+  close_team: 'Team closed',
+  close_member: 'Member archived',
 };
 
 /** 类别 → 人读文案（未知类别原样返回，见文件头）。 */

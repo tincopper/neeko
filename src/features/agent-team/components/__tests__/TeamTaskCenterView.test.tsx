@@ -96,13 +96,13 @@ describe('TeamTaskCenterView — 线上载荷', () => {
     // 开工文档（markdown 真渲染，标题不带 `#`）
     expect(await screen.findByRole('heading', { name: '派活正文' })).toBeInTheDocument();
 
-    const trace = screen.getByRole('region', { name: '步骤轨迹' });
+    const trace = screen.getByRole('region', { name: 'Activity log' });
     // 每一条审计行都要出现（claim / update 都在，最新在前）
     expect(trace).toHaveTextContent('claim');
     expect(trace).toHaveTextContent('update');
     expect(trace).toHaveTextContent('开始处理');
     // 截断必须说出来（否则「就只有这两条」看起来像事实）
-    expect(trace).toHaveTextContent('（只显示最近 2 条）');
+    expect(trace).toHaveTextContent('(showing the latest 2)');
   });
 
   it('没有步骤时给一句明确的空态，而不是空白轨迹区', async () => {
@@ -113,9 +113,11 @@ describe('TeamTaskCenterView — 线上载荷', () => {
     );
     renderView();
 
-    expect(await screen.findByText('还没有步骤记录。')).toBeInTheDocument();
+    expect(await screen.findByText('No steps recorded yet.')).toBeInTheDocument();
     // 空轨迹不许挂截断提示（永远亮着的提示等于没有提示）
-    expect(screen.getByRole('region', { name: '步骤轨迹' })).not.toHaveTextContent('（只显示最近');
+    expect(screen.getByRole('region', { name: 'Activity log' })).not.toHaveTextContent(
+      '(showing the latest',
+    );
   });
 
   it('失败：一句可访问的错误，不渲染半截正文', async () => {
@@ -139,7 +141,7 @@ describe('TeamTaskCenterView — 线上载荷', () => {
     renderView();
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '重新读取任务详情' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reload task details' }));
 
     expect(await screen.findByRole('heading', { name: '派活正文' })).toBeInTheDocument();
     // 重试成功后旧错误必须消失
@@ -252,6 +254,6 @@ describe('TeamTaskCenterView — 交接改引用制（R6）', () => {
     );
     renderView();
 
-    expect(await screen.findByText('（已截断到 4KB）')).toBeInTheDocument();
+    expect(await screen.findByText('(truncated at 4KB)')).toBeInTheDocument();
   });
 });

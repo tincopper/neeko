@@ -79,31 +79,36 @@ export interface OpenTerminalAction {
   kind: 'live' | 'resume' | 'archive';
 }
 
-const OPEN: OpenTerminalAction = { enabled: true, label: '打开会话', reason: null, kind: 'live' };
+const OPEN: OpenTerminalAction = {
+  enabled: true,
+  label: 'Open session',
+  reason: null,
+  kind: 'live',
+};
 const OPEN_RESUME: OpenTerminalAction = {
   enabled: true,
   // 与「查看记录」的差别是**接管一个新进程**，不是读历史 —— 文案必须能区分这两件事。
-  label: '恢复会话',
+  label: 'Resume session',
   reason: null,
   kind: 'resume',
 };
 const OPEN_ARCHIVE: OpenTerminalAction = {
   enabled: true,
   // 文案区分：已退出的成员打开的是记录，不是活进程。
-  label: '查看记录',
+  label: 'View history',
   reason: null,
   kind: 'archive',
 };
 const NO_SESSION: OpenTerminalAction = {
   enabled: false,
-  label: '打开会话',
-  reason: '暂无会话',
+  label: 'Open session',
+  reason: 'No session yet',
   kind: 'live',
 };
 const SEALED: OpenTerminalAction = {
   enabled: false,
-  label: '打开会话',
-  reason: '已关闭',
+  label: 'Open session',
+  reason: 'Closed',
   kind: 'live',
 };
 

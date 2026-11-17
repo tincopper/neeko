@@ -48,11 +48,11 @@ export const LEASE_URGENT_SECS = 120;
 
 /** 剩余秒 → 人读文案（两态，见文件头）。`null` 由调用方处理成「不渲染」。 */
 export function leaseText(remainingSecs: number): LeaseText {
-  if (remainingSecs <= 0) return { text: '租约已超时', urgent: true };
+  if (remainingSecs <= 0) return { text: 'Lease expired', urgent: true };
   const minutes = Math.floor(remainingSecs / 60);
   const secs = remainingSecs % 60;
   return {
-    text: `租约剩 ${minutes}:${String(secs).padStart(2, '0')}`,
+    text: `Lease ${minutes}:${String(secs).padStart(2, '0')}`,
     urgent: remainingSecs <= LEASE_URGENT_SECS,
   };
 }

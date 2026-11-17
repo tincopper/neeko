@@ -29,26 +29,26 @@ import type { ColdReason, TeamResumeReport } from '@/shared/types/team';
  * 顺序固定为 `resumed → skipped → cold → failed`，同一份报告在任何地方都是同一句话。
  */
 export function describeResumeReport(report: TeamResumeReport): string {
-  const parts: string[] = [`恢复 ${report.resumed.length} 个成员`];
+  const parts: string[] = [`Resumed ${report.resumed.length} members`];
 
   if (report.skippedAlreadyLive.length > 0) {
     // 「跳过」不是「失败」：这些成员的进程一直在跑，恢复对它们是幂等的。
-    parts.push(`${report.skippedAlreadyLive.length} 个已有进程`);
+    parts.push(`${report.skippedAlreadyLive.length} already running`);
   }
 
   // 逐理由分组（不是逐成员）：两个理由各一句，数字才读得出来。
   // 顺序固定 —— `cold` 是数组，按理由归类后仍按 `COLD_ORDER` 排，不随后端返回顺序抖。
   for (const reason of COLD_ORDER) {
     const count = report.cold.filter((member) => member.reason === reason).length;
-    if (count > 0) parts.push(`${count} 个只能新开（${coldReasonText(reason)}）`);
+    if (count > 0) parts.push(`${count} started fresh (${coldReasonText(reason)})`);
   }
 
   if (report.failed.length > 0) {
-    const ids = report.failed.map((member) => member.memberId).join('、');
-    parts.push(`${report.failed.length} 个失败（${ids}）`);
+    const ids = report.failed.map((member) => member.memberId).join(', ');
+    parts.push(`${report.failed.length} failed (${ids})`);
   }
 
-  return parts.join('；');
+  return parts.join('; ');
 }
 
 /** 固定的理由顺序（`no_native_session` 在前：它更常见，也更容易被误解成「后端坏了」）。 */
@@ -56,5 +56,5 @@ const COLD_ORDER: readonly ColdReason[] = ['no_native_session', 'unsupported_cli
 
 /** 理由的**可见**文案。两个理由的修法不同，所以它们不能共用一句「不能恢复」。 */
 function coldReasonText(reason: ColdReason): string {
-  return reason === 'no_native_session' ? '没有会话记录' : '该 CLI 不支持续接';
+  return reason === 'no_native_session' ? 'no session record' : 'this CLI cannot resume';
 }

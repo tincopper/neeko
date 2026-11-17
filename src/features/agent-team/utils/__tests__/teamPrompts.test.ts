@@ -19,7 +19,7 @@ describe('describeTeamClose', () => {
 
   it('说清 graceful 本期未兑现（直接关进程，不承诺协商关机）', () => {
     expect(prompt.lines.join('\n')).toMatch(/graceful/);
-    expect(prompt.lines.join('\n')).toContain('未兑现');
+    expect(prompt.lines.join('\n')).toContain('not implemented');
   });
 
   it('说清在飞任务回到 pending', () => {
@@ -27,15 +27,15 @@ describe('describeTeamClose', () => {
   });
 
   it('说清队长自己的终端不由这次关闭关掉', () => {
-    expect(prompt.lines.join('\n')).toContain('队长自己的终端');
+    expect(prompt.lines.join('\n')).toContain("The lead's own terminal");
   });
 
   it('说清 worktree 一个都不删', () => {
-    expect(prompt.lines.join('\n')).toContain('worktree 一个都不会删');
+    expect(prompt.lines.join('\n')).toContain('No worktrees are deleted');
   });
 
   it('确认按钮是动词短语（不是「确定」这种没有对象的词）', () => {
-    expect(prompt.confirmLabel).toBe('确认关闭');
+    expect(prompt.confirmLabel).toBe('Close team');
   });
 });
 
@@ -50,26 +50,26 @@ describe('describeTeamDelete', () => {
 
   it('标题带团队名，且与关闭的标题**不同**（否则用户分不清按的是哪一个）', () => {
     expect(prompt.title).toContain('refactor');
-    expect(prompt.title).toContain('删除');
+    expect(prompt.title).toContain('Delete');
     expect(prompt.title).not.toBe(describeTeamClose('refactor').title);
   });
 
   it('说清不可撤销（没有恢复路径）', () => {
-    expect(prompt.lines.join('\n')).toContain('查不回来');
+    expect(prompt.lines.join('\n')).toContain('recoverable');
   });
 
   it('说清成员 / 任务 / 审计一起删（级联）', () => {
     const text = prompt.lines.join('\n');
-    expect(text).toContain('级联删除');
-    expect(text).toContain('审计');
+    expect(text).toContain('cascade');
+    expect(text).toContain('audit');
   });
 
   it('说清 worktree 仍然保留（与 close_notes 第 3 条同口径）', () => {
-    expect(prompt.lines.join('\n')).toContain('worktree 一个都不会删');
+    expect(prompt.lines.join('\n')).toContain('No worktrees are deleted');
   });
 
   it('确认按钮是动词短语，且与关闭的按钮**不同**', () => {
-    expect(prompt.confirmLabel).toBe('确认删除');
+    expect(prompt.confirmLabel).toBe('Delete team');
     expect(prompt.confirmLabel).not.toBe(describeTeamClose('refactor').confirmLabel);
   });
 });

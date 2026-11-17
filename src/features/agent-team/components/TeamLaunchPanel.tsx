@@ -171,7 +171,7 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
           createdAt: Date.now(),
         });
         if (!result.ok) {
-          throw new Error(result.error ?? '保存角色失败');
+          throw new Error(result.error ?? 'Failed to save role');
         }
         return {
           ...input,
@@ -198,7 +198,7 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
     );
 
     return (
-      <section aria-label="新建团队" className="flex min-h-0 flex-1 flex-col">
+      <section aria-label="New team" className="flex min-h-0 flex-1 flex-col">
         {/* 返回头：列表优先 + 视图推入的「退栈」。返回是导航（不清草稿 —— 用户只是
             去列表看一眼，回来草稿还在）；清草稿是刷新/成功后的事。 */}
         <header className="flex items-center gap-2 border-b border-border px-2 py-2">
@@ -206,7 +206,7 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
             <button
               type="button"
               onClick={onBack}
-              aria-label="返回团队列表"
+              aria-label="Back to team list"
               className={cn(
                 'grid size-7 shrink-0 place-items-center rounded-md text-text-secondary',
                 'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
@@ -216,9 +216,9 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
             </button>
           ) : null}
           <div className="min-w-0 flex-1">
-            <div className="text-ui font-semibold text-text-primary">新建团队</div>
+            <div className="text-ui font-semibold text-text-primary">New team</div>
             <div className="text-micro text-text-muted">
-              可先起名，三步：队长 → 成员与角色 → 默认值
+              Name it first, then three steps: lead → members & roles → defaults
             </div>
           </div>
         </header>
@@ -232,7 +232,11 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
           />
 
           {/* 步骤 1 */}
-          <StepHead n={1} title="队长用哪个 CLI" hint="启动后它拿到工具面与任务板" />
+          <StepHead
+            n={1}
+            title="Which CLI leads"
+            hint="After launch it gets the tool surface and the task board"
+          />
 
           <LeadPickerSection
             launchable={launchable}
@@ -247,8 +251,8 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
           {/* 步骤 2 */}
           <StepHead
             n={2}
-            title="成员与角色"
-            hint="候选 CLI 池 · 每位可预设 persona · 实际人数由任务指派决定"
+            title="Members & roles"
+            hint="Candidate CLI pool · each member can carry a persona preset · actual headcount is decided by task assignment"
           />
           <TeamConfigSection
             options={teamOptions}
@@ -271,7 +275,7 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
           />
 
           {/* 步骤 3 */}
-          <StepHead n={3} title="默认值与团队根" hint="全部可不改" />
+          <StepHead n={3} title="Defaults & team root" hint="Everything can stay as-is" />
           <TeamRootRow workspaceRoot={address.root} />
         </div>
 

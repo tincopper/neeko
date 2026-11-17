@@ -35,7 +35,8 @@ const TeamLaunchFooter: React.FC<TeamLaunchFooterProps> = React.memo(
     <footer className="sticky bottom-0 flex flex-col gap-1.5 border-t border-border bg-bg-secondary/95 p-3 backdrop-blur-sm">
       {bypassSelected ? (
         <p role="note" className="text-micro text-accent-orange">
-          ⚠ 已选「旁路审批」：成员写盘前不会有人确认。只在完全信任这个队的成员时使用。
+          ⚠ Bypass approval is selected: nobody confirms before members write to disk. Only use this
+          when you fully trust this team&apos;s members.
         </p>
       ) : null}
       {error ? (
@@ -57,11 +58,11 @@ const TeamLaunchFooter: React.FC<TeamLaunchFooterProps> = React.memo(
         )}
       >
         <Users size={14} aria-hidden="true" />
-        {busy ? '正在建立团队…' : '以队长身份开会话'}
+        {busy ? 'Creating the team…' : 'Start session as lead'}
       </button>
       {blockedReason ? <p className="text-micro text-text-muted">{blockedReason}</p> : null}
       {summary ? (
-        <p className="text-micro text-text-muted" aria-label="当前配置摘要">
+        <p className="text-micro text-text-muted" aria-label="Current configuration summary">
           {summary}
         </p>
       ) : null}

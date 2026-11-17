@@ -91,7 +91,7 @@ const TeamConfirmDialog: React.FC<TeamConfirmDialogProps> = ({ intent, onCancel,
         </DialogDescription>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>
-            取消
+            Cancel
           </Button>
           <Button
             variant="destructive"
@@ -100,7 +100,7 @@ const TeamConfirmDialog: React.FC<TeamConfirmDialogProps> = ({ intent, onCancel,
               onConfirm(intent);
             }}
           >
-            {prompt?.confirmLabel ?? '确认'}
+            {prompt?.confirmLabel ?? 'Confirm'}
           </Button>
         </DialogFooter>
       </DialogContent>

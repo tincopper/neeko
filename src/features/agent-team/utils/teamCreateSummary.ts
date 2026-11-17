@@ -43,7 +43,7 @@ export function teamCreateSummary(
   nameOf: (agentId: string) => string,
 ): string {
   const parts: string[] = [];
-  if (name !== null) parts.push(`「${name}」`);
+  if (name !== null) parts.push(`"${name}"`);
 
   if (values.selectedIds.length > 0) {
     const staffed = values.selectedIds
@@ -53,17 +53,17 @@ export function teamCreateSummary(
         return persona ? `${label}→${persona}` : label;
       })
       .join(' / ');
-    parts.push(`${values.selectedIds.length} 名成员（${staffed}）`);
+    parts.push(`${values.selectedIds.length} members (${staffed})`);
   }
 
-  if (values.persona) parts.push(`缺省角色 ${values.persona}`);
-  parts.push(values.workspace === 'read_only' ? '只读' : '共享工作区');
+  if (values.persona) parts.push(`Default persona ${values.persona}`);
+  parts.push(values.workspace === 'read_only' ? 'Read-only' : 'Shared workspace');
   parts.push(
     values.approvalPolicy === 'queue'
-      ? '队列审批'
+      ? 'Approval queue'
       : values.approvalPolicy === 'interactive'
-        ? '交互审批'
-        : '旁路审批',
+        ? 'Interactive approval'
+        : 'Bypass approval',
   );
   return parts.join(' · ');
 }

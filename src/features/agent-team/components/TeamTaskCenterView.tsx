@@ -113,13 +113,13 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
             )}
           >
             <RotateCcw size={12} aria-hidden="true" />
-            重试
+            Retry
           </button>
         ) : null}
         <button
           type="button"
           onClick={reload}
-          aria-label="重新读取任务详情"
+          aria-label="Reload task details"
           className="grid size-7 place-items-center rounded-md text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
         >
           <RefreshCw size={13} aria-hidden="true" />
@@ -136,7 +136,7 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading && !detail ? (
-          <p className="text-meta text-text-muted">正在读取任务详情…</p>
+          <p className="text-meta text-text-muted">Loading task details…</p>
         ) : error ? (
           <p role="alert" className="whitespace-pre-wrap text-meta text-accent-red">
             {error}
@@ -144,8 +144,8 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
         ) : detail === null ? null : (
           <div className="mx-auto flex max-w-3xl flex-col gap-4">
             {/* 开工文档（队长写下的派活正文；markdown 渲染） */}
-            <section aria-label="开工文档" className="flex flex-col gap-1.5">
-              <h3 className="text-meta font-semibold text-text-secondary">开工文档</h3>
+            <section aria-label="Briefing" className="flex flex-col gap-1.5">
+              <h3 className="text-meta font-semibold text-text-secondary">Briefing</h3>
               <div className="rounded-lg border border-border bg-bg-primary p-3">
                 <MarkdownPreview content={detail.body} theme={theme} />
               </div>
@@ -153,12 +153,12 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
 
             {/* 完成回报（成员的 summary；与开工文档并存，不被覆盖） */}
             {detail.summary !== null ? (
-              <section aria-label="完成回报" className="flex flex-col gap-1.5">
+              <section aria-label="Completion report" className="flex flex-col gap-1.5">
                 <h3 className="text-meta font-semibold text-text-secondary">
-                  完成回报
+                  Completion report
                   {detail.summaryTruncated ? (
                     <span className="ml-1.5 text-micro font-normal text-accent-yellow">
-                      （已截断到 4KB）
+                      (truncated at 4KB)
                     </span>
                   ) : null}
                 </h3>
@@ -171,8 +171,8 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
             {/* 产物引用（R6）：点击复制路径 —— 交接改引用制后，路径就是要被下一个成员
                 使用的实体；chip 上带 kind 标注。不新开 tab 类型（PRD 的边界）。 */}
             {detail.artifacts.length > 0 ? (
-              <section aria-label="产物" className="flex flex-col gap-1.5">
-                <h3 className="text-meta font-semibold text-text-secondary">产物</h3>
+              <section aria-label="Artifacts" className="flex flex-col gap-1.5">
+                <h3 className="text-meta font-semibold text-text-secondary">Artifacts</h3>
                 <div className="flex flex-wrap gap-1">
                   {detail.artifacts.map((artifact) => (
                     <button
@@ -180,7 +180,7 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
                       type="button"
                       onClick={() => copy(artifact.value, 'Artifact path')}
                       data-testid="artifact-chip"
-                      title={`${artifact.kind}：点击复制 ${artifact.value}`}
+                      title={`${artifact.kind}: click to copy ${artifact.value}`}
                       className={cn(
                         'rounded-md border border-border bg-bg-primary px-2 py-0.5 text-micro text-text-secondary',
                         'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
@@ -190,22 +190,24 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
                     </button>
                   ))}
                 </div>
-                <p className="text-micro text-text-muted">点击复制路径（引用制：对端按路径读取）</p>
+                <p className="text-micro text-text-muted">
+                  Click to copy the path (by reference: the peer reads it by path)
+                </p>
               </section>
             ) : null}
 
             {/* 步骤轨迹（最新在前；每一步可见，不被最后一条覆盖） */}
-            <section aria-label="步骤轨迹" className="flex flex-col gap-1.5">
+            <section aria-label="Activity log" className="flex flex-col gap-1.5">
               <h3 className="text-meta font-semibold text-text-secondary">
-                步骤轨迹
+                Activity log
                 {detail.eventsTruncated ? (
                   <span className="ml-1.5 text-micro font-normal text-text-muted">
-                    （只显示最近 {detail.events.length} 条）
+                    (showing the latest {detail.events.length})
                   </span>
                 ) : null}
               </h3>
               {detail.events.length === 0 ? (
-                <p className="text-micro text-text-muted">还没有步骤记录。</p>
+                <p className="text-micro text-text-muted">No steps recorded yet.</p>
               ) : (
                 <ol className="flex flex-col gap-1">
                   {detail.events.map((step, index) => (
@@ -219,7 +221,7 @@ const TeamTaskCenterView: React.FC<TeamTaskCenterViewProps> = React.memo(({ team
                       <Chip tone="accent">{step.kind}</Chip>
                       <span className="min-w-0 flex-1 truncate text-micro text-text-secondary">
                         {step.actor}
-                        {step.detail ? `：${step.detail}` : ''}
+                        {step.detail ? `: ${step.detail}` : ''}
                       </span>
                     </li>
                   ))}

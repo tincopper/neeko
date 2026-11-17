@@ -50,14 +50,14 @@ export interface MemberBadge {
 }
 
 const STATE_TEXT: Record<MemberState, string> = {
-  spawned: '已建立',
-  running: '运行中',
-  awaiting: '待批准',
-  idle: '空闲',
-  done: '完成',
-  failed: '失败',
-  offline: '已退出',
-  stalled: '可能等待输入',
+  spawned: 'Spawned',
+  running: 'Running',
+  awaiting: 'Awaiting approval',
+  idle: 'Idle',
+  done: 'Done',
+  failed: 'Failed',
+  offline: 'Exited',
+  stalled: 'Possibly waiting for input',
 };
 
 const STATE_TONE: Record<MemberState, MemberBadgeTone> = {
@@ -73,15 +73,16 @@ const STATE_TONE: Record<MemberState, MemberBadgeTone> = {
 
 /** 「空闲」的两种取证形态 —— 文案与 tone 都不同（AC2）。 */
 const IDLE_UNVERIFIED: MemberBadge = {
-  text: '空闲 ⚠ 未声明',
+  text: 'Idle ⚠ unverified',
   tone: 'unverified',
-  ariaLabel: '空闲 ⚠ 未声明：只收到回合结束信号，任务仍在进行中，没有人认领这次「完成」',
+  ariaLabel:
+    'Idle ⚠ unverified: only the turn-end signal arrived; the task is still in progress and nobody has acknowledged this "completion"',
 };
 
 const IDLE_VERIFIED: MemberBadge = {
-  text: '空闲 ✓ 已声明',
+  text: 'Idle ✓ verified',
   tone: 'idle',
-  ariaLabel: '空闲 ✓ 已声明：已收到任务的显式完成声明',
+  ariaLabel: 'Idle ✓ verified: an explicit completion statement was received',
 };
 
 /**
@@ -99,7 +100,7 @@ export function memberBadge(member: Pick<MemberStatusView, 'state' | 'verificati
   return {
     text,
     tone: STATE_TONE[member.state],
-    ariaLabel: `${text}：${stateReason(member.state)}`,
+    ariaLabel: `${text}: ${stateReason(member.state)}`,
   };
 }
 
@@ -107,27 +108,27 @@ export function memberBadge(member: Pick<MemberStatusView, 'state' | 'verificati
 function stateReason(state: MemberState): string {
   switch (state) {
     case 'spawned':
-      return '成员已建好，进程尚未跑起来';
+      return 'Member created; process not started yet';
     case 'running':
-      return '成员正在干活';
+      return 'Member is working';
     case 'awaiting':
-      return '成员在等审批或输入，需要人动手（进待批队列，不冒泡进队长对话）';
+      return 'Member is waiting for approval or input; a human must act (goes to the approval queue, not the lead conversation)';
     case 'done':
-      return '成员的任务已被显式声明完成';
+      return "The member's task was explicitly declared done";
     case 'failed':
-      return '本回合失败';
+      return 'This turn failed';
     case 'offline':
-      return '成员进程已退出，任务租约到期后会被回收';
+      return 'Member process exited; the task lease will be reclaimed after it expires';
     case 'stalled':
-      return '静默超阈值，无法确认它是否正在工作';
+      return 'Silence exceeded the threshold; cannot confirm it is still working';
     case 'idle':
-      return '成员这一轮说完了';
+      return 'The member finished this turn';
   }
 }
 
 /** 角色标签。 */
 export function memberRoleLabel(role: MemberRole): string {
-  return role === 'lead' ? '队长' : '成员';
+  return role === 'lead' ? 'Lead' : 'Member';
 }
 
 // 租约文案**不在这里**：它是「同一个任务在花名册与卡片上必须是同一句话」的判据，

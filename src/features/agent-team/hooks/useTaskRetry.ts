@@ -57,7 +57,7 @@ export function useTaskRetry(options: TaskRetryOptions = {}): TaskRetryState {
       setError(null);
       try {
         await retryTaskCommand(teamId, taskId, assignee ?? null);
-        onShowToast?.(`任务 ${taskId} 已放回待认领`, 'info');
+        onShowToast?.(`Task ${taskId} is back to unclaimed`, 'info');
         // 脉冲之外立刻补一次快照（见上：脉冲不保证送达）。
         if (useTeamStore.getState().teamId === teamId) {
           await useTeamStore.getState().refresh();

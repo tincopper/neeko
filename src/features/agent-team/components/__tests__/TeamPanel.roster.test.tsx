@@ -95,7 +95,7 @@ function renderWithSnapshot(snapshot = createTeamSnapshot({ members: MEMBERS }))
 }
 
 function roster(): HTMLElement {
-  return screen.getByRole('region', { name: '成员花名册' });
+  return screen.getByRole('region', { name: 'Member roster' });
 }
 
 /**
@@ -105,8 +105,8 @@ function roster(): HTMLElement {
  * 读屏用户听到的与测试要找的是同一个东西，布局改版也不会让断言失效。
  */
 function rowOf(name: string): HTMLElement {
-  return within(screen.getByRole('region', { name: '成员花名册' })).getByRole('group', {
-    name: `成员 ${name}`,
+  return within(screen.getByRole('region', { name: 'Member roster' })).getByRole('group', {
+    name: `Member ${name}`,
   });
 }
 
@@ -119,7 +119,9 @@ describe('花名册 — 打开成员终端', () => {
   it('点行内按钮 → 回调拿到**这一行**的 terminalId 与名字（标题用成员名）', () => {
     const { onOpenTerminal } = renderWithSnapshot();
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
+    fireEvent.click(
+      within(rowOf('frontend')).getByRole('button', { name: 'Open session: frontend' }),
+    );
 
     expect(onOpenTerminal).toHaveBeenCalledTimes(1);
     // 第三个参数是**这个团队的** projectId（`snapshot.team.projectId`）：宿主据此落终端
@@ -130,7 +132,7 @@ describe('花名册 — 打开成员终端', () => {
   it('队长行同样能开（role: lead 不特殊对待 —— 它的进程也在自己的 PTY 里）', () => {
     const { onOpenTerminal } = renderWithSnapshot();
 
-    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: '打开会话：lead' }));
+    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: 'Open session: lead' }));
 
     expect(onOpenTerminal).toHaveBeenCalledWith('term-lead', 'lead', 'omp', 'p1');
   });
@@ -138,8 +140,10 @@ describe('花名册 — 打开成员终端', () => {
   it('两个成员各开各的（参数不许串行 / 不许落到别人身上）', () => {
     const { onOpenTerminal } = renderWithSnapshot();
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
-    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: '打开会话：lead' }));
+    fireEvent.click(
+      within(rowOf('frontend')).getByRole('button', { name: 'Open session: frontend' }),
+    );
+    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: 'Open session: lead' }));
 
     expect(onOpenTerminal.mock.calls).toEqual([
       ['term-w1', 'frontend', 'qoder', 'p1'],
@@ -166,7 +170,7 @@ describe('花名册 — 打开成员终端', () => {
       }),
     );
     // 按钮文案区分「能接回来」与「只能看」：后者叫「查看记录」。
-    fireEvent.click(within(rowOf('gone')).getByRole('button', { name: /查看记录/ }));
+    fireEvent.click(within(rowOf('gone')).getByRole('button', { name: /View history/ }));
 
     // 分派到历史路径（agentId, nativeId, 名字, 团队 projectId），**不**碰 PTY 接管。
     // 第四个参数与「打开会话」同口径：历史会话 tab 也按团队自己的项目落键。
@@ -178,13 +182,13 @@ describe('花名册 — 打开成员终端', () => {
 
   it('没有活会话：按钮置灰 + 可见理由「暂无会话」+ **零调用**', () => {
     const { onOpenTerminal } = renderWithSnapshot();
-    const button = within(rowOf('backend')).getByRole('button', { name: '打开会话：backend' });
+    const button = within(rowOf('backend')).getByRole('button', { name: 'Open session: backend' });
 
     expect(button).toBeDisabled();
     // R15：按钮本体是图标，五态文案落在 aria-label / title（可访问名不变）
-    expect(button).toHaveAttribute('title', '打开会话');
+    expect(button).toHaveAttribute('title', 'Open session');
     // 理由必须是**可见文字**，不能只进 title（disabled 元素不可聚焦，等于没有理由）
-    expect(within(rowOf('backend')).getByText('暂无会话')).toBeInTheDocument();
+    expect(within(rowOf('backend')).getByText('No session yet')).toBeInTheDocument();
 
     fireEvent.click(button);
     expect(onOpenTerminal).not.toHaveBeenCalled();
@@ -208,12 +212,12 @@ describe('花名册 — 信息密度（谁 / 在哪 / 在等什么）', () => {
     // R14：角色 / 人设回到行内（用户：「当前没有角色信息」），但 title 要说清它与权限无关
     expect(row.getByText('前端工程师')).toHaveAttribute(
       'title',
-      expect.stringContaining('与权限无关'),
+      expect.stringContaining('unrelated to permissions'),
     );
     // 「它在哪干活」仍是行内事实（worktree 只显示末段路径）
     expect(row.getByText('worktree feat-auth-ui')).toBeInTheDocument();
     // 只读同理：它改变「这个人能不能改文件」的判断，不能被当成缺省值吃掉
-    expect(within(rowOf('backend')).getByText('只读')).toBeInTheDocument();
+    expect(within(rowOf('backend')).getByText('Read-only')).toBeInTheDocument();
   });
 
   it('persona === null 的行不占位（不留一个空 chip 或占位符）', () => {
@@ -238,8 +242,8 @@ describe('花名册 — 信息密度（谁 / 在哪 / 在等什么）', () => {
   it('缺省工作区（shared）不渲染 —— 每行都写「共享工作区」等于没有信息', () => {
     renderWithSnapshot();
 
-    expect(within(rowOf('lead')).queryByText('共享工作区')).not.toBeInTheDocument();
-    expect(within(rowOf('frontend')).queryByText('共享工作区')).not.toBeInTheDocument();
+    expect(within(rowOf('lead')).queryByText('Shared workspace')).not.toBeInTheDocument();
+    expect(within(rowOf('frontend')).queryByText('Shared workspace')).not.toBeInTheDocument();
   });
 
   it('C 档带上可见的行内警示，且面板把「为什么」说清楚（红线 14 两处都在）', () => {
@@ -248,34 +252,34 @@ describe('花名册 — 信息密度（谁 / 在哪 / 在等什么）', () => {
 
     // 行内警示必须是**可见文字**（缩成颜色 / 只进 title 就是降级，红线 14）
     const flag = row.getByText('⚠ C');
-    expect(flag).toHaveAttribute('title', expect.stringContaining('卡住永远不可知'));
-    expect(row.getByText('只读')).toBeInTheDocument();
+    expect(flag).toHaveAttribute('title', expect.stringContaining('a stall is never visible'));
+    expect(row.getByText('Read-only')).toBeInTheDocument();
     // 分区说明常显（两处缺一即违规）
-    expect(within(roster()).getByRole('note')).toHaveTextContent('卡住永远不可知');
+    expect(within(roster()).getByRole('note')).toHaveTextContent('a stall is never visible');
   });
 
   it('六态与租约三态都还在（新布局不许把判据挤掉）', () => {
     renderWithSnapshot();
 
-    expect(within(rowOf('lead')).getByText('运行中')).toBeInTheDocument();
-    expect(within(rowOf('lead')).getByText('租约剩 22:54')).toBeInTheDocument();
-    expect(within(rowOf('frontend')).getByText('空闲 ⚠ 未声明')).toBeInTheDocument();
-    expect(within(rowOf('frontend')).getByText('租约已超时')).toBeInTheDocument();
-    expect(within(rowOf('backend')).getByText('待批准')).toBeInTheDocument();
+    expect(within(rowOf('lead')).getByText('Running')).toBeInTheDocument();
+    expect(within(rowOf('lead')).getByText('Lease 22:54')).toBeInTheDocument();
+    expect(within(rowOf('frontend')).getByText('Idle ⚠ unverified')).toBeInTheDocument();
+    expect(within(rowOf('frontend')).getByText('Lease expired')).toBeInTheDocument();
+    expect(within(rowOf('backend')).getByText('Awaiting approval')).toBeInTheDocument();
   });
 
   it('没有租约时**不渲染**租约文案（R3：不再恒亮「无在飞任务」）', () => {
     renderWithSnapshot();
 
     const backend = rowOf('backend');
-    expect(within(backend).queryByText('无在飞任务')).not.toBeInTheDocument();
-    expect(within(backend).queryByText(/租约/)).not.toBeInTheDocument();
+    expect(within(backend).queryByText('No task in flight')).not.toBeInTheDocument();
+    expect(within(backend).queryByText(/Lease/)).not.toBeInTheDocument();
   });
 
   it('花名册标题旁没有重复的人数（头部 pill 是唯一口径）', () => {
     renderWithSnapshot();
 
-    expect(within(roster()).queryByText(/人（含队长）/)).not.toBeInTheDocument();
+    expect(within(roster()).queryByText(/\d+ members \(incl\. lead\)/)).not.toBeInTheDocument();
   });
 
   it('头像色按 memberId 派生：重排后同一个人还是同一个颜色', () => {
@@ -396,8 +400,8 @@ describe('面板头 — 人数与待批', () => {
     // **后端口径**（不含队长）：MEMBERS = 队长 + 2 个 worker ⇒ 2 成员。
     // 修之前这里是 `members.length`（含队长 ⇒ 3），于是同一个队在列表行上「成员 2」、
     // 点进面板「3 成员」—— 两个都看起来对。
-    expect(screen.getByText('2 成员')).toBeInTheDocument();
-    expect(screen.getByText('2 待批')).toBeInTheDocument();
+    expect(screen.getByText('2 members')).toBeInTheDocument();
+    expect(screen.getByText('2 awaiting approval')).toBeInTheDocument();
   });
 
   it('没有待批时不显示「0 待批」（永远亮着的提示等于没有提示）', () => {
@@ -406,7 +410,7 @@ describe('面板头 — 人数与待批', () => {
     );
 
     // 只认头部的那个 pill（不是花名册的「待批准」徽标，也不是任务板的「待批准」列）
-    expect(screen.queryByText(/^\d+ 待批$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\d+ awaiting approval$/)).not.toBeInTheDocument();
   });
 });
 
@@ -438,7 +442,7 @@ describe('任务板 — 列计数与持有者状态', () => {
    * 但「这一列有几行」这个不变量仍必须可读 —— 汇总项同样带 `data-count="0"`。
    */
   const countOf = (label: string, columnId: string): number => {
-    const board = screen.getByRole('region', { name: '共享任务板' });
+    const board = screen.getByRole('region', { name: 'Shared task board' });
     // 非空列：分组内的计数 span；空列：汇总行里的 `<label> 0`（两个属性在同一个节点上）。
     const group = within(board).queryByRole('group', { name: label });
     const counter = group
@@ -452,22 +456,22 @@ describe('任务板 — 列计数与持有者状态', () => {
   it('每列计数等于这一列的**行数**（不是常量，也不是全板总数）', () => {
     renderWithSnapshot(createTeamSnapshot({ members: MEMBERS, tasks }));
 
-    expect(countOf('待认领', 'pending')).toBe(1);
-    expect(countOf('进行中', 'in_progress')).toBe(2);
-    expect(countOf('待批准', 'awaiting_approval')).toBe(0);
-    expect(countOf('已完成', 'done')).toBe(2);
-    expect(countOf('阻塞', 'frozen')).toBe(1);
+    expect(countOf('Unclaimed', 'pending')).toBe(1);
+    expect(countOf('In progress', 'in_progress')).toBe(2);
+    expect(countOf('Awaiting approval', 'awaiting_approval')).toBe(0);
+    expect(countOf('Done', 'done')).toBe(2);
+    expect(countOf('Blocked', 'frozen')).toBe(1);
   });
 
   it('「成员已空闲但没人认可完成」在卡片上看得出来（任务仍留在进行中列）', () => {
     renderWithSnapshot(createTeamSnapshot({ members: MEMBERS, tasks }));
 
-    const inProgress = within(screen.getByRole('region', { name: '共享任务板' })).getByRole(
+    const inProgress = within(screen.getByRole('region', { name: 'Shared task board' })).getByRole(
       'group',
-      { name: '进行中' },
+      { name: 'In progress' },
     );
     // w1 是 idle + unverified：卡片上要显示这句，而不是「它空闲了所以应该做完了」
-    expect(within(inProgress).getByText('空闲 ⚠ 未声明')).toBeInTheDocument();
+    expect(within(inProgress).getByText('Idle ⚠ unverified')).toBeInTheDocument();
     // 持有者名字是 chip，不是 member id
     expect(within(inProgress).getByText('frontend')).toBeInTheDocument();
   });
@@ -527,7 +531,9 @@ describe('花名册 — 恢复会话（第三态）', () => {
       />,
     );
 
-    fireEvent.click(within(rowOf('backend')).getByRole('button', { name: '恢复会话：backend' }));
+    fireEvent.click(
+      within(rowOf('backend')).getByRole('button', { name: 'Resume session: backend' }),
+    );
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('team_resume', {
@@ -540,7 +546,7 @@ describe('花名册 — 恢复会话（第三态）', () => {
     expect(onOpenTerminal).not.toHaveBeenCalled();
     expect(onOpenHistory).not.toHaveBeenCalled();
     // 结果必须被说出来（四个桶的一句话；这里是「恢复了 1 个」）。
-    await waitFor(() => expect(onShowToast).toHaveBeenCalledWith('恢复 1 个成员', 'info'));
+    await waitFor(() => expect(onShowToast).toHaveBeenCalledWith('Resumed 1 members', 'info'));
   });
 
   /**
@@ -575,7 +581,9 @@ describe('花名册 — 恢复会话（第三态）', () => {
     const onOpenTerminal = vi.fn();
     render(<TeamPanel onOpenTerminal={onOpenTerminal} />);
 
-    fireEvent.click(within(rowOf('backend')).getByRole('button', { name: '恢复会话：backend' }));
+    fireEvent.click(
+      within(rowOf('backend')).getByRole('button', { name: 'Resume session: backend' }),
+    );
 
     // 句柄是**新铸的**（`term-w1-new`）：拿旧 id 去接管会得到用户报的「会话 id 找不到」。
     await waitFor(() =>
@@ -600,8 +608,8 @@ describe('花名册 — 恢复会话（第三态）', () => {
     render(<TeamPanel onShowToast={vi.fn()} />);
 
     // 低频入口在 `⋯` 菜单里（R1）：开菜单 → 「改名」，双入口共用同一个 handleStartRename
-    fireEvent.pointerDown(await screen.findByRole('button', { name: '团队操作：refactor' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '改名' }));
+    fireEvent.pointerDown(await screen.findByRole('button', { name: 'Team actions: refactor' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
 
     // 编辑态：输入框预填当前名字（菜单卸载之后才挂载）
     const input = await screen.findByRole('textbox');
@@ -639,10 +647,10 @@ describe('花名册 — 恢复会话（第三态）', () => {
 
     // 一条都不给 `恢复会话`（两个入口都不许出现）
     expect(
-      within(rowOf('backend')).queryByRole('button', { name: /恢复会话/ }),
+      within(rowOf('backend')).queryByRole('button', { name: /Resume session/ }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(within(rowOf('backend')).getByRole('button', { name: /查看记录/ }));
+    fireEvent.click(within(rowOf('backend')).getByRole('button', { name: /View history/ }));
     expect(onOpenHistory).toHaveBeenCalledWith('pi', 'native-w1', 'backend', 'p1');
     expect(mockInvoke).not.toHaveBeenCalledWith('team_resume', expect.anything());
   });
@@ -682,8 +690,8 @@ describe('面板头 — 恢复团队', () => {
     render(<TeamPanel />);
 
     // 两项都只出现在 `⋯` 菜单里；菜单项的可访问名点名团队/动作，不会与成员级混淆。
-    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '恢复团队' }));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Team actions: refactor' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Resume team' }));
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('team_resume', {
@@ -729,13 +737,13 @@ describe('面板头 — 恢复团队', () => {
     const onOpenTerminal = vi.fn();
     render(<TeamPanel onOpenTerminal={onOpenTerminal} />);
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '恢复团队' }));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Team actions: refactor' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Resume team' }));
 
     // 等这次恢复整个落地（花名册已按新快照重画成可点），再断言一个 tab 都没开。
     await waitFor(() =>
       expect(
-        within(rowOf('backend')).getByRole('button', { name: '打开会话：backend' }),
+        within(rowOf('backend')).getByRole('button', { name: 'Open session: backend' }),
       ).toBeInTheDocument(),
     );
     expect(onOpenTerminal).not.toHaveBeenCalled();
@@ -752,8 +760,8 @@ describe('面板头 — 恢复团队', () => {
     render(<TeamPanel />);
 
     // 菜单是「恢复团队」唯一的入口：开菜单也没有这一项（不是藏在一个永远不来的状态里）
-    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
-    expect(screen.queryByRole('menuitem', { name: '恢复团队' })).not.toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Team actions: refactor' }));
+    expect(screen.queryByRole('menuitem', { name: 'Resume team' })).not.toBeInTheDocument();
   });
 
   it('没有可恢复的成员（全在跑）⇒ 不渲染一个「恢复 0 个成员」的按钮', () => {
@@ -771,8 +779,8 @@ describe('面板头 — 恢复团队', () => {
 
     render(<TeamPanel />);
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
-    expect(screen.queryByRole('menuitem', { name: '恢复团队' })).not.toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Team actions: refactor' }));
+    expect(screen.queryByRole('menuitem', { name: 'Resume team' })).not.toBeInTheDocument();
   });
 });
 
@@ -808,7 +816,9 @@ describe('恢复失败 — 后端原文必须看得见', () => {
 
     const before = mockInvoke.mock.calls.filter(([cmd]) => cmd === 'team_snapshot').length;
 
-    fireEvent.click(within(rowOf('backend')).getByRole('button', { name: '恢复会话：backend' }));
+    fireEvent.click(
+      within(rowOf('backend')).getByRole('button', { name: 'Resume session: backend' }),
+    );
 
     // 原文照抄（不是一句「操作失败」）：它说的是「封存了，去建新队」。
     expect(

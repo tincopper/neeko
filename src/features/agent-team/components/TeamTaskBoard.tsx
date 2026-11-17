@@ -81,11 +81,11 @@ const TeamTaskBoard: React.FC<TeamTaskBoardProps> = React.memo(
     const now = Date.now();
 
     return (
-      <section aria-label="共享任务板" className="flex flex-col gap-1.5 px-2 pb-2">
+      <section aria-label="Shared task board" className="flex flex-col gap-1.5 px-2 pb-2">
         {tasksTruncated ? (
           // 截断必须**说出来**：不说的话面板看起来像「团队真的只有 200 个任务」。
           <p role="status" className="px-1 text-micro text-accent-yellow">
-            只显示前 {MAX_BOARD_TASKS} 条
+            Showing first {MAX_BOARD_TASKS}
           </p>
         ) : null}
         <div className="flex flex-col gap-2">
@@ -133,7 +133,7 @@ const TeamTaskBoard: React.FC<TeamTaskBoardProps> = React.memo(
           {board.unplaced.length > 0 ? (
             // 列契约漏了一个状态时**不许静默丢任务**：宁可显示一句丑话。
             <p role="alert" className="px-1 text-micro text-accent-red">
-              {board.unplaced.length} 个任务的状态没有对应的列
+              {board.unplaced.length} tasks have a state with no matching column
             </p>
           ) : null}
           {empty.length === 0 ? null : (

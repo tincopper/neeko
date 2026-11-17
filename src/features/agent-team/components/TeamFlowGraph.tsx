@@ -102,9 +102,9 @@ const TeamFlowGraph: React.FC<TeamFlowGraphProps> = React.memo(
     const layerY = (layer: number) => tasksTop + layer * (NODE_H + GAP_Y);
 
     return (
-      <section aria-label="任务分配图" className="flex flex-col gap-2 p-2">
+      <section aria-label="Assignment graph" className="flex flex-col gap-2 p-2">
         <header className="flex flex-wrap items-center justify-between gap-1 px-1">
-          <h3 className="text-meta font-semibold text-text-secondary">任务分配图</h3>
+          <h3 className="text-meta font-semibold text-text-secondary">Assignment graph</h3>
         </header>
         <div
           ref={viewportRef}
@@ -123,7 +123,7 @@ const TeamFlowGraph: React.FC<TeamFlowGraphProps> = React.memo(
             height={precise ? Math.round(contentH * effectiveZoom) : undefined}
             style={precise ? undefined : SVG_FILL_STYLE}
             role="img"
-            aria-label={`任务分配图：${tasks.length} 个任务，${members.length} 个成员`}
+            aria-label={`Assignment graph: ${tasks.length} tasks, ${members.length} members`}
           >
             <defs>
               <marker
@@ -157,7 +157,7 @@ const TeamFlowGraph: React.FC<TeamFlowGraphProps> = React.memo(
                   className="fill-text-secondary"
                   style={TEXT_TITLE_STYLE}
                 >
-                  队长 · 派活
+                  Lead · dispatches
                 </text>
               </g>
             ) : null}
@@ -189,7 +189,7 @@ const TeamFlowGraph: React.FC<TeamFlowGraphProps> = React.memo(
         </div>
         {tasks.length === 0 ? (
           <p className="px-1 text-micro text-text-muted">
-            还没有任务 —— 队长派活后这里会长出依赖图。
+            No tasks yet — the dependency graph grows here once the lead dispatches work.
           </p>
         ) : null}
       </section>

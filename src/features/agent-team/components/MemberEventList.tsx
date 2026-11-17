@@ -30,13 +30,13 @@ interface MemberEventListProps {
 }
 
 const MemberEventList: React.FC<MemberEventListProps> = React.memo(({ events, truncated }) => (
-  <section aria-label="成员最近事件" className="flex flex-col gap-1">
+  <section aria-label="Member recent events" className="flex flex-col gap-1">
     <header className="flex items-baseline justify-between">
-      <h4 className="text-meta font-semibold text-text-secondary">最近事件</h4>
-      <span className="text-micro text-text-muted">{events.length} 条</span>
+      <h4 className="text-meta font-semibold text-text-secondary">Recent events</h4>
+      <span className="text-micro text-text-muted">{events.length} entries</span>
     </header>
     {events.length === 0 ? (
-      <p className="text-micro text-text-muted">还没有事件</p>
+      <p className="text-micro text-text-muted">No events yet</p>
     ) : (
       <ul className="flex flex-col gap-0.5">
         {events.map((event, index) => {
@@ -72,7 +72,7 @@ const MemberEventList: React.FC<MemberEventListProps> = React.memo(({ events, tr
     )}
     {truncated ? (
       <p className="text-micro text-text-muted">
-        只显示最近 {MAX_MEMBER_EVENTS} 条事件（更早的去库里查）
+        Showing the latest {MAX_MEMBER_EVENTS} events (older ones are in the store)
       </p>
     ) : null}
   </section>

@@ -148,7 +148,7 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
       <li data-member-id={member.memberId} data-lead={isLead ? 'true' : undefined}>
         <div
           role="group"
-          aria-label={`成员 ${member.name}`}
+          aria-label={`Member ${member.name}`}
           className={cn(
             'flex items-center gap-1 rounded-md border bg-bg-primary',
             isLead ? 'border-accent-blue/45' : 'border-border',
@@ -158,7 +158,7 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
           <button
             type="button"
             onClick={handleOpenDetail}
-            aria-label={`查看成员 ${member.name} 的详情`}
+            aria-label={`View member ${member.name} details`}
             className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-md px-1.5 py-1 text-left hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
             <span className="flex min-w-0 items-center gap-1.5">
@@ -185,7 +185,7 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
               {rowMeta.sentinelOnly ? (
                 // 红线 14 的行内承载：可见文字 + 完整句在 title
                 <span
-                  title="C 档 · sentinel only：完成能报，但卡住永远不可知"
+                  title="Tier C · sentinel only: completion is reported, but a stall is never visible"
                   className="shrink-0 rounded border border-accent-yellow px-1 text-micro font-semibold text-accent-yellow"
                 >
                   ⚠ C
@@ -231,7 +231,7 @@ const RosterRow: React.FC<RosterRowProps> = React.memo(
               type="button"
               onClick={handleOpenTerminal}
               disabled={!action.enabled}
-              aria-label={`${action.label}：${member.name}`}
+              aria-label={`${action.label}: ${member.name}`}
               title={action.label}
               className={cn(
                 'grid size-5 shrink-0 place-items-center rounded',

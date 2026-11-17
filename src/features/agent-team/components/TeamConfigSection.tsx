@@ -68,15 +68,15 @@ interface TeamConfigSectionProps {
 
 /** 工作区两选的文案。**含义写清**：两个词本身不解释任何事。 */
 const WORKSPACE_LABEL: Record<LaunchWorkspace, string> = {
-  shared: '共享（全队同一工作区）',
-  read_only: '只读（成员不得写盘）',
+  shared: 'Shared (one workspace for the whole team)',
+  read_only: 'Read-only (members cannot write to disk)',
 };
 
 /** 审批三选的文案（旁路的后果不在这里讲 —— 它由主按钮上方那行风险提示讲）。 */
 const APPROVAL_LABEL: Record<ApprovalPolicy, string> = {
-  queue: '待批队列（默认，不打断队长）',
-  interactive: '逐个交互批准（在成员自己的终端里问）',
-  bypass: '旁路（不审批）',
+  queue: 'Approval queue (default; does not interrupt the lead)',
+  interactive: "Interactive approval one by one (asked in the member's own terminal)",
+  bypass: 'Bypass (no approval)',
 };
 
 const APPROVAL_ORDER: ApprovalPolicy[] = ['queue', 'interactive', 'bypass'];
@@ -91,30 +91,33 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
       // 不能与颜色类一起交给 `cn()` —— `twMerge` 把 `text-meta` 与 `text-text-*`
       // 归进同一个 `text-` 组，两者只能活一个（实测：`cn('text-text-secondary','text-meta')`
       // 产出 `text-meta`，颜色被丢掉）。
-      <section aria-label="团队配置" className="flex flex-col gap-2 text-meta">
-        <h3 className="text-meta font-semibold text-text-secondary">团队配置</h3>
+      <section aria-label="Team defaults" className="flex flex-col gap-2 text-meta">
+        <h3 className="text-meta font-semibold text-text-secondary">Team defaults</h3>
 
         {options === null ? (
           // 缺省值没到手：只有两种话可说 —— 「正在读」与「读不到」。
           loading ? (
-            <p className="text-meta text-text-muted">正在读取团队配置的默认值…</p>
+            <p className="text-meta text-text-muted">Loading team defaults…</p>
           ) : (
             <p className="text-meta text-text-muted">
-              拿不到团队配置的默认值，所以现在还开不了团队（默认值没有第二个来源）。
+              The team default values are unavailable, so a team cannot start yet (there is no
+              second source for the defaults).
             </p>
           )
         ) : values === null ? (
-          <p className="text-meta text-text-muted">正在套用后端的默认值…</p>
+          <p className="text-meta text-text-muted">Applying backend defaults…</p>
         ) : (
           <>
             <div className="flex flex-col gap-1">
               <span className="text-micro text-text-muted">
-                成员池：允许哪些 CLI 当成员（队长只能从这里挑）。 这是候选菜单，不是要起满的人数 ——
-                实际启动几位由队长按任务数指派决定。
+                Member pool: which CLIs can serve as members (the lead can only pick from here).
+                This is a candidate menu, not a headcount target — the lead decides how many
+                actually start based on the task count.
               </span>
               {options.members.length === 0 ? (
                 <p className="text-meta text-text-muted">
-                  后端没有返回任何可当成员的 CLI —— 空池意味着一个成员都加不进来。
+                  The backend returned no CLIs that can serve as members — an empty pool means no
+                  member can be added.
                 </p>
               ) : (
                 <TeamMemberPool
@@ -130,7 +133,8 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
               )}
               {values.selectedIds.length === 0 ? (
                 <p className="text-micro text-accent-red">
-                  至少勾选一个成员，否则无法建队（空池在后端是「不限制」，不是这里的意思）。
+                  Select at least one member, otherwise the team cannot be created (an empty pool
+                  means &quot;no limit&quot; in the backend — not what this means).
                 </p>
               ) : null}
             </div>
@@ -139,7 +143,7 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
                 team_options，多数用户一项都不用改，所以它们不配占满首屏。 */}
             <div className="flex items-center justify-between gap-2">
               <label htmlFor="team-config-max-members" className="text-micro text-text-muted">
-                成员上限（不含队长）
+                Member limit (lead not included)
               </label>
               <div className="flex flex-col items-end">
                 <Input
@@ -161,7 +165,7 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
 
             <fieldset className="flex flex-col gap-1">
               <legend className="text-micro text-text-muted">
-                默认工作区（成员没指定时用哪个）
+                Default workspace (used when a member does not specify one)
               </legend>
               <div className="grid grid-cols-2 gap-1.5">
                 {WORKSPACE_ORDER.map((workspace) => (
@@ -188,7 +192,9 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
             </fieldset>
 
             <fieldset className="flex flex-col gap-1">
-              <legend className="text-micro text-text-muted">默认审批（成员写盘前怎么确认）</legend>
+              <legend className="text-micro text-text-muted">
+                Default approval (how member writes get confirmed)
+              </legend>
               <div className="grid grid-cols-3 gap-1.5">
                 {APPROVAL_ORDER.map((policy) => (
                   <div
@@ -216,19 +222,19 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
             <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col gap-1">
                 <label htmlFor="team-config-default-model" className="text-micro text-text-muted">
-                  默认模型
+                  Default model
                 </label>
                 <Input
                   id="team-config-default-model"
                   size="sm"
                   value={values.model}
-                  placeholder="CLI 自己的默认"
+                  placeholder="The CLI's own default"
                   onChange={(e) => draft.setModel(e.target.value)}
                 />
               </div>
               <div className="flex flex-col gap-1">
                 <label htmlFor="team-config-default-persona" className="text-micro text-text-muted">
-                  缺省角色
+                  Default persona
                 </label>
                 <select
                   id="team-config-default-persona"
@@ -237,7 +243,7 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
                   onChange={(e) => draft.setPersona(e.target.value)}
                   className="h-7 rounded-md border border-border bg-bg-primary px-2 text-meta text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                 >
-                  <option value="">无人设</option>
+                  <option value="">No persona</option>
                   {(roles ?? []).map((role) => (
                     <option key={role.name} value={role.name}>
                       {role.name}
@@ -248,14 +254,15 @@ const TeamConfigSection: React.FC<TeamConfigSectionProps> = React.memo(
             </div>
             {roles !== null && roles.length === 0 ? (
               <p className="text-micro text-text-muted">
-                角色库还没有预设 —— 展开下方「角色库」加一个，就能在这里给成员默认人设。
+                The role library has no presets yet — expand &quot;Role library&quot; below to add
+                one, and it can be used as the member default persona here.
               </p>
             ) : null}
           </>
         )}
 
         {/* 后端原文（不改写）+ 重试；形态与队长入口 / 团队列表共用 `ErrorNotice`。 */}
-        <ErrorNotice message={error} retryLabel="重新读取团队配置" onRetry={onRetry} />
+        <ErrorNotice message={error} retryLabel="Reload team defaults" onRetry={onRetry} />
       </section>
     );
   },

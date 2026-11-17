@@ -86,8 +86,8 @@ function renderPanel(): void {
 
 /** 花名册一行里点「看详情」的按钮（可访问名是稳定钩子）。 */
 function openMemberButton(): HTMLElement {
-  return within(screen.getByRole('region', { name: '成员花名册' })).getByRole('button', {
-    name: '查看成员 frontend 的详情',
+  return within(screen.getByRole('region', { name: 'Member roster' })).getByRole('button', {
+    name: 'View member frontend details',
   });
 }
 
@@ -107,22 +107,24 @@ describe('抽屉焦点 — 成员详情', () => {
     renderPanel();
     focusAndClick(openMemberButton());
 
-    const dialog = await screen.findByRole('dialog', { name: '成员详情 frontend' });
+    const dialog = await screen.findByRole('dialog', { name: 'Member details: frontend' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     // 焦点进入抽屉（第一个可聚焦元素 = 头部「关闭」）
-    expect(within(dialog).getByRole('button', { name: '关闭成员详情' })).toHaveFocus();
+    expect(within(dialog).getByRole('button', { name: 'Close member details' })).toHaveFocus();
   });
 
   it('Esc 关闭，且焦点回到触发它的那一行按钮', async () => {
     renderPanel();
     const trigger = openMemberButton();
     focusAndClick(trigger);
-    await screen.findByRole('dialog', { name: '成员详情 frontend' });
+    await screen.findByRole('dialog', { name: 'Member details: frontend' });
 
     fireEvent.keyDown(document, { key: 'Escape' });
 
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: '成员详情 frontend' })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole('dialog', { name: 'Member details: frontend' }),
+      ).not.toBeInTheDocument(),
     );
     // 归还焦点：不还的话 Tab 会从文档开头重新走（用户丢掉「我刚才在哪」）
     expect(trigger).toHaveFocus();
@@ -131,7 +133,7 @@ describe('抽屉焦点 — 成员详情', () => {
   it('Tab 陷阱：焦点不会漏回背后那层', async () => {
     renderPanel();
     focusAndClick(openMemberButton());
-    const dialog = await screen.findByRole('dialog', { name: '成员详情 frontend' });
+    const dialog = await screen.findByRole('dialog', { name: 'Member details: frontend' });
 
     // 把焦点人为放到抽屉外（背后那一行），下一次 Tab 必须被拉回抽屉的第一个可聚焦元素
     const trigger = openMemberButton();
@@ -140,19 +142,21 @@ describe('抽屉焦点 — 成员详情', () => {
 
     fireEvent.keyDown(document, { key: 'Tab' });
 
-    expect(within(dialog).getByRole('button', { name: '关闭成员详情' })).toHaveFocus();
+    expect(within(dialog).getByRole('button', { name: 'Close member details' })).toHaveFocus();
   });
 
   it('点「关闭」也走同一条路径（关闭后焦点仍回到触发按钮）', async () => {
     renderPanel();
     const trigger = openMemberButton();
     focusAndClick(trigger);
-    const dialog = await screen.findByRole('dialog', { name: '成员详情 frontend' });
+    const dialog = await screen.findByRole('dialog', { name: 'Member details: frontend' });
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '关闭成员详情' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close member details' }));
 
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: '成员详情 frontend' })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole('dialog', { name: 'Member details: frontend' }),
+      ).not.toBeInTheDocument(),
     );
     expect(trigger).toHaveFocus();
   });

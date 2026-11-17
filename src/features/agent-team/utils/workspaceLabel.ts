@@ -7,8 +7,8 @@ import type { Workspace } from '@/shared/types/team';
  * 目录名对「两个成员是不是并行改同一个树」这个问题才是有信息的。
  */
 export function workspaceLabel(workspace: Workspace): string {
-  if (workspace === 'shared') return '共享工作区';
-  if (workspace === 'read_only') return '只读';
+  if (workspace === 'shared') return 'Shared workspace';
+  if (workspace === 'read_only') return 'Read-only';
   const path = workspace.worktree.path;
   const base = path.split(/[\\/]/).filter(Boolean).pop();
   return base ? `worktree ${base}` : 'worktree';

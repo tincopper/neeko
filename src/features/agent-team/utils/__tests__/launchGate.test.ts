@@ -42,13 +42,13 @@ describe('launchGate', () => {
     const gate = launchGate(input({ hasActiveProject: false }));
     expect(gate.canStart).toBe(false);
     // 理由必须是**可见文字**（禁用的按钮不可聚焦），所以它只能从返回值里出。
-    expect(gate.blockedReason).toContain('没有活动项目');
-    expect(gate.blockedReason).toContain('项目');
+    expect(gate.blockedReason).toContain('No active project');
+    expect(gate.blockedReason).toContain('project');
   });
 
   it('项目优先于其它理由（有根但没项目时不得说「先选择一个项目」以外的话）', () => {
     const gate = launchGate(input({ hasActiveProject: false, hasWorkspaceRoot: false }));
-    expect(gate.blockedReason).toContain('团队的执行环境属于项目');
+    expect(gate.blockedReason).toContain('a team runs inside a project');
   });
 
   it('有项目但没有工作区根：不可启动，理由说的是**工作区根**（不是「没有活动项目」）', () => {
@@ -56,8 +56,8 @@ describe('launchGate', () => {
     expect(gate.canStart).toBe(false);
     // 名词必须与缺失的条件对应：用户明明有项目，告诉他「先选择一个项目」会让他去改一个
     // 已经满足的条件（这句话此前就是从上一个分支复制粘贴来的）。
-    expect(gate.blockedReason).toContain('工作区根');
-    expect(gate.blockedReason).not.toContain('没有活动项目');
+    expect(gate.blockedReason).toContain('workspace root');
+    expect(gate.blockedReason).not.toContain('No active project');
   });
 
   it('两条 blocked 理由必须互不相同（复制粘贴会让用户去修一个已经满足的条件）', () => {
@@ -66,8 +66,8 @@ describe('launchGate', () => {
 
     expect(noRoot).not.toBe(noProject);
     // 各自的特征词：项目那条必须提「项目」，工作区根那条必须提「工作区根」
-    expect(noProject).toContain('项目');
-    expect(noRoot).toContain('工作区根');
+    expect(noProject).toContain('project');
+    expect(noRoot).toContain('workspace root');
   });
 
   it('清单还没拿到（null）：不可启动，但不重复解释（选择器上方已经说过）', () => {
@@ -80,7 +80,7 @@ describe('launchGate', () => {
   it('清单里一个都不能启动：不可启动并说明原因', () => {
     const gate = launchGate(input({ launchable: [REFUSED], agentId: null }));
     expect(gate.canStart).toBe(false);
-    expect(gate.blockedReason).toContain('都不能启动');
+    expect(gate.blockedReason).toContain('None of the listed CLIs can launch');
   });
 
   it('选中的 CLI 在刷新后变成被拒：不可启动（不是「非 null 就算选中」）', () => {

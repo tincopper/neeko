@@ -24,12 +24,12 @@ describe('teamStateBadge', () => {
   });
 
   it('closing 明确说「还有成员没关掉」（不是修辞上的「正在关闭」）', () => {
-    expect(teamStateBadge('closing').ariaLabel).toContain('还有成员没关掉');
-    expect(teamStateBadge('open').ariaLabel).not.toContain('没关掉');
+    expect(teamStateBadge('closing').ariaLabel).toContain('some members did not shut down');
+    expect(teamStateBadge('open').ariaLabel).not.toContain('did not shut down');
   });
 
   it('sealed 说明是只读快照（不承诺任何还能执行的动作）', () => {
-    expect(teamStateBadge('sealed').ariaLabel).toContain('只读');
+    expect(teamStateBadge('sealed').ariaLabel).toContain('read-only');
   });
 });
 

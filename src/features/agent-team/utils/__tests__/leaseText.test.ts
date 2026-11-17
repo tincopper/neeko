@@ -18,14 +18,14 @@ import { LEASE_URGENT_SECS, leaseText, remainingSecsOf, taskLease } from '../lea
  */
 describe('leaseText — 租约两态', () => {
   it('<= 0 = 已超时（与「没有租约」是两件事：后者根本不渲染），且紧急', () => {
-    expect(leaseText(0)).toEqual({ text: '租约已超时', urgent: true });
-    expect(leaseText(-5)).toEqual({ text: '租约已超时', urgent: true });
+    expect(leaseText(0)).toEqual({ text: 'Lease expired', urgent: true });
+    expect(leaseText(-5)).toEqual({ text: 'Lease expired', urgent: true });
   });
 
   it('> 0 时给出 mm:ss（秒补零）', () => {
-    expect(leaseText(90).text).toBe('租约剩 1:30');
-    expect(leaseText(1800).text).toBe('租约剩 30:00');
-    expect(leaseText(61).text).toBe('租约剩 1:01');
+    expect(leaseText(90).text).toBe('Lease 1:30');
+    expect(leaseText(1800).text).toBe('Lease 30:00');
+    expect(leaseText(61).text).toBe('Lease 1:01');
   });
 
   it('不足 2 分钟算紧急（回收是静默发生的，得提前有一抹颜色）', () => {
@@ -60,7 +60,7 @@ describe('两个读面同格式（同源判据）', () => {
     // 花名册的 `leaseRemainingSecs` 就是后端算好的同一个剩余秒
     const fromRoster = leaseText(remainingSecsOf(task, NOW));
     expect(fromCard).toEqual(fromRoster);
-    expect(fromCard?.text).toBe('租约剩 22:54');
+    expect(fromCard?.text).toBe('Lease 22:54');
   });
 
   it('taskLease 只对「没有租约」返回 null（其余一律走同一份 leaseText）', () => {

@@ -115,11 +115,13 @@ const TeamListRow: React.FC<TeamListRowProps> = React.memo(
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-micro text-text-muted">
           {/* 与面板头同一个产出点（`utils/memberCount`）：同一个队在两处不许有两个成员数 */}
-          <span>{`成员 ${memberCountOf(team)}`}</span>
+          <span>{`${memberCountOf(team)} members`}</span>
           <span aria-hidden="true">·</span>
           {/* `open/total`：未终结/总数（已完成数进 title —— 窄面板里三个数字会换行） */}
-          <span title={`未终结 ${team.taskOpen} / 共 ${team.taskTotal}（已完成 ${team.taskDone}）`}>
-            {`任务 ${team.taskOpen}/${team.taskTotal}`}
+          <span
+            title={`${team.taskOpen} unresolved / ${team.taskTotal} total (${team.taskDone} done)`}
+          >
+            {`Tasks ${team.taskOpen}/${team.taskTotal}`}
           </span>
           <span aria-hidden="true">·</span>
           {/* 只摆末段：完整路径进 title，信息没丢，只是默认不挤 */}
@@ -127,7 +129,7 @@ const TeamListRow: React.FC<TeamListRowProps> = React.memo(
             {rootTail}
           </span>
           <span aria-hidden="true">·</span>
-          <span title="建队时间">{formatCreatedAt(team.createdAt)}</span>
+          <span title="Created at">{formatCreatedAt(team.createdAt)}</span>
         </div>
 
         <div className="flex items-center gap-1">
@@ -135,19 +137,19 @@ const TeamListRow: React.FC<TeamListRowProps> = React.memo(
             type="button"
             onClick={handleOpen}
             // 行内按钮的可访问名必须带团队名：同一个面板里每行都有「打开」，读屏与测试都分不开。
-            aria-label={`${sealed ? '查看' : '打开'}团队 ${name}`}
+            aria-label={`${sealed ? 'View' : 'Open'} team ${name}`}
             className="rounded px-1.5 py-0.5 text-micro text-accent-blue hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
-            {sealed ? '查看' : '打开'}
+            {sealed ? 'View' : 'Open'}
           </button>
           {/* 改名在**任何状态**都成立：名字不参与任何判据（封存锁的是进程与恢复）。 */}
           <button
             type="button"
             onClick={handleStartRename}
-            aria-label={`重命名团队 ${name}`}
+            aria-label={`Rename team ${name}`}
             className="rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
-            改名
+            Rename
           </button>
           {/* 关闭与删除**互斥**：可关的是还开着的队，可删的是已经封存的队。 */}
           {sealed ? (
@@ -155,19 +157,19 @@ const TeamListRow: React.FC<TeamListRowProps> = React.memo(
               type="button"
               onClick={handleDelete}
               disabled={deleting}
-              aria-label={`删除团队 ${name}`}
+              aria-label={`Delete team ${name}`}
               className="rounded px-1.5 py-0.5 text-micro text-accent-red hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-red focus-visible:outline-none disabled:cursor-not-allowed disabled:text-text-muted"
             >
-              删除
+              Delete
             </button>
           ) : (
             <button
               type="button"
               onClick={handleClose}
-              aria-label={`关闭团队 ${name}`}
+              aria-label={`Close team ${name}`}
               className="rounded px-1.5 py-0.5 text-micro text-accent-red hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-red focus-visible:outline-none"
             >
-              关闭
+              Close
             </button>
           )}
         </div>

@@ -14,8 +14,8 @@ import { nonDefaultWorkspaceLabel, workspaceLabel } from '../workspaceLabel';
  */
 describe('workspaceLabel — 全量文案（抽屉 / 详情用）', () => {
   it('shared / read_only 各有自己的文案（三态不许合并）', () => {
-    expect(workspaceLabel('shared')).toBe('共享工作区');
-    expect(workspaceLabel('read_only')).toBe('只读');
+    expect(workspaceLabel('shared')).toBe('Shared workspace');
+    expect(workspaceLabel('read_only')).toBe('Read-only');
   });
 
   it('worktree 只显示路径末段（POSIX / Windows 分隔符都吃）', () => {
@@ -34,7 +34,7 @@ describe('nonDefaultWorkspaceLabel — 缺省值不渲染这一条规则的落�
   });
 
   it('read_only 仍是事实 ⇒ 「只读」', () => {
-    expect(nonDefaultWorkspaceLabel('read_only')).toBe('只读');
+    expect(nonDefaultWorkspaceLabel('read_only')).toBe('Read-only');
   });
 
   it('worktree ⇒ 与 workspaceLabel 同源（不复制字符串）', () => {

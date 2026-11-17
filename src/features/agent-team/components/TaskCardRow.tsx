@@ -116,7 +116,7 @@ const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(
           type="button"
           onClick={handleClick}
           data-task-id={task.id}
-          aria-label={`打开任务 ${task.id} 的详情：${task.title}`}
+          aria-label={`Open task ${task.id} details: ${task.title}`}
           className={cn(
             'w-full min-w-0 rounded-md border border-border bg-bg-primary px-2 py-1 text-left',
             'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
@@ -131,21 +131,21 @@ const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(
             {showState ? <Chip tone="outline">{taskStateLabel(task.state)}</Chip> : null}
             {workspace === null ? null : <Chip tone="outline">{workspace}</Chip>}
             {owner ? (
-              <Chip tone="accent" title={`持有者 ${owner.memberId}`}>
+              <Chip tone="accent" title={`Held by ${owner.memberId}`}>
                 {owner.name}
               </Chip>
             ) : null}
             {owner === null && assignee ? (
               // 指派是**计划事实**（谁该做）：尚未认领时才值得占位 —— 它告诉用户
               // 「这张卡在等谁」，而 `title` 带完整成员 id（名字可能重）。
-              <Chip tone="outline" title={`被指派者 ${assignee.memberId}`}>
-                {`已指派 · ${assignee.name}`}
+              <Chip tone="outline" title={`Assigned to ${assignee.memberId}`}>
+                {`Assigned · ${assignee.name}`}
               </Chip>
             ) : null}
             {task.reclaimCount > 0 ? (
-              <Chip tone="warn">{`被回收 ${task.reclaimCount} 次`}</Chip>
+              <Chip tone="warn">{`Reclaimed ${task.reclaimCount} times`}</Chip>
             ) : null}
-            {task.summaryTruncated ? <Chip tone="warn">摘要已截断</Chip> : null}
+            {task.summaryTruncated ? <Chip tone="warn">Summary truncated</Chip> : null}
             {/* 租约并入这一行：它和时间一样是「还要多久」的派生值，不值得单起一行 */}
             {lease === null ? null : (
               <span
@@ -180,7 +180,7 @@ const TaskCardRow: React.FC<TaskCardRowProps> = React.memo(
             type="button"
             onClick={handleRetry}
             data-retry-task-id={task.id}
-            aria-label={`重试任务 ${task.id}`}
+            aria-label={`Retry task ${task.id}`}
             className={cn(
               'shrink-0 self-center rounded-md border border-border p-1.5 text-text-secondary',
               'hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',

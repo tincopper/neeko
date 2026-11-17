@@ -46,9 +46,9 @@ import TeamPanel from '../TeamPanel';
 const mockInvoke = vi.mocked(invoke);
 
 /** 每行按钮的可访问名（行内文案太短，名字里必须带队名才能被单独点到）。 */
-const openLabel = (name: string): string => `打开团队 ${name}`;
-const viewLabel = (name: string): string => `查看团队 ${name}`;
-const closeLabel = (name: string): string => `关闭团队 ${name}`;
+const openLabel = (name: string): string => `Open team ${name}`;
+const viewLabel = (name: string): string => `View team ${name}`;
+const closeLabel = (name: string): string => `Close team ${name}`;
 
 function setActiveProject(path = '/repo/main'): void {
   const project = createProject({ id: 'p1' as ProjectId, path });
@@ -97,7 +97,7 @@ function resetStores(): void {
 
 /** 团队列表区域的 region（标题与列表项都挂在它下面）。 */
 function listRegion(): HTMLElement {
-  return screen.getByRole('region', { name: '已有团队' });
+  return screen.getByRole('region', { name: 'Existing teams' });
 }
 
 /** 某一行的 DOM（`data-team-id` 是稳定钩子：文案会变，id 不会）。 */
@@ -143,9 +143,9 @@ describe('TeamPanel — 团队列表', () => {
     render(<TeamPanel />);
 
     await screen.findByText('running-team');
-    const activeBadge = within(rowOf('tm_active')).getByText('运行中');
-    const closingBadge = within(rowOf('tm_closing')).getByText('正在关闭');
-    const sealedBadge = within(rowOf('tm_closed')).getByText('已封存');
+    const activeBadge = within(rowOf('tm_active')).getByText('Running');
+    const closingBadge = within(rowOf('tm_closing')).getByText('Closing');
+    const sealedBadge = within(rowOf('tm_closed')).getByText('Sealed');
 
     // 文案三者互不相同
     expect(activeBadge).not.toBe(closingBadge);
@@ -154,14 +154,17 @@ describe('TeamPanel — 团队列表', () => {
     expect(closingBadge).not.toHaveTextContent(sealedBadge.textContent);
 
     // 「关到一半」的行里不许出现「运行中」这种说法
-    expect(within(rowOf('tm_closing')).queryByText('运行中')).not.toBeInTheDocument();
+    expect(within(rowOf('tm_closing')).queryByText('Running')).not.toBeInTheDocument();
 
     // 可访问文本也不同（灰度 / 读屏下颜色不可用）
     expect(closingBadge.getAttribute('aria-label')).not.toBe(
       activeBadge.getAttribute('aria-label'),
     );
-    expect(activeBadge).toHaveAttribute('aria-label', expect.stringContaining('运行中'));
-    expect(closingBadge).toHaveAttribute('aria-label', expect.stringContaining('还有成员没关掉'));
+    expect(activeBadge).toHaveAttribute('aria-label', expect.stringContaining('Running'));
+    expect(closingBadge).toHaveAttribute(
+      'aria-label',
+      expect.stringContaining('some members did not shut down'),
+    );
   });
 
   it('行上的成员数 / 任务 open-total / 项目根末段 / 创建时间来自载荷', async () => {
@@ -190,8 +193,8 @@ describe('TeamPanel — 团队列表', () => {
     const row = rowOf('tm_1');
 
     // 数字来自载荷（不是前端数的：列表里没有花名册与任务行）
-    expect(within(row).getByText('成员 7')).toBeInTheDocument();
-    expect(within(row).getByText('任务 3/11')).toBeInTheDocument();
+    expect(within(row).getByText('7 members')).toBeInTheDocument();
+    expect(within(row).getByText('Tasks 3/11')).toBeInTheDocument();
     // 窄面板只摆末段，完整路径进 title（信息没丢，只是默认不挤）
     const tail = within(row).getByText('feat-a');
     expect(tail).toHaveAttribute('title', '/repo/worktrees/feat-a');
@@ -210,7 +213,7 @@ describe('TeamPanel — 团队列表', () => {
     render(<TeamPanel />);
     await screen.findByText('refactor');
 
-    expect(within(listRegion()).getByText('只显示最近 50 个团队')).toBeInTheDocument();
+    expect(within(listRegion()).getByText('Showing the latest 50 teams')).toBeInTheDocument();
   });
 
   it('未截断时不显示截断提示（否则提示永远亮着，等于没有提示）', async () => {
@@ -223,7 +226,7 @@ describe('TeamPanel — 团队列表', () => {
     render(<TeamPanel />);
     await screen.findByText('refactor');
 
-    expect(within(listRegion()).queryByText(/只显示最近/)).not.toBeInTheDocument();
+    expect(within(listRegion()).queryByText(/Showing the latest/)).not.toBeInTheDocument();
   });
 
   it('「打开」= openTeam(teamId)：随后的 team_snapshot 用的就是这个 id', async () => {
@@ -250,7 +253,7 @@ describe('TeamPanel — 团队列表', () => {
     expect(mockInvoke).toHaveBeenCalledWith('team_snapshot', { teamId: 'tm_2' });
     expect(mockInvoke).not.toHaveBeenCalledWith('team_snapshot', { teamId: 'tm_1' });
     // 视图切到那个队（花名册出现了，列表收起来了）
-    expect(await screen.findByRole('region', { name: '成员花名册' })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Member roster' })).toBeInTheDocument();
   });
 
   it('sealed 行只读：没有「关闭」按钮，只有「查看」', async () => {
@@ -329,12 +332,12 @@ describe('TeamPanel — 列表的失效源（F1）', () => {
     });
 
     render(<TeamPanel />);
-    await screen.findByText('还没有团队，先以队长身份开一个');
+    await screen.findByText('No teams yet — start one as the lead');
     expect(countCalls('team_list')).toBe(1);
 
     // 没有错误也要有刷新入口：事件订阅断了 / 用户就是想确认一眼时，这是唯一的手动路径
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '重新拉取团队列表' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reload team list' }));
 
     await waitFor(() => expect(countCalls('team_list')).toBe(2));
   });
@@ -364,14 +367,14 @@ describe('TeamPanel — 列表的失效源（F1）', () => {
 
     render(<TeamPanel />);
     await screen.findByText('refactor');
-    expect(within(rowOf('tm_1')).getByText('成员 2')).toBeInTheDocument();
+    expect(within(rowOf('tm_1')).getByText('2 members')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: openLabel('refactor') }));
-    await screen.findByRole('region', { name: '成员花名册' });
+    await screen.findByRole('region', { name: 'Member roster' });
 
     // 修之前这里是「3 成员」（`members.length` 含队长）—— 同一个队两个成员数
-    expect(screen.getByText('2 成员')).toBeInTheDocument();
-    expect(screen.queryByText('3 成员')).not.toBeInTheDocument();
+    expect(screen.getByText('2 members')).toBeInTheDocument();
+    expect(screen.queryByText('3 members')).not.toBeInTheDocument();
   });
 });
 
@@ -391,7 +394,7 @@ describe('TeamPanel — 空态 / 加载 / 失败', () => {
 
     render(<TeamPanel />);
 
-    expect(await screen.findByText('还没有团队，先以队长身份开一个')).toBeInTheDocument();
+    expect(await screen.findByText('No teams yet — start one as the lead')).toBeInTheDocument();
   });
 
   it('加载中不显示空态（「还没问到」不是「一个都没有」）', async () => {
@@ -404,8 +407,8 @@ describe('TeamPanel — 空态 / 加载 / 失败', () => {
     render(<TeamPanel />);
 
     await waitFor(() => expect(countCalls('team_list')).toBe(1));
-    expect(screen.getByText('正在读取团队列表…')).toBeInTheDocument();
-    expect(screen.queryByText('还没有团队，先以队长身份开一个')).not.toBeInTheDocument();
+    expect(screen.getByText('Loading team list…')).toBeInTheDocument();
+    expect(screen.queryByText('No teams yet — start one as the lead')).not.toBeInTheDocument();
   });
 
   it('加载失败：显示后端原文 + 重试能重新拉取成功', async () => {
@@ -423,10 +426,10 @@ describe('TeamPanel — 空态 / 加载 / 失败', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Failed to open the team database');
-    expect(screen.queryByText('还没有团队，先以队长身份开一个')).not.toBeInTheDocument();
+    expect(screen.queryByText('No teams yet — start one as the lead')).not.toBeInTheDocument();
 
     failing = false;
-    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(await screen.findByText('refactor')).toBeInTheDocument();
     expect(countCalls('team_list')).toBe(2);
@@ -454,7 +457,7 @@ describe('TeamPanel — 关闭团队', () => {
 
   /** 打开面板头的 `⋯` 菜单（团队视图里的注销入口，R1 后不再是一枚常驻按钮）。 */
   function openTeamMenu(): void {
-    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Team actions: refactor' }));
   }
 
   it('二次确认后才调 team_close；成功后清空 store 并重取列表', async () => {
@@ -471,18 +474,20 @@ describe('TeamPanel — 关闭团队', () => {
 
     // 关闭进 `⋯` 菜单（R1：低频入口收起来），走的是同一条二次确认
     openTeamMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /关闭团队/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Close team/ }));
 
     // 二次确认：后果在按下去之前就写清楚（不靠关闭成功后的 notes 才揭示）
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('关闭团队「refactor」？')).toBeInTheDocument();
-    expect(within(dialog).getByText(/graceful`? ?本期未兑现/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/worktree 一个都不会删/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/队长自己的终端/)).toBeInTheDocument();
+    expect(within(dialog).getByText('Close team "refactor"?')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/`graceful` is not implemented this cycle/),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/No worktrees are deleted/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/The lead's own terminal/)).toBeInTheDocument();
     // 还没确认 ⇒ 一个关闭请求都没发
     expect(countCalls('team_close')).toBe(0);
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '确认关闭' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close team' }));
 
     // 整队关闭：memberId 显式 null（`Option<String>` 的「没给」由后端一步判定）
     await waitFor(() =>
@@ -491,7 +496,7 @@ describe('TeamPanel — 关闭团队', () => {
     // 成功 ⇒ 面板回到列表
     await waitFor(() => expect(useTeamStore.getState().teamId).toBeNull());
     await waitFor(() => expect(countCalls('team_list')).toBeGreaterThan(listCallsBefore));
-    expect(await screen.findByRole('region', { name: '已有团队' })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Existing teams' })).toBeInTheDocument();
   });
 
   it('关闭失败：不清 store（团队仍在 closing），显示后端原文，并重取快照 + 列表', async () => {
@@ -520,8 +525,8 @@ describe('TeamPanel — 关闭团队', () => {
     snapshot = closingSnapshot;
 
     openTeamMenu();
-    fireEvent.click(await screen.findByRole('menuitem', { name: /关闭团队/ }));
-    fireEvent.click(await screen.findByRole('button', { name: '确认关闭' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Close team/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Close team' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(
@@ -535,12 +540,14 @@ describe('TeamPanel — 关闭团队', () => {
     await waitFor(() => expect(countCalls('team_list')).toBeGreaterThan(listCallsBefore));
 
     // 重取回来的确实是 closing：横幅 + 重试入口
-    expect(await screen.findByText('团队正在关闭，还有成员没关掉')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Team is closing — some members did not shut down'),
+    ).toBeInTheDocument();
 
     // 重试走同一条关闭路径（不再弹第二次确认之外的分支）
     closeFailing = false;
-    fireEvent.click(screen.getByRole('button', { name: '重试关闭' }));
-    fireEvent.click(await screen.findByRole('button', { name: '确认关闭' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry closing' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Close team' }));
     await waitFor(() => expect(useTeamStore.getState().teamId).toBeNull());
   });
 
@@ -559,8 +566,10 @@ describe('TeamPanel — 关闭团队', () => {
 
     render(<TeamPanel />);
 
-    expect(await screen.findByText('团队正在关闭，还有成员没关掉')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '重试关闭' })).toBeInTheDocument();
+    expect(
+      await screen.findByText('Team is closing — some members did not shut down'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry closing' })).toBeInTheDocument();
   });
 
   it('active 快照没有 closing 横幅（否则横幅等于永久装饰）', async () => {
@@ -573,9 +582,11 @@ describe('TeamPanel — 关闭团队', () => {
     });
 
     render(<TeamPanel />);
-    const roster = await screen.findByRole('region', { name: '成员花名册' });
+    const roster = await screen.findByRole('region', { name: 'Member roster' });
     expect(roster).toBeInTheDocument();
-    expect(screen.queryByText('团队正在关闭，还有成员没关掉')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Team is closing — some members did not shut down'),
+    ).not.toBeInTheDocument();
   });
 
   it('「返回列表」不清 store：只切回列表视图', async () => {
@@ -593,11 +604,11 @@ describe('TeamPanel — 关闭团队', () => {
     });
 
     render(<TeamPanel />);
-    await screen.findByRole('region', { name: '成员花名册' });
+    await screen.findByRole('region', { name: 'Member roster' });
 
-    fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
 
-    expect(await screen.findByRole('region', { name: '已有团队' })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Existing teams' })).toBeInTheDocument();
     // 团队还是打开着的那个（返回列表是导航，不是关闭）
     expect(useTeamStore.getState().teamId).toBe('tm_1');
     expect(useTeamStore.getState().snapshot).not.toBeNull();
@@ -611,7 +622,7 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
     setActiveProject();
   });
 
-  const deleteLabel = (name: string): string => `删除团队 ${name}`;
+  const deleteLabel = (name: string): string => `Delete team ${name}`;
 
   /** 两个队：一个还开着（`open`），一个已封存（`sealed`）。 */
   const TWO_TEAMS = createTeamList({
@@ -668,15 +679,15 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
     fireEvent.click(screen.getByRole('button', { name: deleteLabel('finished') }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('删除团队「finished」？')).toBeInTheDocument();
+    expect(within(dialog).getByText('Delete team "finished"?')).toBeInTheDocument();
     // 后果在按下去之前就说清：不可撤销 / 级联删掉成员与审计 / worktree 保留
-    expect(within(dialog).getByText(/查不回来/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/级联删除/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/worktree 一个都不会删/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/nothing is recoverable/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/deleted together \(cascade\)/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/No worktrees are deleted/)).toBeInTheDocument();
     // 还没确认 ⇒ 一个删除请求都没发
     expect(countCalls('team_delete')).toBe(0);
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '确认删除' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete team' }));
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('team_delete', { teamId: 'tm_closed' }),
@@ -702,11 +713,11 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
     // 先打开另一个队（证明「删的不是当前队」时不该把面板清掉）
     fireEvent.click(screen.getByRole('button', { name: openLabel('still-open') }));
     await waitFor(() => expect(useTeamStore.getState().teamId).toBe('tm_open'));
-    fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
     await screen.findByText('finished');
 
     fireEvent.click(screen.getByRole('button', { name: deleteLabel('finished') }));
-    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete team' }));
 
     // 后端原文原样显示（它说的是「先关闭」，不是「操作失败」）
     expect(await screen.findByRole('alert')).toHaveTextContent('still owns member processes');
@@ -736,7 +747,7 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
     await screen.findByText('alpha');
 
     fireEvent.click(screen.getByRole('button', { name: deleteLabel('alpha') }));
-    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete team' }));
     await waitFor(() => expect(releaseDelete).not.toBeNull());
 
     // 正在删 alpha ⇒ 只有 alpha 那行的按钮置灰；beta 不受影响
@@ -768,9 +779,9 @@ describe('TeamPanel — 删除团队（team_delete）', () => {
     fireEvent.click(screen.getByRole('button', { name: viewLabel('refactor') }));
     await waitFor(() => expect(useTeamStore.getState().teamId).toBe('tm_1'));
 
-    fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
     fireEvent.click(screen.getByRole('button', { name: deleteLabel('refactor') }));
-    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete team' }));
 
     await waitFor(() => expect(useTeamStore.getState().teamId).toBeNull());
     expect(useTeamStore.getState().snapshot).toBeNull();
@@ -792,18 +803,18 @@ describe('TeamPanel — 列表页的上下分栏（队长入口 | 已有团队�
     });
 
     render(<TeamPanel />);
-    await screen.findByRole('region', { name: '已有团队' });
+    await screen.findByRole('region', { name: 'Existing teams' });
 
     // 列表态是主面：创建是一个**按钮**（旧的上下分栏把建队表单常驻首屏，已退役）。
-    fireEvent.click(screen.getByRole('button', { name: '新建团队' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New team' }));
 
     // 推入创建态：队长选择在场，列表退场 —— 两个视图互斥，不再上下并存。
-    expect(await screen.findByRole('region', { name: '新建团队' })).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: '已有团队' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'New team' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Existing teams' })).not.toBeInTheDocument();
 
     // ← 返回 = 退栈回列表（导航，不清任何数据）。
-    fireEvent.click(screen.getByRole('button', { name: '返回团队列表' }));
-    expect(await screen.findByRole('region', { name: '已有团队' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to team list' }));
+    expect(await screen.findByRole('region', { name: 'Existing teams' })).toBeInTheDocument();
   });
 
   it('列表区自己滚动：标题与刷新按钮留在原地（行区才是滚动容器）', async () => {
@@ -827,11 +838,11 @@ describe('TeamPanel — 列表页的上下分栏（队长入口 | 已有团队�
     expect(scroller).toBeInTheDocument();
     expect(scroller).toHaveClass('overflow-auto');
     // 行都在滚动容器里；标题与刷新按钮在它**外面**（否则滚到底就看不见刷新入口了）。
-    expect(within(scroller).getByRole('list', { name: '团队列表' })).toBeInTheDocument();
+    expect(within(scroller).getByRole('list', { name: 'Team list' })).toBeInTheDocument();
     expect(
-      within(scroller).queryByRole('button', { name: '重新拉取团队列表' }),
+      within(scroller).queryByRole('button', { name: 'Reload team list' }),
     ).not.toBeInTheDocument();
-    expect(within(list).getByRole('button', { name: '重新拉取团队列表' })).toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: 'Reload team list' })).toBeInTheDocument();
   });
 });
 
@@ -866,7 +877,7 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
     await screen.findByText('refactor');
 
     fireEvent.click(screen.getByRole('button', { name: closeLabel('refactor') }));
-    fireEvent.click(await screen.findByRole('button', { name: '确认关闭' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Close team' }));
 
     // 用户全程没离开列表页（关闭的是列表行上那个队，不是当前打开的队）
     await waitFor(() => expect(useTeamStore.getState().teamId).toBeNull());
@@ -886,8 +897,8 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
 
     render(<TeamPanel />);
     await screen.findByText('refactor');
-    fireEvent.click(screen.getByRole('button', { name: '删除团队 refactor' }));
-    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete team refactor' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete team' }));
 
     // 错误在「已有团队」区域**内部**：删除入口就在那些行上
     const alerted = await within(listRegion()).findByRole('alert');
@@ -895,7 +906,7 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
 
     // 不给重试按钮：重试的方式是先关闭那个队，不是再按一次删除。
     // 反证：`team_list` 读失败时的 `ErrorNotice` **有**重试入口，两者的处置本来就不同。
-    expect(within(listRegion()).queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+    expect(within(listRegion()).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 
   it('两条错误互不遮蔽：关闭错误在顶栏、删除错误在列表区，可同时在场', async () => {
@@ -918,12 +929,12 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
     render(<TeamPanel />);
     await screen.findByText('finished');
 
-    fireEvent.click(screen.getByRole('button', { name: '删除团队 finished' }));
-    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete team finished' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete team' }));
     await within(listRegion()).findByText(/delete refused/);
 
     fireEvent.click(screen.getByRole('button', { name: closeLabel('still-open') }));
-    fireEvent.click(await screen.findByRole('button', { name: '确认关闭' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Close team' }));
 
     // 等**两条**都落地（`findAllByRole` 在第一条出现时就解析，会读到中间态）。
     await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2));
@@ -950,7 +961,7 @@ describe('TeamPanel — 错误归属（关闭 vs 删除）', () => {
  *    「这条动作自己负责收尾」，与关闭 / 删除同一个 `onSettled` 口径）。
  */
 describe('TeamPanel — 列表行内重命名', () => {
-  const renameLabel = (name: string): string => `重命名团队 ${name}`;
+  const renameLabel = (name: string): string => `Rename team ${name}`;
 
   beforeEach(() => {
     resetStores();

@@ -29,7 +29,7 @@ function mountMenu(overrides: Partial<React.ComponentProps<typeof TeamHeaderMenu
   };
   render(<TeamHeaderMenu {...props} />);
   /** Radix 的菜单在 jsdom 里靠 `pointerDown` 触发（同 `SessionRowMenu.test.tsx`）。 */
-  fireEvent.pointerDown(screen.getByRole('button', { name: `团队操作：${TEAM}` }));
+  fireEvent.pointerDown(screen.getByRole('button', { name: `Team actions: ${TEAM}` }));
   return props;
 }
 
@@ -37,20 +37,20 @@ describe('TeamHeaderMenu — 哪一项出现', () => {
   it('只提供了刷新（sealed + 无改名 + 无恢复）⇒ 菜单里只有「刷新快照」', () => {
     mountMenu({ state: 'sealed' });
 
-    expect(screen.getByRole('menuitem', { name: '刷新快照' })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: '改名' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: '恢复团队' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: /关闭团队/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Refresh snapshot' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Rename' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Resume team' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Close team/ })).not.toBeInTheDocument();
   });
 
   it('sealed ⇒ 没有「关闭团队…」（只读快照没有可关的东西）', () => {
     mountMenu({ state: 'sealed' });
-    expect(screen.queryByRole('menuitem', { name: /关闭团队/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Close team/ })).not.toBeInTheDocument();
   });
 
   it('open + 有可恢复成员 ⇒ 有「恢复团队」；恢复在飞时置灰', () => {
     mountMenu({ state: 'open', resumable: true, onResumeTeam: vi.fn(), resuming: true });
-    expect(screen.getByRole('menuitem', { name: '恢复团队' })).toHaveAttribute(
+    expect(screen.getByRole('menuitem', { name: 'Resume team' })).toHaveAttribute(
       'aria-disabled',
       'true',
     );
@@ -58,22 +58,22 @@ describe('TeamHeaderMenu — 哪一项出现', () => {
 
   it('sealed ⇒ 没有「恢复团队」（即便存在可恢复成员）', () => {
     mountMenu({ state: 'sealed', resumable: true, onResumeTeam: vi.fn() });
-    expect(screen.queryByRole('menuitem', { name: '恢复团队' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Resume team' })).not.toBeInTheDocument();
   });
 
   it('open 但没有可恢复成员 ⇒ 不渲染「恢复团队」（不宣传一个会恢复 0 个成员的动作）', () => {
     mountMenu({ state: 'open', resumable: false, onResumeTeam: vi.fn() });
-    expect(screen.queryByRole('menuitem', { name: '恢复团队' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Resume team' })).not.toBeInTheDocument();
   });
 
   it('宿主没注入整队恢复 ⇒ 即便 open + 可恢复，也没有这一项', () => {
     mountMenu({ state: 'open', resumable: true, onResumeTeam: undefined });
-    expect(screen.queryByRole('menuitem', { name: '恢复团队' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Resume team' })).not.toBeInTheDocument();
   });
 
   it('关闭在飞时「关闭团队…」置灰（避免连点出两次确认）', () => {
     mountMenu({ state: 'open', closing: true });
-    expect(screen.getByRole('menuitem', { name: /关闭团队/ })).toHaveAttribute(
+    expect(screen.getByRole('menuitem', { name: /Close team/ })).toHaveAttribute(
       'aria-disabled',
       'true',
     );
@@ -83,14 +83,14 @@ describe('TeamHeaderMenu — 哪一项出现', () => {
 describe('TeamHeaderMenu — 只转发给宿主', () => {
   it('点「刷新快照」调 onRefresh', () => {
     const handlers = mountMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: '刷新快照' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Refresh snapshot' }));
     expect(handlers.onRefresh).toHaveBeenCalledTimes(1);
   });
 
   it('点「改名」调 onRename（同一个 handleStartRename，与双击入口一条路径）', async () => {
     const onRename = vi.fn();
     mountMenu({ onRename });
-    fireEvent.click(screen.getByRole('menuitem', { name: '改名' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
     // 编辑态在菜单**卸载之后**才开（否则菜单的焦点陷阱会把输入框的焦点抢走 → blur → 关掉）
     await waitFor(() => expect(onRename).toHaveBeenCalledTimes(1));
   });
@@ -98,13 +98,13 @@ describe('TeamHeaderMenu — 只转发给宿主', () => {
   it('点「恢复团队」调 onResumeTeam', () => {
     const onResumeTeam = vi.fn();
     mountMenu({ state: 'open', resumable: true, onResumeTeam });
-    fireEvent.click(screen.getByRole('menuitem', { name: '恢复团队' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Resume team' }));
     expect(onResumeTeam).toHaveBeenCalledTimes(1);
   });
 
   it('点「关闭团队…」调 onRequestClose（走宿主的二次确认，不在这里直接关）', () => {
     const handlers = mountMenu({ state: 'open' });
-    fireEvent.click(screen.getByRole('menuitem', { name: /关闭团队/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Close team/ }));
     expect(handlers.onRequestClose).toHaveBeenCalledTimes(1);
   });
 });

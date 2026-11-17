@@ -50,16 +50,16 @@ function shortId(memberId: string | null | undefined): string | null {
 /** 第一行：计划事实（谁该做）。名字只来自 `assignee`，绝不回落到 `owner`。 */
 export function assignmentMeta(task: TaskCard): string {
   const name = shortId(task.assignee);
-  if (name !== null) return `${task.id} · 指派 ${name}`;
+  if (name !== null) return `${task.id} · assigned to ${name}`;
   // 空指派槽：完全没人碰过写「未指派」；有人认领时写 `—`，强调「没有指定的人、
   // 但第二行有人在做」。只是空值文案的区分，名字依旧不跨列。
-  return task.owner === null ? `${task.id} · 未指派` : `${task.id} · 指派 —`;
+  return task.owner === null ? `${task.id} · unassigned` : `${task.id} · assigned —`;
 }
 
 /** 第二行：执行事实（谁在做）。名字只来自 `owner`，绝不回落到 `assignee`。 */
 export function claimMeta(task: TaskCard): string {
   const name = shortId(task.owner);
-  return name === null ? '待认领' : `已认领 ${name}`;
+  return name === null ? 'Unclaimed' : `Claimed by ${name}`;
 }
 
 interface FlowTaskNodeProps {
@@ -83,7 +83,7 @@ const FlowTaskNode: React.FC<FlowTaskNodeProps> = React.memo(({ task, cx, y, onO
       : {
           role: 'button',
           tabIndex: 0,
-          'aria-label': `打开任务 ${task.id} 的详情：${task.title}`,
+          'aria-label': `Open task ${task.id} details: ${task.title}`,
           onClick: () => onOpenTask(task.teamId, task.id, task.title),
           onKeyDown: (event: React.KeyboardEvent<SVGGElement>) => {
             if (event.key === 'Enter' || event.key === ' ') {

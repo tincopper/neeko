@@ -69,7 +69,7 @@ const RoleLibrarySection: React.FC<RoleLibrarySectionProps> = React.memo(
         .then((ok) => {
           if (ok) {
             reset();
-            onShowToast?.(`角色「${trimmedName}」已保存`, 'info');
+            onShowToast?.(`Role "${trimmedName}" saved`, 'info');
           }
         });
     }, [name, preamble, cli, roles, onShowToast, reset]);
@@ -77,7 +77,7 @@ const RoleLibrarySection: React.FC<RoleLibrarySectionProps> = React.memo(
     const handleDelete = useCallback(
       (role: RolePreset) => {
         void roles.deleteRole(role.name).then((ok) => {
-          if (ok) onShowToast?.(`角色「${role.name}」已删除`, 'info');
+          if (ok) onShowToast?.(`Role "${role.name}" deleted`, 'info');
         });
       },
       [roles, onShowToast],
@@ -93,31 +93,36 @@ const RoleLibrarySection: React.FC<RoleLibrarySectionProps> = React.memo(
     const canSave = name.trim() !== '' && preamble.trim() !== '' && !roles.mutating;
 
     return (
-      <section aria-label="角色库" className="flex flex-col gap-2 text-meta">
-        <h3 className="text-meta font-semibold text-text-secondary">角色库</h3>
+      <section aria-label="Role library" className="flex flex-col gap-2 text-meta">
+        <h3 className="text-meta font-semibold text-text-secondary">Role library</h3>
         <p className="text-micro text-text-muted">
-          persona 是「成员怎么干活」的人设文本（spawn 时拼进它的启动参数），与权限无关。
-          建队时选一个作缺省，队长也可以逐个指定。
+          A persona is the text describing how a member works (it is spliced into its launch args at
+          spawn); it is unrelated to permissions. Pick one as the default when creating the team;
+          the lead can also assign them one by one.
         </p>
 
         {/* 三态分离（与团队配置区同一纪律）：没问到不显示空态 */}
         {roles.roles === null ? (
           roles.loading ? (
-            <p className="text-meta text-text-muted">正在读取角色库…</p>
+            <p className="text-meta text-text-muted">Loading role library…</p>
           ) : (
-            <p className="text-meta text-text-muted">拿不到角色库（没有第二个来源）。</p>
+            <p className="text-meta text-text-muted">
+              Role library unavailable (there is no second source).
+            </p>
           )
         ) : roles.roles.length === 0 ? (
-          <p className="text-meta text-text-muted">还没有预设 —— 用下面的表单加第一个。</p>
+          <p className="text-meta text-text-muted">
+            No presets yet — add the first one with the form below.
+          </p>
         ) : (
           <>
             {roles.rolesTruncated ? (
               // 截断必须**说出来**（与任务板同一条纪律）：不说的话看起来像「就只有这些」。
               <p role="status" className="text-micro text-accent-yellow">
-                只显示前 {roles.roles.length} 个预设（更早的未列出）。
+                Showing first {roles.roles.length} presets (older ones are not listed).
               </p>
             ) : null}
-            <ul aria-label="已有角色" className="flex flex-col gap-1">
+            <ul aria-label="Existing roles" className="flex flex-col gap-1">
               {roles.roles.map((role) => (
                 <li
                   key={role.name}
@@ -132,7 +137,7 @@ const RoleLibrarySection: React.FC<RoleLibrarySectionProps> = React.memo(
                       onClick={() => handleEdit(role)}
                       className="rounded px-1 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     >
-                      编辑
+                      Edit
                     </button>
                     <button
                       type="button"
@@ -140,13 +145,13 @@ const RoleLibrarySection: React.FC<RoleLibrarySectionProps> = React.memo(
                       onClick={() => handleDelete(role)}
                       className="rounded px-1 py-0.5 text-micro text-accent-red hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-red focus-visible:outline-none disabled:cursor-not-allowed disabled:text-text-muted"
                     >
-                      删除
+                      Delete
                     </button>
                   </div>
                   <p className="line-clamp-2 text-micro text-text-muted">{role.preamble}</p>
                   {role.cliPreference ? (
                     <p className="font-mono text-micro text-text-muted">
-                      建议 CLI：{nameOf(role.cliPreference)}
+                      Suggested CLI: {nameOf(role.cliPreference)}
                     </p>
                   ) : null}
                 </li>
@@ -155,7 +160,11 @@ const RoleLibrarySection: React.FC<RoleLibrarySectionProps> = React.memo(
           </>
         )}
 
-        <ErrorNotice message={roles.error} retryLabel="重新读取角色库" onRetry={roles.reload} />
+        <ErrorNotice
+          message={roles.error}
+          retryLabel="Reload role library"
+          onRetry={roles.reload}
+        />
         {roles.mutationError ? (
           <p role="alert" className="whitespace-pre-wrap text-micro text-accent-red">
             {roles.mutationError}
@@ -164,17 +173,17 @@ const RoleLibrarySection: React.FC<RoleLibrarySectionProps> = React.memo(
 
         <div className="flex flex-col gap-1 rounded-md border border-border bg-bg-primary p-2">
           <span className="text-micro font-semibold text-text-secondary">
-            {editing ? `编辑「${name}」` : '新增角色'}
+            {editing ? `Edit "${name}"` : 'New role'}
           </span>
           <Input
-            aria-label="角色名"
+            aria-label="Role name"
             size="sm"
             value={name}
-            placeholder="角色名（如：研究员）"
+            placeholder="Role name (e.g. Researcher)"
             onChange={(e) => setName(e.target.value)}
           />
           <textarea
-            aria-label="人设正文（英文）"
+            aria-label="Persona body (English)"
             value={preamble}
             placeholder="Research only; never edit production code. Report findings to the board."
             rows={3}
@@ -185,13 +194,13 @@ const RoleLibrarySection: React.FC<RoleLibrarySectionProps> = React.memo(
             )}
           />
           <select
-            aria-label="建议 CLI"
+            aria-label="Suggested CLI"
             size={1}
             value={cli}
             onChange={(e) => setCli(e.target.value)}
             className="rounded-md border border-border bg-bg-primary px-2 py-1 text-meta text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
-            <option value="">不指定 CLI</option>
+            <option value="">No CLI preference</option>
             {agentIds.map((id) => (
               <option key={id} value={id}>
                 {nameOf(id)}
@@ -210,7 +219,7 @@ const RoleLibrarySection: React.FC<RoleLibrarySectionProps> = React.memo(
                   : 'cursor-not-allowed bg-bg-tertiary text-text-muted',
               )}
             >
-              {roles.mutating ? '正在保存…' : editing ? '保存修改' : '添加角色'}
+              {roles.mutating ? 'Saving…' : editing ? 'Save changes' : 'Add role'}
             </button>
             {editing ? (
               <button
@@ -218,7 +227,7 @@ const RoleLibrarySection: React.FC<RoleLibrarySectionProps> = React.memo(
                 onClick={reset}
                 className="rounded-md px-2 py-1 text-meta text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
               >
-                取消编辑
+                Cancel editing
               </button>
             ) : null}
           </div>

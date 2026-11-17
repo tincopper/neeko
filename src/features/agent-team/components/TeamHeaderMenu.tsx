@@ -105,8 +105,8 @@ const TeamHeaderMenu: React.FC<TeamHeaderMenuProps> = React.memo(
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            aria-label={`团队操作：${teamName}`}
-            title="团队操作"
+            aria-label={`Team actions: ${teamName}`}
+            title="Team actions"
             className="grid size-5 shrink-0 place-items-center rounded text-text-muted hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
             <MoreHorizontal size={13} aria-hidden="true" />
@@ -132,11 +132,11 @@ const TeamHeaderMenu: React.FC<TeamHeaderMenuProps> = React.memo(
                 renamePending.current = true;
               }}
             >
-              改名
+              Rename
             </DropdownMenuItem>
           )}
           <DropdownMenuItem className={ITEM_CLASS} onSelect={() => onRefresh()}>
-            刷新快照
+            Refresh snapshot
           </DropdownMenuItem>
           {canResume ? (
             <DropdownMenuItem
@@ -144,7 +144,7 @@ const TeamHeaderMenu: React.FC<TeamHeaderMenuProps> = React.memo(
               disabled={resuming}
               onSelect={() => onResumeTeam?.()}
             >
-              恢复团队
+              Resume team
             </DropdownMenuItem>
           ) : null}
           {/* 破坏性动作不混在中间：一条分隔线 + 单独着色 */}
@@ -156,7 +156,7 @@ const TeamHeaderMenu: React.FC<TeamHeaderMenuProps> = React.memo(
                 disabled={closing}
                 onSelect={() => onRequestClose()}
               >
-                关闭团队…
+                Close team…
               </DropdownMenuItem>
             </>
           ) : null}

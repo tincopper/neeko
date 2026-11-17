@@ -51,14 +51,16 @@ const LeadPickerSection: React.FC<LeadPickerSectionProps> = React.memo(
 
     if (launchable === null) {
       return (
-        <section aria-label="队长选择" className="flex flex-col gap-1.5">
-          <h3 className="text-meta font-semibold text-text-secondary">队长用哪个 CLI</h3>
+        <section aria-label="Lead selection" className="flex flex-col gap-1.5">
+          <h3 className="text-meta font-semibold text-text-secondary">Which CLI leads</h3>
           {loading ? (
-            <p className="text-meta text-text-muted">正在检查各 CLI 的启动能力…</p>
+            <p className="text-meta text-text-muted">Checking the launch capability of each CLI…</p>
           ) : (
-            <p className="text-meta text-text-muted">拿不到可启动清单，所以现在还开不了团队。</p>
+            <p className="text-meta text-text-muted">
+              The launchable list is unavailable, so a team cannot start yet.
+            </p>
           )}
-          <ErrorNotice message={error} retryLabel="重新检查" onRetry={onRetry} />
+          <ErrorNotice message={error} retryLabel="Re-check" onRetry={onRetry} />
         </section>
       );
     }
@@ -68,22 +70,23 @@ const LeadPickerSection: React.FC<LeadPickerSectionProps> = React.memo(
 
     if (launchable.length === 0) {
       return (
-        <section aria-label="队长选择" className="flex flex-col gap-1.5">
-          <h3 className="text-meta font-semibold text-text-secondary">队长用哪个 CLI</h3>
+        <section aria-label="Lead selection" className="flex flex-col gap-1.5">
+          <h3 className="text-meta font-semibold text-text-secondary">Which CLI leads</h3>
           <p className="text-meta text-text-muted">
-            后端没有返回任何可选的 CLI——清单为空（这不是「加载中」）。先确认 agent 配置已加载。
+            The backend returned no selectable CLIs — the list is empty (this is not
+            &quot;loading&quot;). First check that the agent config is loaded.
           </p>
-          <ErrorNotice message={error} retryLabel="重新检查" onRetry={onRetry} />
+          <ErrorNotice message={error} retryLabel="Re-check" onRetry={onRetry} />
         </section>
       );
     }
 
     return (
-      <section aria-label="队长选择" className="flex flex-col gap-2">
-        <h3 className="text-meta font-semibold text-text-secondary">队长用哪个 CLI</h3>
+      <section aria-label="Lead selection" className="flex flex-col gap-2">
+        <h3 className="text-meta font-semibold text-text-secondary">Which CLI leads</h3>
 
         {/* 可启动的：卡片网格（两列在 ~300px 的 dock 列里正好放下名字 + id） */}
-        <ul className="grid grid-cols-2 gap-1.5" aria-label="可选的 CLI">
+        <ul className="grid grid-cols-2 gap-1.5" aria-label="Launchable CLIs">
           {launchableRows.map((row) => {
             const selected = row.agentId === agentId;
             return (
@@ -150,16 +153,16 @@ const LeadPickerSection: React.FC<LeadPickerSectionProps> = React.memo(
               ) : (
                 <ChevronRight size={12} aria-hidden="true" />
               )}
-              <span className="shrink-0">{refusedRows.length} 个 CLI 不可用于团队</span>
+              <span className="shrink-0">{refusedRows.length} CLIs unavailable for teams</span>
               <span className="min-w-0 truncate">
-                {refusedRows.map((row) => nameOf(row.agentId)).join('、')}
+                {refusedRows.map((row) => nameOf(row.agentId)).join(', ')}
               </span>
             </button>
             {refusedOpen ? (
               <ul
                 id="team-refused-list"
                 className="flex flex-col gap-1.5"
-                aria-label="不可用的 CLI"
+                aria-label="Unavailable CLIs"
               >
                 {refusedRows.map((row) => {
                   const refusalId = `team-launch-refusal-${row.agentId}`;
@@ -182,7 +185,7 @@ const LeadPickerSection: React.FC<LeadPickerSectionProps> = React.memo(
                           {row.agentId}
                         </span>
                         <span className="shrink-0 rounded bg-bg-tertiary px-1 text-micro text-text-muted">
-                          不可用
+                          Unavailable
                         </span>
                       </button>
                       {/* 点开后的完整理由：可见文字（不是 title），挂回控件供读屏 */}
@@ -200,7 +203,7 @@ const LeadPickerSection: React.FC<LeadPickerSectionProps> = React.memo(
           </div>
         ) : null}
 
-        <ErrorNotice message={error} retryLabel="重新检查" onRetry={onRetry} />
+        <ErrorNotice message={error} retryLabel="Re-check" onRetry={onRetry} />
       </section>
     );
   },

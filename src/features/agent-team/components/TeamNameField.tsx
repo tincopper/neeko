@@ -27,13 +27,13 @@ interface TeamNameFieldProps {
 const TeamNameField: React.FC<TeamNameFieldProps> = React.memo(({ value, disabled, onChange }) => (
   <div className="flex flex-col gap-1">
     <label htmlFor="team-launch-name" className="text-micro text-text-muted">
-      团队名称（可选）
+      Team name (optional)
     </label>
     <Input
       id="team-launch-name"
       size="sm"
       value={value}
-      placeholder="留空 = 用工作区目录名"
+      placeholder="Leave empty = use the workspace directory name"
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
     />

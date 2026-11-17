@@ -58,7 +58,8 @@ const MemberApprovalQueue: React.FC<MemberApprovalQueueProps> = React.memo(
      * 因为那个态本身不是错误）。
      */
     const canGoToTerminal = action.enabled && action.kind !== 'archive';
-    const blockedReason = action.kind === 'archive' ? '进程已退出，只能在历史里看' : action.reason;
+    const blockedReason =
+      action.kind === 'archive' ? 'Process exited; view it in history only' : action.reason;
 
     const handleOpen = useCallback(() => {
       // 置灰是 UI，**零调用**是行为（与花名册行同一条判据）。
@@ -87,16 +88,19 @@ const MemberApprovalQueue: React.FC<MemberApprovalQueueProps> = React.memo(
 
     return (
       <section
-        aria-label="待批队列"
+        aria-label="Approval queue"
         className="flex flex-col gap-1 rounded-md border border-accent-yellow/60 bg-accent-yellow/10 px-2 py-1.5"
       >
         <header className="flex items-baseline gap-1.5">
-          <h4 className="text-meta font-semibold text-accent-yellow">待批 {tasks.length} 条</h4>
-          <span className="text-micro text-text-muted">审批在它自己的终端里</span>
+          <h4 className="text-meta font-semibold text-accent-yellow">
+            {tasks.length} awaiting approval
+          </h4>
+          <span className="text-micro text-text-muted">Approval happens in its own terminal</span>
         </header>
         {/* 这句话是本块的全部价值：不写它，用户会在面板上找一个不存在的「批准」按钮。 */}
         <p className="text-micro text-text-secondary">
-          Neeko 不代批：请到成员自己的终端里确认。面板只负责把「谁卡在审批上」摆出来。
+          Neeko does not approve on your behalf: confirm in the member&apos;s own terminal. The
+          panel only surfaces who is stuck on approval.
         </p>
         <ul className="flex flex-col gap-1">
           {tasks.map((task) => (
@@ -116,14 +120,14 @@ const MemberApprovalQueue: React.FC<MemberApprovalQueueProps> = React.memo(
                   type="button"
                   onClick={handleOpen}
                   disabled={!canGoToTerminal}
-                  aria-label={`去终端处理待批任务：${task.title}`}
+                  aria-label={`Handle the task awaiting approval in the terminal: ${task.title}`}
                   className={cn(
                     'shrink-0 rounded px-1.5 py-0.5 text-micro font-semibold',
                     'text-accent-yellow hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-yellow focus-visible:outline-none',
                     'disabled:cursor-not-allowed disabled:text-text-muted disabled:hover:bg-transparent',
                   )}
                 >
-                  去终端处理
+                  Handle in terminal
                 </button>
               </div>
             </li>

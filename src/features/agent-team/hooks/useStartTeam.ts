@@ -99,10 +99,10 @@ export function useStartTeam(options: StartTeamOptions = {}): StartTeamState {
           // 队长的 agent 随建队响应回来（`leadAgentId`）—— 不从快照里找：
           // 那会让 tab 图标依赖「快照先落地」这个时序，第一帧是通用终端图标。
           onOpenLeaderTerminal?.(session, leaderTerminalTabTitle(teamName), session.leadAgentId);
-          onShowToast?.(`团队「${teamName}」已建立，队长会话已打开`, 'info');
+          onShowToast?.(`Team "${teamName}" created; the lead session is open`, 'info');
         } else {
           onShowToast?.(
-            `团队「${teamName}」已建立，但队长进程没有落地（没有可接管的终端）`,
+            `Team "${teamName}" created, but the lead process did not come up (no terminal to take over)`,
             'error',
           );
         }

@@ -70,7 +70,7 @@ const TeamMemberPool: React.FC<TeamMemberPoolProps> = React.memo(
         const preamble = newPreamble.trim();
         // 一眼就非法的只拦非空；长度 / 控制字符的判据在后端保存时（拒绝而非截断）。
         if (name === '' || preamble === '') {
-          setRoleError('角色名与人设正文都必填。');
+          setRoleError('Role name and persona body are both required.');
           return;
         }
         setSavingRole(true);
@@ -96,7 +96,7 @@ const TeamMemberPool: React.FC<TeamMemberPoolProps> = React.memo(
     );
 
     return (
-      <ul aria-label="成员池" className="flex flex-col gap-1">
+      <ul aria-label="Member pool" className="flex flex-col gap-1">
         {members.map((row) => {
           const launchable = row.refusal === null;
           const checked = launchable && selectedIds.includes(row.agentId);
@@ -129,14 +129,14 @@ const TeamMemberPool: React.FC<TeamMemberPoolProps> = React.memo(
                 <span className="shrink-0 font-mono text-micro text-text-muted">{row.agentId}</span>
                 {row.refusal ? (
                   <span className="shrink-0 rounded bg-bg-tertiary px-1 text-micro text-text-muted">
-                    不可用
+                    Unavailable
                   </span>
                 ) : null}
               </div>
               {checked ? (
                 <div className="pl-5">
                   <select
-                    aria-label={`${nameOf(row.agentId)} 的角色`}
+                    aria-label={`${nameOf(row.agentId)}'s role`}
                     className="w-full rounded-md border border-border bg-bg-tertiary px-2 py-1 text-micro text-text-secondary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     value={roleByAgent[row.agentId] ?? ''}
                     onChange={(e) => {
@@ -148,40 +148,40 @@ const TeamMemberPool: React.FC<TeamMemberPoolProps> = React.memo(
                       }
                     }}
                   >
-                    <option value="">无人设（用缺省）</option>
+                    <option value="">No persona (use default)</option>
                     {(roles ?? []).map((role) => (
                       <option key={role.name} value={role.name}>
                         {role.name}
                       </option>
                     ))}
-                    {onCreateRole ? <option value="__new__">＋ 新建角色…</option> : null}
+                    {onCreateRole ? <option value="__new__">＋ New role…</option> : null}
                   </select>
                   {creatingFor === row.agentId ? (
                     <div className="mt-1 flex flex-col gap-1.5 rounded-md border border-accent-blue bg-bg-primary p-2">
                       <span className="text-micro font-semibold text-accent-blue">
-                        新建角色（保存后进角色库并指派给 {nameOf(row.agentId)}）
+                        New role (saved to the role library and assigned to {nameOf(row.agentId)})
                       </span>
                       <Input
                         size="sm"
                         value={newName}
-                        placeholder="角色名（如：架构师）"
-                        aria-label="新角色名"
+                        placeholder="Role name (e.g. Architect)"
+                        aria-label="New role name"
                         onChange={(e) => setNewName(e.target.value)}
                       />
                       <Input
                         size="sm"
                         value={newPreamble}
-                        placeholder="人设正文（英文，进成员启动参数）"
-                        aria-label="人设正文"
+                        placeholder="Persona body (English; goes into member launch args)"
+                        aria-label="Persona body"
                         onChange={(e) => setNewPreamble(e.target.value)}
                       />
                       <select
                         value={newCli}
-                        aria-label="CLI 偏好"
+                        aria-label="CLI preference"
                         onChange={(e) => setNewCli(e.target.value)}
                         className="rounded-md border border-border bg-bg-primary px-2 py-1 text-micro text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                       >
-                        <option value="">CLI 偏好：不指定</option>
+                        <option value="">CLI preference: none</option>
                         {members
                           .filter((m) => m.refusal === null)
                           .map((m) => (
@@ -203,7 +203,7 @@ const TeamMemberPool: React.FC<TeamMemberPoolProps> = React.memo(
                             'disabled:cursor-not-allowed disabled:bg-bg-tertiary disabled:text-text-muted',
                           )}
                         >
-                          {savingRole ? '正在保存…' : '保存并指派'}
+                          {savingRole ? 'Saving…' : 'Save and assign'}
                         </button>
                         <button
                           type="button"
@@ -214,7 +214,7 @@ const TeamMemberPool: React.FC<TeamMemberPoolProps> = React.memo(
                             'focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
                           )}
                         >
-                          取消
+                          Cancel
                         </button>
                       </div>
                     </div>

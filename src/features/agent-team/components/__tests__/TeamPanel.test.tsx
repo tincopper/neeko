@@ -111,7 +111,7 @@ describe('TeamPanel — 空态队长入口', () => {
     render(<TeamPanel onShowToast={onShowToast} onOpenLeaderTerminal={onOpenLeaderTerminal} />);
 
     // 列表态是主面；创建流由「新建团队」按钮推入（导航重排，2026-11-08）。
-    fireEvent.click(screen.getByRole('button', { name: '新建团队' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New team' }));
 
     // 候选只来自后端清单：`agentStore` 里那个禁用且不在清单里的 agent 不会出现在面板上。
     await screen.findByRole('button', { name: /Claude Code/ });
@@ -122,7 +122,7 @@ describe('TeamPanel — 空态队长入口', () => {
     const codexRow = await screen.findByRole('button', { name: /Codex/ });
     fireEvent.click(codexRow);
     await waitFor(() => expect(codexRow).toHaveAttribute('aria-pressed', 'true'));
-    fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start session as lead' }));
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('start_team_session', {
@@ -146,7 +146,7 @@ describe('TeamPanel — 空态队长入口', () => {
     );
     await waitFor(() =>
       // 队长 tab 的图标来源：随建队响应回来的 `leadAgentId`（不从快照里找）。
-      expect(onOpenLeaderTerminal).toHaveBeenCalledWith(session, '队长 · refactor', 'claude-code'),
+      expect(onOpenLeaderTerminal).toHaveBeenCalledWith(session, 'Lead · refactor', 'claude-code'),
     );
     expect(onShowToast).toHaveBeenCalled();
     expect(await screen.findByText('refactor')).toBeInTheDocument();
@@ -168,16 +168,16 @@ describe('TeamPanel — 空态队长入口', () => {
 
     render(<TeamPanel />);
     // 创建流在推入视图里：先按「新建团队」（导航重排，2026-11-08）。
-    fireEvent.click(screen.getByRole('button', { name: '新建团队' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New team' }));
     await screen.findByRole('button', { name: /Gemini|gemini/ });
-    fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start session as lead' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(
       'Unsupported: agent `gemini` cannot reach the team tool surface',
     );
     // 失败后仍停在空态（没有团队可显示）
-    expect(screen.getByRole('button', { name: '以队长身份开会话' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start session as lead' })).toBeInTheDocument();
   });
 });
 
@@ -226,23 +226,23 @@ describe('TeamPanel — 花名册', () => {
     mockInvoke.mockResolvedValue(snapshot);
 
     render(<TeamPanel />);
-    const rows = within(region('成员花名册')).getAllByRole('listitem');
+    const rows = within(region('Member roster')).getAllByRole('listitem');
     expect(rows).toHaveLength(4);
 
-    expect(within(rows[0]).getByText('运行中')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('Running')).toBeInTheDocument();
     // `leaseRemainingSecs === null` ⇒ 行内**没有**任何租约文字（R3：不恒亮一个「无在飞任务」）
-    expect(within(rows[0]).queryByText(/租约|无在飞任务/)).not.toBeInTheDocument();
-    expect(within(rows[0]).getByText('队长')).toBeInTheDocument();
+    expect(within(rows[0]).queryByText(/Lease|No task in flight/)).not.toBeInTheDocument();
+    expect(within(rows[0]).getByText('Lead')).toBeInTheDocument();
 
     // 空闲 + 未声明（AC2）
-    expect(within(rows[1]).getByText('空闲 ⚠ 未声明')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('Idle ⚠ unverified')).toBeInTheDocument();
     // leaseRemainingSecs === 0 ⇒ 已超时（不是「无在飞任务」），文案与卡片 / 抽屉同一份
-    expect(within(rows[1]).getByText('租约已超时')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('Lease expired')).toBeInTheDocument();
 
-    expect(within(rows[2]).getByText('待批准')).toBeInTheDocument();
-    expect(within(rows[2]).getByText('租约剩 2:00')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('Awaiting approval')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('Lease 2:00')).toBeInTheDocument();
 
-    expect(within(rows[3]).getByText('空闲 ✓ 已声明')).toBeInTheDocument();
+    expect(within(rows[3]).getByText('Idle ✓ verified')).toBeInTheDocument();
   });
 
   it('AC2：idle+unverified 与 idle+verified 的可访问文本不同（视觉可区分）', () => {
@@ -250,19 +250,22 @@ describe('TeamPanel — 花名册', () => {
     mockInvoke.mockResolvedValue(snapshot);
 
     render(<TeamPanel />);
-    const roster = region('成员花名册');
+    const roster = region('Member roster');
 
     // 两行的可访问文本不同 —— AC2 的判据（读屏 / tooltip / 灰度截图都能区分）。
-    const unverified = within(roster).getByTitle(/未声明/);
-    const verified = within(roster).getByTitle(/已声明/);
+    const unverified = within(roster).getByTitle(/Idle ⚠ unverified/);
+    const verified = within(roster).getByTitle(/Idle ✓ verified/);
 
     // 文案不同
-    expect(unverified).toHaveTextContent('空闲 ⚠ 未声明');
-    expect(verified).toHaveTextContent('空闲 ✓ 已声明');
+    expect(unverified).toHaveTextContent('Idle ⚠ unverified');
+    expect(verified).toHaveTextContent('Idle ✓ verified');
     // 可访问文本不同（且与 title 同源，鼠标悬停能拿到同一句「为什么」）
     expect(unverified.getAttribute('aria-label')).not.toBe(verified.getAttribute('aria-label'));
     expect(unverified).toHaveAttribute('title', unverified.getAttribute('aria-label'));
-    expect(unverified).toHaveAttribute('aria-label', expect.stringContaining('任务仍在进行中'));
+    expect(unverified).toHaveAttribute(
+      'aria-label',
+      expect.stringContaining('the task is still in progress'),
+    );
   });
 });
 
@@ -300,23 +303,23 @@ describe('TeamPanel — 共享任务板', () => {
     mockInvoke.mockResolvedValue(createTeamSnapshot({ tasks, tasksTruncated: true }));
 
     render(<TeamPanel />);
-    const board = region('共享任务板');
+    const board = region('Shared task board');
     const column = (name: string): HTMLElement => within(board).getByRole('group', { name });
 
-    expect(within(column('待认领')).getByText('待认领的活')).toBeInTheDocument();
+    expect(within(column('Unclaimed')).getByText('待认领的活')).toBeInTheDocument();
     // 刚认领的任务不许从板上消失
-    expect(within(column('进行中')).getByText('刚认领的活')).toBeInTheDocument();
-    expect(within(column('进行中')).getByText('进行中的活')).toBeInTheDocument();
-    expect(within(column('待批准')).getByText('等批准的活')).toBeInTheDocument();
-    expect(within(column('已完成')).getByText('做完的活')).toBeInTheDocument();
-    expect(within(column('阻塞')).getByText('反复失败的活')).toBeInTheDocument();
+    expect(within(column('In progress')).getByText('刚认领的活')).toBeInTheDocument();
+    expect(within(column('In progress')).getByText('进行中的活')).toBeInTheDocument();
+    expect(within(column('Awaiting approval')).getByText('等批准的活')).toBeInTheDocument();
+    expect(within(column('Done')).getByText('做完的活')).toBeInTheDocument();
+    expect(within(column('Blocked')).getByText('反复失败的活')).toBeInTheDocument();
 
     // 依赖数 / id 属于详情（卡片只留「这张卡是什么、归谁」）
-    expect(within(column('待批准')).queryByText('依赖 2')).not.toBeInTheDocument();
-    expect(within(column('阻塞')).getByText('被回收 2 次')).toBeInTheDocument();
-    expect(within(column('阻塞')).getByText('摘要已截断')).toBeInTheDocument();
+    expect(within(column('Awaiting approval')).queryByText('依赖 2')).not.toBeInTheDocument();
+    expect(within(column('Blocked')).getByText('Reclaimed 2 times')).toBeInTheDocument();
+    expect(within(column('Blocked')).getByText('Summary truncated')).toBeInTheDocument();
 
-    expect(within(board).getByText('只显示前 200 条')).toBeInTheDocument();
+    expect(within(board).getByText('Showing first 200')).toBeInTheDocument();
   });
 
   it('未截断时不显示「只显示前 N 条」（否则提示永远亮着，等于没有提示）', async () => {
@@ -325,7 +328,9 @@ describe('TeamPanel — 共享任务板', () => {
     mockInvoke.mockResolvedValue(snapshot);
 
     render(<TeamPanel />);
-    expect(within(region('共享任务板')).queryByText(/只显示前/)).not.toBeInTheDocument();
+    expect(
+      within(region('Shared task board')).queryByText(/Showing first/),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -358,7 +363,7 @@ describe('TeamPanel — 任务详情（红线 4：点开才拉）', () => {
     expect(mockInvoke.mock.calls.some(([cmd]) => cmd === 'team_task_detail')).toBe(false);
 
     // 点卡片 → 打开中央 tab：三参（teamId, taskId, title）+ projectId 落键。
-    fireEvent.click(screen.getByRole('button', { name: /打开任务 t1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Open task t1/ }));
     expect(onOpenTaskTab).toHaveBeenCalledWith('tm_1', 't1', '登录页骨架', 'p1');
   });
 });

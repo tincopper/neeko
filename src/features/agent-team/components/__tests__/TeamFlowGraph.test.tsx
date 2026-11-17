@@ -28,7 +28,7 @@ const members = [
 
 /** 图的根 `<svg>`：`role="img"` 是组件自己的可访问契约（不必用 container 取）。 */
 function flowSvg(): SVGElement {
-  return screen.getByRole('img', { name: /任务分配图/ });
+  return screen.getByRole('img', { name: /Assignment graph/ });
 }
 
 describe('TeamFlowGraph — 节点副标题（两行）', () => {
@@ -39,8 +39,8 @@ describe('TeamFlowGraph — 节点副标题（两行）', () => {
         members={members}
       />,
     );
-    expect(screen.getByText('t1 · 指派 w1')).toBeInTheDocument();
-    expect(screen.getByText('待认领')).toBeInTheDocument();
+    expect(screen.getByText('t1 · assigned to w1')).toBeInTheDocument();
+    expect(screen.getByText('Unclaimed')).toBeInTheDocument();
   });
 
   it('只有 owner：空指派槽 + 已认领（老数据没有 assignee）', () => {
@@ -50,8 +50,8 @@ describe('TeamFlowGraph — 节点副标题（两行）', () => {
         members={members}
       />,
     );
-    expect(screen.getByText('t1 · 指派 —')).toBeInTheDocument();
-    expect(screen.getByText('已认领 w2')).toBeInTheDocument();
+    expect(screen.getByText('t1 · assigned —')).toBeInTheDocument();
+    expect(screen.getByText('Claimed by w2')).toBeInTheDocument();
   });
 
   it('两者都有且不同：两行分别出现两个名字（本轮 #1 的核心判据）', () => {
@@ -68,16 +68,16 @@ describe('TeamFlowGraph — 节点副标题（两行）', () => {
         members={members}
       />,
     );
-    expect(screen.getByText('t1 · 指派 w1')).toBeInTheDocument();
-    expect(screen.getByText('已认领 w2')).toBeInTheDocument();
-    expect(screen.queryByText('已认领 w1')).not.toBeInTheDocument();
-    expect(screen.queryByText('t1 · 指派 w2')).not.toBeInTheDocument();
+    expect(screen.getByText('t1 · assigned to w1')).toBeInTheDocument();
+    expect(screen.getByText('Claimed by w2')).toBeInTheDocument();
+    expect(screen.queryByText('Claimed by w1')).not.toBeInTheDocument();
+    expect(screen.queryByText('t1 · assigned to w2')).not.toBeInTheDocument();
   });
 
   it('两者都没有：未指派 + 待认领', () => {
     render(<TeamFlowGraph tasks={[createTaskCard({ id: 't1' })]} members={members} />);
-    expect(screen.getByText('t1 · 未指派')).toBeInTheDocument();
-    expect(screen.getByText('待认领')).toBeInTheDocument();
+    expect(screen.getByText('t1 · unassigned')).toBeInTheDocument();
+    expect(screen.getByText('Unclaimed')).toBeInTheDocument();
   });
 });
 
@@ -102,7 +102,7 @@ describe('TeamFlowGraph — 成员行已移除（能力留在 flowLayout）', ()
     expect(svg).not.toHaveTextContent('alpha-person');
     expect(svg).not.toHaveTextContent('beta-person');
     expect(svg).not.toHaveTextContent('研究员');
-    expect(svg).not.toHaveTextContent('任务');
+    expect(svg).not.toHaveTextContent('Task');
   });
 
   it('成员数不再撑开画布：宽高与无成员时完全一致，且高度低于第 1 轮基线', () => {
@@ -177,7 +177,7 @@ describe('TeamFlowGraph — 视口（wheel zoom + pointer pan）', () => {
     expect(el.scrollLeft).toBe(30);
     expect(el.scrollTop).toBe(-30);
     // 拖完手一松不能误开任务详情。
-    fireEvent.click(screen.getByRole('button', { name: /打开任务 t1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Open task t1/ }));
     expect(onOpenTask).not.toHaveBeenCalled();
   });
 
@@ -188,7 +188,7 @@ describe('TeamFlowGraph — 视口（wheel zoom + pointer pan）', () => {
     fireEvent.pointerDown(el, pointer(100, 50));
     fireEvent.pointerUp(el, pointer(100, 50));
     expect(el.scrollLeft).toBe(0);
-    fireEvent.click(screen.getByRole('button', { name: /打开任务 t1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Open task t1/ }));
     expect(onOpenTask).toHaveBeenCalledWith('tm_1', 't1', 'task t1');
   });
 });
@@ -202,11 +202,11 @@ describe('TeamFlowGraph — 边', () => {
   it('头部只有标题：线型图例已删除', () => {
     render(<TeamFlowGraph tasks={tasks} members={members} />);
 
-    expect(screen.getByRole('heading', { name: '任务分配图' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Assignment graph' })).toBeInTheDocument();
     // 实线 / 虚线在图上自己就是可读的事实，再写一行解释只是占位噪音（2026-11-16 用户裁决）。
     // 这条断言挡的是「又把它加回去」——那种改动不会让任何别的用例失败。
-    expect(screen.queryByText(/实线 = 派发/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/虚线 = 依赖/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/solid = dispatch/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/dashed = dependency/)).not.toBeInTheDocument();
   });
 
   it('派发连首层、依赖仍是虚线，不再画成员→任务的实线', () => {

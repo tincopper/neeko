@@ -141,14 +141,12 @@ async function waitForPanelReady(): Promise<void> {
     expect(mockInvoke).toHaveBeenCalledWith('team_launchable_agents', { role: 'lead' }),
   );
   await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('team_options', { teamId: null }));
-  await waitFor(() =>
-    expect(screen.queryByText(/正在读取团队配置的默认值…/)).not.toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.queryByText(/Loading team defaults…/)).not.toBeInTheDocument());
 }
 
 /** 等配置表单真正渲染出来（草稿要从 `defaults` 播种后才不是 `null`）。 */
 async function waitForConfigForm(): Promise<HTMLElement> {
-  return screen.findByRole('spinbutton', { name: /成员上限/ });
+  return screen.findByRole('spinbutton', { name: /Member limit/ });
 }
 
 const PI_REFUSAL =
@@ -175,7 +173,7 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     // 产品裁决（2026-11-07）：错误不占页面 —— 默认视图没有理由文本，
     // 但**不是静默隐藏**：折叠行常驻（数量 + 名字预览，键盘可达）。
     expect(screen.queryByText(PI_REFUSAL)).not.toBeInTheDocument();
-    const disclosure = screen.getByRole('button', { name: /1 个 CLI 不可用于团队/ });
+    const disclosure = screen.getByRole('button', { name: /1 CLIs unavailable for teams/ });
     expect(disclosure).toHaveAttribute('aria-expanded', 'false');
     expect(disclosure).toHaveAttribute('aria-controls', 'team-refused-list');
 
@@ -183,7 +181,7 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
 
     // 展开后：行渲染出来（不是「不支持」而是「不可用 + 理由」）。
     // 在折叠列表内查询 —— 折叠行的名字预览里也含 "Pi"，不能按裸名字查。
-    const refusedList = screen.getByRole('list', { name: '不可用的 CLI' });
+    const refusedList = screen.getByRole('list', { name: 'Unavailable CLIs' });
     const piRow = within(refusedList).getByRole('button', { name: /Pi/ });
     expect(piRow).toBeDisabled();
     expect(piRow).toHaveAttribute('aria-disabled', 'true');
@@ -219,7 +217,7 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
 
     // 选第二个：证明 agentId 来自用户选择，而不是硬编码第一个。
     fireEvent.click(screen.getByRole('button', { name: /Codex/ }));
-    fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start session as lead' }));
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('start_team_session', {
@@ -250,8 +248,8 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     await waitForPanelReady();
     await waitForConfigForm();
 
-    const nameInput = screen.getByRole('textbox', { name: /团队名称/ });
-    const leadList = screen.getByRole('list', { name: '可选的 CLI' });
+    const nameInput = screen.getByRole('textbox', { name: /Team name/ });
+    const leadList = screen.getByRole('list', { name: 'Launchable CLIs' });
 
     expect(nameInput.compareDocumentPosition(leadList) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
       0,
@@ -272,10 +270,10 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     await waitForPanelReady();
     await waitForConfigForm();
 
-    fireEvent.change(screen.getByRole('textbox', { name: /团队名称/ }), {
+    fireEvent.change(screen.getByRole('textbox', { name: /Team name/ }), {
       target: { value: '  求和小队  ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start session as lead' }));
 
     await waitFor(() => expect(startCalls()).toHaveLength(1));
     expect(lastStartPayload().name).toBe('求和小队');
@@ -295,7 +293,7 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     await waitForPanelReady();
     await waitForConfigForm();
 
-    fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start session as lead' }));
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('start_team_session', {
@@ -330,7 +328,7 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     expect(screen.getByRole('button', { name: /Pi/ })).not.toHaveAttribute('aria-pressed');
 
     await waitForConfigForm();
-    fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start session as lead' }));
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('start_team_session', {
         projectId: 'p1',
@@ -358,9 +356,9 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     render(<TeamLaunchPanel />);
     await waitForPanelReady();
 
-    const cta = screen.getByRole('button', { name: '以队长身份开会话' });
+    const cta = screen.getByRole('button', { name: 'Start session as lead' });
     expect(cta).toBeDisabled();
-    expect(screen.getByText(/清单里的 CLI 现在都不能启动/)).toBeVisible();
+    expect(screen.getByText(/None of the listed CLIs can launch/)).toBeVisible();
 
     fireEvent.click(cta);
     expect(startCalls()).toHaveLength(0);
@@ -372,9 +370,9 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     render(<TeamLaunchPanel />);
     await waitForPanelReady();
 
-    expect(screen.getByText(/后端没有返回任何可选的 CLI/)).toBeVisible();
-    expect(screen.queryByRole('list', { name: '可选的 CLI' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '以队长身份开会话' })).toBeDisabled();
+    expect(screen.getByText(/The backend returned no selectable CLIs/)).toBeVisible();
+    expect(screen.queryByRole('list', { name: 'Launchable CLIs' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start session as lead' })).toBeDisabled();
   });
 
   it('清单拉取失败：显示后端原文，不渲染空下拉', async () => {
@@ -397,11 +395,11 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
 
     // 两条读命令都可能失败：这里只关心「清单那一侧」的原文与重试。
     expect(await screen.findByText(MANAGER_DOWN)).toBeVisible();
-    expect(screen.queryByRole('list', { name: '可选的 CLI' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '以队长身份开会话' })).toBeDisabled();
+    expect(screen.queryByRole('list', { name: 'Launchable CLIs' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start session as lead' })).toBeDisabled();
 
     // 首次拉取就失败时也必须能重试（否则用户只能重开面板）。
-    fireEvent.click(screen.getByRole('button', { name: '重新检查' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Re-check' }));
     expect(await screen.findByRole('button', { name: /Claude Code/ })).toBeEnabled();
     expect(screen.queryByText(MANAGER_DOWN)).not.toBeInTheDocument();
   });
@@ -414,12 +412,12 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     await waitForPanelReady();
     await waitForConfigForm();
 
-    const startButton = screen.getByRole('button', { name: '以队长身份开会话' });
+    const startButton = screen.getByRole('button', { name: 'Start session as lead' });
     expect(startButton).toBeDisabled();
 
     // 理由必须是**可见文字**：禁用的按钮不可聚焦，`title` 在触屏 / 键盘上拿不到。
     // 项目是团队执行环境的归属（v16 按 `projectId` 查表），所以这句话必须点名项目。
-    expect(screen.getByText(/没有活动项目（先选择一个项目）：.*项目/)).toBeVisible();
+    expect(screen.getByText(/No active project \(select one first\):.*project/)).toBeVisible();
     expect(startButton).not.toHaveAttribute('title');
 
     // 零请求：把必败的请求发出去只会多一条错误信息（而且后端拒绝点在建队之后会留孤儿队）。
@@ -463,8 +461,8 @@ describe('TeamLaunchPanel — 团队配置（team_options）', () => {
 
     const limit = await waitForConfigForm();
     expect(limit).toHaveValue(7);
-    expect(screen.getByRole('radio', { name: /只读/ })).toBeChecked();
-    expect(screen.getByRole('radio', { name: /逐个交互批准/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /Read-only/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /Interactive approval one by one/ })).toBeChecked();
     // 池子按 `defaults.allowedAgentIds` 全选（默认全选可启动项）。
     expect(screen.getByRole('checkbox', { name: 'Claude Code' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Codex' })).toBeChecked();
@@ -491,7 +489,7 @@ describe('TeamLaunchPanel — 团队配置（team_options）', () => {
 
     // 成员池只给「不可用」这个事实（徽标可见）；理由统一收在队长选择区的折叠行里，
     // 不在这里重复（用户裁决：错误不占页面）。
-    expect(screen.getByText('不可用')).toBeVisible();
+    expect(screen.getByText('Unavailable')).toBeVisible();
     expect(screen.queryByText(PI_REFUSAL)).not.toBeInTheDocument();
     expect(piBox).not.toHaveAttribute('aria-describedby');
   });
@@ -517,9 +515,9 @@ describe('TeamLaunchPanel — 团队配置（team_options）', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Claude Code' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Codex' }));
 
-    const cta = screen.getByRole('button', { name: '以队长身份开会话' });
+    const cta = screen.getByRole('button', { name: 'Start session as lead' });
     expect(cta).toBeDisabled();
-    expect(screen.getByText(/至少勾选一个成员/)).toBeVisible();
+    expect(screen.getByText(/Select at least one member/)).toBeVisible();
 
     fireEvent.click(cta);
     expect(startCalls()).toHaveLength(0);
@@ -544,7 +542,7 @@ describe('TeamLaunchPanel — 团队配置（team_options）', () => {
     await waitForConfigForm();
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Codex' }));
-    fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start session as lead' }));
 
     await waitFor(() => expect(startCalls()).toHaveLength(1));
 
@@ -565,10 +563,10 @@ describe('TeamLaunchPanel — 团队配置（team_options）', () => {
 
     for (const invalid of ['0', '9']) {
       fireEvent.change(limit, { target: { value: invalid } });
-      expect(await screen.findByText(/上限必须在 1\.\.8 之间/)).toBeVisible();
+      expect(await screen.findByText(/limit must be between 1\.\.8/)).toBeVisible();
       expect(limit).toHaveAttribute('aria-invalid', 'true');
 
-      const cta = screen.getByRole('button', { name: '以队长身份开会话' });
+      const cta = screen.getByRole('button', { name: 'Start session as lead' });
       expect(cta).toBeDisabled();
       fireEvent.click(cta);
     }
@@ -577,8 +575,8 @@ describe('TeamLaunchPanel — 团队配置（team_options）', () => {
 
     // 改回合法值 ⇒ 错误消失、按钮恢复（错误不是「一次粘住」）。
     fireEvent.change(limit, { target: { value: '3' } });
-    expect(screen.queryByText(/上限必须在 1\.\.8 之间/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '以队长身份开会话' })).toBeEnabled();
+    expect(screen.queryByText(/limit must be between 1\.\.8/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start session as lead' })).toBeEnabled();
   });
 
   it('选 bypass：主按钮上方出现一行可见的风险提示', async () => {
@@ -588,16 +586,18 @@ describe('TeamLaunchPanel — 团队配置（team_options）', () => {
     await waitForPanelReady();
     await waitForConfigForm();
 
-    expect(screen.queryByText(/成员写盘前不会有人确认/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/nobody confirms before members write to disk/),
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('radio', { name: /旁路/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /Bypass/ }));
 
     const warning = screen.getByRole('note');
     expect(warning).toBeVisible();
-    expect(warning).toHaveTextContent(/成员写盘前不会有人确认/);
+    expect(warning).toHaveTextContent(/nobody confirms before members write to disk/);
 
     // 风险提示只是呈现；选择本身要真的进载荷。
-    fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start session as lead' }));
     await waitFor(() => expect(startCalls()).toHaveLength(1));
     expect(lastStartPayload().config).toEqual({ defaultApprovalPolicy: 'bypass' });
   });
@@ -624,20 +624,20 @@ describe('TeamLaunchPanel — 团队配置（team_options）', () => {
 
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(MANAGER_DOWN);
-    expect(screen.getByText(/拿不到团队配置的默认值/)).toBeVisible();
+    expect(screen.getByText(/The team default values are unavailable/)).toBeVisible();
 
-    const cta = screen.getByRole('button', { name: '以队长身份开会话' });
+    const cta = screen.getByRole('button', { name: 'Start session as lead' });
     expect(cta).toBeDisabled();
     fireEvent.click(cta);
     expect(startCalls()).toHaveLength(0);
 
     // 重试：缺省值到手后表单才出现，主按钮才可能可用。
     optionsFail = false;
-    fireEvent.click(screen.getByRole('button', { name: '重新读取团队配置' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reload team defaults' }));
 
-    expect(await screen.findByRole('spinbutton', { name: /成员上限/ })).toHaveValue(4);
+    expect(await screen.findByRole('spinbutton', { name: /Member limit/ })).toHaveValue(4);
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: '以队长身份开会话' })).toBeEnabled(),
+      expect(screen.getByRole('button', { name: 'Start session as lead' })).toBeEnabled(),
     );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });

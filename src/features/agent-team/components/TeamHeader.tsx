@@ -130,8 +130,8 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
           <button
             type="button"
             onClick={onBack}
-            aria-label="返回列表"
-            title="返回列表"
+            aria-label="Back to list"
+            title="Back to list"
             className="grid size-5 shrink-0 place-items-center rounded text-text-muted hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
             <ArrowLeft size={13} aria-hidden="true" />
@@ -141,7 +141,7 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
               className="min-w-0 flex-1 truncate text-ui font-semibold text-text-primary"
               // 双击改名（菜单里的「改名」仍是主入口：双击对键盘 / 读屏用户不存在）
               onDoubleClick={handleStartRename}
-              title="双击改名"
+              title="Double-click to rename"
             >
               {teamName}
             </span>
@@ -170,12 +170,12 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
         </div>
 
         <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-micro text-text-muted">
-          <span>{`${memberCount} 成员`}</span>
+          <span>{`${memberCount} members`}</span>
           {awaiting > 0 ? (
             <>
               <span aria-hidden="true">·</span>
               <span data-awaiting={awaiting} className="font-semibold text-accent-yellow">
-                {`${awaiting} 待批`}
+                {`${awaiting} awaiting approval`}
               </span>
             </>
           ) : null}
@@ -187,7 +187,7 @@ const TeamHeader: React.FC<TeamHeaderProps> = React.memo(
             <>
               <span aria-hidden="true">·</span>
               {/* 这句话不能只进 title：它解释「为什么这里什么都不能做」 */}
-              <span>只读快照（不随重启恢复）</span>
+              <span>Read-only snapshot (not restored after restart)</span>
             </>
           ) : null}
         </div>

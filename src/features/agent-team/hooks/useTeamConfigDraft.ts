@@ -128,10 +128,10 @@ function validateMaxMembers(raw: string): string | null {
   const text = raw.trim();
   const parsed = /^\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isInteger(parsed)) {
-    return `上限要填整数（${MEMBER_LIMIT_MIN}..${MEMBER_LIMIT_MAX}）。`;
+    return `The limit must be a whole number (${MEMBER_LIMIT_MIN}..${MEMBER_LIMIT_MAX}).`;
   }
   if (parsed < MEMBER_LIMIT_MIN || parsed > MEMBER_LIMIT_MAX) {
-    return `上限必须在 ${MEMBER_LIMIT_MIN}..${MEMBER_LIMIT_MAX} 之间：当前填的是 ${parsed}。`;
+    return `The limit must be between ${MEMBER_LIMIT_MIN}..${MEMBER_LIMIT_MAX}; currently ${parsed}.`;
   }
   return null;
 }

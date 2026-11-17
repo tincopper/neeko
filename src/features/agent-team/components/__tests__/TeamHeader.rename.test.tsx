@@ -43,8 +43,10 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof TeamHeader>
  * `await`：编辑态在菜单**卸载之后**才开（菜单的焦点陷阱会把输入框的焦点抢走 → blur → 关掉）。
  */
 async function startEditing(): Promise<HTMLInputElement> {
-  fireEvent.pointerDown(screen.getByRole('button', { name: `团队操作：${SNAPSHOT.team.name}` }));
-  fireEvent.click(screen.getByRole('menuitem', { name: '改名' }));
+  fireEvent.pointerDown(
+    screen.getByRole('button', { name: `Team actions: ${SNAPSHOT.team.name}` }),
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
   return (await screen.findByRole('textbox')) as HTMLInputElement;
 }
 
@@ -105,7 +107,9 @@ describe('TeamHeader — 行内改名', () => {
 
   it('宿主没注入回调 ⇒ 菜单里没有「改名」（而不是一个点了没反应的项）', () => {
     renderHeader({ onRenameTeam: undefined });
-    fireEvent.pointerDown(screen.getByRole('button', { name: `团队操作：${SNAPSHOT.team.name}` }));
-    expect(screen.queryByRole('menuitem', { name: '改名' })).not.toBeInTheDocument();
+    fireEvent.pointerDown(
+      screen.getByRole('button', { name: `Team actions: ${SNAPSHOT.team.name}` }),
+    );
+    expect(screen.queryByRole('menuitem', { name: 'Rename' })).not.toBeInTheDocument();
   });
 });

@@ -51,7 +51,7 @@ const RoleLibraryBlock: React.FC<RoleLibraryBlockProps> = React.memo(
           ) : (
             <ChevronRight size={13} aria-hidden="true" />
           )}
-          角色库
+          Role library
           {count > 0 ? (
             <span className="rounded-full bg-bg-tertiary px-1 text-micro font-normal text-text-muted">
               {count}
@@ -77,9 +77,9 @@ export const TeamRootRow: React.FC<{ workspaceRoot: string | null }> = React.mem
   ({ workspaceRoot }) => (
     <div className="flex items-center gap-1.5 rounded-md border border-border bg-bg-primary px-2 py-1.5">
       <FolderOpen size={13} aria-hidden="true" className="shrink-0 text-text-muted" />
-      <span className="shrink-0 text-micro text-text-muted">团队根</span>
+      <span className="shrink-0 text-micro text-text-muted">Team root</span>
       <span className="min-w-0 flex-1 truncate text-right font-mono text-micro text-text-secondary">
-        {workspaceRoot ?? '没有活动项目'}
+        {workspaceRoot ?? 'No active project'}
       </span>
     </div>
   ),

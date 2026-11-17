@@ -39,15 +39,15 @@ export interface TeamPrompt {
 /** 整队关闭的确认文案（`member_id` 缺省的语义）。 */
 export function describeTeamClose(teamName: string): TeamPrompt {
   return {
-    title: `关闭团队「${teamName}」？`,
+    title: `Close team "${teamName}"?`,
     lines: [
-      '会关掉全部成员进程（不含队长）：`graceful` 本期未兑现 —— PTY 没有可发的关机协议，这次是直接关进程（请求会记进团队审计）。',
-      '成员手上的在飞任务回到 `pending`，板上不会留下半途的「进行中」。',
-      '队长自己的终端**不会**被这次关闭关掉（它就是正在跑这个面板的会话），需要你自己关那个 tab。',
-      'worktree 一个都不会删（保留供人工检查）。',
-      '有成员关不掉时，团队会停在 `closing` 而不是假装关干净了 —— 那时可以重试关闭。',
+      'Kills every member process (not the lead): `graceful` is not implemented this cycle — PTY has no shutdown protocol to send, so this kills the processes directly (the request is recorded in the team audit).',
+      'In-flight tasks return to `pending`; the board keeps no half-way "in progress" rows.',
+      "The lead's own terminal is **not** killed by this close (it is the session running this panel) — close that tab yourself.",
+      'No worktrees are deleted (kept for manual inspection).',
+      'If some members cannot be killed, the team stays in `closing` instead of pretending it finished — you can retry closing then.',
     ],
-    confirmLabel: '确认关闭',
+    confirmLabel: 'Close team',
   };
 }
 
@@ -74,13 +74,13 @@ export function describeTeamClose(teamName: string): TeamPrompt {
  */
 export function describeTeamDelete(teamName: string): TeamPrompt {
   return {
-    title: `删除团队「${teamName}」？`,
+    title: `Delete team "${teamName}"?`,
     lines: [
-      '这个队已经关闭（成员进程已退出），删除只清理记录 —— 所以它没有「取消」可点。',
-      '团队成员、任务板与审计记录会一起删掉（级联删除），删完就查不回来了。',
-      '队长与成员的终端 tab 不会跟着关：它们已经不持有进程，tab 关不关由你自己决定。',
-      'worktree 一个都不会删（文件仍在磁盘上，与关闭时一样）。',
+      'This team is already closed (member processes exited); deleting only clears the records — that is why there is no "Cancel" to click.',
+      'Team members, the task board and audit records are deleted together (cascade) — nothing is recoverable afterwards.',
+      'Terminal tabs of the lead and members stay open: they no longer own processes — whether to close the tabs is up to you.',
+      'No worktrees are deleted (files stay on disk, same as closing).',
     ],
-    confirmLabel: '确认删除',
+    confirmLabel: 'Delete team',
   };
 }

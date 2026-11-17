@@ -63,9 +63,9 @@ const TeamTaskSection: React.FC<TeamTaskSectionProps> = React.memo(
     const boardSummary = useMemo(() => {
       const nonEmpty = buildTaskBoard(tasks).columns.filter((column) => column.tasks.length > 0);
       return [
-        `${tasks.length} 个任务`,
+        `${tasks.length} tasks`,
         ...nonEmpty.map((column) => `${column.column.label} ${column.tasks.length}`),
-        ...(tasksTruncated ? [`只显示前 ${MAX_BOARD_TASKS} 条`] : []),
+        ...(tasksTruncated ? [`Showing first ${MAX_BOARD_TASKS}`] : []),
       ].join(' · ');
     }, [tasks, tasksTruncated]);
 
@@ -74,14 +74,14 @@ const TeamTaskSection: React.FC<TeamTaskSectionProps> = React.memo(
     return (
       <>
         <div className="flex items-center gap-1 px-2 pt-1.5 pb-1">
-          <span className="text-meta font-semibold text-text-secondary">任务</span>
+          <span className="text-meta font-semibold text-text-secondary">Tasks</span>
           <span
             data-task-count={tasks.length}
             className="rounded-full bg-bg-tertiary px-1 text-micro text-text-muted"
           >
             {tasks.length}
           </span>
-          <span className="sr-only">任务区视图</span>
+          <span className="sr-only">Task section views</span>
           <div className="ml-auto flex items-center gap-0.5">
             {/*
               两个读法是**同一份快照的两个画法**（不是两个视图），所以它们做成一对
@@ -89,8 +89,8 @@ const TeamTaskSection: React.FC<TeamTaskSectionProps> = React.memo(
             */}
             {(
               [
-                ['board', '看板', Columns3],
-                ['flow', '分配图', GitBranch],
+                ['board', 'Board', Columns3],
+                ['flow', 'Assignment graph', GitBranch],
               ] as const
             ).map(([value, label, Icon]) => (
               <button
@@ -115,8 +115,8 @@ const TeamTaskSection: React.FC<TeamTaskSectionProps> = React.memo(
               <button
                 type="button"
                 onClick={() => onOpenBoard(taskView)}
-                aria-label="在中间区域打开任务视图"
-                title="在中间区域打开（完整宽度）"
+                aria-label="Open the task view in the center area"
+                title="Open in center (full width)"
                 className={cn(
                   'grid size-5 place-items-center rounded text-text-muted',
                   'hover:bg-bg-hover hover:text-text-primary',
@@ -131,8 +131,8 @@ const TeamTaskSection: React.FC<TeamTaskSectionProps> = React.memo(
                 type="button"
                 onClick={handleToggleBoard}
                 aria-expanded={!boardCollapsed}
-                aria-label={boardCollapsed ? '展开任务板' : '收起任务板'}
-                title={boardCollapsed ? '展开任务板' : '收起任务板'}
+                aria-label={boardCollapsed ? 'Expand board' : 'Collapse board'}
+                title={boardCollapsed ? 'Expand board' : 'Collapse board'}
                 className={cn(
                   'grid size-5 place-items-center rounded text-text-muted',
                   'hover:bg-bg-hover hover:text-text-primary',

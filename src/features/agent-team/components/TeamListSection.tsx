@@ -84,22 +84,22 @@ const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
       // （只在悬停/拖拽时点亮），`gap-px` 露出的又是同色底 —— 去掉这条线，两层之间就没有
       // 任何可见分隔，用户看不出这里有可拖的边界。
       <section
-        aria-label="已有团队"
+        aria-label="Existing teams"
         className="flex min-h-0 flex-1 flex-col gap-1 border-t border-border p-3"
       >
         <header className="flex shrink-0 items-center justify-between px-1">
-          <h3 className="text-meta font-semibold text-text-secondary">已有团队</h3>
+          <h3 className="text-meta font-semibold text-text-secondary">Existing teams</h3>
           <div className="flex items-center gap-1.5">
             {list ? (
-              <span className="text-micro text-text-muted">{`${list.teams.length} 个`}</span>
+              <span className="text-micro text-text-muted">{`${list.teams.length} total`}</span>
             ) : null}
             <button
               type="button"
               onClick={retry}
-              aria-label="重新拉取团队列表"
+              aria-label="Reload team list"
               className="shrink-0 rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
             >
-              刷新
+              Refresh
             </button>
           </div>
         </header>
@@ -117,13 +117,15 @@ const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
         >
           {list === null ? (
             loading ? (
-              <p className="px-1 text-meta text-text-muted">正在读取团队列表…</p>
+              <p className="px-1 text-meta text-text-muted">Loading team list…</p>
             ) : // 失败且从未成功：错误已在上方，这里只说明后果。
             null
           ) : list.teams.length === 0 ? (
-            <p className="px-1 py-1 text-meta text-text-muted">还没有团队，先以队长身份开一个</p>
+            <p className="px-1 py-1 text-meta text-text-muted">
+              No teams yet — start one as the lead
+            </p>
           ) : (
-            <ul aria-label="团队列表" className="flex flex-col gap-1">
+            <ul aria-label="Team list" className="flex flex-col gap-1">
               {list.teams.map((team) => (
                 <TeamListRow
                   key={team.teamId}
@@ -139,7 +141,7 @@ const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
           )}
 
           {list?.truncated ? (
-            <p className="shrink-0 px-1 text-micro text-text-muted">只显示最近 50 个团队</p>
+            <p className="shrink-0 px-1 text-micro text-text-muted">Showing the latest 50 teams</p>
           ) : null}
         </div>
       </section>

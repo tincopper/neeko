@@ -38,9 +38,15 @@ export interface MemberChip {
 const CHANNEL: Record<WorkerChannel, { text: string; title: string }> = {
   // `CLI · PTY` 是原型上的写法：成员是 Neeko 起的 PTY 进程，唯一能把字送进它回合的是
   // stdin（MCP over HTTP 是客户端发起的，我们**没有**反向推送通道 —— design §4.4）。
-  pty: { text: 'CLI · PTY', title: '通道 pty：写 PTY stdin（CLI 成员的唯一通道）' },
-  mcp: { text: 'MCP', title: '通道 mcp：经由 MCP 工具面派活' },
-  none: { text: '无通道', title: '通道 none：只能一次性派活，无法继续对话' },
+  pty: {
+    text: 'CLI · PTY',
+    title: 'Channel pty: writes to PTY stdin (the only channel for CLI members)',
+  },
+  mcp: { text: 'MCP', title: 'Channel mcp: tasks are dispatched through the MCP tool surface' },
+  none: {
+    text: 'No channel',
+    title: 'Channel none: one-shot dispatch only; the conversation cannot continue',
+  },
 };
 
 /**
@@ -50,12 +56,21 @@ const CHANNEL: Record<WorkerChannel, { text: string; title: string }> = {
  * 缩成 `C` 之后，用户在花名册上看到的与 A 档没有区别（红线 14 的 UI 侧）。
  */
 const TIER: Record<AdmissionTier, { text: string; tone: MemberChipTone; title: string }> = {
-  a: { text: 'A 档', tone: 'default', title: 'A 档：有 hook + MCP，完成 / 结果 / 卡住 全可见' },
-  b: { text: 'B 档', tone: 'default', title: 'B 档：只有 hook，结果靠 sentinel 补，卡住仍可见' },
+  a: {
+    text: 'Tier A',
+    tone: 'default',
+    title: 'Tier A: hooks + MCP — completion, results and stalls are all visible',
+  },
+  b: {
+    text: 'Tier B',
+    tone: 'default',
+    title: 'Tier B: hooks only — results are backfilled by the sentinel, stalls still visible',
+  },
   c: {
-    text: 'C 档 · sentinel only',
+    text: 'Tier C · sentinel only',
     tone: 'warn',
-    title: 'C 档 · sentinel only：完成能报，但卡住永远不可知 —— 只能写「可能等待输入」',
+    title:
+      'Tier C · sentinel only: completion is reported, but a stall is never visible — it can only say "possibly waiting for input"',
   },
 };
 
@@ -64,7 +79,7 @@ const TIER: Record<AdmissionTier, { text: string; tone: MemberChipTone; title: s
  * 两处各写一份措辞就是给同一个字段造了第二个说明）。
  */
 export function personaChipTitle(persona: string): string {
-  return `角色 persona：${persona}（spawn 时注入的人设，与权限无关）`;
+  return `Persona: ${persona} (the character injected at spawn; unrelated to permissions)`;
 }
 
 /**
@@ -76,7 +91,7 @@ export function memberChips(
   member: Pick<MemberStatusView, 'agentId' | 'persona' | 'channel' | 'workspace' | 'tier'>,
 ): MemberChip[] {
   return [
-    { key: 'agent', text: member.agentId, tone: 'default', title: `CLI：${member.agentId}` },
+    { key: 'agent', text: member.agentId, tone: 'default', title: `CLI: ${member.agentId}` },
     // persona 只有名字（正文在成员的启动 argv 里，面板不需要）：`null` = 无人设，不渲染。
     member.persona === null
       ? null
@@ -87,7 +102,12 @@ export function memberChips(
           title: personaChipTitle(member.persona),
         },
     { key: 'channel', ...CHANNEL[member.channel], tone: 'outline' },
-    { key: 'workspace', text: workspaceLabel(member.workspace), tone: 'default', title: '工作区' },
+    {
+      key: 'workspace',
+      text: workspaceLabel(member.workspace),
+      tone: 'default',
+      title: 'Workspace',
+    },
     { key: 'tier', ...TIER[member.tier] },
   ].filter((chip): chip is MemberChip => chip !== null);
 }

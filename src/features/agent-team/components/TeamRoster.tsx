@@ -43,12 +43,12 @@ const TeamRoster: React.FC<TeamRosterProps> = React.memo(
     const hasSentinelOnly = members.some((member) => member.tier === 'c');
 
     return (
-      <section aria-label="成员花名册" className="flex flex-col gap-1 p-2">
+      <section aria-label="Member roster" className="flex flex-col gap-1 p-2">
         <header className="flex items-center px-1 pb-1">
-          <h3 className="text-meta font-semibold text-text-secondary">成员</h3>
+          <h3 className="text-meta font-semibold text-text-secondary">Members</h3>
         </header>
         {members.length === 0 ? (
-          <p className="px-1 py-2 text-meta text-text-muted">还没有成员</p>
+          <p className="px-1 py-2 text-meta text-text-muted">No members yet</p>
         ) : (
           <ul className="flex flex-col gap-[3px]">
             {members.map((member) => (
@@ -69,7 +69,8 @@ const TeamRoster: React.FC<TeamRosterProps> = React.memo(
             role="note"
             className="rounded-md border border-accent-yellow bg-accent-yellow/10 px-2 py-1 text-micro text-accent-yellow"
           >
-            C 档成员（sentinel only）：完成能报，但卡住永远不可知 → 只会写「可能等待输入」
+            Tier C members (sentinel only): completion is reported, but a stall is never visible →
+            the badge only says &quot;possibly waiting for input&quot;
           </p>
         ) : null}
       </section>

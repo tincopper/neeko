@@ -16,8 +16,10 @@ interface TeamListPageHeaderProps {
 const TeamListPageHeader: React.FC<TeamListPageHeaderProps> = React.memo(({ onCreate }) => (
   <header className="flex items-center gap-2 border-b border-border px-3 py-2.5">
     <div className="min-w-0 flex-1">
-      <div className="text-ui font-semibold text-text-primary">团队</div>
-      <div className="text-micro text-text-muted">多 Agent 协作：队长派活，成员认领</div>
+      <div className="text-ui font-semibold text-text-primary">Teams</div>
+      <div className="text-micro text-text-muted">
+        Multi-agent collaboration: the lead dispatches, members claim
+      </div>
     </div>
     <button
       type="button"
@@ -29,7 +31,7 @@ const TeamListPageHeader: React.FC<TeamListPageHeaderProps> = React.memo(({ onCr
       )}
     >
       <Plus size={12} aria-hidden="true" />
-      新建团队
+      New team
     </button>
   </header>
 ));

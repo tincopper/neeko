@@ -53,11 +53,11 @@ export const TASK_COLUMN_ORDER: readonly TaskColumnId[] = [
 ];
 
 const COLUMN_LABEL: Record<TaskColumnId, string> = {
-  pending: '待认领',
-  in_progress: '进行中',
-  awaiting_approval: '待批准',
-  done: '已完成',
-  frozen: '阻塞',
+  pending: 'Unclaimed',
+  in_progress: 'In progress',
+  awaiting_approval: 'Awaiting approval',
+  done: 'Done',
+  frozen: 'Blocked',
 };
 
 /** 五列（顺序来自 [`TASK_COLUMN_ORDER`]；每列的 `states` 由映射表反查，不另写一份）。 */
@@ -113,14 +113,14 @@ export function buildTaskBoard(tasks: readonly TaskCard[]): TaskBoard {
 
 /** 任务状态的展示文案（卡片上的徽标）。 */
 const TASK_STATE_TEXT: Record<TeamTaskState, string> = {
-  pending: '待认领',
-  claimed: '已认领',
-  in_progress: '进行中',
-  awaiting_approval: '待批准',
-  done: '已完成',
-  failed: '失败',
-  blocked: '冻结',
-  proposed: '待接受',
+  pending: 'Unclaimed',
+  claimed: 'Claimed',
+  in_progress: 'In progress',
+  awaiting_approval: 'Awaiting approval',
+  done: 'Done',
+  failed: 'Failed',
+  blocked: 'Frozen',
+  proposed: 'Pending acceptance',
 };
 
 export function taskStateLabel(state: TeamTaskState): string {

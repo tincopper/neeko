@@ -44,12 +44,12 @@ describe('TeamBoardCenterView — 分配图缩放接线', () => {
 
   it('+/-/重置 按钮仍以 0.25 步长工作（与 wheel 的 0.1 手感各自独立）', () => {
     renderFlowTab();
-    fireEvent.click(screen.getByRole('button', { name: '放大' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
     expect(screen.getByText('125%')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '缩小' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }));
     expect(screen.getByText('100%')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '放大' }));
-    fireEvent.click(screen.getByRole('button', { name: '重置缩放' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset zoom' }));
     expect(screen.getByText('100%')).toBeInTheDocument();
   });
 });

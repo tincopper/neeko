@@ -101,11 +101,11 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
           </span>
           {snap ? (
             <span className="text-micro text-text-muted">
-              {snap.members.length} 成员 · {snap.tasks.length} 任务
+              {snap.members.length} members · {snap.tasks.length} tasks
             </span>
           ) : null}
           <span className="ml-auto" />
-          <div className="flex items-center gap-1" role="group" aria-label="任务视图">
+          <div className="flex items-center gap-1" role="group" aria-label="Task view">
             <button
               type="button"
               aria-pressed={view === 'board'}
@@ -119,7 +119,7 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
               )}
             >
               <Columns3 size={12} aria-hidden="true" />
-              看板
+              Board
             </button>
             <button
               type="button"
@@ -134,14 +134,14 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
               )}
             >
               <GitBranch size={12} aria-hidden="true" />
-              分配图
+              Assignment graph
             </button>
           </div>
           {active ? (
             <button
               type="button"
               onClick={() => refresh()}
-              aria-label="刷新团队快照"
+              aria-label="Reload team snapshot"
               className="grid size-7 place-items-center rounded-md text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
             >
               <RefreshCw size={13} aria-hidden="true" />
@@ -152,13 +152,14 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
         {!active ? (
           <div className="flex flex-1 items-center justify-center p-6">
             <p className="text-meta text-text-muted">
-              该团队当前没有在面板中打开 —— 挂载时会自动切过去；若已关闭，请先在面板里重开。
+              This team is not open in the panel — it switches over automatically on mount; if it is
+              closed, reopen it in the panel first.
             </p>
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-auto p-3">
             {loading && !snap ? (
-              <p className="text-meta text-text-muted">正在读取团队快照…</p>
+              <p className="text-meta text-text-muted">Loading team snapshot…</p>
             ) : error ? (
               <p role="alert" className="text-meta text-accent-red">
                 {error}
@@ -180,10 +181,14 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
               </div>
             ) : (
               <div className="flow-zoom-wrap">
-                <div className="mb-1 flex items-center gap-1" role="group" aria-label="分配图缩放">
+                <div
+                  className="mb-1 flex items-center gap-1"
+                  role="group"
+                  aria-label="Assignment graph zoom"
+                >
                   <button
                     type="button"
-                    aria-label="缩小"
+                    aria-label="Zoom out"
                     className="grid size-6 place-items-center rounded-md text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     onClick={() => setZoom((z) => clampZoom(z - ZOOM_BUTTON_STEP))}
                   >
@@ -194,7 +199,7 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
                   </span>
                   <button
                     type="button"
-                    aria-label="放大"
+                    aria-label="Zoom in"
                     className="grid size-6 place-items-center rounded-md text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     onClick={() => setZoom((z) => clampZoom(z + ZOOM_BUTTON_STEP))}
                   >
@@ -202,7 +207,7 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
                   </button>
                   <button
                     type="button"
-                    aria-label="重置缩放"
+                    aria-label="Reset zoom"
                     className="grid size-6 place-items-center rounded-md text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     onClick={() => setZoom(1)}
                   >

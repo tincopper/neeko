@@ -26,19 +26,19 @@ function report(overrides: Partial<TeamResumeReport> = {}): TeamResumeReport {
 
 describe('describeResumeReport', () => {
   it('四个桶全空也要说出「恢复 0 个成员」（省略它就是一句空串）', () => {
-    expect(describeResumeReport(report())).toBe('恢复 0 个成员');
+    expect(describeResumeReport(report())).toBe('Resumed 0 members');
   });
 
   it('只恢复了成员：只报恢复了几个（空的桶不出现）', () => {
     expect(describeResumeReport(report({ resumed: ['lead@tm_1', 'w1@tm_1'] }))).toBe(
-      '恢复 2 个成员',
+      'Resumed 2 members',
     );
   });
 
   it('已有进程的成员单独成段（幂等不是失败，用户不该以为坏了）', () => {
     expect(
       describeResumeReport(report({ resumed: ['lead@tm_1'], skippedAlreadyLive: ['w1@tm_1'] })),
-    ).toBe('恢复 1 个成员；1 个已有进程');
+    ).toBe('Resumed 1 members; 1 already running');
   });
 
   it('两个 cold 理由各自成段并带**理由文字**（只报数量等于把可行动的信息丢掉）', () => {
@@ -52,7 +52,9 @@ describe('describeResumeReport', () => {
           ],
         }),
       ),
-    ).toBe('恢复 0 个成员；2 个只能新开（没有会话记录）；1 个只能新开（该 CLI 不支持续接）');
+    ).toBe(
+      'Resumed 0 members; 2 started fresh (no session record); 1 started fresh (this CLI cannot resume)',
+    );
   });
 
   it('failed 必须点名成员 id（只说「1 个失败」时用户得自己去找是谁）', () => {
@@ -60,7 +62,7 @@ describe('describeResumeReport', () => {
       describeResumeReport(
         report({ failed: [{ memberId: 'w9@tm_1', error: 'pty did not start' }] }),
       ),
-    ).toBe('恢复 0 个成员；1 个失败（w9@tm_1）');
+    ).toBe('Resumed 0 members; 1 failed (w9@tm_1)');
   });
 
   it('顺序固定：resumed → skipped → cold → failed（同一份报告在任何地方都是同一句话）', () => {
@@ -81,8 +83,8 @@ describe('describeResumeReport', () => {
     );
 
     expect(text).toBe(
-      '恢复 1 个成员；1 个已有进程；1 个只能新开（没有会话记录）；' +
-        '1 个只能新开（该 CLI 不支持续接）；2 个失败（w8@tm_1、w9@tm_1）',
+      'Resumed 1 members; 1 already running; 1 started fresh (no session record); ' +
+        '1 started fresh (this CLI cannot resume); 2 failed (w8@tm_1, w9@tm_1)',
     );
   });
 

@@ -44,13 +44,13 @@ describe('memberBadge — 六态徽标', () => {
     const unverified = memberBadge({ state: 'idle', verification: 'unverified' });
     const verified = memberBadge({ state: 'idle', verification: 'verified' });
 
-    expect(unverified.text).toBe('空闲 ⚠ 未声明');
-    expect(verified.text).toBe('空闲 ✓ 已声明');
+    expect(unverified.text).toBe('Idle ⚠ unverified');
+    expect(verified.text).toBe('Idle ✓ verified');
     expect(unverified.text).not.toBe(verified.text);
     expect(unverified.tone).not.toBe(verified.tone);
     expect(unverified.ariaLabel).not.toBe(verified.ariaLabel);
     // 未声明那句必须解释「为什么」，否则 ⚠ 只是个装饰。
-    expect(unverified.ariaLabel).toContain('任务仍在进行中');
+    expect(unverified.ariaLabel).toContain('the task is still in progress');
   });
 
   it('取证只改变「空闲」的文案：其他状态两种取证同形', () => {
@@ -63,14 +63,14 @@ describe('memberBadge — 六态徽标', () => {
 
   it('L3 的文案不写「正在工作」（诚实优先于好看）', () => {
     const badge = memberBadge({ state: 'stalled', verification: 'unverified' });
-    expect(badge.text).toBe('可能等待输入');
-    expect(badge.text).not.toContain('工作');
+    expect(badge.text).toBe('Possibly waiting for input');
+    expect(badge.text).not.toContain('working');
   });
 });
 
 describe('memberRoleLabel', () => {
   it('区分队长与成员', () => {
-    expect(memberRoleLabel('lead')).toBe('队长');
-    expect(memberRoleLabel('worker')).toBe('成员');
+    expect(memberRoleLabel('lead')).toBe('Lead');
+    expect(memberRoleLabel('worker')).toBe('Member');
   });
 });

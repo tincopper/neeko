@@ -34,20 +34,21 @@ export interface TeamStateBadge {
 
 const BADGE: Record<TeamState, TeamStateBadge> = {
   open: {
-    text: '运行中',
+    text: 'Running',
     // 与 `sealed` 的差别是**能不能恢复**，不只是颜色：`open` 的队重启后可以整体拉起来。
     tone: 'open',
-    ariaLabel: '运行中：可以派活，重启后也能整体恢复',
+    ariaLabel:
+      'Running: tasks can be dispatched and the team can be fully restored after a restart',
   },
   closing: {
-    text: '正在关闭',
+    text: 'Closing',
     tone: 'closing',
-    ariaLabel: '正在关闭：还有成员没关掉，可以重试关闭',
+    ariaLabel: 'Closing: some members did not shut down; you can retry closing',
   },
   sealed: {
-    text: '已封存',
+    text: 'Sealed',
     tone: 'sealed',
-    ariaLabel: '已封存：只读快照，不会随重启恢复',
+    ariaLabel: 'Sealed: read-only snapshot, not restored after a restart',
   },
 };
 

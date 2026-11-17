@@ -46,7 +46,7 @@ describe('memberChips — 谁 / 在哪 / 能力边界', () => {
     ]);
     const row = memberChips(withPersona).find((item) => item.key === 'persona');
     expect(row?.text).toBe('研究员');
-    expect(row?.title).toContain('与权限无关');
+    expect(row?.title).toContain('unrelated to permissions');
     // 行内那枚 chip 的 title 必须是同一句话（`personaChipTitle` 是唯一来源）
     expect(personaChipTitle('研究员')).toBe(personaTitle('研究员'));
   });
@@ -63,7 +63,7 @@ describe('memberChips — 谁 / 在哪 / 能力边界', () => {
 
   it('mcp / none 各有自己的文案（三态不许合并）', () => {
     expect(chip({ ...base, channel: 'mcp' }, 'channel')?.text).toBe('MCP');
-    expect(chip({ ...base, channel: 'none' }, 'channel')?.text).toBe('无通道');
+    expect(chip({ ...base, channel: 'none' }, 'channel')?.text).toBe('No channel');
   });
 
   it('A / B 档不带 sentinel 字样，C 档**必须**带「sentinel only」且是警告色', () => {
@@ -71,15 +71,15 @@ describe('memberChips — 谁 / 在哪 / 能力边界', () => {
     const b = chip({ ...base, tier: 'b' }, 'tier');
     const c = chip({ ...base, tier: 'c' }, 'tier');
 
-    expect(a?.text).toBe('A 档');
-    expect(b?.text).toBe('B 档');
+    expect(a?.text).toBe('Tier A');
+    expect(b?.text).toBe('Tier B');
     expect(a?.text).not.toContain('sentinel');
     expect(b?.text).not.toContain('sentinel');
 
     // 红线 14 的 UI 侧：警告文字必须是**可见文案**的一部分，不能只进 title
     expect(c?.text).toContain('sentinel only');
     expect(c?.tone).toBe('warn');
-    expect(c?.title).toContain('卡住永远不可知');
+    expect(c?.title).toContain('a stall is never visible');
   });
 
   it('worktree 工作区只显示路径末段（窄面板塞不下绝对路径）', () => {
@@ -91,8 +91,8 @@ describe('memberChips — 谁 / 在哪 / 能力边界', () => {
   });
 
   it('只读工作区说「只读」，不说「shared」', () => {
-    expect(chip({ ...base, workspace: 'read_only' }, 'workspace')?.text).toBe('只读');
-    expect(chip(base, 'workspace')?.text).toBe('共享工作区');
+    expect(chip({ ...base, workspace: 'read_only' }, 'workspace')?.text).toBe('Read-only');
+    expect(chip(base, 'workspace')?.text).toBe('Shared workspace');
   });
 });
 
@@ -116,7 +116,7 @@ describe('memberRowMeta — 行内的最小元信息', () => {
   });
 
   it('只读工作区 ⇒ 「只读」（它是一条真的事实，不能被当成缺省值吃掉）', () => {
-    expect(memberRowMeta({ ...base, workspace: 'read_only' }).workspace).toBe('只读');
+    expect(memberRowMeta({ ...base, workspace: 'read_only' }).workspace).toBe('Read-only');
   });
 
   it('worktree ⇒ 只留路径末段（与 workspaceLabel 同源，不另写一份拆分）', () => {

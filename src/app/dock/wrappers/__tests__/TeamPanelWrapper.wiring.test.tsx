@@ -74,8 +74,8 @@ const SNAPSHOT = createTeamSnapshot({
 
 /** 花名册一行（按可访问名定位，不抓 DOM 结构）。 */
 function rowOf(name: string): HTMLElement {
-  return within(screen.getByRole('region', { name: '成员花名册' })).getByRole('group', {
-    name: `成员 ${name}`,
+  return within(screen.getByRole('region', { name: 'Member roster' })).getByRole('group', {
+    name: `Member ${name}`,
   });
 }
 
@@ -106,7 +106,9 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
   it('点成员的「打开终端」→ openExistingTerminalTab(激活项目, 成员 terminalId, 成员名)', () => {
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
+    fireEvent.click(
+      within(rowOf('frontend')).getByRole('button', { name: 'Open session: frontend' }),
+    );
 
     expect(openExistingTerminalTab).toHaveBeenCalledTimes(1);
     expect(openExistingTerminalTab).toHaveBeenCalledWith(
@@ -120,7 +122,7 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
   it('队长行走同一条接线（拿的是它自己的 terminalId，不是「队长特供」的另一条路）', () => {
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: '打开会话：lead' }));
+    fireEvent.click(within(rowOf('lead')).getByRole('button', { name: 'Open session: lead' }));
 
     expect(openExistingTerminalTab).toHaveBeenCalledWith(PROJECT_ID, 'term-lead', 'lead', 'pi');
   });
@@ -133,7 +135,9 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
     });
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
+    fireEvent.click(
+      within(rowOf('frontend')).getByRole('button', { name: 'Open session: frontend' }),
+    );
 
     expect(openExistingTerminalTab).toHaveBeenCalledWith(
       PROJECT_ID,
@@ -152,7 +156,9 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
     useProjectStore.setState({ activeProjectId: null, activeProject: null });
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
+    fireEvent.click(
+      within(rowOf('frontend')).getByRole('button', { name: 'Open session: frontend' }),
+    );
 
     expect(openExistingTerminalTab).toHaveBeenCalledWith(
       PROJECT_ID,
@@ -175,7 +181,9 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
     });
     render(<TeamPanelWrapper />);
 
-    fireEvent.click(within(rowOf('frontend')).getByRole('button', { name: '打开会话：frontend' }));
+    fireEvent.click(
+      within(rowOf('frontend')).getByRole('button', { name: 'Open session: frontend' }),
+    );
 
     expect(openExistingTerminalTab).toHaveBeenCalledWith(
       PROJECT_ID,
@@ -187,7 +195,7 @@ describe('TeamPanelWrapper — 成员终端接线', () => {
 
   it('无进程的成员在这里也不会被开（判据在花名册，不在这里重复判）', () => {
     render(<TeamPanelWrapper />);
-    const button = within(rowOf('backend')).getByRole('button', { name: '打开会话：backend' });
+    const button = within(rowOf('backend')).getByRole('button', { name: 'Open session: backend' });
 
     expect(button).toBeDisabled();
     fireEvent.click(button);
@@ -268,8 +276,8 @@ describe('TeamPanelWrapper — 改名同步 tab 标题', () => {
     render(<TeamPanelWrapper />);
 
     // 改名的第二入口在 `⋯` 菜单里（R1）；它走的仍是同一个 `handleStartRename`
-    fireEvent.pointerDown(await screen.findByRole('button', { name: '团队操作：refactor' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '改名' }));
+    fireEvent.pointerDown(await screen.findByRole('button', { name: 'Team actions: refactor' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
     // 编辑态在菜单卸载之后才开（焦点陷阱会抢走输入框焦点）
     const input = await screen.findByRole('textbox');
     fireEvent.change(input, { target: { value: '新队名' } });
@@ -317,8 +325,8 @@ describe('TeamPanelWrapper — 改名同步 tab 标题', () => {
     render(<TeamPanelWrapper />);
 
     // 返回列表（store 里那支 tm_1 仍是「当前队」，返回列表只是面板的局部导航态）。
-    fireEvent.click(await screen.findByRole('button', { name: '返回列表' }));
-    fireEvent.click(await screen.findByRole('button', { name: '重命名团队 另一个队' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Back to list' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename team 另一个队' }));
     const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: '新名字' } });
     fireEvent.keyDown(input, { key: 'Enter' });

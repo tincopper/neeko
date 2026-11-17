@@ -33,13 +33,13 @@ interface MemberDetailTasksProps {
 
 const MemberDetailTasks: React.FC<MemberDetailTasksProps> = React.memo(
   ({ tasks, truncated, now }) => (
-    <section aria-label="成员当前任务" className="flex flex-col gap-1">
+    <section aria-label="Member current tasks" className="flex flex-col gap-1">
       <header className="flex items-baseline justify-between">
-        <h4 className="text-meta font-semibold text-text-secondary">当前任务</h4>
-        <span className="text-micro text-text-muted">{tasks.length} 条</span>
+        <h4 className="text-meta font-semibold text-text-secondary">Current tasks</h4>
+        <span className="text-micro text-text-muted">{tasks.length} entries</span>
       </header>
       {tasks.length === 0 ? (
-        <p className="text-micro text-text-muted">手上没有任务（也没干完过）</p>
+        <p className="text-micro text-text-muted">No tasks in hand (none finished either)</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {tasks.map((task) => {
@@ -72,7 +72,7 @@ const MemberDetailTasks: React.FC<MemberDetailTasksProps> = React.memo(
                   )}
                   {task.reclaimCount > 0 ? (
                     <span className="whitespace-nowrap text-accent-yellow">
-                      被回收 {task.reclaimCount} 次
+                      Reclaimed {task.reclaimCount} times
                     </span>
                   ) : null}
                 </div>
@@ -83,7 +83,7 @@ const MemberDetailTasks: React.FC<MemberDetailTasksProps> = React.memo(
       )}
       {truncated ? (
         // 有界 + 说出来：不说就是「静默丢」（红线 4 的口径）。
-        <p className="text-micro text-accent-yellow">只显示前 {MAX_BOARD_TASKS} 条任务</p>
+        <p className="text-micro text-accent-yellow">Showing first {MAX_BOARD_TASKS} tasks</p>
       ) : null}
     </section>
   ),

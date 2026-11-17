@@ -46,7 +46,10 @@ describe('useTeamResume', () => {
     });
 
     expect(mockInvoke).toHaveBeenCalledWith('team_resume', { teamId: 'tm_1', memberId: null });
-    expect(onShowToast).toHaveBeenCalledWith('恢复 2 个成员；1 个只能新开（没有会话记录）', 'info');
+    expect(onShowToast).toHaveBeenCalledWith(
+      'Resumed 2 members; 1 started fresh (no session record)',
+      'info',
+    );
     expect(onSettled).toHaveBeenCalledTimes(1);
     expect(result.current.resumeError).toBeNull();
     expect(result.current.resuming).toBe(false);

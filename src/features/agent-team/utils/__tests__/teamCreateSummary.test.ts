@@ -28,12 +28,12 @@ const NAME_OF = (agentId: string): string =>
 describe('teamCreateSummary', () => {
   it('填了名字 ⇒ 名字在最前（主语先出现）', () => {
     expect(teamCreateSummary(values(), '求和小队', NAME_OF)).toBe(
-      '「求和小队」 · 1 名成员（Claude Code） · 共享工作区 · 队列审批',
+      '"求和小队" · 1 members (Claude Code) · Shared workspace · Approval queue',
     );
   });
 
   it('没填名字 ⇒ 整段不出现（默认的目录名由后端决定，摘要不替它猜）', () => {
-    expect(teamCreateSummary(values(), null, NAME_OF)).not.toContain('「');
+    expect(teamCreateSummary(values(), null, NAME_OF)).not.toContain('"');
   });
 
   it('多个成员：名字只出现一次，带角色的显示 `→角色`', () => {
@@ -46,24 +46,28 @@ describe('teamCreateSummary', () => {
       NAME_OF,
     );
 
-    expect(summary).toBe('2 名成员（Claude Code / Qoder→评审） · 共享工作区 · 队列审批');
+    expect(summary).toBe(
+      '2 members (Claude Code / Qoder→评审) · Shared workspace · Approval queue',
+    );
     // 逐个 push 的历史缺陷：Qoder 会在后面再出现一次
     expect(summary.match(/Qoder/g)).toHaveLength(1);
   });
 
   it('三个缺省值各自有自己的词（只读 / 交互审批 / 旁路审批）', () => {
-    expect(teamCreateSummary(values({ workspace: 'read_only' }), null, NAME_OF)).toContain('只读');
+    expect(teamCreateSummary(values({ workspace: 'read_only' }), null, NAME_OF)).toContain(
+      'Read-only',
+    );
     expect(teamCreateSummary(values({ approvalPolicy: 'interactive' }), null, NAME_OF)).toContain(
-      '交互审批',
+      'Interactive approval',
     );
     expect(teamCreateSummary(values({ approvalPolicy: 'bypass' }), null, NAME_OF)).toContain(
-      '旁路审批',
+      'Bypass approval',
     );
   });
 
   it('空勾选 ⇒ 成员段不出现（空池在后端是「不限制」，不是「0 名成员」）', () => {
     const summary = teamCreateSummary(values({ selectedIds: [] }), null, NAME_OF);
 
-    expect(summary).toBe('共享工作区 · 队列审批');
+    expect(summary).toBe('Shared workspace · Approval queue');
   });
 });

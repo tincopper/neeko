@@ -65,7 +65,7 @@ export function useTeamClose(options: CloseTeamOptions = {}): CloseTeamState {
         // 只有「关的就是当前打开的那个队」才清空面板；否则只更新列表。
         // 这条规则的单一定义在 store（`forgetTeamIfShowing`），不在这里判。
         forgetTeamIfShowing(teamId);
-        onShowToast?.(`团队「${name}」已关闭`, 'info');
+        onShowToast?.(`Team "${name}" closed`, 'info');
         onSettled?.();
         return true;
       } catch (err) {

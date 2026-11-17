@@ -63,7 +63,7 @@ describe('useTeamDelete', () => {
     expect(mockInvoke).toHaveBeenCalledWith('team_delete', { teamId: 'tm_1' });
     expect(useTeamStore.getState().teamId).toBeNull();
     expect(useTeamStore.getState().snapshot).toBeNull();
-    expect(onShowToast).toHaveBeenCalledWith('团队「refactor」已删除', 'info');
+    expect(onShowToast).toHaveBeenCalledWith('Team "refactor" deleted', 'info');
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 

@@ -121,7 +121,7 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
         ref={drawerRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`成员详情 ${title}`}
+        aria-label={`Member details: ${title}`}
         // 里面一个可聚焦元素都没有（加载中）时，焦点仍要有落点，否则 Tab 从背后继续走。
         tabIndex={-1}
         className="absolute inset-y-0 right-0 z-10 flex w-[85%] max-w-[20rem] flex-col border-l border-border bg-bg-secondary shadow-lg focus:outline-none"
@@ -141,10 +141,10 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
             <button
               type="button"
               onClick={onClose}
-              aria-label="关闭成员详情"
+              aria-label="Close member details"
               className="shrink-0 rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
             >
-              关闭
+              Close
             </button>
           </div>
 
@@ -163,7 +163,9 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
                 type="button"
                 onClick={handleOpenTerminal}
                 disabled={action === null || !action.enabled}
-                aria-label={action === null ? `打开会话：${title}` : `${action.label}：${title}`}
+                aria-label={
+                  action === null ? `Open session: ${title}` : `${action.label}: ${title}`
+                }
                 className={cn(
                   'shrink-0 rounded px-1.5 py-0.5 text-micro font-semibold',
                   'text-accent-blue hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
@@ -172,7 +174,7 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
               >
                 {/* 文案来自判据本身（`打开会话` / `恢复会话` / `查看记录`）：写死一个
                     「打开终端」会让抽屉与花名册同一个人两种说法。 */}
-                {action === null ? '打开终端' : action.label}
+                {action === null ? 'Open terminal' : action.label}
               </button>
             </div>
           )}
@@ -184,7 +186,7 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = React.memo(
 
           {detail === null ? (
             <p className="text-meta text-text-muted">
-              {loading ? '正在加载成员详情…' : '还没有成员详情'}
+              {loading ? 'Loading member details…' : 'No member details yet'}
             </p>
           ) : (
             <>

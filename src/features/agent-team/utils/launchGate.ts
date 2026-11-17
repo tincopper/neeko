@@ -108,18 +108,18 @@ export function launchGate(input: LaunchGateInput): LaunchGate {
 function blockedReasonOf(input: LaunchGateInput, startableIds: string[]): string | null {
   if (!input.hasActiveProject) {
     // 项目是执行环境的归属：没有它，后端会在**写库之前**拒绝（v16）。
-    return '没有活动项目（先选择一个项目）：团队的执行环境属于项目，没有项目就开不了团队。';
+    return 'No active project (select one first): a team runs inside a project — without one no team can start.';
   }
   if (!input.hasWorkspaceRoot) {
     // 这句话说的是**真正缺的东西**：项目已经有了（上一条已挡掉没有项目的情形），
     // 缺的是「这个项目当前单元的工作区根」—— 团队根的来源。
     // 两条 blocked 理由必须互不相同：复制粘贴成同一句时，用户看到「没有活动项目」
     // 而事实上项目就在那里，于是他去改一个已经满足的条件（见 `launchGate.test.ts`）。
-    return '当前项目没有可用的工作区根（切到一个已加载的工作区 / 单元）：团队根就是成员的 cwd，没有它开不了团队。';
+    return "The current project has no usable workspace root (switch to a loaded workspace / unit): the team root is the members' cwd — without it no team can start.";
   }
   if (input.launchable === null || input.launchable.length === 0) return null;
   if (startableIds.length === 0) {
-    return '清单里的 CLI 现在都不能启动（每行的原因见上方），所以还不能开团队。';
+    return 'None of the listed CLIs can launch right now (see the reason on each row above), so a team cannot start yet.';
   }
   return null;
 }

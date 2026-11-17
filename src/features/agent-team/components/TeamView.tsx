@@ -171,7 +171,7 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
             className="flex items-center gap-2 border-b border-border bg-accent-orange/10 px-2 py-1"
           >
             <span className="min-w-0 flex-1 text-meta text-accent-orange">
-              团队正在关闭，还有成员没关掉
+              Team is closing — some members did not shut down
             </span>
             <button
               type="button"
@@ -179,7 +179,7 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
               disabled={closing}
               className="shrink-0 rounded px-1.5 py-0.5 text-micro font-semibold text-accent-orange hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-orange focus-visible:outline-none disabled:cursor-not-allowed disabled:text-text-muted"
             >
-              重试关闭
+              Retry closing
             </button>
           </div>
         ) : null}
@@ -192,7 +192,7 @@ const TeamView: React.FC<TeamViewProps> = React.memo(
 
         <div className="min-h-0 flex-1 overflow-auto">
           {snapshot === null && loading ? (
-            <p className="p-3 text-meta text-text-muted">正在加载团队快照…</p>
+            <p className="p-3 text-meta text-text-muted">Loading team snapshot…</p>
           ) : null}
           <TeamRoster
             members={snapshot?.members ?? []}

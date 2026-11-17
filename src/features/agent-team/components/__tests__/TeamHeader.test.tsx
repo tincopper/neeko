@@ -54,10 +54,10 @@ describe('TeamHeader — 两行形状', () => {
     // 第二行 = meta 行（结构断言：可访问名表达不了「第几行」）
     // eslint-disable-next-line testing-library/no-node-access -- 结构关系断言（DOM 层级）
     const meta = screen.getByRole('banner').children[1] as HTMLElement;
-    expect(meta).toHaveTextContent('3 成员');
+    expect(meta).toHaveTextContent('3 members');
     const root = within(meta).getByText('feat-team');
     expect(root).toHaveAttribute('title', '/repo/worktrees/feat-team');
-    expect(within(meta).queryByText(/待批/)).not.toBeInTheDocument();
+    expect(within(meta).queryByText(/awaiting approval/)).not.toBeInTheDocument();
   });
 
   it('有待批时出现「M 待批」并保留 data-awaiting 钩子（信息不丢，只降级成文字）', () => {
@@ -71,7 +71,7 @@ describe('TeamHeader — 两行形状', () => {
       }),
     });
 
-    expect(screen.getByText('2 待批')).toHaveAttribute('data-awaiting', '2');
+    expect(screen.getByText('2 awaiting approval')).toHaveAttribute('data-awaiting', '2');
   });
 
   it('sealed ⇒ meta 行补「只读快照（不随重启恢复）」这句可见文字', () => {
@@ -81,22 +81,22 @@ describe('TeamHeader — 两行形状', () => {
       }),
     });
 
-    expect(screen.getByText(/只读快照/)).toBeInTheDocument();
+    expect(screen.getByText(/Read-only snapshot/)).toBeInTheDocument();
     // 只读快照没有可关的东西
-    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
-    expect(screen.queryByRole('menuitem', { name: /关闭团队/ })).not.toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Team actions: refactor' }));
+    expect(screen.queryByRole('menuitem', { name: /Close team/ })).not.toBeInTheDocument();
   });
 
   it('返回列表是图标按钮，可访问名仍是「返回列表」', () => {
     const { props } = renderHeader();
-    fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
     expect(props.onBack).toHaveBeenCalledTimes(1);
   });
 
   it('刷新快照在菜单里（事件通道断掉时唯一的手动恢复路径）', () => {
     const { props } = renderHeader();
-    fireEvent.pointerDown(screen.getByRole('button', { name: '团队操作：refactor' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: '刷新快照' }));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Team actions: refactor' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Refresh snapshot' }));
     expect(props.onRefresh).toHaveBeenCalledTimes(1);
   });
 });
