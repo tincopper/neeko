@@ -3,6 +3,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 
 import { AgentIcon } from '@/features/agent';
 import { setProjectAgents } from '@/features/agent/api/agentApi';
+import { useTeamsByUnit } from '@/features/agent-team';
 import { UnitSessionList } from '@/features/live-sessions';
 import { setProjectIde } from '@/features/project/api/projectApi';
 import { cn } from '@/lib/utils';
@@ -167,6 +168,10 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     // 主仓单元的角标与子列表（与本地侧栏同一份快照、同一把 key）。
     const mainUnitKey = WorkspaceSession.of(project.id, null).key;
     const mainUnitSessions = sessionsByUnit.get(mainUnitKey) ?? NO_SESSIONS;
+    // 单元的子项数除了会话还包括**团队行**（团队可以没有任何列出会话 —— 成员会话不进子列表）。
+    // 只看会话数的话，纯团队的单元连展开箭头也不给，团队行永远没有挂载的时机。
+    const mainUnitTeamCount = useTeamsByUnit().get(mainUnitKey)?.length ?? 0;
+    const mainUnitChildCount = mainUnitSessions.length + mainUnitTeamCount;
     const childActive = useUnitsWithActiveSession().has(mainUnitKey);
 
     const style = sortableCardStyle({ isDragging, transition, transform });
@@ -205,14 +210,14 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
               isActive={localActive}
               ahead={localActive ? aheadBehind?.ahead : undefined}
               title="Open primary terminal"
-              childCount={mainUnitSessions.length}
+              childCount={mainUnitChildCount}
               childActive={childActive}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelectProject(project.id);
               }}
             >
-              {mainUnitSessions.length > 0 ? (
+              {mainUnitChildCount > 0 ? (
                 <UnitSessionList
                   workspaceKey={mainUnitKey}
                   onRevealUnit={() => onSelectProject(project.id)}

@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { TeamList } from '@/shared/types/team';
 
 import { useTeamListStore } from '../store/teamListStore';
 
-import { usePulseRefresh } from './usePulseRefresh';
+import { useTeamListBootstrap } from './useTeamListBootstrap';
 
 /**
  * 团队清单（`team_list`）的**消费面**：把 store 里的整份清单裁成「激活项目的团队」。
@@ -18,6 +18,7 @@ import { usePulseRefresh } from './usePulseRefresh';
  * | 责任 | 归属 |
  * | --- | --- |
  * | 拉取 / 三态 / 失败不清空 / 代数守卫 | `store/teamListStore` |
+ * | 首拉 + 脉冲驱动的失效引擎 | `hooks/useTeamListBootstrap`（面板与侧栏**共用**）|
  * | 订阅 + `rev` 去重（全局唯一 `listen`） | `store/teamStore::ensureTeamPulseListener` |
  * | 合并窗口 / 在飞排队 / 卸载闩 | `hooks/usePulseRefresh` |
  * | **按激活项目裁剪** | **本 hook** |
@@ -70,28 +71,23 @@ export function useTeamList(): TeamListState {
   const list = useTeamListStore((s) => s.list);
   const loading = useTeamListStore((s) => s.loading);
   const error = useTeamListStore((s) => s.error);
-  // 清单面的脉冲水位：与快照面各一份（两块数据、两个读面）。
-  const rev = useTeamListStore((s) => s.lastRev);
 
   const reload = useCallback(() => {
     // 按钮 / 宿主的入口只要「开始拉」，不关心落地（`onSettled` 之类的回调链不 await 它）。
     void useTeamListStore.getState().refresh();
   }, []);
 
-  // 挂载即拉一次（面板在 dock 里反复挂载卸载；store 会保留上一次成功的结果，所以这只是一次
-  // 确认性的重取，不会闪空）。
-  useEffect(() => {
-    void useTeamListStore.getState().refresh();
-  }, []);
-
   /**
-   * 脉冲 → 合并重取。
+   * 拉取与失效引擎与侧栏**同一份实现**（`useTeamListBootstrap`）。
    *
-   * **这就是清单的失效源**：团队/成员/任务的任何写路径都会推一条脉冲。修之前列表那处
-   * 漏了订阅（`useTeamPanel` 的订阅被 `if (!teamId) return` 关掉，而列表态的 `teamId`
-   * 恰好是 `null`），于是「建了队、按了返回列表，看到的还是建队前的清单」。
+   * 「挂载即拉一次」与「脉冲 → 合并重取」两条都在那里：一个资源不该有两套轮询，也不该有
+   * 两个合并窗口。这里只保留**视图裁剪**这件事。
+   *
+   * 修之前列表那处漏了订阅（`useTeamPanel` 的订阅被 `if (!teamId) return` 关掉，而列表态的
+   * `teamId` 恰好是 `null`），于是「建了队、按了返回列表，看到的还是建队前的清单」——
+   * 那条订阅现在由共享的引擎提供，两种宿主（面板 / 侧栏）都拿得到。
    */
-  usePulseRefresh(useTeamListStore.getState().refresh, { rev });
+  useTeamListBootstrap();
 
   const scoped = useMemo(() => scopeToList(list, projectId), [list, projectId]);
 

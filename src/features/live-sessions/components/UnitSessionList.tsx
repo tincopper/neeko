@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 
+import { UnitTeamEntries } from '@/features/agent-team';
 import { useActiveSessionRefs } from '@/shared/hooks/useActiveSessionRefs';
 import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
 import { isSameSession, NO_SESSIONS } from '@/shared/selectors/liveSessionSelectors';
@@ -7,6 +8,7 @@ import type { SessionView } from '@/shared/types/liveSessions';
 
 import { useActivateSession } from '../hooks/useActivateSession';
 import { useSessionRowActions } from '../hooks/useSessionRowActions';
+import { useTeamEntryActions } from '../hooks/useTeamEntryActions';
 
 import SessionList from './SessionList';
 
@@ -27,8 +29,17 @@ interface UnitSessionListProps {
 /**
  * 某单元的会话子列表（侧栏投影的**装配件**）。
  *
- * 只做三件装配：从快照里取本单元的会话、从**当前前台会话的唯一派生点**取高亮行、
- * 把点击接到 tab 激活。视觉与交互全在 `SessionList`（同域），本组件不重复任何一条。
+ * 只做四件装配：从快照里取本单元的会话、从**当前前台会话的唯一派生点**取高亮行、
+ * 把点击接到 tab 激活、把**团队行**放在会话子列表旁边。视觉与交互全在同域组件
+ * （`SessionList` / `UnitTeamEntries`），本组件不重复任何一条。
+ *
+ * # 为什么团队行只在这里挂载（design §3）
+ *
+ * 三个侧栏变体（本地项目树 / 工作树列表 / WSL·SSH 连接卡）都经由本组件，因此渲染点只有
+ * 一处 —— 不会出现「本地有团队行、远程没有」的漂移。依赖方向是「live-sessions → agent-team
+ * 的**门面**」（`agent-team` 不反过来依赖本域），与已有的 `agent` / `terminal` 依赖同类。
+ *
+ * 无团队的单元：`UnitTeamEntries` 渲染 `null`，本组件的输出与今天逐字一致。
  *
  * 只在单元行**展开时**挂载（`SessionRow.children` 的折叠语义），因此这里的 store 订阅
  * 与按行订阅 agent 图标的成本都只发生在用户主动展开的单元上。
@@ -41,6 +52,7 @@ const UnitSessionList: React.FC<UnitSessionListProps> = ({ workspaceKey, onRevea
   const refs = useActiveSessionRefs();
   const activate = useActivateSession();
   const { rename, remove } = useSessionRowActions();
+  const teamActions = useTeamEntryActions();
 
   const unitSessions = byUnit.get(workspaceKey) ?? NO_SESSIONS;
 
@@ -66,13 +78,23 @@ const UnitSessionList: React.FC<UnitSessionListProps> = ({ workspaceKey, onRevea
   );
 
   return (
-    <SessionList
-      sessions={unitSessions}
-      activeSession={activeSession}
-      onActivate={handleActivate}
-      onRename={rename}
-      onDelete={remove}
-    />
+    <>
+      {/* 团队行在会话子列表**之前**：它是单元的入口（团队的生命周期比任何一条 PTY 长），
+          排在用户自己的会话之上才不会随「最近会话」的排序漂移。 */}
+      <UnitTeamEntries
+        workspaceKey={workspaceKey}
+        onOpenLead={teamActions.onOpenLead}
+        onOpenTeamPanel={teamActions.onOpenTeamPanel}
+        onOpenBoard={teamActions.onOpenBoard}
+      />
+      <SessionList
+        sessions={unitSessions}
+        activeSession={activeSession}
+        onActivate={handleActivate}
+        onRename={rename}
+        onDelete={remove}
+      />
+    </>
   );
 };
 

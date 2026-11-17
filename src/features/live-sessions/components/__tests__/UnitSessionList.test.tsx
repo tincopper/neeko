@@ -6,6 +6,10 @@ vi.mock('@/features/live-sessions/api/liveSessionsApi', async (importOriginal) =
   liveSessionResumeCommand: vi.fn(() => Promise.resolve(null)),
 }));
 
+import {
+  __resetTeamListStoreForTests,
+  useTeamListStore,
+} from '@/features/agent-team/store/teamListStore';
 import { liveSessionResumeCommand } from '@/features/live-sessions/api/liveSessionsApi';
 import { useAgentStore } from '@/shared/store/agentStore';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -17,6 +21,7 @@ import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
 import type { SessionView } from '@/shared/types/liveSessions';
 import type { Tab } from '@/shared/types/tab';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
+import { createTeamList, createTeamSummary } from '@/testing/factories';
 
 import UnitSessionList from '../UnitSessionList';
 
@@ -61,6 +66,7 @@ function seedSessions(...sessions: SessionView[]): void {
 beforeEach(() => {
   vi.mocked(liveSessionResumeCommand).mockReset();
   vi.mocked(liveSessionResumeCommand).mockResolvedValue(null);
+  __resetTeamListStoreForTests();
   useEditorStore.setState({ tabs: {}, editorLayout: {} });
   useWorkspaceStore.setState({ byProject: {} });
   useProjectStore.setState({ activeProjectId: null });
@@ -258,5 +264,42 @@ describe('UnitSessionList — 先亮出单元再激活', () => {
 
     expect(order).toEqual(['reveal', 'activate']);
     expect(activeTabId()).toBe('tab-1');
+  });
+});
+
+describe('UnitSessionList — 团队行（AC7：无团队时零回归）', () => {
+  it('没有团队 ⇒ 输出与今天一致：只有会话列表，没有团队行', () => {
+    seedSessions(session());
+    render(<UnitSessionList workspaceKey={KEY} />);
+
+    // 团队行是另一个 list（`aria-label=Teams`）：无团队时它根本不存在
+    expect(screen.queryByRole('list', { name: 'Teams' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('list')).toHaveLength(1);
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('单元有团队（队长未运行、没有用户会话）⇒ 团队行与会话列表并存', () => {
+    useTeamListStore.setState({
+      list: createTeamList({
+        teams: [
+          createTeamSummary({
+            teamId: 'tm_1',
+            projectId: 'p1',
+            workspaceWorktree: WS.worktreePath,
+            leadMemberId: null,
+          }),
+        ],
+      }),
+      loading: false,
+      error: null,
+    });
+
+    render(<UnitSessionList workspaceKey={KEY} />);
+
+    const teams = screen.getByRole('list', { name: 'Teams' });
+    expect(within(teams).getByText('refactor')).toBeInTheDocument();
+    expect(within(teams).getByText('Lead not running')).toBeInTheDocument();
+    // 会话列表为空 ⇒ 它自己不渲染（团队行仍是该单元的唯一子项）
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
 });

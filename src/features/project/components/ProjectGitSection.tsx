@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { useTeamsByUnit } from '@/features/agent-team';
 import { UnitSessionList } from '@/features/live-sessions';
 import SessionRow from '@/shared/components/SessionRow';
 import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
@@ -46,6 +47,10 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
   // 单元角标与会话子列表都取自**同一份注册表快照**（视图不持有状态副本）。
   // 分组用共享的 `useSessionsByUnit`：与 worktree 行 / 会话子列表同一份实现。
   const unitSessions = useSessionsByUnit().get(mainWorkspaceKey) ?? NO_SESSIONS;
+  // 单元的子项数除了会话还包括**团队行**（团队可以没有任何列出会话 —— 成员会话不进子列表）。
+  // 只看会话数的话，纯团队的单元连展开箭头都不给，团队行就永远没有挂载的时机。
+  const unitTeamCount = useTeamsByUnit().get(mainWorkspaceKey)?.length ?? 0;
+  const childCount = unitSessions.length + unitTeamCount;
   // 子行被选中时父行不填充（选中样式只出现在最具体的一层）。
   const childActive = useUnitsWithActiveSession().has(mainWorkspaceKey);
 
@@ -60,14 +65,14 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
         ahead={localActive ? aheadBehind?.ahead : undefined}
         shortcut={shortcut}
         title="Open primary terminal"
-        childCount={unitSessions.length}
+        childCount={childCount}
         childActive={childActive}
         onClick={(e) => {
           e.stopPropagation();
           onSelectProject(project.id);
         }}
       >
-        {unitSessions.length > 0 ? (
+        {childCount > 0 ? (
           <UnitSessionList
             workspaceKey={mainWorkspaceKey}
             onRevealUnit={() => onSelectProject(project.id)}

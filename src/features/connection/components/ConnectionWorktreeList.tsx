@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 
+import { useTeamsByUnit } from '@/features/agent-team';
 import { UnitSessionList } from '@/features/live-sessions';
 import WorktreeRowList from '@/shared/components/WorktreeRowList';
 import { useWorktreeRowState } from '@/shared/hooks/useWorktreeRowState';
@@ -46,12 +47,21 @@ const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
     800,
   );
 
+  // 单元的子项数除了会话还包括**团队行**（团队可以没有任何列出会话 —— 成员会话不进子列表）。
+  // 分组口径在团队域（`teamsByUnit`），本组件只把结果交给共用行渲染。
+  const teamsByUnit = useTeamsByUnit();
+  const extraChildCount = useCallback(
+    (workspaceKey: string) => teamsByUnit.get(workspaceKey)?.length ?? 0,
+    [teamsByUnit],
+  );
+
   return (
     <WorktreeRowList
       projectId={projectId}
       worktrees={worktrees}
       activeCheckoutPath={activeCheckoutPath}
       rowState={rowState}
+      extraChildCount={extraChildCount}
       onOpenWorktreeTerminal={onOpenWorktreeTerminal}
       renderUnitSessions={(workspaceKey, revealUnit) => (
         <UnitSessionList workspaceKey={workspaceKey} onRevealUnit={revealUnit} />

@@ -1,4 +1,5 @@
-import type { TeamState } from '@/shared/types/team';
+import type { TeamSummary, TeamState } from '@/shared/types/team';
+import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 /**
  * 团队列表（`team_list`）的**纯派生**函数：状态徽标 / 项目根末段 / 创建时间。
@@ -17,6 +18,9 @@ import type { TeamState } from '@/shared/types/team';
 
 /** 徽标的语义色（组件映射到 token class，颜色不在这里拼）。 */
 export type TeamStateTone = 'open' | 'closing' | 'sealed';
+
+/** 没有任何团队时的共享空结果：重渲染不换引用，行组件 memo 才有效。 */
+export const NO_TEAMS: readonly TeamSummary[] = [];
 
 export interface TeamStateBadge {
   /** 视觉文案（人读的短标签）。 */
@@ -77,6 +81,37 @@ export function projectRootTail(path: string): string {
  * 用本地时区（用户要的是「我什么时候开的这个队」）。不引第三方相对时间库：列表里
  * 「3 天前」经过一次渲染就不再更新，而它在 dock 里可能挂着几小时。
  */
+/**
+ * 按**单元**分组的团队表（`workspaceKey → 团队列表`）—— 侧栏团队行的唯一分组口径
+ * （与 `sessionsByUnit` 同形，供 `UnitSessionList` 与三个侧栏变体共用）。
+ *
+ * # 归属只有一条判据：`WorkspaceSession.key()` 的**相等比较**
+ *
+ * 团队的两个归属分量（`projectId` / `workspaceWorktree`）是后端行上的事实，单元 key 的
+ * 唯一 mint 是 `WorkspaceSession.of(...).key`。在这里比路径前缀、或者自己拼
+ * `{projectId}\0{wt}`，都是第二套身份判据（红线 12）—— 两套判据只会在「同一棵树两种写法」
+ * 上分叉，而症状是「团队行出现在错误的单元下」，没有任何报错。
+ *
+ * # 空 `projectId` 的旧行丢弃
+ *
+ * v16 之前建的团队没有 `project_id`：它无法归属到任何项目，挂到哪个单元下都是猜
+ * （与 `useTeamList` 的过滤口径一致）。
+ *
+ * `Map` 而不是普通对象：单元 key 含 NUL 分隔符，用对象属性会在 `__proto__` 之类的键上产生
+ * 语义歧义，且丢失插入顺序保证。
+ */
+export function teamsByUnit(teams: readonly TeamSummary[]): Map<string, TeamSummary[]> {
+  const byUnit = new Map<string, TeamSummary[]>();
+  for (const team of teams) {
+    if (team.projectId === '') continue;
+    const key = WorkspaceSession.of(team.projectId, team.workspaceWorktree).key;
+    const list = byUnit.get(key);
+    if (list) list.push(team);
+    else byUnit.set(key, [team]);
+  }
+  return byUnit;
+}
+
 export function formatCreatedAt(ms: number): string {
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return '—';

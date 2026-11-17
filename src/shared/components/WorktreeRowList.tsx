@@ -19,6 +19,16 @@ interface WorktreeRowListProps {
   worktrees: Worktree[];
   /** 当前激活的 worktree 路径（`null` / 空串 = 主仓）。 */
   activeCheckoutPath: string | null;
+  /**
+   * 该单元里**会话子列表之外**的子项数（今天的唯一来源：单元下的团队行）。
+   *
+   * 由调用方注入而不是在这里读团队域：本组件在 `shared/`，不认识 `features/*`
+   * （与 `renderUnitSessions` 同一条理由）。不传 = 0 —— 既有侧栏的输出与订阅面逐字不变。
+   *
+   * 为什么需要它：团队可以没有任何**列出的**会话（成员会话不进子列表、队长可能没在运行），
+   * 那时只看会话数就会连展开箭头都不给，团队行永远没挂载的时机。
+   */
+  extraChildCount?: (workspaceKey: string) => number;
   /** 行交互状态机（本地走 `useWorktreeListActions`，远端走 `useWorktreeRowState`）。 */
   rowState: WorktreeRowState;
   /** 点击行：打开该单元的终端。 */
@@ -61,6 +71,7 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
   rowState,
   onOpenWorktreeTerminal,
   renderUnitSessions,
+  extraChildCount,
 }) => {
   // 「待 push 提交数」的唯一读取规则：键 = 本项目当前单元的 WorkspaceKey，只在激活行展示。
   // 该数字只有激活单元会被写入 store（见 `useAheadBehindSync` / `useGitStatusEventsSync`）——
@@ -87,6 +98,8 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
         // 该 worktree 的行本身就是单元身份 → 它的单元 key 是这张表的一行
         const unitKey = WorkspaceSession.of(projectId, wt.path).key;
         const unitSessions = byUnit.get(unitKey) ?? NO_SESSIONS;
+        // 子项总数 = 会话 + 团队行（`extraChildCount`）：决定展开箭头与「已有子项就默认展开」。
+        const childCount = unitSessions.length + (extraChildCount?.(unitKey) ?? 0);
 
         return (
           <SessionRow
@@ -114,7 +127,7 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
             onLabelDoubleClick={(e) => rowState.startRename(wt.path, e)}
             labelTitle="Double-click to rename"
             deleting={isDeleting}
-            childCount={unitSessions.length}
+            childCount={childCount}
             childActive={childActiveUnits.has(unitKey)}
             trailing={
               isDeleting ? (
@@ -132,7 +145,7 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
               )
             }
           >
-            {unitSessions.length > 0
+            {childCount > 0
               ? renderUnitSessions?.(unitKey, () => onOpenWorktreeTerminal(wt.path, wt.branch))
               : undefined}
           </SessionRow>
