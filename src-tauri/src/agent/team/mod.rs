@@ -24,6 +24,7 @@ pub mod identity;
 pub mod lease;
 pub mod manager;
 pub mod mcp;
+pub(crate) mod name;
 pub mod observe;
 pub mod options;
 pub mod reaper;

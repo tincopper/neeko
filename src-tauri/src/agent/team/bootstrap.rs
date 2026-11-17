@@ -30,6 +30,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::agent::team::admission::{admission_for, launch_refusal_for, refusal, tier_of};
+use crate::agent::team::name::resolve_name;
 use crate::agent::team::types::{
     ApprovalPolicy, MemberRole, MemberState, Team, TeamConfig, TeamMember, TeamState,
     WorkerChannel, Workspace, MAX_MEMBERS_LIMIT,
@@ -82,7 +83,9 @@ pub fn new_team_id(now: i64) -> String {
 /// - `workspace_worktree`：团队所在的工作树**身份**（`None` = 主 checkout）。与 `project_id`
 ///   合成工作区身份，供历史归属与侧栏分组使用。**调用方必须已用 `resolve_workspace` 校验地址**
 ///   —— 本函数是纯计划层，不做 I/O（地址校验含 `canonicalize`，在命令层）。
-/// - `name`：团队显示名；`None` / 空白 → 取项目目录名（再退到 `team_id`）。
+/// - `name`：团队显示名；`None` / 空白 → 取项目目录名（再退到 `team_id`）。**显式名要过
+///   [`crate::agent::team::name::validate_team_name`]**（空 / 控制字符 / 超预算 ⇒ `InvalidInput`，
+///   在建队写库之前就拒）；派生出来的两段不校验，理由见那个模块的 `resolve_name`。
 /// - `team_id`：由 [`new_team_id`] 提供（纯函数，便于测试固定 id）。
 /// - `config`：团队组成配置（池 / 上限 / 默认值）。**调用方必须已过 [`validate_config`]** ——
 ///   本函数不重复校验（一次构造、一次裁决；两处各判一遍会让「哪个先拒」变成运气）。
@@ -123,7 +126,7 @@ pub fn plan_team(
         return Err(AppError::Unsupported(why));
     }
 
-    let display_name = resolve_name(name, project_path, team_id);
+    let display_name = resolve_name("start_team_session", name, project_path, team_id)?;
     let team = Team {
         id: team_id.to_owned(),
         name: display_name,
@@ -291,24 +294,6 @@ pub fn validate_config(config: &TeamConfig, team_root: &Path) -> Result<(), AppE
         hinted.push(hint.agent_id.clone());
     }
     Ok(())
-}
-
-/// 团队显示名：显式名 > 项目目录名 > 团队 id。
-///
-/// 三段都非空才往下走 —— 名字会进 UI 标题，空串在那里就是一块空白。
-fn resolve_name(name: Option<&str>, project_path: &Path, team_id: &str) -> String {
-    if let Some(name) = name.map(str::trim).filter(|name| !name.is_empty()) {
-        return name.to_owned();
-    }
-    if let Some(dir) = project_path
-        .file_name()
-        .and_then(|dir| dir.to_str())
-        .map(str::trim)
-        .filter(|dir| !dir.is_empty())
-    {
-        return dir.to_owned();
-    }
-    team_id.to_owned()
 }
 
 #[cfg(test)]
