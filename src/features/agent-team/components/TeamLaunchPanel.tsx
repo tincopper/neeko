@@ -13,12 +13,14 @@ import { useTeamOptions } from '../hooks/useTeamOptions';
 import { useTeamRoles } from '../hooks/useTeamRoles';
 import { useTeamWorkspaceAddress } from '../hooks/useTeamWorkspaceAddress';
 import { convergeAgentId, isLaunchable, launchGate, startableAgentIds } from '../utils/launchGate';
+import { teamCreateSummary } from '../utils/teamCreateSummary';
 
 import LeadPickerSection from './LeadPickerSection';
 import RoleLibraryBlock, { TeamRootRow } from './RoleLibraryBlock';
 import StepHead from './StepHead';
 import TeamConfigSection from './TeamConfigSection';
 import TeamLaunchFooter from './TeamLaunchFooter';
+import TeamNameField from './TeamNameField';
 
 /**
  * 队长入口（面板空态）：选 CLI → 以队长身份开会话。
@@ -39,6 +41,11 @@ import TeamLaunchFooter from './TeamLaunchFooter';
  * 3. **团队的项目**：那个根所属的**项目**是 `activeProjectId`，不是从路径反推的。
  *    执行环境按项目 id 查表，所以没有激活项目时主按钮不可用，理由是**可见文字**。
  * 4. **起进程之后的动作**：终端接管由 app 层注入（`onOpenLeaderTerminal`）。
+ *
+ * # 页首第一格是团队名
+ *
+ * 名字不是 `TeamConfig` 的字段（后端 `start_team_session` 拿它当独立入参），也不属于下面任何
+ * 一步 —— 它是这支队伍的**主语**，所以先填（[`TeamNameField`]）。留空 = 后端取工作区目录名。
  *
  * # footer 与角色库
  *
@@ -131,8 +138,16 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
       // 多一条错误信息，不解决任何问题。
       if (!startableIds.includes(agentId)) return;
       // 根是**执行落点**、`worktreePath` 是**身份**：同一个激活单元的两半一起交出去。
-      void start(activeProjectId, agentId, address.root, address.worktreePath, teamConfig);
-    }, [activeProjectId, agentId, startableIds, address, busy, start, teamConfig]);
+      // 名字是**可选**的（`null` = 后端取工作区目录名）。
+      void start({
+        projectId: activeProjectId,
+        agentId,
+        projectPath: address.root,
+        workspaceWorktree: address.worktreePath,
+        name: draft.name,
+        config: teamConfig,
+      });
+    }, [activeProjectId, agentId, startableIds, address, busy, start, draft.name, teamConfig]);
 
     /**
      * pick-or-create 的保存回调（面板包一层 `teamRoles.saveRole`）。
@@ -176,39 +191,11 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
       [agents],
     );
 
-    /**
-     * footer 的**实时摘要**：这支队伍按下去之后长什么样，一句话说完。
-     *
-     * 派生自草稿（渲染期，不进 state）—— 草稿变它就变，没有任何一处需要「记得刷新」。
-     * 角色名用**预设名**（不是成员位名）：摘要回答「谁带什么人设」。
-     */
-    const createSummary = useMemo(() => {
-      const values = draft.values;
-      if (!values) return null;
-      const parts: string[] = [];
-      // 成员段：先汇总成一行，再整体 push —— 逐个 push 会让第二个成员之后的名字
-      // 重复出现在摘要里（「2 名成员（A / B） · B · …」）。
-      if (values.selectedIds.length > 0) {
-        const staffed = values.selectedIds
-          .map((agentId) => {
-            const persona = values.roleByAgent[agentId];
-            const label = nameOf(agentId);
-            return persona ? `${label}→${persona}` : label;
-          })
-          .join(' / ');
-        parts.push(`${values.selectedIds.length} 名成员（${staffed}）`);
-      }
-      if (values.persona) parts.push(`缺省角色 ${values.persona}`);
-      parts.push(values.workspace === 'read_only' ? '只读' : '共享工作区');
-      parts.push(
-        values.approvalPolicy === 'queue'
-          ? '队列审批'
-          : values.approvalPolicy === 'interactive'
-            ? '交互审批'
-            : '旁路审批',
-      );
-      return parts.join(' · ');
-    }, [draft.values, nameOf]);
+    /** footer 的实时摘要：唯一推导在 [`teamCreateSummary`]（纯函数，含顺序与去重的理由）。 */
+    const createSummary = useMemo(
+      () => (draft.values === null ? null : teamCreateSummary(draft.values, draft.name, nameOf)),
+      [draft.values, draft.name, nameOf],
+    );
 
     return (
       <section aria-label="新建团队" className="flex min-h-0 flex-1 flex-col">
@@ -230,11 +217,20 @@ const TeamLaunchPanel: React.FC<TeamLaunchPanelProps> = React.memo(
           ) : null}
           <div className="min-w-0 flex-1">
             <div className="text-ui font-semibold text-text-primary">新建团队</div>
-            <div className="text-micro text-text-muted">三步：队长 → 成员与角色 → 默认值</div>
+            <div className="text-micro text-text-muted">
+              可先起名，三步：队长 → 成员与角色 → 默认值
+            </div>
           </div>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
+          {/* 团队名先填：它是这支队伍的**主语**（下面三步回答的都是「它长什么样」）。 */}
+          <TeamNameField
+            value={draft.values?.name ?? ''}
+            disabled={draft.values === null}
+            onChange={draft.setName}
+          />
+
           {/* 步骤 1 */}
           <StepHead n={1} title="队长用哪个 CLI" hint="启动后它拿到工具面与任务板" />
 

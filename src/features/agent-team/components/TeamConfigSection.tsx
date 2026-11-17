@@ -7,15 +7,18 @@ import { Input, Radio } from '@/ui';
 import {
   MEMBER_LIMIT_MAX,
   MEMBER_LIMIT_MIN,
-  type LaunchWorkspace,
   type TeamConfigDraft,
 } from '../hooks/useTeamConfigDraft';
+import type { LaunchWorkspace } from '../types';
 
 import ErrorNotice from './ErrorNotice';
 import TeamMemberPool from './TeamMemberPool';
 
 /**
  * 建队面板的**团队配置区**：成员池 / 上限 / 三个缺省值。
+ *
+ * 团队名**不在这里**（它是这支队伍的主语，排在面板页首 —— 见 `TeamLaunchPanel`）；本节只装
+ * `TeamConfig` 的字段。
  *
  * # 默认值的唯一来源是 `team_options(null)`
  *

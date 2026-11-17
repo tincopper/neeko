@@ -187,3 +187,45 @@ describe('useTeamConfigDraft — persona 与 roleHints 的投影', () => {
     expect(result.current.config).not.toHaveProperty('roleHints');
   });
 });
+
+/**
+ * 团队名：**身份**，不是 `TeamConfig` 的一个字段。
+ *
+ * 后端 `start_team_session` 把它当独立入参（`name: Option<String>`），缺省时取工作区目录名
+ * —— 所以「没填」的可表示形态是 `null`，**不是**前端抄一份目录名当默认值（那是第二份判据：
+ * 项目目录名由后端从工作区根推，前端再推一次就可能指向另一棵树）。
+ */
+describe('useTeamConfigDraft — 团队名（可选，留空由后端取目录名）', () => {
+  const opts = options();
+
+  it('不填 ⇒ `name` 是 `null`（不是空串：空串会被当成一个真的名字）', () => {
+    const { result } = renderHook(() => useTeamConfigDraft(opts));
+
+    expect(result.current.name).toBeNull();
+    // 名字不是 `TeamConfig` 的键 —— 它单独交给 `start_team_session`
+    expect(result.current.config).toEqual({});
+  });
+
+  it('填了就裁掉两端空白（粘贴带空格是最常见的形态）', () => {
+    const { result } = renderHook(() => useTeamConfigDraft(opts));
+
+    act(() => result.current.setName('  小队  '));
+    expect(result.current.name).toBe('小队');
+    expect(result.current.values?.name).toBe('  小队  ');
+  });
+
+  it('只有空白 ⇒ 仍然是 `null`（等于没填，不会创建一个「   」名字的队）', () => {
+    const { result } = renderHook(() => useTeamConfigDraft(opts));
+
+    act(() => result.current.setName('   '));
+    expect(result.current.name).toBeNull();
+  });
+
+  it('清回空串 ⇒ 回到 `null`（可撤销：改成留空仍然合法）', () => {
+    const { result } = renderHook(() => useTeamConfigDraft(opts));
+
+    act(() => result.current.setName('小队'));
+    act(() => result.current.setName(''));
+    expect(result.current.name).toBeNull();
+  });
+});

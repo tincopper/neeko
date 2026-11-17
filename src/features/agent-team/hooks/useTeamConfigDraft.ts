@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { ApprovalPolicy, TeamConfig, TeamDefaults, TeamOptions } from '@/shared/types/team';
 
+import type { LaunchWorkspace } from '../types';
+
 /**
  * 建队面板的**配置草稿**（局部表单状态，不进 zustand）。
  *
@@ -24,10 +26,13 @@ import type { ApprovalPolicy, TeamConfig, TeamDefaults, TeamOptions } from '@/sh
  * [`TeamConfig`] 的每个字段缺省即后端默认。把 `TeamDefaults` 原样回传等于把后端默认值
  * 抄成前端常量 —— 所以 [`TeamConfigDraft.config`] 逐字段与缺省值比对，只投影真的改过的
  * 那几项（空串 / 空数组视为「没设置」）。
+ *
+ * # 团队名不在那份额外投影里（它不是 `TeamConfig` 的键）
+ *
+ * 后端 `start_team_session` 把名字当**独立入参**（`name: Option<String>`），缺省时由它自己
+ * 取工作区目录名。所以这里只保存「用户填了什么」，并把全空白归成 `null`（= 没填）；
+ * **不**在前端再推一份目录名做默认值 —— 那是第二份判据，而目录名只有后端能从工作区根回答。
  */
-
-/** v1 的 UI 只提供这两个工作区（`worktree` 需要路径选择器，下一轮接）。 */
-export type LaunchWorkspace = 'shared' | 'read_only';
 
 /**
  * 成员上限的合法区间（镜像 `src-tauri/src/agent/team/types.rs` 的
@@ -41,6 +46,13 @@ export const MEMBER_LIMIT_MAX = 8;
 
 /** 草稿的可编辑字段（一律以「后端缺省值」为初值）。 */
 export interface TeamConfigValues {
+  /**
+   * 团队显示名**原文**（`''` = 没填）。
+   *
+   * 初值是空串而不是某个目录名：这里没有「缺省名」可播种，缺省由后端从工作区根推导。
+   * 空串 / 全空白在提交时归成 `null`（见 [`TeamConfigDraft.name`]）。
+   */
+  name: string;
   /** 成员池勾选（**顺序恒为 `options.members` 的行序**，同一个集合不会产生两种载荷）。 */
   selectedIds: string[];
   /** 上限输入框原文：`string` 才能表达「空」与「越界」这两种不可提交态。 */
@@ -58,6 +70,13 @@ export interface TeamConfigValues {
 export interface TeamConfigDraft {
   /** `null` = 缺省值还没到（`team_options` 未落地）—— 表单不渲染，也不可提交。 */
   values: TeamConfigValues | null;
+  /**
+   * 团队名（已裁掉两端空白）；`null` = 没填 ⇒ 后端取工作区目录名。
+   *
+   * 它**不**进 [`TeamConfig`]：名字是 `start_team_session` 的独立入参。
+   */
+  name: string | null;
+  setName: (next: string) => void;
   toggleMember: (agentId: string, next: boolean) => void;
   setMaxMembers: (next: string) => void;
   setWorkspace: (next: LaunchWorkspace) => void;
@@ -84,6 +103,8 @@ export interface TeamConfigDraft {
  */
 function seedValues(defaults: TeamDefaults): TeamConfigValues {
   return {
+    // 名字没有缺省值可播种：后端缺省 = 工作区目录名，而那是它自己的推导（见 `name`）。
+    name: '',
     selectedIds: defaults.allowedAgentIds,
     maxMembers: String(defaults.maxMembers),
     workspace: defaults.defaultWorkspace === 'read_only' ? 'read_only' : 'shared',
@@ -134,6 +155,11 @@ export function useTeamConfigDraft(options: TeamOptions | null): TeamConfigDraft
     setValues((prev) => (prev === null ? prev : patch(prev)));
   }, []);
 
+  const setName = useCallback(
+    (next: string) => update((prev) => ({ ...prev, name: next })),
+    [update],
+  );
+
   const toggleMember = useCallback(
     (agentId: string, next: boolean) => {
       update((prev) => {
@@ -178,6 +204,17 @@ export function useTeamConfigDraft(options: TeamOptions | null): TeamConfigDraft
     [values],
   );
 
+  /**
+   * 名字的**唯一**投影：原文 → 裁掉两端空白 → 全空白归 `null`。
+   *
+   * 不裁就提交会造出「' 小队 '」这种名字（列表里看不出差别，复制出来是脏的）；把全空白当名字
+   * 则会得到一个看不见的队。两者都不能当错误报（填名是可选动作），所以它们只收敛回「没填」。
+   */
+  const name = useMemo(() => {
+    const trimmed = values?.name.trim() ?? '';
+    return trimmed === '' ? null : trimmed;
+  }, [values]);
+
   const config = useMemo<TeamConfig>(() => {
     if (defaults === null || values === null) return {};
     const next: TeamConfig = {};
@@ -214,6 +251,8 @@ export function useTeamConfigDraft(options: TeamOptions | null): TeamConfigDraft
 
   return {
     values,
+    name,
+    setName,
     toggleMember,
     setMaxMembers,
     setWorkspace,

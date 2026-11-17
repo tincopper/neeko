@@ -236,6 +236,51 @@ describe('TeamLaunchPanel — 能力面（team_launchable_agents）', () => {
     );
   });
 
+  /**
+   * 团队名排**最前**：先起名，再挑队长。
+   *
+   * 名字是这支队伍的主语（下面三步回答的都是「它长什么样」）—— 把它放在第二步的配置区里，
+   * 用户填到一半才发现「这是哪个队」还没起。DOM 顺序就是填写顺序，所以这里断言顺序本身。
+   */
+  it('团队名在页首（排在队长选择之前）', async () => {
+    mockBackend({
+      agents: [createLaunchableAgent({ agentId: 'claude-code' })],
+    });
+    render(<TeamLaunchPanel />);
+    await waitForPanelReady();
+    await waitForConfigForm();
+
+    const nameInput = screen.getByRole('textbox', { name: /团队名称/ });
+    const leadList = screen.getByRole('list', { name: '可选的 CLI' });
+
+    expect(nameInput.compareDocumentPosition(leadList) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
+  });
+
+  /**
+   * 团队名可以自定义（留空 = 后端取工作区目录名）。
+   *
+   * 之前面板根本没有这个输入 —— 用户在列表里看到的是目录名，而「这是哪个队」只能靠目录名
+   * 回答。名字是 `start_team_session` 的**独立入参**（不是 `TeamConfig` 的一个键），所以载荷
+   * 断言要落在那一层。
+   */
+  it('填了团队名 ⇒ start_team_session 的 name 就是它（两端空白裁掉）', async () => {
+    mockBackend({ agents: [createLaunchableAgent({ agentId: 'claude-code' })] });
+
+    render(<TeamLaunchPanel />);
+    await waitForPanelReady();
+    await waitForConfigForm();
+
+    fireEvent.change(screen.getByRole('textbox', { name: /团队名称/ }), {
+      target: { value: '  求和小队  ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '以队长身份开会话' }));
+
+    await waitFor(() => expect(startCalls()).toHaveLength(1));
+    expect(lastStartPayload().name).toBe('求和小队');
+  });
+
   it('激活单元是工作树：建队把工作区身份（projectPath + workspaceWorktree）一起交给后端', async () => {
     // 团队根与工作区身份**同源**：都来自激活单元（`selectActiveCheckoutPath`）。
     // 两者叉开（根用工作树、身份用主仓）会让团队的 `session_cursors` 落到另一棵树下 ——
