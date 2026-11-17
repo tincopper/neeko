@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 478
-- **Last Active**: 2026-11-16
+- **Total Sessions**: 479
+- **Last Active**: 2026-11-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~1125 | Active |
+| `journal-9.md` | ~1157 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 479 | 2026-11-17 | review fixes: team rename projection / name validator / contract cleanup | - | `feat-team` |
 | 478 | 2026-11-16 | team: 建队面板页首先填团队名 | - | `feat-team` |
 | 477 | 2026-11-16 | team: 删除分配图头部图例 | - | `feat-team` |
 | 476 | 2026-11-16 | team: 改名同步已打开的 tab 标题 | - | `feat-team` |

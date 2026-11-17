@@ -1123,3 +1123,35 @@ TeamFlowGraph 头部只留标题，删掉「实线 = 派发 · 虚线 = 依赖�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 479: review fixes: team rename projection / name validator / contract cleanup
+<!-- trellis-session: v=2 fp=6ad904ef9e727a23 -->
+
+**Date**: 2026-11-17
+**Task**: review fixes: team rename projection / name validator / contract cleanup
+**Branch**: `feat-team`
+
+### Summary
+
+Session summary was not supplied.
+
+### Main Changes
+
+- 改名→tab 标题投影改为只读 tab 自己的地址（修跨队串数据 + 切工作树漏改）；团队名判据收口到 agent/team/name.rs（建队与改名共用）；useTeamRename/teamCreateSummary/useMemberAgentIcon/useStartTeam 契约与层级修正；spec 补「改名 = 改名」与名字判据
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm check:quick 28/28 绿；cargo test agent::team 501 passed；vitest features/agent-team + app/dock 384 passed
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 可选：把 TeamSummary 的 projectId/workspaceWorktree 补上以支持列表态直接派生（当前不需要）
