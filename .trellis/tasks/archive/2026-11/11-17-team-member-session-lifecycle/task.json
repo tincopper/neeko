@@ -3,7 +3,7 @@
   "name": "team-member-session-lifecycle",
   "title": "团队成员会话的侧栏生命周期修复（重启幽灵行 + 侧栏误删）",
   "description": "团队成员 PTY 会话不再写入侧栏恢复行（重启后不留指向裸 CLI 的幽灵行），并从侧栏删除路径拒绝删除成员会话",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-11-17",
-  "completedAt": null,
+  "completedAt": "2026-11-17",
   "branch": "feat-team",
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,7 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "commit": "2dbd8932"
+  }
 }
