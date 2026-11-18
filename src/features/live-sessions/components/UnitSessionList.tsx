@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 
 import { UnitTeamEntries } from '@/features/agent-team';
+import { useProjectActionsContext } from '@/shared/contexts/ProjectActionsContext';
 import { useActiveSessionRefs } from '@/shared/hooks/useActiveSessionRefs';
 import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
 import { isSameSession, NO_SESSIONS } from '@/shared/selectors/liveSessionSelectors';
@@ -50,7 +51,9 @@ const UnitSessionList: React.FC<UnitSessionListProps> = ({ workspaceKey, onRevea
   // 本单元的 `editorLayout[workspaceKey].activeTabId` 只是恢复语义（局部状态），
   // 直接用它会让切走后旧单元仍亮着；refs 已编码当前单元，不必再比一次 activeKey。
   const refs = useActiveSessionRefs();
-  const activate = useActivateSession();
+  // 「切项目」的唯一序列由 provider 提供（缺 provider 抛错 —— 静默不切项目正是要修的缺陷）。
+  const { onSelectProject } = useProjectActionsContext();
+  const activate = useActivateSession(onSelectProject);
   const { rename, remove } = useSessionRowActions();
   const teamActions = useTeamEntryActions();
 

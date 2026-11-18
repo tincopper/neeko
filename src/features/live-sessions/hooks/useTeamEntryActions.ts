@@ -5,10 +5,11 @@ import { useTeamStore } from '@/features/agent-team/store/teamStore';
 import { useTerminalTabs } from '@/features/terminal';
 import { panelView } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
-import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { SessionView } from '@/shared/types/liveSessions';
 import type { TeamSummary } from '@/shared/types/team';
 import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
+
+import { useActivateUnit } from './useActivateUnit';
 
 /**
  * 侧栏**团队行**的三个动作（点击行 / 点击看板）。
@@ -22,10 +23,14 @@ import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
  * 本文件是 `UnitSessionList` 的装配件（它本来就是 `features/live-sessions` 里唯一同时认识
  * 终端域与团队域门面的地方），于是 `UnitSessionList` 的 JSX 不必被三个 handler 淹没。
  *
- * # 顺序：先亮出单元，再激活 tab / 开面板
+ * # 顺序：先「切项目 + 切单元」，再激活 tab / 开面板
  *
- * 与 `useActivateSession` 同一顺序。反过来会在「tab 已切、视图还停在别处」之间留一帧白屏，
- * 而表现就是用户说的「点了没反应」。
+ * 与 `useActivateSession` 同一顺序，且判据只有一处：`utils/activateUnit`
+ * （同项目零切换、单元在切换序列**结算之后**落回）。这里不再自己解释一遍 —— 三个动作都
+ * 接在它的 Promise 之后，所以「先项目、后单元、再落 tab」对三者是同一条不变量。
+ *
+ * 每一个后续动作仍按**团队自己的** `projectId` 落键（不是「当前激活项目」）：
+ * 团队属于哪个项目是团队的事实，不由「用户此刻在看哪个项目」决定。
  *
  * # 队长会话只**接管**，从不新建
  *
@@ -55,60 +60,64 @@ function teamProjectId(team: TeamSummary): ProjectId {
 }
 
 /**
- * 把单元切到前台（项目激活态 + 单元激活态都归 `workspaceStore`）。
+ * 团队行 → 它所属的**单元**（项目 + 工作树）。
  *
- * 分量取自 `WorkspaceSession.of(...)`（唯一的单元身份铸造点，红线 12），不在调用侧自己拆
+ * 分量经 `WorkspaceSession.of(...)` 铸（唯一的单元身份铸造点，红线 12），不在调用侧自己拆
  * key / 拼 key。
  */
-function revealUnit(team: TeamSummary): void {
-  const unit = WorkspaceSession.of(team.projectId, team.workspaceWorktree);
-  useWorkspaceStore.getState().setActiveWorkspace(unit.projectId, unit.worktreePath);
+function teamUnit(team: TeamSummary): WorkspaceSession {
+  return WorkspaceSession.of(team.projectId, team.workspaceWorktree);
 }
 
 export function useTeamEntryActions(): TeamEntryActions {
   const { openExistingTerminalTab } = useTerminalTabs();
   const { openBoardTab } = useTeamBoardTab();
+  const activateUnit = useActivateUnit();
 
   const onOpenLead = useCallback(
     (team: TeamSummary, session: SessionView) => {
-      // 先把单元亮出来，再接管 tab（见文件头「顺序」）。
-      revealUnit(team);
-      // 标题 / agent 都取自会话快照（唯一的会话事实源），不在这里编。
-      openExistingTerminalTab(
-        teamProjectId(team),
-        session.sessionId,
-        session.title,
-        session.agentId,
-      );
+      // 先切项目 + 切单元，再接管 tab（见文件头「顺序」）。
+      void activateUnit(teamUnit(team)).then(() => {
+        // 标题 / agent 都取自会话快照（唯一的会话事实源），不在这里编。
+        openExistingTerminalTab(
+          teamProjectId(team),
+          session.sessionId,
+          session.title,
+          session.agentId,
+        );
+      });
     },
-    [openExistingTerminalTab],
+    [activateUnit, openExistingTerminalTab],
   );
 
-  const onOpenTeamPanel = useCallback((team: TeamSummary) => {
-    revealUnit(team);
-    // 面板的数据入口：`openTeam` 对同一个 id 幂等（已在看这个队时不打断、不闪空）。
-    void useTeamStore.getState().openTeam(team.teamId);
-    // 收起 / 在其他槽的面板也要真的出现在屏幕上：`activateView` 是唯一入口（含 Library 互斥）。
-    useDockStore.getState().activateView(panelView('team'));
-  }, []);
+  const onOpenTeamPanel = useCallback(
+    (team: TeamSummary) => {
+      void activateUnit(teamUnit(team)).then(() => {
+        // 面板的数据入口：`openTeam` 对同一个 id 幂等（已在看这个队时不打断、不闪空）。
+        void useTeamStore.getState().openTeam(team.teamId);
+        // 收起 / 在其他槽的面板也要真的出现在屏幕上：`activateView` 是唯一入口（含 Library 互斥）。
+        useDockStore.getState().activateView(panelView('team'));
+      });
+    },
+    [activateUnit],
+  );
 
   const onOpenBoard = useCallback(
     (team: TeamSummary) => {
-      // **也**先亮出单元（与另两个动作同一顺序）：`useTeamBoardTab` 按
-      // `activeWorkspaceSession(projectId)` 落键，而那是「该项目**当前激活**的单元」——
-      // 不先切的话，从一条**工作树**团队行点看板，tab 会落进主仓 / 另一个工作树的 tab 空间
-      // （进程和数据显示都对，只是登记错位：关/恢复/分屏时才显形）。
-      // 副作用是可预期的：你点了这个单元里的东西，这个单元就是你现在看的那个。
-      revealUnit(team);
-      // 落键 / 去重（按 teamId）/ 激活都在 `useTeamBoardTab` 一处：同队重复点击只是激活既有 tab。
-      openBoardTab({
-        teamId: team.teamId,
-        teamName: team.name,
-        projectId: teamProjectId(team),
-        view: 'board',
+      // 看板 tab 的 key 由 `activeWorkspaceSession(projectId)` 铸，而那是「该项目**当前激活**
+      // 的单元」—— 必须等单元真的落回再开，否则从一条**工作树**团队行点看板时 tab 会登记到
+      // 主仓（进程和数据显示都对，只是关/恢复/分屏时才显形）。
+      void activateUnit(teamUnit(team)).then(() => {
+        // 落键 / 去重（按 teamId）/ 激活都在 `useTeamBoardTab` 一处：同队重复点击只是激活既有 tab。
+        openBoardTab({
+          teamId: team.teamId,
+          teamName: team.name,
+          projectId: teamProjectId(team),
+          view: 'board',
+        });
       });
     },
-    [openBoardTab],
+    [activateUnit, openBoardTab],
   );
 
   return { onOpenLead, onOpenTeamPanel, onOpenBoard };
