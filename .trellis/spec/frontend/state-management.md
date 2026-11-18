@@ -1326,6 +1326,28 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(workspaceKe
     **回归测试**：`searchStore.test.ts` —— 发起 A → `clear()` → 发起 B → 再 resolve A，断言
     A 的路径**不得**出现在结果里（临时删掉 `requestId` 判定必须 RED）。
 
+14. **点侧栏里的一行 = 切**项目**+ 切单元**（2026-11-18）：侧栏列出所有项目的单元与会话，
+    只切单元就会出现「tab 在 B 的 tab 空间里被激活、中心视图还停在 A」——用户报的就是
+    「点了没反应」。判据只有一处：`features/live-sessions/utils/activateUnit.ts`（会话行与
+    团队行三个动作共用），两条硬约束：
+    - **项目相同 ⇒ 不切**。切项目的唯一序列（`ProjectActionsContext.onSelectProject` →
+      `useCrossTypeSelection.handleSelectProject`）会**清掉所有项目的激活单元**，local 分支
+      再清一次目标项目并回主仓 —— 对已激活项目重跑它是纯破坏（把用户刚点的工作树单元清回主仓）；
+    - **单元在切换序列结算之后落回**。`onSelectProject` 是 `async` 而类型曾是 `=> void`，
+      「先 select 后 set」今天成立只是因为它第一个 `await` 落在所有变更之后。类型已放宽为
+      `void | Promise<void>`，调用侧 `Promise.resolve(...)` 后接续 —— 否则任何一天有人在序列
+      中间插一个真正的 `await`，单元就会被清回主仓，而症状只是「点了没落到那个工作树」。
+
+    能力的**来源分两种形态，都是必填不给默认值**（静默降级成「只切单元」正是这个缺陷本身）：
+    树内消费者用 `useProjectActionsContext()`（缺 provider 抛错）；`App.tsx` 里的组合根装配
+    （`useDockBarOpenTab` → `useActivateSession`）在 provider **树外**，任何 `useContext` 首帧
+    即抛，所以它由 `useAppShell()` 的 `projectActionsValue.onSelectProject` **入参注入**。
+
+    上下文模块住在 `shared/contexts/ProjectActionsContext.tsx`（不是 `features/project/`）：
+    `live-sessions` 要用它而 `project` 又渲染侧栏子树，从 feature 门面取会成环
+    （`import/no-cycle` 实测命中）；`features/project/ProjectContext.tsx` 保留为 re-export 门面。
+
+
 ### 4. Validation & Error Matrix
 
 | 场景 | 输入 | 预期 | 错误处理 |

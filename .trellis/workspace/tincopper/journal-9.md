@@ -1290,3 +1290,37 @@ TerminalViewBase 改 attach-only：探针失败不新建、不启写管线，显
 ### Next Steps
 
 - spec + 任务归档
+
+
+## Session 484: 侧栏点击切项目（跨项目按了没反应）
+<!-- trellis-session: v=2 fp=d2f2ef945d56de2a -->
+
+**Date**: 2026-11-18
+**Task**: 侧栏点击切项目（跨项目按了没反应）
+**Branch**: `feat-team`
+
+### Summary
+
+抽出 activateUnit 作为唯一判据；切项目走唯一序列且只在跨项目时切；单元在序列结算后落回
+
+### Main Changes
+
+- 新增 utils/activateUnit + hooks/useActivateUnit；context 迁到 shared/contexts 并留门面；useActivateSession 收 selectProject 入参；两个消费者接上
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `07e33337` | fix(live-sessions): make a sidebar click switch the project too |
+
+### Testing
+
+- [OK] vitest live-sessions/project/connection/agent-team/editor/app 2179 通过；pnpm check:quick 14 护栏通过；顺序不变量变异验证
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- spec + 任务归档
