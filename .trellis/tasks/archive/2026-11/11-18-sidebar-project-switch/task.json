@@ -3,7 +3,7 @@
   "name": "sidebar-project-switch",
   "title": "侧栏点击行未切激活项目（跨项目按了没反应）",
   "description": "点侧栏会话行 / 团队行时把该行所属项目也切成激活项目：切项目走既有的唯一序列 onSelectProject（已激活则不切），顺序上单元必须在其结算之后落回",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-11-18",
-  "completedAt": null,
+  "completedAt": "2026-11-18",
   "branch": "feat-team",
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,7 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "commit": "07e33337"
+  }
 }
