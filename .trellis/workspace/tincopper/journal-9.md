@@ -1256,3 +1256,37 @@ Session summary was not supplied.
 ### Next Steps
 
 - 提交 spec + 任务归档；遗留记录在 prd（attach 竞态、跨项目点团队行不切项目）
+
+
+## Session 483: 接回失败不得静默降级成新建会话
+<!-- trellis-session: v=2 fp=5049bd210e31e8e8 -->
+
+**Date**: 2026-11-18
+**Task**: 接回失败不得静默降级成新建会话
+**Branch**: `feat-team`
+
+### Summary
+
+TerminalViewBase 改 attach-only：探针失败不新建、不启写管线，显示失效提示
+
+### Main Changes
+
+- turnView 三态（connecting/ready/attach-failed）；抽出 TerminalTurnOverlay 与 TerminalScrollToBottom；体积基线 542→537；改写旧 attach 用例
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `397f8b70` | fix(terminal): make attaching attach-only, never a substitute session |
+
+### Testing
+
+- [OK] vitest terminal/live-sessions/agent-team 663 通过；pnpm check:quick 42 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- spec + 任务归档

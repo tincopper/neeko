@@ -235,6 +235,20 @@ chat 侧同一条规则：先 `register` 再起事件泵。
 | 退出进程 | `close_terminal_session` → `close_and_notify`（标 `Stopped`） | 拆缓存 + 关会话 | 行留着（可点回来续写） |
 | 取消 | — | — | — |
 
+**接回是 attach-only**（2026-11-18）：`attachSessionId` 的语义是「只要那一条，不要替代品」。
+存活探针 `detach_terminal_session(id, false)` 返回 `false`（drain 已不在 = PTY 已结束）时，
+`TerminalViewBase` **不新建会话**、不启动写管线、不自动拉起 agent，只显示一条失效提示
+（`terminal-attach-failed`）。
+
+为什么这条不能有兜底：新建出来的 PTY 是终端域起的，拿不到团队执行层注入的任何东西
+（`--mcp-config` / `NEEKO_TEAM_*` / 隔离配置目录），却会带上同一个 `agentId` 并自动拉起 ——
+它带着队长 preamble 起来、调不到任何 `team_*`，而用户以为打开的是那个成员的会话。对用户自己的
+会话同样不自洽：快照说「已结束」时侧栏走的是续写分支（`resumeFromSessionId` + `--resume`），
+只有这个竞态会产出一条**毫无关系的**空终端。
+
+恢复动作**不在**终端视图里：它属于调用方（花名册五态判据 / `sessionTabFactory` 的 resume 分支），
+那两处才知道 `resumable` / `sealed`。失效态本身是探针结果的一次派生，不是第二份记账（红线 17）。
+
 **分离态（detached）是这套东西的前提**，不是优化：分离后没有消费者，若照常背压，
 512KB 的 drain 很快写满 → PTY 写入被堵死 → 后台 agent 冻在那里。所以分离态的 drain
 **永远接收、丢最旧的字节、只留尾部**（`DETACHED_TAIL_CAPACITY = 256KB`），一次多丢一些
