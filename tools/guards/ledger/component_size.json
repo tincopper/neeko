@@ -54,7 +54,7 @@
     "src/features/skill/components/SkillsPanel.tsx": 530,
     "src/features/skill/components/ViewSkillDialog.tsx": 325,
     "src/features/task/components/TaskRunButton.tsx": 456,
-    "src/features/terminal/components/TerminalViewBase.tsx": 542,
+    "src/features/terminal/components/TerminalViewBase.tsx": 537,
     "src/features/terminal/components/terminalCache.ts": 555,
     "src/shared/components/GitDialog.tsx": 332,
     "src/shared/components/ProjectSettingsDialog.tsx": 361,

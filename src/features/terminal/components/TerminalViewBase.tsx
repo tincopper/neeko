@@ -32,6 +32,8 @@ import { attachLiveSession } from '../utils/sessionAttach';
 import { installTerminalReporting } from '../utils/sessionTitleReporter';
 
 import { refreshTerminalEntry } from './terminalCache';
+import TerminalScrollToBottom from './TerminalScrollToBottom';
+import TerminalTurnOverlay, { type TurnView } from './TerminalTurnOverlay';
 
 /**
  * Write 流水线哨兵：最后一次 write 下发后超过该时长仍无 parse 回调，
@@ -85,7 +87,7 @@ export default React.memo(function TerminalViewBase({
   const strategyRef = useRef(strategy);
   strategyRef.current = strategy;
   const [rebuildCount, setRebuildCount] = useState(0);
-  const [ready, setReady] = useState(false);
+  const [turnView, setTurnView] = useState<TurnView>('connecting');
   const [isAtBottom, setIsAtBottom] = useState(true);
   // 滚动空闲标记：停止滚动 3s 后给壳层挂 `.scroll-idle`，让 xterm 自绘滚动条淡出
   //（xterm 自己只在指针移出滚动区时隐藏，指针停在终端里就永远可见）。
@@ -140,7 +142,7 @@ export default React.memo(function TerminalViewBase({
     } = strategyRef.current;
 
     currentKeyRef.current = cacheKey;
-    setReady(false);
+    setTurnView('connecting');
 
     // 每个 cacheKey 一份调度器实例：去重基线随实例生死而重置 —— 切 tab 必然
     // 新建（从零收敛，不可能继承上一个终端的同步历史）。这是「去重状态按
@@ -206,7 +208,7 @@ export default React.memo(function TerminalViewBase({
 
     const existingCache = cache.get(cacheKey);
     if (existingCache) {
-      setReady(!!existingCache.sessionId);
+      setTurnView(existingCache.sessionId ? 'ready' : 'connecting');
       attach(existingCache);
       currentTermRef.current = existingCache.term;
       scrollDisposable = existingCache.term.onScroll(() => {
@@ -270,10 +272,21 @@ export default React.memo(function TerminalViewBase({
         cache.set(cacheKey, entry);
 
         try {
-          // 接回活着的会话（后台运行中）；已结束则照常新建。
+          // 接回活着的会话（后台运行中）。**attach-only**：调用方给出 `attachSessionId`
+          // 就是「只要那一条，不要替代品」，探针说它已结束 ⇒ 诚实失败，**不新建**。
+          // 新建出来的会是一条没有团队 MCP 端点 / 凭证 / 隔离配置目录的裸 CLI，
+          // 而用户以为打开的是那个成员的会话（且它带着队长 preamble 却调不到 `team_*`）。
           const attached = attachSessionId
             ? await attachLiveSession(attachSessionId, term.cols, term.rows)
             : null;
+          if (attachSessionId && attached === null) {
+            if (cancelled || currentKeyRef.current !== cacheKey) return;
+            // 早退点：不建会话、不订阅 drain、不自动拉起 agent（没有会话可投递）。
+            // `entry.sessionId` 保持 null ⇒ 销毁路径的 closeSession 前提不成立，
+            // 不会去关一条不属于自己的会话。
+            setTurnView('attach-failed');
+            return;
+          }
           entry.attached = attached !== null; // 借看：销毁时不得 close（会 kill 掉队长）
           const sessionId =
             attached ??
@@ -286,7 +299,7 @@ export default React.memo(function TerminalViewBase({
 
           if (currentKeyRef.current !== cacheKey) return;
           entry.sessionId = sessionId;
-          setReady(true);
+          setTurnView('ready');
           onSessionReadyVal?.();
           onSessionCreated?.(sessionId);
 
@@ -430,7 +443,7 @@ export default React.memo(function TerminalViewBase({
           });
         } catch (err) {
           if (cancelled || currentKeyRef.current !== cacheKey) return;
-          setReady(true);
+          setTurnView('ready');
           term.write(`\x1b[31mFailed to connect: ${err}\x1b[0m\r\n`);
         }
       })();
@@ -511,32 +524,13 @@ export default React.memo(function TerminalViewBase({
 
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
-      {!ready && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center text-text-secondary text-[var(--terminal-font-size)]">
-          Connecting...
-        </div>
-      )}
+      <TerminalTurnOverlay turnView={turnView} />
       <div
         className="terminal-wrapper xterm-themed-scrollbar flex-1 p-0 pl-2 overflow-hidden min-w-0 min-h-0"
         style={{ backgroundColor: 'var(--terminal-bg)' }}
         ref={wrapperRef}
       />
-      <button
-        className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-8 h-8 rounded bg-bg-surface border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-opacity duration-150 cursor-pointer"
-        style={{ opacity: isAtBottom ? 0 : 1, pointerEvents: isAtBottom ? 'none' : 'auto' }}
-        onClick={handleScrollToBottom}
-        title="Scroll to bottom"
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-          <path
-            d="M7 10L3 5H11L7 10Z"
-            stroke="currentColor"
-            strokeWidth="1.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+      <TerminalScrollToBottom isAtBottom={isAtBottom} onClick={handleScrollToBottom} />
     </div>
   );
 });

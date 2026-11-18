@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -11,8 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  *
  * 1. 带 `attachSessionId` 的 tab：**零次** `create_terminal_session`，drain 的目标就是该 id
  *    （会话还活着时不需要新握手 —— credit-pull 的缓冲按 session 存在后端）；
- * 2. 探针说「会话已经不在」（`detach_terminal_session` 回 `false`）：照常新建一条，不报错 ——
- *    后端那条已经结束了，接着用一个死 id 只会得到一个永远空的终端；
+ * 2. 探针说「会话已经不在」（`detach_terminal_session` 回 `false`）：**attach-only** ——
+ *    不新建、不启写管线，只显示失效提示（新建出来的会是一条没有团队 MCP / 凭证 / 隔离
+ *    配置目录的裸 CLI，而用户以为打开的是那个成员的会话）；
  * 3. 普通 tab：照旧新建（防回归）。
  *
  * 接回与「接管」的差别（为什么这里没有 wsl/remote 报错用例）：主线用注册表里的会话探活，
@@ -235,7 +236,7 @@ describe('接回既有会话（attachSessionId）', () => {
     });
   });
 
-  it('探针说会话已不在：照常新建（不报错、也不留一个永远空的终端）', async () => {
+  it('探针说会话已不在：接回失败可见，且零次 create_terminal_session（attach-only）', async () => {
     invokeMock.mockImplementation((cmd: string) => {
       switch (cmd) {
         case 'detach_terminal_session':
@@ -260,15 +261,14 @@ describe('接回既有会话（attachSessionId）', () => {
 
     renderHarness(TAB_ID);
 
-    await waitFor(() => {
-      expect(createSessionCalls()).toHaveLength(1);
-    });
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        'terminal_drain_wait',
-        expect.objectContaining({ sessionId: FRESH_SESSION }),
-      );
-    });
+    expect(await screen.findByTestId('terminal-attach-failed')).toBeInTheDocument();
+
+    // 新建会得到一条没有团队 MCP / 凭证 / 隔离目录的裸 CLI —— 用户以为接回的是那个会话。
+    expect(createSessionCalls()).toHaveLength(0);
+    // 没有会话可投递 ⇒ 不启写管线。
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => String(cmd).startsWith('terminal_drain')),
+    ).toHaveLength(0);
   });
 
   it('普通 tab 仍然新建会话（防回归），drain 目标 = 新建出来的 id', async () => {
