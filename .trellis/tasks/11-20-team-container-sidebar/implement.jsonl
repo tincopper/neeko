@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "派生层纪律、成员会话过滤、激活态单源"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "展示组件 + adapter、tab 导航态"}
+{"file": ".trellis/spec/backend/team-domain.md", "reason": "团队工作区身份与花名册读接口"}
