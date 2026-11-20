@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 485
+- **Total Sessions**: 487
 - **Last Active**: 2026-11-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~1360 | Active |
+| `journal-9.md` | ~1436 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -37,6 +37,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 487 | 2026-11-20 | 侧栏第二级「当前行」收成一份判据 + 团队占位工作树的隐藏边界 | - | `feat-team` |
+| 486 | 2026-11-20 | 团队上移为跨单元容器（成员会话进侧栏） | - | `feat-team` |
 | 485 | 2026-11-20 | 侧栏团队行去按钮 + 看板 tab 记住视图 | `df475fc7` | `feat-team` |
 | 484 | 2026-11-18 | 侧栏点击切项目（跨项目按了没反应） | `07e33337` | `feat-team` |
 | 483 | 2026-11-18 | 接回失败不得静默降级成新建会话 | `397f8b70` | `feat-team` |

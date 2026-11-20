@@ -1358,3 +1358,79 @@ TerminalViewBase 改 attach-only：探针失败不新建、不启写管线，显
 ### Next Steps
 
 - spec + 任务归档
+
+
+## Session 486: 团队上移为跨单元容器（成员会话进侧栏）
+<!-- trellis-session: v=2 fp=abe4e3bb062a5d53 -->
+
+**Date**: 2026-11-20
+**Task**: 团队上移为跨单元容器（成员会话进侧栏）
+**Branch**: `feat-team`
+
+### Summary
+
+团队行移到项目层，展开显示成员及其会话（attribution 求交）；花名册按队懒加载；单元行只数会话
+
+### Main Changes
+
+- teamsByUnit→teamsOfProject；新增 teamRosterStore/useTeamRoster/ProjectTeamList/ProjectTeamRow/TeamMemberRows/TeamMarker/ProjectTeamEntries/UnitTeamMarker；删除 UnitTeamEntries 与 useTeamsByUnit；extraChildCount→unitBadge
+
+### Git Commits
+
+（用户要求不再自动提交：本轮改动全部留在工作区）
+
+### Testing
+
+- [OK] vitest 五个目录全部通过；tsc clean；`pnpm check:quick` 15 护栏通过
+- 第三轮：团队行删掉状态文字徽标（占宽 40–60px），`workspace missing` 换成图标（保留可访问名）
+- 第四轮：团队列表表头的 `Refresh` 文字按钮改成 `RefreshCw` 图标键（几何同看板头部的刷新键）
+- 第五轮：团队行的「当前」= 点过这一行（`workspaceStore.activeTeamId`）∪ 前台会话的归属；
+  单元激活（`setActiveWorkspace` / `clearActiveWorkspace`）自动清团队选中 —— 单点、无本地记账
+- 第六轮：高亮互斥 —— 新增 `useTeamRowSelected()`，三个二级宿主统一 `isActive && !teamRowSelected`；
+  团队跑在主 checkout 时不再与 `local` 行同时亮
+- 第二轮（验收反馈）：团队行改用 `SessionRow kind="team"`（Users 图标、与 local/worktree 同几何），
+  删除 `⟦team⟧` 标记（两个组件 + 三处宿主接线），被团队占用的工作树不再出现在二级列表
+- 订正：团队行起初跟着「有子项就首帧展开」⇒ 侧栏每次挂载每队各拉一次 `team_snapshot`；
+  加 `SessionRow.defaultExpanded` 显式退出（几何同构、展开代价不同）
+- check 阶段修掉一处真缺陷：脉冲打断在飞的花名册请求 ⇒ 只认 `stale` 的 effect 不再触发，
+  成员列表永久停在旧版（回归用例已加，修前红修后绿）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 等用户 review 观感（顺序/标记）→ 由用户决定是否提交；下一轮：成员独立 workspace
+
+
+## Session 487: 侧栏第二级「当前行」收成一份判据 + 团队占位工作树的隐藏边界
+<!-- trellis-session: v=2 fp=a4477dad429e6e64 -->
+
+**Date**: 2026-11-20
+**Task**: 侧栏第二级「当前行」收成一份判据 + 团队占位工作树的隐藏边界
+**Branch**: `feat-team`
+
+### Summary
+
+修 review 清单：currentTeamIdOf 单一派生（团队行/单元行共用）修双亮；activeTeam 带 projectId 修跨项目串高亮；useTeamFreeWorktrees 改「冗余才隐藏」修无法达与零高亮；workspaceMissing 走 key mint；useTeamRoster 删死形参；worktrees 传清单本身修 memo；spec/PRD 同步。
+
+### Main Changes
+
+- src/features/agent-team/utils/teamRowSelection.ts, src/features/agent-team/hooks/useTeamRowCurrent.ts, src/features/agent-team/hooks/useTeamFreeWorktrees.ts, src/shared/store/workspaceStore.ts, src/features/live-sessions/components/ProjectTeamEntries.tsx
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm check:quick; vitest src/features/{agent-team,live-sessions,project,connection} src/shared（2353 通过）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 成员独立 worktree 的后端判据（execution.rs:400）放开后，把 useTeamFreeWorktrees 的判据从「团队的树」扩成「团队 ∪ 成员的树」
