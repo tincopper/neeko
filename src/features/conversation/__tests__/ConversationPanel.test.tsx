@@ -78,7 +78,6 @@ describe('ConversationPanel', () => {
   it('filters list by search query on title/preview', async () => {
     render(
       <ConversationPanel
-        projectPath="/tmp/project"
         projectId="p1"
         agents={agents}
         isActive
@@ -104,7 +103,6 @@ describe('ConversationPanel', () => {
   it('filters list by agent chip', async () => {
     render(
       <ConversationPanel
-        projectPath="/tmp/project"
         projectId="p1"
         agents={agents}
         isActive
@@ -135,7 +133,6 @@ describe('ConversationPanel', () => {
   it('shows clear-filters when nothing matches', async () => {
     render(
       <ConversationPanel
-        projectPath="/tmp/project"
         projectId="p1"
         agents={agents}
         isActive
@@ -159,7 +156,6 @@ describe('ConversationPanel', () => {
   it('clears the search query when Escape is pressed in the search box', async () => {
     render(
       <ConversationPanel
-        projectPath="/tmp/project"
         projectId="p1"
         agents={agents}
         isActive
@@ -185,7 +181,6 @@ describe('ConversationPanel', () => {
   it('shows a result count while filtering', async () => {
     render(
       <ConversationPanel
-        projectPath="/tmp/project"
         projectId="p1"
         agents={agents}
         isActive

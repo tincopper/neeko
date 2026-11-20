@@ -1,39 +1,53 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  foregroundTeamId,
   isBusySession,
   isLiveSession,
   isListedSession,
   isNamedSession,
   isSameSession,
+  isTeamMemberSession,
+  memberSessionsByTeam,
   sessionTab,
   selectLatestSessionForUnit,
   sessionsByUnit,
   tabSession,
   unitsWithListedActiveSession,
 } from '@/shared/selectors/liveSessionSelectors';
-import type { SessionKind, SessionState, SessionView } from '@/shared/types/liveSessions';
+import type { SessionView } from '@/shared/types/liveSessions';
 import type { Tab, TabData } from '@/shared/types/tab';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
+import { createSessionView } from '@/testing/factories';
 
 const MAIN_KEY = WorkspaceSession.of('p1', null).key;
 const WT_KEY = WorkspaceSession.of('p1', '/proj/.worktrees/dev').key;
 
+/** 用户自己的会话（夹具默认形态，见 `createSessionView`）。 */
 function session(overrides: Partial<SessionView> & { sessionId: string }): SessionView {
-  return {
-    kind: 'terminal' as SessionKind,
-    agentId: null,
-    workspaceKey: MAIN_KEY,
-    title: 'fix the parser',
-    titleSource: 'prompt',
-    state: 'running' as SessionState,
-    startedAt: '2026-10-31T10:00:00.000Z',
-    updatedAt: '2026-10-31T10:00:00.000Z',
-    // 夹具默认「已跑完一轮」：侧栏列出需要它，需要首轮未结束的场景显式覆盖 0。
-    turnCount: 1,
-    hasUserInput: true,
+  return createSessionView(overrides);
+}
+
+/**
+ * 成员会话：归属 `teamMember` —— 它属于花名册，不属于用户的会话列表。
+ *
+ * 除归属外与本地 `session()` 同形（有真标题 + 用户发过输入），否则用例测不到
+ * 「被归属过滤掉」而会测成「被 `isListedSession` 过滤掉」（两条判据不同源）。
+ */
+function memberSession(
+  sessionId: string,
+  overrides: Partial<SessionView> = {},
+  teamId = 'tm_1',
+  memberId = 'lead@tm_1',
+): SessionView {
+  return createSessionView({
+    sessionId,
+    attribution: { kind: 'teamMember', teamId, memberId },
+    agentId: 'claude-code',
+    title: '修登录竞态',
+    titleSource: 'native',
     ...overrides,
-  };
+  });
 }
 
 function tabWith(data: TabData, id = 'tab-1'): Tab {
@@ -259,6 +273,20 @@ describe('unitsWithListedActiveSession', () => {
       ]),
     ).toEqual(new Set());
   });
+
+  /**
+   * 成员会话的代表者是**项目层的团队容器行**（`ProjectTeamList`），它不再是任何单元的
+   * 子项（2026-11 容器模型）。所以成员会话在前台时，单元行**不**让出选中底 —— 否则单元行
+   * 不填、而它内部也没有任何子行亮着，「当前」在侧栏里凭空少掉一级。
+   *
+   * 成员会话的「当前」由 `foregroundTeamId` 在团队容器行上表达（下一个 describe 的用例）。
+   */
+  it('前台的成员会话 ⇒ 单元行**不**让出（代表它的团队行在项目层，不是本单元的子项）', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'lead' }];
+    expect(
+      unitsWithListedActiveSession(refs, [memberSession('lead', { hasUserInput: false })]),
+    ).toEqual(new Set());
+  });
 });
 
 describe('isSameSession', () => {
@@ -406,5 +434,167 @@ describe('selectLatestSessionForUnit —— 点图标时该接回哪一条', () 
 
   it('无命中返回 null（注册表为空）', () => {
     expect(selectLatestSessionForUnit([], MAIN_KEY, 'chat')).toBeNull();
+  });
+});
+
+describe('成员会话（归属 teamMember）不归用户管', () => {
+  it('isTeamMemberSession 只看归属（不看标题 / 状态 / kind）', () => {
+    expect(isTeamMemberSession(memberSession('m1'))).toBe(true);
+    expect(isTeamMemberSession(session({ sessionId: 'u1' }))).toBe(false);
+    // 未输入的成员会话照样是成员会话 —— 归属是起进程时的事实，与「用没用过」无关
+    expect(isTeamMemberSession(memberSession('m2', { hasUserInput: false }))).toBe(true);
+  });
+
+  it('sessionsByUnit 跳过成员会话（它们归花名册，六态 / 租约 / 待批队列只在面板）', () => {
+    const byUnit = sessionsByUnit([
+      session({ sessionId: 'mine', startedAt: '2026-10-31T10:00:00.000Z' }),
+      memberSession('lead'),
+    ]);
+    expect(byUnit.get(MAIN_KEY)?.map((s) => s.sessionId)).toEqual(['mine']);
+  });
+
+  it('成员会话是唯一的会话时，该单元没有子列表（成员归项目层的团队容器行）', () => {
+    expect(sessionsByUnit([memberSession('lead')]).size).toBe(0);
+  });
+
+  it('selectLatestSessionForUnit 跳过成员会话（点种类图标不得接回成员的 PTY）', () => {
+    const sessions = [
+      session({ sessionId: 'mine', startedAt: '2026-10-31T10:00:00.000Z' }),
+      // 更新的一条，唯一拥有者不是用户
+      memberSession('lead', { startedAt: '2026-11-17T10:00:00.000Z' }),
+    ];
+    expect(selectLatestSessionForUnit(sessions, MAIN_KEY, 'terminal')?.sessionId).toBe('mine');
+    // 只有成员会话 ⇒ 没有可接回的那一条（用户在这里从没开过会话）
+    expect(selectLatestSessionForUnit([memberSession('lead')], MAIN_KEY, 'terminal')).toBeNull();
+  });
+
+  it('unitsWithListedActiveSession 不把成员会话计入（代表它的是项目层团队行，不是本单元的子行）', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'lead' }];
+    expect(unitsWithListedActiveSession(refs, [memberSession('lead')])).toEqual(new Set());
+  });
+});
+
+describe('foregroundTeamId —— 侧栏团队行的「当前」提示', () => {
+  it('前台是成员会话 ⇒ 返回它的 teamId', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'lead' }];
+    expect(foregroundTeamId(refs, [memberSession('lead', {}, 'tm_42')])).toBe('tm_42');
+  });
+
+  it('前台是用户自己的会话 ⇒ null（团队行不该标「当前」）', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'mine' }];
+    expect(
+      foregroundTeamId(refs, [session({ sessionId: 'mine' }), memberSession('lead')]),
+    ).toBeNull();
+  });
+
+  it('前台会话不在快照里（未注册 / 已消失）⇒ null', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'ghost' }];
+    expect(foregroundTeamId(refs, [memberSession('lead')])).toBeNull();
+    expect(foregroundTeamId([], [memberSession('lead')])).toBeNull();
+  });
+
+  it('单元隔离：同 id 的另一单元的成员会话不算（kind 也要同时相等）', () => {
+    const refs = [{ workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'lead' }];
+    expect(foregroundTeamId(refs, [memberSession('lead', { workspaceKey: WT_KEY })])).toBeNull();
+    expect(foregroundTeamId(refs, [memberSession('lead', { kind: 'chat' })])).toBeNull();
+  });
+
+  it('ref 顺序即前台优先级：第一个命中的 ref 说了算', () => {
+    const refs = [
+      { workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'lead-a' },
+      { workspaceKey: WT_KEY, kind: 'terminal' as const, sessionId: 'lead-b' },
+    ];
+    const sessions = [
+      memberSession('lead-b', { workspaceKey: WT_KEY }, 'tm_b'),
+      memberSession('lead-a', { workspaceKey: MAIN_KEY }, 'tm_a'),
+    ];
+    expect(foregroundTeamId(refs, sessions)).toBe('tm_a');
+  });
+
+  /**
+   * 中心前台是**用户自己的**会话、停靠槽里是成员会话 ⇒ 团队行**不**标「当前」。
+   *
+   * 与 `UnitSessionList.activeSession` 同一条「第一个命中的 ref 说了算」规则：越过中心那条
+   * 去停靠槽里找成员会话，会让「当前」同时出现在用户的会话行与团队行上（停靠不改「当前」事实，
+   * 但停靠槽的会话在前有中心前台时并不是用户在看的那个）。
+   */
+  it('中心前台是用户会话、停靠槽是成员会话 ⇒ null（不得越过中心那条）', () => {
+    const refs = [
+      { workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'mine' },
+      { workspaceKey: MAIN_KEY, kind: 'terminal' as const, sessionId: 'lead' },
+    ];
+    expect(
+      foregroundTeamId(refs, [session({ sessionId: 'mine' }), memberSession('lead')]),
+    ).toBeNull();
+  });
+});
+
+/**
+ * 成员会话的归属：**只看 `attribution`，不看单元**。
+ *
+ * 这条是容器模型的全部依据 —— 一旦这里开始看 `workspaceKey`，成员空间（每人一棵树）到来时
+ * 侧栏就会漏人，而漏人是静默的（面板里还看得见，只是侧栏少了一行）。
+ */
+describe('memberSessionsByTeam', () => {
+  it('按 (teamId, memberId) 分组：跨单元的成员会话落到同一个队下', () => {
+    const byTeam = memberSessionsByTeam([
+      memberSession('lead', { workspaceKey: MAIN_KEY }, 'tm_1', 'lead@tm_1'),
+      memberSession('w1', { workspaceKey: WT_KEY }, 'tm_1', 'w1@tm_1'),
+      memberSession('other', { workspaceKey: WT_KEY }, 'tm_2', 'w1@tm_2'),
+    ]);
+
+    expect(byTeam.get('tm_1')?.get('lead@tm_1')?.sessionId).toBe('lead');
+    // 同一个队、另一个单元（成员可以跑在别的树里）—— 容器据此跨单元。
+    expect(byTeam.get('tm_1')?.get('w1@tm_1')?.sessionId).toBe('w1');
+    expect(byTeam.get('tm_2')?.get('w1@tm_2')?.sessionId).toBe('other');
+  });
+
+  it('用户自己的会话不参与（成员行只认 teamMember 归属）', () => {
+    const byTeam = memberSessionsByTeam([session({ sessionId: 'mine' })]);
+    expect(byTeam.size).toBe(0);
+  });
+
+  it('同一成员有活会话与已终止的旧会话 ⇒ 取活的那条（否则点成员行打不开）', () => {
+    const byTeam = memberSessionsByTeam([
+      memberSession('old', {
+        workspaceKey: WT_KEY,
+        state: 'stopped',
+        startedAt: '2026-11-02T09:00:00.000Z',
+      }),
+      memberSession('live', {
+        workspaceKey: WT_KEY,
+        state: 'running',
+        startedAt: '2026-11-02T08:00:00.000Z',
+      }),
+    ]);
+
+    expect(byTeam.get('tm_1')?.get('lead@tm_1')?.sessionId).toBe('live');
+  });
+
+  it('两条都活着 ⇒ 取更晚开始的那条（不依赖快照顺序）', () => {
+    const byTeam = memberSessionsByTeam([
+      memberSession('newer', {
+        workspaceKey: WT_KEY,
+        state: 'ready',
+        startedAt: '2026-11-02T11:00:00.000Z',
+      }),
+      memberSession('older', {
+        workspaceKey: WT_KEY,
+        state: 'running',
+        startedAt: '2026-11-02T10:00:00.000Z',
+      }),
+    ]);
+
+    expect(byTeam.get('tm_1')?.get('lead@tm_1')?.sessionId).toBe('newer');
+  });
+
+  it('没有会话的成员不会凭空出现（成员名只能来自花名册）', () => {
+    const byTeam = memberSessionsByTeam([
+      memberSession('w1', { workspaceKey: WT_KEY }, 'tm_1', 'w1@tm_1'),
+    ]);
+
+    expect([...(byTeam.get('tm_1')?.keys() ?? [])]).toEqual(['w1@tm_1']);
+    // `lead@tm_1` 没有会话 ⇒ 不在这张表里；它的存在只由花名册回答。
+    expect(byTeam.get('tm_1')?.has('lead@tm_1')).toBe(false);
   });
 });

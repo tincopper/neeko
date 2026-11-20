@@ -50,7 +50,9 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
   );
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-bg-primary">
+    // 几何由中心区容器给（`AppCenter` 的 `CENTER_WRAPPER_CLASS`）：这里只放分栏（两块岛），
+    // 不写背景 / 高度 / 内缩。
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ResizablePanelGroup
         orientation="horizontal"
         id="library-split"

@@ -22,7 +22,7 @@ import ConversationList from './ConversationList';
 const SCROLL_SURFACE = 'dock.conversations';
 
 interface ConversationPanelProps {
-  projectPath: string | null;
+  /** 项目身份 = History 的范围（一个项目一份历史，含它全部工作区）。`null` = 空态。 */
   projectId: ProjectId | null;
   agents: AgentConfig[];
   isActive: boolean;
@@ -39,7 +39,6 @@ interface ConversationPanelProps {
 
 const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
   ({
-    projectPath,
     projectId,
     agents,
     isActive,
@@ -65,7 +64,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
       forceRefresh,
       loadMore,
       removeConversation,
-    } = useConversationList(projectPath, isActive, agentFilter ?? undefined);
+    } = useConversationList(projectId, isActive, agentFilter ?? undefined);
     const { isResuming } = useConversationResume(projectId);
 
     // 滚动记忆：面板互切（保活期引擎丢位置）与卸载重建都恢复列表位置；按项目隔离。
@@ -142,7 +141,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
     // 折叠态筛选行是否溢出单行（测量逻辑见 useFilterRowOverflow）。
     const filterOverflow = useFilterRowOverflow(filterRowRef, agentOptions.length, filterExpanded);
 
-    if (!projectPath) {
+    if (!projectId) {
       return (
         <div className="flex flex-col h-full">
           <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border">

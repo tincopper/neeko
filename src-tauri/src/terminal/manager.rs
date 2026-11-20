@@ -62,6 +62,27 @@ impl Default for TerminalManager {
     }
 }
 
+/// 一个 PTY 会话要启动什么。
+///
+/// # 为什么不是 `Option<String>`
+///
+/// `Shell` 形态是**一段 shell 命令行**（`cmd /c` / `sh -c`），引号规则由 shell 决定。团队
+/// 成员要带 `--mcp-config '{"mcpServers":…}'` 这种含引号与空格的 JSON：走 shell 就必须
+/// 引号转义，而仓库里的 `quote_shell_arg` 是 POSIX 专用，在 `cmd /c` 下语义不同（红线 2）。
+/// `Argv` 直接进 `CommandBuilder`，**没有引号规则**，也就没有平台差异。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TerminalLaunch {
+    /// 任务终端：一段 shell 命令行（平台 shell 差异由 `platform::shell_launch` 处理）。
+    Shell(String),
+    /// 需要精确 argv 的调用方（团队成员）：第一个元素是程序，其余是参数。
+    ///
+    /// 空列表是调用方的编程错误。**对外的拒绝点是 [`crate::terminal::TerminalRouter`]
+    /// （`InvalidInput`）**：本层只能返回 `anyhow::Error`（会被归成 `Unknown`），所以
+    /// 这里的同义守卫只服务直接调本层的代码。不回退成交互 shell —— 那会让成员「起来了
+    /// 但没连上工具面」。
+    Argv(Vec<String>),
+}
+
 impl TerminalManager {
     /// Creates a new TerminalManager with empty session and PTY maps.
     #[must_use]
@@ -99,10 +120,18 @@ impl TerminalManager {
     ///
     /// 运行根由调用方（router，再上溯终端命令层）从 Workspace 身份派生；本层不再有
     /// 「可选 working_dir + 项目路径缺省」的 fail-open 形态（缺省静默回落主仓已退役）。
+    /// `extra_env` 是**不透明的键值对**：本层不认识任何业务身份，只把它写进子进程环境。
+    ///
+    /// 团队成员的 `NEEKO_TEAM_*` 由 `agent::team::identity::member_env` 组装（env 名的单一源），
+    /// terminal 域不新增 team 词汇（依赖方向：team → terminal，不是反过来）。
+    /// 写入顺序在 `TERM` / `COLORTERM` / locale **之后**：调用方显式给了同名键就以调用方为准。
+    ///
+    /// 仅本地路径生效：WSL / SSH 分支忽略它（跨传输注入环境是另一个功能，见 `router` 的守卫）。
     pub(crate) fn create_session(
         &self,
         cwd: &str,
         launch: &crate::terminal::launch::TerminalLaunch,
+        extra_env: &[(String, String)],
         history: Option<crate::common::terminal::history::HistoryPlan>,
         registration: Option<crate::live_sessions::wiring::pty::LiveTerminal<'_>>,
         app_handle: tauri::AppHandle,
@@ -128,6 +157,23 @@ impl TerminalManager {
             ));
             // 平台差异(Windows cmd /c vs Unix sh -c)集中化于 crate::platform::shell_launch。
             crate::platform::shell_launch::build_task_command(task_command)
+        } else if let Some(argv) = &launch.argv {
+            // **不经 shell**：程序与参数直传，没有引号 / 转义规则，也就没有平台差异
+            // （红线 2 的落点：这里没有 `sh -c` / `cmd /c` 可选）。
+            // `argv` 非空的校验在域边界（`router::create_session`），这里只防编程错误。
+            let Some(program) = argv.first() else {
+                return Err(anyhow::anyhow!(
+                    "argv launch needs a program as its first element"
+                ));
+            };
+            crate::terminal::services::log_info(&format!(
+                "[PTY] Argv command mode: {} ({} args)",
+                program,
+                argv.len() - 1
+            ));
+            let mut builder = portable_pty::CommandBuilder::new(program);
+            builder.args(&argv[1..]);
+            builder
         } else {
             crate::terminal::services::build_local_shell_cmd(&launch.shell)
         };
@@ -139,6 +185,10 @@ impl TerminalManager {
         cmd.env(crate::live_sessions::SESSION_ID_ENV, &id);
         // 平台差异(Unix locale 环境变量)集中化于 crate::platform::shell_launch。
         crate::platform::shell_launch::apply_locale_env(&mut cmd);
+        // 调用方注入的身份 env（不透明；见本方法的文档）—— 放在内置值之后，显式值优先。
+        for (key, value) in extra_env {
+            cmd.env(key, value);
+        }
         cmd.cwd(cwd);
 
         let child = pair.slave.spawn_command(cmd)?;

@@ -135,6 +135,60 @@ export default defineConfig({
           functions: 100,
           branches: 100,
         },
+        // Stage Rail 的三态判据（纯函数，2026-11-02 随 work-items 切片新增）：`reachable`
+        // 必须与后端 `StagePlan::can_transition` 是**同一条规则**（相邻才可流转），所以它只
+        // 查后端下发的 `transitions` 表 —— 判据一旦漂移，症状是「UI 画成可点、后端拒绝」。
+        // 按仓库红线（纯函数 100%）钉满，实测 100/100/100/100。
+        '**/work-items/utils/stageRail.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        // 快捷键判据（纯函数，2026-11-02）：三条**不许动**的条件各有一次数据破坏在后头
+        // （输入中按 Backspace 删行 / 对话框上叠第二层 / 无选中时静默），所以闭合到 100%。
+        '**/work-items/utils/shortcuts.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        // 视图偏好读写（纯函数，2026-11-02）：容错分支（存储为 null / getItem 抛 / setItem 抛）
+        // 的反面是「隐私模式下开不出面板」，都写成了用例，实测 100。
+        '**/work-items/utils/viewPreference.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        // 快照陈旧度判据（纯函数，2026-11-02）：阈值边界（正好等于 60s 不算过期）与
+        // 时钟回拨各有用例，实测 100。
+        '**/work-items/utils/runFreshness.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        // 工作项 → 指令前置（纯函数，2026-11-02 随 run-single）：每一条「空字段省略」都是
+        // 一条分支，漏测的形态是 prompt 里多一行占位噪声（agent 读一遍再判假）。
+        // `run-team` 共用同一个函数，所以它必须一直是纯的、一直满。实测 100/100/100/100。
+        '**/work-items/utils/workItemInstruction.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        // 工作项 store（机制层，2026-11-02 复审建议项 F 登记）：撤销窗口 / 乐观回滚 / 在飞去重 /
+        // reset 守卫都是「缺一条分支就静默丢数据或谎报」的异步纪律，所以不按 80 地板而是贴着实测钉。
+        // 实测 lines 100 / statements 100 / functions 100 / branches 100 —— branches 留 5pt
+        // 余量：新加一条未测的条件分支（比如再补一个失败早退）应提醒补测试，但不该让一次
+        // 无关改动把整轮覆盖率判红（同 `useFileEditorLsp` 的取值理由）。
+        '**/work-items/store/workItemsStore.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 95,
+        },
         // 身份所有者（纯函数，被本切片扩展）：lines 实测 100；statements/branches 的缺口
         // 来自 jdt/LSP 解析的既有多分支（134/176/260/275，非本切片引入），故按实测地板钉住。
         '**/shared/utils/fileRef.ts': {

@@ -36,6 +36,35 @@ export interface WorkspaceState {
 
 const EMPTY: WorkspaceState = { activePath: null, activeBranch: '', opened: [] };
 
+/**
+ * 侧栏第二级里「我最后点的是哪一个**团队**」—— 与 `byProject[].activePath` 同一层的
+ * 事实：「这个项目的第二级哪一行是当前」。
+ *
+ * # 为什么带 `projectId`
+ *
+ * 它就是「同一时刻只渲染一个项目的第二级」这件事的结构化：带项目分量后，「A 项目的队选中
+ * 而 B 项目的单元行全体让出高亮」在状态里**不可表达**，不靠任何调用方记得在切项目时清。
+ *
+ * # 它只是「点过」，不是「当前」
+ *
+ * 「第二级的当前行是团队」由 `features/agent-team` 的 `currentTeamIdOf` 统一派生：
+ * 前台团队会话 ∪ 这一格（且必须仍在本项目的团队清单里）。本 store 只存用户动作留下的事实，
+ * 不参与判断 —— 两个判据各答半个问题才是历史缺陷（双亮 / 高亮消失）的成因。
+ *
+ * # 谁负责清它
+ *
+ * [`setActiveWorkspace`] 与 [`clearActiveWorkspace`] 都清 —— 它们是「用户选了某个单元」的
+ * 主入口，于是「选了团队之后又去点单元/会话/工作树」不需要调用方记得手工清。
+ *
+ * 但**正确性不依赖调用方**：切项目不走这两者时（`addProjectFromPath` / `handleSelectFile`），
+ * 项目分量让那一格自动失效；团队被删之后，由 `currentTeamIdOf` 的「必须仍在清单里」判据失效。
+ * 这正是它带 `projectId`、且不参与「当前」判定的原因。
+ */
+export interface ActiveTeam {
+  projectId: ProjectId;
+  teamId: string;
+}
+
 interface WorkspaceStoreState {
   /**
    * **唯一**表示：按项目存。历史上这里还并行维护过 `activeWorktreePath` /
@@ -45,8 +74,16 @@ interface WorkspaceStoreState {
    * selector / hook 派生。
    */
   byProject: Record<string, WorkspaceState>;
+  /**
+   * 侧栏第二级里「我最后点的是哪一个**团队**」；`null` = 最后点的是某个单元（地点）。
+   *
+   * 见 [`ActiveTeam`]：它只记用户动作，不参与「当前」的判定。
+   */
+  activeTeam: ActiveTeam | null;
   /** Workspace 切换的唯一 mutator（切回主仓传 null）。后端挂载等副作用由调用方负责。 */
   setActiveWorkspace: (projectId: ProjectId, path: string | null, branch?: string) => void;
+  /** 选中某个团队行（第二级的容器行）。单元的激活会把它清回 `null`。 */
+  selectTeam: (projectId: ProjectId, teamId: string) => void;
   /** 打开某 workspace（进 opened 清单，不改激活态）。 */
   markWorkspaceOpened: (projectId: ProjectId, path: string, branch: string) => void;
   /**
@@ -58,18 +95,28 @@ interface WorkspaceStoreState {
 
 export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
   byProject: {},
+  activeTeam: null,
 
   setActiveWorkspace: (projectId, path, branch = '') =>
     set((state) => {
       const cur = state.byProject[projectId] ?? EMPTY;
-      if (cur.activePath === path && (branch === '' || cur.activeBranch === branch)) return state;
+      // 单元被激活 ⇒ 团队的选中作废（见 `ActiveTeam`）。**即使单元没变也要清**：
+      // 用户可能是「先点团队，再点同一个单元」，那时 `cur.activePath === path` 早退会让
+      // 团队一直亮着。
+      const nextTeam = null;
+      if (cur.activePath === path && (branch === '' || cur.activeBranch === branch)) {
+        return state.activeTeam === nextTeam ? state : { activeTeam: nextTeam };
+      }
       return {
+        activeTeam: nextTeam,
         byProject: {
           ...state.byProject,
           [projectId]: { ...cur, activePath: path, activeBranch: branch || cur.activeBranch },
         },
       };
     }),
+
+  selectTeam: (projectId, teamId) => set({ activeTeam: { projectId, teamId } }),
 
   markWorkspaceOpened: (projectId, path, branch) =>
     set((state) => {
@@ -85,6 +132,10 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
 
   clearActiveWorkspace: (projectId) => {
     const cur = get().byProject[projectId];
+    // 团队选中同样要作废：这是「切项目 / 删工作树 / 项目移除」的共同入口，而它们都属于
+    // 「用户离开了那个团队的单元」（见 `ActiveTeam`）。**不能和下面的早退合并** ——
+    // `activePath` 已经是 null 时（主仓）团队照样可能是被选中的那一行。
+    if (get().activeTeam !== null) set({ activeTeam: null });
     if (!cur || cur.activePath === null) return;
     set((state) => {
       const entry = state.byProject[projectId];

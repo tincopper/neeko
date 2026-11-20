@@ -10,6 +10,7 @@ import { TooltipProvider } from '@/ui/Tooltip';
 import DockBarButton, { DOCK_BAR_MOVE_BINDINGS, DOCK_BAR_MOVE_SHORTCUTS } from '../DockBarButton';
 
 const LIBRARY = appViewKey('library');
+const TASKS = appViewKey('tasks');
 const FILES = panelView('files');
 const PROJECTS = panelView('projects');
 const AGENT_CHAT = tabKindView('agent-chat');
@@ -46,6 +47,26 @@ beforeEach(() => {
   useAppViewStore.setState({ appView: 'normal' });
   useDockStore.getState().setSlotExpanded('right', false);
   useDockStore.getState().activateView(PROJECTS);
+});
+
+describe('DockBarButton — 左栏 Tasks 入口', () => {
+  it('tasks 与 library 同一形态：中心视图激活时高亮，normal 下不亮', () => {
+    useAppViewStore.setState({ appView: 'tasks' });
+    renderButton(TASKS, 'left');
+    expect(innerSpanOf('Tasks').className).toContain('bg-bg-selected');
+  });
+
+  it('点一下进中心视图：左栏按既定协议收起，退出时恢复原状', () => {
+    useDockStore.getState().setSlotExpanded('left', true);
+    renderButton(TASKS, 'left');
+
+    fireEvent.click(screen.getByRole('button', { name: /^Tasks/ }));
+
+    expect(useAppViewStore.getState().appView).toBe('tasks');
+    // 中心视图占满中间区 ⇒ 左栏收起；「原来是不是展开的」被记下来，退出时还原
+    expect(useDockStore.getState().zones.left.expanded).toBe(false);
+    expect(useDockStore.getState().leftZoneExpandedBeforeLibrary).toBe(true);
+  });
 });
 
 describe('DockBarButton — 选中态按 activation.kind 分发', () => {

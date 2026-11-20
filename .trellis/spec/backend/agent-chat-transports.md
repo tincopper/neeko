@@ -157,7 +157,7 @@ chat 侧同一条规则：先 `register` 再起事件泵。
 | `pty::OutputActivity::poll` | 生产者 | 活动推断 |
 | `pty::exit_and_notify` | 生产者 | 进程自己退出（落终止态 + 注销） |
 | `lifecycle::close_and_notify` | 注册表域 | 关 tab（只标 `Stopped`，**保留**条目） |
-| `lifecycle::unregister_and_notify` / `delete_and_notify` | 注册表域 | 注销 / 删除 |
+| `lifecycle::unregister_and_notify` | 注册表域 | 注销（= 删除侧栏行）|
 | `chat::register_and_notify` | 生产者 | chat 登记 / 续聊 |
 
 **为什么 `close_*` / `unregister_*` 不在 `wiring::pty`**：它们是「注册表 + 事件」的知识，
@@ -178,7 +178,7 @@ chat 侧同一条规则：先 `register` 再起事件泵。
 | 用户关 tab（`TerminalRouter::close_session`） | `lifecycle::close_and_notify`：只 `apply(Stopped)`，**不注销** | 那一行留着，状态点变 stopped，点击可恢复 |
 | 进程自己退出（`pty::exit_and_notify`） | `apply(exit_signal)` + `unregister` | 行消失 |
 | 销毁单元 / 清 tab 空间（`lifecycle::unregister_and_notify`） | 注销 | 行消失 |
-| 用户删除侧栏行（`app::session_lifecycle::delete_live_session`） | 结束进程（按归属分派）→ `lifecycle::delete_and_notify` | 行消失 |
+| 用户删除侧栏行（`app::session_lifecycle::delete_live_session`） | 结束进程（按归属分派）→ `lifecycle::unregister_and_notify` | 行消失 |
 
 `on_exit` 因此多一条前置判据：**条目已经是 `Stopped` 就说明这次退出是主动关闭的尾巴**，
 只确认状态、不注销。少了这条，关 tab 仍会少一行（`close_session` 先标状态，PTY 随后退出
@@ -191,6 +191,16 @@ chat 侧同一条规则：先 `register` 再起事件泵。
   （探测与派发在同一个临界区，`false` 是正常路径而不是告警），未命中再问
   `AgentChatManager`。「怎么停」永远只有生产者那一份实现。
 - **先停进程，再摘条目**：反过来会让注册表已摘而进程还在跑，之后再没有入口能定位到它。
+- **团队成员会话判负**：归属为 `SessionAttribution::TeamMember` 的会话在停进程**之前**直接返回
+  `AppError::Conflict`（不结束进程、不摘条目）。成员的生命周期只由团队域结束（`team_close` /
+  归档 / 花名册）；侧栏是用户的会话列表，不是第二条成员管理入口。守卫必须在停进程之前 ——
+  一旦 `close_session` 先跑，团队侧只剩「成员行 `session.live = false`」一个表现，与
+  「CLI 自己崩了」无法区分。
+
+同一条归属原则还守着**恢复路径**：`Registry::adopt`（侧栏点回一条已停止的会话 ⇒ 新进程继承
+旧条目的身份）拒绝 `TeamMember` 的 `from`。那个 `from` 可能 `Stopped` 但**进程还活着**
+（把成员终端 tab 以「后台运行」关掉），放行就会摘掉成员条目 ⇒ 进程变成无主孤儿，团队侧
+只看到「成员 offline」。成员的接管只有 `team_resume`（它铸新的 terminal id 并重建配置）。
 
 **视图侧的顺序在前端定**（`features/live-sessions/utils/sessionRowActions.ts`）：
 先 `closeEditorTab`（走既有的关闭入口，进程正常结束），再 `deleteLiveSession`
@@ -224,6 +234,20 @@ chat 侧同一条规则：先 `register` 再起事件泵。
 | 后台运行 | `detach_terminal_session(id, true)`：drain 转分离态 | 拆缓存但**不 closeSession** | 行留着，状态继续变（Running / AwaitingApproval …） |
 | 退出进程 | `close_terminal_session` → `close_and_notify`（标 `Stopped`） | 拆缓存 + 关会话 | 行留着（可点回来续写） |
 | 取消 | — | — | — |
+
+**接回是 attach-only**（2026-11-18）：`attachSessionId` 的语义是「只要那一条，不要替代品」。
+存活探针 `detach_terminal_session(id, false)` 返回 `false`（drain 已不在 = PTY 已结束）时，
+`TerminalViewBase` **不新建会话**、不启动写管线、不自动拉起 agent，只显示一条失效提示
+（`terminal-attach-failed`）。
+
+为什么这条不能有兜底：新建出来的 PTY 是终端域起的，拿不到团队执行层注入的任何东西
+（`--mcp-config` / `NEEKO_TEAM_*` / 隔离配置目录），却会带上同一个 `agentId` 并自动拉起 ——
+它带着队长 preamble 起来、调不到任何 `team_*`，而用户以为打开的是那个成员的会话。对用户自己的
+会话同样不自洽：快照说「已结束」时侧栏走的是续写分支（`resumeFromSessionId` + `--resume`），
+只有这个竞态会产出一条**毫无关系的**空终端。
+
+恢复动作**不在**终端视图里：它属于调用方（花名册五态判据 / `sessionTabFactory` 的 resume 分支），
+那两处才知道 `resumable` / `sealed`。失效态本身是探针结果的一次派生，不是第二份记账（红线 17）。
 
 **分离态（detached）是这套东西的前提**，不是优化：分离后没有消费者，若照常背压，
 512KB 的 drain 很快写满 → PTY 写入被堵死 → 后台 agent 冻在那里。所以分离态的 drain
@@ -385,6 +409,20 @@ Claude Code / Codex 会把**任务标题**写进 OSC（`✳ Fix login bug`），
 
 空标题是**「这条会话还没有名字」的唯一表示**，不是后端兜底一个假名字。
 
+- **归属为团队成员的会话不落持久化行**（写门：`cursor::ResumeCursor::from_entry`）。它们仍在
+  注册表里、仍在侧栏的 live 快照里（可见性由 `has_user_input` 决定），但**不进 `session_cursors`**：
+  进程没了就没有可用的入口，而恢复团队的官方路径是 `team_resume`（它铸新的 terminal id），
+  落库的旧行只会成为永久孤儿。若落库了，重启后它会以 `User` 归属回到侧栏（持久化行不存归属），
+  点击走 `--resume` 拉起一个**没有团队 MCP 端点 / 凭证 / 隔离配置目录**的裸 CLI。
+  写门只有这一处实现（`Registry::write_entry` / `persist_entry` 只调用它）。
+- **归属上 wire，只回答「这条会话属于谁」**（2026-11-17）：`SessionView.attribution` =
+  `{"kind":"user"}` | `{"kind":"teamMember",teamId,memberId}`。前端把它用于两件事：把成员会话从
+  侧栏会话列表里摘掉、给团队行标「当前」。成员的**状态 / 租约 / 待办不在里面**（那是花名册的
+  事实，经 `MemberSessionLookup` 端口问本域），**队长身份也不在里面**（归属加 `role` 会让本域
+  反向依赖 `agent::team`，而那条防火墙是双向的 —— 详见 `team-domain.md` §2.6 第 5 条）。
+  serde 侧必须同时写 `rename_all = "camelCase"`（variant）与 **`rename_all_fields = "camelCase"`**
+  （struct variant 的字段）：少了后者 wire 上是 `team_id` / `member_id` 而 TS 声明 `teamId`，
+  前端读 `undefined` 且**不报错**（判据 `view_serializes_attribution` 断言真实 JSON 键）。
 - 侧栏列出**跑完一轮且拿到真标题**的会话（chat / terminal 同一条规则，见
   `.trellis/spec/frontend/state-management.md`）：`hasUserInput && isNamedSession &&
   (titleSource ∈ {native, user} || turnCount > 0 || 终止态)`。agent 终端的首条输入恒被判负，

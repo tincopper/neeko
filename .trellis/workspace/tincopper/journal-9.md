@@ -572,6 +572,12 @@ The watcher event source became a composition-root construction parameter, so se
 [OK] **Completed**
 
 
+## Session 451: merge multi-agent into feat-team with mainline as the baseline
+<!-- trellis-session: v=2 fp=d83848de99fcaf0e -->
+
+**Date**: 2026-11-11
+**Task**: merge multi-agent into feat-team with mainline as the baseline
+**Branch**: `feat-team`
 ## Session 453: fileless sub-session gate for agent hook status
 <!-- trellis-session: v=2 fp=c79c937a538c2549 -->
 
@@ -587,6 +593,7 @@ Session summary was not supplied.
 
 | Hash | Message |
 |------|---------|
+| `ca2861bf` | chore(merge): bring multi-agent into feat-team with the mainline as the baseline |
 | `d9d839dc` | docs(spec): record the fileless child-session gate |
 
 ### Status
@@ -594,6 +601,127 @@ Session summary was not supplied.
 [OK] **Completed**
 
 
+## Session 452: multi-agent merge into feat-team archived
+<!-- trellis-session: v=2 fp=b22d241c26084f70 -->
+
+**Date**: 2026-11-11
+**Task**: multi-agent merge into feat-team archived
+**Branch**: `feat-team`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6979d429` | chore(task): archive 11-11-merge-multi-agent-into-feat-team |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 454: 修复任务详情 tab 白屏：TaskDetail 跨栈字段名漂移（steps → events）
+<!-- trellis-session: v=2 fp=02b3039d0e58019a -->
+
+**Date**: 2026-11-11
+**Task**: 修复任务详情 tab 白屏：TaskDetail 跨栈字段名漂移（steps → events）
+**Branch**: `feat-team`
+
+### Summary
+
+后端 view.rs::TaskDetail 发 events/eventsTruncated，前端类型与组件读 steps/stepsTruncated，用户点开任务即 TypeError；以后端线上契约为准改前端 3 处，并补双份契约锚点测试。
+
+### Main Changes
+
+- 前端 TaskDetail 类型/组件/夹具改用 events、eventsTruncated（与 MemberDetail 同名字段同义）
+- 新增 TeamTaskCenterView.test.tsx：手写电线载荷（不依赖夹具）+ 空态/错误/重试
+- view.rs 新增 the_task_detail_json_matches_the_frontend_type：TaskDetail 序列化键集逐字钉住
+- team-domain.md §8.2 记下「TS 镜像必须与 serde 输出逐字一致」的判据与事故形态
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] vitest run TeamTaskCenterView.test.tsx：4 passed（修复前同一行 154 抛 TypeError，Red 已复现）
+- [OK] cargo test --lib agent::team::view::tests: 29 passed
+- [OK] pnpm check:quick：27 条护栏全通过
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 455: 团队会话恢复 S1：身份与进程资源分家（v22）
+<!-- trellis-session: v=2 fp=192d20814766cc97 -->
+
+**Date**: 2026-11-11
+**Task**: 团队会话恢复 S1：身份与进程资源分家（v22）
+**Branch**: `feat-team`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 456: S2 团队会话恢复：resume argv + team_resume + 五态入口
+<!-- trellis-session: v=2 fp=4e2d8b3c9e1018ff -->
+
+**Date**: 2026-11-11
+**Task**: S2 团队会话恢复：resume argv + team_resume + 五态入口
+**Branch**: `feat-team`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 457: S3 历史按身份归属：ProjectScope + team workspace_worktree(v23)
+<!-- trellis-session: v=2 fp=76b5583ba3bce66a -->
+
+**Date**: 2026-11-11
+**Task**: S3 历史按身份归属：ProjectScope + team workspace_worktree(v23)
+**Branch**: `feat-team`
+
+### Summary
+
+Session summary was not supplied.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 458: 修复 codex 成员：MCP 鉴权形状不一致（403 → 无工具面）+ Pty 投递被 paste-burst 吞回车
+<!-- trellis-session: v=2 fp=6682a44f71c6c62b -->
+
+**Date**: 2026-11-12
+**Task**: 修复 codex 成员：MCP 鉴权形状不一致（403 → 无工具面）+ Pty 投递被 paste-burst 吞回车
+**Branch**: `feat-team`
 ## Session 459: LSP close protocol: single sequence, bounded waits, audit-driven T0
 <!-- trellis-session: v=2 fp=341c1ea00ad2a581 -->
 
@@ -607,6 +735,7 @@ Session summary was not supplied.
 
 ### Git Commits
 
+(No commits - planning session)
 | Hash | Message |
 |------|---------|
 | `a4375c9e` | docs(task): record the LSP close protocol task and the audit backlog |
@@ -616,6 +745,12 @@ Session summary was not supplied.
 [OK] **Completed**
 
 
+## Session 465: 团队任务板：assignee（派活即指派）+ 分配图去认领边；规划 handoff-by-reference / task-actions
+<!-- trellis-session: v=2 fp=b09c5a4e94c2f50f -->
+
+**Date**: 2026-11-13
+**Task**: 团队任务板：assignee（派活即指派）+ 分配图去认领边；规划 handoff-by-reference / task-actions
+**Branch**: `feat-team`
 ## Session 460: LSP request channel: typed failure classification, streak, bounded waits
 <!-- trellis-session: v=2 fp=c53bc824b4a55c79 -->
 
@@ -629,6 +764,7 @@ Session summary was not supplied.
 
 ### Git Commits
 
+(No commits - planning session)
 | Hash | Message |
 |------|---------|
 | `9bc2bc69` | docs(task): record the LSP request channel task |
@@ -638,6 +774,12 @@ Session summary was not supplied.
 [OK] **Completed**
 
 
+## Session 466: 第3轮：只启动被指派到的成员（assignee 必填/计划成员/spawn 人数护栏/队长禁 claim），并收口第2轮视口抽取
+<!-- trellis-session: v=2 fp=3a6a21ff2c0e0c06 -->
+
+**Date**: 2026-11-13
+**Task**: 第3轮：只启动被指派到的成员（assignee 必填/计划成员/spawn 人数护栏/队长禁 claim），并收口第2轮视口抽取
+**Branch**: `feat-team`
 ## Session 461: LSP document identity: restart keeps registry and ownership
 <!-- trellis-session: v=2 fp=feea9fd81a96b49a -->
 
@@ -651,6 +793,142 @@ Session summary was not supplied.
 
 ### Git Commits
 
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 467: team 分配流程梳理与收尾：关账 assignee-and-graph、修正过时文档
+<!-- trellis-session: v=2 fp=162471c85f4fde6b -->
+
+**Date**: 2026-11-15
+**Task**: team 分配流程梳理与收尾：关账 assignee-and-graph、修正过时文档
+**Branch**: `feat-team`
+
+### Summary
+
+梳理团队域「无 lead 进程」状态与任务分配流（assignee 计划事实 / owner 执行事实），产出交互式 flow 图；核对 11-13-team-task-assignee-and-graph 全部 41 项后勾账关任务（check:quick 14/14 绿）；修正 mcp/mod.rs 模块文档（loopback listener 已 mount）与 team-domain.md §6.1 残留面措辞（归因裁决已拆 RefuseIncomplete/NotTeamContext）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e26b749b` | feat(team)!: require assignees and bound spawned members to the board |
+| `4e8a41ad` | feat(agent-team): show assignee and owner in flow nodes with viewport controls |
+| `50bf95e2` | docs(spec): record team board, session, and interaction contracts |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 按 planning 顺序做 11-13-team-task-actions（retry 闭环，补 blocked 出路与改派入口）；C11「重试起队长进程」入口建议单独立项。
+
+
+## Session 468: 关账两个滞留任务：session-resume 与 codex-member-mcp
+<!-- trellis-session: v=2 fp=a1c57b0afd6e4330 -->
+
+**Date**: 2026-11-15
+**Task**: 关账两个滞留任务：session-resume 与 codex-member-mcp
+**Branch**: `feat-team`
+
+### Summary
+
+核对后关账：resume 任务 36/36 已勾（代码在 resume.rs + spec §5b）；codex 任务代码证据全在（gate BearerToken、PtySubmit、admission pty_submit_for、spec 三处修订、提交 b2aa5eae），C 阶段手工验证保留未勾并留注记。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `55146c83` | feat(team): resume member sessions from native session ids |
+| `b2aa5eae` | fix(team): accept bearer credentials and wrap codex PTY input as paste |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 进入 11-13-team-task-actions 实施。
+
+
+## Session 469: 实施 task-actions retry 闭环（TDD）
+<!-- trellis-session: v=2 fp=91e39996ba1f9b5d -->
+
+**Date**: 2026-11-15
+**Task**: 实施 task-actions retry 闭环（TDD）
+**Branch**: `feat-team`
+
+### Summary
+
+按 PRD R1-R6/AC1-AC6 落地：manager::retry_task（failed/blocked→pending，reclaim_count 归零=人工新预算，done 拒绝并指向建新任务，summary/body 保留，改派走 assignee_value 唯一实现且在锁外调用防死锁）；MCP task_retry（授权矩阵 12×2=24 格，Worker ❌）+ 本地命令 team_task_retry（actor=lead@{team}）+ lib.rs 注册；前端 canRetry 8 态穷尽判据（卡片+详情共用）、卡片兄弟按钮（避免嵌套 button）、详情头部动作、useTaskRetry（失败不清数据、成功补刷新）、TeamTask TS 镜像。cargo test agent::team 482 全绿；vitest agent-team 303 全绿；check:quick 28/28（中途修掉 rustfmt/clippy：unused import、多余 mut、prettier/eslint 格式）；spec §2.5 补重试段、三处格数 22→24。
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 下一步候选：11-13-team-handoff-by-reference（共享区+artifacts 可写+拒绝截断）；C11「重试起队长进程」入口。
+
+
+## Session 470: 实施 handoff-by-reference：共享区 + artifacts 可写 + 拒绝截断（TDD）
+<!-- trellis-session: v=2 fp=244f4c72d6be1b80 -->
+
+**Date**: 2026-11-15
+**Task**: 实施 handoff-by-reference：共享区 + artifacts 可写 + 拒绝截断（TDD）
+**Branch**: `feat-team`
+
+### Summary
+
+按 PRD R1-R6/AC1-AC7 落地：paths::team_share_dir(_under) 唯一拼装；NEEKO_TEAM_SHARE_DIR 事实 env（member_env 第三对）；执行层 ensure_share_dir 起进程前创建（失败即拒）；summary 超 4KiB 入口 InvalidInput（闭区间通过）且 store clamp 降级为兜底、老行 truncated 标记不再被重写洗掉（含 retry）；task_update artifacts 可写（追加+去重+空数组清空；path 类绝对+canonicalize+团队根∪共享区；根也 canonicalize 修 macOS /var 身份）；team_send 2KiB 限长（前缀不计入）；preamble 两角色共享区说明（唯一落点）；前端 artifacts 点击复制 + 截断提示测试。cargo team 492 绿 / paths 7 绿 / vitest 305 绿 / check:quick 29:29（中途修 fmt/clippy）。spec §2.5 新增交接段 + load 签名 + member_env 三件套。
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 全部 planning 任务已清。后续候选：C11「重试起队长进程」入口单独立项；阶段 C 手工验证（codex 403/粘贴）随下次手测。
+
+
+## Session 471: team: 成员级恢复会话即打开会话
+<!-- trellis-session: v=2 fp=65e4c6e25e3a3288 -->
+
+**Date**: 2026-11-16
+**Task**: team: 成员级恢复会话即打开会话
+**Branch**: `feat-team`
+
+### Summary
+
+成员级 team_resume 成功后自动接管新 PTY；整队恢复仍然只起进程
+
+### Main Changes
+
+- memberTerminal: 新增 resumedTerminalTarget（恢复后要接管哪个句柄的唯一判据）
+- useTeamResume: resume 回传 TeamResumeReport|null，onSettled 可 await 且被 await
+- useTeamResumePanel: 吸收 refreshSnapshot/reloadList/onOpenTerminal，成员级成功后落到新 PTY
+- TeamPanel: 接线收窄，恢复组合点整体下沉到 hook（行数回到 300 红线内）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team src/app/dock/wrappers src/features/agent-chat: 900 passed
+- [OK] pnpm check:quick: 15/15 护栏通过
 | Hash | Message |
 |------|---------|
 | `4947b13c` | docs(task): record the LSP document identity task |
@@ -660,6 +938,233 @@ Session summary was not supplied.
 [OK] **Completed**
 
 
+## Session 472: team: 成员图标复用 tab 栏的 agent 图标
+<!-- trellis-session: v=2 fp=1ef1d2822c7ad4a0 -->
+
+**Date**: 2026-11-16
+**Task**: team: 成员图标复用 tab 栏的 agent 图标
+**Branch**: `feat-team`
+
+### Summary
+
+团队花名册/选择卡的 agent 图标改为从 AgentConfig.icon 解析（与 tab 栏同源），删除手写品牌表
+
+### Main Changes
+
+- agent-team/AgentIcon: 新增 useMemberAgentIcon（按 agentId 从 agentStore 取 icon），图标交给 features/agent 的 AgentIcon
+- agent-team/MemberAvatar: 有没有图标与图标本身共用同一派生点（去掉 hasBrandIcon 手写表）
+- 测试: 新增 AgentIcon.test.tsx（pi/codebuddy/png preset/无图标/未知 agent/装饰场景）+ 花名册图标用例
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team: 317 passed
+- [OK] pnpm check:quick: 15/15 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 473: team: 建队时可自定义团队名称
+<!-- trellis-session: v=2 fp=a50a319e99f1c81a -->
+
+**Date**: 2026-11-16
+**Task**: team: 建队时可自定义团队名称
+**Branch**: `feat-team`
+
+### Summary
+
+建队表单新增「团队名称（可选）」；留空仍由后端取工作区目录名
+
+### Main Changes
+
+- useTeamConfigDraft: 草稿新增 name（原文）+ name 投影（trim，全空白归 null）
+- useStartTeam: start() 增加 name 入参 → start_team_session.name
+- TeamConfigSection: 团队名称输入框排在第一行（身份字段，不是 TeamConfig 的键）
+- utils/teamCreateSummary: 摘要从组件抽成纯函数（名字在最前），并加单测
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team: 327 passed
+- [OK] pnpm check:quick: 15/15 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 474: team: 团队改名（team_rename + 列表行内编辑）
+<!-- trellis-session: v=2 fp=3971a8928de361b0 -->
+
+**Date**: 2026-11-16
+**Task**: team: 团队改名（team_rename + 列表行内编辑）
+**Branch**: `feat-team`
+
+### Summary
+
+新增 team_rename 命令与列表行内重命名；任何状态都可改（名字不参与判据）
+
+### Main Changes
+
+- manager::rename_team: trim + 空名 InvalidInput + 同名幂等 + 先库后镜像 + rename_team 审计
+- commands::team_rename + lib.rs 注册（阻塞池，返回 ()）
+- 前端: api renameTeam / hooks useTeamRename / TeamListRow 行内编辑（InlineRenameInput）
+- spec: team-domain.md §3.5.3 改名判据表
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] cargo test --lib agent::team: 495 passed
+- [OK] pnpm vitest run src/features/agent-team: 330 passed
+- [OK] pnpm check:quick: 28/28 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 475: team: 面板头也能改名 + 双击手势
+<!-- trellis-session: v=2 fp=81a746ae142483ee -->
+
+**Date**: 2026-11-16
+**Task**: team: 面板头也能改名 + 双击手势
+**Branch**: `feat-team`
+
+### Summary
+
+改名入口同步到团队视图头部；两处共用同一份提交判据并加双击手势
+
+### Main Changes
+
+- utils/renameDraft: renameDraftCommit 单一判据（空名/未改 ⇒ null）
+- TeamHeader: 内联编辑 + 改名按钮（可选 prop onRenameTeam）+ 双击队名
+- TeamView: 绑定 teamId 后下传（useCallback 保持 memo）
+- TeamListRow: 改用共享判据 + 双击队名；useTeamRename.rename 收窄为 void
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team: 334 passed
+- [OK] pnpm check:quick: 28/28 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 476: team: 改名同步已打开的 tab 标题
+<!-- trellis-session: v=2 fp=6957ac21973df903 -->
+
+**Date**: 2026-11-16
+**Task**: team: 改名同步已打开的 tab 标题
+**Branch**: `feat-team`
+
+### Summary
+
+team_rename 成功后重写队长终端 tab 与看板 tab 的标题（跨域投影追上）
+
+### Main Changes
+
+- shared/utils/teamTabTitles: 队长/看板 tab 标题的唯一构造点（建 tab 与改名共用）
+- app/dock/wrappers/teamRenameTabs: 按 ptySessionId / data.teamId 认人后重写标题
+- editorStore: team-board 允许合并 teamName（显示名跟随改名，teamId 仍是地址）
+- useTeamRename.onRenamed 只在成功后调；TeamPanel/wrapper 接线
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] vitest src/app/dock/wrappers + src/features/agent-team: 357 passed
+- [OK] pnpm check:quick: 28/28 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 477: team: 删除分配图头部图例
+<!-- trellis-session: v=2 fp=33754e3665870e4c -->
+
+**Date**: 2026-11-16
+**Task**: team: 删除分配图头部图例
+**Branch**: `feat-team`
+
+### Summary
+
+TeamFlowGraph 头部只留标题，删掉「实线 = 派发 · 虚线 = 依赖」图例
+
+### Main Changes
+
+- TeamFlowGraph: 移除图例 span
+- 测试: 图例断言反转为「不再存在」（挡回潮），describe 改为「边」
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team: 334 passed
+- [OK] pnpm check:quick: 28/28 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 478: team: 建队面板页首先填团队名
+<!-- trellis-session: v=2 fp=999eb3b644b27cba -->
+
+**Date**: 2026-11-16
+**Task**: team: 建队面板页首先填团队名
+**Branch**: `feat-team`
+
+### Summary
+
+团队名从配置区移到建队页首，排在队长选择之前
+
+### Main Changes
+
+- 新增 TeamNameField 组件（可选名 + 留空 = 工作区目录名）
+- TeamLaunchPanel: 页首第一格 + 副标题改为「先起名，三步…」
+- TeamConfigSection: 移除名字字段（本区只装 TeamConfig 字段）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] vitest src/features/agent-team: 335 passed（含 DOM 顺序断言）
+- [OK] pnpm check:quick: 28/28 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 479: review fixes: team rename projection / name validator / contract cleanup
+<!-- trellis-session: v=2 fp=6ad904ef9e727a23 -->
+
+**Date**: 2026-11-17
+**Task**: review fixes: team rename projection / name validator / contract cleanup
+**Branch**: `feat-team`
 ## Session 462: LSP IPC budget, dropped capability claim, cross-stack event guard
 <!-- trellis-session: v=2 fp=c824d5226f264872 -->
 
@@ -671,6 +1176,17 @@ Session summary was not supplied.
 
 Session summary was not supplied.
 
+### Main Changes
+
+- 改名→tab 标题投影改为只读 tab 自己的地址（修跨队串数据 + 切工作树漏改）；团队名判据收口到 agent/team/name.rs（建队与改名共用）；useTeamRename/teamCreateSummary/useMemberAgentIcon/useStartTeam 契约与层级修正；spec 补「改名 = 改名」与名字判据
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm check:quick 28/28 绿；cargo test agent::team 501 passed；vitest features/agent-team + app/dock 384 passed
 ### Git Commits
 
 | Hash | Message |
@@ -681,6 +1197,126 @@ Session summary was not supplied.
 
 [OK] **Completed**
 
+### Next Steps
+
+- 可选：把 TeamSummary 的 projectId/workspaceWorktree 补上以支持列表态直接派生（当前不需要）
+
+
+## Session 480: team-panel-density: A+B 档落地（原型 → 实现 → 复核）
+<!-- trellis-session: v=2 fp=f64018280d1eec2b -->
+
+**Date**: 2026-11-17
+**Task**: team-panel-density: A+B 档落地（原型 → 实现 → 复核）
+**Branch**: `feat-team`
+
+### Summary
+
+团队面板密度：头部 2 行 + ⋯ 菜单、花名册单行、任务板扁平分组 + 空列汇总 + 可折叠；原型实测 280px 1041→600px（-42%），域内 439 测试与 check:quick 全绿
+
+### Main Changes
+
+- TeamHeader 两行 + TeamHeaderMenu（复用既有回调）；RosterRow 单行 + memberRowMeta；TeamTaskBoard 扁平分组/空列汇总；TeamTaskSection 任务区头 + 折叠；TaskCardRow showState/缺省值不渲染；leaseText 收窄为两态
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm vitest run src/features/agent-team src/app/dock（439 passed）；pnpm check:quick（15/15 护栏 + tsc + related）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 人工目测 280px 面板对照原型（AC2 唯一未勾项）；用户确认后提交
+
+
+## Session 481: 团队成员会话的侧栏生命周期修复 + 侧栏团队入口规划
+<!-- trellis-session: v=2 fp=bc8e8bcd426be75e -->
+
+**Date**: 2026-11-17
+**Task**: 团队成员会话的侧栏生命周期修复 + 侧栏团队入口规划
+**Branch**: `feat-team`
+
+### Summary
+
+修三条归属守卫（写门/删除/adopt），规划侧栏团队行
+
+### Main Changes
+
+- src-tauri: cursor 写门排除 TeamMember；delete_session 拒绝成员会话；Registry::adopt 拒绝成员 from。spec: agent-chat-transports + team-domain 补三条判据
+
+### Git Commits
+
+- `2dbd8932` fix(live-sessions): fence team member sessions out of sidebar lifecycle
+- `bcc0cee1` docs(spec): record the three team member session guards
+
+### Testing
+
+- [OK] cargo test live_sessions(143) / session_lifecycle(4) 全绿；pnpm check:quick 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- S2 wire（SessionView.attribution + TeamSummary.projectId/workspaceWorktree）→ S3 UI（UnitTeamEntries + 过滤成员会话）
+
+
+## Session 482: 侧栏团队入口：团队行 + 队长会话 + 看板入口
+<!-- trellis-session: v=2 fp=b4bafb467feecc31 -->
+
+**Date**: 2026-11-17
+**Task**: 侧栏团队入口：团队行 + 队长会话 + 看板入口
+**Branch**: `feat-team`
+
+### Summary
+
+四刀落地：wire 归属/单元身份、teamListStore、团队行组件、双亮修复
+
+### Main Changes
+
+- SessionView.attribution + TeamSummary.projectId/workspaceWorktree/leadMemberId；teamListStore（全量拉取、消费侧裁剪）；UnitTeamEntries + useTeamEntryActions；selectors 过滤成员会话 / foregroundTeamId；WorktreeRowList extraChildCount + ProjectsPanel 首拉
+
+### Git Commits
+
+- `252be77e` feat(live-sessions): expose session attribution and the team's unit identity
+- `4a23a7c2` feat(agent-team): own the team list in a store and filter member sessions
+- `99a55392` feat(agent-team): show a team row under each workspace unit
+- `bc1eadf3` fix(agent-team): stop double-highlighting the unit and the team row
+- `1dca99a6` docs(spec): record the sidebar team entry contract
+
+### Testing
+
+- [OK] vitest 213 文件 2268 通过；cargo test live_sessions 144 / team 530；pnpm check:quick 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 提交 spec + 任务归档；遗留记录在 prd（attach 竞态、跨项目点团队行不切项目）
+
+
+## Session 483: 接回失败不得静默降级成新建会话
+<!-- trellis-session: v=2 fp=5049bd210e31e8e8 -->
+
+**Date**: 2026-11-18
+**Task**: 接回失败不得静默降级成新建会话
+**Branch**: `feat-team`
+
+### Summary
+
+TerminalViewBase 改 attach-only：探针失败不新建、不启写管线，显示失效提示
+
+### Main Changes
+
+- turnView 三态（connecting/ready/attach-failed）；抽出 TerminalTurnOverlay 与 TerminalScrollToBottom；体积基线 542→537；改写旧 attach 用例
 
 ## Session 463: LSP install lifecycle: probe where the binary lands, tear down on project removal
 <!-- trellis-session: v=2 fp=108da00689e6f3f4 -->
@@ -697,12 +1333,36 @@ Session summary was not supplied.
 
 | Hash | Message |
 |------|---------|
+| `397f8b70` | fix(terminal): make attaching attach-only, never a substitute session |
+
+### Testing
+
+- [OK] vitest terminal/live-sessions/agent-team 663 通过；pnpm check:quick 42 护栏通过
 | `3993f6ef` | docs(task): record the LSP install lifecycle task |
 
 ### Status
 
 [OK] **Completed**
 
+### Next Steps
+
+- spec + 任务归档
+
+
+## Session 484: 侧栏点击切项目（跨项目按了没反应）
+<!-- trellis-session: v=2 fp=d2f2ef945d56de2a -->
+
+**Date**: 2026-11-18
+**Task**: 侧栏点击切项目（跨项目按了没反应）
+**Branch**: `feat-team`
+
+### Summary
+
+抽出 activateUnit 作为唯一判据；切项目走唯一序列且只在跨项目时切；单元在序列结算后落回
+
+### Main Changes
+
+- 新增 utils/activateUnit + hooks/useActivateUnit；context 迁到 shared/contexts 并留门面；useActivateSession 收 selectProject 入参；两个消费者接上
 
 ## Session 464: File drop: insert ports replace guessed pane identity
 <!-- trellis-session: v=2 fp=6169b45035f12071 -->
@@ -719,8 +1379,127 @@ Session summary was not supplied.
 
 | Hash | Message |
 |------|---------|
+| `07e33337` | fix(live-sessions): make a sidebar click switch the project too |
+
+### Testing
+
+- [OK] vitest live-sessions/project/connection/agent-team/editor/app 2179 通过；pnpm check:quick 14 护栏通过；顺序不变量变异验证
 | `f480da09` | fix(file-drop): deliver dropped paths through insert ports |
 
 ### Status
 
 [OK] **Completed**
+
+### Next Steps
+
+- spec + 任务归档
+
+
+## Session 485: 侧栏团队行去按钮 + 看板 tab 记住视图
+<!-- trellis-session: v=2 fp=b1366840b5b9e327 -->
+
+**Date**: 2026-11-20
+**Task**: 侧栏团队行去按钮 + 看板 tab 记住视图
+**Branch**: `feat-team`
+
+### Summary
+
+看板 board/flow 从组件 state 移到 tab 数据（切 tab 不丢）；重复打开只激活不改视图；侧栏团队行删掉 Board 按钮
+
+### Main Changes
+
+- TeamBoardCenterView 收 view/onViewChange；PaneContent 注入 updateTab；useTeamBoardTab 既存分支只激活；UnitTeamEntries / useTeamEntryActions 删 onOpenBoard
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `df475fc7` | feat(agent-team): let the board tab own its view, drop the sidebar button |
+
+### Testing
+
+- [OK] vitest agent-team/live-sessions/editor/app 1930 通过；pnpm check:quick 14 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- spec + 任务归档
+
+
+## Session 486: 团队上移为跨单元容器（成员会话进侧栏）
+<!-- trellis-session: v=2 fp=abe4e3bb062a5d53 -->
+
+**Date**: 2026-11-20
+**Task**: 团队上移为跨单元容器（成员会话进侧栏）
+**Branch**: `feat-team`
+
+### Summary
+
+团队行移到项目层，展开显示成员及其会话（attribution 求交）；花名册按队懒加载；单元行只数会话
+
+### Main Changes
+
+- teamsByUnit→teamsOfProject；新增 teamRosterStore/useTeamRoster/ProjectTeamList/ProjectTeamRow/TeamMemberRows/TeamMarker/ProjectTeamEntries/UnitTeamMarker；删除 UnitTeamEntries 与 useTeamsByUnit；extraChildCount→unitBadge
+
+### Git Commits
+
+（用户要求不再自动提交：本轮改动全部留在工作区）
+
+### Testing
+
+- [OK] vitest 五个目录全部通过；tsc clean；`pnpm check:quick` 15 护栏通过
+- 第三轮：团队行删掉状态文字徽标（占宽 40–60px），`workspace missing` 换成图标（保留可访问名）
+- 第四轮：团队列表表头的 `Refresh` 文字按钮改成 `RefreshCw` 图标键（几何同看板头部的刷新键）
+- 第五轮：团队行的「当前」= 点过这一行（`workspaceStore.activeTeamId`）∪ 前台会话的归属；
+  单元激活（`setActiveWorkspace` / `clearActiveWorkspace`）自动清团队选中 —— 单点、无本地记账
+- 第六轮：高亮互斥 —— 新增 `useTeamRowSelected()`，三个二级宿主统一 `isActive && !teamRowSelected`；
+  团队跑在主 checkout 时不再与 `local` 行同时亮
+- 第二轮（验收反馈）：团队行改用 `SessionRow kind="team"`（Users 图标、与 local/worktree 同几何），
+  删除 `⟦team⟧` 标记（两个组件 + 三处宿主接线），被团队占用的工作树不再出现在二级列表
+- 订正：团队行起初跟着「有子项就首帧展开」⇒ 侧栏每次挂载每队各拉一次 `team_snapshot`；
+  加 `SessionRow.defaultExpanded` 显式退出（几何同构、展开代价不同）
+- check 阶段修掉一处真缺陷：脉冲打断在飞的花名册请求 ⇒ 只认 `stale` 的 effect 不再触发，
+  成员列表永久停在旧版（回归用例已加，修前红修后绿）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 等用户 review 观感（顺序/标记）→ 由用户决定是否提交；下一轮：成员独立 workspace
+
+
+## Session 487: 侧栏第二级「当前行」收成一份判据 + 团队占位工作树的隐藏边界
+<!-- trellis-session: v=2 fp=a4477dad429e6e64 -->
+
+**Date**: 2026-11-20
+**Task**: 侧栏第二级「当前行」收成一份判据 + 团队占位工作树的隐藏边界
+**Branch**: `feat-team`
+
+### Summary
+
+修 review 清单：currentTeamIdOf 单一派生（团队行/单元行共用）修双亮；activeTeam 带 projectId 修跨项目串高亮；useTeamFreeWorktrees 改「冗余才隐藏」修无法达与零高亮；workspaceMissing 走 key mint；useTeamRoster 删死形参；worktrees 传清单本身修 memo；spec/PRD 同步。
+
+### Main Changes
+
+- src/features/agent-team/utils/teamRowSelection.ts, src/features/agent-team/hooks/useTeamRowCurrent.ts, src/features/agent-team/hooks/useTeamFreeWorktrees.ts, src/shared/store/workspaceStore.ts, src/features/live-sessions/components/ProjectTeamEntries.tsx
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] pnpm check:quick; vitest src/features/{agent-team,live-sessions,project,connection} src/shared（2353 通过）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 成员独立 worktree 的后端判据（execution.rs:400）放开后，把 useTeamFreeWorktrees 的判据从「团队的树」扩成「团队 ∪ 成员的树」

@@ -1,13 +1,11 @@
-/** Extract a human-readable message from a Tauri invoke rejection. */
-export function getInvokeErrorMessage(err: unknown, fallback: string): string {
-  if (typeof err === 'string' && err.trim()) return err.trim();
-  if (err instanceof Error && err.message.trim()) return err.message.trim();
-  if (err != null) {
-    const s = String(err);
-    if (s && s !== '[object Object]') return s;
-  }
-  return fallback;
-}
+/**
+ * Extract a human-readable message from a Tauri invoke rejection.
+ *
+ * 实现沉到了 `@/shared/utils/invokeError`（全仓唯一一份）：这段判序在 agent-team 域曾经
+ * 又写了一遍，两处都自洽、只是迟早会漂成「同一个后端错误在两个面板上说法不同」。
+ * 这里保留原名只是为了 git 域的既有调用点与测试不动。
+ */
+export { invokeErrorMessage as getInvokeErrorMessage } from '@/shared/utils/invokeError';
 
 /**
  * Best-effort cleanup for older backend errors that dump stderr as a byte array, e.g.

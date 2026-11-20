@@ -12,6 +12,16 @@
 export type SessionKind = 'chat' | 'terminal';
 
 /**
+ * 会话归属（Rust `SessionAttribution`，`#[serde(tag = "kind")]`）。
+ *
+ * 两半都是**起进程时写入的事实**（`with_attribution`），没有变更路径 —— 所以它不是
+ * “团队此刻有几个成员”这类会变的状态，只有“这条 PTY 是谁开的”。
+ */
+export type SessionAttribution =
+  | { kind: 'user' }
+  | { kind: 'teamMember'; teamId: string; memberId: string };
+
+/**
  * 运行时状态（Rust `SessionState`）。视图**只渲染**它，不得推断。
  *
  * 注意它**不是**持久化词表 `SessionStatus`：后者只有 `Closed`，没有被 Failed / Stopped
@@ -33,6 +43,14 @@ export interface SessionView {
   /** 会话 id：chat 用 `tab.data.sessionId`，terminal 用 `tab.data.ptySessionId`。 */
   sessionId: string;
   kind: SessionKind;
+  /**
+   * 这条会话属于**谁**（Rust `SessionAttribution`，判别联合）。
+   *
+   * 用途只有一个：把成员会话从侧栏的“我的会话”里摘出去，并给团队行标“当前”。
+   * **不**用于展示成员状态 —— 那是花名册的事（成员六态 / 租约 / 待批队列只在团队面板）。
+   * 尤其这里**没有** `role`：谁是队长是 `TeamSummary.leadMemberId` 的事实（红线 17）。
+   */
+  attribution: SessionAttribution;
   /** 该会话的 agent（纯 shell terminal 为 `null` ⇒ 图标回落 `cli.svg`）。 */
   agentId: string | null;
   /**

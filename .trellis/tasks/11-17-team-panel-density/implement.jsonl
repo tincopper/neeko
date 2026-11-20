@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/11-17-team-panel-density/prd.md", "reason": "需求、分档、不降级契约与验收判据（AC0–AC6）"}
+{"file": ".trellis/tasks/11-17-team-panel-density/design.md", "reason": "逐文件改动、菜单项出现条件、卡片条件渲染规则——实现时逐条对照"}
+{"file": ".trellis/tasks/11-17-team-panel-density/implement.md", "reason": "分阶段顺序、测试先行清单与验收命令"}
+{"file": ".trellis/tasks/11-17-team-panel-density/prototype-team-panel-density.html", "reason": "视觉契约：目标形态、信息取舍与 280px 实测口径"}
+{"file": "src/AGENTS.md", "reason": "前端红线：导入防火墙、React 性能、状态管理（本次改动全在该域内）"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件密度、可访问名、testid 与文案的既有约定"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "菜单/折叠/危险动作分离等交互口径"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "check:quick 的覆盖面与 TDD 门禁口径"}
+{"file": ".trellis/spec/backend/team-domain.md", "reason": "团队域 UI 契约：六态徽标、C 档 sentinel-only、列映射封闭枚举"}

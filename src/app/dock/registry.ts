@@ -6,11 +6,13 @@ import {
   GitPullRequest,
   Globe,
   Library,
+  ListChecks,
   MessagesSquare,
   PanelLeft,
   PanelRight,
   Search,
   Terminal,
+  Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { lazy } from 'react';
@@ -35,11 +37,13 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   GitBranch,
   Globe,
   Library,
+  ListChecks,
   MessagesSquare,
   Search,
   PanelLeft,
   PanelRight,
   Terminal,
+  Users,
 };
 
 // ── Lazy-loaded panel components ────────────────────────────────────────────
@@ -75,6 +79,10 @@ const LazyPullRequestsPanelWrapper = lazy(
 );
 
 const LazySearchPanelWrapper = lazy(() => import('@/app/dock/wrappers/SearchPanelWrapper'));
+
+const LazyTeamPanelWrapper = lazy(() => import('@/app/dock/wrappers/TeamPanelWrapper'));
+
+const LazyTasksPanelWrapper = lazy(() => import('@/app/dock/wrappers/TasksPanelWrapper'));
 
 // 槽位 tab 宿主：同一模块两个导出 —— wrapper 决定 slot（宿主不得从 activeView 反推自己是谁）
 const LazyLeftDockTabHost = lazy(() =>
@@ -156,6 +164,23 @@ const UI_BINDINGS: Record<string, UiBinding> = {
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 240,
+  },
+  // 中心视图入口：`host: 'none'` ⇒ 不进 zone、不写 `minPanelSize` —— 宽度由中心区给。
+  [appViewKey('tasks')]: {
+    title: 'Tasks',
+    icon: 'ListChecks',
+    component: LazyTasksPanelWrapper as React.LazyExoticComponent<
+      React.ComponentType<Record<string, unknown>>
+    >,
+  },
+  [panelView('team')]: {
+    title: 'Team',
+    icon: 'Users',
+    component: LazyTeamPanelWrapper as React.LazyExoticComponent<
+      React.ComponentType<Record<string, unknown>>
+    >,
+    // 花名册 + 任务板纵向堆叠，再窄就会把每一行的状态徽标挤掉。
+    minPanelSize: 260,
   },
   [tabHostView('left')]: {
     title: 'Docked Tabs (Left)',

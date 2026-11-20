@@ -841,6 +841,148 @@ quality-guidelines §18b）。
 textarea 且弹层是自己实现的状态机，这个契约就成立**（返回 `void` 会让调用方猜，猜错
 就是 Enter 双触发）。agent chat 不再属于这个场景 —— 它由 suggestion 引擎承担。
 
+---
+
+## 「能不能打开这个会话」是**一个**纯函数，不是一个 `disabled` 表达式（2026-11-11）
+
+### 背景
+
+团队成员行的主按钮曾经只有两种状态（活 ⇒ 可点，死 ⇒ 置灰），于是「进程没了但对话还在」
+被压成「不可点」，用户唯一的出路是点开一个**会静默起空白 CLI** 的路径。加上恢复能力之后，
+同一个问题有四种答案，其中两种可点、两种不可点，且**它们的恢复动作相反**（接管旧进程 /
+起新进程续接 / 只读历史 / 没有会话）。
+
+### 模式
+
+判据只有一处：`features/agent-team/utils/memberTerminal.ts::openTerminalAction`，输出
+`{ enabled, label, reason, kind }`，`kind ∈ live | resume | archive`。组件**只读结果**，
+不得自己写 `disabled={!member.session.live}`（那正是「按钮在、点了必失败」的成因）。
+
+| `session.live` | `resumable` | 有原生 id | `sealed` | kind | 文案 |
+| --- | --- | --- | --- | --- | --- |
+| ✅ | — | — | — | `live` | 打开会话 |
+| ❌ | ✅ | 有 | ❌ | `resume` | 恢复会话 |
+| ❌ | — | 有 | — | `archive` | 查看记录 |
+| ❌ | — | 无 | ❌ | `live`（禁用） | 暂无会话 |
+| ❌ | — | 无 | ✅ | `live`（禁用） | 已关闭 |
+
+顺序是契约：`live` 最先（封存成员在收尾窗口里仍可能是活的，那时接管它才是有用的动作）；
+`resumable` 高于 `archive`（**接管新进程**与**只读历史**不是一回事）。
+
+### 规则
+
+- **不可点必须给可见文字理由**（`reason` 由调用方渲染在按钮旁）：`disabled` 元素不可聚焦，
+  只挂 `title` 等于没有理由。
+- `resumable`、`session`、`sealed` 全部来自后端快照（派生字段），前端**不缓存副本**（红线 17）；
+  组件不重新合成判据，需要「这个队有没有可恢复成员」时走同一个函数的批量版
+  （`hasResumableMember`）。
+- 能力与意图是两个维度：`resumable`（CLI 有没有续接形态）与 `sealed`（用户关没关过）。
+  合成一个布尔会让「已封存」显示成「可恢复」，而后端会拒绝 —— 判据必须与执行同源。
+
+### 恢复会话 = 打开会话（2026-11-13，只对成员级）
+
+`kind === 'resume'` 走完不能就停在「进程起来了」这一步：用户指的是**一个成员**，他要的是
+回到那个成员的对话里，而那一瞬间行上的按钮已经变成「打开会话」—— 让用户再点一次就是把
+一次意图拆成两次。
+
+| 范围 | `team_resume` 之后 |
+| --- | --- |
+| 成员级（花名册行 / 抽屉头 / 待批队列）| 自动接管它**新起**的那个 PTY |
+| 整队（头部「恢复团队」）| **只**起进程，一个 tab 都不开（N 个 tab 会换掉用户眼前那一屏）|
+
+三条实现契约：
+
+1. `team_resume` 只回成员 id（`TeamResumeReport.resumed`），新 `terminalId` 是后端在这次恢复里
+   **新铸的**，只存在于重取后的快照 ⇒ `useTeamResume.onSettled` 必须可 await、且被 await，
+   否则调用方拿到的是恢复前的快照（句柄 `null`，静默退化为「屏幕上什么都没变」）。
+2. 「要开谁」的判据是 `utils/memberTerminal.ts::resumedTerminalTarget(members, memberId)`：
+   没有句柄就返回 `null` 并**什么都不做**（`cold` / `failed` / 快照滞后）。绝不拿旧 id 去接管
+   （症状：「会话 id 找不到」），也绝不降级成只读历史（症状：「点了恢复，对话没有回来」）。
+3. 只有 `report.resumed` 里的成员才落点（`useTeamResumePanel` 的成员级入口）：报告是事实，
+   `cold` / `failed` 的成员没有新进程可开。
+
+### 测试
+
+`utils/__tests__/memberTerminal.test.ts`（五态 + `resumable × sealed` 正交矩阵 +
+`resumedTerminalTarget` 的三种落点）、
+`RosterRow`/`MemberDetailDrawer`/`MemberApprovalQueue` 的派发用例（点击 ⇒ `team_resume(teamId, memberId)`）、
+`TeamHeader` 的「恢复团队」显隐（`open` + 至少一个可恢复成员）、
+`TeamPanel.roster.test.tsx`（成员级恢复 ⇒ 自动接管**新**句柄；整队恢复 ⇒ 零 tab）、
+`hooks/__tests__/useTeamResume.test.ts`（报告回传 / `onSettled` 被 await）。
+
+---
+
+## 改名 = 改名（2026-11-14，跨域：团队行 → tab 标题）
+
+团队名在后端只有一处（`Team.name`，判据见 `backend/team-domain.md` §3.5.3），而它在**两个域**
+各有一份投影：dock 面板（读快照）与 tab 栏（`title` 是建 tab 那一刻的快照）。改名只改后端那
+一行，投影不追的症状是「列表叫新名字，tab 上还写着『队长 · 旧名』」—— 而它在任何单域测试里
+都是绿的。
+
+| tab | 展示位 | 靠什么认「这是这支队」 |
+| --- | --- | --- |
+| 看板 / 分配图（`team-board`）| `title`（`看板 · <队名>`）+ **`data.teamName`** | `data.teamId`（tab 自己的地址）|
+| 队长终端（`terminal`）| `title`（`队长 · <队名>`）| `data.ptySessionId` 等于快照里队长的句柄（后端全局铸造）|
+
+三条实现契约（`app/dock/wrappers/teamRenameTabs.ts` + `TeamPanelWrapper.handleTeamRenamed`）：
+
+1. **判据只读 tab 自己的地址，不读环境**。不要从「当前打开哪支队」（`teamStore.snapshot`）或
+   「当前激活哪个工作区」（`activeWorkspaceSession`）推：列表态改名时前者是**上一个打开过的
+   队**，切过工作树时后者**不是 tab 所在的那个**。两者都只在「环境恰好等于事实」时成立，
+   症状分别是「改 A 的名，B 的队长 tab 变成了 A 的新名字」与「改名只改了一半」。投影因此
+   **扫全部 tab 空间键**，空间键只用于写回（`updateTab(key, …)`），不参与判定。
+2. **队长句柄必须来自「就是这一队」的快照**：`snapshot.team.id === teamId` 不成立 = 不知道该开
+   谁 ⇒ `leaderTerminalId: null`（终端一个都不碰，看板 tab 不受影响）。
+   **这个空值是有代价的**：在列表里改一支**未在面板打开**的队的名，它的队长终端 tab 标题
+   会留在旧名字（句柄只在快照里，而 live-sessions 的读接口不带团队归属）。这个代价是故意
+   付的 —— “不猜”比“改错另一支队的 tab”便宜，而且后者是不可见的错误（面板 / 单测全绿）。
+   真要补上它，正确的路子是让**快照携带**它（已经带了）而不是往 `TeamSummary` 里塞一个
+   活句柄：列表载荷装资源态，下次就会有人拿它当“这个成员还在跑”的判据。
+3. **`data.teamName` 与 `title` 一起写**：`teamName` 不只是渲染副本 —— 重新打开 / 去重 / 宿主
+   展示都读它，只改 `title` 会留下「标题新、数据旧」的两份事实。
+
+### 测试
+
+`app/dock/wrappers/__tests__/teamRenameTabs.test.ts`（句柄认人 / `data.teamId` 认看板 /
+`teamName` 同步 / **跨工作区照样命中**）、
+`TeamPanelWrapper.wiring.test.tsx`（头部改名 ⇒ 两种 tab 都跟上；**在列表里改另一支队的名 ⇒
+不碰当前打开那支队的队长终端**，这条没守住就会跨队写错数据）、
+`features/agent-team/components/__tests__/TeamPanel.teamList.test.tsx`（行内提交 / 取消 /
+空名不请求）。
+
+---
+
+## 画布 pan 与列表排序的边界（2026-11-13，分配图视口）
+
+### 为什么这里**不用** dnd-kit
+
+上面「项目列表拖拽排序」与「❌ 自实现 Pointer Events 拖拽」两节针对的是**重排元素顺序**：
+有 `SortableContext`、有落点判定（`closestCenter`）、有 `onDragEnd(active, over)` 产生的新顺序。
+分配图（`features/agent-team/components/TeamFlowGraph.tsx`）的拖拽**不改变任何元素顺序**，
+只改滚动容器的 `scrollLeft / scrollTop` —— 没有 droppable 可判，把 `DndContext` 拖进 SVG
+反而会把「排序」和「看视口」两件事混成一个抽象。这是标准 pointer 事件 + 滚动位置，不是
+被替换掉的那套自研排序拖拽。
+
+### 约束（都踩过或能静默失效）
+
+| 点 | 做法 | 否则 |
+| --- | --- | --- |
+| wheel 的 `preventDefault` | 容器上 `useEffect` 里 `addEventListener('wheel', h, { passive: false })`，卸载 `removeEventListener` | React 的 `onWheel` 是 **passive 合成事件**，`preventDefault()` 被忽略并打控制台警告，页面跟着一起滚 |
+| zoom 的真相源 | `zoom` 有值 = 受控（`onZoomChange` 回写），省略 = 组件内一份 `useState`；**绝不两边各存一份再同步**（红线 17 同族） | 中央 tab 与 dock 各显示一个不同的倍率 |
+| 纯逻辑 | `utils/flowViewport.ts` 的 `clampZoom` / `zoomFromWheel` / `isPanClick` 可直测，组件只做「事件 → 纯函数 → 写 state / scroll」 | 阈值 / 步长散在 JSX 里，只能手动拖鼠标验证 |
+| 拖完的 click | 容器 `onClickCapture`：总位移超过 `PAN_CLICK_THRESHOLD`(4px) 时 `stopPropagation + preventDefault` | 拖完手一松误开任务详情；零位移的正常点击**必须**仍能点开 |
+| 指针约束 | 主键（`button === 0`）+ `isPrimary`；`setPointerCapture` 让指针移出容器仍继续拖 | 右键 / 多指第二触点抢走 pan；指针移出后拖不动 |
+| 键盘等价 | 中央 tab 保留 `+/-/重置` 按钮与百分比文字 | 无鼠标 / 读屏用户没有任何缩放路径 |
+
+按钮步长（0.25）与 wheel 步长（0.1）**各自独立**：一个是点一下走一大格、一个是滚格微调，
+手感不是同一件事，别为了「DRY」硬合成一个常量；但 `ZOOM_MIN/MAX` 与钳制只有一份实现。
+
+判据：`utils/__tests__/flowViewport.test.ts`（三个纯函数）、
+`components/__tests__/TeamFlowGraph.test.tsx`（受控 wheel 回写、非受控 SVG 宽度变化、
+原生非 passive 注册与清理、pointer 拖动改 scrollLeft 且吞 click、零位移反证）、
+`components/__tests__/TeamBoardCenterView.test.tsx`（中央 tab 的 `zoom` + `onZoomChange` 接线）。
+---
+
 ## 拖拽投递：插入端口模型（file-drop-insert-ports，勿回退）
 
 ### 1. 触发场景与事故

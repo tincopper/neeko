@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/agent-chat-transports.md", "reason": "侧栏会话生命周期：写门 has_user_input / cursor 落盘 / 删除语义 / 恢复路径"}
+{"file": ".trellis/spec/backend/team-domain.md", "reason": "成员会话登记与 SessionAttribution 归属事实"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层极薄：守卫落编排层"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试规范与夹具写法"}

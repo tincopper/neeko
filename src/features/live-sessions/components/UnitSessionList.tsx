@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 
+import { useProjectActionsContext } from '@/shared/contexts/ProjectActionsContext';
 import { useActiveSessionRefs } from '@/shared/hooks/useActiveSessionRefs';
 import { useSessionsByUnit } from '@/shared/hooks/useSessionsByUnit';
 import { isSameSession, NO_SESSIONS } from '@/shared/selectors/liveSessionSelectors';
@@ -28,10 +29,15 @@ interface UnitSessionListProps {
  * 某单元的会话子列表（侧栏投影的**装配件**）。
  *
  * 只做三件装配：从快照里取本单元的会话、从**当前前台会话的唯一派生点**取高亮行、
- * 把点击接到 tab 激活。视觉与交互全在 `SessionList`（同域），本组件不重复任何一条。
+ * 把点击接到 tab 激活。视觉与交互全在同域组件（`SessionList`），本组件不重复任何一条。
  *
- * 只在单元行**展开时**挂载（`SessionRow.children` 的折叠语义），因此这里的 store 订阅
- * 与按行订阅 agent 图标的成本都只发生在用户主动展开的单元上。
+ * # 这里**不再**有团队行（2026-11 容器模型）
+ *
+ * 团队是**项目层的容器**（`ProjectTeamList`），不是单元的子项：成员会话的归属由
+ * `SessionAttribution` 回答，与它跑在哪棵树无关。单元子列表只代表「**我**在这棵树里开过的
+ * 会话」—— 成员会话仍被 `sessionsByUnit` 过滤掉，在单元下再列一次才是回归。
+ *
+ * 无团队的单元：输出与容器模型之前逐字一致（本组件的订阅面也回到了那一份）。
  */
 const UnitSessionList: React.FC<UnitSessionListProps> = ({ workspaceKey, onRevealUnit }) => {
   const byUnit = useSessionsByUnit();
@@ -39,7 +45,9 @@ const UnitSessionList: React.FC<UnitSessionListProps> = ({ workspaceKey, onRevea
   // 本单元的 `editorLayout[workspaceKey].activeTabId` 只是恢复语义（局部状态），
   // 直接用它会让切走后旧单元仍亮着；refs 已编码当前单元，不必再比一次 activeKey。
   const refs = useActiveSessionRefs();
-  const activate = useActivateSession();
+  // 「切项目」的唯一序列由 provider 提供（缺 provider 抛错 —— 静默不切项目正是要修的缺陷）。
+  const { onSelectProject } = useProjectActionsContext();
+  const activate = useActivateSession(onSelectProject);
   const { rename, remove } = useSessionRowActions();
 
   const unitSessions = byUnit.get(workspaceKey) ?? NO_SESSIONS;

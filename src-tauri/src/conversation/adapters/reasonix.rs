@@ -262,10 +262,13 @@ impl AgentSessionAdapter for ReasonixAdapter {
         descriptor::transcript_root(self.agent_id())
     }
 
-    fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<std::path::PathBuf>> {
+    fn discovery_roots(
+        &self,
+        project_roots: Option<&[std::path::PathBuf]>,
+    ) -> Option<Vec<std::path::PathBuf>> {
         crate::conversation::scope::discovery_roots_for(
             self.session_root(),
-            project_path,
+            project_roots,
             crate::conversation::scope::EncodeStyle::Claude,
         )
     }
@@ -912,7 +915,9 @@ mod tests {
             reports[0].errors
         );
 
-        let list = manager.list(None, None).unwrap();
+        let list = manager
+            .list(crate::conversation::manager::ListScope::All, None)
+            .unwrap();
         assert_eq!(list.len(), 1);
         let msgs = manager.get_messages(&list[0].id).unwrap();
         assert!(

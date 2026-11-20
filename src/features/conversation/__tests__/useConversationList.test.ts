@@ -55,7 +55,7 @@ describe('useConversationList', () => {
     mockInvoke.mockReset();
   });
 
-  it('returns empty array when projectPath is null', async () => {
+  it('returns empty array when projectId is null', async () => {
     const { result } = renderHook(() => useConversationList(null, true));
 
     // flush hook effect 内的 deferred setState（Promise.resolve().then）
@@ -68,7 +68,7 @@ describe('useConversationList', () => {
 
   it('starts in loading when active with a project (skeleton spine)', async () => {
     mockInvoke.mockImplementation(async () => new Promise(() => {}));
-    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+    const { result } = renderHook(() => useConversationList('p1', true));
     // flush hook effect 内的 deferred setState
     await act(async () => {});
     expect(result.current.loading).toBe(true);
@@ -98,7 +98,7 @@ describe('useConversationList', () => {
       return undefined;
     });
 
-    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+    const { result } = renderHook(() => useConversationList('p1', true));
 
     // After first list (hydrate), rows are visible while scan still pending.
     await waitFor(() => {
@@ -140,7 +140,7 @@ describe('useConversationList', () => {
       return undefined;
     });
 
-    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+    const { result } = renderHook(() => useConversationList('p1', true));
 
     await waitFor(() => {
       expect(result.current.refreshing).toBe(true);
@@ -164,18 +164,18 @@ describe('useConversationList', () => {
       return undefined;
     });
 
-    renderHook(() => useConversationList('/tmp/project', true, 'claude-code'));
+    renderHook(() => useConversationList('p1', true, 'claude-code'));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('scan_conversations', {
         agentId: undefined,
-        projectPath: '/tmp/project',
+        projectId: 'p1',
       });
       expect(mockInvoke).toHaveBeenCalledWith(
         'list_conversations',
         expect.objectContaining({
           // 范围是单值判别联合：项目级显式声明，没有「两个可选过滤参数」并存。
-          scope: { kind: 'project', path: '/tmp/project' },
+          scope: { kind: 'project', projectId: 'p1' },
           agentId: 'claude-code',
           offset: 0,
           limit: 40,
@@ -184,19 +184,19 @@ describe('useConversationList', () => {
     });
   });
 
-  it('passes projectPath on scan for project-scoped discovery', async () => {
+  it('passes projectId on scan for project-scoped discovery', async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'scan_conversations') return [];
       if (cmd === 'list_conversations') return pageOf([]);
       return undefined;
     });
 
-    renderHook(() => useConversationList('/tmp/project', true));
+    renderHook(() => useConversationList('p1', true));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('scan_conversations', {
         agentId: undefined,
-        projectPath: '/tmp/project',
+        projectId: 'p1',
       });
     });
   });
@@ -214,7 +214,7 @@ describe('useConversationList', () => {
       return undefined;
     });
 
-    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+    const { result } = renderHook(() => useConversationList('p1', true));
 
     await waitFor(() => {
       expect(result.current.refreshing).toBe(false);
@@ -246,7 +246,7 @@ describe('useConversationList', () => {
       return undefined;
     });
 
-    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+    const { result } = renderHook(() => useConversationList('p1', true));
 
     await waitFor(() => {
       expect(result.current.refreshing).toBe(false);
@@ -289,7 +289,7 @@ describe('useConversationList', () => {
       return undefined;
     });
 
-    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+    const { result } = renderHook(() => useConversationList('p1', true));
 
     await waitFor(() => {
       expect(result.current.refreshing).toBe(false);
@@ -305,7 +305,7 @@ describe('useConversationList', () => {
   it('handles total invoke failure with empty list when no prior rows', async () => {
     mockInvoke.mockRejectedValue(new Error('Network error'));
 
-    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+    const { result } = renderHook(() => useConversationList('p1', true));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -317,7 +317,7 @@ describe('useConversationList', () => {
   });
 
   it('does not load when isActive is false', async () => {
-    renderHook(() => useConversationList('/tmp/project', false));
+    renderHook(() => useConversationList('p1', false));
 
     // flush hook effect 内的 deferred setState（isActive=false 分支同样会 reset）
     await act(async () => {});

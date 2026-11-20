@@ -56,6 +56,61 @@ impl SessionState {
     }
 }
 
+/// 会话归属：这条会话是**谁开的**。
+///
+/// # 为什么它必须是持久在条目上的一列，而不是从别处推导
+///
+/// 「哪条 PTY 属于哪个团队成员」只在**起进程的那一刻** 100% 已知：hook 可能没装 / 被用户关掉 /
+/// 进程在发任何事件前就退出；而路径与标题都不是身份（红线 12）。所以归属由起进程的一方
+/// 在 [`crate::live_sessions::wiring::pty::TerminalRegistration`] 里写入。
+///
+/// 生命周期与条目完全一致（自然退出删行、显式关闭 → `Stopped`），**不需要第二套清理逻辑**。
+/// 名字避开 `SessionOwner`：那个名字在 `terminal::router` 里已表示「哪个后端持有会话」。
+///
+/// # 它进 wire，但只回答「这条会话属于谁」
+///
+/// 序列化形态是判别联合（`{"kind":"user"}` / `{"kind":"teamMember",teamId,memberId}`），
+/// 前端**只**用它把成员会话从侧栏会话列表里摘出去、并给团队行标「当前」。
+/// 成员的**状态 / 租约 / 队长身份**一概不在这里 —— 那些是花名册的事实（红线 17）。
+/// 尤其**不**加 `role`：那会让 `live_sessions` 反向依赖 `agent::team`（本模块今天零依赖它，
+/// 而它刻意只经 `view::MemberSessionLookup` 端口问会话域），并给「谁是队长」造一份会陈旧的副本。
+///
+/// 注意 `rename_all` 只改**variant 名**，struct variant 的**字段名**要另用
+/// `rename_all_fields` —— 少了它 wire 上是 `team_id` / `member_id` 而 TS 声明 `teamId`
+/// （前端读 `undefined`，静默不报错）：判据 `view_serializes_attribution`。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum SessionAttribution {
+    /// 用户自己开的终端 / 会话。
+    #[default]
+    User,
+    /// 团队成员：起进程时由团队执行层写入。
+    TeamMember {
+        /// 所属团队。
+        team_id: String,
+        /// 成员 id。
+        member_id: String,
+    },
+}
+
+impl SessionAttribution {
+    /// 这条会话是不是**这个成员**的。
+    #[must_use]
+    pub fn is_member_of(&self, team_id: &str, member_id: &str) -> bool {
+        matches!(
+            self,
+            Self::TeamMember {
+                team_id: t,
+                member_id: m,
+            } if t == team_id && m == member_id
+        )
+    }
+}
+
 /// 一条 live session 条目（注册表的 value）。
 #[derive(Debug, Clone)]
 pub struct SessionEntry {
@@ -63,6 +118,8 @@ pub struct SessionEntry {
     pub session_id: String,
     /// 会话种类。
     pub kind: SessionKind,
+    /// 这条会话是谁开的（见 [`SessionAttribution`]）。
+    pub attribution: SessionAttribution,
     /// 该会话使用的 agent（纯 shell terminal 为 `None`）。
     pub agent_id: Option<String>,
     /// **执行地址**（红线 12：地址是身份，不是字符串前缀）。
@@ -126,6 +183,7 @@ impl SessionEntry {
         Self {
             session_id: session_id.into(),
             kind,
+            attribution: SessionAttribution::User,
             agent_id,
             workspace,
             cwd: cwd.into(),
@@ -153,6 +211,14 @@ impl SessionEntry {
     #[must_use]
     pub const fn with_user_input(mut self, has_user_input: bool) -> Self {
         self.has_user_input = has_user_input;
+        self
+    }
+
+    /// 登记归属。终端与 chat 默认都是 [`SessionAttribution::User`]；
+    /// 团队执行层是**唯一**写入 `TeamMember` 的地方。
+    #[must_use]
+    pub fn with_attribution(mut self, attribution: SessionAttribution) -> Self {
+        self.attribution = attribution;
         self
     }
 

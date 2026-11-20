@@ -19,6 +19,13 @@ interface WorktreeRowListProps {
   worktrees: Worktree[];
   /** 当前激活的 worktree 路径（`null` / 空串 = 主仓）。 */
   activeCheckoutPath: string | null;
+  /**
+   * 第二级的当前行在**别处**（团队容器行）⇒ 本列表任何行都不自称当前。
+   *
+   * 传布尔而不是让本组件自己算：判据在团队域（`useTeamRowSelected`），而本组件在
+   * `shared/` —— 与 `rowState` / `renderUnitSessions` 同一条分层：差异是数据，不是第二份实现。
+   */
+  suppressActive?: boolean;
   /** 行交互状态机（本地走 `useWorktreeListActions`，远端走 `useWorktreeRowState`）。 */
   rowState: WorktreeRowState;
   /** 点击行：打开该单元的终端。 */
@@ -51,6 +58,8 @@ interface WorktreeRowListProps {
  *
  * **边界**：本组件只做「一行长什么样、点了做什么」，域差异（回调地址形态、远端 spinner 延迟、
  * 是否需要回收 PTY）全在调用方注入的 `rowState` / 回调里 —— 差异是数据，不是第二份实现。
+ * 「哪些工作树该列出来」同样不在这里：那是团队域的判据（`useTeamFreeWorktrees`），由调用方
+ * 过滤后传进来 —— `shared/` 不认识 `features/`。
  *
  * `rowState` 的类型**由 hook 派生**（`WorktreeRowState = ReturnType<…>`），本组件不另立结构副本。
  */
@@ -58,6 +67,7 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
   projectId,
   worktrees,
   activeCheckoutPath,
+  suppressActive = false,
   rowState,
   onOpenWorktreeTerminal,
   renderUnitSessions,
@@ -83,10 +93,14 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
       {worktrees.map((wt) => {
         const isRenaming = rowState.renaming === wt.path;
         const isDeleting = rowState.deleting === wt.path;
-        const isActive = activeCheckoutPath === wt.path;
+        // 团队行是当前 ⇒ 单元行让出（判据由调用方注入，见 `suppressActive`）。
+        const isActive = activeCheckoutPath === wt.path && !suppressActive;
         // 该 worktree 的行本身就是单元身份 → 它的单元 key 是这张表的一行
         const unitKey = WorkspaceSession.of(projectId, wt.path).key;
         const unitSessions = byUnit.get(unitKey) ?? NO_SESSIONS;
+        // 子项总数 = 会话数。团队不再挂在单元下（它是项目层的容器，见 `ProjectTeamList`），
+        // 所以纯团队、无会话的单元可以折叠 —— 这是正确的（团队不在那里了）。
+        const childCount = unitSessions.length;
 
         return (
           <SessionRow
@@ -114,7 +128,7 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
             onLabelDoubleClick={(e) => rowState.startRename(wt.path, e)}
             labelTitle="Double-click to rename"
             deleting={isDeleting}
-            childCount={unitSessions.length}
+            childCount={childCount}
             childActive={childActiveUnits.has(unitKey)}
             trailing={
               isDeleting ? (
@@ -132,7 +146,7 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
               )
             }
           >
-            {unitSessions.length > 0
+            {childCount > 0
               ? renderUnitSessions?.(unitKey, () => onOpenWorktreeTerminal(wt.path, wt.branch))
               : undefined}
           </SessionRow>

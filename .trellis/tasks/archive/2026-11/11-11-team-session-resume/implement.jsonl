@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/backend/team-domain.md", "reason": "团队域全部契约（状态机、成员生命周期、view 构造唯一落点、审计、租约、MCP 工具面）—— S1/S2 直接改这一域"}
+{"file": ".trellis/spec/backend/agent-hooks-domain.md", "reason": "hook ingest 与 EnvHints 归因：原生会话 id 的记录点、门控位置（observe.rs:98）与 live_sessions 的无门控记录者"}
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "Adapter trait 与 resume_command 家族：S2 的 resume_argv 落在逐 CLI 适配器（红线 15）"}
+{"file": ".trellis/spec/backend/persistence-and-cache.md", "reason": "v22 迁移规范、两个 DB 文件（neeko.db / agent_sessions.db）的区分、cursor 表的写入门控"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "红线 3：boot 归位、迁移、reconcile 都涉及阻塞 I/O，必须进阻塞池"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "花名册四态与 team store 的去重/脉冲纪律（不得缓存成员状态副本，红线 17）"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "「打开会话 / 恢复会话 / 查看记录 / 置灰」四态的可用性与文案纪律（不可点必须给可见理由）"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "测试形状与夹具纪律（红线 13 tempdir、断言用户可见事实）"}
+{"file": ".trellis/tasks/11-11-team-session-resume/research/liveness-and-launch.md", "reason": "活性真相、PTY 启动契约、凭证 per-process、terminal_id 的全部读者 —— S1 的直接依据"}
+{"file": ".trellis/tasks/11-11-team-session-resume/research/history-scope-and-identity.md", "reason": "历史 scope 的路径前缀机制、worktree 无注册表、原生 id 三方归属 —— S3 的直接依据"}

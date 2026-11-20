@@ -17,6 +17,12 @@ vi.mock('@/app/dock/wrappers/LibraryPanelWrapper', async () => {
   const Probe = () => <div data-testid="view-library" data-visible={String(useVisible())} />;
   return { default: Probe };
 });
+// Tasks 走同一个可见性契约：常驻挂载 + `hidden` 切换，拉取门控在子树自己身上。
+vi.mock('@/app/dock/wrappers/TasksPanelWrapper', async () => {
+  const { useVisible } = await import('@/shared/contexts');
+  const Probe = () => <div data-testid="view-tasks" data-visible={String(useVisible())} />;
+  return { default: Probe };
+});
 
 import AppCenter from '../AppCenter';
 
@@ -88,5 +94,43 @@ describe('AppCenter — single-source center routing (appViewStore)', () => {
     // 常驻：切走后仍在 DOM（hidden），再进无需重挂载
     expect(screen.getByTestId('view-library')).toBe(library);
     expect(isHidden(library)).toBe(true);
+  });
+});
+
+describe('AppCenter — tasks 中心视图（首进后常驻）', () => {
+  beforeEach(() => {
+    useAppViewStore.setState({ appView: 'normal' });
+    vi.restoreAllMocks();
+  });
+
+  it('未进入过 tasks 时不挂载它的子树（lazy chunk 不提前解析）', async () => {
+    useAppViewStore.setState({ appView: 'normal' });
+    render(<AppCenter />);
+    // 等 Library 的 lazy 解析完，确认 tasks 不是「还没解析完」而是「没挂」
+    await screen.findByTestId('view-library');
+    expect(screen.queryByTestId('view-tasks')).not.toBeInTheDocument();
+  });
+
+  it('首进 tasks 后常驻（hidden 切换），且 ProjectView 让位', async () => {
+    useAppViewStore.setState({ appView: 'tasks' });
+    const { rerender } = render(<AppCenter />);
+    const tasks = await screen.findByTestId('view-tasks');
+    expect(isHidden(tasks)).toBe(false);
+    expect(isHidden(screen.getByTestId('view-workspace'))).toBe(true);
+
+    act(() => useAppViewStore.setState({ appView: 'normal' }));
+    rerender(<AppCenter />);
+    // 常驻：切走后仍在 DOM（hidden），再进无需重挂载
+    expect(screen.getByTestId('view-tasks')).toBe(tasks);
+    expect(isHidden(tasks)).toBe(true);
+  });
+
+  it('向 tasks 子树声明可见性（与 Library 同一个契约）', async () => {
+    useAppViewStore.setState({ appView: 'tasks' });
+    render(<AppCenter />);
+    expect(await screen.findByTestId('view-tasks')).toHaveAttribute('data-visible', 'true');
+
+    act(() => useAppViewStore.setState({ appView: 'normal' }));
+    expect(screen.getByTestId('view-tasks')).toHaveAttribute('data-visible', 'false');
   });
 });

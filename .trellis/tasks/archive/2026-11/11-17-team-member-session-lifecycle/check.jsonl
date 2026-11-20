@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "禁止模式 / 命名 / clippy 口径"}
+{"file": ".trellis/spec/backend/agent-chat-transports.md", "reason": "AC 与既有会话契约的一致性"}

@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · 团队面板密度优化原型</title>
+<style>
+/* ============================================================================
+   原型 · 非实现。要裁决的是「团队面板在 260–300px 列里该显示什么」。
+
+   三件事必须在这份文件里看清楚：
+   ① 现状 vs 优化后的**同屏对照**（同一份数据、同一宽度）。
+   ② 每一条简化对应哪个区域（悬停右侧清单即高亮），且可以逐条关掉 —— 用来收敛范围。
+   ③ 删掉的信息去了哪里（打开「成员详情抽屉」看：chip / 租约 / 任务 / 事件都在）。
+
+   它不演示：真实 xterm 渲染、脉冲刷新的时序、主题切换、键盘全路径。
+   ============================================================================ */
+
+:root {
+  /* 取 src/styles/themes/dark.css 的 token（原型不发明颜色） */
+  --bg-primary: oklch(0.178 0 0);
+  --bg-secondary: oklch(0.205 0 0);
+  --bg-tertiary: oklch(0.269 0 0);
+  --bg-hover: oklch(0.3 0 0);
+  --bg-selected: oklch(0.35 0 0);
+  --text-primary: oklch(0.985 0 0);
+  --text-secondary: oklch(0.85 0 0);
+  --text-muted: oklch(0.708 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --border-strong: oklch(1 0 0 / 20%);
+  --accent-blue: oklch(0.7 0.1 250);
+  --accent-green: oklch(0.7 0.15 150);
+  --accent-yellow: oklch(0.8 0.15 85);
+  --accent-red: oklch(0.704 0.191 22.216);
+  --accent-orange: oklch(0.75 0.15 65);
+  --text-on-accent: oklch(0.205 0 0);
+  --page-bg: oklch(0.14 0 0);
+  /* 字体阶梯（绑定 --font-size，同 src/styles/base/variables.css） */
+  --micro: 10px;
+  --meta: 11px;
+  --ui: 12px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", Roboto, sans-serif;
+  background: var(--page-bg); color: var(--text-primary);
+  font-size: var(--ui); line-height: 1.45;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
+.mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-ligatures: none; }
+.muted { color: var(--text-muted); }
+.micro { font-size: var(--micro); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spacer { margin-left: auto; }
+
+/* ── 原型工具条（真实实现里不存在）──────────────────────────────── */
+.proto-bar {
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+  background: var(--bg-primary); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.proto-tag {
+  font-size: var(--micro); font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--accent-yellow); background: color-mix(in oklab, var(--accent-yellow) 14%, transparent);
+  border-radius: 4px; padding: 2px 6px;
+}
+.proto-title { font-size: var(--ui); font-weight: 700; }
+.proto-hint { font-size: var(--micro); color: var(--text-muted); }
+.seg { display: flex; gap: 2px; padding: 2px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 7px; }
+.seg button { padding: 3px 9px; border-radius: 5px; font-size: var(--meta); font-weight: 600; color: var(--text-secondary); }
+.seg button:hover { background: var(--bg-hover); }
+.seg button[aria-selected="true"], .seg button[aria-pressed="true"] { background: var(--bg-selected); color: var(--text-primary); }
+.btn {
+  padding: 4px 9px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-secondary); font-size: var(--meta); font-weight: 600;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.btn[aria-pressed="true"] { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+/* ── 舞台 ────────────────────────────────────────────────────── */
+.stage { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px; overflow: hidden; }
+
+/* ── 窗口示意（dock 布局）────────────────────────────────────── */
+.mock {
+  flex: 1; min-width: 0; display: flex;
+  background: var(--bg-primary); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+}
+.rail {
+  width: 44px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 0; border-right: 1px solid var(--border);
+}
+.rail button {
+  width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center;
+  font-size: var(--micro); font-weight: 800; color: var(--text-muted);
+}
+.rail button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.rail button[aria-current="true"] { background: var(--bg-selected); color: var(--accent-blue); }
+
+.center { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.center-tabs { display: flex; align-items: center; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); }
+.ctab { padding: 4px 9px; border-radius: 6px 6px 0 0; font-size: var(--meta); color: var(--text-muted); }
+.ctab[aria-current="true"] { background: var(--bg-secondary); color: var(--text-primary); border-bottom: 2px solid var(--accent-blue); }
+.term {
+  flex: 1; min-height: 0; overflow: hidden; padding: 10px 12px;
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: var(--text-secondary);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.term .dim { color: var(--text-muted); }
+.term .blue { color: var(--accent-blue); }
+.term .green { color: var(--accent-green); }
+
+/* dock 右栏：团队面板 */
+.panel-slot {
+  position: relative; flex-shrink: 0; display: flex; min-height: 0;
+  border-left: 1px solid var(--border); background: var(--bg-primary);
+}
+
+/* ── 面板通用 ─────────────────────────────────────────────────── */
+.panel { display: flex; flex-direction: column; min-height: 0; width: 100%; }
+.panel > .grow { flex: 1; min-height: 0; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.sec { font-size: var(--meta); font-weight: 700; color: var(--text-secondary); }
+.sec-row { display: flex; align-items: center; gap: 6px; }
+.sec-row .spacer { margin-left: auto; }
+.ico {
+  width: 18px; height: 18px; flex-shrink: 0; border-radius: 5px; display: grid; place-items: center;
+  font-size: 11px; color: var(--text-secondary);
+}
+.ico:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ico svg { display: block; }
+.ico-action { color: var(--accent-blue); }
+.ico-action:disabled { color: var(--text-muted); cursor: not-allowed; }
+.seg-mini button svg { display: block; }
+.seg-mini button { display: grid; place-items: center; height: 18px; padding: 0 4px; }
+.divider { height: 1px; background: var(--border); }
+
+/* ── 头部 ─────────────────────────────────────────────────────── */
+.p-head { position: relative; display: flex; align-items: center; gap: 5px; padding: 6px 8px; }
+.p-name { min-width: 0; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-meta {
+  display: flex; align-items: center; gap: 5px; padding: 0 8px 6px;
+  font-size: var(--micro); color: var(--text-muted); border-bottom: 1px solid var(--border);
+}
+.p-head-stack { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.p-head-stack .row { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.p-head-stack .row-meta { flex-wrap: wrap; font-size: var(--micro); color: var(--text-muted); }
+.tbtn { padding: 0 5px; border-radius: 4px; font-size: var(--micro); color: var(--text-secondary); }
+.tbtn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tbtn.danger { color: var(--accent-red); }
+.tbtn.blue { color: var(--accent-blue); }
+
+/* ⋯ 菜单 */
+.menu {
+  position: absolute; top: 26px; right: 6px; z-index: 6; min-width: 132px;
+  display: flex; flex-direction: column; padding: 3px;
+  background: var(--bg-tertiary); border: 1px solid var(--border-strong); border-radius: 7px;
+  box-shadow: 0 12px 28px oklch(0 0 0 / 45%);
+}
+.menu button { text-align: left; padding: 4px 7px; border-radius: 5px; font-size: var(--meta); color: var(--text-secondary); }
+.menu button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.menu button.danger { color: var(--accent-red); }
+.menu .sep { height: 1px; background: var(--border); margin: 3px 2px; }
+
+/* ── 徽标 / chip ─────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
+  padding: 1px 6px; border-radius: 999px; font-size: 9px; font-weight: 700; white-space: nowrap;
+}
+.badge::before { content: ''; width: 4px; height: 4px; border-radius: 999px; background: currentColor; }
+.b-running { color: var(--accent-blue); background: color-mix(in oklab, var(--accent-blue) 14%, transparent); }
+.b-idle { color: var(--text-muted); background: var(--bg-tertiary); }
+.b-awaiting { color: var(--accent-yellow); background: color-mix(in oklab, var(--accent-yellow) 14%, transparent); }
+.b-done { color: var(--accent-green); background: color-mix(in oklab, var(--accent-green) 14%, transparent); }
+.b-open { color: var(--accent-blue); background: color-mix(in oklab, var(--accent-blue) 14%, transparent); }
+.b-unverified {
+  color: var(--accent-yellow); background: transparent; border: 1px dashed var(--accent-yellow);
+}
+.b-unverified::before { background: transparent; border: 1px solid currentColor; }
+
+.chip {
+  display: inline-flex; align-items: center; padding: 1px 5px; border-radius: 4px;
+  font-size: 9px; background: var(--bg-tertiary); color: var(--text-secondary); white-space: nowrap;
+}
+.chip-line { background: transparent; border: 1px solid var(--border-strong); color: var(--text-muted); }
+.chip-accent { color: var(--accent-blue); background: color-mix(in oklab, var(--accent-blue) 14%, transparent); }
+.chip-warn {
+  color: var(--accent-yellow); background: transparent;
+  border: 1px solid color-mix(in oklab, var(--accent-yellow) 55%, transparent);
+}
+.chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.pill { padding: 0 5px; border-radius: 999px; background: var(--bg-tertiary); font-size: 9px; color: var(--text-muted); }
+.pill-soft { padding: 1px 6px; border-radius: 999px; background: var(--bg-tertiary); font-weight: 700; }
+.pill-warn {
+  padding: 1px 6px; border-radius: 999px; font-weight: 700;
+  color: var(--accent-yellow); background: color-mix(in oklab, var(--accent-yellow) 10%, transparent);
+}
+
+/* ── 花名册 ───────────────────────────────────────────────────── */
+.m-list { display: flex; flex-direction: column; gap: 2px; margin-top: 5px; list-style: none; }
+.m-row {
+  display: flex; align-items: center; gap: 6px; padding: 3px 5px; border-radius: 6px;
+  border: 1px solid transparent;
+}
+.m-row:hover { background: var(--bg-hover); }
+.m-row[data-lead] { border-color: color-mix(in oklab, var(--accent-blue) 40%, transparent); }
+.m-row .spacer2 { margin-left: auto; }
+.av {
+  width: 18px; height: 18px; flex-shrink: 0; border-radius: 4px; display: grid; place-items: center;
+  font-size: 9px; font-weight: 800; color: var(--text-on-accent);
+}
+.m-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.m-line { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.m-line .badge { margin-left: auto; }
+.m-name { flex-shrink: 1; min-width: 0; font-size: var(--meta); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-ws { font-size: 9px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-lead {
+  flex-shrink: 0; padding: 0 4px; border-radius: 4px; font-size: 9px; font-weight: 700;
+  color: var(--accent-blue); background: color-mix(in oklab, var(--accent-blue) 10%, transparent);
+}
+.cflag {
+  flex-shrink: 0; padding: 0 4px; border-radius: 4px; font-size: 9px; font-weight: 800;
+  color: var(--accent-yellow); border: 1px solid color-mix(in oklab, var(--accent-yellow) 55%, transparent);
+}
+.m-sub { font-size: 9px; color: var(--text-muted); }
+.m-sub[data-urgent="true"] { color: var(--accent-yellow); font-weight: 700; }
+.m-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex-shrink: 0; }
+.m-actions .reason { font-size: 9px; color: var(--text-muted); }
+
+/* 现状形态：卡片式成员行 */
+.m-card {
+  display: flex; align-items: flex-start; gap: 6px; padding: 6px 7px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--bg-secondary);
+  list-style: none;
+}
+.m-card[data-lead] { border-color: color-mix(in oklab, var(--accent-blue) 40%, transparent); }
+.m-card .chips { margin-top: 4px; }
+.m-card .m-sub { display: block; margin-top: 3px; }
+
+.note-warn {
+  margin-top: 6px; padding: 5px 6px; border-radius: 6px; font-size: 9px; line-height: 1.4;
+  color: var(--accent-yellow); background: color-mix(in oklab, var(--accent-yellow) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--accent-yellow) 40%, transparent);
+}
+
+/* ── 任务板 ───────────────────────────────────────────────────── */
+/* 任务板：现状形态是「带边框的分组盒子」 */
+.b-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.count { padding: 0 5px; border-radius: 999px; background: var(--bg-tertiary); font-size: 9px; color: var(--text-muted); }
+.seg-mini {
+  display: flex; gap: 1px; margin-left: auto; padding: 1px;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 5px;
+}
+.seg-mini button { padding: 0 5px; border-radius: 4px; font-size: 9px; font-weight: 700; color: var(--text-muted); }
+.seg-mini button[aria-pressed="true"] { background: var(--bg-selected); color: var(--accent-blue); }
+.b-group {
+  border: 1px solid var(--border); border-radius: 7px; background: var(--bg-secondary);
+  padding: 4px 5px 5px; margin-bottom: 5px;
+}
+.b-ghead { display: flex; align-items: center; gap: 5px; padding: 0 1px 3px; font-size: var(--micro); font-weight: 700; color: var(--text-secondary); }
+.b-empty { padding: 0 1px 4px; font-size: var(--micro); color: var(--text-muted); }
+.b-summary { font-size: var(--micro); color: var(--text-muted); padding: 1px 2px 0; }
+.b-summary b { color: var(--text-secondary); font-weight: 700; }
+.card {
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary);
+  padding: 4px 6px; margin-top: 3px; list-style: none;
+}
+
+/* 优化后：分组不再是盒子（少一层边框 + 内边距），行高再紧一格 */
+.panel[data-mode="after"] > .grow { padding: 6px 8px; gap: 6px; }
+.panel[data-mode="after"] .b-group { border: none; background: none; padding: 0; margin: 0 0 6px; }
+.panel[data-mode="after"] .b-ghead { padding: 1px 2px 2px; }
+.panel[data-mode="after"] .card { padding: 3px 5px; border-radius: 5px; }
+.panel[data-mode="after"] .m-list { gap: 3px; margin-top: 4px; }
+.panel[data-mode="after"] .m-list.flat { gap: 1px; }
+.panel[data-mode="after"] .m-list.flat .m-row { border-color: transparent; background: transparent; }
+/* 花名册行：一条**卡片**（与老一版同样的表面层次：岛内卡片 = bg-primary + border），
+   只是内容从四层压到两行 —— 好读的不是「没有框」，而是框里有重点。 */
+.panel[data-mode="after"] .m-row {
+  padding: 3px 5px; border: 1px solid var(--border); background: var(--bg-primary);
+}
+.panel[data-mode="after"] .m-row[data-lead] {
+  border-color: color-mix(in oklab, var(--accent-blue) 45%, transparent);
+}
+.panel[data-mode="after"] .note-warn { margin-top: 4px; padding: 4px 6px; line-height: 1.35; }
+/* r12 关掉时：分组退回带框形态（对照用） */
+.panel[data-mode="after"] .boxed .b-group { border: 1px solid var(--border); border-radius: 7px; background: var(--bg-secondary); padding: 4px 5px 5px; margin: 0 0 5px; }
+.panel[data-mode="after"] .boxed .b-ghead { padding: 0 1px 3px; }
+.panel[data-mode="after"] .boxed .card { padding: 4px 6px; border-radius: 6px; }
+.card-t { font-size: var(--meta); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-trow { display: flex; align-items: baseline; gap: 5px; }
+.card-trow .id { flex-shrink: 0; }
+.card-m { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 3px; font-size: 9px; color: var(--text-muted); }
+.card-m .urgent { color: var(--accent-yellow); font-weight: 700; }
+.retry { align-self: center; flex-shrink: 0; }
+
+/* ── 成员详情抽屉 ─────────────────────────────────────────────── */
+.drawer {
+  position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column;
+  background: var(--bg-secondary); border-left: 1px solid var(--border-strong);
+}
+.drawer-head { display: flex; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
+.drawer-body { flex: 1; min-height: 0; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.d-block { border: 1px solid var(--border); border-radius: 7px; background: var(--bg-primary); padding: 6px 7px; }
+.d-block.warn { border-color: color-mix(in oklab, var(--accent-yellow) 45%, transparent); color: var(--accent-yellow); font-size: 9px; background: color-mix(in oklab, var(--accent-yellow) 8%, transparent); }
+.d-block h5 { font-size: var(--micro); font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; }
+.d-kv { display: grid; grid-template-columns: max-content 1fr; gap: 1px 8px; font-size: 9px; color: var(--text-secondary); }
+.d-kv dt { color: var(--text-muted); }
+.d-row { display: flex; align-items: center; gap: 4px; font-size: 10px; padding: 2px 0; color: var(--text-secondary); }
+.d-row .time { color: var(--text-muted); font-size: 9px; }
+
+/* ── 右侧清单 ─────────────────────────────────────────────────── */
+.notes { width: 372px; flex-shrink: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 2px; }
+.n-group { border: 1px solid var(--border); border-radius: 9px; background: var(--bg-secondary); padding: 9px 10px; }
+.n-group h2 { display: flex; align-items: center; gap: 6px; font-size: var(--meta); font-weight: 800; }
+.n-tier {
+  padding: 0 5px; border-radius: 4px; font-size: 9px; font-weight: 800;
+  color: var(--accent-blue); background: color-mix(in oklab, var(--accent-blue) 14%, transparent);
+}
+.n-tier.b { color: var(--accent-yellow); background: color-mix(in oklab, var(--accent-yellow) 14%, transparent); }
+.n-tier.c { color: var(--accent-red); background: color-mix(in oklab, var(--accent-red) 14%, transparent); }
+.n-sub { font-size: var(--micro); color: var(--text-muted); margin: 3px 0 6px; }
+.n-list { list-style: none; display: flex; flex-direction: column; gap: 1px; }
+.n-item { display: flex; gap: 6px; padding: 4px 5px; border-radius: 5px; font-size: var(--micro); line-height: 1.45; color: var(--text-secondary); cursor: pointer; }
+.n-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.n-item input { flex-shrink: 0; margin-top: 2px; accent-color: var(--accent-blue); }
+.n-id { flex-shrink: 0; width: 20px; font-family: ui-monospace, monospace; font-size: 9px; font-weight: 800; color: var(--accent-blue); padding-top: 1px; }
+.n-item[data-off="true"] { color: var(--text-muted); }
+.n-item[data-off="true"] .n-t { text-decoration: line-through; }
+.n-item code { font-family: ui-monospace, monospace; font-size: 9px; background: var(--bg-tertiary); padding: 0 3px; border-radius: 3px; }
+.stats { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: var(--micro); color: var(--text-secondary); }
+.stats dd { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+.stats dd.good { color: var(--accent-green); }
+.decision { display: flex; flex-direction: column; gap: 6px; font-size: var(--micro); color: var(--text-secondary); }
+.decision .q { font-weight: 700; color: var(--text-primary); }
+.keep { list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: var(--micro); color: var(--text-muted); }
+.keep li::before { content: '✓ '; color: var(--accent-green); font-weight: 800; }
+
+/* 高亮：悬停清单项时框住对应区域（原型专用） */
+.hl { outline: 2px dashed var(--accent-yellow); outline-offset: 2px; border-radius: 7px; }
+
+/* 测量容器：不可见但仍参与布局 */
+.measure { position: absolute; left: -99999px; top: 0; visibility: hidden; }
+.measure .panel { height: auto; }
+.measure .grow { overflow: visible; }
+</style>
+</head>
+<body>
+
+<div class="proto-bar">
+  <span class="proto-tag">原型 · 非实现</span>
+  <span class="proto-title">团队面板 · 密度优化</span>
+
+  <div class="seg" role="tablist" aria-label="对照模式">
+    <button role="tab" data-mode="after" aria-selected="true">优化后</button>
+    <button role="tab" data-mode="before" aria-selected="false">现状</button>
+  </div>
+
+  <div class="seg" role="tablist" aria-label="列宽">
+    <button data-width="280" aria-selected="true">280px</button>
+    <button data-width="320" aria-selected="false">320px</button>
+  </div>
+
+  <button class="btn" id="drawer-btn" aria-pressed="false">成员详情抽屉</button>
+  <span class="spacer"></span>
+  <span class="proto-hint">悬停右侧清单 → 高亮对应区域 · 勾选 = 应用该条</span>
+</div>
+
+<div class="stage">
+  <!-- ═══════════ 窗口示意 ═══════════ -->
+  <section class="mock" aria-label="Neeko 窗口示意">
+    <nav class="rail" aria-label="活动栏">
+      <button title="Projects">PR</button>
+      <button title="Agent Chat">AC</button>
+      <button title="Agent Team" aria-current="true">TM</button>
+      <button title="Tasks">TK</button>
+      <button title="Git">GT</button>
+    </nav>
+
+    <div class="center">
+      <div class="center-tabs">
+        <button class="ctab" aria-current="true">● lead · refactor-auth</button>
+        <button class="ctab">backend · codex</button>
+      </div>
+      <div class="term" aria-hidden="true">
+        <div><span class="blue">lead</span> <span class="dim">›</span> 派活：登录页骨架给 frontend，auth 错误码给 backend</div>
+        <div><span class="dim">✓</span> team_task_create t2 <span class="dim">workspace=worktree feat-auth-ui</span></div>
+        <div><span class="dim">✓</span> team_task_create t3 <span class="dim">workspace=worktree feat-auth-api</span></div>
+        <div><span class="dim">·</span> frontend 已认领 t2 <span class="dim">(租约 30:00)</span></div>
+        <div><span class="dim">·</span> backend 请求审批：<span class="green">rm -rf node_modules &amp;&amp; pnpm i</span></div>
+        <div><span class="dim">·</span> researcher 回报：RSC 结论见 t1 摘要</div>
+        <div><span class="dim">▌</span></div>
+      </div>
+    </div>
+
+    <aside class="panel-slot" id="panel-slot" aria-label="团队面板（dock 右栏）"></aside>
+  </section>
+
+  <!-- ═══════════ 变更清单（可逐条开关）═══════════ -->
+  <aside class="notes" aria-label="变更清单">
+    <section class="n-group">
+      <h2>测量 <span class="n-tier" style="color:var(--accent-green);background:color-mix(in oklab,var(--accent-green) 14%,transparent)">实时</span></h2>
+      <p class="n-sub">同一份数据、同一列宽，内容自然高度（不含滚动）。</p>
+      <dl class="stats" id="stats"></dl>
+    </section>
+
+    <section class="n-group" id="notes-a">
+      <h2>A 档 · 纯去噪 <span class="n-tier">不改契约</span></h2>
+      <p class="n-sub">删掉重复表达与低频入口，信息一条不丢。</p>
+      <ul class="n-list" data-list="A"></ul>
+    </section>
+
+    <section class="n-group" id="notes-b">
+      <h2>B 档 · 结构收敛 <span class="n-tier b">改 memberChips 契约</span></h2>
+      <p class="n-sub">把「这是谁」留在行内，把「它的能力细节」交给详情抽屉。</p>
+      <ul class="n-list" data-list="B"></ul>
+    </section>
+
+    <section class="n-group">
+      <h2>C 档 · 结构性 <span class="n-tier c">默认不做</span></h2>
+      <p class="n-sub">任务板整体退为中央 tab，面板主面让给花名册 + 待批队列。会改 <code>prototype-agent-team.html</code> 视图①与 AC11，需单独裁决。</p>
+      <ul class="n-list">
+        <li class="n-item" data-region="board-anchor" data-off="true">
+          <span class="n-id">R11</span>
+          <span class="n-t">任务板退为中央 tab（本原型以「可折叠 + ↗」近似它的观感）</span>
+        </li>
+      </ul>
+    </section>
+
+    <section class="n-group">
+      <h2>不降级的契约</h2>
+      <ul class="keep">
+        <li>红线 14：C 档必须有可见文字，不许只靠 <code>title</code> / 颜色</li>
+        <li>AC2：<code>空闲 ⚠ 未声明</code> 与 <code>空闲 ✓ 已声明</code> 文案与 tone 都不同</li>
+        <li>列映射封闭枚举不动；<code>unplaced</code> 报警仍能出现</li>
+        <li>截断要说出来（<code>只显示前 200 条</code>）</li>
+        <li>打开会话五态判据不变（图标化后动作名进 <code>aria-label</code>，置灰理由仍可见）</li>
+        <li>抽屉是对话框：Esc / 焦点陷阱 / 焦点归还</li>
+      </ul>
+    </section>
+
+    <section class="n-group">
+      <h2>D2 · C 档行内形态</h2>
+      <p class="n-sub">红线 14 的两种满足方式，行内可见文字必须有。</p>
+      <div class="seg" role="group" aria-label="C 档呈现" style="align-self:flex-start">
+        <button data-ctier="compact" aria-selected="true">⚠ C + 分区说明</button>
+        <button data-ctier="full" aria-selected="false">整枚 sentinel chip</button>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<div class="measure" id="measure" aria-hidden="true"></div>
+
+<script>
+/* ============================================================================
+   数据：一份模型，两种渲染。图上的每个数字都来自这里，不写死在模板里。
+   ============================================================================ */
+const MODEL = {
+  name: 'refactor-auth',
+  state: 'open',
+  projectPath: '/Users/tomgs/.neeko/worktrees/feat-team',
+  memberCount: 4,   // 后端口径（不含队长）
+  awaiting: 1,
+  members: [
+    { id: 'lead', name: 'lead', role: 'lead', agent: 'claude-code', persona: '架构师',
+      channel: 'pty', tier: 'a', workspace: 'shared', state: 'running', lease: null, tint: 'var(--accent-blue)' },
+    { id: 'researcher', name: 'researcher', role: 'member', agent: 'gemini', persona: '研究员',
+      channel: 'pty', tier: 'c', workspace: 'shared', state: 'running', lease: 1634, tint: 'var(--accent-orange)' },
+    { id: 'frontend', name: 'frontend', role: 'member', agent: 'qoder', persona: null,
+      channel: 'pty', tier: 'a', workspace: { worktree: '/repo/wt/feat-auth-ui' },
+      state: 'idle', verification: 'unverified', lease: 521, tint: 'var(--accent-green)' },
+    { id: 'backend', name: 'backend', role: 'member', agent: 'codex', persona: null,
+      channel: 'mcp', tier: 'b', workspace: { worktree: '/repo/wt/feat-auth-api' },
+      state: 'awaiting', lease: null, tint: 'var(--accent-yellow)' },
+  ],
+  tasks: [
+    { id: 't1', title: '调研 RSC 最佳实践与现有用法', state: 'in_progress', owner: 'researcher',
+      workspace: 'shared', deps: 0, reclaim: 0, lease: 1634, truncated: false },
+    { id: 't2', title: '登录页骨架 + 表单校验', state: 'claimed', owner: 'frontend',
+      workspace: { worktree: '/repo/wt/feat-auth-ui' }, deps: 0, reclaim: 1, lease: 521, truncated: false },
+    { id: 't3', title: 'auth 失败路径的错误码映射', state: 'awaiting_approval', owner: 'backend',
+      workspace: { worktree: '/repo/wt/feat-auth-api' }, deps: 1, reclaim: 0, lease: null, truncated: false },
+    { id: 't4', title: '抽出 session 刷新 hook 并补测试', state: 'done', owner: 'frontend',
+      workspace: 'shared', deps: 0, reclaim: 0, lease: null, truncated: false },
+  ],
+};
+
+/* 列契约：与 src/features/agent-team/utils/taskBoard.ts 的 COLUMN_OF / TASK_COLUMN_ORDER 一致 */
+const COLUMN_OF = {
+  pending: 'pending', proposed: 'pending',
+  claimed: 'in_progress', in_progress: 'in_progress',
+  awaiting_approval: 'awaiting_approval',
+  done: 'done', failed: 'frozen', blocked: 'frozen',
+};
+const COLUMNS = [
+  { id: 'pending', label: '待认领' },
+  { id: 'in_progress', label: '进行中' },
+  { id: 'awaiting_approval', label: '待批准' },
+  { id: 'done', label: '已完成' },
+  { id: 'frozen', label: '阻塞' },
+];
+const STATE_TEXT = {
+  pending: '待认领', proposed: '待接受', claimed: '已认领', in_progress: '进行中',
+  awaiting_approval: '待批准', done: '已完成', failed: '失败', blocked: '冻结',
+};
+/* 列标签：卡片状态文案与它相同时不渲染 chip（列已经说过了） */
+const COLUMN_LABEL = COLUMNS.reduce((acc, c) => { acc[c.id] = c.label; return acc; }, {});
+const CHANNEL_TEXT = { pty: 'CLI · PTY', mcp: 'MCP', none: '无通道' };
+const TIER_FULL = { a: 'A 档', b: 'B 档', c: 'C 档 · sentinel only' };
+const MAX_BOARD_TASKS = 200;
+
+/* 行内动作 / 工具栏的图标（真实实现用 lucide-react 的同名图标） */
+const svg = (d, extra = '') =>
+  `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${d}</svg>`;
+const ICONS = {
+  // 打开会话：接管活着的 PTY
+  terminal: svg('<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>'),
+  // 恢复会话：起一个新进程续接同一个原生会话
+  play: svg('<path d="M6 3v18l14-9z" fill="currentColor" stroke="none"/>'),
+  // 查看记录：只读历史
+  history: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'),
+  // 任务视图切换
+  columns: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/>'),
+  branch: svg('<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>'),
+};
+
+/* ============================================================================
+   状态：UI 开关全部集中在这一个对象里（渲染是纯函数）。
+   ============================================================================ */
+const FLAGS = { r1: true, r2: true, r3: true, r4: true, r5: true, r6: true, r7: true, r8: true, r9: true, r10: true, r12: true, r13: true, r14: true, r15: true };
+const ui = {
+  mode: 'after', width: 280, cTier: 'compact',
+  menuOpen: false, drawerOpen: false, boardCollapsed: false, boardView: 'board',
+};
+
+/* ============================================================================
+   纯函数
+   ============================================================================ */
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const tail = (p) => (p || '').split(/[\\/]/).filter(Boolean).pop() || p;
+const initials = (n) => n.slice(0, 1).toUpperCase();
+
+function wsLabel(ws) {
+  if (ws === 'shared') return '共享工作区';
+  if (ws === 'read_only') return '只读';
+  return 'worktree ' + tail(ws.worktree);
+}
+/* 优化后：缺省值不渲染（shared 是缺省） */
+function wsShort(ws) {
+  if (ws === 'shared') return null;
+  return wsLabel(ws);
+}
+function leaseText(secs) {
+  if (secs === null) return null;
+  if (secs <= 0) return '租约已超时';
+  const m = Math.floor(secs / 60);
+  const s = String(secs % 60).padStart(2, '0');
+  return '租约 ' + m + ':' + s;
+}
+function memberBadge(m) {
+  if (m.state === 'idle') {
+    return m.verification === 'unverified'
+      ? { text: '空闲 ⚠ 未声明', cls: 'b-unverified' }
+      : { text: '空闲 ✓ 已声明', cls: 'b-idle' };
+  }
+  const map = {
+    running: { text: '运行中', cls: 'b-running' },
+    awaiting: { text: '待批准', cls: 'b-awaiting' },
+    done: { text: '完成', cls: 'b-done' },
+    failed: { text: '失败', cls: 'b-awaiting' },
+    offline: { text: '已退出', cls: 'b-idle' },
+    stalled: { text: '可能等待输入', cls: 'b-awaiting' },
+    spawned: { text: '已建立', cls: 'b-idle' },
+  };
+  return map[m.state] || { text: m.state, cls: 'b-idle' };
+}
+const ownerName = (id) => (MODEL.members.find((m) => m.id === id) || {}).name || id;
+const tasksOf = (state) => MODEL.tasks.filter((t) => t.state === state);
+
+/* ============================================================================
+   渲染 · 现状（照 src/features/agent-team/components 的现状形态）
+   ============================================================================ */
+function beforePanel() {
+  const t = MODEL;
+  return `
+  <div class="panel" data-mode="before">
+    <div class="p-head-stack" data-region="head">
+      <div class="row">
+        <span class="p-name truncate" title="双击改名">${esc(t.name)}</span>
+        <span class="badge b-open">运行中</span>
+        <span class="spacer"></span>
+        <button class="tbtn">返回列表</button>
+        <button class="tbtn">刷新</button>
+      </div>
+      <div class="row row-meta">
+        <span class="pill-soft">${t.memberCount} 成员</span>
+        <span class="pill-warn">${t.awaiting} 待批</span>
+        <span class="mono truncate">${esc(tail(t.projectPath))}</span>
+      </div>
+      <div class="row">
+        <button class="tbtn">改名</button>
+        <button class="tbtn blue">恢复团队</button>
+        <button class="tbtn danger">关闭团队</button>
+      </div>
+    </div>
+    <div class="grow">
+      <section data-region="roster">
+        <div class="sec-row" data-region="roster-head">
+          <h4 class="sec">成员</h4>
+          <span class="spacer"></span>
+          <span class="micro muted" title="花名册行数，含队长">${t.members.length} 人（含队长）</span>
+        </div>
+        <ul class="m-list">${t.members.map(beforeMember).join('')}</ul>
+        <p class="note-warn" data-region="cflag">C 档成员（sentinel only）：完成能报，但卡住永远不可知 → 只会写「可能等待输入」</p>
+      </section>
+      <div class="divider"></div>
+      <section data-region="board-anchor">
+        <div class="b-head">
+          <h4 class="sec">共享任务板</h4>
+          <span class="spacer"></span>
+          <span class="micro muted">${t.tasks.length} 个任务</span>
+        </div>
+        ${COLUMNS.map(beforeColumn).join('')}
+      </section>
+    </div>
+  </div>`;
+}
+
+function beforeMember(m) {
+  const chips = [m.agent, m.persona, CHANNEL_TEXT[m.channel], wsLabel(m.workspace), TIER_FULL[m.tier]]
+    .filter(Boolean)
+    .map((text, i) => {
+      const warn = m.tier === 'c' && i === 4;
+      return `<span class="chip ${warn ? 'chip-warn' : i === 2 ? 'chip-line' : ''}">${esc(text)}</span>`;
+    })
+    .join('');
+  const l = leaseText(m.lease);
+  const badge = memberBadge(m);
+  return `<li class="m-card" data-region="mrow" ${m.role === 'lead' ? 'data-lead' : ''}>
+    <span class="av" style="background:${m.tint}">${initials(m.name)}</span>
+    <div class="m-main">
+      <div class="m-line">
+        <span class="m-name">${esc(m.name)}</span>
+        ${m.role === 'lead' ? '<span class="tag-lead">队长</span>' : ''}
+        <span class="badge ${badge.cls}">${esc(badge.text)}</span>
+      </div>
+      <div class="chips">${chips}</div>
+      <span class="m-sub">${l === null ? '无在飞任务' : esc(l)}</span>
+    </div>
+    <div class="m-actions"><button class="tbtn blue">打开会话</button></div>
+  </li>`;
+}
+
+function beforeColumn(col) {
+  const list = MODEL.tasks.filter((t) => COLUMN_OF[t.state] === col.id);
+  return `<div class="b-group">
+    <div class="b-ghead">${col.label} <span class="pill">${list.length}</span></div>
+    ${list.length === 0
+      ? '<p class="b-empty">—</p>'
+      : '<ul>' + list.map(beforeCard).join('') + '</ul>'}
+  </div>`;
+}
+
+function beforeCard(task) {
+  const l = leaseText(task.lease);
+  const owner = task.owner ? MODEL.members.find((m) => m.id === task.owner) : null;
+  const ownerBadge = owner ? memberBadge(owner) : null;
+  const chips = [
+    `<span class="chip">${esc(STATE_TEXT[task.state])}</span>`,
+    `<span class="chip">${esc(wsLabel(task.workspace))}</span>`,
+    owner ? `<span class="chip chip-accent">${esc(owner.name)}</span>` : '',
+    task.deps > 0 ? `<span class="chip">依赖 ${task.deps}</span>` : '',
+    task.reclaim > 0 ? `<span class="chip chip-warn">被回收 ${task.reclaim} 次</span>` : '',
+    task.truncated ? '<span class="chip chip-warn">摘要已截断</span>' : '',
+  ].join('');
+  return `<li class="card" data-region="card">
+    <div class="card-trow">
+      <span class="card-t">${esc(task.title)}</span>
+      <span class="spacer"></span>
+      <span class="id micro muted mono">${task.id}</span>
+    </div>
+    <div class="card-m">${chips}</div>
+    ${l === null && ownerBadge === null ? '' :
+      `<div class="card-m">${l ? `<span ${task.lease !== null && task.lease <= 120 ? 'class="urgent"' : ''}>${esc(l)}</span>` : ''}
+       ${ownerBadge ? `<span>${esc(ownerBadge.text)}</span>` : ''}</div>`}
+  </li>`;
+}
+
+/* ============================================================================
+   渲染 · 优化后（受 FLAGS 控制，逐条可关）
+   ============================================================================ */
+function afterPanel() {
+  const t = MODEL;
+  const header = FLAGS.r1 ? afterHead() : beforeHeadOnly();
+  const meta = FLAGS.r2
+    ? `<div class="p-meta" data-region="meta">
+         <span>${t.memberCount} 成员</span><span>·</span>
+         ${t.awaiting > 0 ? `<span style="color:var(--accent-yellow);font-weight:700">${t.awaiting} 待批</span><span>·</span>` : ''}
+         <span class="mono truncate" title="${esc(t.projectPath)}">${esc(tail(t.projectPath))}</span>
+       </div>`
+    : '';
+  return `
+  <div class="panel" data-mode="after">
+    ${header}
+    ${meta}
+    <div class="grow">
+      <section data-region="roster">
+        <div class="sec-row" data-region="roster-head">
+          <h4 class="sec">成员</h4>
+          ${FLAGS.r4
+            ? ''
+            : `<span class="spacer"></span><span class="micro muted">${t.members.length} 人（含队长）</span>`}
+        </div>
+        <ul class="m-list ${FLAGS.r13 ? '' : 'flat'}">${t.members.map(afterMember).join('')}</ul>
+        ${t.members.some((m) => m.tier === 'c')
+          ? `<p class="note-warn" data-region="cflag">C 档成员（sentinel only）：完成能报，但卡住永远不可知 → 只会写「可能等待输入」</p>`
+          : ''}
+      </section>
+      <div class="divider"></div>
+      ${afterBoard()}
+    </div>
+    ${ui.drawerOpen ? afterDrawer() : ''}
+  </div>`;
+}
+
+/* r1 关掉时退回「三段式头部」，但不再重复 r2 的元信息 */
+function beforeHeadOnly() {
+  const t = MODEL;
+  return `<div class="p-head-stack" data-region="head">
+    <div class="row">
+      <span class="p-name truncate" title="双击改名">${esc(t.name)}</span>
+      <span class="badge b-open">运行中</span>
+      <span class="spacer"></span>
+      <button class="tbtn">返回列表</button>
+      <button class="tbtn">刷新</button>
+    </div>
+    <div class="row">
+      <button class="tbtn">改名</button>
+      <button class="tbtn blue">恢复团队</button>
+      <button class="tbtn danger">关闭团队</button>
+    </div>
+  </div>`;
+}
+
+function afterHead() {
+  const t = MODEL;
+  return `<div class="p-head" data-region="head">
+    <button class="ico" aria-label="返回列表" title="返回列表">←</button>
+    <span class="p-name" title="双击改名">${esc(t.name)}</span>
+    <span class="badge b-open">运行中</span>
+    <button class="ico" id="more-btn" aria-label="更多操作" aria-expanded="${ui.menuOpen}" title="更多操作">⋯</button>
+    ${ui.menuOpen ? `<div class="menu" id="menu" role="menu">
+      <button role="menuitem">改名</button>
+      <button role="menuitem">刷新快照</button>
+      <button role="menuitem">恢复团队</button>
+      <div class="sep"></div>
+      <button role="menuitem" class="danger">关闭团队…</button>
+    </div>` : ''}
+  </div>`;
+}
+
+function afterMember(m) {
+  const badge = memberBadge(m);
+  const l = leaseText(m.lease);
+  const showLease = FLAGS.r3 ? l !== null : true;
+  const ws = wsShort(m.workspace);
+  const lead = m.role === 'lead';
+
+  /* 第二行只放「在哪干活 · 租约」：两个都是可变事实，且都没有时才不渲染 */
+  const subParts = [];
+  if (ws) subParts.push(esc(ws));
+  if (showLease) subParts.push(esc(l === null ? '无在飞任务' : l));
+  const sub = subParts.join(' · ');
+
+  /* R9：C 档的行内警示。两种形态都由「可见文字」承载（红线 14）。 */
+  const cFlag = m.tier === 'c' && FLAGS.r9
+    ? (ui.cTier === 'compact'
+        ? `<span class="cflag" title="C 档 · sentinel only：完成能报，但卡住永远不可知">⚠ C</span>`
+        : `<span class="chip chip-warn">C 档 · sentinel only</span>`)
+    : '';
+
+  if (!FLAGS.r8) {
+    /* A-only 形态：行内仍是多行 chip（只去掉重复人数） */
+    const chips = [m.agent, m.persona, CHANNEL_TEXT[m.channel], wsLabel(m.workspace),
+      m.tier === 'c' && FLAGS.r9 ? TIER_FULL.c : m.tier === 'c' ? 'C 档' : TIER_FULL[m.tier]]
+      .filter(Boolean)
+      .map((text) => `<span class="chip ${text.includes('sentinel') ? 'chip-warn' : ''}">${esc(text)}</span>`)
+      .join('');
+    return `<li class="m-card" data-region="mrow" ${lead ? 'data-lead' : ''}>
+      <span class="av" style="background:${m.tint}">${initials(m.name)}</span>
+      <div class="m-main">
+        <div class="m-line">
+          <span class="m-name">${esc(m.name)}</span>
+          ${lead ? '<span class="tag-lead">队长</span>' : ''}
+          <span class="badge ${badge.cls}">${esc(badge.text)}</span>
+        </div>
+        <div class="chips">${chips}</div>
+        ${showLease ? `<span class="m-sub" ${m.lease !== null && m.lease <= 120 ? 'data-urgent="true"' : ''}>${esc(l === null ? '无在飞任务' : l)}</span>` : ''}
+      </div>
+      <div class="m-actions"><button class="ico" aria-label="打开会话：${esc(m.name)}" title="打开会话">↗</button></div>
+    </li>`;
+  }
+
+  const persona =
+    FLAGS.r14 && m.persona ? `<span class="chip chip-accent">${esc(m.persona)}</span>` : '';
+  return `<li class="m-row" data-region="mrow" ${lead ? 'data-lead' : ''}>
+    <span class="av" style="background:${m.tint}">${initials(m.name)}</span>
+    <span class="m-main">
+      <span class="m-line">
+        <span class="m-name" title="${esc(m.name)}">${esc(m.name)}</span>
+        ${lead ? '<span class="tag-lead">队长</span>' : ''}
+        ${persona}
+        ${cFlag}
+        <span class="badge ${badge.cls}">${esc(badge.text)}</span>
+      </span>
+      ${sub ? `<span class="m-sub" ${m.lease !== null && m.lease <= 120 ? 'data-urgent="true"' : ''}>${sub}</span>` : ''}
+    </span>
+    ${FLAGS.r15
+      ? `<button class="ico ico-action" aria-label="打开会话：${esc(m.name)}" title="打开会话">${ICONS.terminal}</button>`
+      : `<button class="tbtn blue">打开会话</button>`}
+  </li>`;
+}
+
+function afterBoard() {
+  const total = MODEL.tasks.length;
+  const counts = COLUMNS.map((c) => ({ ...c, list: MODEL.tasks.filter((t) => COLUMN_OF[t.state] === c.id) }));
+  const nonEmpty = counts.filter((c) => c.list.length > 0);
+  const empty = counts.filter((c) => c.list.length === 0);
+
+  if (FLAGS.r10 && ui.boardCollapsed) {
+    const summary = counts.filter((c) => c.list.length > 0).map((c) => `${c.label} ${c.list.length}`).join(' · ');
+    return `<section data-region="board">
+      <div class="b-head">
+        <h4 class="sec">任务 <span class="count">${total}</span></h4>
+        <button class="ico" id="board-toggle" aria-label="展开任务板" title="展开任务板">▸</button>
+        <span class="spacer"></span>
+        <span class="b-summary">${esc(summary)}</span>
+      </div>
+    </section>`;
+  }
+
+  const groups = FLAGS.r5 ? nonEmpty : counts;
+  const emptyLine = FLAGS.r5 && empty.length > 0
+    ? `<p class="b-summary" data-region="empty">${empty.map((c) => `${esc(c.label)} ${c.list.length}`).join(' · ')}</p>`
+    : '';
+
+  return `<section data-region="board-anchor" class="${FLAGS.r12 ? '' : 'boxed'}">
+    <div class="b-head">
+      <h4 class="sec">任务 <span class="count">${total}</span></h4>
+      ${FLAGS.r15
+        ? `<span class="seg-mini" role="group" aria-label="任务视图">
+             <button aria-pressed="${ui.boardView === 'board'}" data-bview="board" aria-label="看板" title="看板">${ICONS.columns}</button>
+             <button aria-pressed="${ui.boardView === 'flow'}" data-bview="flow" aria-label="分配图" title="分配图">${ICONS.branch}</button>
+           </span>`
+        : `<span class="seg-mini" role="group" aria-label="任务视图">
+             <button aria-pressed="${ui.boardView === 'board'}" data-bview="board">看板</button>
+             <button aria-pressed="${ui.boardView === 'flow'}" data-bview="flow">分配图</button>
+           </span>`}
+      <button class="ico" aria-label="在中间区域打开" title="在中间区域打开（完整宽度）">↗</button>
+      ${FLAGS.r10 ? `<button class="ico" id="board-toggle" aria-label="收起任务板" title="收起任务板">▾</button>` : ''}
+    </div>
+    ${groups.map((col) => `<div class="b-group" data-region="bgroup">
+      <div class="b-ghead">${esc(col.label)} <span class="pill">${col.list.length}</span></div>
+      ${col.list.length === 0
+        ? `<p class="b-empty">—</p>`
+        : '<ul>' + col.list.map((task) => afterCard(task, col)).join('') + '</ul>'}
+    </div>`).join('')}
+    ${emptyLine}
+  </section>`;
+}
+
+function afterCard(task, col) {
+  const l = leaseText(task.lease);
+  const owner = task.owner ? MODEL.members.find((m) => m.id === task.owner) : null;
+  /* R6：列标签已经把状态说完了就不重复（同列多态才需要，如 claimed vs in_progress） */
+  const showState = FLAGS.r6 ? STATE_TEXT[task.state] !== COLUMN_LABEL[col.id] : true;
+  const ws = FLAGS.r7 ? wsShort(task.workspace) : wsLabel(task.workspace);
+  /* 「成员已空闲但没声明完成」是 design §6 硬规则 1 的 UI 侧：只在它成立时占一行，
+     并且只对未终结的任务 —— 已完成的任务不需要再报持有者状态（列已经说完了）。 */
+  const terminal = task.state === 'done' || task.state === 'failed' || task.state === 'blocked';
+  const attention = !terminal && owner &&
+    ((owner.state === 'idle' && owner.verification === 'unverified') ||
+      ['stalled', 'offline', 'failed'].includes(owner.state))
+    ? memberBadge(owner)
+    : null;
+  const parts = [
+    showState ? `<span class="chip chip-line">${esc(STATE_TEXT[task.state])}</span>` : '',
+    ws ? `<span class="chip">${esc(ws)}</span>` : '',
+    owner ? `<span class="chip chip-accent">${esc(owner.name)}</span>` : '',
+    !FLAGS.r7 && task.deps > 0 ? `<span class="chip">依赖 ${task.deps}</span>` : '',
+    task.reclaim > 0 ? `<span class="chip chip-warn">被回收 ${task.reclaim} 次</span>` : '',
+    task.truncated ? `<span class="chip chip-warn">摘要已截断</span>` : '',
+    l ? `<span class="${task.lease !== null && task.lease <= 120 ? 'urgent' : ''}">${esc(l)}</span>` : '',
+  ].join('');
+
+  return `<li class="card" data-region="card">
+    <div class="card-trow">
+      <span class="card-t">${esc(task.title)}</span>
+      ${FLAGS.r7 ? '' : `<span class="spacer"></span><span class="id micro muted mono">${task.id}</span>`}
+    </div>
+    ${parts ? `<div class="card-m" data-region="card-meta">${parts}</div>` : ''}
+    ${attention ? `<div class="card-m"><span class="urgent">${esc(attention.text)}</span></div>` : ''}
+  </li>`;
+}
+
+/* 抽屉：删掉的信息全在这里（成员详情，`team_member_detail` 载荷） */
+function afterDrawer() {
+  const m = MODEL.members[1]; // researcher（C 档，演示红线 14）
+  const badge = memberBadge(m);
+  const mine = MODEL.tasks.filter((t) => t.owner === m.id);
+  return `<aside class="drawer" role="dialog" aria-modal="true" aria-label="成员 researcher 的详情">
+    <div class="drawer-head">
+      <span class="av" style="background:${m.tint}">${initials(m.name)}</span>
+      <span class="m-name">${esc(m.name)}</span>
+      <span class="badge ${badge.cls}">${esc(badge.text)}</span>
+      <span class="spacer"></span>
+      <button class="ico" id="drawer-close" aria-label="关闭详情" title="关闭（Esc）">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="d-block">
+        <h5>身份 / 能力边界</h5>
+        <div class="chips">
+          ${[m.agent, m.persona, CHANNEL_TEXT[m.channel], wsLabel(m.workspace), TIER_FULL[m.tier]]
+            .filter(Boolean)
+            .map((x, i) => `<span class="chip ${m.tier === 'c' && i === 4 ? 'chip-warn' : i === 2 ? 'chip-line' : ''}">${esc(x)}</span>`)
+            .join('')}
+        </div>
+        <div class="d-kv" style="margin-top:6px">
+          <dt>租约</dt><dd>${esc(leaseText(m.lease) || '无在飞任务')}</dd>
+          <dt>通道</dt><dd>写 PTY stdin（CLI 成员的唯一通道）</dd>
+        </div>
+      </div>
+      ${m.tier === 'c' ? `<div class="d-block warn">C 档 · sentinel only：完成能报（sentinel），但卡住永远不可知 → 只会写「可能等待输入」</div>` : ''}
+      <div class="d-block">
+        <h5>当前任务（${mine.length}）</h5>
+        ${mine.map((t) => `<div class="d-row"><span class="truncate">${esc(t.title)}</span><span class="spacer"></span><span class="pill">${esc(STATE_TEXT[t.state])}</span></div>`).join('')}
+      </div>
+      <div class="d-block">
+        <h5>最近事件</h5>
+        <div class="d-row"><span class="time mono">14:22</span><span>回合结束 · 未声明完成</span></div>
+        <div class="d-row"><span class="time mono">14:21</span><span>工具 · read(view.rs)</span></div>
+        <div class="d-row"><span class="time mono">14:19</span><span>回合开始</span></div>
+      </div>
+    </div>
+  </aside>`;
+}
+
+/* ============================================================================
+   变更清单
+   ============================================================================ */
+const CHANGES = [
+  { id: 'r1', tier: 'A', region: 'head', text: '头部收成 1 行：<code>←</code> + 队名 + 状态 + <code>⋯</code>；改名 / 刷新 / 恢复团队 / 关闭团队进菜单（复用同一个 hook，不新写实现）' },
+  { id: 'r2', tier: 'A', region: 'meta', text: '元信息降为一行 micro：成员数 · 待批（仅 &gt; 0）· 项目根末段' },
+  { id: 'r4', tier: 'A', region: 'roster-head', text: '花名册标题去掉右侧「N 人（含队长）」—— 头部 pill 是唯一口径' },
+  { id: 'r3', tier: 'A', region: 'mrow', text: '没有租约时不渲染「无在飞任务」（它现在每行都亮着）' },
+  { id: 'r5', tier: 'A', region: 'empty', text: '空列折叠成一行汇总；列映射表不动，<code>unplaced</code> 报警仍会出现' },
+  { id: 'r6', tier: 'A', region: 'card', text: '卡片状态 chip 只在同列多态时渲染（<code>claimed</code> vs <code>in_progress</code> 才需要）' },
+  { id: 'r7', tier: 'A', region: 'card-meta', text: '卡片去掉 id / 依赖数 / 缺省 workspace（<code>shared</code> 不渲染，worktree 仍显示）' },
+  { id: 'r8', tier: 'B', region: 'mrow', text: '花名册行单行化：agent / 通道 / 档位 / 租约移入详情抽屉（抽屉本来就有这些块）' },
+  { id: 'r13', tier: 'B', region: 'mrow', text: '行是**卡片**（border + bg-primary + 3px 行距），不是纯列表 —— 老一版的读感' },
+  { id: 'r14', tier: 'B', region: 'mrow', text: 'persona（角色 / 人设）留在行内当可见 chip；`null` 不占位' },
+  { id: 'r15', tier: 'B', region: 'board-anchor', text: '动作与视图切换用图标（Terminal / Play / History、Columns3 / GitBranch）；五态文案进 aria-label，置灰理由仍可见' },
+  { id: 'r9', tier: 'B', region: 'cflag', text: 'C 档可见性（红线 14）：行内 <code>⚠ C</code> + 分区固定说明，替代整枚 chip' },
+  { id: 'r12', tier: 'A', region: 'board-anchor', text: '任务板分组去掉外框 / 底色 / 内边距（列语义与计数保留）—— 280px 下每列省 ~12px' },
+  { id: 'r10', tier: 'B', region: 'board-anchor', text: '任务板分区可折叠（默认展开），折叠后为一行摘要，▸ 展开' },
+];
+
+function renderNotes() {
+  for (const tier of ['A', 'B']) {
+    const ul = document.querySelector(`.n-list[data-list="${tier}"]`);
+    ul.innerHTML = CHANGES.filter((c) => c.tier === tier).map((c) => `
+      <li class="n-item" data-region="${c.region}" data-id="${c.id}" data-off="${!FLAGS[c.id]}">
+        <input type="checkbox" ${FLAGS[c.id] ? 'checked' : ''} aria-label="应用 ${c.id}" />
+        <span class="n-id">${c.id.toUpperCase()}</span>
+        <span class="n-t">${c.text}</span>
+      </li>`).join('');
+  }
+}
+
+/* ============================================================================
+   渲染 · 面板 + 测量
+   ============================================================================ */
+const slot = document.getElementById('panel-slot');
+
+function renderPanel() {
+  slot.style.width = ui.width + 'px';
+  slot.innerHTML = ui.mode === 'before' ? beforePanel() : afterPanel();
+  if (ui.mode === 'before') ui.drawerOpen = false;
+  document.getElementById('drawer-btn').setAttribute('aria-pressed', String(ui.drawerOpen));
+}
+
+function renderStats() {
+  const box = document.getElementById('measure');
+  box.innerHTML = `<div class="panel-wrap" id="m-before"></div><div class="panel-wrap" id="m-after"></div>`;
+  const mb = document.getElementById('m-before');
+  const ma = document.getElementById('m-after');
+  mb.style.width = ui.width + 'px';
+  ma.style.width = ui.width + 'px';
+  mb.innerHTML = beforePanel();
+  ma.innerHTML = afterPanel();
+  const hb = mb.firstElementChild.offsetHeight;
+  const ha = ma.firstElementChild.offsetHeight;
+  const noisy = (root) => root.querySelectorAll('button, .chip, .pill, .badge, .tag-lead').length;
+  const nb = noisy(mb);
+  const na = noisy(ma);
+  const pct = hb > 0 ? Math.round((1 - ha / hb) * 100) : 0;
+  const part = (root, sel) => {
+    const el = root.querySelector(sel);
+    return el ? el.offsetHeight : 0;
+  };
+  const row = (label, sel) => `
+      <dt>${label}</dt><dd>${part(mb, sel)} → ${part(ma, sel)} px</dd>`;
+  document.getElementById('stats').innerHTML = `
+    <dt>内容高度（现状）</dt><dd>${hb} px</dd>
+    <dt>内容高度（优化后）</dt><dd class="good">${ha} px · −${pct}%</dd>
+    ${row('头部', '.p-head, .p-head-stack')}
+    ${row('花名册', 'section[data-region="roster"]')}
+    ${row('任务板', 'section[data-region="board-anchor"]')}
+    <dt>可读/可点元素（现状 → 优化后）</dt><dd>${nb} → ${na}</dd>
+    <dt>列宽</dt><dd>${ui.width} px</dd>`;
+  box.innerHTML = '';
+}
+
+/* ============================================================================
+   交互
+   ============================================================================ */
+document.querySelectorAll('[data-mode]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    ui.mode = btn.dataset.mode;
+    document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-selected', String(b === btn)));
+    renderPanel();
+  });
+});
+
+document.querySelectorAll('[data-width]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    ui.width = Number(btn.dataset.width);
+    document.querySelectorAll('[data-width]').forEach((b) => b.setAttribute('aria-selected', String(b === btn)));
+    renderPanel();
+    renderStats();
+  });
+});
+
+document.querySelectorAll('[data-ctier]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    ui.cTier = btn.dataset.ctier;
+    document.querySelectorAll('[data-ctier]').forEach((b) => b.setAttribute('aria-selected', String(b === btn)));
+    renderPanel();
+    renderStats();
+  });
+});
+
+document.getElementById('drawer-btn').addEventListener('click', () => {
+  if (ui.mode === 'before') {
+    ui.mode = 'after';
+    document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mode === 'after')));
+  }
+  ui.drawerOpen = !ui.drawerOpen;
+  renderPanel();
+});
+
+/* 清单：勾选 = 应用该条；悬停 = 高亮对应区域 */
+document.querySelector('.notes').addEventListener('click', (e) => {
+  const item = e.target.closest('.n-item');
+  if (!item || !item.dataset.id) return;
+  const id = item.dataset.id;
+  FLAGS[id] = !FLAGS[id];
+  item.dataset.off = String(!FLAGS[id]);
+  item.querySelector('input').checked = FLAGS[id];
+  renderPanel();
+  renderStats();
+});
+
+let highlighted = [];
+function highlight(region) {
+  highlighted.forEach((el) => el.classList.remove('hl'));
+  highlighted = [];
+  if (!region) return;
+  slot.querySelectorAll(`[data-region="${region}"]`).forEach((el) => {
+    el.classList.add('hl');
+    highlighted.push(el);
+  });
+}
+document.querySelector('.notes').addEventListener('mouseover', (e) => {
+  const item = e.target.closest('.n-item');
+  highlight(item ? item.dataset.region : null);
+});
+document.querySelector('.notes').addEventListener('mouseleave', () => highlight(null));
+
+/* 面板内交互：⋯ 菜单 / 任务板折叠 / 视图切换 / 关抽屉 */
+slot.addEventListener('click', (e) => {
+  if (e.target.closest('#more-btn')) {
+    ui.menuOpen = !ui.menuOpen;
+    renderPanel();
+    return;
+  }
+  if (e.target.closest('#board-toggle')) {
+    ui.boardCollapsed = !ui.boardCollapsed;
+    renderPanel();
+    return;
+  }
+  if (e.target.closest('#drawer-close')) {
+    ui.drawerOpen = false;
+    renderPanel();
+    return;
+  }
+  const bview = e.target.closest('[data-bview]');
+  if (bview) {
+    ui.boardView = bview.dataset.bview;
+    renderPanel();
+    return;
+  }
+});
+
+/* 点面板外的任何地方（终端 / 清单 / 空白）都要收起菜单 */
+document.addEventListener('click', (e) => {
+  if (!ui.menuOpen) return;
+  if (e.target.closest('#menu') || e.target.closest('#more-btn')) return;
+  ui.menuOpen = false;
+  renderPanel();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (ui.menuOpen) { ui.menuOpen = false; renderPanel(); return; }
+  if (ui.drawerOpen) { ui.drawerOpen = false; renderPanel(); }
+});
+
+/* 启动（hash 只为分享某一种状态：#before / #drawer / #menu） */
+if (location.hash === '#drawer' || location.hash === '#menu') ui.drawerOpen = false;
+if (location.hash === '#menu') ui.menuOpen = true;
+if (location.hash === '#before') {
+  ui.mode = 'before';
+  document.querySelectorAll('[data-mode]').forEach((b) =>
+    b.setAttribute('aria-selected', String(b.dataset.mode === 'before')));
+}
+if (location.hash === '#drawer') ui.drawerOpen = true;
+renderNotes();
+renderPanel();
+renderStats();
+</script>
+</body>
+</html>

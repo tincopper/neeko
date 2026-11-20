@@ -95,6 +95,16 @@ export const DOCK_VIEW_META: Record<string, DockViewMeta> = Object.fromEntries([
     defaultSlot: 'right',
     defaultOrder: 4,
   }),
+  // 团队面板（协调基质）：常驻右栏的工具面板 —— 「聊完要看的下一步」，与 conversations 同层。
+  // 排序取 7（search 5 / tabHost:right 6 之后）：**不挤动既有条目的序**。面板顺序一旦重排，
+  // 用户已存的快照会被 sanitize 重新归一化成新序，等于替他改布局。tabHost 不上工具栏（D10），
+  // 所以观众看到的顺序仍是 … → search → team。
+  row(panelView('team'), {
+    host: 'singleton',
+    activation: { kind: 'toggleZone' },
+    defaultSlot: 'right',
+    defaultOrder: 7,
+  }),
   row(panelView('search'), {
     host: 'singleton',
     activation: { kind: 'toggleZone' },
@@ -117,6 +127,16 @@ export const DOCK_VIEW_META: Record<string, DockViewMeta> = Object.fromEntries([
     activation: { kind: 'appView', view: 'library' },
     defaultSlot: 'left',
     defaultOrder: 3,
+  }),
+  // 中心视图入口：工作项看板占**中间区**（`host: 'none'` ⇒ 不进 zone，只上 bar）。
+  // 排序 4 紧跟 library（3）—— 两者都是「中心视图入口」，在左栏菜单里连排。
+  // 左栏 Projects 不因此收起：看板按项目存数据，收起左栏等于让用户看不见自己在看哪个项目
+  // 的工作项（library 相反，它自带导航列）。`search`(5) 仍在右栏，两处不同 slot 故不同序无冲突。
+  row(appViewKey('tasks'), {
+    host: 'none',
+    activation: { kind: 'appView', view: 'tasks' },
+    defaultSlot: 'left',
+    defaultOrder: 4,
   }),
   // 种类级入口（需求 C「快速打开」）：默认给图标（否则功能不可发现），可拖到左栏。
   // 顺序 50 / 51 让它们排在功能区下方、与工具面板分开（图标语义不同：开 tab ≠ 开面板）。

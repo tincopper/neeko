@@ -14,6 +14,7 @@ pub mod parsers;
 pub mod path_guard;
 pub mod perf;
 pub mod pr;
+pub mod project_scope;
 pub mod provider;
 pub mod refs;
 pub mod status_worker;
@@ -35,6 +36,7 @@ pub use conflict::types::{
 };
 pub use parsers::*;
 pub use pr::*;
+pub use project_scope::ProjectScope;
 pub use provider::*;
 pub use refs::*;
 pub use types::*;

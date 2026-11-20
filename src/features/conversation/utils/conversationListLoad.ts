@@ -4,6 +4,8 @@
  * Kept pure so hooks stay thin and unit-testable without React.
  */
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 /** Min interval between automatic background scans for the same project key. */
 export const AUTO_SCAN_THROTTLE_MS = 5_000;
 
@@ -25,9 +27,14 @@ export function initialListLoadState(): ListLoadState {
   return { loading: false, refreshing: false, error: null };
 }
 
-/** Build a stable key for throttle / in-flight de-dupe. */
-export function listLoadKey(projectPath: string | null, agentFilter?: string): string {
-  return `${projectPath ?? ''}::${agentFilter ?? ''}`;
+/**
+ * Build a stable key for throttle / in-flight de-dupe.
+ *
+ * 键是**项目身份**（`projectId`），不是路径：同一个项目的工作区共享一份历史列表
+ * （切换工作区不发新请求），换项目才是另一个键。
+ */
+export function listLoadKey(projectId: ProjectId | null, agentFilter?: string): string {
+  return `${projectId ?? ''}::${agentFilter ?? ''}`;
 }
 
 /**

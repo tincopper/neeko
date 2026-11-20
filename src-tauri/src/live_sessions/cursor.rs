@@ -1,7 +1,7 @@
 //! `SessionEntry` ⇄ `ResumeCursor` 的**唯一**投影点（写穿持久化 + 启动恢复）。
 //!
-//! 正向：运行时条目 → 持久化行。只落**已出现在侧栏**的会话（`has_user_input`）；
-//! 数据库存的是「列表出现过什么」，不是「哪些进程还活着」。
+//! 正向：运行时条目 → 持久化行。只落**用户自己开的、已出现在侧栏**的会话
+//! （`has_user_input` + 归属非团队成员）；数据库存的是「列表出现过什么」，不是「哪些进程还活着」。
 //!
 //! 反向：持久化行 → 运行时条目，且 `state` **固定为 `Stopped`** —— 启动时进程已经没了，
 //! 凭空造一条 `Ready` 会话就是侧栏幽灵行。反向只用于**回填侧栏列表**，不建 tab、不起进程。
@@ -80,12 +80,29 @@ impl TryFrom<PersistedTitleSource> for TitleSource {
 impl ResumeCursor {
     /// 从 live 条目投影出恢复游标；**未出现在侧栏的条目返回 `None`**。
     ///
-    /// 判据只有 `has_user_input` 一条（**写门**）：行存在与否 = 「这条会话在侧栏出现过」。
-    /// chat 与 terminal（含纯 shell）一视同仁 —— 落盘的是**行**，不是「可恢复的 agent 进程」。
+    /// 判据只有两条（**写门**）：`has_user_input` 与归属。
+    ///
+    /// ① 行存在与否 = 「这条会话在侧栏出现过」—— chat 与 terminal（含纯 shell）一视同仁，
+    /// 落盘的是**行**，不是「可恢复的 agent 进程」。
+    ///
+    /// ② 归属为 [`SessionAttribution::TeamMember`] 的会话**不落盘**：进程没了就没有可用的入口。
+    /// 恢复团队的官方路径是 `team_resume`，它会铸一个**新的** terminal id —— 落库的旧行因此
+    /// 会永久成为孤儿（`dedupe_restorable` 防的正是这类重复行），而用户点下去续写的只会是
+    /// 一个没有团队 MCP 端点 / 凭证 / 隔离配置目录的裸 CLI。归属**有意不落库**：持久化行
+    /// 不存归属（见 [`ResumeCursor::into_entry`]）。
+    ///
+    /// **判据只在这一处**：`Registry::write_entry` / `persist_entry` 只调用本方法，不重写判据。
+    ///
     /// 行能不能**读回**是另一个问题，判据在 [`ResumeCursor::is_restorable`]（读门）。
     #[must_use]
     pub fn from_entry(entry: &SessionEntry) -> Option<Self> {
         if !entry.has_user_input {
+            return None;
+        }
+        if matches!(
+            entry.attribution,
+            crate::live_sessions::SessionAttribution::TeamMember { .. }
+        ) {
             return None;
         }
         // 纯 shell 终端的 agent 为空串：`AgentKind::from_agent_id` 会降为 `Custom`，
@@ -134,6 +151,11 @@ impl ResumeCursor {
         Some(SessionEntry {
             session_id: self.session_id.clone(),
             kind,
+            // 持久化行不存归属，能走到这里的**只可能**是 `User` 归属：写门（`from_entry`）
+            // 已经把 `TeamMember` 排除了。归属不落库是有意为之 —— 进程没了归属就没有
+            // 可用的入口，恢复团队成员会话走 `team_resume`（铸新 terminal id），
+            // 而不是把旧行投影回侧栏。
+            attribution: crate::live_sessions::SessionAttribution::User,
             agent_id: (!self.agent_id.is_empty()).then(|| self.agent_id.clone()),
             workspace: WorkspaceSession::of(self.project_id.clone(), self.worktree_path.clone()),
             cwd: self.cwd.clone(),
@@ -215,6 +237,7 @@ mod tests {
         PersistedSessionKind, PersistedTitleSource, SessionStatus,
     };
     use crate::common::git::WorkspaceSession;
+    use crate::live_sessions::SessionAttribution;
 
     fn entry(kind: SessionKind, agent_id: Option<&str>, state: SessionState) -> SessionEntry {
         SessionEntry::new(
@@ -277,6 +300,32 @@ mod tests {
                 "未置位 has_user_input 的 {kind:?} 不落盘"
             );
         }
+    }
+
+    /// 团队成员的会话**不落盘** —— 侧栏只存用户自己开的会话。
+    ///
+    /// 进程没了就没有入口：恢复团队的官方路径是 `team_resume`，它会铸一个**新的**
+    /// terminal id，落库的旧行会永久成为孤儿（`dedupe_restorable` 防的正是这类重复行）。
+    ///
+    /// 同一份输入换回 `User` 归属必须仍落盘 —— 否则这里验证的只是「什么都过滤」。
+    #[test]
+    fn team_member_entries_are_never_persisted() {
+        let member = entry(SessionKind::Terminal, Some("pi"), SessionState::Running)
+            .with_attribution(SessionAttribution::TeamMember {
+                team_id: "tm_1".into(),
+                member_id: "w1@tm_1".into(),
+            });
+        assert!(
+            ResumeCursor::from_entry(&member).is_none(),
+            "团队成员会话不得写入恢复行（写门按归属排除）"
+        );
+
+        let user = entry(SessionKind::Terminal, Some("pi"), SessionState::Running)
+            .with_attribution(SessionAttribution::User);
+        assert!(
+            ResumeCursor::from_entry(&user).is_some(),
+            "同样的输入在 User 归属下必须照常落盘（防过度过滤）"
+        );
     }
 
     /// 双向穷举：两个词表的每个 variant 都能往返（漏一个会让侧栏行恢复成错种类）。

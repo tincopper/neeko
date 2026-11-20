@@ -196,10 +196,22 @@ pub struct ScanReport {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ConversationListScope {
-    /// 项目级（History 面板）：会话 cwd 等于该项目根或其后代。
+    /// 项目级（History 面板）：会话 cwd 落在该项目的**任一**注册根下。
+    ///
+    /// 收**项目身份**而不是路径：一个项目有 1+N 个工作区（主 checkout + linked worktree），
+    /// 而工作树按设计落在项目目录**之外**（`~/.neeko/worktrees/<name>`）。用路径表达范围时
+    /// 「团队跑在外部工作树里的会话」结构上无法归属到项目 —— 路径只是项目的一个属性，
+    /// 不是它的身份（红线 12）。
+    ///
+    /// 根集合由后端解析（`AppStateWrapper::project_scope`：项目根 + `git worktree list` +
+    /// 团队记录过的工作区根），调用方不拼路径。
     Project {
-        /// 项目根。缺省无意义 —— 项目级请求必须给出项目，否则就不是项目级请求。
-        path: String,
+        /// 项目 id。缺省无意义 —— 项目级请求必须给出项目，否则就不是项目级请求。
+        ///
+        /// 字段级 `rename`：判别联合的 `rename_all` 只作用于**变体名**，不作用于变体字段
+        /// （漏了它，前端发 `projectId`、后端读到 `missing field project_id`）。
+        #[serde(rename = "projectId")]
+        project_id: String,
     },
     /// 单元级（agent-chat 恢复列表）：会话归属该 Workspace 单元（最深根胜出）。
     Unit {
@@ -253,11 +265,11 @@ mod tests {
 
         let project: ConversationListScope = serde_json::from_value(serde_json::json!({
             "kind": "project",
-            "path": "/p1"
+            "projectId": "p1"
         }))
         .expect("project scope must parse");
         match project {
-            ConversationListScope::Project { path } => assert_eq!(path, "/p1"),
+            ConversationListScope::Project { project_id } => assert_eq!(project_id, "p1"),
             ConversationListScope::Unit { .. } => panic!("wrong variant"),
         }
     }
@@ -270,11 +282,17 @@ mod tests {
         assert!(parsed.is_err(), "单元级请求不得缺地址");
     }
 
-    /// 项目级请求也不接受「没有项目」—— `path` 缺失即解析失败。
+    /// 项目级请求也不接受「没有项目」—— `projectId` 缺失即解析失败。
     #[test]
-    fn project_scope_without_a_path_is_rejected() {
-        let parsed: Result<ConversationListScope, _> =
-            serde_json::from_value(serde_json::json!({ "kind": "project" }));
-        assert!(parsed.is_err(), "项目级请求不得缺项目路径");
+    fn project_scope_without_a_project_id_is_rejected() {
+        for json in [
+            serde_json::json!({ "kind": "project" }),
+            // 旧 wire 形态（裸路径）**不**兼容：它是本任务修掉的缺陷形态，
+            // 静默接受会让「谁在按路径划范围」这件事重新可能。
+            serde_json::json!({ "kind": "project", "path": "/p1" }),
+        ] {
+            let parsed: Result<ConversationListScope, _> = serde_json::from_value(json.clone());
+            assert!(parsed.is_err(), "项目级请求必须给出项目 id：{json}");
+        }
     }
 }

@@ -10,6 +10,7 @@ import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifi
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 
+import { useTeamListBootstrap } from '@/features/agent-team';
 import { ConnectionProjectCard } from '@/features/connection';
 import { CommitDialog } from '@/features/git';
 import ProjectItem from '@/features/project/components/ProjectItem';
@@ -100,6 +101,15 @@ const ProjectsPanel: React.FC = () => {
   const { commands } = useActiveProject();
 
   useAheadBehindSync(commands);
+
+  /**
+   * 团队清单的**常驻读面**（一次首拉 + 一个脉冲引擎）。
+   *
+   * 侧栏团队行是常驻的，而团队面板不常驻：没有它，用户只要不打开团队面板，侧栏就一条
+   * 团队行都不显示（清单一直停在「还没问到」，且没有任何报错）。接线点恰好一处 ——
+   * 面板侧经 `useTeamList` 复用同一实现，不会出现两套轮询。
+   */
+  useTeamListBootstrap();
 
   // 只有指针拖拽：项目头的键盘约定是 Enter/Space 折叠（`ProjectGroup`），
   // 而 `KeyboardSensor` 的激活键恰好也是 Space/Enter —— 两套叠在同一节点上就说不清

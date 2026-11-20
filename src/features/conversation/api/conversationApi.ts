@@ -12,8 +12,15 @@ import type {
   ScanReport,
 } from '../types';
 
-export function scanConversations(agentId?: string, projectPath?: string): Promise<ScanReport[]> {
-  return invoke<ScanReport[]>('scan_conversations', { agentId, projectPath });
+/**
+ * 扫描会话（发现与索引）。
+ *
+ * `projectId` = **项目身份**（不是路径）：后端把它解析成该项目的全部注册根（主 checkout +
+ * `git worktree list` + 团队记录过的工作区），所以「跑在项目目录之外的工作树里的会话」
+ * 也能被发现。`undefined` = 全量遍历（既有语义）。
+ */
+export function scanConversations(agentId?: string, projectId?: string): Promise<ScanReport[]> {
+  return invoke<ScanReport[]>('scan_conversations', { agentId, projectId });
 }
 
 /**
@@ -23,8 +30,14 @@ export function scanConversations(agentId?: string, projectPath?: string): Promi
  * 后者允许调用方同时传两个维度、后端静默丢掉一个 —— 那正是「要单元却按项目过滤」的入口。
  */
 export type ConversationListScope =
-  | { kind: 'project'; path: string }
-  | { kind: 'unit'; workspace: WorkspaceSession };
+  /**
+   * 项目级（History 面板）：该项目的**全部工作区**。
+   *
+   * 收项目**身份**而不是路径 —— 路径只是项目的一个属性（红线 12）。工作树按设计落在项目
+   * 目录之外（`~/.neeko/worktrees/<name>`），用路径表达范围时「团队跑在外部工作树里的会话」
+   * 结构上无法归属到项目。根集合由后端解析，调用方不拼路径。
+   */
+  { kind: 'project'; projectId: string } | { kind: 'unit'; workspace: WorkspaceSession };
 
 /**
  * List conversations for **one explicit scope**.
@@ -97,9 +110,9 @@ export async function getConversationMessages(id: string): Promise<ConversationM
 
 export function searchConversations(
   query: string,
-  projectPath?: string,
+  projectId?: string,
 ): Promise<ConversationMeta[]> {
-  return invoke<ConversationMeta[]>('search_conversations', { query, projectPath });
+  return invoke<ConversationMeta[]>('search_conversations', { query, projectId });
 }
 
 export function updateConversation(id: string, userTitle?: string, tags?: string[]): Promise<void> {

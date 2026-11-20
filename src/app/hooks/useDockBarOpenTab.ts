@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 
 import { openAgentChatTab } from '@/features/agent-chat/api/openChatTab';
 import { useActivateSession } from '@/features/live-sessions';
+import type { SelectProject } from '@/shared/contexts/ProjectActionsContext';
 import {
   DOCK_VIEW_META,
   appViewKey,
@@ -86,10 +87,15 @@ function openPlainTerminalTab(tabKey: string, projectId: ProjectId): string | nu
   return tabId;
 }
 
-export function useDockBarOpenTab(): OpenTabHandler {
+/**
+ * 参数注入：本 hook 在 Provider 树之外装配（见文件头），不能 `useProjectActionsContext()`。
+ * `selectProject` 由 `App.tsx` 从 `useAppShell()` 的 `projectActionsValue` 注入 —— 与
+ * `onAgentClick` / `onMove` 同一条组合根纪律（`state-management.md` §2「组合根在 Provider 之外」）。
+ */
+export function useDockBarOpenTab(selectProject: SelectProject): OpenTabHandler {
   // 会话恢复的唯一链路（activate / bind / recreate+attach / resume 三级降级）。本 hook
   // 只负责「什么时候该用它」，判据与落地都在 live-sessions（不新造恢复路径）。
-  const activateSession = useActivateSession();
+  const activateSession = useActivateSession(selectProject);
 
   /** 新建该种类的 tab，返回 id；失败路径已就地提示（返回 null 即可）。 */
   const createTab = useCallback(

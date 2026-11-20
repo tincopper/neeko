@@ -160,3 +160,79 @@ pub fn abs_fixture(label: &str) -> (tempfile::TempDir, std::path::PathBuf) {
     let path = dir.path().join(label);
     (dir, path)
 }
+
+/// 剥掉**行注释**（`//` 及其后内容），**保留行数**（不把多行并成一行，行号仍对得上）。
+///
+/// # `:` 后紧跟的 `//` 不是注释
+///
+/// 上报模板里有 `http://127.0.0.1`：若「见到 `//` 就截断」，loopback 那一行会被整段删掉，
+/// 而断言是对着半份文件说的。JS/TS 里 `//` 出现在字符串中的现实形态只有 URL，
+/// 它的前一个字符必是 scheme 分隔符 `:` —— 这条规则就够，且窄到不会误伤别的形态。
+///
+/// # 什么时候需要它
+///
+/// 「某段代码里出现了 X」这类源码级判据：`contains` 对**被注释掉的**代码同样成立，
+/// 于是判据只能在「代码还在」时变绿 —— 而「还在但被注释」正是它要挡的东西。
+#[must_use]
+pub fn strip_line_comments(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    for (index, line) in body.split('\n').enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        out.push_str(&line[..comment_start(line).unwrap_or(line.len())]);
+    }
+    out
+}
+
+/// 行内注释的起始字节位置（`//` 且前一字符不是 `:`）；无注释返回 `None`。
+fn comment_start(line: &str) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'/' && bytes[i + 1] == b'/' && (i == 0 || bytes[i - 1] != b':') {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// 从 `source[open]`（一个 `{` / `(` / `[`）起按括号计数，返回**块内正文**（不含两侧括号）。
+///
+/// # 为什么需要它
+///
+/// 「某段代码里出现了这个调用」必须先把范围收窄到一个块：对整份文件用 `contains`，
+/// 别处的同名调用会顶替**缺失的那一处**，判据于是永远是绿的。
+///
+/// 只数同类括号、不认字符串字面量里的括号 —— 当前用法（闭包体 / 实参表 / 对象字面量）
+/// 都不含；真含了会先 panic（找不到匹配闭括号）而不是悄悄给出错误的区段。
+///
+/// # Panics
+///
+/// `open` 越界、开头不是三种括号之一、或括号不配对。
+#[must_use]
+pub fn enclosed_body(source: &str, open: usize) -> &str {
+    let opener = source[open..]
+        .chars()
+        .next()
+        .unwrap_or_else(|| panic!("enclosed_body: {open} 越过源码末尾"));
+    let closer = match opener {
+        '{' => '}',
+        '(' => ')',
+        '[' => ']',
+        other => panic!("enclosed_body: 只接受 `{{` / `(` / `[`，收到 {other:?}"),
+    };
+    let mut depth = 0usize;
+    for (offset, ch) in source[open..].char_indices() {
+        if ch == opener {
+            depth += 1;
+        } else if ch == closer {
+            depth -= 1;
+            if depth == 0 {
+                return &source[open + 1..open + offset];
+            }
+        }
+    }
+    panic!("enclosed_body: `{opener}` 没有匹配的 `{closer}`（源码被截断？）");
+}

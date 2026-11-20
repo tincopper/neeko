@@ -38,7 +38,7 @@ pub(crate) mod wiring;
 // 而 conversation 不能反向依赖 live_sessions）；这里 re-export 保持既有调用路径。
 pub use crate::common::agent::title;
 pub use crate::common::agent::title::TitleSource;
-pub use entry::{SessionEntry, SessionKind, SessionState};
+pub use entry::{SessionAttribution, SessionEntry, SessionKind, SessionState};
 pub use env::SESSION_ID_ENV;
 pub use events::{emit_changed, notify_if_changed, SESSIONS_EVENT};
 pub use registry::Registry;

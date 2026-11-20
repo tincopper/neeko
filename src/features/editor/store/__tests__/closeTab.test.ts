@@ -43,6 +43,7 @@ function session(state: SessionState, ptySessionId = 'pty-1'): SessionView {
   return {
     sessionId: ptySessionId,
     kind: 'terminal',
+    attribution: { kind: 'user' },
     agentId: 'claude-code',
     workspaceKey: KEY,
     title: '修复登录竞态',

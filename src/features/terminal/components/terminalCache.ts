@@ -32,6 +32,14 @@ interface CacheEntry {
   unlisten?: (() => void) | null;
   unlistenOutput?: (() => void) | null;
   unlistenClosed?: (() => void) | null;
+  /**
+   * 不拥有会话进程（接管来的，如团队队长/成员 PTY）。
+   *
+   * 「销毁缓存」与「杀掉进程」是两件事：关 tab / 自愈重建只该销毁缓存，而进程生命周期属
+   * 它的创建者（团队域的关闭协议）。不区分所有权的话，关掉队长终端 tab 就 kill 掉整个队伍的
+   * 队长 —— 而界面上看不出因果。
+   */
+  attached?: boolean;
 }
 export interface CacheBackendOptions {
   /** Close a terminal session */
@@ -54,6 +62,21 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
   function log(msg: string) {
     const ts = new Date().toLocaleTimeString();
     console.debug(`['${ts}'] ${logPrefix} ${msg}`);
+  }
+
+  /**
+   * 只回收**自己拥有**的会话。
+   *
+   * 接回 / 接管来的 entry（`attached`）只是「借看」：进程由创建者负责（团队域在关闭协议里
+   * 先 close PTY 再归档成员；侧栏「接回」的会话归 live-sessions 注册表）。在这里顺手关掉，
+   * 等于「关一个 tab 就 kill 掉整个团队的队长」。
+   *
+   * 所有权记录在 entry 上而不是每个调用点：调用点有三个（销毁 / 自愈 / 切换 agent），
+   * 靠「每处都记得判一下」就一定会漏一处。
+   */
+  function closeIfOwned(entry: CacheEntry): void {
+    if (entry.attached || !entry.sessionId) return;
+    closeSession(entry.sessionId).catch((err) => reportFrontendError('terminal.closeSession', err));
   }
 
   /**
@@ -83,9 +106,8 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
           reportFrontendError('terminal.detachSession', err),
         );
       } else {
-        closeSession(entry.sessionId).catch((err) =>
-          reportFrontendError('terminal.closeSession', err),
-        );
+        // 前台关闭：只关自己拥有的会话（接回 / 接管来的会跳过，见 `closeIfOwned`）。
+        closeIfOwned(entry);
       }
     }
 
@@ -110,9 +132,7 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     entry.inputController?.dispose();
 
     if (entry.sessionId) {
-      closeSession(entry.sessionId).catch((err) =>
-        reportFrontendError('terminal.closeSession', err),
-      );
+      closeIfOwned(entry);
     }
 
     safeDisposeTerminal(entry.term);

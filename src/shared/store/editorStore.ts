@@ -20,6 +20,7 @@ import type {
   PRDetailTabData,
   BrowserTabData,
   AgentChatTabData,
+  TeamBoardTabData,
   TabKind,
 } from '@/shared/types/tab';
 import { emitTabActivated } from '@/shared/utils/editorActivity';
@@ -242,6 +243,21 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         kind: 'browser' as const,
         url: 'url' in p ? (p.url as string) : d.url,
         favicon: 'favicon' in p ? (p.favicon as string | undefined) : d.favicon,
+      };
+    }
+    case 'team-board': {
+      // `teamId` 是 tab 的**地址**（建 tab 时写一次，永不更新；`partial` 里的同名字段
+      // 故意不读）；`teamName` 只是**显示名** —— 用户改名后 tab 标题必须跟上
+      // （`app/dock/wrappers/teamRenameTabs.ts`），否则 tab 栏会长期挂着一个已经不存在的队名。
+      // `view` 是那个 tab 的**导航态**：唯一写入点是中央 tab 自己的头部按钮（经 `PaneContent`
+      // 注入的 `onViewChange` 落 `updateTab`）。「在中间打开」已存在 tab 时只激活，不再推送视图。
+      const p = partial as Record<string, unknown>;
+      const d = data as TeamBoardTabData;
+      return {
+        kind: 'team-board' as const,
+        teamId: d.teamId,
+        teamName: p.teamName !== undefined ? (p.teamName as string) : d.teamName,
+        view: 'view' in p ? (p.view as 'board' | 'flow') : d.view,
       };
     }
     case 'agent-chat': {

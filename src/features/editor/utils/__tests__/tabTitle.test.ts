@@ -8,6 +8,7 @@ function session(title: string): SessionView {
   return {
     sessionId: 's1',
     kind: 'chat',
+    attribution: { kind: 'user' },
     agentId: 'pi',
     workspaceKey: 'p1\0',
     title,

@@ -141,6 +141,14 @@ fn unlisted_entry(id: &str, cwd: &str) -> SessionEntry {
     entry
 }
 
+/// 团队成员起的 PTY：归属在登记时写入（生产路径：`app/team_executor`）。
+fn member_entry(id: &str, cwd: &str, team_id: &str, member_id: &str) -> SessionEntry {
+    terminal_entry(id, cwd).with_attribution(crate::live_sessions::SessionAttribution::TeamMember {
+        team_id: team_id.to_owned(),
+        member_id: member_id.to_owned(),
+    })
+}
+
 fn terminal_entry(id: &str, cwd: &str) -> SessionEntry {
     SessionEntry::new(
         id,
@@ -356,6 +364,27 @@ fn adopt_refuses_a_live_source() {
 
     assert!(!registry.adopt("live", "new"));
     assert!(registry.entry("live").is_some());
+    assert_eq!(registry.snapshot().len(), 2);
+}
+
+/// 团队成员会话**不得**被侧栏的续写路径继承掉（归属守卫的第三条）。
+///
+/// 触发路径：把成员终端 tab 以「后台运行」关掉 ⇒ 条目变 `Stopped`（进程还活着）⇒ 从侧栏
+/// 点回那一行 ⇒ `sessionTabFactory` 走「已结束 ⇒ 起新进程 + adopt」。放它通过的后果是
+/// 成员条目消失、进程变成**无主孤儿**，而团队侧只剩「成员 offline」—— 与「CLI 自己崩了」
+/// 无法区分（与删除守卫同一个危害类别，只是触发器不同）。
+#[test]
+fn adopt_refuses_a_team_member_source() {
+    let (registry, _store) = registry();
+    registry.register(member_entry("m1", "/proj", "tm_1", "w1@tm_1"));
+    registry.apply("m1", Signal::Stopped);
+    registry.register(terminal_entry("new", "/proj"));
+
+    assert!(
+        !registry.adopt("m1", "new"),
+        "成员会话只能由团队域接管（team_resume），侧栏续写不得摘掉它的条目"
+    );
+    assert!(registry.entry("m1").is_some(), "成员条目不得退场");
     assert_eq!(registry.snapshot().len(), 2);
 }
 
@@ -605,6 +634,38 @@ fn terminal_rows_are_persisted_only_once_they_are_listed() {
     registry.apply("t1", Signal::TurnStarted);
     registry.apply("t1", Signal::TurnFinished);
     assert_eq!(store.cursor("t1").expect("cursor").turn_count, 1);
+}
+
+/// 团队成员的会话**永不落盘** —— 哪怕它跑过一轮、`has_user_input` 已置位。
+///
+/// 落盘的后果是重启后它以「用户手机会话」的身份回到侧栏：点下去续写的是没有团队
+/// MCP 端点 / 凭证 / 隔离配置目录的裸 CLI（它以为自己是队长，却调不到任何 `team_*`）。
+/// 写门只有一份实现（`cursor::from_entry`），本用例守的是「没有第二个入口」——
+/// `register` / `report_user_input` / `persist_entry` 都不得绕过它。
+#[test]
+fn a_team_members_live_session_is_never_persisted() {
+    let (registry, store) = registry();
+    let mut member = member_entry("s-w1", "/w", "tm_1", "w1@tm_1");
+    member.has_user_input = false;
+    registry.register(member);
+
+    // 用户输入 / 权威事件都会走 `persist_entry`；两条路径都试一遍。
+    assert!(registry.report_user_input("s-w1", "实现登录页"));
+    assert!(registry.report_authoritative("s-w1", None, Signal::TurnFinished));
+    assert!(
+        store.stored_ids().is_empty(),
+        "成员会话不得写入任何 cursor 行（含 Closed）：{:?}",
+        store.stored_ids()
+    );
+    assert!(store.list_restorable().is_empty());
+
+    assert_eq!(registry.restore_from_store(), 0, "不得把它投影回侧栏");
+    assert!(registry.entry("s-w1").is_some(), "本次运行的条目照常保留");
+
+    // 重启形态：同一个库里再也找不到这一行（不靠「本次运行已登记」的覆盖来掩盖）。
+    let reborn = Registry::new(store);
+    assert_eq!(reborn.restore_from_store(), 0);
+    assert!(reborn.entry("s-w1").is_none(), "重启后不得出现幽灵行");
 }
 
 /// hook 的完成态是权威事实：之后 Codex TUI 重绘产生的 PTY 输出不得把 Ready 推回 Running。
@@ -1010,4 +1071,80 @@ fn user_rename_does_not_engage_the_session() {
     assert_eq!(entry.title, "/model", "用户改名不套任何清理 / 准入拒绝");
     assert_eq!(entry.title_source, TitleSource::User);
     assert!(!entry.has_user_input, "改名不是「用过」");
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 成员归属：团队的「它在哪」只有一个权威（红线 17）
+// ─────────────────────────────────────────────────────────────────
+
+/// 归属写对了就查得到；查不到别的成员，也查不到别的团队。
+#[test]
+fn a_members_live_session_is_found_by_its_attribution() {
+    let (registry, _store) = registry();
+    registry.register(member_entry("s-w1", "/w", "tm_1", "w1@tm_1"));
+    registry.register(member_entry("s-w2", "/w", "tm_1", "w2@tm_1"));
+    registry.register(member_entry("s-o1", "/o", "tm_2", "w1@tm_2"));
+
+    assert_eq!(
+        registry
+            .live_session_for_member("tm_1", "w1@tm_1")
+            .as_deref(),
+        Some("s-w1")
+    );
+    assert_eq!(
+        registry
+            .live_session_for_member("tm_1", "w2@tm_1")
+            .as_deref(),
+        Some("s-w2")
+    );
+    // 同名的成员在不同队里是**两个人**：团队 id 是键的一半。
+    assert_eq!(
+        registry
+            .live_session_for_member("tm_2", "w1@tm_2")
+            .as_deref(),
+        Some("s-o1")
+    );
+    assert_eq!(registry.live_session_for_member("tm_2", "w1@tm_1"), None);
+    // 用户自己的终端不属任何成员（归属默认 `User`）。
+    registry.register(terminal_entry("s-user", "/w"));
+    assert_eq!(
+        registry.live_session_for_member("tm_1", "w1@tm_1"),
+        Some("s-w1".to_owned())
+    );
+    assert_eq!(registry.live_session_for_member("tm_1", "user@tm_1"), None);
+}
+
+/// 终止态的条目不算活会话 —— 否则「点开一个已经退出的成员」会拿到一个死句柄。
+///
+/// 两种终止形态都覆盖：显式关闭保留 `Stopped` 行（点回来的入口），自然退出整行删除。
+#[test]
+fn a_terminal_session_is_not_live_anymore() {
+    let (registry, _store) = registry();
+    registry.register(member_entry("s-w1", "/w", "tm_1", "w1@tm_1"));
+    assert_eq!(
+        registry
+            .live_session_for_member("tm_1", "w1@tm_1")
+            .as_deref(),
+        Some("s-w1")
+    );
+
+    // ① 显式关闭：状态变了，行还在（夹具直接给状态，省掉一次真实关闭）。
+    registry.unregister("s-w1");
+    let mut stopped = member_entry("s-w1", "/w", "tm_1", "w1@tm_1");
+    stopped.state = SessionState::Stopped;
+    registry.register(stopped);
+    assert!(
+        registry.entry("s-w1").is_some(),
+        "前提：行还在（这是「点回来」的入口）"
+    );
+    assert_eq!(
+        registry.live_session_for_member("tm_1", "w1@tm_1"),
+        None,
+        "Stopped 的会话不是活会话（哪怕行仍在侧栏里可点）"
+    );
+
+    // ② 自然退出：整行消失（同一判据，另一个形态）。
+    registry.register(member_entry("s-w2", "/w", "tm_1", "w2@tm_1"));
+    registry.unregister("s-w2");
+    assert_eq!(registry.live_session_for_member("tm_1", "w2@tm_1"), None);
 }

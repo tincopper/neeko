@@ -85,9 +85,9 @@ pub(super) fn create_opencode_fixture(dir: &TempDir) -> PathBuf {
 /// 顺带断言夹具确实被判定为 v1 布局。
 pub(super) fn parse_v1(
     db_path: &Path,
-    project_path: Option<&str>,
+    project_roots: Option<&[PathBuf]>,
 ) -> anyhow::Result<Vec<(ParsedMeta, PathBuf)>> {
     let (conn, store) = store::open_detected(db_path).expect("open fixture db");
     assert_eq!(store, Store::V1, "v1 夹具必须被判定为 v1 布局");
-    parse_opencode_db(&conn, db_path, project_path)
+    parse_opencode_db(&conn, db_path, project_roots)
 }

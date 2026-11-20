@@ -48,7 +48,6 @@ const rows: ConversationMeta[] = [
 function renderPanel(onDeleteConversation: (meta: ConversationMeta) => Promise<boolean>) {
   return render(
     <ConversationPanel
-      projectPath="/tmp/project"
       projectId="proj-1"
       agents={agents}
       isActive
@@ -116,7 +115,6 @@ describe('ConversationPanel delete orchestration', () => {
   it('hides the delete entry when the container provides no handler', async () => {
     render(
       <ConversationPanel
-        projectPath="/tmp/project"
         projectId="proj-1"
         agents={agents}
         isActive

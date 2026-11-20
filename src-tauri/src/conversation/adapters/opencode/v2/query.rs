@@ -4,41 +4,38 @@
 //! `data` 里的内容形态；预览取出的行仍交给 `blocks::turn_text` 提取文本。
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use rusqlite::Connection;
 use serde_json::Value;
 
 use super::super::super::CONVERSATION_ROLES;
-use super::super::common::PREVIEW_LIMIT;
+use super::super::common::{directory_owns_any_clause, PREVIEW_LIMIT};
 use super::blocks::turn_text;
 use super::USER_ROLE;
 use crate::conversation::normalize::recent_messages_from;
 
 /// 会话列表 SQL：只取顶层（非子会话）、未归档的行，按最近更新倒序。
-pub(super) fn session_query(project_path: Option<&str>) -> (String, Vec<String>) {
+///
+/// `project_roots` = 项目的**注册根集合**（主 checkout + 全部 linked worktree）；一个会话只要
+/// 落在**任一**根下就属于本项目。只认第一个根会让工作树里的会话在历史列表里消失。
+pub(super) fn session_query(project_roots: Option<&[PathBuf]>) -> (String, Vec<String>) {
     const COLUMNS: &str =
         "SELECT v.id, v.title, v.directory, v.time_created, v.time_updated, v.model
          FROM session_v2 v
          WHERE v.parent_id IS NULL
            AND v.time_archived IS NULL";
-    match project_path.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(project) => {
-            let base = project.trim_end_matches('/').to_string();
-            (
-                format!(
-                    "{COLUMNS}
-                       AND v.directory IS NOT NULL
-                       AND (v.directory = ?1 OR v.directory LIKE ?2)
-                     ORDER BY v.time_updated DESC"
-                ),
-                vec![base.clone(), format!("{base}/%")],
-            )
+    let (directory_filter, params): (String, Vec<String>) = match project_roots {
+        Some(roots) => {
+            let (clause, params) = directory_owns_any_clause("v.directory", roots);
+            (format!(" AND v.directory IS NOT NULL AND {clause}"), params)
         }
-        None => (
-            format!("{COLUMNS} ORDER BY v.time_updated DESC"),
-            Vec::new(),
-        ),
-    }
+        None => (String::new(), Vec::new()),
+    };
+    (
+        format!("{COLUMNS}{directory_filter} ORDER BY v.time_updated DESC"),
+        params,
+    )
 }
 
 /// `type IN ('user','assistant')` —— 白名单的唯一来源是 `CONVERSATION_ROLES`。

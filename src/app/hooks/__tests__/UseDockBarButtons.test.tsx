@@ -21,6 +21,7 @@ import { useDockBarButtons } from '../UseDockBarButtons';
 const PROJECTS = panelView('projects');
 const FILES = panelView('files');
 const LIBRARY = appViewKey('library');
+const TASKS = appViewKey('tasks');
 const AGENT_CHAT = tabKindView('agent-chat');
 const TERMINAL_VIEW = tabKindView('terminal');
 
@@ -39,7 +40,8 @@ describe('useDockBarButtons', () => {
   it('只给该侧的条目，按槽内 order 升序', () => {
     const { result } = renderHook(() => useDockBarButtons('left'));
 
-    expect(result.current.map(viewOf)).toEqual([PROJECTS, LIBRARY]);
+    // 左栏 = Projects + 两个中心视图入口（library 3、tasks 4，槽内相对序）
+    expect(result.current.map(viewOf)).toEqual([PROJECTS, LIBRARY, TASKS]);
     expect(viewOf(result.current[0])).toBe(PROJECTS);
   });
 
@@ -77,7 +79,7 @@ describe('useDockBarButtons', () => {
     rerenderLeft();
     rerenderRight();
 
-    expect(leftResult.current.map(viewOf)).toEqual([FILES, PROJECTS, LIBRARY]);
+    expect(leftResult.current.map(viewOf)).toEqual([FILES, PROJECTS, LIBRARY, TASKS]);
     expect(rightResult.current.map(viewOf)).not.toContain(FILES);
   });
 

@@ -20,7 +20,7 @@
 //! 路径已写进各自仓库与 session 记录；把整根目录搬走会让它们落在「预期根之外」，触发路径守卫
 //! （红线 8 的同源校验）。带版本门禁的只有库，也只需要隔离库。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// 覆写库目录的环境变量名。
 pub const DB_DIR_ENV: &str = "NEEKO_DB_DIR";
@@ -67,6 +67,27 @@ pub fn agent_sessions_db_path() -> PathBuf {
 #[must_use]
 pub fn terminal_history_dir() -> PathBuf {
     db_dir().join("terminal_history")
+}
+
+/// 团队共享区的**唯一拼装**：`<root>/team/<team_id>/share/`。
+///
+/// root 由调用方给 —— 组合根传 storage 根（与成员隔离配置目录同一个 base），团队删除时
+/// 随目录一起收走。它是长内容交接契约的落点：成员把大文件写进这里，工具只传路径
+/// （`task_update` 的 `artifacts` / `team_send` 里的一句话）—— 正文不再挤在 4 KiB 的
+/// `summary` 与 PTY 字节流里。
+#[must_use]
+pub fn team_share_dir_under(root: &Path, team_id: &str) -> PathBuf {
+    root.join("team").join(team_id).join("share")
+}
+
+/// 默认根（[`app_dir`]）下的团队共享区 —— 生产装配点。
+///
+/// 绝对路径、`~/.neeko` 之下：与 [`db_dir`] 同一条纪律（相对路径随 cwd 漂移，
+/// 那不是隔离是随机）。**测试请用 [`team_share_dir_under`]**（指进 tempdir），
+/// 不要往真实 `~/.neeko` 里写东西。
+#[must_use]
+pub fn team_share_dir(team_id: &str) -> PathBuf {
+    team_share_dir_under(&app_dir(), team_id)
 }
 
 /// [`db_dir`] 的纯函数内核：脱离进程环境直测（`env::set_var` 在测试里是全局副作用）。
@@ -145,6 +166,34 @@ mod tests {
         assert_eq!(
             terminal_history_dir().file_name().unwrap(),
             "terminal_history"
+        );
+    }
+}
+
+#[cfg(test)]
+mod team_share_tests {
+    use super::*;
+
+    /// AC1：与 `db_dir` 同一条纪律 —— 绝对路径、`~/.neeko` 之下。
+    #[test]
+    fn team_share_dir_is_absolute_under_app_dir() {
+        let dir = team_share_dir("tm_1");
+        assert!(dir.is_absolute(), "{dir:?} 必须是绝对路径");
+        assert!(dir.starts_with(app_dir()), "{dir:?} 必须落在 ~/.neeko 之下");
+        assert!(dir.ends_with("share"), "{dir:?} 的最后一段是 share");
+    }
+
+    /// 拼装只有一份：默认根装配 == `_under(app_dir)`。
+    #[test]
+    fn team_share_dir_delegates_to_the_under_assembly() {
+        assert_eq!(
+            team_share_dir("tm_9"),
+            team_share_dir_under(&app_dir(), "tm_9")
+        );
+        let root = std::env::temp_dir().join("neeko-paths-test");
+        assert_eq!(
+            team_share_dir_under(&root, "tm_1"),
+            root.join("team").join("tm_1").join("share")
         );
     }
 }

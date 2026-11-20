@@ -82,8 +82,10 @@ fn real_opencode_database_reads_through_the_detected_layout() {
         let (conn, store) = store::open_detected(&db).expect("打开真机库");
         let all = read_all(store, &conn, &db);
         let scoped = match store {
-            Store::V1 => v1::parse_opencode_db(&conn, &db, Some("/")).unwrap_or_default(),
-            Store::V2 => v2::parse_db(&conn, &db, Some("/")).unwrap_or_default(),
+            Store::V1 => {
+                v1::parse_opencode_db(&conn, &db, Some(&[PathBuf::from("/")])).unwrap_or_default()
+            }
+            Store::V2 => v2::parse_db(&conn, &db, Some(&[PathBuf::from("/")])).unwrap_or_default(),
         };
         let newest = all.iter().map(|(m, _)| m.updated_at).max().unwrap_or(0);
         eprintln!(

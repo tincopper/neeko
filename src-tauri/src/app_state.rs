@@ -61,6 +61,45 @@ pub struct AppStateWrapper {
     /// Shares the pool with `library_store` on purpose: one pool per database
     /// file, so there is a single owner for the handle.
     pub cache_store: Arc<crate::common::cache::CacheStore>,
+    /// 团队域管理器（团队 / 成员 / 任务板 / 租约 / 审计的唯一写入口）。
+    ///
+    /// 与 `cache_store` 同理**共享** `library_store` 的池：一个数据库一个池
+    /// （[`library::LibraryStore::with_pool`] 的注释已钉住这条），而且迁移链
+    /// （含 v14 的团队建表）只在那个入口跑过一次。
+    ///
+    /// 因果链（换池之前先读完这条）：`app/boot.rs` 的 `open_pool` →
+    /// `LibraryStore::with_pool` → `common::db::run_migrations` →
+    /// `migrate_step(13)` → [`crate::agent::team::store::v13_to_v14`]。
+    /// [`crate::agent::team::TeamStore::with_pool`] **自己不起池、也不跑迁移**（它是
+    /// `const fn`），文档写明的唯一前置条件就是「调用方已在这个池上跑过迁移链」——
+    /// 换一个池的后果不是慢，而是每一条团队查询都以 `no such table: team` 失败。
+    ///
+    /// # 构造必须走 `load`（hydrate）而不是 `new`
+    ///
+    /// 库是**真相源**，内存镜像是**缓存** —— 所以「缓存初始化」是启动的硬步骤，不是可选优化。
+    /// [`crate::agent::team::TeamManager::new`] 给的是空镜像，第二次启动起 `team()` /
+    /// `member()` 恒 `None`，而 `add_member` 的团队存在性判据读的正是空镜像（于是对一个库里
+    /// 真实存在的团队报 `NotFound`）。机器判据是
+    /// `a_restart_hydrates_the_team_domain_from_the_database`（本文件 `tests`）。
+    pub team_manager: Arc<crate::agent::team::TeamManager>,
+    /// 工作项域管理器（Local Provider 工作项 + 执行记录的唯一写入口）。
+    ///
+    /// 与 `cache_store` / `team_manager` 同理**共享** `library_store` 的池：一个数据库一个池
+    /// （[`library::LibraryStore::with_pool`] 的注释已钉住这条），而且迁移链只在那个入口跑过
+    /// 一次。
+    ///
+    /// 因果链（换池之前先读完这条）：`app/boot.rs` 的 `open_pool` →
+    /// `LibraryStore::with_pool` → `common::db::run_migrations` → `migrate_step(17)` →
+    /// [`crate::work_items::store::v17_to_v18`]。
+    /// [`crate::work_items::WorkItemStore::with_pool`] **自己不起池、也不跑迁移**（它是
+    /// `const fn`），文档写明的唯一前置条件就是「调用方已在这个池上跑过迁移链」—— 换一个池
+    /// 的后果不是慢，而是每一条工作项查询都以 `no such table: work_item` 失败。
+    ///
+    /// # 构造不需要 hydrate（与 `team_manager` 的区别）
+    ///
+    /// 本域**没有内存镜像**：每次读都直接打库，库就是唯一真相源。所以这里用 `with_store`
+    /// 而不是 `load` —— 需要一个 `load` 只是「有第二份状态要同步」的信号。
+    pub work_item_manager: Arc<crate::work_items::WorkItemManager>,
     /// Language Server Protocol session manager.
     pub lsp_manager: Arc<crate::lsp::LspManager>,
     /// 应用级通知中心（业务无关裁决+投递；业务域单向依赖其门面，design.md T4/D6）。
@@ -78,6 +117,21 @@ pub struct AppStateWrapper {
     /// 清理闭包，只能靠 `Arc` 克隆跨线程 take（裸 `Mutex` 字段版编译不过）。
     /// 组合根只存句柄 —— 不含任何 HTTP 逻辑（引擎在 `crate::server`）。
     http_server: Arc<Mutex<Option<crate::server::ServerHandle>>>,
+    /// 团队 MCP 端点（`agent::team::boot` 起；**与 hooks 分开的独立 listener**，design §3.1b）。
+    ///
+    /// 不合并进 `http_server`：两个端点各有自己的门（hooks = 单进程 token，团队 = 成员
+    /// token 的活集合）与失败策略（fail-open vs fail-closed），共用一个 handle 会让「谁在
+    /// 什么端口上」重新变成隐式知识。
+    ///
+    /// `Option` 是因为它可能起不来（端口/读库失败）：那时团队功能不可用，但**整个应用
+    /// 不该跟着起不来**（hooks 那条常开路径更不该受影响）。
+    team_server: Arc<Mutex<Option<crate::agent::team::TeamServer>>>,
+    /// 租约回收器（`agent::team::reaper` 起；**时间驱动**的团队迁移）。
+    ///
+    /// `Option` 只为「关闭协议取一次」：启动后恒为 `Some`（它没有构造失败的可能 ——
+    /// 只是 spawn 一个循环）。与团队端点分开存：端点可能起不来（端口/读库失败），
+    /// 而回收器不该因为端点没起来就停摆（租约与 MCP 面无关）。
+    team_reaper: Arc<Mutex<Option<crate::agent::team::TeamReaper>>>,
     /// 主窗口句柄（setup 阶段注入；菜单/事件统一从此取）。
     ///
     /// 避免运行时 `get_webview_window("main")` 查找——其内部 `is_webview_window`
@@ -118,6 +172,8 @@ impl AppStateWrapper {
         let lsp_manager = self.lsp_manager.clone();
         // HTTP 句柄用 Arc 克隆取走：清理闭包是 FnOnce + Send，不能借用 &self。
         let http_server = Arc::clone(&self.http_server);
+        let team_server = Arc::clone(&self.team_server);
+        let team_reaper = Arc::clone(&self.team_reaper);
 
         let tasks: Vec<crate::common::shutdown::CleanupTask> = vec![
             (
@@ -144,6 +200,33 @@ impl AppStateWrapper {
                     }
                 }),
             ),
+            // 租约回收器：只 abort 一个循环（见 `reaper` 模块文档）。
+            (
+                "team-reaper",
+                Box::new(move || {
+                    let reaper = team_reaper
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .take();
+                    if let Some(reaper) = reaper {
+                        reaper.stop();
+                    }
+                }),
+            ),
+            // 团队端点：独立 listener，同样要 graceful shutdown —— 否则关闭时在途的
+            // `team_wait` 会把进程退出拖到超时。`TeamServer::stop` 消费自身，取出来再停。
+            (
+                "team-http",
+                Box::new(move || {
+                    let server = team_server
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .take();
+                    if let Some(server) = server {
+                        server.stop();
+                    }
+                }),
+            ),
         ];
 
         // 收割阶段：git 长操作子进程树（git → hook → pnpm → vitest/cargo）没有自己的
@@ -164,6 +247,90 @@ impl AppStateWrapper {
             .http_server
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(handle);
+    }
+
+    /// 存入团队 MCP 端点（setup 阶段由 `team::boot` 成功后调用一次）。
+    pub fn set_team_server(&self, server: crate::agent::team::TeamServer) {
+        *self
+            .team_server
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(server);
+    }
+
+    /// 存入租约回收器（setup 阶段调用一次；与团队端点**各自独立**，见字段文档）。
+    pub fn set_team_reaper(&self, reaper: crate::agent::team::TeamReaper) {
+        *self
+            .team_reaper
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(reaper);
+    }
+
+    /// 团队端点的 URL（成员 MCP 配置里要写的那串）。端点没起来时 `None`。
+    ///
+    /// 执行层（`execution::plan_member_spawn` 的 `mcp_url`）只从这里取：拼装点唯一，
+    /// 「端口对了但路径错了」这类错误就没有地方发生。
+    pub fn team_endpoint_url(&self) -> Option<String> {
+        self.team_server
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .map(crate::agent::team::TeamServer::endpoint_url)
+    }
+
+    /// 团队端点的门面（URL + 凭证面 + 执行者）。端点没起来时 `None`。
+    ///
+    /// 一次锁内取出三样：它们是「端点起来了」的同一件事，拆成多个访问器只会让调用方
+    /// 有能力拿到半个（有 URL 却没人签凭证）。见 `TeamSurface` 的文档。
+    pub fn team_surface(&self) -> Option<crate::agent::team::TeamSurface> {
+        self.team_server
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .map(crate::agent::team::TeamServer::surface)
+    }
+
+    /// 项目根路径 → 执行环境（v15 行团队执行层的**兼容**环境来源）。
+    ///
+    /// # 为什么 v16 起不再是主路径
+    ///
+    /// 团队行现在带 `project_id`（环境的归属），执行层按 id 精确查表
+    /// （[`crate::agent::team::execution::environment_source`]）。路径反查只留给
+    /// **v16 之前建的行**：它对 Neeko 自己的工作树（`~/.neeko/worktrees/<name>`，按设计在项目
+    /// 目录**之外**）永远匹配不上 —— 那正是「从工作树开团队必失败」的根因。
+    ///
+    /// 仍然不能用「把环境复制进团队行」来绕：`ProjectEnvironment::Remote` 内含 SSH 认证，
+    /// 复制就是给同一份秘密造第二个存放点。所以团队行只记 id，环境仍向项目库要
+    /// （`Project.environment` 是权威）。
+    ///
+    /// # 为什么在组合根
+    ///
+    /// 它是**唯一**同时认识团队域与项目域的地方。放进任何一侧都会让那一侧反向依赖对方的
+    /// 数据模型（团队域依赖 `ProjectManager`，或项目域依赖 `Team`）。
+    ///
+    /// # 阻塞（红线 3）
+    ///
+    /// `canonicalize` 是 I/O：项目快照在调用线程取（纯内存拷贝），归一化与匹配进阻塞池。
+    pub async fn project_environment_for_path(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<crate::core::project::ProjectEnvironment, AppError> {
+        let projects: Vec<(std::path::PathBuf, crate::core::project::ProjectEnvironment)> = self
+            .project_manager
+            .lock()
+            .map_err(AppError::from)?
+            .list_projects()
+            .into_iter()
+            .map(|project| (project.path, project.environment))
+            .collect();
+        let target = path.to_path_buf();
+        self.runtime
+            .spawn_blocking(move || crate::core::project::environment_for_path(&projects, &target))
+            .await
+            .map_err(|err| {
+                AppError::Unknown(format!(
+                    "resolving the project of a team root failed: {err}"
+                ))
+            })?
     }
 
     /// 注入主窗口句柄（setup 阶段调用一次；菜单事件等从此取，见 [`Self::main_window`]）。
@@ -275,6 +442,50 @@ impl AppStateWrapper {
         crate::common::git::UnitScope::resolve(&target, &repo)
             .await
             .map_err(AppError::from)
+    }
+
+    /// 项目身份 → **项目的归属范围**（History 列表 / 搜索 / 扫描的唯一解析入口）。
+    ///
+    /// 一个项目有 1+N 个工作区（主 checkout + linked worktree），而 Neeko 的工作树按设计落在
+    /// 项目目录**之外**（`~/.neeko/worktrees/<name>`）。「整个项目的历史」因此不能用一条路径
+    /// 表达：根集合 = 项目登记根 + `git worktree list` + **团队行记录过的工作区根**。
+    ///
+    /// # 为什么团队记录也算注册事实
+    ///
+    /// 成员会话的 cwd 是团队根，而团队根可能是一个已经 `git worktree remove` 掉的工作树
+    /// （转录还在）。团队行记录的 `workspace_worktree` 是「这个目录属于本项目」的**登记事实**
+    /// —— 不靠字符串反推（红线 12）。v16 之前的旧行（空 `project_id`）不属于任何项目，跳过。
+    ///
+    /// # Errors
+    /// 未知 `project_id` ⇒ `NotFound`（与 [`Self::resolve_workspace_core`] 同一台阶：
+    /// 「有没有这个项目」是能力前置，不是一次事后失败）。
+    pub async fn project_scope(
+        &self,
+        project_id: &str,
+    ) -> Result<crate::common::git::ProjectScope, AppError> {
+        let (environment, project_root) = self.project_context(project_id)?;
+
+        // 团队记录的工作区根（内存镜像的锁内无 I/O）。同一个路径可能被多个队记录，去重交给
+        // `ProjectScope`（它按身份去重，不在这里再写一份判据）。
+        let recorded: Vec<std::path::PathBuf> = self
+            .team_manager
+            .teams()
+            .into_iter()
+            .filter(|team| !team.project_id.is_empty() && team.project_id == project_id)
+            .map(|team| {
+                team.workspace_worktree
+                    .clone()
+                    .unwrap_or_else(|| team.project_path.clone())
+            })
+            .collect();
+
+        crate::common::git::ProjectScope::resolve(
+            &environment.to_exec_target(),
+            std::path::Path::new(&project_root),
+            &recorded,
+        )
+        .await
+        .map_err(AppError::from)
     }
 
     /// 文件/通用命令的统一入口：**Workspace 目标 → (执行环境, 已解析 [`WorkspaceRef`])**。
@@ -435,6 +646,9 @@ impl AppStateWrapper {
 
         // Live session registry：与 `AgentChatManager` 共用同一个 store 实例（同一张 cursor 表）。
         // 它在组合根组装、被两个生产者（chat 事件流 / 终端 PTY）与三条命令共享。
+        // 团队共享区的根也在这里取一次（与成员隔离配置目录同一个来源）：结构体字面量里
+        // `storage_manager` 会被 move 进字段，取晚了就是 borrow-after-move。
+        let team_share_root = storage_manager.get_config_dir().to_path_buf();
         let live_sessions = Arc::new(
             crate::live_sessions::Registry::new(session_store.clone())
                 .with_history(Arc::clone(&terminal_history)
@@ -488,6 +702,24 @@ impl AppStateWrapper {
             cache_store: Arc::new(crate::common::cache::CacheStore::with_pool(
                 library_store.pool().clone(),
             )),
+            // 同上：池在 `library_store` 里已经跑过迁移链（含 v14 的团队建表），
+            // 这里只借用同一个池（字段文档记着整条因果链；"借池不借迁移" = `no such table`）。
+            //
+            // `load` 而不是 `new`：它与 `new` 的唯一区别就是多一步 hydrate，而团队域
+            // 的内存镜像就是库的缓存。用 `new` 会得到「库里有、内存里没有」的第二个真相源。
+            // 共享区根与成员隔离配置目录同源（`get_config_dir`）：env、校验、磁盘三方一个字符串。
+            team_manager: Arc::new(
+                crate::agent::team::TeamManager::load(
+                    crate::agent::team::TeamStore::with_pool(library_store.pool().clone()),
+                    team_share_root,
+                )
+                .expect("Failed to hydrate the team manager from the library pool"),
+            ),
+            // 同上：池在 `library_store` 里已经跑过迁移链（含 v18 的工作项建表），
+            // 这里只借用同一个池（字段文档记着整条因果链）。
+            work_item_manager: Arc::new(crate::work_items::WorkItemManager::with_store(
+                crate::work_items::WorkItemStore::with_pool(library_store.pool().clone()),
+            )),
             library_store,
             lsp_manager,
             dap_manager,
@@ -496,6 +728,8 @@ impl AppStateWrapper {
             ),
             notification: Arc::clone(&notification),
             http_server: Arc::new(Mutex::new(None)),
+            team_server: Arc::new(Mutex::new(None)),
+            team_reaper: Arc::new(Mutex::new(None)),
             main_window: RwLock::new(None),
         }
     }
@@ -540,6 +774,8 @@ fn agent_manager_with_overrides(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::team::fixtures::{fixture_member, fixture_team, TEAM, W1};
+    use crate::agent::team::types::{MemberState, TeamState};
     use crate::common::testing::isolated_state;
 
     #[test]
@@ -553,6 +789,276 @@ mod tests {
         assert!(
             matches!(err, AppError::InvalidInput(ref m) if m == "Invalid project id"),
             "expected InvalidInput(\"Invalid project id\"), got {err:?}"
+        );
+    }
+
+    /// 不变量：`isolated_state` 的池上**确实跑过** v14 的团队建表。
+    ///
+    /// [`crate::agent::team::TeamStore::with_pool`] 是 `const fn`，它**不跑迁移** ——
+    /// 本用例是那条前置条件的机器判据：表若不在共享池上，第一次团队写就会以
+    /// `no such table: team` 失败。“组合根借了池却没借到迁移后的池” 是这条的失败形态。
+    #[test]
+    fn team_manager_is_wired_on_a_v14_migrated_pool() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+        state
+            .team_manager
+            .create_team(fixture_team(TEAM))
+            .expect("create_team 必须成功：v14 表缺失时这里是 `no such table: team`");
+        state
+            .team_manager
+            .add_member(fixture_member(W1, TEAM))
+            .expect("add_member 必须成功：成员表同属 v14");
+        assert_eq!(
+            state.team_manager.member(W1).map(|m| m.state),
+            Some(MemberState::Spawned),
+            "写入必须落到同一个管理器镜像里（否则第二份真相源）"
+        );
+    }
+
+    /// 不变量：`isolated_state` 的池上**确实跑过** v18 的工作项建表，且 `work_item_manager`
+    /// 用的是**同一个池**（不是同一文件 / 同一 uuid 的第二个池）。
+    ///
+    /// [`crate::work_items::WorkItemStore::with_pool`] 同样是 `const fn`，不跑迁移 ——
+    /// 本用例是那条前置条件的机器判据：表不在共享池上时，第一次工作项写就会以
+    /// `no such table: work_item` 失败。“组合根借了池却没借到迁移后的池” 是这条的失败形态。
+    ///
+    /// # 为什么写完之后要去 `library_store` 的池读
+    ///
+    /// 「create 之后 list 得到 1 条」只证明 manager 自洽 —— 一个**自建池**的实现同样会绿
+    /// （建表迁移在自建池上重跑一遍即可）。真正的契约是「借池」，所以证据必须来自**另一个
+    /// 访问器**：`isolated_state` 的库是 `LibraryStore::open_in_memory()`，而
+    /// `SqliteConnectionManager::memory()` 每次调用生成一个独立 uuid（见 `common/db/pool.rs`），
+    /// 即「两个 in-memory 池 = 两个不同的数据库」。于是这条跨池读取只在共用池时成立
+    /// （同 `team_manager_shares_the_library_pool` 的判据）。
+    #[test]
+    fn work_item_manager_is_wired_on_a_v18_migrated_pool() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+        let item = state
+            .work_item_manager
+            .create(crate::work_items::CreateWorkItem {
+                project_id: "p1".to_owned(),
+                title: "下单".to_owned(),
+                body: None,
+                stage: None,
+                priority: None,
+                labels: None,
+                assignee: None,
+            })
+            .expect("create 必须成功：v18 表缺失时这里是 `no such table: work_item`");
+        assert_eq!(
+            state.work_item_manager.list("p1").expect("list").len(),
+            1,
+            "写入必须落在同一个池上（否则列表恒空）"
+        );
+
+        // 走 **library 自己的池** 读同一张表（不用 work_item_manager 的访问器）。
+        let conn = state.library_store.pool().get().expect("library pool conn");
+        let title: String = conn
+            .query_row(
+                "SELECT title FROM work_item WHERE id = ?1",
+                [&item.id],
+                |row| row.get(0),
+            )
+            .expect("work_item_manager 写入的行必须能被 library_store 的池读到（同一个池）");
+        assert_eq!(title, "下单");
+    }
+
+    /// 夹具：在**同一个库文件**上组一份 `AppStateWrapper`（= 模拟一次进程启动）。
+    fn state_on_db(db: &std::path::Path, tmp: &tempfile::TempDir) -> AppStateWrapper {
+        let storage =
+            StorageManager::with_dir(tmp.path().join(".neeko")).expect("fixture: storage manager");
+        let store =
+            Arc::new(crate::library::LibraryStore::open(db).expect("fixture: library store"));
+        AppStateWrapper::new_with_storage_and_library(storage, store)
+    }
+
+    /// **重启即恢复**：库是真相源、内存镜像是缓存，所以启动必须 hydrate（`load`，不是 `new`）。
+    ///
+    /// 这条用例是 `TeamManager::new` 的失败形态，三处会同时红：
+    /// ① `team()` 恒 `None`（花名册空）；② `member()` 恒 `None`；
+    /// ③ `issue_token()` 报 `member not found` —— 一个库里确实存在的成员。
+    ///
+    /// 断言止于「读得到」不够：第 ③ 条同时证明**写路径**也活了（`add_member` 的团队存在性
+    /// 判据读的正是内存镜像，空镜像会让它 `NotFound(team …)`）。
+    #[test]
+    fn a_restart_hydrates_the_team_domain_from_the_database() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let db = tmp.path().join("neeko.db");
+
+        // 第一次启动：建团队 + 成员，随后整体丢弃（= 进程退出）。
+        {
+            let first = state_on_db(&db, &tmp);
+            first
+                .team_manager
+                .create_team(fixture_team(TEAM))
+                .expect("create_team");
+            first
+                .team_manager
+                .add_member(fixture_member(W1, TEAM))
+                .expect("add_member");
+        }
+
+        // 第二次启动：同一个库文件，全新的 `AppStateWrapper`。
+        let second = state_on_db(&db, &tmp);
+        assert_eq!(
+            second.team_manager.team(TEAM).map(|t| t.state),
+            Some(TeamState::Open),
+            "重启后团队必须可见（`TeamManager::new` 会让这里是 None）"
+        );
+        assert_eq!(
+            second.team_manager.member(W1).map(|m| m.state),
+            Some(MemberState::Spawned),
+            "重启后成员必须可见"
+        );
+        // 写路径同样是活的：空镜像下这里会以 `member not found` 失败。
+        second
+            .team_manager
+            .issue_token(W1, 1_000)
+            .expect("重启后签发必须找得到成员（= 内存镜像已 hydrate）");
+    }
+
+    /// 端点没起来时 `team_endpoint_url()` 是 `None` —— 执行层据此拒绝 spawn，
+    /// 而不是拼一个空 URL 写进成员的 MCP 配置（那种成员起来后连不上任何东西）。
+    #[test]
+    fn team_endpoint_url_is_none_until_the_endpoint_boots() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+
+        assert_eq!(state.team_endpoint_url(), None);
+    }
+
+    /// 门面同样是「端点起来了才有」—— 而且它是**一个** `Option`：
+    /// 不存在「有 URL 却没人签凭证」这种半可用状态（见 `TeamSurface` 的文档）。
+    #[test]
+    fn the_team_surface_is_none_until_the_endpoint_boots() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+
+        assert!(state.team_surface().is_none());
+    }
+
+    // ─────── 团队根 → 执行环境（执行层的环境来源） ───────
+
+    /// 方法本身：已登记的项目根 → 它的环境（纯匹配规则在 `core::project` 的单测里）。
+    #[tokio::test]
+    async fn a_registered_project_root_resolves_to_its_environment() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+        let root = tmp.path().join("proj");
+        std::fs::create_dir_all(&root).expect("project dir");
+        state
+            .project_manager
+            .lock()
+            .expect("project manager")
+            .add_project(root.clone(), None, None, None)
+            .expect("add_project");
+
+        assert!(matches!(
+            state.project_environment_for_path(&root).await,
+            Ok(crate::core::project::ProjectEnvironment::Local)
+        ));
+    }
+
+    /// 项目范围 = 项目登记根 + **团队记录过的工作区根**（S3/AC-10 的组合根一半）。
+    ///
+    /// 团队根按设计可以落在项目目录**之外**（`~/.neeko/worktrees/<name>`），那时
+    /// 「按路径前缀反推项目」结构上不可能成立。归属的唯一依据是登记事实：
+    /// 项目自己的根、`git worktree list`、以及团队行记录的工作树。
+    ///
+    /// 反证面：不把团队记录的根收进范围时，工作树里的成员会话在 History 里会整批消失 ——
+    /// 所以第一条断言必须成立（它读的正是 `recorded`）。
+    #[tokio::test]
+    async fn the_project_scope_covers_a_team_workspace_outside_the_project() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_id) = crate::common::testing::plain_project_state(&tmp);
+        let project_dir = tmp.path().join("proj");
+
+        // 团队跑在项目目录**之外**的工作树上（Neeko 的默认布局）。
+        let worktree = tmp.path().join("neeko-worktrees").join("wt");
+        std::fs::create_dir_all(&worktree).expect("worktree dir");
+        state
+            .team_manager
+            .create_team(crate::agent::team::types::Team {
+                project_id: project_id.clone(),
+                workspace_worktree: Some(worktree.clone()),
+                ..fixture_team("tm_scope")
+            })
+            .expect("create_team");
+
+        let scope = state
+            .project_scope(&project_id)
+            .await
+            .expect("project scope");
+        assert!(
+            scope.owns(Some(&project_dir.to_string_lossy())),
+            "项目登记根属于它自己"
+        );
+        assert!(
+            scope.owns(Some(&worktree.to_string_lossy())),
+            "团队记录过的工作树属于同一个项目（否则成员会话在 History 里消失）"
+        );
+        assert!(
+            scope.roots().iter().any(|root| root == &worktree
+                || std::fs::canonicalize(root).ok() == std::fs::canonicalize(&worktree).ok()),
+            "记录的根同时进**发现**清单（否则路径编码的 CLI 根本扫不到它）：{:?}",
+            scope.roots()
+        );
+
+        // 别的项目目录不属于它（分量边界，fail-closed）。
+        let other = tmp.path().join("proj-other");
+        std::fs::create_dir_all(&other).expect("other dir");
+        assert!(!scope.owns(Some(&other.to_string_lossy())));
+
+        // 未知项目 ⇒ NotFound（与 `project_context` 同一台阶）。
+        let err = state.project_scope("nope").await.expect_err("未知项目");
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+    }
+
+    /// 不变量：`team_manager` 与 `library_store` 是**同一个池**（不是同一文件的两个池）。
+    ///
+    /// # 为什么不是指针比较
+    ///
+    /// `r2d2::Pool` 内部是 `Arc<SharedPool<_>>`，但它既**不暴露那个 `Arc`** 也没有池 id；
+    /// 而 `&DbPool` 在这里是两个不同字段的引用，地址天然不同，`ptr::eq` 恒为假。
+    ///
+    /// # 可复现的证据形式：库身份
+    ///
+    /// `isolated_state` 的库是 `LibraryStore::open_in_memory()`，而
+    /// `SqliteConnectionManager::memory()` **每次调用**生成一个新 uuid
+    /// （`file:<uuid>?mode=memory&cache=shared`，见 `common/db/pool.rs`）——
+    /// 即 “两个 in-memory 池 = 两个不同的数据库”。
+    /// 所以 “`team_manager` 写的行能被 `library_store.pool()` 读到” 只在共用池时成立。
+    /// 末尾的**反证**（另起一个 in-memory 库读不到这一行）证明本断言有判别力 ——
+    /// 没有它，一个 “团队域自建库” 的实现也可能让前半段变绿。
+    #[test]
+    fn team_manager_shares_the_library_pool() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+        state
+            .team_manager
+            .create_team(fixture_team(TEAM))
+            .expect("create_team");
+
+        // 走 **library 自己的池** 读同一张表（不用 team_manager 的访问器）。
+        let conn = state.library_store.pool().get().expect("library pool conn");
+        let name: String = conn
+            .query_row("SELECT name FROM team WHERE id = ?1", [TEAM], |row| {
+                row.get(0)
+            })
+            .expect("team_manager 写入的行必须能被 library_store 的池读到（同一个池）");
+        assert_eq!(name, fixture_team(TEAM).name);
+
+        // 反证：另一个 in-memory 库（= 另一个池）看不见这一行。
+        let other = crate::library::LibraryStore::open_in_memory().expect("second store");
+        let other_conn = other.pool().get().expect("second pool conn");
+        let found = other_conn.query_row("SELECT name FROM team WHERE id = ?1", [TEAM], |row| {
+            row.get::<_, String>(0)
+        });
+        assert!(
+            found.is_err(),
+            "独立的 in-memory 池必须看不见这个团队 —— 否则本用例没有判别力"
         );
     }
 }

@@ -8,7 +8,9 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::live_sessions::entry::{SessionEntry, SessionKind, SessionState, TitleSource};
+use crate::live_sessions::entry::{
+    SessionAttribution, SessionEntry, SessionKind, SessionState, TitleSource,
+};
 use crate::live_sessions::registry::Registry;
 use crate::live_sessions::title::placeholder_label;
 
@@ -24,6 +26,11 @@ pub struct SessionView {
     pub session_id: String,
     /// 会话种类。
     pub kind: SessionKind,
+    /// 这条会话属于**谁**（用户自己 / 某个团队成员）。
+    ///
+    /// 用途只有一个：让侧栏把成员会话从「我的会话列表」里摘掉、并给团队行标「当前」。
+    /// **不**用于展示成员状态（那是花名册的事，经 `MemberSessionLookup` 问会话域）。
+    pub attribution: SessionAttribution,
     /// 该会话的 agent（纯 shell terminal 为 `None`；前端图标据此回落 `cli.svg`）。
     pub agent_id: Option<String>,
     /// 执行地址 key（`WorkspaceSession::key()`）。
@@ -60,6 +67,7 @@ impl SessionView {
         Self {
             session_id: entry.session_id.clone(),
             kind: entry.kind,
+            attribution: entry.attribution.clone(),
             agent_id: entry.agent_id.clone(),
             workspace_key: entry.workspace.key(),
             title,
@@ -189,6 +197,45 @@ mod tests {
         assert!(!keys.contains(&"p1:/proj-wt".to_string()), "{keys:?}");
     }
 
+    /// 归属的 wire 形状是**判别联合**（TS 侧 `SessionAttribution` 逐字对应）：
+    /// 用户是 `{"kind":"user"}`（没有多余字段），成员是
+    /// `{"kind":"teamMember",teamId,memberId}`。
+    ///
+    /// 断言的是**真实 JSON 键**（不是 Rust 类型）：`serde(tag = "kind")` 写错时类型仍能编译，
+    /// 只有前端读 `attribution.kind` 时才会静默拿到 `undefined`（R3 的过滤于是失效）。
+    #[test]
+    fn view_serializes_attribution() {
+        let registry = registry();
+        registry.register(entry("mine", "/proj", None));
+        registry.register(entry("member", "/proj", None).with_attribution(
+            SessionAttribution::TeamMember {
+                team_id: "tm_1".into(),
+                member_id: "w1@tm_1".into(),
+            },
+        ));
+        let json = serde_json::to_value(registry.snapshot_view()).expect("serialize snapshot");
+        let sessions = json["sessions"].as_array().expect("sessions");
+        let row = |id: &str| {
+            sessions
+                .iter()
+                .find(|session| session["sessionId"] == id)
+                .unwrap_or_else(|| panic!("没有 {id} 这一行：{sessions:?}"))
+        };
+
+        assert_eq!(
+            row("mine")["attribution"],
+            serde_json::json!({ "kind": "user" })
+        );
+        assert_eq!(
+            row("member")["attribution"],
+            serde_json::json!({
+                "kind": "teamMember",
+                "teamId": "tm_1",
+                "memberId": "w1@tm_1",
+            })
+        );
+    }
+
     #[test]
     fn snapshot_view_carries_the_registry_version() {
         let registry = registry();
@@ -224,6 +271,7 @@ mod tests {
         let session = &json["sessions"][0];
         assert_eq!(session["sessionId"], "t1");
         assert_eq!(session["kind"], "terminal");
+        assert_eq!(session["attribution"]["kind"], "user");
         assert_eq!(session["state"], "running");
         assert_eq!(session["titleSource"], "placeholder");
         assert_eq!(session["turnCount"], 0);

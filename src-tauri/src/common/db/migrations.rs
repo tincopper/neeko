@@ -16,8 +16,14 @@ use rusqlite::{Connection, TransactionBehavior};
 /// in the same commit as the migration SQL that creates the change.
 const LIBRARY_MIGRATION_LAST: u32 = 11;
 const CACHE_MIGRATION_STEP: u32 = LIBRARY_MIGRATION_LAST + 1;
+/// 团队协调基质与统一任务中心的持久化步骤（13..=23，逐版本一步）。
+///
+/// 版本号是**已发布的事实**，不可重排：一个版本号一旦进过用户的库，就只能继续往后加。
+/// 这段区间内两个域交替出现（team 五次 + work_items 一次 + team 四次），分派见 [`persist_step`]。
+const TEAM_MIGRATION_FIRST: u32 = CACHE_MIGRATION_STEP + 1;
+const TEAM_MIGRATION_LAST: u32 = 23;
 /// Current schema version = last implemented step + 1.
-pub const LATEST_VERSION: u32 = CACHE_MIGRATION_STEP + 1;
+pub const LATEST_VERSION: u32 = TEAM_MIGRATION_LAST + 1;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &mut Connection) -> Result<()> {
@@ -53,7 +59,31 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
     match from_version {
         0..=LIBRARY_MIGRATION_LAST => crate::library::migrations::step(conn, from_version),
         version if version == CACHE_MIGRATION_STEP => crate::common::cache::v12_to_v13(conn),
+        version if (TEAM_MIGRATION_FIRST..=TEAM_MIGRATION_LAST).contains(&version) => {
+            persist_step(conn, version)
+        }
         _ => bail!("unknown migration version: {from_version}"),
+    }
+}
+
+/// 团队 / 任务中心的持久化步骤分派。
+///
+/// 与 `library` / `cache` 的边界同形（见模块头）：本模块只回答「哪个版本归谁」，
+/// 建表 SQL 仍留在各自域里。步骤编号是已发布事实，禁止换序或复用。
+fn persist_step(conn: &Connection, from_version: u32) -> Result<()> {
+    match from_version {
+        13 => crate::agent::team::store::v13_to_v14(conn),
+        14 => crate::agent::team::store::v14_to_v15(conn),
+        15 => crate::agent::team::store::v15_to_v16(conn),
+        16 => crate::agent::team::store::v16_to_v17(conn),
+        17 => crate::work_items::store::v17_to_v18(conn),
+        18 => crate::agent::team::store::v18_to_v19(conn),
+        19 => crate::agent::team::store::v19_to_v20(conn),
+        20 => crate::agent::team::store::v20_to_v21(conn),
+        21 => crate::agent::team::store::v21_to_v22(conn),
+        22 => crate::agent::team::store::v22_to_v23(conn),
+        23 => crate::agent::team::store::v23_to_v24(conn),
+        _ => bail!("unknown persistence migration version: {from_version}"),
     }
 }
 
@@ -101,6 +131,13 @@ mod tests {
             "mcp_tag_group_server_agents",
             "project_mcp_tag_groups",
             "mcp_server_targets",
+            "team",
+            "team_member",
+            "team_task",
+            "team_event",
+            "team_role",
+            "work_item",
+            "work_item_run",
         ] {
             assert!(
                 tables.contains(&needed.to_string()),
@@ -242,6 +279,7 @@ mod upgrade_tests {
             let v: u32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .unwrap();
+            // 版本号只在这里断言一次：第二个字面量会随每次 bump 变成一条需要手工追的债。
             assert_eq!(v, LATEST_VERSION);
         }
 
@@ -254,6 +292,26 @@ mod upgrade_tests {
             )
             .unwrap();
         assert_eq!(has_cache, 1, "cache_entries must exist after the upgrade");
+
+        let has_team: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name='team_task'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_team, 1, "team_task must exist after the upgrade");
+
+        // v17→v18 走的是同一条升级链路：它必须也在「从旧库升上来」的路径上建好表，
+        // 而不是只在新库首建时跑一次。
+        let has_work_item: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name='work_item'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_work_item, 1, "work_item must exist after the upgrade");
 
         assert_eq!(
             snapshot_library_rows(&path),

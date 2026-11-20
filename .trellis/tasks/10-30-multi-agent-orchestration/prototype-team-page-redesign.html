@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · Team 页面重设计原型（列表优先 + 视图推入）</title>
+<style>
+/* ============================================================================
+   这份是 **交互原型**，不是实现。它重排 Team 面板的**导航模型**：
+
+   旧布局（被否决）：ResizablePanel 上下分栏 —— 上面永远是建队表单（很长），
+   下面是已有团队列表。问题是「操作」和「列表」没有主次：建队是一次性动作，
+   却永久占据面板首屏；找旧队要先滚过整张表单；两块内容互相挤压。
+
+   新布局（本原型）：**列表优先 + 视图推入（push navigation）** —— 业界面板类
+   产品的标准模型（Conductor 的 workspace 列表、Linear 侧栏、移动端导航）：
+
+     ① 列表态（主面）：header（标题 + 刷新 + 「新建团队」）+ 团队卡片列表
+        + 状态过滤 chip。列表是主人，建队是一个按钮。
+     ② 新建态：按「新建团队」后**整面板推入**创建流（← 返回 + 分组表单
+        + 吸附 footer CTA）。一次性动作拥有完整的一屏，做完即走。
+     ③ 已打开态：打开某队后整面板推入团队视图（← 返回 + 花名册 + 任务板）。
+
+   三个视图互斥、各占整面板 —— 上下分栏连同它的拖拽条一起消失。
+
+   主题：全部用 Neeko 的语义 token（oklch），深/浅两套映射都写在 :root ——
+   右上角可切换，验证「跟随应用主题」：组件不写死任何颜色，换主题即换肤。
+
+   它不演示：真实 xterm、真实 diff、MCP 往返、键盘全路径。
+   ============================================================================ */
+
+:root, :root[data-theme="dark"] {
+  --bg-primary: oklch(0.178 0 0);
+  --bg-secondary: oklch(0.205 0 0);
+  --bg-tertiary: oklch(0.269 0 0);
+  --bg-hover: oklch(0.3 0 0);
+  --bg-selected: oklch(0.35 0 0);
+  --text-primary: oklch(0.985 0 0);
+  --text-secondary: oklch(0.85 0 0);
+  --text-muted: oklch(0.708 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --border-strong: oklch(1 0 0 / 22%);
+  --accent: oklch(0.7 0.1 250);
+  --accent-soft: oklch(0.7 0.1 250 / 14%);
+  --text-on-accent: oklch(0.205 0 0);
+  --success: oklch(0.72 0.15 152);
+  --success-soft: oklch(0.72 0.15 152 / 14%);
+  --warning: oklch(0.82 0.15 88);
+  --warning-soft: oklch(0.82 0.15 88 / 14%);
+  --danger: oklch(0.68 0.19 22);
+  --danger-soft: oklch(0.68 0.19 22 / 14%);
+  --purple: oklch(0.72 0.13 300);
+  --purple-soft: oklch(0.72 0.13 300 / 14%);
+  --page-bg: oklch(0.14 0 0);
+  --shadow: 0 16px 40px oklch(0 0 0 / 45%);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg-primary: oklch(0.99 0 0);
+  --bg-secondary: oklch(0.968 0 0);
+  --bg-tertiary: oklch(0.926 0 0);
+  --bg-hover: oklch(0.9 0 0);
+  --bg-selected: oklch(0.88 0 0);
+  --text-primary: oklch(0.2 0 0);
+  --text-secondary: oklch(0.34 0 0);
+  --text-muted: oklch(0.5 0 0);
+  --border: oklch(0 0 0 / 12%);
+  --border-strong: oklch(0 0 0 / 24%);
+  --accent: oklch(0.52 0.14 250);
+  --accent-soft: oklch(0.52 0.14 250 / 12%);
+  --text-on-accent: oklch(0.99 0 0);
+  --success: oklch(0.55 0.15 152);
+  --success-soft: oklch(0.55 0.15 152 / 12%);
+  --warning: oklch(0.6 0.14 75);
+  --warning-soft: oklch(0.6 0.14 75 / 12%);
+  --danger: oklch(0.55 0.19 22);
+  --danger-soft: oklch(0.55 0.19 22 / 12%);
+  --purple: oklch(0.55 0.14 300);
+  --purple-soft: oklch(0.55 0.14 300 / 12%);
+  --page-bg: oklch(0.935 0 0);
+  --shadow: 0 12px 32px oklch(0 0 0 / 14%);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--page-bg); color: var(--text-primary);
+  font-size: 12px; line-height: 1.45; height: 100vh; display: flex; flex-direction: column;
+  overflow: hidden;
+}
+button, input, select { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; font-variant-ligatures: none; }
+.muted { color: var(--text-muted); }
+svg { display: block; }
+/* 品牌 icon 头像：官方 SVG 用品牌色，无官方图标的用字母回退（不猜 logo） */
+.bicon { width: 15px; height: 15px; fill: currentColor; flex-shrink: 0; }
+.bicon-claude { color: #d97757; }
+.bicon-openai { color: var(--text-primary); }
+.bicon-gemini { color: var(--accent); }
+.bicon-fallback {
+  width: 15px; height: 15px; display: grid; place-items: center; flex-shrink: 0;
+  font-size: 9px; font-weight: 800; color: currentColor; font-family: Georgia, serif;
+}
+
+/* ── 原型顶栏（真实实现里不存在这一条）──────────────────────────────── */
+.proto-bar {
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  background: var(--bg-primary); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.proto-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--warning); background: var(--warning-soft); border-radius: 4px; padding: 2px 6px;
+}
+.tab {
+  padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  transition: background .15s ease, color .15s ease;
+}
+.tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tab[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+.proto-bar .spacer { margin-left: auto; }
+.btn {
+  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg-secondary); font-size: 11px; font-weight: 600; white-space: nowrap;
+  transition: background .15s ease, border-color .15s ease, filter .15s ease;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.btn-primary { background: var(--accent); color: var(--text-on-accent); border-color: transparent; }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-mini { padding: 2px 7px; font-size: 10px; border-radius: 5px; }
+
+/* ── App shell（照真实 Neeko dock 布局）────────────────────────────── */
+.app { display: flex; flex: 1; min-height: 0; gap: 6px; padding: 6px; }
+.dock-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 4px; width: 44px; flex-shrink: 0; }
+.dock-btn {
+  width: 34px; height: 34px; border-radius: 6px; display: grid; place-items: center;
+  color: var(--text-secondary); font-size: 10px; font-weight: 700; position: relative;
+  transition: background .15s ease, color .15s ease;
+}
+.dock-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.dock-btn[aria-current="true"] { background: var(--bg-selected); color: var(--accent); }
+.dock-badge {
+  position: absolute; top: 2px; right: 2px; min-width: 12px; height: 12px; padding: 0 3px;
+  border-radius: 999px; background: var(--warning); color: oklch(0.18 0 0);
+  font-size: 8px; font-weight: 800; display: grid; place-items: center;
+}
+/* dock 旁的示意窗格：说明面板在 app 里的位置（非本设计的一部分） */
+.context-pane {
+  flex: 1; min-width: 0; background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: 8px; display: none; place-items: center; color: var(--text-muted); font-size: 11px;
+}
+@media (min-width: 900px) { .context-pane { display: grid; } }
+
+/* 面板列：本设计的舞台（~300px dock 宽度） */
+.panel-stage {
+  width: 300px; flex-shrink: 0; display: flex; min-width: 0;
+  background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; position: relative;
+}
+.view { display: none; flex: 1; min-width: 0; flex-direction: column; min-height: 0; }
+.view[data-active="true"] { display: flex; }
+
+/* ── 面板 header（三个视图共用形状）────────────────────────────────── */
+.p-head {
+  display: flex; align-items: center; gap: 6px; padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--bg-primary);
+}
+.p-title { font-size: 13px; font-weight: 700; letter-spacing: .01em; }
+.p-sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+.icon-btn {
+  width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center;
+  color: var(--text-secondary); transition: background .15s ease, color .15s ease;
+  flex-shrink: 0;
+}
+.icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.back-btn { margin-left: -4px; }
+.p-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+
+/* ── ① 列表态 ──────────────────────────────────────────────────────── */
+.filter-row { display: flex; gap: 4px; padding: 8px 12px 4px; flex-shrink: 0; flex-wrap: wrap; }
+.chip-f {
+  padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600;
+  color: var(--text-muted); background: transparent; border: 1px solid transparent;
+  transition: background .15s ease, color .15s ease;
+}
+.chip-f:hover { background: var(--bg-hover); color: var(--text-primary); }
+.chip-f[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+
+.team-list { padding: 4px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.trow {
+  width: 100%; text-align: left; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg-secondary); padding: 9px 10px; cursor: pointer; position: relative;
+  transition: border-color .15s ease, background .15s ease;
+}
+.trow:hover { border-color: var(--border-strong); background: var(--bg-hover); }
+.trow-row1 { display: flex; align-items: center; gap: 7px; }
+.st-dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+.st-dot[data-state="active"] { background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
+.st-dot[data-state="closing"] { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-soft); }
+.st-dot[data-state="closed"] { background: var(--bg-selected); }
+.t-name { font-size: 12px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-time { margin-left: auto; font-size: 9.5px; color: var(--text-muted); flex-shrink: 0; }
+.t-row-actions {
+  position: absolute; top: 6px; right: 8px; display: flex; gap: 2px;
+  opacity: 0; transition: opacity .15s ease;
+}
+.trow:hover .t-row-actions, .trow:focus-within .t-row-actions { opacity: 1; }
+.t-row-actions .icon-btn { width: 22px; height: 22px; }
+.t-meta { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; align-items: center; }
+.mchip {
+  font-size: 9px; padding: 1px 5px; border-radius: 4px;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+}
+.mchip-accent { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.mchip-warn { background: var(--warning-soft); color: var(--warning); font-weight: 700; }
+.mchip-root {
+  background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+.list-empty {
+  margin: 18px 12px; padding: 14px 12px; border: 1px dashed var(--border-strong);
+  border-radius: 9px; text-align: center; color: var(--text-muted); font-size: 11px;
+}
+
+/* ── ② 新建态（推入的创建流）──────────────────────────────────────── */
+.step { padding: 10px 12px 0; display: flex; flex-direction: column; gap: 7px; }
+.step:last-of-type { padding-bottom: 10px; }
+.step-head { display: flex; align-items: center; gap: 7px; }
+.step-n {
+  width: 17px; height: 17px; border-radius: 999px; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent); font-size: 9px; font-weight: 800; flex-shrink: 0;
+}
+.step-t { font-size: 11px; font-weight: 700; color: var(--text-secondary); }
+.step-hint { font-size: 10px; color: var(--text-muted); }
+.step-card {
+  border: 1px solid var(--border); border-radius: 9px; background: var(--bg-secondary);
+  padding: 8px; display: flex; flex-direction: column; gap: 6px;
+}
+hr.sep { border: none; border-top: 1px solid var(--border); margin: 2px 0; }
+
+.cli-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.cli-card {
+  display: flex; align-items: center; gap: 6px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg-primary); padding: 6px 7px; text-align: left; cursor: pointer; width: 100%;
+  transition: border-color .15s ease, background .15s ease;
+}
+.cli-card:hover { background: var(--bg-hover); }
+.cli-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.cli-ava {
+  width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+  font-size: 9px; font-weight: 800; color: var(--text-on-accent); flex-shrink: 0;
+}
+.cli-name { font-size: 11px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cli-id { font-size: 9px; color: var(--text-muted); font-family: "JetBrains Mono", ui-monospace, monospace; }
+.cli-check { margin-left: auto; color: var(--accent); opacity: 0; transition: opacity .15s ease; flex-shrink: 0; }
+.cli-card[aria-pressed="true"] .cli-check { opacity: 1; }
+
+.disclose {
+  display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-radius: 6px;
+  font-size: 10px; color: var(--text-muted); width: 100%; text-align: left;
+  transition: background .15s ease;
+}
+.disclose:hover { background: var(--bg-hover); }
+.refused-item { padding: 4px 6px; border-radius: 6px; background: var(--bg-primary); }
+.refused-name { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text-muted); }
+.refused-reason { font-size: 9.5px; color: var(--text-muted); opacity: .8; margin-top: 2px; line-height: 1.4; }
+
+.pool-row {
+  display: flex; align-items: center; gap: 6px; border-radius: 7px; border: 1px solid var(--border);
+  background: var(--bg-primary); padding: 5px 7px; cursor: pointer; transition: border-color .15s ease;
+}
+.pool-row[data-checked="true"] { border-color: var(--accent); }
+.pool-row[data-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.pool-box {
+  width: 13px; height: 13px; border-radius: 4px; border: 1.5px solid var(--border-strong);
+  display: grid; place-items: center; flex-shrink: 0; color: var(--text-on-accent);
+}
+.pool-row[data-checked="true"] .pool-box { background: var(--accent); border-color: var(--accent); }
+.pool-name { font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pool-id { margin-left: auto; font-size: 9px; color: var(--text-muted); font-family: "JetBrains Mono", ui-monospace, monospace; flex-shrink: 0; }
+
+.seg-row { display: grid; gap: 5px; }
+.seg-row[data-cols="2"] { grid-template-columns: 1fr 1fr; }
+.seg-row[data-cols="3"] { grid-template-columns: 1fr 1fr 1fr; }
+.seg {
+  border-radius: 7px; border: 1px solid var(--border); background: var(--bg-primary);
+  padding: 5px 7px; text-align: left; cursor: pointer; font-size: 10px; color: var(--text-secondary);
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.seg:hover { background: var(--bg-hover); }
+.seg[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.seg .seg-cap { display: block; font-size: 8.5px; color: var(--text-muted); margin-top: 1px; }
+.seg[aria-pressed="true"] .seg-cap { color: var(--text-secondary); }
+
+.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.field label { font-size: 10px; color: var(--text-muted); }
+.input-sm {
+  border: 1px solid var(--border); border-radius: 7px; background: var(--bg-primary);
+  padding: 5px 7px; font-size: 11px; color: var(--text-primary); width: 100%; cursor: text;
+}
+.input-sm:focus { outline: none; border-color: var(--accent); }
+select.input-sm { cursor: pointer; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.role-sel {
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg-tertiary);
+  padding: 1px 5px; font-size: 9.5px; color: var(--text-secondary); width: 100%; cursor: pointer;
+}
+.role-sel:focus { outline: none; border-color: var(--accent); }
+.role-card {
+  display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--bg-primary); padding: 6px 8px;
+}
+.role-card-head { display: flex; align-items: center; gap: 5px; }
+.role-card-name { font-size: 10.5px; font-weight: 700; min-width: 0; flex: 1; }
+.role-card-desc { font-size: 9px; color: var(--text-muted); line-height: 1.4; }
+.role-mini {
+  border: none; background: none; font-size: 9px; color: var(--text-muted); cursor: pointer;
+  padding: 1px 4px; border-radius: 4px; transition: background .15s ease, color .15s ease; flex-shrink: 0;
+}
+.role-mini:hover { background: var(--bg-hover); color: var(--text-primary); }
+.role-mini[data-tone="del"]:hover { color: var(--danger); }
+.role-add { display: flex; flex-direction: column; gap: 4px; border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 2px; }
+/* 内联创建卡：在选择器里选「＋ 新建角色…」就地展开（pick-or-create 业界模式） */
+.role-create {
+  border: 1px solid var(--accent); border-radius: 8px; background: var(--bg-primary);
+  padding: 8px; margin: 4px 0 2px; display: flex; flex-direction: column; gap: 4px;
+}
+.role-create .rc-title { font-size: 10px; font-weight: 700; color: var(--accent); }
+.role-create .rc-btns { display: flex; gap: 4px; }
+
+.root-row {
+  display: flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--bg-secondary); padding: 6px 8px;
+}
+.root-path {
+  min-width: 0; flex: 1; text-align: right; font-size: 9.5px; color: var(--text-secondary);
+  font-family: "JetBrains Mono", ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.p-foot {
+  border-top: 1px solid var(--border); background: var(--bg-primary); padding: 9px 12px;
+  display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;
+}
+.cta {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 8px; padding: 8px; font-size: 11.5px; font-weight: 700;
+  background: var(--accent); color: var(--text-on-accent); cursor: pointer;
+  transition: filter .15s ease;
+}
+.cta:hover { filter: brightness(1.08); }
+.cta[data-disabled="true"] { background: var(--bg-tertiary); color: var(--text-muted); cursor: not-allowed; }
+.foot-note { font-size: 9.5px; color: var(--text-muted); }
+.foot-warn { font-size: 10px; color: var(--warning); background: var(--warning-soft); border-radius: 6px; padding: 4px 7px; }
+
+/* ── ③ 已打开态 ─────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 700;
+  padding: 2px 6px; border-radius: 999px; white-space: nowrap;
+}
+.badge::before { content: ""; width: 5px; height: 5px; border-radius: 999px; background: currentColor; }
+.badge-active { color: var(--success); background: var(--success-soft); }
+.badge-warn { color: var(--warning); background: var(--warning-soft); }
+.stat-strip { display: flex; gap: 5px; padding: 0 12px 8px; flex-shrink: 0; }
+.stat {
+  flex: 1; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary);
+  padding: 5px 7px; display: flex; flex-direction: column; gap: 1px;
+}
+.stat b { font-size: 13px; font-weight: 800; }
+.stat span { font-size: 8.5px; color: var(--text-muted); }
+.stat[data-tone="warn"] b { color: var(--warning); }
+.stat[data-tone="accent"] b { color: var(--accent); }
+
+.roster { display: flex; flex-direction: column; gap: 4px; padding: 0 12px 8px; }
+.r-row {
+  display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-secondary); padding: 5px 8px; cursor: pointer;
+  transition: border-color .15s ease, background .15s ease; width: 100%; text-align: left;
+}
+.r-row:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.r-ava {
+  width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center;
+  font-size: 9px; font-weight: 800; color: var(--text-on-accent); flex-shrink: 0;
+}
+.r-name { font-size: 11px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-right { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.mini-badge { font-size: 8.5px; font-weight: 700; padding: 1px 5px; border-radius: 999px; white-space: nowrap; }
+.mini-badge[data-tone="run"] { color: var(--accent); background: var(--accent-soft); }
+.mini-badge[data-tone="await"] { color: var(--warning); background: var(--warning-soft); }
+.mini-badge[data-tone="idle"] { color: var(--text-muted); background: var(--bg-tertiary); }
+
+.seg-tabs { display: flex; gap: 2px; padding: 0 12px 6px; flex-shrink: 0; }
+.seg-tab {
+  padding: 3px 9px; border-radius: 6px; font-size: 10.5px; font-weight: 600; color: var(--text-muted);
+  transition: background .15s ease, color .15s ease;
+}
+.seg-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.seg-tab[aria-selected="true"] { background: var(--bg-selected); color: var(--accent); }
+
+.mini-board { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 12px 12px; }
+/* hidden 属性会被 display:grid 覆盖（UA 的 display:none 优先级更低），必须显式补回 */
+.mini-board[hidden] { display: none; }
+
+/* ── 分配图（flow）：曲线边 + 成员身份色（与花名册头像同源）──────── */
+.flow-pane { padding: 0 12px 12px; }
+.flow-legend {
+  display: flex; flex-wrap: wrap; gap: 8px; padding: 0 2px 6px;
+  font-size: 9px; color: var(--text-muted); align-items: center;
+}
+.flow-legend .lg { display: inline-flex; align-items: center; gap: 3px; }
+.flow-legend .sw { width: 14px; height: 0; border-top: 2px solid var(--border-strong); }
+.flow-legend .sw.dash { border-top-style: dashed; }
+.flow-legend .dot { width: 6px; height: 6px; border-radius: 999px; }
+#flow-svg {
+  width: 100%; height: auto; display: block;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px;
+}
+.fnode { cursor: pointer; }
+.fnode > rect { fill: var(--bg-primary); stroke: var(--border); transition: stroke .15s ease; }
+.fnode:hover > rect { stroke: var(--border-strong); }
+.fnode text { fill: var(--text-secondary); font-size: 8px; font-weight: 600; }
+.fnode text.sub { font-size: 7px; fill: var(--text-muted); font-weight: 400; }
+.fnode .stripe { stroke: none; }
+.fnode[data-on="true"] > rect {
+  stroke: var(--accent); stroke-width: 1.4;
+  filter: drop-shadow(0 0 5px var(--accent-soft));
+}
+.fnode[data-dim="true"] { opacity: .18; transition: opacity .2s ease; }
+.fedge { fill: none; stroke-width: 1.3; }
+.fedge[data-kind="create"] { stroke: var(--border-strong); stroke-width: 1; }
+.fedge[data-kind="dep"] { stroke: var(--text-muted); stroke-dasharray: 5 4; opacity: .85; }
+/* 认领边按**成员身份色**着色（与花名册头像同一个 tint 调色板）：
+   边的颜色即所有权，不需要追着线看它连到谁。 */
+.fedge[data-m="researcher"] { stroke: var(--success); }
+.fedge[data-m="cody"] { stroke: var(--purple); }
+.fedge[data-m="writer"] { stroke: var(--warning); }
+.fedge[data-m="writer"][data-kind="recycle"] { stroke-dasharray: 3 4; opacity: .8; }
+.fedge[data-dim="true"] { opacity: .07; }
+.flow-detail {
+  margin-top: 6px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-secondary); padding: 8px 10px; font-size: 10px; color: var(--text-secondary);
+}
+.flow-detail b { font-size: 10.5px; display: block; margin-bottom: 4px; }
+.flow-detail .fd-row { display: flex; gap: 6px; font-size: 9.5px; margin-bottom: 1px; }
+.flow-detail .fd-row dt { color: var(--text-muted); flex-shrink: 0; }
+.flow-note { margin-top: 6px; font-size: 9.5px; color: var(--text-muted); }
+.mini-col { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary); overflow: hidden; }
+.mini-col-head {
+  padding: 4px 7px; font-size: 9px; font-weight: 700; color: var(--text-secondary);
+  border-bottom: 1px solid var(--border); display: flex; gap: 4px; align-items: center;
+}
+.mini-col-body { padding: 4px; display: flex; flex-direction: column; gap: 3px; }
+.mini-task { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); padding: 4px 6px; }
+.mini-task-t { font-size: 9.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-task-m { display: flex; gap: 3px; margin-top: 2px; align-items: center; }
+.mini-tag { font-size: 8px; padding: 0 4px; border-radius: 3px; background: var(--bg-tertiary); color: var(--text-muted); }
+
+/* ── ④ 设计对照（doc）─────────────────────────────────────────────── */
+.doc { flex: 1; min-width: 0; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; overflow: auto; padding: 14px 16px; }
+.doc h2 { font-size: 13px; margin-bottom: 4px; }
+.doc h3 { font-size: 11px; margin: 16px 0 6px; color: var(--text-secondary); letter-spacing: .02em; }
+.doc p { font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; max-width: 96ch; }
+.doc ul { margin: 0 0 8px 16px; font-size: 11px; color: var(--text-secondary); }
+.doc li { margin-bottom: 3px; }
+.doc code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px; color: var(--text-primary); }
+table { border-collapse: collapse; width: 100%; font-size: 10.5px; margin-bottom: 8px; }
+th, td { text-align: left; padding: 5px 7px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--text-muted); font-weight: 700; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; }
+td.src { color: var(--text-muted); font-size: 10px; }
+.flow-diagram { display: flex; gap: 8px; align-items: stretch; margin: 8px 0 12px; flex-wrap: wrap; }
+.fd-box {
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-secondary);
+  padding: 8px 10px; font-size: 10px; color: var(--text-secondary); flex: 1; min-width: 150px;
+}
+.fd-box b { display: block; font-size: 10.5px; margin-bottom: 3px; }
+.fd-box[data-tone="old"] { border-color: var(--danger); }
+.fd-box[data-tone="old"] b { color: var(--danger); }
+.fd-box[data-tone="new"] { border-color: var(--success); }
+.fd-box[data-tone="new"] b { color: var(--success); }
+.fd-arrow { display: grid; place-items: center; color: var(--text-muted); font-size: 12px; }
+
+#toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(8px);
+  background: var(--bg-tertiary); border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 7px 14px; font-size: 11px; box-shadow: var(--shadow); opacity: 0; pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease; max-width: 70vw; z-index: 99;
+}
+#toast[data-show="true"] { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast[data-tone="ok"] { border-color: var(--success); color: var(--success); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+
+
+  <!-- 品牌 SVG（Simple Icons 官方路径；letter-fallback 给无官方图标的 CLI） -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="brand-claude" viewBox="0 0 24 24"><path fill="currentColor" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></symbol>
+      <symbol id="brand-openai" viewBox="0 0 24 24"><path fill="currentColor" d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></symbol>
+      <symbol id="brand-gemini" viewBox="0 0 24 24"><path fill="currentColor" d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></symbol>
+    </defs>
+  </svg>
+
+<div class="proto-bar">
+  <span class="proto-tag">原型 · 非实现</span>
+  <button class="tab" role="tab" aria-selected="true"  data-view="1">① 列表态（主面）</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="2">② 新建态（推入）</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="3">③ 已打开团队</button>
+  <button class="tab" role="tab" aria-selected="false" data-view="4">④ 设计对照</button>
+  <span class="spacer"></span>
+  <button class="btn" id="theme-toggle">切换浅色主题</button>
+</div>
+
+<div class="app">
+  <nav class="dock-bar" aria-label="Activity">
+    <button class="dock-btn" title="Projects">PJ</button>
+    <button class="dock-btn" title="Agent Chat">AC</button>
+    <button class="dock-btn" aria-current="true" title="Agent Team">TM
+      <span class="dock-badge">1</span>
+    </button>
+    <button class="dock-btn" title="Tasks">TK</button>
+    <button class="dock-btn" title="Launch">LN</button>
+    <button class="dock-btn" title="Git">GT</button>
+  </nav>
+
+  <!-- 中间示意窗格：说明 team 面板在 app 里的位置（非本设计的一部分） -->
+  <div class="context-pane" aria-hidden="true">
+    <div style="text-align:center">
+      <div style="opacity:.5; margin-bottom:6px">编辑器 / 终端 / 中心视图</div>
+      <div style="opacity:.3">（这里展示 team 面板旁边的 app 内容）</div>
+    </div>
+  </div>
+
+  <div class="panel-stage">
+
+    <!-- ══════════ 视图 ①：列表态（主面）══════════ -->
+    <section class="view" data-active="true" data-id="1" aria-label="团队列表">
+      <header class="p-head">
+        <div style="min-width:0; flex:1">
+          <div class="p-title">团队</div>
+          <div class="p-sub">多 Agent 协作：队长派活，成员认领</div>
+        </div>
+        <button class="icon-btn" aria-label="刷新团队列表" title="刷新">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        </button>
+        <button class="btn btn-primary" id="btn-new" style="display:flex; align-items:center; gap:4px">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          新建团队
+        </button>
+      </header>
+
+      <div class="filter-row" role="group" aria-label="状态过滤">
+        <button class="chip-f" aria-pressed="true">全部 3</button>
+        <button class="chip-f" aria-pressed="false">进行中 2</button>
+        <button class="chip-f" aria-pressed="false">已关闭 1</button>
+      </div>
+
+      <div class="team-body p-body">
+        <div class="team-list">
+          <div class="trow" data-open="refactor" tabindex="0" role="button" aria-label="打开团队 refactor">
+            <div class="trow-row1">
+              <span class="st-dot" data-state="active" aria-hidden="true"></span>
+              <span class="t-name">refactor</span>
+              <span class="t-time">2 分钟前</span>
+            </div>
+            <div class="t-meta">
+              <span class="mchip mchip-accent">4 成员</span>
+              <span class="mchip">进行中 2</span>
+              <span class="mchip mchip-warn">1 待批</span>
+              <span class="mchip mchip-root">multi-agent</span>
+            </div>
+            <div class="t-row-actions" aria-hidden="true">
+              <span class="icon-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+            </div>
+          </div>
+
+          <div class="trow" data-open="api-migration" tabindex="0" role="button" aria-label="打开团队 api-migration">
+            <div class="trow-row1">
+              <span class="st-dot" data-state="active" aria-hidden="true"></span>
+              <span class="t-name">api-migration</span>
+              <span class="t-time">1 小时前</span>
+            </div>
+            <div class="t-meta">
+              <span class="mchip mchip-accent">3 成员</span>
+              <span class="mchip">进行中 1</span>
+              <span class="mchip">已完成 3</span>
+              <span class="mchip mchip-root">neeko</span>
+            </div>
+            <div class="t-row-actions" aria-hidden="true">
+              <span class="icon-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+            </div>
+          </div>
+
+          <div class="trow" data-open="docs" tabindex="0" role="button" aria-label="查看团队 docs（已关闭，只读）">
+            <div class="trow-row1">
+              <span class="st-dot" data-state="closed" aria-hidden="true"></span>
+              <span class="t-name muted">docs</span>
+              <span class="t-time">昨天</span>
+            </div>
+            <div class="t-meta">
+              <span class="mchip">2 成员</span>
+              <span class="mchip">已完成 5</span>
+              <span class="mchip mchip-root">neeko</span>
+            </div>
+            <div class="t-row-actions" aria-hidden="true">
+              <span class="icon-btn" title="删除（仅已关闭团队）"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span>
+            </div>
+          </div>
+        </div>
+        <p class="foot-note" style="padding: 0 14px 10px;">
+          行尾的「›」= 打开；hover 才出现的动作不占常驻空间。状态过滤 chip 让旧队不挡路。
+        </p>
+      </div>
+    </section>
+
+    <!-- ══════════ 视图 ②：新建态（推入）══════════ -->
+    <section class="view" data-id="2" aria-label="新建团队">
+      <header class="p-head">
+        <button class="icon-btn back-btn" data-back="1" aria-label="返回团队列表">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <div style="min-width:0; flex:1">
+          <div class="p-title">新建团队</div>
+          <div class="p-sub">三步：队长 → 成员与角色 → 默认值</div>
+        </div>
+      </header>
+
+      <div class="p-body">
+        <!-- 步骤 1：队长 -->
+        <div class="step">
+          <div class="step-head">
+            <span class="step-n">1</span>
+            <span class="step-t">队长用哪个 CLI</span>
+            <span class="step-hint" style="margin-left:auto">启动后它拿到工具面与任务板</span>
+          </div>
+          <div class="step-card">
+            <div class="cli-grid" role="group" aria-label="可选的队长 CLI">
+              <button class="cli-card" aria-pressed="true" data-cli>
+                <span class="cli-ava" style="background:var(--bg-tertiary)"><svg class="bicon bicon-claude"><use href="#brand-claude"/></svg></span>
+                <span style="min-width:0"><span class="cli-name">Claude Code</span><br><span class="cli-id">claude-code</span></span>
+                <svg class="cli-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              </button>
+              <button class="cli-card" aria-pressed="false" data-cli>
+                <span class="cli-ava" style="background:var(--purple-soft)"><span class="bicon-fallback" style="color:var(--purple)">π</span></span>
+                <span style="min-width:0"><span class="cli-name">Pi</span><br><span class="cli-id">pi</span></span>
+                <svg class="cli-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              </button>
+              <button class="cli-card" aria-pressed="false" data-cli>
+                <span class="cli-ava" style="background:var(--bg-tertiary)"><svg class="bicon bicon-openai"><use href="#brand-openai"/></svg></span>
+                <span style="min-width:0"><span class="cli-name">Codex</span><br><span class="cli-id">codex</span></span>
+                <svg class="cli-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              </button>
+              <button class="cli-card" aria-pressed="false" data-cli>
+                <span class="cli-ava" style="background:var(--accent-soft)"><span class="bicon-fallback" style="color:var(--accent)">Q</span></span>
+                <span style="min-width:0"><span class="cli-name">Qoder</span><br><span class="cli-id">qoder</span></span>
+                <svg class="cli-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              </button>
+            </div>
+            <button class="disclose" aria-expanded="false" aria-controls="new-refused" id="new-refused-btn">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-chev><path d="M9 18l6-6-6-6"/></svg>
+              6 个 CLI 不可用于团队 · dsh、gemini、grok…
+            </button>
+            <div id="new-refused" hidden>
+              <div class="refused-item" style="margin-bottom:4px">
+                <div class="refused-name"><span>dsh</span><span class="mono" style="opacity:.7">custom:dsh</span><span class="mini-badge" data-tone="idle" style="margin-left:auto">不可用</span></div>
+                <div class="refused-reason">not in the team admission table…</div>
+              </div>
+              <div class="refused-item">
+                <div class="refused-name"><span>Gemini</span><span class="mono" style="opacity:.7">gemini</span><span class="mini-badge" data-tone="idle" style="margin-left:auto">不可用</span></div>
+                <div class="refused-reason">injects MCP via ConfigFile, which the executor does not implement yet…</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 步骤 2：成员与角色 -->
+        <div class="step">
+          <div class="step-head">
+            <span class="step-n">2</span>
+            <span class="step-t">成员与角色</span>
+            <button class="btn btn-mini" id="np-new-role" style="margin-left:auto; display:inline-flex; align-items:center; gap:3px">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              新建角色
+            </button>
+            <span class="step-hint">每个成员位可预设 persona</span>
+          </div>
+          <div class="step-card">
+            <span class="step-hint">成员池（队长只能从这里挑人；角色未指定时用缺省）</span>
+            <div class="pool-row" data-checked="true" data-pool tabindex="0" role="checkbox" aria-checked="true">
+              <span class="pool-box"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+              <div style="min-width:0; flex:1; display:flex; flex-direction:column; gap:3px">
+                <div style="display:flex; align-items:center; gap:6px">
+                  <span class="pool-name">Claude Code</span>
+                  <span class="pool-id" style="margin-left:auto">claude-code</span>
+                </div>
+                <select class="role-sel" aria-label="Claude Code 的角色" data-role>
+                  <option>无人设</option><option selected>研究员</option><option>实现者</option><option>评审员</option><option value="__new__">＋ 新建角色…</option>
+                </select>
+              </div>
+            </div>
+            <div class="pool-row" data-checked="true" data-pool tabindex="0" role="checkbox" aria-checked="true">
+              <span class="pool-box"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+              <div style="min-width:0; flex:1; display:flex; flex-direction:column; gap:3px">
+                <div style="display:flex; align-items:center; gap:6px">
+                  <span class="pool-name">Pi</span>
+                  <span class="pool-id" style="margin-left:auto">pi</span>
+                </div>
+                <select class="role-sel" aria-label="Pi 的角色" data-role>
+                  <option>无人设</option><option>研究员</option><option selected>实现者</option><option>评审员</option><option value="__new__">＋ 新建角色…</option>
+                </select>
+              </div>
+            </div>
+            <div class="pool-row" data-pool tabindex="0" role="checkbox" aria-checked="false">
+              <span class="pool-box"></span>
+              <div style="min-width:0; flex:1; display:flex; flex-direction:column; gap:3px">
+                <div style="display:flex; align-items:center; gap:6px">
+                  <span class="pool-name">Codex</span>
+                  <span class="pool-id" style="margin-left:auto">codex</span>
+                </div>
+                <select class="role-sel" aria-label="Codex 的角色" data-role disabled>
+                  <option selected>无人设</option><option>研究员</option><option>实现者</option><option>评审员</option><option value="__new__">＋ 新建角色…</option>
+                </select>
+              </div>
+            </div>
+
+            <hr class="sep">
+
+            <div class="two-col">
+              <div class="field">
+                <label for="np-max">成员上限</label>
+                <input class="input-sm" id="np-max" type="number" value="4" min="1" max="8" />
+              </div>
+              <div class="field">
+                <label for="np-persona">缺省角色（未指定时用）</label>
+                <select class="input-sm" id="np-persona">
+                  <option>无人设</option><option>研究员</option><option>实现者</option><option>评审员</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 角色库：管理面默认折叠（编辑 / 新增预设） -->
+            <button class="disclose" aria-expanded="false" aria-controls="np-roles" id="np-roles-btn">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-chev><path d="M9 18l6-6-6-6"/></svg>
+              <span>角色库 · <span id="np-roles-count">3</span> 条预设 · 管理</span>
+            </button>
+            <div id="np-roles" hidden>
+              <div class="role-card" style="margin-bottom:4px">
+                <div class="role-card-head">
+                  <span class="role-card-name">研究员</span>
+                  <span class="mini-badge" data-tone="idle">claude-code</span>
+                  <button class="role-mini">编辑</button>
+                  <button class="role-mini" data-tone="del">删除</button>
+                </div>
+                <span class="role-card-desc">只调研、不改生产代码；结论写进 summary；无结论不得声明 done。</span>
+              </div>
+              <div class="role-card" style="margin-bottom:4px">
+                <div class="role-card-head">
+                  <span class="role-card-name">实现者</span>
+                  <span class="mini-badge" data-tone="idle">codex / pi</span>
+                  <button class="role-mini">编辑</button>
+                  <button class="role-mini" data-tone="del">删除</button>
+                </div>
+                <span class="role-card-desc">写码 + 跑测试；完成后 task_update(done) + summary ≤ 4KB + 产物登记 artifacts。</span>
+              </div>
+              <div class="role-card">
+                <div class="role-card-head">
+                  <span class="role-card-name">评审员</span>
+                  <span class="mini-badge" data-tone="idle">pi</span>
+                  <button class="role-mini">编辑</button>
+                  <button class="role-mini" data-tone="del">删除</button>
+                </div>
+                <span class="role-card-desc">只审不写；对「完成 ⚠ 未声明」的任务复核；产出 review 意见到板。</span>
+              </div>
+              <div class="role-add">
+                <input class="input-sm" id="np-role-name" placeholder="新角色名（如：架构师）" aria-label="新角色名" />
+                <input class="input-sm" id="np-role-preamble" placeholder="人设正文（英文，进成员启动参数）" aria-label="人设正文" />
+                <button class="btn" id="np-role-add" style="align-self:flex-start">添加到角色库</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 步骤 3：默认值与团队根 -->
+        <div class="step">
+          <div class="step-head">
+            <span class="step-n">3</span>
+            <span class="step-t">默认值与团队根</span>
+            <span class="step-hint" style="margin-left:auto">全部可不改</span>
+          </div>
+          <div class="step-card">
+            <div class="field">
+              <span class="step-hint">默认工作区</span>
+              <div class="seg-row" data-cols="2" role="group" aria-label="默认工作区">
+                <button class="seg" aria-pressed="true" data-seg>共享<span class="seg-cap">全队同一工作区</span></button>
+                <button class="seg" aria-pressed="false" data-seg>只读<span class="seg-cap">成员不得写盘</span></button>
+              </div>
+            </div>
+            <div class="field">
+              <span class="step-hint">默认审批</span>
+              <div class="seg-row" data-cols="3" role="group" aria-label="默认审批">
+                <button class="seg" aria-pressed="true" data-seg>队列<span class="seg-cap">不打断队长</span></button>
+                <button class="seg" aria-pressed="false" data-seg>交互<span class="seg-cap">逐个批准</span></button>
+                <button class="seg" aria-pressed="false" data-seg>旁路<span class="seg-cap">不审批</span></button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="np-model" style="font-size:10px; color:var(--text-muted)">默认模型</label>
+              <input class="input-sm" id="np-model" placeholder="各 CLI 自己的默认" />
+            </div>
+          </div>
+          <div class="root-row">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted); flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span style="font-size:10px; color:var(--text-muted); flex-shrink:0">团队根</span>
+            <span class="root-path">~/dev/neeko (multi-agent)</span>
+          </div>
+        </div>
+      </div>
+
+      <footer class="p-foot">
+        <div class="foot-warn" hidden id="np-bypass-warn">⚠ 已选「旁路审批」：成员写盘前不会有人确认。</div>
+        <button class="cta" id="np-cta">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          以队长身份开会话
+        </button>
+        <div class="foot-note" id="np-summary">claude-code · 2 名成员（研究员 / 实现者）· 共享工作区 · 队列审批</div>
+      </footer>
+    </section>
+
+    <!-- ══════════ 视图 ③：已打开团队 ══════════ -->
+    <section class="view" data-id="3" aria-label="已打开的团队">
+      <header class="p-head">
+        <button class="icon-btn back-btn" data-back="1" aria-label="返回团队列表">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <div style="min-width:0; flex:1">
+          <div class="p-title">refactor</div>
+          <div class="p-sub mono">~/dev/neeko (multi-agent)</div>
+        </div>
+        <span class="badge badge-active">进行中</span>
+        <button class="icon-btn" aria-label="团队菜单（关闭 / 删除）" title="更多">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+        </button>
+      </header>
+
+      <div class="stat-strip">
+        <div class="stat"><b>4</b><span>成员</span></div>
+        <div class="stat" data-tone="accent"><b>2</b><span>进行中</span></div>
+        <div class="stat" data-tone="accent"><b>1</b><span>已完成</span></div>
+        <div class="stat" data-tone="warn"><b>1</b><span>待批</span></div>
+      </div>
+
+      <div class="p-body">
+        <div class="roster" aria-label="花名册">
+          <button class="r-row">
+            <span class="r-ava" style="background:var(--bg-tertiary)"><svg class="bicon bicon-claude" aria-label="claude-code"><use href="#brand-claude"/></svg></span>
+            <span class="r-name">lead</span>
+            <span class="r-right"><span class="mini-badge" data-tone="run">运行中</span></span>
+          </button>
+          <button class="r-row">
+            <span class="r-ava" style="background:var(--bg-tertiary)"><svg class="bicon bicon-claude" aria-label="claude-code"><use href="#brand-claude"/></svg></span>
+            <span class="r-name">researcher <span class="mini-badge" data-tone="idle" style="margin-left:3px">研究员</span></span>
+            <span class="r-right"><span class="mini-badge" data-tone="run">运行中</span></span>
+          </button>
+          <button class="r-row">
+            <span class="r-ava" style="background:var(--bg-tertiary)"><svg class="bicon bicon-openai" aria-label="codex"><use href="#brand-openai"/></svg></span>
+            <span class="r-name">writer <span class="mini-badge" data-tone="idle" style="margin-left:3px">实现者</span></span>
+            <span class="r-right"><span class="mini-badge" data-tone="await">待审批</span></span>
+          </button>
+          <button class="r-row">
+            <span class="r-ava" style="background:var(--purple-soft)"><span class="bicon-fallback" style="color:var(--purple)">π</span></span>
+            <span class="r-name">cody</span>
+            <span class="r-right"><span class="mini-badge" data-tone="idle">空闲</span></span>
+          </button>
+        </div>
+
+        <div class="seg-tabs" role="group" aria-label="任务区视图">
+          <button class="seg-tab" aria-selected="true" data-btab="board">看板</button>
+          <button class="seg-tab" aria-selected="false" data-btab="flow">分配图</button>
+        </div>
+
+        <div class="mini-board" data-pane="board">
+          <div class="mini-col">
+            <div class="mini-col-head">进行中 <span style="margin-left:auto">2</span></div>
+            <div class="mini-col-body">
+              <div class="mini-task"><div class="mini-task-t">t1 · 重构 auth 中间件</div><div class="mini-task-m"><span class="mini-tag">writer</span><span class="mini-tag">租约 18:03</span></div></div>
+              <div class="mini-task"><div class="mini-task-t">t2 · 抽公共类型</div><div class="mini-task-m"><span class="mini-tag">researcher</span></div></div>
+            </div>
+          </div>
+          <div class="mini-col">
+            <div class="mini-col-head">待审批 <span style="margin-left:auto">1</span></div>
+            <div class="mini-col-body">
+              <div class="mini-task"><div class="mini-task-t">t5 · 迁移配置格式</div><div class="mini-task-m"><span class="mini-tag" style="color:var(--warning)">等待中</span></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="flow-pane" data-pane="flow" hidden>
+          <div class="flow-legend" aria-hidden="true">
+            <span class="lg"><span class="sw dash"></span>依赖</span>
+            <span class="lg"><span class="dot" style="background:var(--success)"></span>researcher</span>
+            <span class="lg"><span class="dot" style="background:var(--purple)"></span>cody</span>
+            <span class="lg"><span class="dot" style="background:var(--warning)"></span>writer</span>
+            <span class="lg"><span class="sw" style="border-top-style:dashed;border-top-color:var(--danger)"></span>回收</span>
+          </div>
+          <svg id="flow-svg" viewBox="0 0 300 480" role="img" aria-label="任务分配 flow 图">
+            <defs>
+              <marker id="arr2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+                <path d="M0,0 L8,4 L0,8 z" fill="var(--text-muted)"/>
+              </marker>
+            </defs>
+
+            <!-- 创建边：lead → 首层（柔和入弯） -->
+            <path class="fedge" data-kind="create" data-efrom="lead" data-eto="t1" d="M150,32 C150,48 51,44 51,62" marker-end="url(#arr2)"/>
+            <path class="fedge" data-kind="create" data-efrom="lead" data-eto="t2" d="M150,32 L150,62" marker-end="url(#arr2)"/>
+            <path class="fedge" data-kind="create" data-efrom="lead" data-eto="t3" d="M150,32 C150,48 249,44 249,62" marker-end="url(#arr2)"/>
+
+            <!-- 依赖边：层间 S 曲线 -->
+            <path class="fedge" data-kind="dep" data-efrom="t2" data-eto="t4" d="M150,110 C150,142 101,142 101,176" marker-end="url(#arr2)"/>
+            <path class="fedge" data-kind="dep" data-efrom="t3" data-eto="t5" d="M249,110 C249,142 199,142 199,176" marker-end="url(#arr2)"/>
+
+            <!-- 认领边：成员身份色贝塞尔（researcher 走中缝直廊，cody 双侧外绕，不穿节点） -->
+            <path class="fedge" data-kind="claim" data-m="researcher" data-efrom="researcher" data-eto="t2" d="M150,440 L150,112"/>
+            <path class="fedge" data-kind="claim" data-m="cody" data-efrom="cody" data-eto="t1" d="M144,440 C70,425 20,260 46,112"/>
+            <path class="fedge" data-kind="claim" data-m="cody" data-efrom="cody" data-eto="t3" d="M156,440 C235,425 290,270 252,112"/>
+            <!-- 回收边：红虚线（writer 曾持有 t5，被显式回收） -->
+            <path class="fedge" data-kind="recycle" data-m="writer" data-efrom="writer" data-eto="t5" d="M232,440 C285,425 285,280 206,224"/>
+
+            <!-- lead：胶囊 -->
+            <g class="fnode" data-node="lead">
+              <rect x="86" y="6" width="128" height="26" rx="13"/>
+              <text x="150" y="23" text-anchor="middle">lead · 派活</text>
+            </g>
+
+            <!-- 任务 L0（左侧状态条：蓝=进行中 · 绿=完成） -->
+            <g class="fnode" data-task="t1">
+              <rect x="6" y="64" width="90" height="46" rx="10"/>
+              <rect class="stripe" x="8" y="70" width="3" height="34" rx="1.5" fill="var(--accent)"/>
+              <text x="56" y="83" text-anchor="middle">重构 auth</text>
+              <text x="56" y="93" text-anchor="middle">中间件</text>
+              <text class="sub" x="56" y="103" text-anchor="middle">t1 · cody · ×2</text>
+            </g>
+            <g class="fnode" data-task="t2">
+              <rect x="105" y="64" width="90" height="46" rx="10"/>
+              <rect class="stripe" x="107" y="70" width="3" height="34" rx="1.5" fill="var(--accent)"/>
+              <text x="155" y="83" text-anchor="middle">抽公共</text>
+              <text x="155" y="93" text-anchor="middle">类型</text>
+              <text class="sub" x="155" y="103" text-anchor="middle">t2 · researcher</text>
+            </g>
+            <g class="fnode" data-task="t3">
+              <rect x="204" y="64" width="90" height="46" rx="10"/>
+              <rect class="stripe" x="206" y="70" width="3" height="34" rx="1.5" fill="var(--success)"/>
+              <text x="249" y="88" text-anchor="middle">清理死代码</text>
+              <text class="sub" x="249" y="103" text-anchor="middle">t3 · cody ✓</text>
+            </g>
+            <!-- 任务 L1（依赖层；紫条=阻塞） -->
+            <g class="fnode" data-task="t4">
+              <rect x="56" y="176" width="90" height="46" rx="10"/>
+              <rect class="stripe" x="58" y="182" width="3" height="34" rx="1.5" fill="var(--text-muted)"/>
+              <text x="106" y="195" text-anchor="middle">补 auth</text>
+              <text x="106" y="205" text-anchor="middle">文档</text>
+              <text class="sub" x="106" y="215" text-anchor="middle">t4 · 依赖 t2</text>
+            </g>
+            <g class="fnode" data-task="t5">
+              <rect x="154" y="176" width="90" height="46" rx="10"/>
+              <rect class="stripe" x="156" y="182" width="3" height="34" rx="1.5" fill="var(--purple)"/>
+              <text x="204" y="195" text-anchor="middle">迁移配置</text>
+              <text x="204" y="205" text-anchor="middle">格式</text>
+              <text class="sub" x="204" y="215" text-anchor="middle" style="fill:var(--purple)">t5 · 回收 ×1</text>
+            </g>
+
+            <!-- 成员：胶囊 + 身份色点（与认领边同色） -->
+            <g class="fnode" data-member="researcher">
+              <rect x="18" y="440" width="84" height="26" rx="13" stroke="var(--success)" stroke-opacity=".55"/>
+              <use href="#brand-claude" x="26" y="446" width="14" height="14" class="bicon-claude" style="fill:currentColor"/>
+              <text x="68" y="457" text-anchor="middle">researcher</text>
+            </g>
+            <g class="fnode" data-member="cody">
+              <rect x="108" y="440" width="84" height="26" rx="13" stroke="var(--purple)" stroke-opacity=".55"/>
+              <text x="122" y="458" text-anchor="middle" style="fill:var(--purple);font-size:11px;font-weight:800;font-family:Georgia,serif">π</text>
+              <text x="158" y="457" text-anchor="middle">cody</text>
+            </g>
+            <g class="fnode" data-member="writer">
+              <rect x="198" y="440" width="84" height="26" rx="13" stroke="var(--warning)" stroke-opacity=".55"/>
+              <use href="#brand-openai" x="206" y="446" width="14" height="14" class="bicon-openai" style="fill:currentColor"/>
+              <text x="248" y="457" text-anchor="middle">writer</text>
+            </g>
+          </svg>
+          <div class="flow-detail" id="flow-detail">点击任务节点：高亮它的依赖链与认领边</div>
+          <p class="flow-note">
+            依赖＝虚线 · 认领＝实线 · 回收＝红虚线。图是快照的投影（dependsOn / owner 早已在线上），
+            零新增 IPC；300px 下节点压缩，真实实现可在需要宽版时换到中央 tab。
+          </p>
+        </div>
+
+        <p class="foot-note" style="padding: 0 14px 12px;">
+          返回列表不关队（导航 ≠ 关闭）；「⋯」里有关闭团队 / 删除。成员行点开详情抽屉。
+        </p>
+      </div>
+    </section>
+
+    <!-- ══════════ 视图 ④：设计对照 ══════════ -->
+    <section class="view" data-id="4" aria-label="设计对照">
+      <div class="doc">
+        <h2>④ 导航模型：上下分栏 → 列表优先 + 视图推入</h2>
+
+        <h3>旧 → 新</h3>
+        <div class="flow-diagram">
+          <div class="fd-box" data-tone="old">
+            <b>旧：上下分栏</b>
+            上＝建队表单（长，常驻首屏）<br>下＝已有团队列表<br>拖拽条分两半 · 两块内容互相挤压
+          </div>
+          <div class="fd-arrow">→</div>
+          <div class="fd-box" data-tone="new">
+            <b>新：三个互斥视图</b>
+            ① 列表态（默认主面）<br>② 新建态（按钮推入，做完即走）<br>③ 已打开态（打开推入）<br>每个视图各占整面板
+          </div>
+        </div>
+
+        <h3>为什么这是业界主流</h3>
+        <table>
+          <tr><th>决策</th><th>业界参照</th></tr>
+          <tr><td>列表优先：列表是主面，创建是按钮</td><td class="src">Conductor（侧栏 workspace 列表 + New workspace 按钮）· Linear 侧栏 · Vibe Kanban 顶栏加号</td></tr>
+          <tr><td>创建 = 推入整屏，带 ← 返回</td><td class="src">Conductor New workspace · 移动端 push 导航 —— 一次性动作拥有完整一屏，做完即走</td></tr>
+          <tr><td>行 hover 显动作，不占常驻空间</td><td class="src">Linear / GitHub 列表行 · Warp agent 列表</td></tr>
+          <tr><td>状态过滤 chip（全部 / 进行中 / 已关闭）</td><td class="src">Vibe Kanban 看板过滤 · 任意多状态列表</td></tr>
+          <tr><td>创建流分组 1-2-3 + 吸附 footer CTA + 实时摘要</td><td class="src">Conductor composer · Linear 表单 —— 「下一步够得着」不靠滚动</td></tr>
+          <tr><td>打开态顶部统计条（成员 / 进行中 / 待批）</td><td class="src">Omnara dashboard · OpenHands 顶栏</td></tr>
+          <tr><td>全 token 化，深浅两套映射</td><td class="src">跟随应用主题（右上角切换验证）</td></tr>
+        </table>
+
+        <h3>三个视图的状态归属（实现落点）</h3>
+        <ul>
+          <li>视图是**导航**（就近 state / 既有 <code>browsingFrom</code> 同族），不进 store —— store 里的 <code>teamId</code> 仍是「数据面」：<code>null</code> = 列表/新建，非空 = 已打开。新建态不是第三个数据态，只是列表态上的一种**编辑模态**。</li>
+          <li><code>TeamListPane</code> 的 ResizablePanelGroup（上下分栏 + 拖拽条）整体退役；三个视图都还在 <code>agent-team/components/</code> 里，只是宿主从「分栏」换成「单容器 + 条件渲染」。</li>
+          <li>既有契约原样保留：行 hover 动作、refusal 折叠行、成员池 accessible name 口径、C23 的 (teamId, taskId) 寻址、脉冲刷新。</li>
+        </ul>
+
+        <h3>不在这版原型里</h3>
+        <ul>
+          <li>已打开态只是**缩略示意**（花名册/看板的真实实现已有，本原型只换导航壳）</li>
+          <li>键盘全路径、读屏走查、五个应用主题的逐个验证（原型只做深/浅两套证明 token 可切换）</li>
+          <li>团队重开入口（closed 行的「查看」）的推入形态 —— 与「打开」同一条路径，实现时合并</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (sel) { return document.querySelector(sel); };
+  var $$ = function (sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); };
+
+  var toastTimer = null;
+  function toast(msg, tone) {
+    var t = $("#toast");
+    t.textContent = msg;
+    t.setAttribute("data-tone", tone || "info");
+    t.setAttribute("data-show", "true");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.setAttribute("data-show", "false"); }, 2400);
+  }
+
+  /* ── 视图切换 ───────────────────────────────────────────────────── */
+  function gotoView(id) {
+    $$(".proto-bar .tab").forEach(function (b) { b.setAttribute("aria-selected", String(b.getAttribute("data-view") === id)); });
+    $$(".view").forEach(function (v) { v.setAttribute("data-active", String(v.getAttribute("data-id") === id)); });
+  }
+  $$(".proto-bar .tab").forEach(function (btn) {
+    btn.addEventListener("click", function () { gotoView(btn.getAttribute("data-view")); });
+  });
+
+  /* ── 主题切换（验证「跟随应用主题」）────────────────────────────── */
+  $("#theme-toggle").addEventListener("click", function () {
+    var root = document.documentElement;
+    var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    this.textContent = next === "dark" ? "切换浅色主题" : "切换深色主题";
+    toast("主题 = " + next + "（组件不写死颜色，token 换肤）", "ok");
+  });
+
+  /* ── 列表态 → 新建态 / 打开态 ──────────────────────────────────── */
+  $("#btn-new").addEventListener("click", function () { gotoView("2"); });
+  $$("[data-open]").forEach(function (row) {
+    row.addEventListener("click", function (e) {
+      if (e.target.closest(".t-row-actions")) {
+        toast("行内动作（关闭 / 删除）走既有 team_close / team_delete", "info");
+        return;
+      }
+      gotoView("3");
+    });
+    row.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") gotoView("3");
+    });
+  });
+  $$("[data-back]").forEach(function (btn) {
+    btn.addEventListener("click", function () { gotoView(btn.getAttribute("data-back")); });
+  });
+
+  /* ── 新建态：队长卡片单选 ──────────────────────────────────────── */
+  $$("[data-cli]").forEach(function (card) {
+    card.addEventListener("click", function () {
+      $$("[data-cli]").forEach(function (c) { c.setAttribute("aria-pressed", String(c === card)); });
+    });
+  });
+
+  /* ── 新建态：被拒披露 ──────────────────────────────────────────── */
+  var refusedBtn = $("#new-refused-btn");
+  refusedBtn.addEventListener("click", function () {
+    var panel = $("#new-refused");
+    var open = panel.hidden;
+    panel.hidden = !open;
+    refusedBtn.setAttribute("aria-expanded", String(open));
+    var chev = refusedBtn.querySelector("[data-chev]");
+    chev.style.transform = open ? "rotate(90deg)" : "";
+  });
+
+  /* ── 新建态：成员池勾选 ────────────────────────────────────────── */
+  $$("[data-pool]").forEach(function (row) {
+    row.addEventListener("click", function (e) {
+      if (row.getAttribute("data-disabled") === "true") return;
+      // 角色下拉是行内自己的控件：点它不等于切换勾选（否则选角色必把成员取消掉）。
+      if (e.target.closest("select")) return;
+      var next = row.getAttribute("data-checked") !== "true";
+      row.setAttribute("data-checked", String(next));
+      row.setAttribute("aria-checked", String(next));
+    });
+  });
+
+  /* ── 新建态：分段选择 ──────────────────────────────────────────── */
+  $$("[data-seg]").forEach(function (seg) {
+    seg.addEventListener("click", function () {
+      var group = seg.parentElement;
+      // 同组互斥
+      Array.prototype.forEach.call(group.querySelectorAll("[data-seg]"), function (s) {
+        s.setAttribute("aria-pressed", String(s === seg));
+      });
+      // 旁路警示：footer 里实时出现/消失（后果必须在按下去之前可见）
+      var label = seg.textContent || "";
+      var bypass = group.getAttribute("aria-label") === "默认审批" && seg.getAttribute("aria-pressed") === "true" && label.indexOf("旁路") >= 0;
+      $("#np-bypass-warn").hidden = !bypass;
+      if (bypass) toast("旁路审批的后果提示出现在 CTA 上方（按下去之前看得见）", "info");
+    });
+  });
+
+  /* ── 新建态：CTA → 推入已打开态（示意闭环）────────────────────── */
+  $("#np-cta").addEventListener("click", function () {
+    if (this.getAttribute("data-disabled") === "true") return;
+    gotoView("3");
+    toast("建队成功 → 整面板推入已打开态（旧原型是「打开终端 tab」）", "ok");
+  });
+
+  /* ── 分配图：快照投影的交互（点击任务 = 高亮依赖链 + 认领边）────── */
+  var FLOW_INFO = {
+    t1: { title: "t1 · 重构 auth 中间件", rows: [["状态", "进行中"], ["持有者", "cody（实现者）"], ["依赖", "无"], ["备注", "attempt ×2 · 租约回收 ×1"]] },
+    t2: { title: "t2 · 抽公共类型", rows: [["状态", "进行中"], ["持有者", "researcher（研究员）"], ["依赖", "无"], ["备注", "summary 已回板一次"]] },
+    t3: { title: "t3 · 清理死代码", rows: [["状态", "完成 ✓ 已声明"], ["持有者", "cody（实现者）"], ["依赖", "无"], ["备注", "只有 hook 信号会落「完成 ⚠ 未声明」—— 六态不合并"]] },
+    t4: { title: "t4 · 补 auth 文档", rows: [["状态", "待认领"], ["持有者", "—"], ["依赖", "t2（未全 done 不可 claim，不变量 3）"], ["备注", "需要 t2 的产物作为输入"]] },
+    t5: { title: "t5 · 迁移配置格式", rows: [["状态", "阻塞"], ["持有者", "—（writer 已回收）"], ["依赖", "t3"], ["备注", "租约回收 ×1 —— 依赖 t3 完成后可重新派发"]] }
+  };
+  var FLOW_DEPS = { t1: [], t2: [], t3: [], t4: ["t2"], t5: ["t3"] };
+  var flowSel = null;
+  function flowAncestors(id, acc) {
+    (FLOW_DEPS[id] || []).forEach(function (d) {
+      if (!acc[d]) { acc[d] = true; flowAncestors(d, acc); }
+    });
+    return acc;
+  }
+  function flowDetail(id) {
+    var info = FLOW_INFO[id];
+    var html = "<b>" + info.title + "</b>" + info.rows.map(function (r) {
+      return '<div class="fd-row"><dt>' + r[0] + "</dt><dd>" + r[1] + "</dd></div>";
+    }).join("");
+    $("#flow-detail").innerHTML = html;
+  }
+  function flowSelect(id) {
+    var svg = $("#flow-svg");
+    if (flowSel === id) {
+      flowSel = null;
+      $$("#flow-svg .fnode").forEach(function (n) { n.removeAttribute("data-on"); n.removeAttribute("data-dim"); });
+      $$("#flow-svg .fedge").forEach(function (e) { e.removeAttribute("data-dim"); });
+      $("#flow-detail").innerHTML = "点击任务节点：高亮它的依赖链与认领边";
+      return;
+    }
+    flowSel = id;
+    var active = flowAncestors(id, {});
+    active[id] = true;
+    $$("#flow-svg .fnode").forEach(function (n) {
+      var task = n.getAttribute("data-task");
+      var member = n.getAttribute("data-member");
+      n.removeAttribute("data-on");
+      n.removeAttribute("data-dim");
+      if (task) {
+        if (active[task]) n.setAttribute("data-on", "true");
+        else n.setAttribute("data-dim", "true");
+      } else if (member) {
+        var related = $$("#flow-svg .fedge").some(function (e) {
+          return e.getAttribute("data-efrom") === member && active[e.getAttribute("data-eto")];
+        });
+        if (!related) n.setAttribute("data-dim", "true");
+      }
+    });
+    $$("#flow-svg .fedge").forEach(function (e) {
+      var f = e.getAttribute("data-efrom"), t = e.getAttribute("data-eto");
+      var kind = e.getAttribute("data-kind");
+      var on = t === id || f === id ||
+        ((kind === "dep" || kind === "claim") && active[f] && active[t]);
+      if (on) e.removeAttribute("data-dim");
+      else e.setAttribute("data-dim", "true");
+    });
+    flowDetail(id);
+  }
+  $$("#flow-svg .fnode[data-task]").forEach(function (n) {
+    n.addEventListener("click", function () { flowSelect(n.getAttribute("data-task")); });
+  });
+
+  /* ── 新建态：角色库折叠 + 成员角色下拉 → footer 实时摘要 ─────────── */
+  var ROLE_NEW = "__new__";
+  /* pick-or-create（业界标准：GitHub label picker / Linear 标签选择器）——
+     创建入口就在选择器里，选「＋ 新建角色…」就地展开内联创建卡；
+     保存后新角色立即出现在所有下拉里并指派给当前成员位。 */
+  function roleOptions() {
+    return { name: "", preamble: "", cli: "" };
+  }
+  function showRoleCreate(sel, anchorEl, assignToRow) {
+    var existing = document.getElementById("role-create-card");
+    if (existing) existing.remove();
+    var row = assignToRow ? sel.closest(".pool-row") : anchorEl;
+    var card = document.createElement("div");
+    card.className = "role-create";
+    card.id = "role-create-card";
+    card.innerHTML =
+      '<span class="rc-title">' + (assignToRow
+        ? "新建角色（保存后进入角色库并指派给该成员位）"
+        : "新建角色（保存后进入角色库，可随时在任意成员位指派）") + "</span>" +
+      '<input class="input-sm" id="rc-name" placeholder="角色名（如：架构师）" aria-label="新角色名" />' +
+      '<input class="input-sm" id="rc-preamble" placeholder="人设正文（英文，进成员启动参数）" aria-label="人设正文" />' +
+      '<select class="input-sm" id="rc-cli" aria-label="CLI 偏好">' +
+      '<option value="">CLI 偏好：不指定</option><option>claude-code</option><option>codex</option><option>pi</option><option>qoder</option></select>' +
+      '<div class="rc-btns"><button class="btn btn-primary" id="rc-save">保存并指派</button>' +
+      '<button class="btn" id="rc-cancel">取消</button></div>';
+    row.after(card);
+    $("#rc-name").focus();
+    $("#rc-save").addEventListener("click", function () {
+      var name = $("#rc-name").value.trim();
+      var preamble = $("#rc-preamble").value.trim();
+      var cli = $("#rc-cli").value;
+      if (!name || !preamble) { toast("角色名与人设正文都必填（长度与控制字符的校验在后端保存时）", "warn"); return; }
+      // 所有角色下拉都长出新选项（插在「＋ 新建角色…」之前）
+      $$("[data-role]").forEach(function (s) {
+        var opt = document.createElement("option");
+        opt.textContent = name;
+        s.insertBefore(opt, s.querySelector("option[value='" + ROLE_NEW + "']"));
+      });
+      if (assignToRow) sel.value = name;
+      card.remove();
+      updateSummary();
+      bumpRoleCount();
+      prependRoleCard(name, preamble, cli);
+      toast(assignToRow
+        ? "已创建「" + name + "」→ 角色库 + 指派给该成员位"
+        : "已创建「" + name + "」→ 角色库（可在任意成员位的下拉里指派）", "ok");
+    });
+    $("#rc-cancel").addEventListener("click", function () {
+      card.remove();
+      // 取消 = 回到该成员位之前选中的角色（header 入口没有成员位，无需回退）
+      if (assignToRow) sel.selectedIndex = Number(sel.getAttribute("data-prev") || 0);
+    });
+  }
+  // 步骤头部的常驻入口：不指派，只进角色库
+  $("#np-new-role").addEventListener("click", function () {
+    showRoleCreate(null, document.querySelector(".pool-row"), false);
+  });
+  $$("[data-role]").forEach(function (sel) {
+    sel.addEventListener("focus", function () {
+      sel.setAttribute("data-prev", String(sel.selectedIndex));
+    });
+    sel.addEventListener("change", function () {
+      if (sel.value === ROLE_NEW) { showRoleCreate(sel); return; }
+      sel.setAttribute("data-prev", String(sel.selectedIndex));
+      updateSummary();
+    });
+  });
+
+  function bumpRoleCount() {
+    var el = $("#np-roles-count");
+    el.textContent = String(Number(el.textContent) + 1);
+  }
+  function prependRoleCard(name, preamble, cli) {
+    var list = $("#np-roles");
+    var card = document.createElement("div");
+    card.className = "role-card";
+    card.style.marginBottom = "4px";
+    card.innerHTML =
+      '<div class="role-card-head"><span class="role-card-name"></span>' +
+      (cli ? '<span class="mini-badge" data-tone="idle"></span>' : "") +
+      '<button class="role-mini">编辑</button><button class="role-mini" data-tone="del">删除</button></div>' +
+      '<span class="role-card-desc"></span>';
+    card.querySelector(".role-card-name").textContent = name;
+    card.querySelector(".role-card-desc").textContent = preamble || "（人设正文待补充）";
+    if (cli) card.querySelector(".mini-badge").textContent = cli;
+    card.querySelectorAll(".role-mini").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        toast(btn.getAttribute("data-tone") === "del" ? "删除预设 —— 已 spawn 的成员不受影响" : "编辑 = 同名覆盖保存", "info");
+      });
+    });
+    list.insertBefore(card, list.firstChild);
+  }
+
+  /* ── 新建态：角色库折叠 + 成员角色下拉 → footer 实时摘要 ─────────── */
+  var rolesBtn = $("#np-roles-btn");
+  rolesBtn.addEventListener("click", function () {
+    var panel = $("#np-roles");
+    var open = panel.hidden;
+    panel.hidden = !open;
+    rolesBtn.setAttribute("aria-expanded", String(open));
+    var chev = rolesBtn.querySelector("[data-chev]");
+    chev.style.transform = open ? "rotate(90deg)" : "";
+  });
+  $$("#np-roles .role-mini").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (btn.getAttribute("data-tone") === "del") toast("删除预设 —— 已 spawn 的成员不受影响（快照在成员行上）", "info");
+      else toast("编辑 = 同名覆盖保存（名字是主键）", "info");
+    });
+  });
+  $("#np-role-add").addEventListener("click", function () {
+    var name = $("#np-role-name").value.trim();
+    if (!name) { toast("角色名必填（人设正文同理）—— 校验在后端保存时", "warn"); return; }
+    toast("已添加「" + name + "」→ 下拉与成员位立即可选", "ok");
+  });
+
+  // footer 摘要：读勾选的成员位 + 各自角色，实时更新（「改不改配置都是同一句话」）
+  function updateSummary() {
+    var roles = [];
+    $$("[data-pool]").forEach(function (row) {
+      if (row.getAttribute("data-checked") !== "true") return;
+      var name = row.querySelector(".pool-name").textContent;
+      var role = row.querySelector("[data-role]");
+      roles.push(name + (role && role.selectedIndex > 0 ? "→" + role.value : ""));
+    });
+    var count = roles.length;
+    var roleText = roles.map(function (r) { return r.split("→")[1]; }).filter(Boolean).join(" / ");
+    var summary = "claude-code · " + count + " 名成员" + (roleText ? "（" + roleText + "）" : "") +
+      " · 共享工作区 · 队列审批";
+    $("#np-summary").textContent = summary;
+  }
+  $$("[data-role]").forEach(function (sel) { sel.addEventListener("change", updateSummary); });
+  $$("[data-pool]").forEach(function (row) {
+    row.addEventListener("click", function () {
+      // 勾选切换在通用 handler 里；这里只负责刷新摘要。
+      setTimeout(updateSummary, 0);
+    });
+  });
+
+  /* ── 已打开态：看板 / 分配图 ───────────────────────────────────── */
+  $$("[data-btab]").forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      $$("[data-btab]").forEach(function (t) { t.setAttribute("aria-selected", String(t === tab)); });
+      $$("[data-pane]").forEach(function (p) { p.hidden = p.getAttribute("data-pane") !== tab.getAttribute("data-btab"); });
+    });
+  });
+})();
+</script>
+</body>
+</html>

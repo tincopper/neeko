@@ -2,11 +2,16 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  __resetTeamListStoreForTests,
+  useTeamListStore,
+} from '@/features/agent-team/store/teamListStore';
 import ConnectionWorktreeList from '@/features/connection/components/ConnectionWorktreeList';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Worktree } from '@/shared/types';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
+import { createTeamList, createTeamSummary } from '@/testing/factories';
 
 const PROJECT_ID = 'p1';
 const WT: Worktree = { path: '/home/u/wts/feature-x', branch: 'feature/x', head: 'abc' };
@@ -70,6 +75,38 @@ describe('ConnectionWorktreeList — 待 push 提交数（与 local 行逐字同
     const overlay = screen.getByTestId('unit-row-trailing');
     expect(overlay).toContainElement(screen.getByTitle('Remove worktree and branch'));
     expect(overlay).toHaveClass('absolute', 'bg-bg-hover', 'opacity-0', 'group-hover:opacity-100');
+  });
+});
+
+describe('ConnectionWorktreeList — 被团队占用的工作树不再是地点行（与本地侧栏同一判据）', () => {
+  beforeEach(() => {
+    __resetTeamListStoreForTests();
+  });
+
+  /** 把一个团队记在这棵树里（`workspaceWorktree` 与工作树路径**逐字相等**）。 */
+  function seedTeamAt(workspaceWorktree: string | null): void {
+    useTeamListStore.setState({
+      list: createTeamList({
+        teams: [createTeamSummary({ teamId: 'tm_1', projectId: PROJECT_ID, workspaceWorktree })],
+        truncated: false,
+      }),
+      loading: false,
+      error: null,
+    });
+  }
+
+  it('团队记着跑在这棵树里 ⇒ 远端也不列这一行（两个侧栏不允许漂移）', () => {
+    seedTeamAt(WT.path);
+    render(<List />);
+
+    expect(screen.queryByText('feature-x')).not.toBeInTheDocument();
+  });
+
+  it('团队在别的树 / 主 checkout ⇒ 本行照旧列出', () => {
+    seedTeamAt(null);
+    render(<List />);
+
+    expect(screen.getByText('feature-x')).toBeInTheDocument();
   });
 });
 

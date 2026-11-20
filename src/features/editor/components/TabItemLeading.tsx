@@ -9,6 +9,8 @@ import {
   Globe,
   MessageSquareText,
   GitPullRequest,
+  Columns3,
+  ListChecks,
   Bot,
 } from '@/shared/components/icons';
 import SessionStatusIcon from '@/shared/components/SessionStatusIcon';
@@ -37,6 +39,10 @@ function getTabIcon(kind: Tab['data']['kind']) {
     case 'agent-chat':
       // 专用品牌图标（img 分支优先渲染）；Bot 仅作类型完整性兜底，正常不显示。
       return Bot;
+    case 'team-board':
+      return Columns3;
+    case 'team-task':
+      return ListChecks;
   }
 }
 

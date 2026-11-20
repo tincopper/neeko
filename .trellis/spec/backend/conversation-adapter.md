@@ -114,7 +114,7 @@ fn scan_conversations(
 // 列出会话（从缓存读取；limit=0 表示返回剩余全部）
 #[tauri::command]
 fn list_conversations(
-    scope: ConversationListScope,          // 范围：{kind:"project",path} | {kind:"unit",workspace}
+    scope: ConversationListScope,          // 范围：{kind:"project",projectId} | {kind:"unit",workspace}
     agent_id: Option<String>,              // 过滤 agent
     offset: Option<u32>,
     limit: Option<u32>,
@@ -244,8 +244,48 @@ get_resume_command(conversation_id) → split(':') 取 [0] 为 agent_id
 `ConversationMeta.supports_resume` 在扫描时根据 `resume_command_for_file(...).is_some()` 写入，供 UI 判断。  
 探测与 `get_resume_command` 必须使用同一入口，避免 `supports_resume=true` 但实际 resume 为 None。
 
+#### 跨域读接口：`resume_argv_for`（团队恢复的同一份事实）
+
+团队域起成员时也要知道「怎么让这个 CLI 续接对话」。那个事实只活在这里：
+
+```rust
+pub fn resume_argv_for(agent_id: &str, native_session_id: &str, project_path: &str)
+    -> Option<Vec<String>>;   // adapters/registry.rs，adapters 层 re-export
+```
+
+两个读者、一份实现：
+
+| 读者 | 传什么 | 用途 |
+| --- | --- | --- |
+| `agent::team::execution::plan_member_spawn` | 成员的真实工程路径 | 拼启动 argv（片段放在**紧跟 program** 的位置）|
+| `agent::team::view` | 空 `project_path` | 只问 `is_some()`（这名成员还回不回得来）|
+
+**返回的是「参数片段」，不是完整命令行**（不含程序名）。团队处的启动行由准入表决定，
+所以不能把 `resume_command_for_file` 的整段命令直接拼进去；反过来也不能在团队域再写一张
+「claude 用 `--resume`」的表（红线 15 + 一条事实一个主人）。位置由团队执行层决定，内容由这里决定。
+
+**没有 `suffix` 字段**（不是遗漏）：2026-11-11 实测 `<cli> --help` / `<cli> resume --help`，
+每一个能当团队成员的 CLI 都是**前缀**形态 ——
+
+| CLI | 片段 | 形态 |
+| --- | --- | --- |
+| claude-code / codebuddy / grok | `--resume <id>` | 全局 flag |
+| **codex** | `resume <id>` | **子命令**（追加到末尾会被当成 `PROMPT`）|
+| pi / opencode | `--session <id>` | 全局 flag |
+| omp | `--resume=<id>` | flag=值 |
+| qoder / gemini | `None` | qoder 的 `--resume` 只在 `--print` 下有效；gemini 没有 resume |
+
+哪天真的出现「必须最后出现」的 CLI，再加一个 `suffix` 字段 + 一个组合断言；今天先加就会是
+一个恒为空、没有生产者的字段（红线 14）。判据：
+`the_resume_fragment_of_every_admissible_cli_is_the_smoke_tested_one`（覆盖 `ADMISSIONS` 全表）、
+`a_resume_fragment_never_contains_the_program_name`。
+
 ### 4.3.1 file_pattern 与嵌套扫描
 
+- 发现期的范围是**根集合**（不是单个路径）：`AgentSessionAdapter::discovery_roots(roots: Option<&[PathBuf]>)`
+  与 `parse_all_metas_for_project(roots)` 都收 `Option<&[PathBuf]>`（`None` = 全量；
+  `Some(empty)` = 早停）。`scope::discovery_roots_for(session_root, roots, style)` 逐根编码后
+  **取并集并去重**。根来自 [`ProjectScope`]（§4.5），是登记事实，不是「从路径反推项目」。
 - `file_pattern` 相对 `session_root` 匹配。
 - 不含 `/` 且不以 `**/` 开头的 basename 模式由 Manager 自动加 `**/` 前缀（如 `rollout-*.jsonl` → `**/rollout-*.jsonl`）。
 - `**/` 在 regex 中匹配 **零段或多段**路径前缀，因此顶层与嵌套文件均可命中。
@@ -345,17 +385,28 @@ v2 只能在 Rust 侧过滤，因此窗口必须放大（`PREVIEW_LIMIT * 3` + �
 会话的 `project_path` 是 agent 的 **cwd**，所以「按路径过滤」有两种语义，取决于调用方要的是
 项目还是 Workspace 单元。**范围是单值判别联合**（`ConversationListScope`），不是两个可选参数：
 
-- **项目级** `{kind:"project", path}`（History 面板）：前缀包含 —— 保留
-  `ConversationMeta.project_path` 等于该项目根**或其后代**的会话；缺 `project_path` 的会话排除。
-  （面板当前传的是 `worktreePath ?? project.path`，即「当前单元路径」；既有行为，与「整个项目」
-  只在主 checkout 视图重合。）
+- **项目级** `{kind:"project", projectId}`（History 面板，2026-11-11 起）：按**项目身份**归属 ——
+  命令层用 `AppStateWrapper::project_scope(project_id)` 把这个 id 解析成
+  [`crate::common::git::ProjectScope`]（主 checkout + `git worktree list` 的全部 linked worktree
+  + 团队行记录过的 `workspace_worktree`），谓词是 `scope.owns(session_cwd)`「任一注册根包含」。
+  缺 `project_path` 的会话排除（fail-closed）。
+
+  **为什么不再是裸路径**：旧形态是 `{kind:"project", path}` + `matches_project_path`（纯字符串
+  前缀），而团队根按设计落在项目目录**之外**（`~/.neeko/worktrees/<name>`），前缀永远匹配不上 ⇒
+  团队会话在 History 里不可见，且**可见性取决于当前激活单元**这个无关维度。`matches_project_path`
+  已删除（不要复活第二套归属判据）。
+
+  同一个 `ProjectScope` 也是**发现期**的根清单：`scan_conversations(agentId?, projectId?)` 把
+  `scope.roots()`（**登记时的原始字符串**，不 canonicalize —— CLI 的目录编码逐字依赖进程 cwd）
+  交给 `AgentSessionAdapter::discovery_roots(roots)`，逐根编码后取并集。只改过滤不改发现，
+  会得到「有的 CLI 能在别的工作区被搜到、有的不能」的不对称症状。
 - **单元级** `{kind:"unit", workspace}`（agent-chat 恢复列表）：**最深根胜出**
   （`common/git/unit_scope.rs`）。根清单 = 本单元根 + 同项目其它 linked worktree 根
   （`git worktree list`）；会话归属最深命中的那个根。
 
 **为什么是判别联合而不是「两个可选过滤参数 + 谁优先」**：后者允许调用方同时传两个维度、后端
 静默丢掉一个 —— 那正是「本来要单元、结果按项目过滤」的入口（同类形态已在本仓发生过两次）。
-两个变体各自必填（`path` / `workspace`），「没有地址的单元级请求」在反序列化阶段就失败。
+两个变体各自必填（`project_id` / `workspace`），「没有身份的请求」在反序列化阶段就失败。
 护栏：判据 **G**（命令签名出现 `Option<WorkspaceSession>` 必须进
 `ledger/optional_workspace_commands.json` 说明理由；当前台账为空 = 全仓没有可选地址）。
 

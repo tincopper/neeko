@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/team-domain.md", "reason": "团队域全部契约：两相位与投递协议（§2.2）、端点与门的活集合（§2.3）、准入表与『凭证进 env 的唯一例外』（§3）—— 两处改动都落在这一域"}
+{"file": ".trellis/spec/security/allowlist.md", "reason": "鉴权门的单一裁决点与恒定时间比较：新增 BearerToken 提取器时必须保持『比较调用点 = 1』与空集合恒拒"}
+{"file": ".trellis/tasks/11-12-codex-member-mcp-and-submit/research/00-evidence.md", "reason": "现场证据：403 日志、codex tool_search 恒空、paste-burst 源码坐标 —— 实现时逐条可复查"}
+{"file": ".trellis/tasks/10-30-multi-agent-orchestration/research/04-rmux-demo-close-reading.md", "reason": "『正文与回车必须分两笔』的实测来源（delivery.rs 现有协议的出处），B2 改形态时不要把它一起推翻"}
+{"file": ".trellis/spec/unit-test/mutation-verification.md", "reason": "AC2 的变异验证做法（删一行凭证 ⇒ 测试必须红），写 PR 说明时要贴一次"}

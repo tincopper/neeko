@@ -1,0 +1,33 @@
+{
+  "id": "multi-agent-orchestration",
+  "name": "multi-agent-orchestration",
+  "title": "Multi-Agent 编排：共享任务板 + 队长/成员（MCP 工具面）",
+  "description": "让 Neeko 支持 Agent Team：一个会话当队长，按共享任务板派活，多个成员（Chat 或 CLI agent）认领并执行，产物与状态回流到板；队长经 MCP 工具面操作，Neeko 提供协调基质（SQLite + 每成员 token）与可观测的团队 UI。含 Chat/CLI 双路径的统一完成判定、worktree 隔离、审批门、租约回收。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-10-30",
+  "completedAt": null,
+  "branch": "multi-agent",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-11-team-session-resume",
+    "11-12-codex-member-mcp-and-submit",
+    "11-13-team-task-assignee-and-graph",
+    "11-13-team-handoff-by-reference",
+    "11-13-team-task-actions",
+    "11-17-sidebar-lead-session"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

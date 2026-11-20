@@ -75,6 +75,8 @@ pub mod task;
 pub mod terminal;
 /// Theme synchronization for agents and terminals.
 pub mod theme;
+/// 统一任务中心（Local Provider 工作项 + 执行记录）。
+pub mod work_items;
 
 pub use app::run;
 pub use app_state::AppStateWrapper;
@@ -226,9 +228,34 @@ macro_rules! neeko_invoke_handler {
             $crate::notification::commands::notification_settings_set,
             $crate::notification::commands::notification_test_send,
             $crate::notification::commands::notification_claim_reflow_ready,
+            // ── agent team（协调基质：以队长身份开会话 + 面板的两条读路径）────
+            $crate::agent::team::commands::start_team_session,
+            $crate::agent::team::commands::team_list,
+            $crate::agent::team::commands::team_close,
+            $crate::agent::team::commands::team_resume,
+            $crate::agent::team::commands::team_delete,
+            $crate::agent::team::commands::team_rename,
+            $crate::agent::team::commands::team_snapshot,
+            $crate::agent::team::commands::team_task_detail,
+            $crate::agent::team::commands::team_task_retry,
+            $crate::agent::team::commands::team_member_detail,
+            $crate::agent::team::commands::team_launchable_agents,
+            $crate::agent::team::commands::team_options,
+            $crate::agent::team::commands::team_role_list,
+            $crate::agent::team::commands::team_role_save,
+            $crate::agent::team::commands::team_role_delete,
             // ── agent CLI hooks（源 B：摄入与安装态）──────────────────────────
             $crate::agent::hooks::commands::agent_hooks_apply,
             $crate::agent::hooks::commands::agent_hooks_status,
+            // ── work items（统一任务中心：Local Provider CRUD + 执行记录）──────
+            $crate::work_items::commands::work_item_stage_plan,
+            $crate::work_items::commands::work_item_list,
+            $crate::work_items::commands::work_item_create,
+            $crate::work_items::commands::work_item_update,
+            $crate::work_items::commands::work_item_transition,
+            $crate::work_items::commands::work_item_delete,
+            $crate::work_items::commands::work_item_run_list,
+            $crate::work_items::commands::work_item_run_record,
             // ── search ────────────────────────────────────────────────────────
             $crate::search::commands::search_run,
             $crate::search::commands::search_stop,

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+import type { ProjectId } from '@/shared/utils/workspaceRef';
+
 import { scanConversations, listConversations } from '../api/conversationApi';
 import type { ConversationMeta } from '../types';
 import {
@@ -44,7 +46,7 @@ export interface UseConversationListResult extends ListLoadState {
  * 5) never blank the list on soft failures when rows already exist
  */
 export function useConversationList(
-  projectPath: string | null,
+  projectId: ProjectId | null,
   isActive: boolean,
   agentFilter?: string,
 ): UseConversationListResult {
@@ -53,7 +55,7 @@ export function useConversationList(
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadState, setLoadState] = useState<ListLoadState>(() =>
-    isActive && projectPath
+    isActive && projectId
       ? { loading: true, refreshing: false, error: null }
       : initialListLoadState(),
   );
@@ -71,7 +73,7 @@ export function useConversationList(
 
   // Reset state when the load key changes (deferred to avoid sync setState in effect)
   useEffect(() => {
-    const nextKey = isActive ? (projectPath ? listLoadKey(projectPath, agentFilter) : null) : null;
+    const nextKey = isActive ? (projectId ? listLoadKey(projectId, agentFilter) : null) : null;
     let cancelled = false;
     Promise.resolve().then(() => {
       if (cancelled) return;
@@ -90,16 +92,16 @@ export function useConversationList(
     return () => {
       cancelled = true;
     };
-  }, [isActive, projectPath, agentFilter]);
+  }, [isActive, projectId, agentFilter]);
 
   const runLoad = useCallback(
     async (options: { forceScan: boolean }) => {
-      if (!projectPath) {
+      if (!projectId) {
         // Reset already handled during render via key change
         return;
       }
 
-      const key = listLoadKey(projectPath, agentFilter);
+      const key = listLoadKey(projectId, agentFilter);
       const existing = inFlightRef.current.get(key);
       if (existing && !options.forceScan) {
         await existing;
@@ -118,11 +120,10 @@ export function useConversationList(
 
         try {
           // Rib 1 — hydrate first page only (project-scoped).
-          const cached = await listConversations(
-            { kind: 'project', path: projectPath },
-            agentFilter,
-            { offset: 0, limit: LIST_PAGE_SIZE },
-          );
+          const cached = await listConversations({ kind: 'project', projectId }, agentFilter, {
+            offset: 0,
+            limit: LIST_PAGE_SIZE,
+          });
           if (gen !== requestGenRef.current) return;
 
           setConversations(cached.items);
@@ -144,15 +145,14 @@ export function useConversationList(
           if (needScan) {
             // Rib 2 — project-scoped background scan (all agents), then re-list page 0.
             // Agent filter only affects list paging, never discovery scope.
-            await scanConversations(undefined, projectPath);
+            await scanConversations(undefined, projectId);
             if (gen !== requestGenRef.current) return;
 
             lastScanAtRef.current.set(key, Date.now());
-            const fresh = await listConversations(
-              { kind: 'project', path: projectPath },
-              agentFilter,
-              { offset: 0, limit: LIST_PAGE_SIZE },
-            );
+            const fresh = await listConversations({ kind: 'project', projectId }, agentFilter, {
+              offset: 0,
+              limit: LIST_PAGE_SIZE,
+            });
             if (gen !== requestGenRef.current) return;
             setConversations(fresh.items);
             conversationsRef.current = fresh.items;
@@ -184,7 +184,7 @@ export function useConversationList(
       inFlightRef.current.set(key, task);
       await task;
     },
-    [projectPath, agentFilter],
+    [projectId, agentFilter],
   );
 
   const refresh = useCallback(async () => {
@@ -212,7 +212,7 @@ export function useConversationList(
   }, [runLoad]);
 
   const loadMore = useCallback(async () => {
-    if (!projectPath || !hasMore || loadMoreInFlightRef.current) return;
+    if (!projectId || !hasMore || loadMoreInFlightRef.current) return;
     if (loadState.loading || loadState.refreshing) return;
 
     loadMoreInFlightRef.current = true;
@@ -221,7 +221,7 @@ export function useConversationList(
     const offset = conversationsRef.current.length;
 
     try {
-      const page = await listConversations({ kind: 'project', path: projectPath }, agentFilter, {
+      const page = await listConversations({ kind: 'project', projectId }, agentFilter, {
         offset,
         limit: LIST_PAGE_SIZE,
       });
@@ -244,7 +244,7 @@ export function useConversationList(
       loadMoreInFlightRef.current = false;
       setLoadingMore(false);
     }
-  }, [projectPath, agentFilter, hasMore, loadState.loading, loadState.refreshing]);
+  }, [projectId, agentFilter, hasMore, loadState.loading, loadState.refreshing]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -255,7 +255,7 @@ export function useConversationList(
     return () => {
       cancelled = true;
     };
-  }, [isActive, projectPath, agentFilter, runLoad]);
+  }, [isActive, projectId, agentFilter, runLoad]);
 
   return {
     conversations,

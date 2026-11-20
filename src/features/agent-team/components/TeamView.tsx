@@ -1,0 +1,230 @@
+import React, { useCallback, useState } from 'react';
+
+import type { TeamRef, TeamSnapshot } from '@/shared/types/team';
+
+import MemberDetailDrawer from './MemberDetailDrawer';
+import TeamHeader from './TeamHeader';
+import TeamRoster from './TeamRoster';
+import TeamTaskSection from './TeamTaskSection';
+
+/**
+ * 「已经打开的那个队」的视图：头部（见 [`TeamHeader`]）+ closing 横幅 + 花名册 + 任务板。
+ *
+ * # 单一真相
+ *
+ * 一切来自 `TeamSnapshot`（后端 `view.rs` 推导一次的产物）。这里**不缓存**成员状态、
+ * 不派生「租约还剩多久」的时间流逝 —— 前端自己维护一份就会与快照漂移，而漂移是静默的。
+ *
+ * # `closing` 必须是一条横幅，不是一个徽标
+ *
+ * 「关到一半」意味着**成员进程还在跑**（有成员关不掉时后端整次 `team_close` 以 `Err` 结束，
+ * 团队停在 `closing`）。这是本面板唯一会主动提示「再来一次」的状态：横幅上带
+ * 「重试关闭」，走的是**同一条**关闭路径（同一次确认），不另开分支。
+ *
+ * # 「返回列表」不清 store
+ *
+ * 它是**导航**，不是关闭：`teamStore.teamId` 与快照都保留（视图切换由宿主持有）。
+ *
+ * # 成员详情抽屉的就近状态
+ *
+ * 「在开哪个成员」是**导航**（与 `TeamPanel` 的 `browsingFrom` 同族）：它不属团队状态、
+ * 不进 store —— 成员详情是「点开一次才拉」的载荷（任务 + 50 条事件），而 store 里存的就是
+ * “面板一直在看的那份快照”。放在本组件是因为花名册与抽屉的共同祖先就是这里：
+ * 再往上放就会把「导航状态」和「数据面」接到同一个存储里，而它们的生命周期不同。
+ *
+ * # 任务区是独立单元
+ *
+ * 头（`任务 N` + 视图切换 + 折叠）+ 看板 / 分配图 一起交给 [`TeamTaskSection`]：
+ * 那两个导航态（`taskView` / `boardCollapsed`）属于它自己，不该和「在读哪份快照」混在
+ * 同一个组件里（本组件已经承载头部接线 + 抽屉导航）。
+ */
+interface TeamViewProps {
+  /** 当前打开的团队（`teamStore.teamId`）。 */
+  teamId: string;
+  snapshot: TeamSnapshot | null;
+  loading: boolean;
+  /** `team_snapshot` 的失败原文。 */
+  error: string | null;
+  /** 有关闭请求在飞（按钮置灰，避免连点）。 */
+  closing: boolean;
+  /**
+   * 有恢复请求在飞（整队与成员级共用的**一个**实例：在飞期间新的恢复请求被忽略，
+   * 所以不存在两个恢复同时对同一批成员发命令）。只用来置灰头部的整队入口。
+   */
+  resuming: boolean;
+  onRefresh: () => void;
+  /** 回列表视图（**不清** store）。 */
+  onBack: () => void;
+  /** 请求关闭（二次确认由宿主弹）。 */
+  onRequestClose: (team: TeamRef) => void;
+  /** 打开某个成员的 PTY 终端（跨域动作，由 app 层 wrapper 注入）。 */
+  onOpenTerminal: (terminalId: string, title: string, agentId: string | undefined) => void;
+  /**
+   * 打开任务详情 = **中央 tab**（markdown 渲染；替代旧的底部抽屉）。
+   * 三参（teamId, taskId, title）一起给 —— 标题用于 tab 标题（建 tab 时快照）。
+   */
+  onOpenTask: (teamId: string, taskId: string, title: string) => void;
+  /**
+   * 把当前任务视图（看板 / 分配图）作为**中央 tab**打开（300px 列装不下整张板）。
+   * `undefined` = 宿主未注入跨域连线（按钮不渲染）。
+   */
+  onOpenBoard?: (view: 'board' | 'flow') => void;
+  /** 打开已退出成员的历史会话（`conversation` tab）。 */
+  onOpenHistory?: (agentId: string, agentSessionId: string, title: string) => void;
+  /**
+   * 恢复**一个**成员（`team_resume` + `memberId`）。
+   *
+   * `undefined` = 测试环境未注入：花名册的「恢复会话」按钮仍是可点的（判据在
+   * `openTerminalAction`），但点下去不动作 —— 与 `onOpenHistory` 同一口径。
+   */
+  onResumeMember?: (memberId: string) => void;
+  /** 恢复**整个队**（`team_resume` 不带 memberId）。`undefined` = 头部不渲染这个入口。 */
+  onResumeTeam?: () => void;
+  /**
+   * 改团队名（`team_rename`）：头部行内编辑提交一次「裁过且真的变了」的名字。
+   *
+   * 两参（`teamId` + 名字）而不是只给名字：入口在头部、落键在面板 —— 与
+   * `onOpenTask` 同一口径（下层不自己回答「是哪个队」）。
+   */
+  onRenameTeam?: (teamId: string, name: string) => void;
+}
+
+const TeamView: React.FC<TeamViewProps> = React.memo(
+  ({
+    teamId,
+    snapshot,
+    loading,
+    error,
+    closing,
+    resuming,
+    onRefresh,
+    onBack,
+    onRequestClose,
+    onOpenTerminal,
+    onOpenTask,
+    onOpenBoard,
+    onOpenHistory,
+    onResumeMember,
+    onResumeTeam,
+    onRenameTeam,
+  }) => {
+    const teamName = snapshot?.team.name ?? teamId;
+    /**
+     * 正在看详情的成员（`null` = 抽屉关闭）。
+     *
+     * （任务详情已改为中央 tab：点卡片 → `onOpenTask`，不再有 store 里的 detail。）
+     * 存的是 `{ teamId, memberId }` 而不是单独一个 id：换队时抽屉自动失效（下面的
+     * `showingMemberId`）。**不从 `memberId` 反解队** —— id 里虽然带 `@team` 后缀，
+     * 但那是身份而不是导航事实（红线 12：不许从字符串拼/反解身份）。
+     */
+    const [openMember, setOpenMember] = useState<{ teamId: string; memberId: string } | null>(null);
+
+    // 一个回调两处用（头部与横幅）：`TeamHeader` 是 memo 组件，内联箭头会让它每次重渲染。
+    const handleRequestClose = useCallback(() => {
+      onRequestClose({ teamId, name: teamName });
+    }, [onRequestClose, teamId, teamName]);
+
+    const handleOpenMember = useCallback(
+      (memberId: string) => {
+        // 任务详情已改为中央 tab（不再有底部抽屉与它抢坐标区）。
+        setOpenMember({ teamId, memberId });
+      },
+      [teamId],
+    );
+
+    const handleCloseMember = useCallback(() => {
+      setOpenMember(null);
+    }, []);
+
+    // `TeamHeader` 是 memo 组件：内联箭头会让它每次重渲染（与 `handleRequestClose` 同一条）。
+    const handleRenameTeam = useCallback(
+      (name: string) => onRenameTeam?.(teamId, name),
+      [onRenameTeam, teamId],
+    );
+
+    // 换队时抽屉自动失效（存的是打开那一刻的 `teamId`，不是从成员 id 反解的）。
+    const showingMemberId =
+      openMember !== null && openMember.teamId === teamId ? openMember.memberId : null;
+
+    return (
+      <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+        <TeamHeader
+          // 换队时**重新挂载**：行内改名的草稿是「这一行的编辑态」，它的生命周期就是挂载期
+          // （同 `openMember` 在换队时失效那条）。留着它的话，换队之后的第一次 Enter
+          // 可能提交上一条队的时间点草稿。
+          key={teamId}
+          teamId={teamId}
+          snapshot={snapshot}
+          closing={closing}
+          resuming={resuming}
+          onResumeTeam={onResumeTeam}
+          onRenameTeam={onRenameTeam === undefined ? undefined : handleRenameTeam}
+          onRefresh={onRefresh}
+          onBack={onBack}
+          onRequestClose={handleRequestClose}
+        />
+
+        {snapshot?.team.state === 'closing' ? (
+          // 「关到一半」= 还有成员进程没关掉。这是本面板唯一主动提示「再来一次」的地方。
+          <div
+            role="status"
+            className="flex items-center gap-2 border-b border-border bg-accent-orange/10 px-2 py-1"
+          >
+            <span className="min-w-0 flex-1 text-meta text-accent-orange">
+              Team is closing — some members did not shut down
+            </span>
+            <button
+              type="button"
+              onClick={handleRequestClose}
+              disabled={closing}
+              className="shrink-0 rounded px-1.5 py-0.5 text-micro font-semibold text-accent-orange hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-orange focus-visible:outline-none disabled:cursor-not-allowed disabled:text-text-muted"
+            >
+              Retry closing
+            </button>
+          </div>
+        ) : null}
+
+        {error ? (
+          <p role="alert" className="border-b border-border px-2 py-1 text-meta text-accent-red">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="min-h-0 flex-1 overflow-auto">
+          {snapshot === null && loading ? (
+            <p className="p-3 text-meta text-text-muted">Loading team snapshot…</p>
+          ) : null}
+          <TeamRoster
+            members={snapshot?.members ?? []}
+            onOpenTerminal={onOpenTerminal}
+            onOpenMember={handleOpenMember}
+            onOpenHistory={onOpenHistory}
+            onResumeMember={onResumeMember}
+          />
+          <div className="border-t border-border" />
+          {/* 任务区（头 + 看板 / 分配图 + 折叠）是一个单元，自己的两个导航态也住在那里 */}
+          <TeamTaskSection
+            tasks={snapshot?.tasks ?? []}
+            members={snapshot?.members ?? []}
+            tasksTruncated={snapshot?.tasksTruncated ?? false}
+            onOpenTask={onOpenTask}
+            onOpenBoard={onOpenBoard}
+          />
+        </div>
+
+        {showingMemberId === null ? null : (
+          <MemberDetailDrawer
+            memberId={showingMemberId}
+            onOpenTerminal={onOpenTerminal}
+            onOpenHistory={onOpenHistory}
+            onResumeMember={onResumeMember}
+            onClose={handleCloseMember}
+          />
+        )}
+      </div>
+    );
+  },
+);
+TeamView.displayName = 'TeamView';
+
+export default TeamView;

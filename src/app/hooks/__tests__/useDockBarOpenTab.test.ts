@@ -87,8 +87,18 @@ function addTerminalTab(projectId: string, agentId: string | null): string {
   return tab.id;
 }
 
+/**
+ * 「切项目」的能力由组合根注入（本 hook 跑在 Provider 树之外，见 `useDockBarOpenTab` 文件头）。
+ * 这里给一个 spy 断言它**没被**误用：本 hook 只处理「当前激活项目」里的 tab，永远不该切项目。
+ *
+ * 本文件的 `renderHook` 一律**不包 Provider** —— 这正是组合根形态（`useDockBarMove.test.ts`
+ * 同款）：hook 一旦改成 `useProjectActionsContext()`，首帧就抛，全部用例立刻变红。
+ * 真机表现是整窗进 ErrorBoundary，而包了 Provider 的单测永远是绿的。
+ */
+const selectProject = vi.fn();
+
 function renderOpenTab() {
-  const { result } = renderHook(() => useDockBarOpenTab());
+  const { result } = renderHook(() => useDockBarOpenTab(selectProject));
   return { open: result.current };
 }
 
@@ -397,6 +407,7 @@ function listedSession(projectId: string, overrides: Partial<SessionView> = {}):
   return {
     sessionId: `sess-${projectId}`,
     kind: 'chat',
+    attribution: { kind: 'user' },
     agentId: 'a1',
     workspaceKey: spaceOf(projectId),
     title: 'fix the parser',

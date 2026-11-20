@@ -48,6 +48,8 @@ pub async fn create_terminal_session(
         workspace,
         cwd,
         agent_id,
+        // 用户自己开的终端：不是任何成员的会话。
+        attribution: crate::live_sessions::SessionAttribution::User,
     };
     state
         .terminal_router
@@ -61,6 +63,10 @@ pub async fn create_terminal_session(
                 shell,
                 command,
                 resume_from,
+                // IPC 边界不暴露 argv / 环境注入：命令层只创建普通终端或任务终端。
+                // 团队成员会话由团队域的执行层自己构造 `TerminalLaunch`。
+                argv: None,
+                extra_env: Vec::new(),
             },
             app_handle,
         )

@@ -28,12 +28,138 @@ pub fn all_adapters() -> Vec<Box<dyn AgentSessionAdapter>> {
     ]
 }
 
+/// `agent_id` → 「续接这个原生会话」的 argv **片段**（`None` = 该 CLI 没有可用的续接形态）。
+///
+/// 返回的是**紧跟 program 之后**的参数片段，不含程序名：resume 语法是 per-CLI 事实，
+/// 只能来自适配器（红线 15），而「放在启动行的哪个位置」由团队执行层决定
+/// (`agent::team::execution::plan_member_spawn` 是唯一组合点)。
+///
+/// 2026-11-11 实测（`<cli> --help` / `<cli> resume --help`）：
+///
+/// | CLI | 片段 | 形态 |
+/// | --- | --- | --- |
+/// | claude-code / codebuddy / grok | `--resume <id>` | 全局 flag |
+/// | codex | `resume <id>` | **子命令**（必须紧跟 program，追加到末尾会被当成 PROMPT）|
+/// | pi / opencode | `--session <id>` | 全局 flag |
+/// | omp | `--resume=<id>` | flag=值 |
+/// | reasonix | `--dir <path> --resume=<id>` | 全局 flag（按项目目录定位）|
+/// | qoder / gemini | — | qoder 只在 `--print` 下有效、gemini 无 resume ⇒ `None` |
+///
+/// # 两个读者
+///
+/// ① 团队执行层拼启动 argv（传成员的真实工程路径）；
+/// ② `agent::team::view` 只回答「这个成员还回不回得来」（传空 `project_path`，
+///    只判 `is_some()`）—— 两处问的是同一个事实，所以只有这一个函数。
+#[must_use]
+pub fn resume_argv_for(
+    agent_id: &str,
+    native_session_id: &str,
+    project_path: &str,
+) -> Option<Vec<String>> {
+    all_adapters()
+        .into_iter()
+        .find(|adapter| adapter.agent_id() == agent_id)
+        .and_then(|adapter| adapter.resume_command(native_session_id, project_path))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::all_adapters;
+    use super::{all_adapters, resume_argv_for};
     use crate::agent::AgentManager;
     use crate::conversation::adapter::{is_owned_path, SessionDeleteSupport};
     use std::path::PathBuf;
+
+    /// **2026-11-11 实测台账**：每个已准入 CLI 的续接片段（`None` = 没有可用的续接形态）。
+    ///
+    /// 为什么覆盖 [`crate::agent::team::admission::ADMISSIONS`] **全表**而不是只列能当
+    /// 成员的几家：新增一行准入数据时本用例会红，作者必须当场回答「这个 CLI 能不能
+    /// 续接原来的会话」—— 而不是让它默认落进 `None`（= 团队恢复时被静默判成「只能新开」）。
+    ///
+    /// codex 那一行是 AC-6 的机器形式：`resume` 是**子命令**，必须 `["resume", id]`
+    /// 紧跟 program；写成 `[id, "resume"]` 或追加到末尾都会被它当成 PROMPT。
+    #[test]
+    fn the_resume_fragment_of_every_admissible_cli_is_the_smoke_tested_one() {
+        let expected: &[(&str, Option<&[&str]>)] = &[
+            ("claude-code", Some(&["--resume", "s1"])),
+            ("codebuddy", Some(&["--resume", "s1"])),
+            ("codex", Some(&["resume", "s1"])),
+            // gemini 无 resume；qoder 的 `-r/--resume` 只在 `--print` 下有效。
+            ("gemini", None),
+            ("grok", Some(&["--resume", "s1"])),
+            ("omp", Some(&["--resume=s1"])),
+            ("opencode", Some(&["--session", "s1"])),
+            ("pi", Some(&["--session", "s1"])),
+            ("qoder", None),
+            // reasonix 按项目目录定位会话 ⇒ `--dir` 也在片段里。
+            ("reasonix", Some(&["--dir", "/proj", "--resume=s1"])),
+        ];
+
+        // 集合相等：漏一行 = 本用例红（与删除能力台账同一形态）。
+        let mut declared: Vec<&str> = expected.iter().map(|(id, _)| *id).collect();
+        declared.sort_unstable();
+        let mut admitted = crate::agent::team::admission::admitted_agent_ids();
+        admitted.sort();
+        assert_eq!(
+            declared,
+            admitted.iter().map(String::as_str).collect::<Vec<_>>(),
+            "续接台账与准入表漂了：新增 CLI 必须在此表态能不能续接"
+        );
+
+        for (agent_id, fragment) in expected {
+            let actual = resume_argv_for(agent_id, "s1", "/proj");
+            let want = fragment.map(|args| {
+                args.iter()
+                    .map(|arg| (*arg).to_string())
+                    .collect::<Vec<_>>()
+            });
+            assert_eq!(
+                actual, want,
+                "{agent_id} 的续接片段与 2026-11-11 实测不符（改之前先重跑 `<cli> --help`）"
+            );
+        }
+    }
+
+    /// 片段里**只有参数**，没有程序名：拼装载体的位置只有一个
+    /// （`agent::team::execution::plan_member_spawn`），它会在前面自己放 program。
+    ///
+    /// 反例（本用例挡的正是它）：某个 adapter 图省事返回完整命令行 ⇒ 团队启动行里
+    /// 会多出一个可执行文件，症状是「起得来但参数全错」。
+    #[test]
+    fn a_resume_fragment_never_contains_the_program_name() {
+        const EXECUTABLES: &[&str] = &[
+            "claude",
+            "codex",
+            "pi",
+            "gemini",
+            "qoder",
+            "opencode",
+            "grok",
+            "omp",
+            "codebuddy",
+            "reasonix",
+        ];
+        for agent_id in crate::agent::team::admission::admitted_agent_ids() {
+            let Some(fragment) = resume_argv_for(&agent_id, "s1", "/proj") else {
+                continue;
+            };
+            for arg in &fragment {
+                assert!(
+                    !EXECUTABLES.contains(&arg.as_str()),
+                    "{agent_id}: 片段里出现了程序名 `{arg}`（只允许参数）：{fragment:?}"
+                );
+                assert_ne!(
+                    &agent_id, arg,
+                    "{agent_id}: 片段里出现了自己的 id：{fragment:?}"
+                );
+            }
+        }
+    }
+
+    /// 未知 id ⇒ `None`（不 panic）：可恢复性是**派生**字段，未知 CLI 只该得到「不能续接」。
+    #[test]
+    fn an_unknown_agent_id_has_no_resume_fragment() {
+        assert_eq!(resume_argv_for("not-a-cli", "s1", "/proj"), None);
+    }
 
     /// L2: every history adapter agent_id must exist in default AgentConfig ids.
     #[test]

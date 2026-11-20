@@ -1326,6 +1326,28 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(workspaceKe
     **回归测试**：`searchStore.test.ts` —— 发起 A → `clear()` → 发起 B → 再 resolve A，断言
     A 的路径**不得**出现在结果里（临时删掉 `requestId` 判定必须 RED）。
 
+14. **点侧栏里的一行 = 切**项目**+ 切单元**（2026-11-18）：侧栏列出所有项目的单元与会话，
+    只切单元就会出现「tab 在 B 的 tab 空间里被激活、中心视图还停在 A」——用户报的就是
+    「点了没反应」。判据只有一处：`features/live-sessions/utils/activateUnit.ts`（会话行与
+    团队行三个动作共用），两条硬约束：
+    - **项目相同 ⇒ 不切**。切项目的唯一序列（`ProjectActionsContext.onSelectProject` →
+      `useCrossTypeSelection.handleSelectProject`）会**清掉所有项目的激活单元**，local 分支
+      再清一次目标项目并回主仓 —— 对已激活项目重跑它是纯破坏（把用户刚点的工作树单元清回主仓）；
+    - **单元在切换序列结算之后落回**。`onSelectProject` 是 `async` 而类型曾是 `=> void`，
+      「先 select 后 set」今天成立只是因为它第一个 `await` 落在所有变更之后。类型已放宽为
+      `void | Promise<void>`，调用侧 `Promise.resolve(...)` 后接续 —— 否则任何一天有人在序列
+      中间插一个真正的 `await`，单元就会被清回主仓，而症状只是「点了没落到那个工作树」。
+
+    能力的**来源分两种形态，都是必填不给默认值**（静默降级成「只切单元」正是这个缺陷本身）：
+    树内消费者用 `useProjectActionsContext()`（缺 provider 抛错）；`App.tsx` 里的组合根装配
+    （`useDockBarOpenTab` → `useActivateSession`）在 provider **树外**，任何 `useContext` 首帧
+    即抛，所以它由 `useAppShell()` 的 `projectActionsValue.onSelectProject` **入参注入**。
+
+    上下文模块住在 `shared/contexts/ProjectActionsContext.tsx`（不是 `features/project/`）：
+    `live-sessions` 要用它而 `project` 又渲染侧栏子树，从 feature 门面取会成环
+    （`import/no-cycle` 实测命中）；`features/project/ProjectContext.tsx` 保留为 re-export 门面。
+
+
 ### 4. Validation & Error Matrix
 
 | 场景 | 输入 | 预期 | 错误处理 |
@@ -2333,6 +2355,74 @@ hasUserInput && isNamedSession &&
 
 单元角标与子列表同源（`sessionsByUnit` 是唯一分组入口，过滤在那里做），不会一个有一个没有。
 
+### 成员会话不归单元，团队行是**团队派生**的（2026-11-17）
+
+`isListedSession` 回答的是「有没有真标题 / 用户用没用过」，**不是**「归谁管」。接上团队域之后
+侧栏多了一条与它正交的判据：`isTeamMemberSession(session)` = `SessionView.attribution.kind ===
+'teamMember'`（归属在**起进程那一刻**写入，与标题无关 —— 一个已有标题的成员会话仍然是成员会话）。
+
+| 消费者 | 成员会话 | 理由 |
+| --- | --- | --- |
+| `sessionsByUnit`（单元的子列表） | **跳过** | 成员会话挂在**团队容器**下（见下），不归单元。两处都出现才是回归 |
+| `selectLatestSessionForUnit`（点种类图标「接回上一次」） | **跳过** | 点是用户的动作；接回一个成员的 PTY 等于让用户接管了他管不着的会话（生命周期只由团队域结束） |
+| `unitsWithListedActiveSession`（父行让出选中底） | **不计入** | 团队行已升到项目层，单元里没有它的子项；计入会让单元亮着而里面没有任何高亮 |
+| `foregroundTeamId(refs, sessions)` | **就是它的输入** | 前台会话的归属 → 团队 id，侧栏**团队行**据此标「当前」 |
+
+**团队行不能用会话派生**：以「队长会话」为身份的方案在队长进程死了 / 重启之后**刚好没有行**，
+而那正是最需要入口的时刻。它由 `team_list` 的一行派生（`teamsOfProject` 按 `projectId` 分组 ——
+**不按单元**，理由见下节），队长的 PTY 只是它
+的一个**动作**：活 ⇒ 接管（`openExistingTerminalTab`，不新建进程）；不活 ⇒ 把团队面板切到该队，
+由花名册的五态判据（`utils/memberTerminal.ts`）给出可行动作。侧栏**不重算**那五档 —— 它缺
+`resumable` / `sealed` 两列，重算必然造出第二套判据，而错分的症状是「以为在恢复，其实起了个
+没有团队 MCP 的裸 CLI」。
+
+两侧数据**互不镜像**（红线 17）：队名 / 状态 / 任务计数只来自 `team_list`；队长会话活没活只来自
+live 快照的 `state` + 归属；「谁是队长」只来自 `TeamSummary.leadMemberId`（`team_member.role`
+的投影）——`SessionAttribution` 里刻意**没有** `role`。
+
+#### 团队是**跨单元容器**，不是地点（2026-11-20）
+
+上一版把团队行放在单元内部（与会话并列）。那在「成员各自一棵树」之后必然坏：归属由
+`SessionAttribution`（`{kind:'teamMember', teamId, memberId}`）回答，**与它跑在哪棵树无关**；
+挂在某棵单元下会漏掉别的树里的成员，挂在每棵下则重复。所以团队升到**项目层**：
+
+```
+▾ 项目
+    ▾ local / ▾ wt/…          ← 地点（单元）：我的会话
+    ▾ [Users] refactor · 2/5   ← 容器（团队）：成员及其会话
+```
+
+七条判据：
+
+1. **两种二级行的语义不同，形状相同**：单元 = 「在这棵树里开终端」；团队 = 「那个队长/成员在
+   干什么」。团队行因此是 `SessionRow kind="team"` 的薄适配器 —— 同一份行高 / 内距 / 图标位 /
+   展开状态机，只有行首图标（`Users`，与 Team dock 同源）与右侧计数不同。**不**用 `⟦team⟧`
+   文字标记，也**不**在行里放状态文字（`open` / `Closing` 在 260px 列宽里要吃掉 40–60px，而它
+   回答的问题只在点进去看时才成立）；状态徽标仍在面板头与团队列表页。
+2. **成员名只来自花名册**（`TeamSnapshot.members`），会话只带 `memberId`。从 `w1@tm_1` 里拆名字
+   是第二套身份解析（红线 12 同族），会与改名漂移。所以折叠态不列成员，展开才按队读一次花名册。
+3. **花名册按队缓存**（`store/teamRosterStore`），**不复用 `teamStore.snapshot`** —— 那一位是
+   「面板当前打开的那个队」，侧栏展开 A 队不能把面板切走。缓存的是后端读接口的响应，
+   失效走既有团队脉冲（仍是唯一 `listen`）。
+4. **「第二级的当前行」只有一个派生点**：`utils/teamRowSelection::currentTeamIdOf` =
+   `foregroundTeamId(refs, sessions)` ∪ `workspaceStore.activeTeam`（带 `projectId`，且必须仍在
+   本项目清单里）。团队行用它要 id，单元行用它的布尔（`useTeamRowSelected`）决定让出高亮 ——
+   **两个消费者各算半个判据就是双亮 / 「当前」消失的全部成因**（2026-11 连坐两轮）。
+5. **`activeTeam` 只记用户动作**（点过哪一行），不参与判定；带项目分量使「A 项目的队选中而
+   B 项目的单元行全体让出」在状态里不可表达。它由 `setActiveWorkspace` / `clearActiveWorkspace`
+   清空（「用户选了某个单元」的全部入口）。
+6. **团队占用的工作树：冗余才隐藏**。判据是团队 `(projectId, workspaceWorktree)` 与该单元的
+   **身份**（`WorkspaceSession.of(...).key`，不是路径前缀）相等；但那一行只要有**用户自己的**
+   会话、或它正是**当前单元**，就必须留着 —— 隐藏它等于删掉那棵树唯一的入口（开终端 / 我的
+   会话 / 删除 / 重命名），也会让第二级没有任何一行是「当前」。
+7. **花名册复用 `team_snapshot`** 是已声明的取舍（成员 + ≤200 任务卡片，红线 4 的单次上限内）。
+   若实测有压力，换 `team_roster`（**删**这条路径，不并行两条）。
+
+
+**团队清单只有一个 store**（`features/agent-team/store/teamListStore.ts`）：侧栏常驻而面板不常驻，
+各拉一份就是同一资源两套轮询 + 两份「上次成功的结果」。请求口径是**全部项目**
+（`fetchTeamList(null)`），按项目裁剪在消费侧 —— 用激活项目顶替会把别的项目的团队凭空藏起来。
+
 **tab 是另一条判据**：`resolveTabTitle(tab, session)` 要求 `session.hasUserInput && isNamedSession`
 —— 直接用 `hasUserInput` 而不是 `isListedSession`，否则 chat 在首轮运行期间（侧栏还没列它）
 tab 会一直停在 `Agent Chat` 占位名上。tab 标题不能是空串，无名时回落创建期标题。tab 的
@@ -2383,6 +2473,15 @@ hook 未安装 / 过期 / 未受信时那一路**静默失效**。此前侧栏�
 Histor 恢复、终端 taskCommand）时触发。**禁止手造 `Tab`**：`id` 铸造、`scope` 构造、
 占位标题、配额与「创建即激活」都有唯一入口。
 
+## 场景：工作项 store 的异步纪律（2026-11-02）
+
+### 1. Scope / Trigger
+
+- Trigger：Tasks 面板的 Local 工作项是「乐观写入 + 可撤销删除 + 可切换项目」的列表，
+  这三件事各自会在**异步返回时**与本地状态打架。
+- Scope：`src/features/work-items/store/workItemsStore.ts`、`hooks/useWorkItems.ts`、
+  `hooks/useStagePlan.ts`。后端契约见 [../backend/work-items-domain.md](../backend/work-items-domain.md)。
+
 ### 2. Signatures
 
 ```ts
@@ -2396,6 +2495,23 @@ openAgentChatTab(workspace: WorkspaceSession, opts?: OpenChatTabOptions): string
 // 配额上限（唯一数字，shared 里，因为 editorStore 也要用）
 // src/shared/utils/terminalTabTitle.ts
 export const MAX_TERMINAL_TABS = 10;
+
+// store（feature 域状态，跨域直导走 @/features/work-items/store/workItemsStore）
+interface WorkItemsState {
+  itemsByProject: Record<string, WorkItem[] | undefined>;  // undefined = 还没加载过
+  plan: StagePlan | null;
+  loading: Record<string, boolean>;
+  errors: Record<string, string | null>;
+  load / loadPlan / create / update
+  transition(id, to, projectId): Promise<void>
+  deleteWithUndo(id, projectId): Promise<void>
+  undoDelete(projectId): boolean
+  reset(): void
+}
+
+// hooks
+useWorkItems(projectId: string | null): { items; loading; error; actions }   // actions 引用稳定
+useStagePlan(): { plan; loading }
 ```
 
 ### 3. Contracts
@@ -2431,3 +2547,122 @@ export const MAX_TERMINAL_TABS = 10;
   「terminal 字段（keep）」两组。
 - 端到端：`live-sessions/components/__tests__/UnitSessionList.test.tsx`（点击会话行 ⇒
   接回 / 续写 / 重建）。
+
+1. **乐观流转用「本地快照」回滚，不重拉列表**。`transition` 先改 stage + 把 `updatedAt`
+   提到现在（卡片立刻换列并置顶），失败时把**保存下来的原始项按原索引插回**。
+   重拉列表在失败路径上是错的：一次拖拽失败会顺带丢掉期间的所有本地变更，而且慢一个往返。
+2. **删除的撤销是「延迟提交」，不是「重新创建」**。`deleteWithUndo` 立刻移出列表，
+   5000ms 后才真正 `deleteWorkItem`；窗口内 `undoDelete` 取消定时器并**按原索引放回**。
+   重新 `create` 会得到新 id / 新 `createdAt`（偷偷改数据，且后端没有 restore 命令）。
+3. **同一项目的 `load` 去重**：`inFlight: Map<projectId, Promise>` 复用而非并发发两次 IPC。
+   `loadPlan` 同理（全局一份 plan）。
+4. **`reset()` 递增 generation，迟到响应据此丢弃**。切项目后旧的列表响应写进新槽位 =
+   同一项目看见另一个项目的任务（与 `file/store` 的 owner 同一纪律）。
+5. **错误位只给「没有调用方可以 catch」的失败**：`load` 与 5 秒后的延迟提交写
+   `errors[projectId]`；`create/update/transition` 一律 `throw` 给 UI。
+   两者都做 = 一次失败报两遍，且常驻横幅会把一次拖拽失败说成"这个项目坏了"。
+   `deleteWithUndo` **不在** throw 名单里：它自己不发 IPC（见第 2 条），失败发生在 5 秒后的
+   `commitDelete` 里，那时已经没有调用方能 catch。它的 Promise 只会因「没有绑定项目」这类
+   **编程错误**而 reject（同 `useWorkItems` 的 `noProject()`）。
+6. **`loading` 把"还没问过"也算加载中**：`loading[x] || (itemsByProject[x] === undefined &&
+   errors[x] == null)`。只信 `loading[x]` 会让首帧同时满足「空 + 不加载 + 无错误」→ 空态闪一下
+   （同 `useTeamList` 的三态纪律）。失败过的空槽位不算，否则错误态永远转圈。
+7. **两个计时器会漂移**：`shared/hooks/useToast` 是 3s 且无动作按钮，撤销窗口是 5s。
+   所以「还能不能撤销」只以 `undoDelete()` 的返回值为准（`false` = 窗口已过），
+   不看 toast/UndoBar 是否还在屏幕上。
+   **但 `UndoBar` 自己的计时器必须按被删项重起**：宿主只渲染一个条子（`title` 变、组件不卸载），
+   若 effect 不把 `title` 放在依赖里，第二条会继承第一条的起点 —— 它在 t=5s 收起，而 store 里第二条
+   的窗口到 t=6s 才关，中间那一秒删除仍可撤销、界面上已经没有入口（同 `useToast` 换消息时
+   `clearTimeout` 再排钟）。
+8. **延迟提交失败 → 行自己回来**。列表必须容错「突然多一行」，不要当新建卡片做入场动画
+   或自动滚动（那是新建的语义）。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 期望 | 风险 |
+| --- | --- | --- |
+| `load` 失败 | 保留旧列表 + 写 `errors` | 清空列表 = 一次网络抖动变成"数据没了" |
+| 同项目并发 `load` | 共用同一个 Promise | 两次写槽位，后到的可能是旧数据 |
+| `transition` 失败 | 回滚到原项原索引并 `throw` | 只回滚 stage 不回滚位置 → 卡片乱序 |
+| 窗口内 `undoDelete` | 恢复原索引、`deleteWorkItem` **一次都不调用** | 先删后建 = 数据被悄悄改写 |
+| 窗口外 `undoDelete` | 返回 `false`，不改状态 | 返回 `true` 会让 UI 谎报撤销成功 |
+| 连点同一行删除 | 不提交两次（同 key 覆盖） | 两次 IPC + 第二次 404 |
+| `plan === null` | 不画阶段轨（全灰/占位） | 回退写死五列 = 自定义轨永远不生效 |
+| 列表顺序 | 渲染期不重排，信 `updatedAt DESC` | 组件内排序与 store 的乐观置顶打架 |
+
+### 5. Good/Base/Bad Cases
+
+- Good：点 stage rail → 卡片立刻换列 → IPC 失败 → 卡片回原位 + toast 报错。
+- Base：删除 → 卡片消失 → 5s 后静默落库（用户不操作也就生效了）。
+- Bad：删除后「撤销」通过再 `create` 一条实现（新 id、新时间、可能重复）；或 `transition`
+  失败后 `load()` 全量重拉。
+
+### 6. Tests Required
+
+store 层（`store/__tests__/workItemsStore.test.ts`，mock **api 层**而非 `invoke`）：
+乐观置顶 / 失败回滚原索引 / 并发 load 只发一次 / 删除窗口内撤销零提交 / 窗口外返回 false /
+延迟提交失败回位并写错误位 / `reset` 清全部定时器 / **`reset` 后迟到的响应被丢弃**（列表 /
+阶段轨 / 在飞的删除失败 —— 三条各持一个 `mine !== generation` 分支，它们是同一条纪律的三条腿）/
+**窗口内刷新后再次删除只提交一次**（后端在窗口内仍有那一行，刷新会让它复活）。
+
+组件层：`components/__tests__/UndoBar.test.tsx` —— 5 秒到点收起 + **换一条被删项时计时器重起**
+（宿主只渲染一个条子，继承上一条的起点会让第二条的入口早于它的窗口消失）。
+
+hooks 层：`projectId = null` 不发请求且 `items` 引用稳定 / 首帧加载中 / `actions` 跨渲染同引用。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+```ts
+catch (err) {
+  await get().load(projectId);   // 回滚 = 全量重拉（丢本地变更 + 慢一个往返）
+  throw err;
+}
+```
+#### Correct
+```ts
+catch (err) {
+  set((s) => patchProject(s, projectId, (list) => insertAt(list, original, index)));
+  throw err;                     // 由 UI 决定提示形态
+}
+```
+
+## 场景：团队 store 的单一数据面（2026-11-11）
+
+### 1. Scope / Trigger
+
+- Trigger：同一支队伍同时出现在**两个观察位**（右侧 dock 的 Team 面板、中心区的看板 / 任务
+  详情 tab）。两处各自持有一份快照就会立刻分叉（面板里成员是 Idle、tab 里还是 Running）。
+- Scope：`src/features/agent-team/`（`store/teamStore.ts`、`hooks/useTeam*.ts`）、
+  `app/dock/wrappers/TeamPanelWrapper.tsx`、`shared/types/tab.ts` 的 `TeamBoardTabData` /
+  `TeamTaskTabData`。后端契约见 [../backend/team-domain.md](../backend/team-domain.md) §8。
+
+### 2. Signatures
+
+```ts
+// 唯一数据面：快照 + 当前打开的队伍
+interface TeamStoreState {
+  snapshot: TeamSnapshot | null;      // 唯一真相：由一次 team_snapshot 覆盖
+  openTeam: (teamId: string) => Promise<void>;
+  refresh: () => Promise<void>;
+  reset(): void;
+}
+
+// 中心 tab 的两个入口（只搬「打开哪支队、哪个视图」，不搬数据）
+interface TeamBoardTabData { kind: 'team-board'; teamId: string; teamName: string; view: 'board' | 'flow' }
+interface TeamTaskTabData  { kind: 'team-task';  teamId: string; taskId: string; label: string }
+```
+
+### 3. Contracts
+
+1. **快照是唯一真相，事件只是触发器**。`AGENT_TEAM_EVENT`（`shared/events.ts`，红线 5：与
+   `agent::team::events` 逐字同名）的载荷只有 `{ rev }`：收到后**重取一次快照**，不在前端
+   重建状态机。前端因此不需要补播 / 乱序处理 —— 那是后端的账。
+2. **tab 只持有地址，不持有快照**。`TeamBoardTabData` / `TeamTaskTabData` 里没有成员、没有
+   任务列表：tab 挂载时若 store 不在该队上，`openTeam` 把 store 拉过去（同一事实两个观察位）。
+   详情是**点开才拉**的载荷（红线 4），关 tab 即弃。
+3. **团队终端的接回走 `attachSessionId`**。后端建好 PTY 并登记进 live-sessions，前端只渲染：
+   `openExistingTerminalTab` 写入 `tab.data.attachSessionId`，由 `TerminalViewBase` 改走
+   `attachLiveSession`（探活 + 关分离态），`terminalCache` 依 `attached` **不拥有**该进程。
+   不要用「让 tab 自己持一个后端 session id」的老接管写法：那会在关 tab 时误杀团队会话
+   （红线 17 的那类第二真相源）。

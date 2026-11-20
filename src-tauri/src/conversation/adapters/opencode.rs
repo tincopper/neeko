@@ -61,7 +61,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
 
     fn parse_all_metas_for_project(
         &self,
-        project_path: Option<&str>,
+        project_roots: Option<&[PathBuf]>,
     ) -> Option<Result<Vec<(ParsedMeta, PathBuf)>>> {
         let root = self.session_root();
         if !root.exists() {
@@ -85,7 +85,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
             }
 
             // Full-DB fingerprint only applies when no project filter (filter changes result set).
-            if project_path.is_none() {
+            if project_roots.is_none() {
                 // SQLite 的 WAL 侧文件也参与指纹：新提交先落 `-wal`，只盯主文件会命中旧快照。
                 if let Some(sig) = crate::conversation::scan_cache::source_signature_with_sidecars(
                     path,
@@ -115,7 +115,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                 }
             }
 
-            match read_db(path, project_path) {
+            match read_db(path, project_roots) {
                 Ok(sessions) => results.extend(sessions),
                 Err(e) => {
                     log::error!("Failed to parse OpenCode DB {}: {e}", path.display());
@@ -191,12 +191,12 @@ impl AgentSessionAdapter for OpenCodeAdapter {
 /// 打开 DB 并按存储布局分派。判据见 `store.rs`，分派点全仓仅此一处。
 pub(super) fn read_db(
     db_path: &Path,
-    project_path: Option<&str>,
+    project_roots: Option<&[PathBuf]>,
 ) -> Result<Vec<(ParsedMeta, PathBuf)>> {
     let (conn, store) = store::open_detected(db_path)?;
     match store {
-        Store::V1 => parse_opencode_db(&conn, db_path, project_path),
-        Store::V2 => v2::parse_db(&conn, db_path, project_path),
+        Store::V1 => parse_opencode_db(&conn, db_path, project_roots),
+        Store::V2 => v2::parse_db(&conn, db_path, project_roots),
     }
 }
 

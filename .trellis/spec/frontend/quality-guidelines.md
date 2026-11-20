@@ -57,6 +57,11 @@ layout/DockRegistryContext ← app 用 DockRegistryProvider 注入；DockLayout/
 2. `app/dock/registry.ts` 增加 UI binding（title/icon/lazy/minPanelSize）
 3. 需要 props 胶水时改 `app/dock/wrappers/<Panel>Wrapper.tsx`（每面板一文件，独立 lazy chunk；业务编排下沉到 feature hooks）
 4. **不要**在 `layout/` 增加 feature/app import
+5. 跑 `src/app/dock/__tests__/registry.test.ts` —— 它把「meta 有多少条＝binding 有多少条」与
+   「每个 `icon` 名都能在 `dockPanelIcons` 里解析」钉住。这不是冗余断言：
+   `buildDockPanelRegistry()` 在**模块加载时**就 `throw`（`[dock] missing UI binding for panel`），
+   而它是 `AppProviders` 的顶层 import —— 漏一条的表现是**白屏**；`icon: string` 拼错则是运行时
+   一个空图标（类型层合法）。2026-11-02 新增 `tasks` 面板时补的。
 
 ESLint：`import/no-restricted-paths` 禁止 layout→features/app；**无** dockPanels 文件级例外。
 

@@ -154,19 +154,34 @@ pub fn resolve_encoded_project_dirs(
 
 /// Convenience: build discovery roots for path-encoded agents.
 ///
-/// - `None` project → `None` (caller should full-walk)
-/// - `Some(project)` → `Some(roots)` (possibly empty = early stop)
+/// - `None` → `None` (caller should full-walk)
+/// - `Some(roots)` → `Some(dirs)` for **every** root of the project (possibly empty =
+///   early stop). The order of `roots` does not matter; identical encodings are
+///   collapsed so the same directory is never walked twice.
+///
+/// 输入是项目的**注册根集合**（主 checkout + 全部 linked worktree，见
+/// [`crate::common::git::ProjectScope::roots`]）而不是一个路径：CLI 的目录编码是**逐根**的，
+/// 只在项目根上编码会让落在外部工作树里的会话一个都扫不到（本任务修复的缺陷形态）。
 #[must_use]
 pub fn discovery_roots_for(
     session_root: PathBuf,
-    project_path: Option<&str>,
+    project_roots: Option<&[PathBuf]>,
     style: EncodeStyle,
 ) -> Option<Vec<PathBuf>> {
-    let project = project_path?;
-    if project.trim().is_empty() {
-        return Some(Vec::new());
+    let project_roots = project_roots?;
+    let mut found: Vec<PathBuf> = Vec::new();
+    for root in project_roots {
+        let root = root.to_string_lossy();
+        if root.trim().is_empty() {
+            continue;
+        }
+        for dir in resolve_encoded_project_dirs(&session_root, &root, style) {
+            if !found.contains(&dir) {
+                found.push(dir);
+            }
+        }
     }
-    Some(resolve_encoded_project_dirs(&session_root, project, style))
+    Some(found)
 }
 
 #[cfg(test)]
@@ -249,9 +264,77 @@ mod tests {
     fn discovery_roots_empty_when_root_missing() {
         let roots = discovery_roots_for(
             PathBuf::from("/definitely/missing/neeko-scope-test"),
-            Some("/Users/tomgs/proj"),
+            Some(&[PathBuf::from("/Users/tomgs/proj")]),
             EncodeStyle::Claude,
         );
         assert_eq!(roots, Some(vec![]));
+    }
+
+    /// 空根集合（`Some(&[])`）= 早停，不是全量：项目级扫描的根一定来自登记表，
+    /// 一个都没有意味着「这个项目没有任何已知工作区」。
+    #[test]
+    fn discovery_roots_empty_set_stops_early() {
+        assert_eq!(
+            discovery_roots_for(PathBuf::from("/tmp"), Some(&[]), EncodeStyle::Claude),
+            Some(vec![])
+        );
+        // 空白根同样不参与编码（工程里没有「空白目录」这种工作区）。
+        assert_eq!(
+            discovery_roots_for(
+                PathBuf::from("/tmp"),
+                Some(&[PathBuf::from("   ")]),
+                EncodeStyle::Claude
+            ),
+            Some(vec![])
+        );
+    }
+
+    /// 项目的**每一个**根都要编码：只拿第一个会让工作树的会话永远扫不到。
+    ///
+    /// 夹具路径由 `tempdir()` 推导（红线 13）；两套编码目录预先建出来。
+    #[test]
+    fn discovery_roots_cover_every_root_of_the_project() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        let project = root.join("proj");
+        // 工作树刻意**不是**项目根的前缀扩展（`proj-wt` 会命中 `proj-` 前缀规则，那样即使
+        // 只编码第一个根也能"碰巧"找到它 —— 用例就证明不了「每个根都编码」）。Neeko 的默认
+        // 布局正是这种形态：`~/.neeko/worktrees/<name>`。
+        let worktree = root.join("neeko-worktrees").join("wt");
+        let project_dir = root.join(encode_claude_project_path(&project.to_string_lossy()));
+        let worktree_dir = root.join(encode_claude_project_path(&worktree.to_string_lossy()));
+        std::fs::create_dir_all(&project_dir).unwrap();
+        std::fs::create_dir_all(&worktree_dir).unwrap();
+
+        let found = discovery_roots_for(
+            root.to_path_buf(),
+            Some(&[project.clone(), worktree.clone()]),
+            EncodeStyle::Claude,
+        )
+        .expect("scoped discovery");
+
+        assert!(found.contains(&project_dir), "项目根编码目录：{found:?}");
+        assert!(found.contains(&worktree_dir), "工作树编码目录：{found:?}");
+        assert_eq!(found.len(), 2, "每个根恰好一套目录：{found:?}");
+    }
+
+    /// 同一个目录出现两次（项目根与工作树是同一个路径 / 尾部斜杠不同）⇒ 只走一次。
+    #[test]
+    fn discovery_roots_dedupe_identical_encodings() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        let project = root.join("proj");
+        let encoded = root.join(encode_claude_project_path(&project.to_string_lossy()));
+        std::fs::create_dir_all(&encoded).unwrap();
+        let trailing = PathBuf::from(format!("{}/", project.to_string_lossy()));
+
+        let found = discovery_roots_for(
+            root.to_path_buf(),
+            Some(&[project, trailing]),
+            EncodeStyle::Claude,
+        )
+        .expect("scoped discovery");
+
+        assert_eq!(found, vec![encoded], "同一个编码目录只能出现一次");
     }
 }

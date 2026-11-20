@@ -167,6 +167,10 @@ function toEnvelope(input) {
     hints: {
       neeko_session_id: process.env.NEEKO_SESSION_ID || null,
       project_id: process.env.NEEKO_PROJECT_ID || null,
+      // 团队身份（成员 PTY 注入）：缺这两条时上报会被判成「非团队上下文」并静默跳过，
+      // 成员状态永不推进（判据：templates::tests 的 team identity env 守卫）。
+      team_id: process.env.NEEKO_TEAM_ID || null,
+      team_member_id: process.env.NEEKO_TEAM_MEMBER_ID || null,
     },
   };
 }

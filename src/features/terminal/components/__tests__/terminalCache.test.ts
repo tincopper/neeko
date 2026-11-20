@@ -21,6 +21,8 @@ import { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
 import { terminalAddress } from '../terminalAddress';
 import {
+  destroyTerminalsForTab,
+  refreshTerminalEntry,
   switchAgentInSessionTerminal,
   wslRebuildCallbacks,
   wslTerminalCache,
@@ -83,6 +85,62 @@ describe('switchAgentInSessionTerminal', () => {
     expect(term.dispose).toHaveBeenCalled();
     expect(closeSessionMock).toHaveBeenCalledWith('s1');
     expect(wslTerminalCache.has(key)).toBe(false);
+    expect(rebuild).toHaveBeenCalled();
+  });
+});
+
+describe('接管来的会话不归 entry 所有（关闭只销毁缓存，不杀进程）', () => {
+  const key = terminalAddress(session, 'tab2');
+
+  function seed(attached: boolean): void {
+    wslTerminalCache.set(key, {
+      term: makeTerm(),
+      fitAddon: {} as FitAddon,
+      element: document.createElement('div'),
+      sessionId: 's-lead',
+      unlisten: null,
+      unlistenOutput: null,
+      unlistenClosed: null,
+      inputController: null,
+      attached,
+    });
+  }
+
+  beforeEach(() => {
+    useProjectStore.setState({ projects: [], activeProject: null });
+  });
+
+  afterEach(() => {
+    wslTerminalCache.clear();
+    wslRebuildCallbacks.clear();
+    wslWrapperRefs.clear();
+    closeSessionMock.mockClear();
+  });
+
+  it('attached 的 entry 被销毁时不下发 close_terminal_session', () => {
+    seed(true);
+    destroyTerminalsForTab(session, 'tab2');
+
+    expect(wslTerminalCache.has(key)).toBe(false);
+    expect(closeSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('自己拥有的 entry 被销毁时照旧回收 PTY', () => {
+    seed(false);
+    destroyTerminalsForTab(session, 'tab2');
+
+    expect(wslTerminalCache.has(key)).toBe(false);
+    expect(closeSessionMock).toHaveBeenCalledWith('s-lead');
+  });
+
+  it('attached 的 entry 自愈重建时也不杀进程，但仍触发重建', () => {
+    const rebuild = vi.fn();
+    seed(true);
+    wslRebuildCallbacks.set(key, rebuild);
+
+    refreshTerminalEntry(key);
+
+    expect(closeSessionMock).not.toHaveBeenCalled();
     expect(rebuild).toHaveBeenCalled();
   });
 });

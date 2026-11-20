@@ -32,20 +32,22 @@ fn enabled_scan_agent_ids(state: &AppStateWrapper) -> Option<Vec<String>> {
 
 /// Scan agents for conversations, updating the in-memory cache.
 ///
-/// Prefer passing `project_path` so bulk adapters (OpenCode) and path-encoded
-/// adapters (Claude / Pi / OMP / Reasonix) can restrict discovery to the active
-/// project. Async + `block_in_place` keeps heavy WalkDir / SQLite work off the
+/// Prefer passing `project_id` so bulk adapters (OpenCode) and path-encoded
+/// adapters (Claude / Pi / OMP / Reasonix) can restrict discovery to that project —
+/// **all** of its registered roots (main checkout + every linked worktree), not just
+/// one path. Async + `block_in_place` keeps heavy WalkDir / SQLite work off the
 /// cooperative async worker.
 ///
 /// When `agent_id` is `None`, only **enabled** agents from the agent registry
 /// are scanned (disabled agents are skipped).
 ///
 /// Emits `conversation-scan-progress` events while scanning:
-/// `{ agentId, phase: "start"|"done"|"error", sessionsFound, projectPath }`.
+/// `{ agentId, phase: "start"|"done"|"error", sessionsFound, projectPath }` —
+/// `projectPath` 是**显示用**的代表根（项目根），不是范围判据。
 #[tauri::command]
 pub async fn scan_conversations(
     agent_id: Option<String>,
-    project_path: Option<String>,
+    project_id: Option<String>,
     app: AppHandle,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<ScanReport>, AppError> {
@@ -61,11 +63,18 @@ pub async fn scan_conversations(
             })));
     }
 
+    // 项目身份 → 根集合（唯一解析入口）。`None` = 全量遍历（既有语义）。
+    // 解析含 `git worktree list`（阻塞 I/O，内部已在阻塞池里）⇒ 必须在 `block_in_place` 之前。
+    let roots: Option<Vec<std::path::PathBuf>> = match &project_id {
+        Some(id) => Some(state.project_scope(id).await?.roots().to_vec()),
+        None => None,
+    };
+
     let result = tokio::task::block_in_place(|| match agent_id {
         Some(aid) => {
             let report = state
                 .conversation_manager
-                .scan_agent(&aid, project_path.as_deref())
+                .scan_agent(&aid, roots.as_deref())
                 .map_err(AppError::from)?;
             Ok(vec![report])
         }
@@ -73,7 +82,7 @@ pub async fn scan_conversations(
             let only = enabled_scan_agent_ids(&state);
             state
                 .conversation_manager
-                .scan_agents(project_path.as_deref(), only.as_deref())
+                .scan_agents(roots.as_deref(), only.as_deref())
                 .map_err(AppError::from)
         }
     });
@@ -98,7 +107,8 @@ pub async fn scan_conversations(
 /// `scope` 是单值判别联合（[`ConversationListScope`]），不是「两个可选过滤参数」：
 /// 项目级与单元级对同一条会话的 `cwd` 给出**不同**答案，并存就必须定优先级 ——
 /// 那条隐式优先级会让「调用方要单元、却被按项目过滤」的请求静默通过。
-/// 单元级的根由 [`AppStateWrapper::resolve_unit_scope`] 解析（worktree 归属校验的唯一入口）。
+/// 项目级收**项目身份**，根集合由 [`AppStateWrapper::project_scope`] 解析；
+/// 单元级的根由 [`AppStateWrapper::resolve_unit_scope`] 解析（两处都是各自唯一的校验入口）。
 #[tauri::command]
 pub async fn list_conversations(
     scope: ConversationListScope,
@@ -125,7 +135,10 @@ pub async fn list_conversations(
         )
     };
     let page = match &scope {
-        ConversationListScope::Project { path } => page(ListScope::Project(path)),
+        ConversationListScope::Project { project_id } => {
+            let project = state.project_scope(project_id).await?;
+            page(ListScope::Project(&project))
+        }
         ConversationListScope::Unit { workspace } => {
             // 地址 → 单元归属（唯一入口：`resolve_workspace_target` → `UnitScope::resolve`）。
             let unit = state.resolve_unit_scope(workspace).await?;
@@ -190,19 +203,29 @@ pub async fn search_conversation_messages(
 }
 
 /// Search conversations by title or preview text.
+///
+/// `project_id` 是**项目身份**（不是路径）：`Some` 时只搜落在该项目任一注册根下的会话
+/// （主 checkout + 全部 linked worktree），`None` = 全量。
 #[tauri::command]
-pub fn search_conversations(
+pub async fn search_conversations(
     query: String,
-    project_path: Option<String>,
-    state: State<AppStateWrapper>,
+    project_id: Option<String>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<ConversationMeta>, AppError> {
-    let _ = state
-        .conversation_manager
-        .hydrate_from_disk_index_if_empty();
+    // Cold-start hydrate：与 `list_conversations` 同一模式（`block_in_place`，红线 3）。
+    tokio::task::block_in_place(|| {
+        let _ = state
+            .conversation_manager
+            .hydrate_from_disk_index_if_empty();
+    });
 
+    let project = match &project_id {
+        Some(id) => Some(state.project_scope(id).await?),
+        None => None,
+    };
     state
         .conversation_manager
-        .search(&query, project_path.as_deref())
+        .search(&query, project.as_ref())
         .map_err(AppError::from)
 }
 

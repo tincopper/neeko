@@ -49,15 +49,39 @@ fn bulk_cache_signature_tracks_wal_sidecar() {
 fn should_filter_opencode_db_by_project_path() {
     let dir = TempDir::new().unwrap();
     let db_path = create_opencode_fixture(&dir);
-    let only_alpha = parse_v1(&db_path, Some("/projects/test")).unwrap();
+    let only_alpha = parse_v1(&db_path, Some(&[PathBuf::from("/projects/test")])).unwrap();
     assert_eq!(only_alpha.len(), 1);
     assert_eq!(
         only_alpha[0].0.project_path.as_deref(),
         Some("/projects/test")
     );
 
-    let other = parse_v1(&db_path, Some("/projects/other")).unwrap();
+    let other = parse_v1(&db_path, Some(&[PathBuf::from("/projects/other")])).unwrap();
     assert!(other.is_empty());
+
+    // 范围是**根集合**（主 checkout + 工作树）：只看第一个根会让另一个工作区的会话整批消失。
+    let second_root = parse_v1(
+        &db_path,
+        Some(&[
+            PathBuf::from("/projects/other"),
+            PathBuf::from("/projects/test"),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(second_root.len(), 1, "第二个根下的会话必须仍然被检出");
+    let both = parse_v1(
+        &db_path,
+        Some(&[
+            PathBuf::from("/projects/other"),
+            PathBuf::from("/projects/test"),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(both.len(), 1, "并集语义（不是交集）");
+    assert!(
+        parse_v1(&db_path, Some(&[])).unwrap().is_empty(),
+        "空根集合 = 扫 0 条（不是全收）"
+    );
 }
 
 #[test]

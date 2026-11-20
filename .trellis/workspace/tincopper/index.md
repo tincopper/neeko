@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-9.md`
-- **Total Sessions**: 464
-- **Last Active**: 2026-11-12
+- **Total Sessions**: 487
+- **Last Active**: 2026-11-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,8 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~726 | Active |
-| `journal-8.md` | ~1971 | Archived |
+| `journal-9.md` | ~1505 | Active |
+| `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
 | `journal-5.md` | ~1958 | Archived |
@@ -37,13 +37,43 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 487 | 2026-11-20 | 侧栏第二级「当前行」收成一份判据 + 团队占位工作树的隐藏边界 | - | `feat-team` |
+| 486 | 2026-11-20 | 团队上移为跨单元容器（成员会话进侧栏） | - | `feat-team` |
+| 485 | 2026-11-20 | 侧栏团队行去按钮 + 看板 tab 记住视图 | `df475fc7` | `feat-team` |
+| 484 | 2026-11-18 | 侧栏点击切项目（跨项目按了没反应） | `07e33337` | `feat-team` |
+| 483 | 2026-11-18 | 接回失败不得静默降级成新建会话 | `397f8b70` | `feat-team` |
+| 482 | 2026-11-17 | 侧栏团队入口：团队行 + 队长会话 + 看板入口 | - | `feat-team` |
+| 481 | 2026-11-17 | 团队成员会话的侧栏生命周期修复 + 侧栏团队入口规划 | - | `feat-team` |
+| 480 | 2026-11-17 | team-panel-density: A+B 档落地（原型 → 实现 → 复核） | - | `feat-team` |
+| 479 | 2026-11-17 | review fixes: team rename projection / name validator / contract cleanup | - | `feat-team` |
+| 478 | 2026-11-16 | team: 建队面板页首先填团队名 | - | `feat-team` |
+| 477 | 2026-11-16 | team: 删除分配图头部图例 | - | `feat-team` |
+| 476 | 2026-11-16 | team: 改名同步已打开的 tab 标题 | - | `feat-team` |
+| 475 | 2026-11-16 | team: 面板头也能改名 + 双击手势 | - | `feat-team` |
+| 474 | 2026-11-16 | team: 团队改名（team_rename + 列表行内编辑） | - | `feat-team` |
+| 473 | 2026-11-16 | team: 建队时可自定义团队名称 | - | `feat-team` |
+| 472 | 2026-11-16 | team: 成员图标复用 tab 栏的 agent 图标 | - | `feat-team` |
+| 471 | 2026-11-16 | team: 成员级恢复会话即打开会话 | - | `feat-team` |
+| 470 | 2026-11-15 | 实施 handoff-by-reference：共享区 + artifacts 可写 + 拒绝截断（TDD） | - | `feat-team` |
+| 469 | 2026-11-15 | 实施 task-actions retry 闭环（TDD） | - | `feat-team` |
+| 468 | 2026-11-15 | 关账两个滞留任务：session-resume 与 codex-member-mcp | `55146c83`, `b2aa5eae` | `feat-team` |
+| 467 | 2026-11-15 | team 分配流程梳理与收尾：关账 assignee-and-graph、修正过时文档 | `e26b749b`, `4e8a41ad`, `50bf95e2` | `feat-team` |
+| 466 | 2026-11-13 | 第3轮：只启动被指派到的成员（assignee 必填/计划成员/spawn 人数护栏/队长禁 claim），并收口第2轮视口抽取 | - | `feat-team` |
+| 465 | 2026-11-13 | 团队任务板：assignee（派活即指派）+ 分配图去认领边；规划 handoff-by-reference / task-actions | - | `feat-team` |
 | 464 | 2026-11-12 | File drop: insert ports replace guessed pane identity | `f480da09` | `main` |
 | 463 | 2026-11-12 | LSP install lifecycle: probe where the binary lands, tear down on project removal | `3993f6ef` | `main` |
 | 462 | 2026-11-12 | LSP IPC budget, dropped capability claim, cross-stack event guard | `faaab45e` | `main` |
 | 461 | 2026-11-12 | LSP document identity: restart keeps registry and ownership | `4947b13c` | `main` |
 | 460 | 2026-11-12 | LSP request channel: typed failure classification, streak, bounded waits | `9bc2bc69` | `main` |
 | 459 | 2026-11-12 | LSP close protocol: single sequence, bounded waits, audit-driven T0 | `a4375c9e` | `main` |
+| 458 | 2026-11-12 | 修复 codex 成员：MCP 鉴权形状不一致（403 → 无工具面）+ Pty 投递被 paste-burst 吞回车 | - | `feat-team` |
+| 457 | 2026-11-11 | S3 历史按身份归属：ProjectScope + team workspace_worktree(v23) | - | `feat-team` |
+| 456 | 2026-11-11 | S2 团队会话恢复：resume argv + team_resume + 五态入口 | - | `feat-team` |
+| 455 | 2026-11-11 | 团队会话恢复 S1：身份与进程资源分家（v22） | - | `feat-team` |
+| 454 | 2026-11-11 | 修复任务详情 tab 白屏：TaskDetail 跨栈字段名漂移（steps → events） | - | `feat-team` |
 | 453 | 2026-11-11 | fileless sub-session gate for agent hook status | `d9d839dc` | `main` |
+| 452 | 2026-11-11 | multi-agent merge into feat-team archived | `6979d429` | `feat-team` |
+| 451 | 2026-11-11 | merge multi-agent into feat-team with mainline as the baseline | `ca2861bf` | `feat-team` |
 | 450 | 2026-11-11 | Service-layer suites without OS watchers | `783793a6` | `main` |
 | 449 | 2026-11-11 | Event observation attribution: keyed sink waits | `c8c50d5d`, `f9a65860` | `main` |
 | 448 | 2026-11-10 | resume replay separator in English | `834c4de5` | `main` |
@@ -92,6 +122,27 @@
 | 384 | 2026-10-30 | pi 会话恢复为 Agent Chat（能力单一真相）+ 真机验收 | - | `main` |
 | 383 | 2026-10-30 | opencode v2 存储兼容（v1 保留） | - | `main` |
 | 382 | 2026-10-30 | 历史会话删除（三态能力）+ 确认框结算缺陷 | `e705163b`, `2862900d` | `main` |
+| 447 | 2026-11-10 | 修复 neeko-check 审核问题：5 个功能 bug + 身份口径统一 + 测试补齐 | - | `multi-agent` |
+| 446 | 2026-11-09 | Team：任务详情 tab 修复 + 队长先规划按角色配人 + flow 三层关系 | `61a3263e` | `multi-agent` |
+| 445 | 2026-11-09 | Team：历史会话冷缓存兜底 + 已退出成员可查看记录（v21） | `0a253899` | `multi-agent` |
+| 441 | 2026-11-08 | Team：清单跟随项目（project_id 过滤，v20） | `47723ecf` | `multi-agent` |
+| 440 | 2026-11-08 | Team：看板/分配图中央 tab（team-board kind）+ 岛屿底色 + role_hints 预设落实现 | `5677c6ba` | `multi-agent` |
+| 439 | 2026-11-08 | Agent Team：列表优先导航重排 + 成员位角色预设（v20）+ 品牌图标 | `85fcc506` | `multi-agent` |
+| 438 | 2026-11-07 | Agent Team：分配 flow 图 + persona 角色库（v19） | `913717c4` | `multi-agent` |
+| 421 | 2026-11-05 | 表面层叠判据改为自动发现（堵住三次同型事故的结构盲区） | `2cc58c64` | `multi-agent` |
+| 420 | 2026-11-05 | Tasks 面板：圆角块/工具栏/英文文案 + check 复审修 4 类缺陷 | `98554a06` | `multi-agent` |
+| 419 | 2026-11-05 | Tasks 工具栏优化：三分区 + lucide 图标 + 搜索清空 | `d086955e` | `multi-agent` |
+| 418 | 2026-11-05 | 参考图落地：列变圆角块 + 卡片自适配底层 | `64375892` | `multi-agent` |
+| 417 | 2026-11-05 | 内容卡片岛同源几何 + 呼吸感 | `7de84ce5` | `multi-agent` |
+| 413 | 2026-11-04 | Tasks 表面阶梯适配主题（卡片/header/空态） | `e6572a2a` | `multi-agent` |
+| 412 | 2026-11-04 | 中心视图几何统一到 CenterViewFrame | `d273c146` | `multi-agent` |
+| 405 | 2026-11-04 | Tasks 岛屿可见性根因：缺海面 + 同色叠同色 | `b112a524` | `multi-agent` |
+| 404 | 2026-11-04 | Tasks 面板层级修正：一座主岛承载 header+content | `fb11b5a5` | `multi-agent` |
+| 403 | 2026-11-04 | Tasks 内容区改为一座内容岛承接所有状态 | `6517174c` | `multi-agent` |
+| 402 | 2026-11-04 | Tasks 只占中间区 + 左侧 Projects 打开本项目 Tasks | `83659c55` | `multi-agent` |
+| 400 | 2026-11-03 | Tasks 面板岛屿布局重构（design §4.2b） | `8b9f14ba` | `multi-agent` |
+| 399 | 2026-11-03 | Work items MVP complete: GitHub PR provider + test_env hygiene | `47c4b8cf`, `9486b8e8`, `28de1b18` | `multi-agent` |
+| 392 | 2026-11-03 | Work items MVP: Local provider, Tasks panel, run-single | `6ae67611`, `2fb4d532`, `7e7ca0ae`, `fae1ff01`, `c5492a14`, `752993cb`, `6122a2c1`, `08a888ff`, `5ceae855` | `multi-agent` |
 | 381 | 2026-10-30 | 会话正文按需加载：统计/搜索/剪贴板下沉到 Rust，三个适配器计数口径统一 | - | `main` |
 | 380 | 2026-10-29 | 第二轮审查：修掉分页重复解析、计数口径与切会话竞态 | - | `main` |
 | 379 | 2026-10-29 | 关闭会话适配器审查清单：性能回归、分层收敛与正文载荷分页 | - | `main` |

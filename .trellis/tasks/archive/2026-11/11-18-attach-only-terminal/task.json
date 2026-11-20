@@ -1,0 +1,28 @@
+{
+  "id": "attach-only-terminal",
+  "name": "attach-only-terminal",
+  "title": "接回失败不得静默降级成新建会话（裸 CLI 冒充队长）",
+  "description": "TerminalViewBase 在 attachSessionId 存在时改为 attach-only：探针说会话已结束就不新建 PTY、不自动拉起 agent，而是显示一条诚实的失效提示",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-11-18",
+  "completedAt": "2026-11-18",
+  "branch": "feat-team",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "commit": "397f8b70"
+  }
+}

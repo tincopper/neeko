@@ -154,6 +154,48 @@ describe('激活态 mutator 的最小契约', () => {
   });
 });
 
+/**
+ * 侧栏第二级的**团队选中**（`activeTeam`）—— 与 `activePath` 同一层的事实：
+ * 「这个项目的第二级哪一行是当前」。
+ *
+ * 这一格带 `projectId` 是**结构性**要求：同一时刻只渲染一个项目的第二级，按项目携带
+ * 就杜绝了「A 项目的队选中后 B 项目的单元行全体让出高亮」。
+ */
+describe('activeTeam —— 第二级的团队选中', () => {
+  it('selectTeam 写入 (projectId, teamId)（不是裸 id：跨项目不串高亮）', () => {
+    useWorkspaceStore.getState().selectTeam('p1', 'tm_1');
+
+    expect(useWorkspaceStore.getState().activeTeam).toEqual({ projectId: 'p1', teamId: 'tm_1' });
+  });
+
+  it('单元被激活（路径没变）⇒ 团队选中作废', () => {
+    // 回归契约：早退分支曾让「先点团队、再点同一个单元」保持团队高亮。
+    useWorkspaceStore.getState().setActiveWorkspace('p1', WT_A, 'feature-a');
+    useWorkspaceStore.getState().selectTeam('p1', 'tm_1');
+
+    useWorkspaceStore.getState().setActiveWorkspace('p1', WT_A, 'feature-a');
+
+    expect(useWorkspaceStore.getState().activeTeam).toBeNull();
+  });
+
+  it('切换到另一个单元 ⇒ 团队选中作废', () => {
+    useWorkspaceStore.getState().selectTeam('p1', 'tm_1');
+
+    useWorkspaceStore.getState().setActiveWorkspace('p1', WT_A, 'feature-a');
+
+    expect(useWorkspaceStore.getState().activeTeam).toBeNull();
+  });
+
+  it('clearActiveWorkspace 在主仓激活（activePath 已是 null）时也清团队选中', () => {
+    // 不能与「activePath === null 就早退」合并：主仓单元的团队照样可能是被选中的那一行。
+    useWorkspaceStore.getState().selectTeam('p1', 'tm_1');
+
+    useWorkspaceStore.getState().clearActiveWorkspace('p1');
+
+    expect(useWorkspaceStore.getState().activeTeam).toBeNull();
+  });
+});
+
 describe('activeWorkspaceSession —— 当前视图单元的地址值构造', () => {
   it('激活 worktree 时给出其身份；回落主仓时 worktreePath = null', () => {
     useWorkspaceStore.getState().setActiveWorkspace('p1', WT_A, 'feature-a');

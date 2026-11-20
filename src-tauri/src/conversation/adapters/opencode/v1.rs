@@ -9,8 +9,8 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 
 use super::common::{
-    extract_model_id_from_json, normalize_timestamp, PREVIEW_ENRICH_LIMIT, PREVIEW_LIMIT,
-    SYNTHETIC_SEP,
+    directory_owns_any_clause, extract_model_id_from_json, normalize_timestamp,
+    PREVIEW_ENRICH_LIMIT, PREVIEW_LIMIT, SYNTHETIC_SEP,
 };
 use crate::conversation::adapter::ParsedMeta;
 use crate::conversation::normalize::recent_messages_from;
@@ -21,12 +21,12 @@ pub(super) use messages::parse_messages_v1;
 
 /// Parse sessions from an OpenCode SQLite database (v1 layout).
 ///
-/// When `project_path` is set, only rows whose `directory` equals the project or
-/// is nested under it are returned (SQL-side filter).
+/// When `project_roots` is set, only rows whose `directory` equals one of the project's
+/// registered roots or is nested under it are returned (SQL-side filter).
 pub(super) fn parse_opencode_db(
     conn: &Connection,
     db_path: &Path,
-    project_path: Option<&str>,
+    project_roots: Option<&[PathBuf]>,
 ) -> Result<Vec<(ParsedMeta, PathBuf)>> {
     // Verify the session table exists
     let has_session_table: bool = conn
@@ -42,33 +42,20 @@ pub(super) fn parse_opencode_db(
 
     // Light discovery: session row only (no correlated COUNT, no part JOIN).
     // Enrichment for preview/count is deferred to the most recent N sessions.
-    let (sql, params): (String, Vec<String>) =
-        match project_path.map(str::trim).filter(|s| !s.is_empty()) {
-            Some(pp) => {
-                let base = pp.trim_end_matches('/').to_string();
-                let nested_prefix = format!("{base}/");
-                (
-                    "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
-                 FROM session s
-                 WHERE s.parent_id IS NULL
-                   AND s.time_archived IS NULL
-                   AND s.directory IS NOT NULL
-                   AND (s.directory = ?1 OR s.directory LIKE ?2)
-                 ORDER BY s.time_updated DESC"
-                        .to_string(),
-                    vec![base, format!("{nested_prefix}%")],
-                )
-            }
-            None => (
-                "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
-             FROM session s
-             WHERE s.parent_id IS NULL
-               AND s.time_archived IS NULL
-             ORDER BY s.time_updated DESC"
-                    .to_string(),
-                Vec::new(),
-            ),
-        };
+    let (directory_filter, params): (String, Vec<String>) = match project_roots {
+        Some(roots) => {
+            let (clause, params) = directory_owns_any_clause("s.directory", roots);
+            (format!(" AND s.directory IS NOT NULL AND {clause}"), params)
+        }
+        None => (String::new(), Vec::new()),
+    };
+    let sql = format!(
+        "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
+           FROM session s
+          WHERE s.parent_id IS NULL
+            AND s.time_archived IS NULL{directory_filter}
+          ORDER BY s.time_updated DESC"
+    );
 
     let mut stmt = conn
         .prepare(&sql)
