@@ -7,6 +7,7 @@ import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 import { fetchTeamSnapshot, subscribeTeamPulse } from '../api/teamApi';
 
 import { useTeamListStore } from './teamListStore';
+import { useTeamRosterStore } from './teamRosterStore';
 
 /**
  * 团队面板状态（`snapshot` 是**唯一**渲染真相）。
@@ -176,6 +177,10 @@ export function ensureTeamPulseListener(): void {
     // 清单是**另一块**数据面（一个问「这台机器上有哪些队」，一个问「这个队长什么样」），
     // 所以它有自己的水位；但仍然只有**这一个** `listen`（红线 17：不建第二份订阅）。
     useTeamListStore.getState().applyPulse(rev);
+    // 侧栏团队行的花名册是**第三块**数据面（按队缓存的读结果）。它没有自己的水位：
+    // 一次写之后所有缓存都可能过期，全量标脏是最便宜且自愈的作废方式（仍只有这一次
+    // `listen`）。标脏而非删除：重取期间上一次成功的成员仍留在屏幕上。
+    useTeamRosterStore.getState().invalidateAll();
   });
 }
 
