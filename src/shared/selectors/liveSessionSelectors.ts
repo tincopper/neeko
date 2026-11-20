@@ -102,25 +102,22 @@ export function isListedSession(session: SessionView): boolean {
 }
 
 /**
- * 前台会话已被某个**子项**代表的单元集合（父行据此让出选中态）。
+ * 前台会话已被某个**单元内的子行**代表的单元集合（父行据此让出选中态）。
  *
  * 父行不能只看 tab 身份：未输入 / 还没名字的会话不会出现在子列表，
  * 此时让出填充色会让「当前」在整个侧栏消失。
  *
- * # 两种子项都算（就是这一条决定了会不会双亮）
+ * # 只有**列在单元下的**会话算（团队容器行不再算）
  *
- * | 前台会话 | 代表它的子项 | 判据 |
- * | --- | --- | --- |
- * | 用户自己的、已列出的会话 | `SessionListRow` | `isListedSession` |
- * | **团队成员**的会话（**不看** `hasUserInput`） | 单元下的**团队行** | `isTeamMemberSession` |
+ * 成员会话的代表者是**项目层的团队容器行**（`ProjectTeamList`），它不再是任何单元的子项
+ * （2026-11 容器模型）。所以成员会话不该让单元行让出选中态 —— 否则单元行不填、而行内
+ * 也没有任何子行是亮的，表现就是「当前」在侧栏层级上凭空消失一级。
  *
- * 成员会话不能靠 `isListedSession`：刚接管的那一刻它 `hasUserInput` 还是 `false`
- * （接管只是 attach，不是「用户在用它」），而**团队行已经亮着**（`foregroundTeamId`
- * 只看归属与 `isLiveSession`）。两个判据一严一松，症状就是父行与团队行**同时**高亮
- * —— 侧栏有两条「当前」。
+ * 成员会话在前台时「当前」仍可被看见：由 [`foregroundTeamId`] 在团队容器行上表达
+ * （`row-current`）。两者读同一份快照，只是一个回答「哪一行是当前」，一个回答
+ * 「父行要不要让出」。
  *
- * 与 [`foregroundTeamId`] 用**同一条**「命中的第一条 ref 说了算」规则：两者对「当前」的
- * 认定必须逐字一致，否则又回到两条判据。
+ * 与 [`foregroundTeamId`] 用**同一条**「命中的第一条 ref 说了算」规则。
  */
 export function unitsWithListedActiveSession(
   refs: readonly SessionRef[],
@@ -132,8 +129,9 @@ export function unitsWithListedActiveSession(
       (session) => session.workspaceKey === ref.workspaceKey && isSameSession(session, ref),
     );
     if (found === undefined) continue;
-    // 成员会话归**团队行**，所以它不需要「已命名 / 已被用过」——那是会话子行的门槛。
-    if (isTeamMemberSession(found) || isListedSession(found)) units.add(found.workspaceKey);
+    // 成员会话的代表者是项目层的团队行（不是本单元的子行）—— 不让父单元让出选中底。
+    if (isTeamMemberSession(found)) continue;
+    if (isListedSession(found)) units.add(found.workspaceKey);
   }
   return units;
 }
@@ -142,9 +140,10 @@ export function unitsWithListedActiveSession(
  * 按单元分组（`workspaceKey → 会话列表`），**只含该列出的用户会话**
  * （`isListedSession` 且不是团队成员会话）。
  *
- * 成员会话**不进**子列表：它们归花名册管（六态 / 租约 / 待批队列只在团队面板），
- * 且在侧栏出现时既不知道属于谁、也代表不了团队（进程一死就消失）。团队的入口是
- * 单元下的**团队行**（team-derived，不随队长进程消失）。
+ * 成员会话**不进**子列表：它们归团队容器行管（展开团队成员就看得见），而单元子列表代表
+ * 的是「**我**在这棵树里开过的会话」。两处同时出现才是回归 —— 同一条会话在侧栏有两个家。
+ * 过滤保持禁止去掉：它也是 `useUnitsWithActiveSession` 与 `foregroundTeamId` 两侧口径
+ * 不漂移的前提。
  *
  * 单元归属只做 `workspaceKey` **相等比较**：key 是后端铸造的唯一地址表示，
  * 在这里拼分隔符或比路径前缀就是第二套身份判据（红线 12）。一次 O(n) 分组供所有
@@ -157,13 +156,69 @@ export function sessionsByUnit(sessions: readonly SessionView[]): Map<string, Se
   const byUnit = new Map<string, SessionView[]>();
   for (const session of sessions) {
     if (!isListedSession(session)) continue;
-    // 成员会话归花名册：在侧栏列出来 = 用户的会话列表里多出一条不归他管的行。
+    // 成员会话归**团队容器行**（项目层，展开才列出）：在单元子列表里再出现一次，
+    // 用户的会话列表就会多出一条不归他管的行。
     if (isTeamMemberSession(session)) continue;
     const list = byUnit.get(session.workspaceKey);
     if (list) list.push(session);
     else byUnit.set(session.workspaceKey, [session]);
   }
   return byUnit;
+}
+
+/**
+ * 按**团队**分组的成员会话（`teamId → memberId → 会话`）。
+ *
+ * 唯一用途：侧栏**团队容器行**展开后的成员子行（R2）。
+ *
+ * # 与单元无关的那一次求交（容器模型的全部依据）
+ *
+ * 归属只读 `SessionView.attribution`：`attribution.kind === 'teamMember'` 时它已带着
+ * `teamId` + `memberId`（后端在起进程时写入的事实）。本函数**不看** `workspaceKey` ——
+ * 成员跑在哪棵树与「他属于哪个队」是两个独立问题，正因如此团队行才能是跨单元的容器：
+ * 一旦这里开始看单元，成员空间（每人一棵树）到来时这张表就会漏人。
+ *
+ * # 一个成员只留一条
+ *
+ * 一个成员同一时刻只有一条活 PTY，但**终止后的旧会话仍可能留在快照里**。两条优先级
+ * 不能反过来：
+ *
+ * 1. 活着的那条优先（`isLiveSession`：侧栏点它就是「接管这条 PTY」）；
+ * 2. 同龄则取 `startedAt` **最大**的那条（不是数组末位 —— 快照顺序是后端的事）。
+ *
+ * 反过来的症状是「点成员行打不开那条还活着的会话」。
+ *
+ * 成员**名**不在这里：那只能来自花名册（`TeamSnapshot.members`）。会话上只有
+ * `memberId`（形如 `w1@tm_1`），从它拆名字是第二套身份解析（红线 12 同族），
+ * 而且成员改名后就与花名册漂移。
+ */
+export function memberSessionsByTeam(
+  sessions: readonly SessionView[],
+): Map<string, Map<string, SessionView>> {
+  const byTeam = new Map<string, Map<string, SessionView>>();
+  for (const session of sessions) {
+    const attribution = session.attribution;
+    if (attribution.kind !== 'teamMember') continue;
+    let byMember = byTeam.get(attribution.teamId);
+    if (byMember === undefined) {
+      byMember = new Map<string, SessionView>();
+      byTeam.set(attribution.teamId, byMember);
+    }
+    const rival = byMember.get(attribution.memberId);
+    if (rival === undefined || prefersSession(session, rival)) {
+      byMember.set(attribution.memberId, session);
+    }
+  }
+  return byTeam;
+}
+
+/** [`memberSessionsByTeam`] 的排序规则：活的优先，同龄取更晚开始的（见该函数的文档）。 */
+function prefersSession(candidate: SessionView, rival: SessionView): boolean {
+  const candidateLive = isLiveSession(candidate);
+  const rivalLive = isLiveSession(rival);
+  if (candidateLive !== rivalLive) return candidateLive;
+  // ISO8601 字符串可直接字典序比较（后端统一 UTC `to_rfc3339` 形态）。
+  return candidate.startedAt > rival.startedAt;
 }
 
 /**
