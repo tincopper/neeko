@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react';
 import React, { useCallback } from 'react';
 
 import type { TeamList, TeamRef } from '@/shared/types/team';
@@ -93,13 +94,18 @@ const TeamListSection: React.FC<TeamListSectionProps> = React.memo(
             {list ? (
               <span className="text-micro text-text-muted">{`${list.teams.length} total`}</span>
             ) : null}
+            {/* **图标按钮**，不是文字按钮（用户裁决 2026-11-20）：`Refresh` 这几个字母在一个
+                已经挤着「N total」的窄表头里要占 50px 以上，而它是最低频的入口。几何与
+                `TeamBoardCenterView` 头部的刷新键同一套（`grid size-7` + 13px 图标），
+                可访问名仍由 `aria-label` 给出 —— 图标按钮**必须**有它，否则读屏只剩「按钮」。 */}
             <button
               type="button"
               onClick={retry}
               aria-label="Reload team list"
-              className="shrink-0 rounded px-1.5 py-0.5 text-micro text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
+              title="Reload team list"
+              className="grid size-7 shrink-0 place-items-center rounded-md text-text-secondary hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
             >
-              Refresh
+              <RefreshCw size={13} aria-hidden="true" />
             </button>
           </div>
         </header>

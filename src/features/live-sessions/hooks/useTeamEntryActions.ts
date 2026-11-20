@@ -4,6 +4,7 @@ import { useTeamStore } from '@/features/agent-team/store/teamStore';
 import { useTerminalTabs } from '@/features/terminal';
 import { panelView } from '@/shared/dock';
 import { useDockStore } from '@/shared/store/dockStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { SessionView } from '@/shared/types/liveSessions';
 import type { TeamSummary } from '@/shared/types/team';
 import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
@@ -11,7 +12,7 @@ import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
 import { useActivateUnit } from './useActivateUnit';
 
 /**
- * 侧栏**团队行**的两个动作（点击行：接管活队长 / 交回团队面板）。
+ * 侧栏**团队行**的动作（点击容器行：接管活队长 / 交回团队面板；点击成员行：接管该成员的会话）。
  *
  * # 为什么在这里而不是在团队域组件里
  *
@@ -19,8 +20,19 @@ import { useActivateUnit } from './useActivateUnit';
  * 「接回上一次会话」都是**宿主**的能力。团队域只产出「这一行长什么样、点了要做什么」，
  * 能力的实现由宿主注入 —— 与 `TeamPanel`（回调注入）同一条分层，不新造一条反向依赖。
  *
- * 本文件是 `UnitSessionList` 的装配件（它本来就是 `features/live-sessions` 里唯一同时认识
- * 终端域与团队域门面的地方），于是 `UnitSessionList` 的 JSX 不必被两个 handler 淹没。
+ * 本文件是侧栏团队容器（`ProjectTeamList`）的装配件 —— 它本来就是 `features/live-sessions`
+ * 里唯一同时认识终端域与团队域门面的地方（`agent-team` 只产出「这行长什么样、点了要做什么」）。
+ *
+ * # 「选中」= 点过这一行（侧栏第二级的**用户动作**，不是「当前」判据）
+ *
+ * 点团队行时**显式**写 `workspaceStore.activeTeam`（带项目分量）：队长没在跑的话，点击只会
+ * 打开面板，没有任何会话成为前台 —— 只靠前台会话的话高亮不会动（用户反馈的那条）。
+ *
+ * 「第二级的当前行是不是团队」**不在这里判**：它在 `agent-team/utils/teamRowSelection`
+ * 的唯一派生里（前台会话 ∪ 这一格），团队行与单元行消费同一份。
+ *
+ * 写入必须在 `activateUnit` **之后**：它内部会 `setActiveWorkspace`，而那个 mutator 就是
+ * 「用户选了单元」的入口，会把团队选中清成 `null`（见 `workspaceStore.ActiveTeam` 的文档）。
  *
  * # 顺序：先「切项目 + 切单元」，再激活 tab / 开面板
  *
@@ -50,6 +62,14 @@ export interface TeamEntryActions {
   onOpenLead: (team: TeamSummary, session: SessionView) => void;
   /** 队长没有活会话 ⇒ 把团队面板切到该队，由花名册给出可行动作。 */
   onOpenTeamPanel: (team: TeamSummary) => void;
+  /**
+   * 成员行 ⇒ 接管**该成员**那条活会话（不新建进程）。
+   *
+   * 与 [`onOpenLead`] 唯一的差别是「单元从哪来」：这里取**会话自己的** `workspaceKey`，
+   * 不是团队的 `workspaceWorktree`。成员可以跑在另一棵树里（容器模型的全部意义），
+   * 用团队的单元去激活会先把视图切到错的地方，再接管一条不在那儿的 PTY。
+   */
+  onOpenMember: (session: SessionView) => void;
 }
 
 /**
@@ -80,6 +100,8 @@ export function useTeamEntryActions(): TeamEntryActions {
     (team: TeamSummary, session: SessionView) => {
       // 先切项目 + 切单元，再接管 tab（见文件头「顺序」）。
       void activateUnit(teamUnit(team)).then(() => {
+        // 选中这一行（在 `activateUnit` 之后 —— 它会清空团队选中）。
+        useWorkspaceStore.getState().selectTeam(teamProjectId(team), team.teamId);
         // 标题 / agent 都取自会话快照（唯一的会话事实源），不在这里编。
         openExistingTerminalTab(
           teamProjectId(team),
@@ -95,6 +117,8 @@ export function useTeamEntryActions(): TeamEntryActions {
   const onOpenTeamPanel = useCallback(
     (team: TeamSummary) => {
       void activateUnit(teamUnit(team)).then(() => {
+        // 同上：这一行成为「当前」（队长不在跑时，这是用户唯一能看到的反馈）。
+        useWorkspaceStore.getState().selectTeam(teamProjectId(team), team.teamId);
         // 面板的数据入口：`openTeam` 对同一个 id 幂等（已在看这个队时不打断、不闪空）。
         void useTeamStore.getState().openTeam(team.teamId);
         // 收起 / 在其他槽的面板也要真的出现在屏幕上：`activateView` 是唯一入口（含 Library 互斥）。
@@ -104,5 +128,18 @@ export function useTeamEntryActions(): TeamEntryActions {
     [activateUnit],
   );
 
-  return { onOpenLead, onOpenTeamPanel };
+  const onOpenMember = useCallback(
+    (session: SessionView) => {
+      // 单元分量取自**会话自己的** `workspaceKey`（唯一 codec：`WorkspaceSession.fromKeyOrId`）
+      // —— 与团队记的那棵树无关（成员可以跑在另一棵里）。
+      const unit = WorkspaceSession.fromKeyOrId(session.workspaceKey);
+      // 先切项目 + 切单元，再接管 tab（与 `onOpenLead` 同一条顺序）。
+      void activateUnit(unit).then(() => {
+        openExistingTerminalTab(unit.projectId, session.sessionId, session.title, session.agentId);
+      });
+    },
+    [activateUnit, openExistingTerminalTab],
+  );
+
+  return { onOpenLead, onOpenTeamPanel, onOpenMember };
 }

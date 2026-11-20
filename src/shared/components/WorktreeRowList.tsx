@@ -20,15 +20,12 @@ interface WorktreeRowListProps {
   /** 当前激活的 worktree 路径（`null` / 空串 = 主仓）。 */
   activeCheckoutPath: string | null;
   /**
-   * 该单元里**会话子列表之外**的子项数（今天的唯一来源：单元下的团队行）。
+   * 第二级的当前行在**别处**（团队容器行）⇒ 本列表任何行都不自称当前。
    *
-   * 由调用方注入而不是在这里读团队域：本组件在 `shared/`，不认识 `features/*`
-   * （与 `renderUnitSessions` 同一条理由）。不传 = 0 —— 既有侧栏的输出与订阅面逐字不变。
-   *
-   * 为什么需要它：团队可以没有任何**列出的**会话（成员会话不进子列表、队长可能没在运行），
-   * 那时只看会话数就会连展开箭头都不给，团队行永远没挂载的时机。
+   * 传布尔而不是让本组件自己算：判据在团队域（`useTeamRowSelected`），而本组件在
+   * `shared/` —— 与 `rowState` / `renderUnitSessions` 同一条分层：差异是数据，不是第二份实现。
    */
-  extraChildCount?: (workspaceKey: string) => number;
+  suppressActive?: boolean;
   /** 行交互状态机（本地走 `useWorktreeListActions`，远端走 `useWorktreeRowState`）。 */
   rowState: WorktreeRowState;
   /** 点击行：打开该单元的终端。 */
@@ -61,6 +58,8 @@ interface WorktreeRowListProps {
  *
  * **边界**：本组件只做「一行长什么样、点了做什么」，域差异（回调地址形态、远端 spinner 延迟、
  * 是否需要回收 PTY）全在调用方注入的 `rowState` / 回调里 —— 差异是数据，不是第二份实现。
+ * 「哪些工作树该列出来」同样不在这里：那是团队域的判据（`useTeamFreeWorktrees`），由调用方
+ * 过滤后传进来 —— `shared/` 不认识 `features/`。
  *
  * `rowState` 的类型**由 hook 派生**（`WorktreeRowState = ReturnType<…>`），本组件不另立结构副本。
  */
@@ -68,10 +67,10 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
   projectId,
   worktrees,
   activeCheckoutPath,
+  suppressActive = false,
   rowState,
   onOpenWorktreeTerminal,
   renderUnitSessions,
-  extraChildCount,
 }) => {
   // 「待 push 提交数」的唯一读取规则：键 = 本项目当前单元的 WorkspaceKey，只在激活行展示。
   // 该数字只有激活单元会被写入 store（见 `useAheadBehindSync` / `useGitStatusEventsSync`）——
@@ -94,12 +93,14 @@ const WorktreeRowList: React.FC<WorktreeRowListProps> = ({
       {worktrees.map((wt) => {
         const isRenaming = rowState.renaming === wt.path;
         const isDeleting = rowState.deleting === wt.path;
-        const isActive = activeCheckoutPath === wt.path;
+        // 团队行是当前 ⇒ 单元行让出（判据由调用方注入，见 `suppressActive`）。
+        const isActive = activeCheckoutPath === wt.path && !suppressActive;
         // 该 worktree 的行本身就是单元身份 → 它的单元 key 是这张表的一行
         const unitKey = WorkspaceSession.of(projectId, wt.path).key;
         const unitSessions = byUnit.get(unitKey) ?? NO_SESSIONS;
-        // 子项总数 = 会话 + 团队行（`extraChildCount`）：决定展开箭头与「已有子项就默认展开」。
-        const childCount = unitSessions.length + (extraChildCount?.(unitKey) ?? 0);
+        // 子项总数 = 会话数。团队不再挂在单元下（它是项目层的容器，见 `ProjectTeamList`），
+        // 所以纯团队、无会话的单元可以折叠 —— 这是正确的（团队不在那里了）。
+        const childCount = unitSessions.length;
 
         return (
           <SessionRow

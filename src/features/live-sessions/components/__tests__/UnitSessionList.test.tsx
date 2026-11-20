@@ -298,18 +298,22 @@ describe('UnitSessionList — 先亮出单元再激活', () => {
   });
 });
 
-describe('UnitSessionList — 团队行（AC7：无团队时零回归）', () => {
-  it('没有团队 ⇒ 输出与今天一致：只有会话列表，没有团队行', () => {
+/**
+ * 单元子列表是**纯会话列表**（2026-11 容器模型）：团队升到项目层，不再是单元的子项。
+ *
+ * 这条是 AC1 的反面锚点 —— 团队行在本组件里出现一次就是回归（同一条会话 / 同一个队在侧栏
+ * 有两个家），而它曾经就在这里。
+ */
+describe('UnitSessionList — 不再承载团队行（AC1 反向）', () => {
+  it('没有团队 ⇒ 输出只有会话列表', () => {
     seedSessions(session());
     renderList(KEY);
 
-    // 团队行是另一个 list（`aria-label=Teams`）：无团队时它根本不存在
-    expect(screen.queryByRole('list', { name: 'Teams' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('list')).toHaveLength(1);
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
 
-  it('单元有团队（队长未运行、没有用户会话）⇒ 团队行与会话列表并存', () => {
+  it('单元有团队 ⇒ 本组件也不渲染团队行（团队在项目层的 `ProjectTeamList`）', () => {
     useTeamListStore.setState({
       list: createTeamList({
         teams: [
@@ -324,13 +328,25 @@ describe('UnitSessionList — 团队行（AC7：无团队时零回归）', () =>
       loading: false,
       error: null,
     });
-
+    seedSessions(session());
     renderList(KEY);
 
-    const teams = screen.getByRole('list', { name: 'Teams' });
-    expect(within(teams).getByText('refactor')).toBeInTheDocument();
-    expect(within(teams).getByText('Lead not running')).toBeInTheDocument();
-    // 会话列表为空 ⇒ 它自己不渲染（团队行仍是该单元的唯一子项）
+    // 团队行的列表（`aria-label=Teams`）只存在于项目层 —— 这里连它都不该出现
+    expect(screen.queryByRole('list', { name: 'Teams' })).not.toBeInTheDocument();
+    expect(screen.queryByText('refactor')).not.toBeInTheDocument();
+    // 会话列表照旧
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('成员会话不进单元子列表（仍由 `sessionsByUnit` 过滤）', () => {
+    seedSessions(
+      session({
+        sessionId: 'pty-member',
+        attribution: { kind: 'teamMember', teamId: 'tm_1', memberId: 'w1@tm_1' },
+      }),
+    );
+    renderList(KEY);
+
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 });

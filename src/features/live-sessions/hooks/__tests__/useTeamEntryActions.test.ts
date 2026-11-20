@@ -101,7 +101,11 @@ beforeEach(() => {
   useTeamStore.setState({ teamId: null, snapshot: null, loading: false, error: null, lastRev: 0 });
   useEditorStore.setState({ tabs: {}, editorLayout: {}, addTab: originalAddTab });
   useDockStore.setState({ activateView: originalActivateView });
-  useWorkspaceStore.setState({ byProject: {}, setActiveWorkspace: originalSetActiveWorkspace });
+  useWorkspaceStore.setState({
+    byProject: {},
+    activeTeam: null,
+    setActiveWorkspace: originalSetActiveWorkspace,
+  });
   // 默认「团队所属项目已激活」：这是存量用例（同项目点击）的基线，跨项目用例自己改写。
   useProjectStore.setState({ activeProjectId: P1, activeProject: null });
   mockInvoke.mockImplementation(async (cmd) => {
@@ -173,12 +177,123 @@ describe('useTeamEntryActions — 交回团队面板', () => {
 });
 
 /**
+ * 成员行：容器模型的**全部依据**是「成员会话的归属与它跑在哪棵树无关」。
+ *
+ * 所以这里钉死两件事：
+ * 1. 切的是**该会话自己的**单元（不是队长 / 团队记的那棵树）—— 成员可以跑在另一棵里；
+ * 2. 只接管（`openExistingTerminalTab`），绝不新建进程。
+ *
+ * 用团队的 `workspaceWorktree` 去激活的表现是：视图先切到错的地方，再去接管一条不在那儿的
+ * PTY —— 用户看到的正是「点了没反应」。
+ */
+describe('useTeamEntryActions — 接管成员会话', () => {
+  const MEMBER_WT = WorkspaceSession.of(P1, '/repo/member-wt');
+
+  function memberSession(): SessionView {
+    return {
+      ...leadSession(),
+      sessionId: 'term-w1',
+      attribution: { kind: 'teamMember', teamId: 'tm_1', memberId: 'w1@tm_1' },
+      workspaceKey: MEMBER_WT.key,
+      title: '修登录竞态',
+      agentId: 'pi',
+    };
+  }
+
+  it('先切到**该会话自己的**单元，再接管它的 PTY（团队记的树无关）', async () => {
+    const order: string[] = [];
+    recordUnits(order);
+    openExistingTerminalTab.mockImplementation(() => {
+      order.push('attach');
+      return null;
+    });
+
+    const { result } = renderEntryActions();
+    const session = memberSession();
+    await act(async () => {
+      result.current.onOpenMember(session);
+    });
+
+    // 团队（`team()`）记的是 `/repo/wt`；成员跑在 `/repo/member-wt` —— 动作按会话落键。
+    expect(order).toEqual(['unit:/repo/member-wt', 'attach']);
+    expect(useWorkspaceStore.getState().byProject[P1]?.activePath).toBe('/repo/member-wt');
+    expect(openExistingTerminalTab).toHaveBeenCalledWith('p1', 'term-w1', '修登录竞态', 'pi');
+  });
+
+  it('绝不新建终端（不调 addTab、不碰团队面板 store）', async () => {
+    const { result } = renderEntryActions();
+    await act(async () => {
+      result.current.onOpenMember(memberSession());
+    });
+
+    expect(addTab).not.toHaveBeenCalled();
+    expect(openExistingTerminalTab).toHaveBeenCalledTimes(1);
+    expect(useTeamStore.getState().teamId).toBeNull();
+  });
+});
+
+/**
  * 跨项目：侧栏列出**所有**项目的团队行，点 B 项目的行必须让 B 成为当前项目。
  *
  * 只切单元不切项目的表现就是「点了没反应」：tab 在 B 的 tab 空间里被激活，中心视图还在 A。
  * 顺序断言钉住 R4 —— 单元必须在切换序列**结算之后**落回（序列内部会清空各项目激活单元，
  * 先落 = 自己擦掉自己），后续动作（接管 / 开面板）都排在两者之后。
  */
+/**
+ * 「选中」= 点过这一行。高亮的另一半（前台会话）由 `foregroundTeamId` 派生，两条合起来才是
+ * 侧栏上的「当前」—— 只认前台会话时，点一个队长不在跑的队什么都不会亮（用户反馈）。
+ */
+describe('useTeamEntryActions — 选中团队行', () => {
+  it('接管队长 ⇒ `activeTeam` 变成这一队', async () => {
+    const lead = leadSession();
+    const { result } = renderEntryActions();
+
+    // 选中写在 `activateUnit(...).then(...)` 里（顺序契约）⇒ 断言必须等它结算。
+    await act(async () => {
+      result.current.onOpenLead(team(), lead);
+    });
+
+    expect(useWorkspaceStore.getState().activeTeam?.teamId).toBe('tm_1');
+  });
+
+  it('交回面板（队长不在跑）⇒ 同样选中这一队', async () => {
+    const { result } = renderEntryActions();
+
+    await act(async () => {
+      result.current.onOpenTeamPanel(team());
+    });
+
+    expect(useWorkspaceStore.getState().activeTeam?.teamId).toBe('tm_1');
+  });
+
+  it('换一个队再点 ⇒ 选中跟着换（单数，不会两个都亮）', async () => {
+    const { result } = renderEntryActions();
+
+    await act(async () => {
+      result.current.onOpenTeamPanel(team({ teamId: 'tm_1' }));
+    });
+    await act(async () => {
+      result.current.onOpenTeamPanel(team({ teamId: 'tm_2' }));
+    });
+
+    expect(useWorkspaceStore.getState().activeTeam?.teamId).toBe('tm_2');
+  });
+
+  /**
+   * 顺序是契约：`activateUnit` 内部调 `setActiveWorkspace`，而**那个 mutator 会清空团队选中**
+   * （它是「用户选了单元」的统一入口）。选中若写在它之前，这里就会是 `null`。
+   */
+  it('选中写在单元激活**之后**（`setActiveWorkspace` 会清空它）', async () => {
+    const { result } = renderEntryActions();
+
+    await act(async () => {
+      result.current.onOpenTeamPanel(team());
+    });
+
+    expect(useWorkspaceStore.getState().activeTeam?.teamId).toBe('tm_1');
+  });
+});
+
 describe('useTeamEntryActions — 跨项目团队行', () => {
   const OTHER = 'p2' as ProjectId;
 

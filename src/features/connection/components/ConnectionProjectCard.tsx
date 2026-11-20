@@ -3,8 +3,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 
 import { AgentIcon } from '@/features/agent';
 import { setProjectAgents } from '@/features/agent/api/agentApi';
-import { useTeamsByUnit } from '@/features/agent-team';
-import { UnitSessionList } from '@/features/live-sessions';
+import { useTeamRowSelected } from '@/features/agent-team';
+import { ProjectTeamEntries, UnitSessionList } from '@/features/live-sessions';
 import { setProjectIde } from '@/features/project/api/projectApi';
 import { cn } from '@/lib/utils';
 import ContextMenu, { type ContextMenuItem } from '@/shared/components/ContextMenu';
@@ -163,15 +163,15 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
 
     // local 主终端行只展示 ↑N（待 push 提交数），取自**主仓单元**的键。
     // 注：曾有 +A -D 聚合，数据源（`FileChange.additions/deletions`）在 G4 后恒为 0，已删除。
-    const localActive = isActive && !activeCheckoutPath;
+    // 团队行是当前 ⇒ 本行让出高亮（与 local / worktree 宿主同一判据，见 `useTeamRowSelected`）。
+    const teamRowSelected = useTeamRowSelected(project.id);
+    const localActive = isActive && !activeCheckoutPath && !teamRowSelected;
 
     // 主仓单元的角标与子列表（与本地侧栏同一份快照、同一把 key）。
     const mainUnitKey = WorkspaceSession.of(project.id, null).key;
     const mainUnitSessions = sessionsByUnit.get(mainUnitKey) ?? NO_SESSIONS;
-    // 单元的子项数除了会话还包括**团队行**（团队可以没有任何列出会话 —— 成员会话不进子列表）。
-    // 只看会话数的话，纯团队的单元连展开箭头也不给，团队行永远没有挂载的时机。
-    const mainUnitTeamCount = useTeamsByUnit().get(mainUnitKey)?.length ?? 0;
-    const mainUnitChildCount = mainUnitSessions.length + mainUnitTeamCount;
+    // 子项数**只数会话**：团队升到项目层后不再是单元的子项（纯团队、无会话的单元可折叠）。
+    const mainUnitChildCount = mainUnitSessions.length;
     const childActive = useUnitsWithActiveSession().has(mainUnitKey);
 
     const style = sortableCardStyle({ isDragging, transition, transform });
@@ -233,6 +233,9 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
               onRemoveWorktree={worktreeActions.remove}
               onIsWorktreeDirty={worktreeActions.checkDirty}
             />
+
+            {/* 团队块追加在地点之后（地点在上、容器在下），没有团队时自己渲染 null。 */}
+            <ProjectTeamEntries projectId={project.id} worktrees={worktrees} />
           </div>
         </ProjectGroup>
 

@@ -2,11 +2,18 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  __resetTeamListStoreForTests,
+  useTeamListStore,
+} from '@/features/agent-team/store/teamListStore';
 import { useGitStore } from '@/shared/store/gitStore';
+import { useLiveSessionsStore } from '@/shared/store/liveSessionsStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { GitStatusSnapshot, Worktree } from '@/shared/types';
 import { WorkspaceSession } from '@/shared/utils/workspaceRef';
+import { createSessionView, createTeamList, createTeamSummary } from '@/testing/factories';
+import { createProjectActionsWrapper } from '@/testing/ProjectActionsTestUtils';
 
 // spy 必须经 vi.hoisted 创建：`vi.mock` 的 factory 会被提升到模块顶层语句之前执行，
 // 直接引用外层 `const api` 会拿到 undefined —— 组件调用的就不是这里断言的那个函数。
@@ -75,6 +82,8 @@ function renderList() {
       onOpenWorktreeTerminal={() => undefined}
       onShowToast={() => undefined}
     />,
+    // 行展开后是会话子列表（`UnitSessionList`）—— 它需要项目动作上下文（切项目）。
+    { wrapper: createProjectActionsWrapper() },
   );
 }
 
@@ -85,6 +94,7 @@ async function clickRemoveAndConfirm(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __resetTeamListStoreForTests();
   useGitStore.setState({ aheadBehind: {} });
   api.removeWorktree.mockResolvedValue(undefined);
   api.deleteBranch.mockResolvedValue(undefined);
@@ -110,6 +120,83 @@ describe('WorktreeList — 行尾工具栏', () => {
     expect(overlay).toContainElement(button);
     expect(overlay).toHaveClass('absolute', 'bg-bg-hover', 'opacity-0', 'group-hover:opacity-100');
     expect(button).not.toHaveClass('opacity-0');
+  });
+});
+
+describe("WorktreeList — 被团队占用的工作树不再是地点行（R1' 第 4 条）", () => {
+  /** 把一个团队记在这棵树里（`workspaceWorktree` 与工作树路径**逐字相等**）。 */
+  function seedTeamAt(workspaceWorktree: string | null): void {
+    useTeamListStore.setState({
+      list: createTeamList({
+        teams: [createTeamSummary({ teamId: 'tm_1', projectId: PROJECT_ID, workspaceWorktree })],
+        truncated: false,
+      }),
+      loading: false,
+      error: null,
+    });
+  }
+
+  /** 这棵树的单元里有一条**用户自己的**会话（成员会话不算：它在 `sessionsByUnit` 里被过滤）。 */
+  function seedOwnSessionInUnit(): void {
+    useLiveSessionsStore.setState({
+      version: 1,
+      sessions: [createSessionView({ sessionId: 'pty-mine', workspaceKey: WT_KEY })],
+      hydratedAt: Date.now(),
+    });
+  }
+
+  it('团队记着跑在这棵树里 ⇒ 该工作树不再作为地点行出现（团队行承担那个视角）', () => {
+    seedTeamAt(WT_PATH);
+    renderList();
+
+    // 行已过滤 ⇒ `WorktreeRowList` 整块渲染 null（连删除按钮都没有）
+    expect(screen.queryByText('dev')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Remove worktree and branch')).not.toBeInTheDocument();
+  });
+
+  it('团队占用的是别的工作树 ⇒ 本行照旧列出（判据是字段相等，不是「有团队」）', () => {
+    seedTeamAt('/repo/.worktrees/other');
+    renderList();
+
+    expect(screen.getByText('dev')).toBeInTheDocument();
+  });
+
+  it('主 checkout 的团队不会连坐被隐藏（team.workspaceWorktree 为 null 时 key 与工作树的不同）', () => {
+    seedTeamAt(null);
+    renderList();
+
+    expect(screen.getByText('dev')).toBeInTheDocument();
+  });
+
+  it('没有团队 ⇒ 输出与今天逐字一致（零回归锚点）', () => {
+    renderList();
+
+    expect(screen.getByText('dev')).toBeInTheDocument();
+  });
+
+  /**
+   * 隐藏的前提是「这一行没有自己的东西」：一旦树里有**用户自己的**会话，它就是唯一入口。
+   * 隐藏它等于把那几条会话从侧栏彻底删掉（团队行只列成员，不列用户的）。
+   */
+  it('树里有用户自己的会话 ⇒ 照旧列出（不能把它唯一的入口隐掉）', () => {
+    seedTeamAt(WT_PATH);
+    seedOwnSessionInUnit();
+    renderList();
+
+    expect(screen.getByText('dev')).toBeInTheDocument();
+    // 会话子列表就是「用户自己的东西」本身 —— 它必须还在（行展开即见）。
+    expect(screen.getByText('fix the parser')).toBeInTheDocument();
+  });
+
+  /**
+   * 同理：**当前就在这棵树里**时，行不能凭空消失（否则第二级没有任何一行是「当前」）。
+   */
+  it('这棵树就是当前单元 ⇒ 照旧列出（「当前」不允许消失）', () => {
+    seedTeamAt(WT_PATH);
+    seedActiveUnit();
+    renderList();
+
+    expect(screen.getByText('dev')).toBeInTheDocument();
   });
 });
 

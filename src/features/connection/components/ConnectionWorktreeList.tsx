@@ -1,6 +1,6 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 
-import { useTeamsByUnit } from '@/features/agent-team';
+import { useTeamFreeWorktrees, useTeamRowSelected } from '@/features/agent-team';
 import { UnitSessionList } from '@/features/live-sessions';
 import WorktreeRowList from '@/shared/components/WorktreeRowList';
 import { useWorktreeRowState } from '@/shared/hooks/useWorktreeRowState';
@@ -30,6 +30,9 @@ interface ConnectionWorktreeListProps {
  *
  * **刻意的差异只有一处**：删除后延迟 800ms 清 spinner。远端父级是**异步刷新**列表，
  * 删除命令返回时工作树尚未从清单消失，立即清 spinner 会让行「闪回」。
+ *
+ * **哪些工作树该列出来**与本地侧栏同一份判据（`useTeamFreeWorktrees`）：被团队占用的树在
+ * 冗余时才不再作为地点行出现。两条侧栏在这里若各写一份过滤，就回到本文件开头说的那种漂移。
  */
 const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
   projectId,
@@ -47,21 +50,18 @@ const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
     800,
   );
 
-  // 单元的子项数除了会话还包括**团队行**（团队可以没有任何列出会话 —— 成员会话不进子列表）。
-  // 分组口径在团队域（`teamsByUnit`），本组件只把结果交给共用行渲染。
-  const teamsByUnit = useTeamsByUnit();
-  const extraChildCount = useCallback(
-    (workspaceKey: string) => teamsByUnit.get(workspaceKey)?.length ?? 0,
-    [teamsByUnit],
-  );
+  // 团队占用的树交给团队行表达（展开即见成员），不再列一条同名的地点行。
+  const visibleWorktrees = useTeamFreeWorktrees(projectId, worktrees);
+  // 第二级的当前行是团队 ⇒ 本列表不让任何行自称当前（判据与团队行同一份派生）。
+  const teamRowSelected = useTeamRowSelected(projectId);
 
   return (
     <WorktreeRowList
       projectId={projectId}
-      worktrees={worktrees}
+      worktrees={visibleWorktrees}
       activeCheckoutPath={activeCheckoutPath}
+      suppressActive={teamRowSelected}
       rowState={rowState}
-      extraChildCount={extraChildCount}
       onOpenWorktreeTerminal={onOpenWorktreeTerminal}
       renderUnitSessions={(workspaceKey, revealUnit) => (
         <UnitSessionList workspaceKey={workspaceKey} onRevealUnit={revealUnit} />
