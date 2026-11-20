@@ -33,6 +33,31 @@ use super::utils::sample_process_memory_mb;
 /// 数据 `tuning.version_probe=false` 直接跳过探测，不走这里。
 const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
+/// 业务请求的单次等待预算的**通用默认**（插件未声明 `request_timeout_ms` 时）。
+///
+/// 与前端 `lspRequestTimeoutMs` 的默认同值：两侧对「多久算超时」必须只有一个数字，
+/// 否则前端先放弃而后端仍在等（或反之），用户看到的失败原因会对不上。
+const DEFAULT_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// 单次请求的等待预算：**插件数据是唯一来源**，未声明才回落通用默认。
+///
+/// 冷启动慢的服务器（jdtls / rust-analyzer 声明 120s）必须能在插件里声明自己的
+/// 预算；请求层不得硬编码第二份默认值，也不得按语言名分支（红线 15）。
+fn request_timeout_for(plugin: &LspPlugin) -> std::time::Duration {
+    plugin
+        .request_timeout_ms
+        .map_or(DEFAULT_REQUEST_TIMEOUT, |ms| {
+            std::time::Duration::from_millis(u64::from(ms))
+        })
+}
+
+/// `initialize` 握手的通用上限：插件未声明 `request_timeout_ms` 时用它。
+///
+/// 60s 覆盖「进程启动 + 项目首次索引」的常规区间；重量级服务器（java / rust）由插件
+/// 数据声明更大的值。**不允许无界**：服务器活而不答会永久占住 `spawn_blocking` 线程
+/// 与 per-key 创建门，使该 key 的全部 LSP 命令悬挂。
+const INIT_TIMEOUT_DEFAULT: std::time::Duration = std::time::Duration::from_secs(60);
+
 pub(crate) struct LspSession {
     /// Language identifier (e.g. "rust").
     pub(crate) language_id: String,
@@ -54,6 +79,16 @@ pub(crate) struct LspSession {
     /// Number of times this session has been restarted.
     #[allow(dead_code)]
     pub(crate) restart_count: u32,
+    /// 发出 `exit` 后等进程自行退出的宽限（来自插件 `tuning.shutdown_grace_ms`）。
+    ///
+    /// 落到会话上而不是关闭时回查插件表：关闭路径只读会话（插件表可能已被卸载），
+    /// 且宽限只能有**一个**事实来源（红线 15：语言差异落数据）。
+    pub(crate) shutdown_grace: std::time::Duration,
+    /// 业务请求的单次等待预算（来自插件 `request_timeout_ms`）。
+    ///
+    /// 落到会话上而不是请求时回查插件表：请求层只拿到「会话的克隆配料」，
+    /// 且预算只能有**一个**事实来源（见 [`request_timeout_for`]）。
+    pub(crate) request_timeout: std::time::Duration,
     /// Cached server capabilities from the initialize handshake.
     pub(crate) server_capabilities: Value,
     /// Child process handle for lifecycle management (kill on close).
@@ -129,7 +164,17 @@ impl LspSession {
                 Ok(true) => {
                     log::info!("[LSP] Auto-install succeeded for {}", language_id);
                     if !crate::lsp::installer::check_plugin_installed(plugin, &ctx.target) {
-                        anyhow::bail!("{} was installed but still not found in project PATH. Try restarting Neeko.", server_name);
+                        // 文案必须指向**真实原因**：下载式安装的产物在目标环境的
+                        // `~/.neeko/bin`（可能不在 PATH 上），而不是安装失败 —— 让用户
+                        // 去查安装只会白费一轮。
+                        anyhow::bail!(
+                            "{} was installed but is not on the project environment PATH. \
+                             Download-style installs land in ~/.neeko/bin — add that directory \
+                             to the PATH of the project environment (or install {} so PATH \
+                             resolves it) and restart Neeko.",
+                            server_name,
+                            server_name
+                        );
                     }
                 }
                 Ok(false) => {
@@ -297,6 +342,11 @@ impl LspSession {
         // 快照与存活判定据此读取（不再各自轮询 JoinHandle）。session 结构持有同一 Arc。
         let lifecycle_reader = Arc::clone(&lifecycle);
         let diag_reader = Arc::clone(&diagnostics);
+        // 握手完成的观测位：`false` 期间 reader 出口**不写**终态（终态由 manager 的
+        // 装配失败分支唯一落账），握手成功后才交棒给 reader 的崩溃判定
+        // （审计 channel D13：两个写者会让同一故障发出两条不同文案的 error）。
+        let init_completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let init_completed_reader = Arc::clone(&init_completed);
 
         let reader_handle = thread::Builder::new()
             .name(format!(
@@ -315,6 +365,7 @@ impl LspSession {
                 let exit_lang = lang_id_clone.clone();
                 let exit_name = server_name_reader.clone();
                 let exit_lifecycle = Arc::clone(&lifecycle_reader);
+                let init_completed_exit = Arc::clone(&init_completed_reader);
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let read_result = loop {
                         match Message::read(&mut reader_stream) {
@@ -349,6 +400,7 @@ impl LspSession {
                                             &notif.params,
                                             &pp_reader,
                                             &lang_id_clone,
+                                            &lifecycle_reader,
                                             &*transport_clone,
                                             &progress_tokens_reader,
                                         );
@@ -359,6 +411,7 @@ impl LspSession {
                                             &notif.params,
                                             &pp_reader,
                                             &lang_id_clone,
+                                            &lifecycle_reader,
                                             &*transport_clone,
                                             &progress_tokens_reader,
                                         );
@@ -415,6 +468,7 @@ impl LspSession {
                         &lang_id_clone,
                         &server_name_reader,
                         &diag_reader,
+                        &init_completed_reader,
                     );
                     read_result
                 }));
@@ -437,6 +491,7 @@ impl LspSession {
                             &exit_lang,
                             &exit_name,
                             &diag_reader,
+                            &init_completed_exit,
                         );
                         Err(anyhow::anyhow!("LSP reader thread panicked: {detail}"))
                     }
@@ -459,20 +514,33 @@ impl LspSession {
             }
         }
 
-        let init_req_id = RequestId::from(1i32);
-        {
-            let mut map = pending
-                .lock()
-                .map_err(|e| anyhow::anyhow!("LSP init pending lock poisoned: {}", e))?;
-            map.insert(init_req_id.clone(), init_tx);
-        }
+        // 握手预算取插件数据（冷启动慢的服务器自行声明），未声明回落到通用默认。
+        // 服务器活而不答（jdtls 撞 `-data` 锁）时，无 deadline 会永久占住阻塞线程与
+        // per-key 创建门（审计 channel D1）。
+        let init_timeout = plugin
+            .request_timeout_ms
+            .map_or(INIT_TIMEOUT_DEFAULT, |ms| {
+                std::time::Duration::from_millis(u64::from(ms))
+            });
+
+        // id 必须来自唯一 allocator：硬编码 `1` 与业务自增的起点同值，靠「init 先完成、
+        // 会话才交付」的时序才不相撞（审计 channel D4）。
+        let init_req_id = super::request::next_request_id();
+        super::request::register_pending(&pending, &init_req_id, init_tx)
+            .map_err(|e| anyhow::anyhow!("LSP initialize: {e}"))?;
 
         let init_req = Request::new(init_req_id.clone(), "initialize".to_string(), init_params);
         writer_tx
             .send(Message::Request(init_req))
             .context("Failed to send initialize request")?;
 
-        let init_response = match await_init_response(init_rx, &pending, &reader_handle) {
+        let init_response = match await_init_response(
+            init_req_id.clone(),
+            init_rx,
+            &pending,
+            &reader_handle,
+            init_timeout,
+        ) {
             Ok(response) => response,
             Err(e) => {
                 // 子进程已退出（reader 线程结束 → init 发送端断开）。先把 stderr 泵
@@ -492,6 +560,8 @@ impl LspSession {
             }
         };
         let server_capabilities = parse_initialize_response(init_response)?;
+        // 握手成功 ⇒ 交棒：此后的 reader 退出是真正的崩溃信号（终态写者唯一）。
+        init_completed.store(true, std::sync::atomic::Ordering::Release);
 
         log::info!("[LSP] {} initialized, capabilities received", server_name);
         publish_status(
@@ -527,6 +597,10 @@ impl LspSession {
             reader: Some(reader_handle),
             stderr_logger: stderr_handle,
             restart_count: 0,
+            shutdown_grace: std::time::Duration::from_millis(u64::from(
+                plugin.tuning.shutdown_grace_ms,
+            )),
+            request_timeout: request_timeout_for(plugin),
             server_capabilities,
             child: Some(process),
             process_pid,
@@ -559,8 +633,10 @@ impl LspSession {
             method,
             params,
             false,
+            self.request_timeout,
         )
         .await
+        .map_err(anyhow::Error::from)
     }
 
     /// Send a raw LSP notification to the server.
@@ -571,36 +647,57 @@ impl LspSession {
             .with_context(|| format!("Failed to send LSP notification: {}", method))
     }
 
-    /// Send a graceful shutdown request and wait for the response.
-    pub(crate) fn send_shutdown_request(&self) -> Result<Message> {
+    /// Send a graceful shutdown request and wait for the response — **bounded**.
+    ///
+    /// `shutdown` 是 LSP **request**：服务器响应后客户端才允许发 `exit` 通知。
+    /// 等待必须有界 —— `spawn_blocking` 线程不是无界资源，服务器沉默时不许永久阻塞。
+    ///
+    /// 超时机制复用 pending 表（与 [`drain_pending`] 同一不变量）：看门狗到期摘掉该
+    /// id 的发送端 → `blocking_recv` 立即以「无响应」失败。响应先到时，看门狗在下一轮
+    /// 轮询发现条目已不在便自行退出（最多多活一个轮询间隔）。
+    pub(crate) fn send_shutdown_request_bounded(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<Message> {
         let (tx, rx) = tokio::sync::oneshot::channel::<Message>();
-        let req_id = RequestId::from(1000i32);
-        {
-            let mut map = self
-                .pending
-                .lock()
-                .map_err(|e| anyhow::anyhow!("LSP pending lock poisoned: {}", e))?;
-            map.insert(req_id.clone(), tx);
-        }
+        // 与业务请求共用唯一 allocator（硬编码 `1000` 会被业务自增绕回撞上）。
+        let req_id = super::request::next_request_id();
+        super::request::register_pending(&self.pending, &req_id, tx)
+            .map_err(|e| anyhow::anyhow!("LSP shutdown: {e}"))?;
+
         let req = Request::new(
             req_id.clone(),
             "shutdown".to_string(),
             serde_json::json!({}),
         );
-        self.writer
-            .send(Message::Request(req))
-            .context("Failed to send shutdown request")?;
+        if let Err(e) = self.writer.send(Message::Request(req)) {
+            // 发不出去就别把发送端留在表里（否则 pending 泄漏）
+            if let Ok(mut map) = self.pending.lock() {
+                map.remove(&req_id);
+            }
+            return Err(anyhow::anyhow!("Failed to send shutdown request: {e}"));
+        }
+
+        if let Err(e) = spawn_pending_watchdog(
+            &self.pending,
+            req_id.clone(),
+            timeout,
+            "lsp-shutdown-watchdog",
+        ) {
+            // 没看门狗就只能无界等 —— 宁可失败也不退回到无界等待
+            if let Ok(mut map) = self.pending.lock() {
+                map.remove(&req_id);
+            }
+            return Err(anyhow::anyhow!("Failed to spawn shutdown watchdog: {e}"));
+        }
+
         let response = rx
             .blocking_recv()
-            .context("LSP shutdown: no response received")?;
-        {
-            let mut map = self
-                .pending
-                .lock()
-                .map_err(|e| anyhow::anyhow!("LSP pending lock poisoned: {}", e))?;
+            .context("LSP shutdown: no response received");
+        if let Ok(mut map) = self.pending.lock() {
             map.remove(&req_id);
         }
-        Ok(response)
+        response
     }
 
     /// Kill the child process and wait for it to exit.
@@ -687,6 +784,12 @@ impl LspSession {
 }
 
 /// 推进生命周期相位并经 transport 发布事件（session 未构造时也可用的自由函数）。
+///
+/// **终态门**：进入终态（关闭 / 崩溃）后唯一允许继续发布的投影是 `stopped` 本身
+/// （关闭路径先 `Lifecycle::close()` 再发终态事件）。其余状态 —— 尤其是由 work-done
+/// 进度合成的 `indexing` 与握手完成后的 `ready` —— 一律丢弃：迟到的服务端通知不得
+/// 把状态标 chip 从终态“复活”成绿点（而 `snapshot()` 读同一个 lifecycle 仍报
+/// `stopped`，两者必须同源）。
 pub(crate) fn publish_status(
     lifecycle: &Lifecycle,
     transport: &dyn LspTransport,
@@ -696,6 +799,14 @@ pub(crate) fn publish_status(
     message: Option<&str>,
     progress_pct: Option<u32>,
 ) {
+    let terminal_notice = matches!(status, LspSessionStatus::Stopped);
+    if lifecycle.is_terminal() && !terminal_notice {
+        log::debug!(
+            "[LSP] Dropping {} event for {project_path}:{language_id}: session already terminal",
+            status.as_str()
+        );
+        return;
+    }
     lifecycle.set(&status);
     transport.push_session_event(
         project_path,
@@ -741,7 +852,18 @@ pub(crate) fn on_reader_exit(
     language_id: &str,
     server_name: &str,
     diagnostics: &AttemptDiagnostics,
+    init_completed: &std::sync::atomic::AtomicBool,
 ) -> bool {
+    // 握手未完成 ⇒ 本次尝试还**没有**成为会话：终态由 manager 的装配失败分支唯一
+    // 落账（审计 channel D13）。两处都写会让同一故障产生两条不同文案的 error。
+    // 注意 `drain_pending` 仍必须先跑完（等待方要快速失败），此处只管终态归属。
+    if !init_completed.load(std::sync::atomic::Ordering::Acquire) {
+        log::debug!(
+            "[LSP] reader exited for {project_path}:{language_id} before initialize completed; \
+             terminal state is owned by the assembly failure path"
+        );
+        return false;
+    }
     let tail = diagnostics.tail_inline(TAIL_INLINE_MAX_BYTES);
     let message = crash_message(server_name, tail.as_deref());
     if !lifecycle.on_reader_exit(&message) {
@@ -769,24 +891,86 @@ fn drain_pending(pending: &Mutex<HashMap<RequestId, PendingSender>>) {
     }
 }
 
-/// 等待 `initialize` 响应，且**不得挂死**：reader 线程一旦退出，任何响应都不可能
-/// 再到达 —— 摘掉 pending 发送端，让 `blocking_recv` 以「无响应」失败。
+/// 等待 `initialize` 响应，且**不得挂死**（两条独立的解锁条件）：
+/// 1. reader 线程退出 ⇒ 响应不可能再到达 → 摘掉 pending 发送端快速失败
+///    （mode ⑤/⑥：子进程启动后立即退出，失败必须产生才能「自我解释」）；
+/// 2. `timeout` 到期 ⇒ 看门狗摘掉 pending 发送端 → 同样以「无响应」失败
+///    （服务器**活着但不答**：jdtls 撞 `-data` 锁 / OSGi 卡死）。
 ///
-/// mode ⑤/⑥（子进程启动后立即退出）的可读性依赖这条：sender 留在 map 里会把
-/// `blocking_recv` 永久阻塞，失败就永远不会产生，更谈不上「自我解释」。
+/// 两条路径都走既有 `drain` 语义，不引入新原语；失败文案不变，装配失败路径照原样
+/// 合成内联证据（kill 进程 + 单次终态文案）。
 fn await_init_response(
+    req_id: RequestId,
     init_rx: tokio::sync::oneshot::Receiver<Message>,
-    pending: &Mutex<HashMap<RequestId, PendingSender>>,
+    pending: &Arc<Mutex<HashMap<RequestId, PendingSender>>>,
     reader: &thread::JoinHandle<Result<()>>,
+    timeout: std::time::Duration,
 ) -> Result<Message> {
     if reader.is_finished() {
         // 关窗：reader 在「插入 sender」与「本检查」之间退出时，它在出口的 drain
         // 可能已经跑过（见 reader 闭包），这里补一次。
         drain_pending(pending);
     }
-    init_rx
+    // 与 shutdown 等响应同一不变量：到期摘掉该 id 的发送端 → `blocking_recv` 立刻
+    // 以「无响应」失败。没有它，服务器「活着但不答」会把阻塞线程与 per-key 创建门
+    // 一起永久占住（审计 channel D1）。
+    if let Err(e) = spawn_pending_watchdog(pending, req_id.clone(), timeout, "lsp-init-watchdog") {
+        // 没看门狗就只能无界等 —— 宁可快速失败，也不退回到无界等待。
+        if let Ok(mut map) = pending.lock() {
+            map.remove(&req_id);
+        }
+        return Err(anyhow::anyhow!("Failed to spawn init watchdog: {e}"));
+    }
+    let response = init_rx
         .blocking_recv()
-        .context("LSP initialization: no response received")
+        .context("LSP initialization: no response received");
+    if let Ok(mut map) = pending.lock() {
+        map.remove(&req_id);
+    }
+    response
+}
+
+/// 有界等待的看门狗：到期把 `req_id` 从 `pending` 摘除 ⇒ 对应的 `blocking_recv`
+/// 立即以「无响应」失败。
+///
+/// 与 [`drain_pending`] 是同一不变量（摘除发送端 = 宣告响应不可能再到达），只是触发
+/// 条件从「reader 退出」换成「超时」。响应先到时，看门狗在下一轮轮询发现条目已不在
+/// 便自行退出（最多多活一个轮询间隔）。
+///
+/// 存在的理由：`spawn_blocking` 线程与 per-key 门都不是无界资源，服务器沉默时不许
+/// 永久阻塞（红线 3 的形态）。返回 `Err` 表示线程没起来 —— 调用方必须放弃等待。
+fn spawn_pending_watchdog(
+    pending: &Arc<Mutex<HashMap<RequestId, PendingSender>>>,
+    req_id: RequestId,
+    timeout: std::time::Duration,
+    thread_name: &str,
+) -> std::io::Result<()> {
+    /// 轮询间隔：只用于「响应已到 / 未到」的快速退出，不决定宽限时长。
+    const WATCHDOG_POLL: std::time::Duration = std::time::Duration::from_millis(5);
+
+    let pending = Arc::clone(pending);
+    thread::Builder::new()
+        .name(thread_name.to_string())
+        .spawn(move || {
+            let deadline = std::time::Instant::now() + timeout;
+            loop {
+                match pending.lock() {
+                    // 已被响应路径 / reader 的 drain 摘除 → 无需再等
+                    Ok(map) if !map.contains_key(&req_id) => return,
+                    Ok(_) => {}
+                    Err(_) => return,
+                }
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    if let Ok(mut map) = pending.lock() {
+                        map.remove(&req_id);
+                    }
+                    return;
+                }
+                thread::sleep(remaining.min(WATCHDOG_POLL));
+            }
+        })
+        .map(|_handle| ())
 }
 
 /// panic 载荷 → 可读文案（应用无全局 panic hook，载荷必须落进日志）。
@@ -837,8 +1021,7 @@ pub(crate) fn build_client_capabilities() -> Value {
                 // 本栈没有 `codeAction/resolve` 通道，声明会让 jdtls 把 edit 全部推迟到
                 // resolve（同 `resolveAdditionalTextEditsSupport` 事故，2026-09-18）。
                 "codeActionLiteralSupport": { "codeActionKind": { "valueSet": ["quickfix", "source"] } }
-            },
-            "publishDiagnostics": { "relatedInformation": true }
+            }
         },
         "workspace": { "workspaceFolders": true, "configuration": true, "didChangeConfiguration": { "dynamicRegistration": false } },
         "window": { "workDoneProgress": true }
@@ -935,9 +1118,12 @@ pub(crate) fn parse_initialize_response(msg: Message) -> Result<Value> {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
-    use crate::lsp::session::testing::{stub_session, RecordingTransport};
+    use crate::lsp::session::testing::{
+        stub_session, stub_session_with_writer, RecordingTransport,
+    };
     use lsp_server::{RequestId, Response, ResponseError};
     use serde_json::json;
+    use std::time::Duration;
 
     fn err_response(message: &str) -> Message {
         Message::Response(Response {
@@ -1086,6 +1272,24 @@ mod tests {
             caps["textDocument"]["codeAction"].get("resolveSupport").is_none(),
             "do not declare codeAction.resolveSupport — no codeAction/resolve channel exists; \
              jdtls would defer every edit to resolve (same trap as resolveAdditionalTextEditsSupport)"
+        );
+    }
+
+    /// 红线 14（声明 = 行为契约）：客户端**不得**再声明 `textDocument.publishDiagnostics`
+    /// 下的「关联位置」能力 —— 全仓没有任何渲染消费点，声明它只会让服务器为每条
+    /// 诊断附加我们永不显示的关联位置（纯 IPC / 内存开销）。与 `codeAction.resolveSupport`
+    /// 同族：**消费点不存在 ⇒ 不声明**；要恢复必须先有渲染实现（并同步改本用例）。
+    ///
+    /// 断言的形状是「该能力键不存在」而不是「某子键为 false」（AC2 以 grep 零命中为据，
+    /// 这里刻意不在代码里复述该 capability 名）。
+    #[test]
+    fn client_capabilities_do_not_advertise_publish_diagnostics_extras() {
+        let caps = build_client_capabilities();
+        assert!(
+            caps["textDocument"]["publishDiagnostics"].is_null(),
+            "不得声明 textDocument.publishDiagnostics::关联位置 —— 全仓无消费点 \
+             (红线 14); got: {:?}",
+            caps["textDocument"]["publishDiagnostics"]
         );
     }
 
@@ -1245,6 +1449,29 @@ mod tests {
         assert_eq!(merge_client_capabilities(base.clone(), &plugin), base);
     }
 
+    /// 请求预算的**唯一来源**是插件数据（R4）：未声明回落通用默认（15s，与前端
+    /// `lspRequestTimeoutMs` 同值），声明则原样采用（java/rust 声明 120s）。
+    ///
+    /// 反例：请求层再硬编码一份默认值 ⇒ 同一请求两端超时不同（前端先放弃、后端仍在
+    /// 等，或反之），失败原因与 UI 显示对不上。
+    #[test]
+    fn request_timeout_is_plugin_data_with_generic_fallback() {
+        let plain = LspPlugin::builtin("go", &["go"], "gopls", &["gopls"], None);
+        assert_eq!(
+            request_timeout_for(&plain),
+            Duration::from_secs(15),
+            "未声明的插件必须走通用默认（不是无界、不是别的数字）"
+        );
+
+        let slow = LspPlugin::builtin("java", &["java"], "jdtls", &["jdtls"], None)
+            .with_request_timeout_ms(120_000);
+        assert_eq!(
+            request_timeout_for(&slow),
+            Duration::from_secs(120),
+            "冷启动慢的服务器必须由插件数据声明预算（不得按语言名分支）"
+        );
+    }
+
     // ── M2 会话健康度：生命周期相位 → 事件（design.md §M2）──
 
     /// 桩会话身份（夹具参数集中在此，测试体只关心行为）。
@@ -1360,10 +1587,10 @@ mod tests {
     #[test]
     fn await_init_response_fails_fast_when_reader_dead() {
         let (tx, rx) = tokio::sync::oneshot::channel::<Message>();
-        let pending: std::sync::Mutex<HashMap<RequestId, PendingSender>> =
-            std::sync::Mutex::new(HashMap::new());
-        let req_id = RequestId::from(1i32);
-        pending.lock().expect("lock").insert(req_id, tx);
+        let pending: Arc<Mutex<HashMap<RequestId, PendingSender>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let req_id = crate::lsp::session::request::next_request_id();
+        pending.lock().expect("lock").insert(req_id.clone(), tx);
 
         let reader: thread::JoinHandle<Result<()>> = thread::spawn(|| Ok(()));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
@@ -1372,7 +1599,14 @@ mod tests {
         }
         assert!(reader.is_finished(), "模拟 reader 必须已退出");
 
-        let error = await_init_response(rx, &pending, &reader).expect_err("必须失败而非挂死");
+        let error = await_init_response(
+            req_id,
+            rx,
+            &pending,
+            &reader,
+            std::time::Duration::from_secs(5),
+        )
+        .expect_err("必须失败而非挂死");
         assert!(
             error.to_string().contains("no response received"),
             "失败原因必须指向无响应（供内联证据合成）: {error}"
@@ -1383,17 +1617,78 @@ mod tests {
         );
     }
 
+    /// T0-4（审计 channel D1 / contracts #9）：`initialize` 握手必须有 deadline。
+    ///
+    /// 事故形态：服务器**活着但不答** `initialize`（jdtls 撞 `-data` 锁、OSGi 卡死）⇒
+    /// `blocking_recv` 只由 reader 退出解除 ⇒ `spawn_blocking` 线程与 per-key 创建门
+    /// 被一并永久占用 ⇒ 该 key 的**所有** LSP 命令悬挂，前端每条 invoke 永不 settle。
+    ///
+    /// 判据：50ms 预算 + 服务器沉默（reader 存活）+ 无响应 ⇒ 必须在预算附近以
+    /// 「no response received」失败，且 pending 里那条 initialize 发送端已被摘除。
+    #[test]
+    fn await_init_response_fails_when_server_stays_silent() {
+        let (tx, rx) = tokio::sync::oneshot::channel::<Message>();
+        let pending: Arc<Mutex<HashMap<RequestId, PendingSender>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let req_id = crate::lsp::session::request::next_request_id();
+        pending.lock().expect("lock").insert(req_id.clone(), tx);
+
+        // reader **存活**：本用例测的是「进程活着但不答」，不是「进程死了」
+        // （后者由 `await_init_response_fails_fast_when_reader_dead` 覆盖）。
+        let (release_tx, release_rx) = crossbeam_channel::bounded::<()>(1);
+        let reader: thread::JoinHandle<Result<()>> = thread::spawn(move || {
+            let _ = release_rx.recv();
+            Ok(())
+        });
+        assert!(!reader.is_finished(), "reader 必须存活");
+
+        let started = std::time::Instant::now();
+        let error = await_init_response(
+            req_id.clone(),
+            rx,
+            &pending,
+            &reader,
+            std::time::Duration::from_millis(50),
+        )
+        .expect_err("服务器沉默时必须失败，而不是挂死");
+        let elapsed = started.elapsed();
+
+        assert!(
+            error.to_string().contains("no response received"),
+            "失败原因必须沿用既有文案（装配失败路径据此合成内联证据）: {error}"
+        );
+        assert!(
+            elapsed >= std::time::Duration::from_millis(40)
+                && elapsed < std::time::Duration::from_secs(1),
+            "50ms 预算必须在预算附近收口（不是立刻失败、也不是无界等待），实际 {elapsed:?}"
+        );
+        assert!(
+            pending.lock().expect("lock").is_empty(),
+            "超时后必须摘除 initialize 的发送端（否则 pending 条目泄漏、该 key 永久占用）"
+        );
+
+        drop(release_tx);
+        let _ = reader.join();
+    }
+
     /// 正常路径：reader 存活、响应到达 → 原样返回。
     #[test]
     fn await_init_response_returns_response_when_reader_alive() {
         let (tx, rx) = tokio::sync::oneshot::channel::<Message>();
-        let pending: std::sync::Mutex<HashMap<RequestId, PendingSender>> =
-            std::sync::Mutex::new(HashMap::new());
+        let pending: Arc<Mutex<HashMap<RequestId, PendingSender>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let reader: thread::JoinHandle<Result<()>> = thread::spawn(|| Ok(()));
         // 模拟 reader 送响应（oneshot 有缓冲，先 send 后 recv 亦可）。
         tx.send(err_response("server said no")).expect("send");
 
-        let response = await_init_response(rx, &pending, &reader).expect("response");
+        let response = await_init_response(
+            crate::lsp::session::request::next_request_id(),
+            rx,
+            &pending,
+            &reader,
+            std::time::Duration::from_secs(5),
+        )
+        .expect("response");
 
         assert!(matches!(response, Message::Response(_)));
     }
@@ -1414,7 +1709,8 @@ mod tests {
             PROJECT,
             "go",
             "gopls",
-            &diagnostics
+            &diagnostics,
+            &std::sync::atomic::AtomicBool::new(true)
         ));
 
         let events = transport.take();
@@ -1453,7 +1749,8 @@ mod tests {
             PROJECT,
             "go",
             "gopls",
-            &diag()
+            &diag(),
+            &std::sync::atomic::AtomicBool::new(true)
         ));
         assert!(transport.take().is_empty(), "关闭后不得再发任何事件");
         assert_eq!(lifecycle.status("gopls"), LspSessionStatus::Stopped);
@@ -1473,7 +1770,8 @@ mod tests {
             PROJECT,
             "go",
             "gopls",
-            &diagnostics
+            &diagnostics,
+            &std::sync::atomic::AtomicBool::new(true)
         ));
         assert!(
             !on_reader_exit(
@@ -1482,11 +1780,89 @@ mod tests {
                 PROJECT,
                 "go",
                 "gopls",
-                &diagnostics
+                &diagnostics,
+                &std::sync::atomic::AtomicBool::new(true)
             ),
             "重复退出不得再判定为崩溃"
         );
         assert_eq!(transport.take().len(), 1);
+    }
+
+    /// R6/D13：握手期的终态**只有一个写者**。
+    ///
+    /// 事故形态（mode ⑤/⑥：服务器在握手期退出）：reader 出口判崩溃先发
+    /// `"<server> exited unexpectedly | stderr: …"`，manager 的装配失败分支再发
+    /// `"LSP initialization: no response received | server stderr: …"` ⇒ 前端收到
+    /// **两条**文案不同的 error、两个重试入口，`outcome` 还取决于线程写序。
+    ///
+    /// 判据：握手未完成时 reader 出口**不写**终态、不发事件；本次尝试的唯一一条
+    /// error 由装配失败分支产生，文案与 `get_server_info().outcome` 同源。
+    #[test]
+    fn handshake_failure_reports_exactly_one_error() {
+        let transport = Arc::new(RecordingTransport::default());
+        let lifecycle = Lifecycle::new();
+        let diagnostics = diag();
+        diagnostics.push_line("error", "jdtls: workspace lock is held by another instance");
+        let init_completed = std::sync::atomic::AtomicBool::new(false);
+
+        // ① reader 出口：进程在握手期退出（此刻它还**不是**终态写者）。
+        let reader_wrote_terminal = on_reader_exit(
+            &lifecycle,
+            transport.as_ref(),
+            PROJECT,
+            LANG,
+            SERVER,
+            &diagnostics,
+            &init_completed,
+        );
+        assert!(
+            !reader_wrote_terminal,
+            "握手完成前 reader 不得写终态（否则同一故障会有两个写者 ⇒ 前端两条 error）"
+        );
+        assert!(
+            !lifecycle.is_terminal(),
+            "握手期的相位由装配失败分支落账，reader 不得抢先置终态"
+        );
+
+        // ② manager 的装配失败分支：唯一落账（这里是它在 session 侧的最接近替身）。
+        let message = "LSP initialization: no response received | server stderr: jdtls: lock held";
+        emit_session_error(transport.as_ref(), PROJECT, LANG, message);
+
+        let events = transport.take();
+        let errors: Vec<_> = events.iter().filter(|e| e.2 == "error").collect();
+        assert_eq!(
+            errors.len(),
+            1,
+            "握手期故障前端只能收到一条 error（多写者 = 两个重试入口 + 文案不一致）: {events:?}"
+        );
+        assert_eq!(
+            errors[0].3.as_deref(),
+            Some(message),
+            "唯一一条 error 的文案必须来自本实尝试的落账点"
+        );
+
+        // ③ 握手完成后交棒：reader 仍是唯一的崩溃写者（既有语义不变）。
+        let errors_before = transport.take().iter().filter(|e| e.2 == "error").count();
+        init_completed.store(true, std::sync::atomic::Ordering::Release);
+        assert!(
+            on_reader_exit(
+                &lifecycle,
+                transport.as_ref(),
+                PROJECT,
+                LANG,
+                SERVER,
+                &diagnostics,
+                &init_completed
+            ),
+            "握手完成后进程退出仍必须判为崩溃并发 error"
+        );
+        // 差分式（`take` 累积且不重置）：交棒后恰好**新增**一条 error。
+        let errors_after = transport.take().iter().filter(|e| e.2 == "error").count();
+        assert_eq!(
+            errors_after,
+            errors_before + 1,
+            "交棒后 reader 是唯一写者（只允许新增一条 error）"
+        );
     }
 
     /// 崩溃后的快照必须报 error —— 前端 LspSubscriptionBridge 的项目切换初始同步
@@ -1541,5 +1917,118 @@ mod tests {
         assert_eq!(panic_payload_message(&*owned), "owned payload");
         let opaque: Box<dyn std::any::Any + Send> = Box::new(42u32);
         assert_eq!(panic_payload_message(&*opaque), "unknown panic payload");
+    }
+
+    /// `shutdown` 必须是 **request**（LSP 规范：服务器响应后才允许发 `exit`）。
+    ///
+    /// 事故形态（11-12 任务）：项目停用路径用 `send_notification_raw` 把 `shutdown` 当
+    /// notification 发 —— 服务器永远不会回，紧接着的 `exit` 等于宣告「我不等你」，jdtls 的 Eclipse
+    /// workspace checkpoint 遂被随后的 SIGKILL 截断，下次启动直接 `Application error`。
+    #[test]
+    fn shutdown_request_is_a_request_not_a_notification() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (session, writer_rx) = stub_session_with_writer(
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+            PROJECT,
+            LANG,
+            SERVER,
+        );
+
+        let handle =
+            thread::spawn(move || session.send_shutdown_request_bounded(Duration::from_millis(50)));
+
+        let message = writer_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("关闭序列必须向服务器发出 shutdown");
+        match message {
+            Message::Request(req) => {
+                assert_eq!(req.method, "shutdown", "第一条报文必须是 shutdown request");
+            }
+            other => panic!("shutdown 不得以 notification 形式发出: {other:?}"),
+        }
+
+        let error = handle
+            .join()
+            .expect("join")
+            .expect_err("服务器不响应时必须失败而不是挂死");
+        assert!(
+            error.to_string().contains("no response received"),
+            "失败原因必须指向无响应: {error}"
+        );
+    }
+
+    /// R3/D4：`shutdown` 的 id 也必须来自**唯一** allocator（不得硬编码常量）。
+    ///
+    /// 反例（修复前 `RequestId::from(1000i32)`）：三套 id 生成器共用一张以 id 为键的
+    /// `pending` 表 ⇒ 业务自增绕回到 1000 时，shutdown 的 response 被投给业务 waiter
+    /// （`result` 被当成 hover 结果返回），关闭序列拿不到 ack、白等满宽限再兜底 kill。
+    ///
+    /// 判据用「夹逼」：`before` 在本线程先取、`after` 在收到报文后取，任何时刻全局
+    /// 计数器严格单调 ⇒ `before < id < after` 成立的唯一解释就是 id 来自该 allocator
+    /// （其他测试线程并发取号只会拉大 `after`）。
+    #[test]
+    fn shutdown_request_id_comes_from_the_shared_allocator() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (session, writer_rx) = stub_session_with_writer(
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+            PROJECT,
+            LANG,
+            SERVER,
+        );
+
+        let before = crate::lsp::session::request::next_request_id();
+        let handle =
+            thread::spawn(move || session.send_shutdown_request_bounded(Duration::from_millis(50)));
+        let message = writer_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("关闭序列必须向服务器发出 shutdown");
+        let after = crate::lsp::session::request::next_request_id();
+
+        let id = match message {
+            Message::Request(req) => req.id,
+            other => panic!("shutdown 必须以 request 形式发出: {other:?}"),
+        };
+        assert!(
+            before < id && id < after,
+            "shutdown 的 id 必须由唯一 allocator 分配，实际 {id:?} 不在 ({before:?}, {after:?}) 之间 \
+             —— 硬编码常量与业务 id 共用 pending 表，绕回即互投响应"
+        );
+
+        let _ = handle.join().expect("join");
+    }
+
+    /// 等待**必须有界**：`spawn_blocking` 线程不是无界资源。
+    ///
+    /// 服务器活着但沉默时，无界 `blocking_recv` 会永久占住线程（关闭永不收口）；
+    /// 超时后必须同时摘除在途发送端，否则下一个关闭会复用脏 pending。
+    #[test]
+    fn shutdown_request_wait_is_bounded_and_drops_pending() {
+        let transport = Arc::new(RecordingTransport::default());
+        let (session, _writer_rx) = stub_session_with_writer(
+            Arc::clone(&transport) as Arc<dyn LspTransport>,
+            PROJECT,
+            LANG,
+            SERVER,
+        );
+        let pending = Arc::clone(&session.pending);
+
+        let started = std::time::Instant::now();
+        let error = session
+            .send_shutdown_request_bounded(Duration::from_millis(40))
+            .expect_err("无响应必须失败");
+
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "等待必须有界返回，实际 {:?}",
+            started.elapsed()
+        );
+        assert!(
+            error.to_string().contains("no response received"),
+            "失败原因必须指向无响应: {error}"
+        );
+        assert!(
+            pending.lock().expect("pending lock").is_empty(),
+            "超时后在途发送端必须被摘除（否则 pending 表泄漏、下次关闭误判）"
+        );
     }
 }

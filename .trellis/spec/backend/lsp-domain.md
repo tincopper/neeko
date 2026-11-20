@@ -293,6 +293,30 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
    的计数器写同一会话）。
 6. **uri 必须与 didOpen 完全一致**：编辑器 quickfix 取 `useLspClient` 算出的 `fileUri`，
    不得自己再算（`tabLspDocumentUri` 对普通文件恒 `undefined`，曾致三入口静默 return）。
+7. **文档登记表分「重启保留」与「停止清空」两把操作**（11-12-lsp-document-identity）：
+   `session_store::take_session` 只摘会话对象（`open_docs` / `editor_owned` 活着），
+   `close_session` 才是「会话就此结束」（清登记、清所有权、清 restart streak）。
+   `manager::take_for_close` 按 `SessionCloseNotice` 分派：`Silent`（重启/崩溃重试）→
+   `take_session`，`Announce`（stop/项目停用）→ `close_session`。
+   **用错的后果（2026-11-12 修复前）**：重启后 `reopen_documents` 恒重放 0 条（死代码）⇒
+   服务器端文档消失（无诊断无补全直到用户编辑）；`editor_owned` 一并清 ⇒ 后端按**磁盘文本**
+   代开编辑器里的未保存缓冲区 ⇒ 诊断坐标整体错位（§7.5 的事故形态）。
+   回归钉：`take_session_keeps_documents_and_ownership` /
+   `close_session_clears_documents_and_ownership` / `restart_keeps_open_documents`。
+8. **`didChange` 必须回写登记表**（同上）：生产路径只有 `commands.rs::lsp_transport` 的通用
+   转发，在那里的 `textDocument/didChange` 分支调 `record_document_change`：
+   `contentChanges` 里**没有 `range`** = 全量同步 → 文本 + 版本都更新；有 `range` = 增量 →
+   只推版本（文本保持，重放时 `warn` 说明可能陈旧）。未登记的 uri **不造条目**（登记表 =
+   「我们 didOpen 过的文档」）。
+   为什么必须：重放用的是登记表里的文本，只在 didOpen 时写一次的话，重放出去的永远是打开
+   那一刻的内容（服务器按旧文本分析）。根治方向（前端在会话就绪后重发 didOpen）已记在该
+   任务 PRD 的 out of scope。
+9. **IPC 主通道也有字节预算**（11-12-lsp-cross-layer-contracts，红线 4）：
+   `lsp/types.rs::LSP_RESPONSE_MAX_BYTES`（2 MiB）+ `enforce_response_bytes(method, bytes)`。
+   `lsp_transport` 的**所有**返回点收敛到单一出口 `commands.rs::transport_response(method, body)`
+   （新增分支不再可能绕开）；`lsp_request` 在返回前用 `serde_json::to_vec` 量一次长度
+   （多一次序列化是有意的 —— 不知道长度就无法判定）。**超限直接失败、不截断**：截断的 JSON
+   会让前端解析出半个结果，比明确报错更难诊断。新增「原样转发服务器响应」的命令时必须过这个口。
 
 ## 失败诊断归属：证据锚定身份键（10-10-lsp-failure-diagnostics-ownership，勿回退）
 
@@ -349,6 +373,13 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
   不得因「不支持 `--version`」误杀）；超时 / 无 stderr → 仅记录，不判定。
 - PATH 存在性（`check_plugin_installed`）只作为**自安装门控**；「能不能应答」由 probe +
   真实启动回答（R4：判据的失败必须能被诊断通道解释）。
+- **下载式安装的产物在目标环境的 `~/.neeko/bin`**（jdtls 包装脚本）：Local 由
+  `host_path::prepend_neeko_bin` 把该目录置顶到进程 PATH，WSL/SSH 没有。故
+  `check_binary_installed` 在 PATH 未命中时**再按绝对路径判一次**（`$HOME/.neeko/bin/<bin>`，
+  由目标 shell 展开）—— 否则远端每轮会话创建重下 ~100MB 再报「装完仍找不到」
+  （11-12-lsp-install-lifecycle）。
+  **已知局限**：本轮只修判据、不注入 exec env PATH ⇒ 远端「已装但不在 PATH」时判据为真而
+  spawn 仍失败。失败文案必须说清这一点；完整修法（每目标 PATH 前缀）已记该任务 out of scope。
 - 探测 / 启动失败文案附插件 `install` 数据给出的修法提示（`installer::install_hint`，
   数据驱动，红线 15）。
 
@@ -411,6 +442,9 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
   → Java 自动导包彻底失效。实测：声明 `true` 时 `List` 的 33 个候选 0 个带
   `additionalTextEdits`，不声明则 33/33 带。
 - `progressReportProvider: true` 而全仓无 `language/progressReport` 处理 —— 同属假声明。
+- `publishDiagnostics.relatedInformation: true` 而全仓无渲染/解析（`src/` 零命中）—— 同属假声明，
+  已删除（11-12-lsp-cross-layer-contracts）。要恢复必须先有渲染色（`DiagnosticRow` /
+  `lspQuickFixPopup`），否则只是让服务器为每条诊断多带一份永不显示的关联位置。
 - **反向违约同样致命**（rust-analyzer 1.97.1）：客户端未在
   `completionItem.resolveSupport.properties` 声明 `additionalTextEdits` 时，r-a 把**所有**
   flyimport 候选整条丢弃，补全列表里永远不会出现 `HashMap`。实测：不声明 108 项无候选，
@@ -466,3 +500,182 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
 排查入口：`[perf] do_send_request … awaited …`（后端真实耗时）与 `[LSP] Progress begin/end`
 （服务器自述阶段）；两者对齐即可区分「服务器慢」与「客户端预算小」。
 
+
+## 关闭序列：唯一实现 + 三步有界（11-12-lsp-graceful-shutdown，勿回退）
+
+### 1. Scope / Trigger
+
+任何「关掉一个语言服务器」的改动：`close_session` / `close_session_for_restart` /
+`close_sessions_for_project`（含项目停用的 `schedule_deactivate` 定时路径）/
+`close_all_sessions`（应用退出）。
+新增关闭入口时**只能**调用 `manager.rs::shutdown_and_exit`（或带预算的
+`shutdown_and_exit_with`），不得再拼一份序列。
+
+### 2. Contracts
+
+LSP 规范顺序，三步都必须**有界**：
+
+| 步骤 | 形态 | 有界来源 |
+| --- | --- | --- |
+| `shutdown` | **Request**（服务器响应后才允许 `exit`） | `send_shutdown_request_bounded(grace)`：看门狗到期摘 `pending` 发送端 → `blocking_recv` 立刻以「无响应」失败 |
+| `exit` | Notification | 写失败容忍（服务器可能已退），不得提前返回 |
+| 等进程自行退出 | `LspProcess::wait_exit(grace)`（`Condvar` 退出门，按截止时间循环） | 超时 `false` → 才 `kill_child()` |
+
+- **宽限期是插件数据**：`LspServerTuning::shutdown_grace_ms`（默认 `DEFAULT_SHUTDOWN_GRACE_MS = 2_000`，
+  jdtls 声明 `10_000`）。会话创建时落到 `LspSession::shutdown_grace`，关闭路径**只读会话**。
+  禁止 `language_id == "java"` 分支（红线 15）。
+- **`kill` 必须跳过已退出的进程**（`LspProcess::kill` 先零宽限探一次退出门）：`kill_tree`
+  面向 PID，PID 会被系统回收 —— 对已退出句柄发杀最多空转，对复用 PID 发杀会误杀无辜进程。
+  `Drop for LspProcess` 也走这条，所以「已退出免杀」必须落在 `kill()` 内部。
+- **阻塞语义**：序列最多阻塞 `响应超时 + 退出宽限`，只能在 `spawn_blocking` / 专用线程里跑（红线 3）。
+  项目停用是**串行**关闭各语言会话（并发关闭会把多个 JVM 的 checkpoint 挤进同一窗口）；
+  总时长是 `N × 2 × grace`（N = 该项目的语言数），不是单个 `2 × grace`。
+- 任一步失败都**不得**提前返回：那会留下「终态已落、进程仍活着」的孤儿，继续持着 workspace 锁。
+
+### 2b. 三条入口的差异化约束（同为一条序列，预算/时机不同）
+
+| 入口 | 是否需要等序列跑完 | 预算 | 理由 |
+| --- | --- | --- | --- |
+| `close_session`（用户停止） | 否（fire-and-forget） | 会话宽限 | stop 是单向的，调用方不立刻重建 |
+| `close_session_for_restart` | **是（`async`，必须 `await`）** | 会话宽限 | 调用方紧接着建新会话；服务器共享磁盘上的会话数据目录（jdtls `-data` 带 workspace 锁）→ 不等旧进程退出 = 两个 jdtls 抢同一把锁 |
+| `close_sessions_for_project` | 否 | 会话宽限（串行） | 项目停用发生在离开 30 分钟后，无立即重建 |
+| `close_all_sessions`（应用退出） | **是（同步跑完）** | `APP_QUIT_GRACE_BUDGET`（3s，各会话共享切片） | `run_cleanup_and_exit` join 完就 `process::exit(0)` —— 在这里 spawn 出去的工作**跑不到**，这正是「退出即硬杀」的成因 |
+
+> 退出预算用尽后的兜底 `kill_child()` 是**有意的取舍**：宁可下次重建索引，也不能让用户等
+> `N × 2 × grace` 才退出。
+
+### 3. 违反现场（2026-11-12 实测，证据在 `.trellis/tasks/11-12-lsp-graceful-shutdown/research/`）
+
+项目停用路径曾把 `shutdown` 当 **notification** 发、`sleep(10ms)` 后 `kill_child()`：
+
+```
+用户侧: jdtls exited unexpectedly | stderr: WARNING: Using incubator modules: jdk.incubator.vector
+        LSP initialization: no response received | server stderr: <同一句无害警告>
+真死因: <data>/.metadata/.log
+        The workspace exited with unsaved changes in the previous session
+        ResourcesPlugin.start() → SaveManager.restore() → ObjectNotFoundException
+        → NoClassDefFoundError (jdt.core / jdt.ls.core) → "Application error" → 进程退出
+```
+
+jdtls 的致命日志**只进** `<data>/.metadata/.log`，stderr 里没有任何堆栈 —— 所以
+「`exited unexpectedly` + 只有 incubator 警告」这一组合，先去看 `<data>/.metadata/.log`，
+不要去猜 JDK 版本。`-data` 由启动器决定（Homebrew 的 python 启动器按 `sha1(basename(cwd))`
+分目录，同名工程会撞车），手工恢复 = 删掉该目录重建（纯缓存，代价是重新 import）。
+
+### 4. Tests Required
+
+`manager.rs` 关闭序列测试组（缺一即回退）：
+
+- `project_deactivate_follows_protocol_order` —— 报文逐条 `request:shutdown` → `notification:exit`
+- `both_close_paths_emit_the_same_protocol_sequence` —— 单会话关闭与项目停用序列逐条相等
+- `app_quit_closes_through_the_same_sequence` —— 退出路径同样走序列（不是直接硬杀）
+- `restart_close_finishes_the_sequence_before_returning` —— 重启关闭在返回前已跑完序列
+- `exit_is_withheld_until_shutdown_response_arrives` —— 响应未到不得发 `exit`
+- `exited_server_is_not_killed` —— 宽限内自行退出后不得再 kill
+- `hung_server_is_killed_after_grace` —— 卡死服务器在宽限后用尽后被收口
+- `process.rs`：`wait_exit_times_out_without_signal`（有界）、`kill_is_a_no_op_after_exit`、
+  `process_wait_exit_observes_exit_gate`
+
+夹具：`session::testing::stub_session_with_writer`（暴露 writer 接收端，报文时序可断言）+
+`LspProcess::test_stub(exited, killed)`（假进程，**不 spawn 真实服务器**）。夹具宽限固定 20ms，
+测试里不得出现真实秒级 `sleep`。
+
+### 5. Wrong vs Correct
+
+```rust
+// ✗ 错：notification + 固定 sleep + 硬杀（无法知道服务器是否在 checkpoint）
+let _ = s.send_notification_raw("shutdown", json!({}));
+thread::sleep(Duration::from_millis(10));
+s.kill_child();
+
+// ✗ 错：request 之后立刻杀（顺序对了，但 checkpoint 照样被截断）
+let _ = s.send_shutdown_request();          // 甚至无界等待
+let _ = s.send_notification_raw("exit", json!({}));
+s.kill_child();
+
+// ✓ 对：唯一入
+spawn_blocking(move || shutdown_and_exit(session)).await;
+```
+
+### 2c. 关闭/创建互斥与握手 deadline（T0 审计整改，2026-11-12）
+
+> 这两条是「关闭协议合规」的**闭环**：没有它们，上文的序列仍会在两条路径上被绕开。
+
+1. **关闭与创建共用 per-key 门**：`close_session` / `close_sessions_for_project` 在**阻塞任务内**
+   先取该 key 的 creation gate（与 `get_or_create_session` 慢路径同一把 `parking_lot::Mutex<()>`），
+   再 `take_for_close` + 跑序列。理由：stop 是 fire-and-forget 的时代，用户 stop 后立刻敲键就
+   触发新建 ⇒ 第二个 jdtls 与仍在宽限内的旧进程抢同一 `-data` 锁（与硬杀同源的故障）。
+   回归钉子：`stop_holds_the_creation_gate_until_the_sequence_finishes`。
+   注：`close_session_for_restart` 走 `await`（调用方紧接着重建），语义更强，不需再持门。
+2. **`initialize` 握手必须有 deadline**：`await_init_response(..., timeout)` —— 看门狗到期摘
+   `pending` 发送端（与 `send_shutdown_request_bounded` 同一实现，勿复制第二份）。预算 =
+   `plugin.request_timeout_ms`，未声明回落 `INIT_TIMEOUT_DEFAULT`（60s）。
+   为什么必须有：服务器**活而不答**（撞 `-data` 锁正是这种）时，`blocking_recv` 只由 reader 退出
+   解除 ⇒ 阻塞线程 + per-key 门被永久占用 ⇒ 该 key 的每条 hover/didOpen 排队，前端每条 invoke
+   永不 settle（表现为「LSP 整体没反应」，日志里只有 read 级噪音）。回归钉子：
+   `await_init_response_fails_when_server_stays_silent`。
+3. **退出预算是总计不是每步**：`shutdown_and_exit_with(session, budget)` 内部只算一次
+   `deadline = now + budget`，`shutdown` 等待与退出宽限各取剩余额度；归零即兜底 kill。
+   回归钉子：`exit_budget_is_a_total_not_per_step`（120ms 预算必须 <200ms 收口，按步实现约 240ms）。
+4. **退出清理两阶段**：优雅域先跑完，`kill_all_live` 作为 finalizer 最后跑 —— 否则每次退出都
+   SIGKILL 掉正在 checkpoint 的服务器（详见 `concurrency-guidelines.md`「收敛点（两阶段）」）。
+
+## 请求级失败 vs 会话级失败（11-12-lsp-request-channel-integrity，勿回退）
+
+### 1. 分类是**类型**，不是文案
+
+`session/request.rs::RequestFailure` 是出站请求的唯一失败类型，`do_send_request` 返回它
+（实现 `std::error::Error`，`anyhow` 调用点透明穿透）：
+
+| 变体 | 含义 | 重启 | 消耗 streak | 用户可见 |
+| --- | --- | --- | --- | --- |
+| `Server { code, message }` | 服务器答了 JSON-RPC error（`-32602` 文档未打开、`ContentModified` 编辑中） | 否 | 否 | 原样上抛 |
+| `Timeout { method, budget }` | 预算内没等到响应（服务器慢 ≠ 会话死） | 否 | 否 | 上抛（含方法与预算） |
+| `Channel(String)` | 写失败 / 发送端丢失 / reader 已退 | **是**（唯一入口） | 是 | 上层重试一次 |
+| `Cancelled` | 被更新的同类请求取消（single-flight） | 否 | 否 | `Ok(Null)` |
+
+判据：`RequestFailure::is_session_level()` 是唯一分类函数，`manager` 的
+`if !failure.is_session_level() || policy == Never => 请求级失败，直接上抛` 是唯一消费点。
+`rg -n "Will restart" src-tauri/src/lsp` 只允许命中该分支的一处日志 —— 第二处 = 绕过了分类。
+
+**Why**：曾把任何 error response 当会话故障 → 整台服务器重启（jdtls 数十秒重新导入）+
+`restart_count` 只增不清零 → 5 次普通错误后该 `project:lang` **永久**
+`Max restart count exceeded`，而 chip 仍显 Running、无重试入口。
+
+### 2. 重启必须「先关后建」，streak 只在成功后清零
+
+- **先关后建**：活会话会被 `get_or_create_session` 快路径原样复用 —— 不先
+  `close_session_for_restart(...).await` 的「重启」只是计数器 +1、进程不换（旧实现的真实形态），
+  且旧进程仍持 workspace 锁时新会话必然起不来。
+- **streak 接账**：`close_session_for_restart` 内部 `clear_restart`（用户 stop = 从头开始），
+  所以重启路径要在关闭**之前**读 `prev_count`，建好会话后 `set_restart_count(prev+1)` 接上，
+  否则每次重启都从 1 开始、`MAX_RESTART_COUNT` 永不生效。
+- **清零点唯一**：一次**请求成功**之后（`clear_restart`）。不得在创建成功时清零 ——
+  否则崩溃循环每次都被清零，上限形同虚设。
+- **预算耗尽必须可见**：经 `emit_session_error` 推 error 事件（chip 进 error + 重试入口），
+  只写 `log::warn!` = 静默把该语言弄坏。
+
+### 3. id 空间与等待边界
+
+- **唯一 allocator**：`session::request::next_request_id()`。`initialize` / `shutdown` /
+  业务请求都从它取；禁止再出现 `RequestId::from(1i32)` / `from(1000i32)`
+  （曾三套 id 共用一个以 id 为键的 `pending` 表）。
+- **`pending` 插入拒绝重复 id**：命中已存在即 `bail`（陈旧 sender 被 drop 会让前一个等待者
+  误报「无响应」，把 id 缺陷伪装成网络问题）。
+- **等待一律有界**：业务请求用 `tokio::time::timeout` 包 `rx.await`，预算取
+  `LspSession::request_timeout`（插件 `request_timeout_ms`，未声明 15s）；超时与写失败走
+  **同一清理**（摘 `pending` + `inflight.complete` + `$/cancelRequest`）。
+  回归判据：`rg -n 'rx\.await' src-tauri/src/lsp` 不得出现裸等待。
+
+### 4. 握手期终态单写者
+
+`instance.rs` 的 `init_completed: Arc<AtomicBool>`：握手完成前 reader 退出**不写终态、不推
+error**（`on_reader_exit` 里 `if !init_completed { return false }`），由 manager 的装配失败分支
+唯一落账。否则同一故障前端收两条不同文案的 error（`exited unexpectedly` +
+`no response received`），`outcome` 还依赖线程写序。
+
+**护栏**：`request.rs` 的分类三例 + `write_failure_clears_pending_and_inflight` /
+`silent_server_times_out_and_cancels` / `pending_insert_refuses_duplicate_id`；
+`manager.rs` 的 `server_error_does_not_consume_restart_budget` /
+`successful_request_resets_restart_streak` / `channel_failure_rebuilds_the_session` /
+`handshake_failure_reports_one_error`。

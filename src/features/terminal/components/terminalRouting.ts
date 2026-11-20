@@ -3,7 +3,7 @@ import { selectActiveTabId, selectOrderedTabs } from '@/shared/store/editorTabSe
 import type { Tab } from '@/shared/types';
 import type { WorkspaceSession } from '@/shared/utils/workspaceRef';
 
-import { resolveTerminalEntry } from './terminalCache';
+import { resolveTerminalEntryOfTab } from './terminalCache';
 import { pasteToTerminalSession } from './terminalCommands';
 
 /**
@@ -131,7 +131,11 @@ export function insertToTerminalTarget(
   target: ForegroundTarget,
   text: string,
 ): InsertToSessionTerminalResult {
-  const entry = resolveTerminalEntry(session, target.tab.id);
+  // **pane 无关** resolve：本函数只知道前台 tab，不知道它被拆成几个 pane。
+  // 旧实现走 `terminalCache.resolveTerminalEntry` 的两参形态（`paneId` 默认 `'p1'`）——
+  // 终端不在第一个 pane（右侧 dock / 分屏）时精确键恒 miss，返回 `{ ok: false }`
+  // 且无任何提示：这就是 2026-11 「拖文件到终端什么都没发生」的原始事故。
+  const entry = resolveTerminalEntryOfTab(session, target.tab.id);
   if (!entry?.sessionId) return { ok: false };
 
   pasteToTerminalSession(entry.sessionId, text);

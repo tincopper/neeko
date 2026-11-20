@@ -669,3 +669,54 @@ assert!(template.contains("if (isChildSession(ctx)) return;\n      return handle
 
 反向判据（变异验证）：删掉归一化，跨行回归钉在**任何**平台必红；删掉 `.gitattributes` 条目，
 `check_embedded_asset_eol` 在本地就红（不必等 Windows CI）。与红线 11（换行边界）同族。
+
+### 9. 进程级全局状态必须自带串行闸（只有 CI 会红）
+
+`cargo test` 默认在**同一二进制里多线程并发**跑用例，而 `static` 全局（缓存 / 通道 / 环境变量）
+是所有用例共享的。`### 2 测试间存在依赖` 说的是「不要共享可变状态」，但有些状态删不掉（进程级
+缓存就是产品设计），此时**必须把「复位 + 独占」做成一次调用**，不要让每个用例自己写一行。
+
+```rust
+// ❌ 复位与持闸分离：另一个用例的复位可以落进本用例的 put 与 get 之间
+reset_cache();
+let hit = get_cached(&path, &sig).unwrap();   // ← 命中变 miss，Option::unwrap() panic
+
+// ✅ 返回闸 + `#[must_use]`：调用方想丢都丢不掉，-D warnings 下编译期拦住
+let _guard = reset_scan_parse_cache_for_tests();   // 持到用例结束
+let hit = get_cached(&path, &sig).unwrap();
+```
+
+**2026-11-12 事故**：`conversation::scan_cache` 的 `SCAN_PARSE_CACHE` 被 11 个用例
+（`scan_cache.rs` / `conversation/manager.rs` / `adapters/opencode/tests/listing.rs`）共享，
+每个各用一次无返回值的 `reset_scan_parse_cache_for_tests()` 复位。
+`should_cache_file_meta_by_signature` 在 `put_cached_file_meta` 之后**紧接着**断言命中，被另一条
+用例的复位清掉 → `scan_cache.rs:511` `Option::unwrap()` on `None`。**本地 `pnpm test:rust` 绿、
+CI `backend-coverage` 红**，差异只来自线程调度与核数 —— 这类间歇红比确定性红更贵，它训练人重跑。
+
+修法与判据：
+
+- 复位函数**返回** `MutexGuard` 并标 `#[must_use = "..."]`，让「拿到就丢」（`reset();`）变成
+  `-D warnings` 下的编译错误；**不要**拆成 `reset()` + 调用方自己 `lock()` 两行。
+- 先例（照抄即可）：`notification/boot.rs` 的 `TEST_GUARD`、`agent/hooks/targets/tests.rs` 的
+  `ENV_LOCK`、`common/file/watcher/manager/lifecycle_tests.rs` 的 `REAL_FS_GUARD`。**不要引入
+  `serial_test`** —— 用例很少，不值得一个 crate。
+- 回归钉（变异验证：把复位改回不返回闸 → 必红）：
+  `scan_cache::tests::concurrent_reset_must_not_break_a_put_then_get_pair`。
+- 只给**触碰该全局的**用例加闸；纯函数用例别跟着串行化，否则白白丢掉并发。
+
+**2026-11-12 第二例（同一族的「进程表」形态）**：`common::executor::child_registry` 是**进程级**
+收敛表，`kill_all_live()` 会杀掉**任何**已登记的 `kill_tree` 子进程 —— 包括**别的用例**刚
+spawn 的那个。`common/executor/local.rs` 的四个用例都会 spawn 子进程，其中一个还直接调
+`kill_all_live()`，于是「谁先跑」决定了别人家的 fixture 是否被提前杀掉：包装器 + 孙进程那条
+用例因此可能拿到空 stdout（或反向**假绿** —— 孙进程被别人顺手杀了，断言「已死」自然通过），
+用户侧表现为「偶发红」。
+
+两条落地（照抄即可）：
+
+- 串行闸用 **`tokio::sync::Mutex`**（`Mutex::const_new(())` + `lock().await`）；async 用例本就
+  跨 `await` 持有，`std::sync::MutexGuard` 会被 `clippy::await_holding_lock` 拒绝 —— 那不是
+  误报，是真错用。同步用例用同一把锁的 `blocking_lock()`。
+- **判据改成事件，不要 sleep 轮询**：包装器与孙进程都继承同一条 stdout 管道，「就绪」= 读到
+  fixture 打印的一行，「收口」= 管道 EOF（两者的写端都关闭）。超时值只是**失败预算**
+  （5s），不是调度窗口 —— 健康路径是毫秒级。用 `kill(pid, 0)` 轮询 + `sleep` 既慢又会把
+  「zombie 未被 reap」误判成活着的竞态。变异验证：摘掉 `.with_kill_tree()` → 用例必须红。

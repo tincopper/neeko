@@ -9,7 +9,7 @@ use tempfile::TempDir;
 
 #[test]
 fn should_reuse_parse_all_metas_when_db_unchanged() {
-    crate::conversation::scan_cache::reset_scan_parse_cache_for_tests();
+    let _guard = crate::conversation::scan_cache::reset_scan_parse_cache_for_tests();
     let dir = TempDir::new().unwrap();
     // Point adapter root at temp dir with one fixture DB.
     let db_path = create_opencode_fixture(&dir);

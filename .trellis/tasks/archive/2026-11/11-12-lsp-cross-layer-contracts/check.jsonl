@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/11-12-lsp-cross-layer-contracts/prd.md", "reason": "审核基准：AC1-AC6；尤其 AC1 的「不截断、明确报错」与 AC4 的变异验证"}
+{"file": ".trellis/tasks/11-12-lsp-cross-layer-contracts/design.md", "reason": "审核基准：失败矩阵 6 行；预算的度量点（string 长度 vs 再序列化）是否与实现一致"}
+{"file": ".trellis/tasks/11-12-lsp-cross-layer-contracts/implement.md", "reason": "审核基准：Gate A-E 的 grep 判据是否达成"}
+{"file": ".trellis/tasks/archive/2026-11/11-12-lsp-graceful-shutdown/research/audit-contracts.md", "reason": "证据链：五项改动是否各自对应一条审计项"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "禁止回退：能力声明必须有消费点、事件名单一常量源"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "测试质量：跨栈断言必须读真实源码，不得只比对同文件字面量"}

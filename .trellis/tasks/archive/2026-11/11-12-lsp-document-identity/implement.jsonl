@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/11-12-lsp-document-identity/prd.md", "reason": "需求与 AC 本体（注意 2026-11-12 的范围修正：会话身份重构已拆出）"}
+{"file": ".trellis/tasks/11-12-lsp-document-identity/design.md", "reason": "设计：take_session/close_session 拆分、didChange 同源、删死 IPC，含失败矩阵与权衡"}
+{"file": ".trellis/tasks/11-12-lsp-document-identity/implement.md", "reason": "执行计划 S1-S5 与 Gate A-D"}
+{"file": ".trellis/tasks/archive/2026-11/11-12-lsp-graceful-shutdown/research/audit-channel.md", "reason": "缺陷证据 D7（重启丢登记表/所有权）与 D8（第四个 didOpen 出口）"}
+{"file": ".trellis/tasks/archive/2026-11/11-12-lsp-graceful-shutdown/research/audit-contracts.md", "reason": "跨端视角：编辑器 claim 分工、重启丢 claim 的后果"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "§7 坑 5：didOpen 唯一出口与版本推进（本次不得回退）"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 单测确定性要求（不 spawn 真服务器、不堆真实秒级 sleep）"}

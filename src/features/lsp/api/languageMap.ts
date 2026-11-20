@@ -69,6 +69,27 @@ export interface LspExtensionMapEntry {
 }
 
 /**
+ * DTO → 运行时条目的**唯一**映射点。
+ *
+ * 曾经两处调用各自手写字段列表、都只搬 4 个字段 ⇒ `requestTimeoutMs` 被丢掉 ⇒
+ * `lspClientTimeout()` 恒返回 15s（java / rust 声明的 120s 从未生效，jdtls 冷启动与
+ * rust-analyzer 首跳 95-98s 必然超时）。消费侧一律调本函数，不得再手拼字段。
+ *
+ * 参数类型刻意用运行时条目类型：后端 DTO（`lspApiTypes.ts`）与它结构相同，
+ * 少字段会在调用点编译失败；多字段由 `languageMap.test.ts` 的 `maps every DTO field`
+ * 守着（`Object.keys` 对不上 → 红灯）。
+ */
+export function toExtensionMapEntry(dto: LspExtensionMapEntry): LspExtensionMapEntry {
+  return {
+    extension: dto.extension,
+    languageId: dto.languageId,
+    serverName: dto.serverName,
+    isCustom: dto.isCustom,
+    requestTimeoutMs: dto.requestTimeoutMs,
+  };
+}
+
+/**
  * 每语言请求超时（ms）：来自后端插件数据，**不是本文件硬编码的语言知识**。
  *
  * 冷启动慢的服务器（重型 JVM / 全量索引）在 `LspPlugin` 上声明自己的超时；新增同形态

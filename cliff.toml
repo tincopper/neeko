@@ -34,6 +34,11 @@ commit_parsers = [
     { message = "^test", group = "<!-- 6 -->🧪 Testing" },
     { message = "^chore\\(release\\)", skip = true },
     { message = "^chore\\(deps.*\\)", skip = true },
+    # Journal commits are session bookkeeping (`chore: record journal ...`, incl. the
+    # `sessions 435-437` variants) — one line of noise per working session, 324 of them
+    # so far. They say nothing about what changed for a user, so they never enter the
+    # changelog. Keep this parser above the `^chore` group or the catch-all wins.
+    { message = "^chore: record journal", skip = true },
     { message = "^chore|^ci", group = "<!-- 7 -->⚙️ Miscellaneous Tasks" },
     { body = ".*security", group = "<!-- 8 -->🛡️ Security" },
     { message = "^revert", group = "<!-- 9 -->◀️ Revert" },

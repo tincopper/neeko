@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::AppError;
+
 // ── LSP Event Constants ─────────────────────────────────────────────────
 // Single source of truth for all LSP-related event names emitted to the frontend.
 
@@ -41,6 +43,32 @@ pub const LSP_PROFILE_EVENT: &str = "lsp-project-profile";
 
 /// Maximum size (in bytes) for auto-opened documents via IPC.
 pub const MAX_AUTO_OPEN_FILE_SIZE: usize = 2 * 1024 * 1024; // 2 MB
+
+/// 单次 IPC **响应体**的字节上限（红线 4）。
+///
+/// 口径与 `common::git::parsers::DIFF_PAYLOAD_MAX_BYTES` 同族：宁可让一次超大查询
+/// 明确失败，也不把无界 JSON 丢进 Tauri IPC（`textDocument/references` 在大仓返回
+/// 上万条 Location ≈ 数 MB，`documentSymbol` / 带 documentation 的 completion 同理）。
+/// 消费点：`commands::lsp_request` 与 `commands::lsp_transport`。
+pub const LSP_RESPONSE_MAX_BYTES: usize = 2 * 1024 * 1024; // 2 MiB
+
+/// 校验一次 IPC 响应体的字节数是否在预算内（红线 4）。
+///
+/// **超限直接失败，不截断**：截断的 JSON 会让前端解析出半个结果（例如 references
+/// 只剩一部分位置，用户以为仓库里只有这些引用），比一条能自解释的错误更难诊断。
+/// 文案含实际字节数、method、预算值与收窄建议 —— 用户/AI 才能直接采取行动。
+pub(crate) fn enforce_response_bytes(method: &str, bytes: usize) -> Result<(), AppError> {
+    let budget = LSP_RESPONSE_MAX_BYTES;
+    if bytes <= budget {
+        return Ok(());
+    }
+    Err(AppError::Lsp(format!(
+        "LSP response for {method} is {bytes} bytes, over the {budget}-byte \
+         IPC budget; narrow the request (references: scope the query to fewer files or a \
+         smaller range; documentSymbol: query a single file). The payload was not truncated."
+    )))
+}
+
 /// Serializable LSP session info for the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LspSessionInfo {
@@ -333,6 +361,47 @@ mod tests {
         // 缺失 → None（serde default），不报错
         let without: LspDiagnostic = serde_json::from_value(base).unwrap();
         assert!(without.code.is_none());
+    }
+
+    // ── IPC 响应字节预算（红线 4）──────────────────────────────────────
+
+    /// 测试内复述预算值，**刻意不引用**该常量名（目标仓库判据要求常量名只出现在
+    /// 「定义 + 唯一执行点」）：这里复述数值同样能把边界钉死 —— 预算改大改小都会
+    /// 让本用例变红。
+    const BUDGET_BYTES: usize = 2 * 1024 * 1024;
+
+    /// 超预算必须**失败**（不是截断）：截断的 JSON 前端解析出半个结果，比失败更难诊断。
+    /// 文案必须自解释：字节数 + method + 预算 + 收窄建议。
+    #[test]
+    fn response_budget_rejects_oversized_payload() {
+        let method = "textDocument/references";
+        let err = enforce_response_bytes(method, BUDGET_BYTES + 1)
+            .expect_err("超预算响应必须被拒绝，不得交给 IPC");
+        let text = err.to_string();
+        assert!(
+            text.contains(&format!("{}", BUDGET_BYTES + 1)),
+            "文案必须含实际字节数（否则用户无法判断超了多少）: {text}"
+        );
+        assert!(text.contains(method), "文案必须含触发超限的 method: {text}");
+        assert!(
+            text.contains(&BUDGET_BYTES.to_string()),
+            "文案必须含预算值: {text}"
+        );
+        assert!(
+            text.to_lowercase().contains("narrow"),
+            "文案必须给出收窄建议（references 限范围 / documentSymbol 单文件）: {text}"
+        );
+    }
+
+    /// 预算边界：恰好等于预算必须放行（上限是「不超过」，不是「小于」）。
+    #[test]
+    fn response_budget_accepts_payload_at_and_below_budget() {
+        assert!(enforce_response_bytes("textDocument/documentSymbol", 0).is_ok());
+        assert!(enforce_response_bytes("textDocument/hover", 64).is_ok());
+        assert!(
+            enforce_response_bytes("textDocument/documentSymbol", BUDGET_BYTES).is_ok(),
+            "恰好 2 MiB 必须放行"
+        );
     }
 }
 

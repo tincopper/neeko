@@ -1,10 +1,12 @@
 //! Tauri commands for project lifecycle management.
 
 use crate::common::runtime::run_blocking;
+use crate::lsp::LspManager;
 use crate::project::types::{GitInfo, Project};
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::State;
 
 /// Adds a new local project to the project list.
@@ -27,6 +29,20 @@ pub fn add_project(
     Ok(project)
 }
 
+/// 删除项目时的 LSP 拆除段。
+///
+/// 唯一的关闭入口 `LspManager::close_sessions_for_project` 已经包含三件事
+/// （逐会话 `shutdown`/`exit` 序列 + `profiles.remove` + 诊断键 `evict_project`）——
+/// 此处**不得**再拼一遍，否则关闭序列会出现第二个实现（红线：单一收口点）。
+///
+/// 路径由调用方在删除**之前**取好：会话身份键是 `project_path:language`，
+/// 项目记录一旦删除就无从还原。
+fn detach_project_lsp(lsp_manager: &Arc<LspManager>, project_path: Option<&str>) {
+    if let Some(path) = project_path {
+        lsp_manager.close_sessions_for_project(path);
+    }
+}
+
 /// Removes a project and its associated terminal/watcher resources.
 #[tauri::command]
 pub fn remove_project(
@@ -34,17 +50,25 @@ pub fn remove_project(
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), AppError> {
-    state
-        .project_manager
-        .lock()
-        .map_err(AppError::from)?
-        .remove_project(&project_id);
+    // 删前取项目路径：LSP 会话的身份键是 `project_path:language`（不是 project_id），
+    // 删除后 manager 里已无该 id，路径就取不回来了。
+    let project_path = {
+        let mut pm = state.project_manager.lock().map_err(AppError::from)?;
+        let path = pm
+            .get_project(&project_id)
+            .map(|p| p.path.to_string_lossy().to_string());
+        pm.remove_project(&project_id);
+        path
+    };
 
     // 拆除单一入口：走 router 按 owner 路由（与终端 tab 关闭同一拆道）。
     state
         .terminal_router
         .close_session(&project_id, Some(&app_handle));
     state.watcher_manager.unwatch_project(&project_id);
+    // LSP 与它们同段拆除：不拆的话 jdtls JVM / rust-analyzer 会活到应用退出，
+    // 同路径重新添加时还会因 `is_alive` 复用旧进程（旧 exec target、旧会话根）。
+    detach_project_lsp(&state.lsp_manager, project_path.as_deref());
 
     // 若被删的是激活项目，清空 active_project_id（前端 useLocalProjects 会选出下一个并触发 set_active_project）
     if let Ok(mut active) = state.active_project_id.lock() {
@@ -322,4 +346,66 @@ pub fn reorder_projects(
         .map_err(AppError::from)?
         .reorder_projects(&ordered_ids);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    const TEST_PROJECT_PATH: &str = "/tmp/neeko-remove-project-lsp-test";
+    const TEST_LANGUAGE: &str = "rust";
+
+    /// 有界等待（不堆真实秒数）：关闭序列在阻塞池里跑，store 摘除是异步的。
+    fn wait_until(mut predicate: impl FnMut() -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if predicate() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        predicate()
+    }
+
+    /// R3/AC3：删除项目必须真的拆掉该项目的 LSP 会话。
+    ///
+    /// 事故形态：`remove_project` 只关终端 + 停 watcher，不动 LSP ⇒ jdtls JVM /
+    /// rust-analyzer 活到应用退出；同路径重新添加时 `is_alive` 还会复用旧进程
+    /// （旧 exec target、旧会话根）。
+    #[test]
+    fn remove_project_closes_lsp_sessions() {
+        let manager = Arc::new(LspManager::new_default());
+        manager.insert_stub_session_for_test(TEST_PROJECT_PATH, TEST_LANGUAGE);
+        assert_eq!(
+            manager.session_language_ids_for_project(TEST_PROJECT_PATH),
+            vec![TEST_LANGUAGE.to_string()],
+            "夹具必须先真的把会话登记进 store，否则下面断言只是空转"
+        );
+
+        detach_project_lsp(&manager, Some(TEST_PROJECT_PATH));
+
+        assert!(
+            wait_until(|| manager
+                .session_language_ids_for_project(TEST_PROJECT_PATH)
+                .is_empty()),
+            "删除项目必须摘除该 path 的全部 LSP 会话（否则服务器活到应用退出）"
+        );
+    }
+
+    /// 路径不可得（项目已不存在）时不得 panic / 不得误杀 —— 仅跳过拆除。
+    #[test]
+    fn missing_project_path_skips_lsp_teardown() {
+        let manager = Arc::new(LspManager::new_default());
+        manager.insert_stub_session_for_test(TEST_PROJECT_PATH, TEST_LANGUAGE);
+
+        detach_project_lsp(&manager, None);
+
+        assert_eq!(
+            manager.session_language_ids_for_project(TEST_PROJECT_PATH),
+            vec![TEST_LANGUAGE.to_string()],
+            "没有路径就不肯猜：不得摘除任何会话"
+        );
+    }
 }

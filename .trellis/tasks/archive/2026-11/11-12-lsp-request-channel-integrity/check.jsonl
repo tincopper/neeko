@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/11-12-lsp-request-channel-integrity/prd.md", "reason": "审核基准：AC1-AC6 逐条可验证；R 里「不得重启活会话」是本次最关键判据"}
+{"file": ".trellis/tasks/11-12-lsp-request-channel-integrity/design.md", "reason": "审核基准：失败矩阵 4 行是否都有测试；分类表与 manager 实际分支是否一致"}
+{"file": ".trellis/tasks/11-12-lsp-request-channel-integrity/implement.md", "reason": "审核基准：Gate A-E 是否真的达成（尤其 Gate C 的零命中与 Gate D 的唯一分支）"}
+{"file": ".trellis/tasks/archive/2026-11/11-12-lsp-graceful-shutdown/research/audit-channel.md", "reason": "证据链：改动必须能解释 D2/D4/D5/D6/D13 的现场，而不是绕开症状"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "禁止回退：关闭序列单一实现、宽限期插件数据、诊断证据归属"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "测试质量：不得真 spawn 服务器、不得真实秒级 sleep、断言打在分类而非文案"}

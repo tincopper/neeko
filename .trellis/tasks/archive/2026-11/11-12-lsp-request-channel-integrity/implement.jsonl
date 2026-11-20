@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/11-12-lsp-request-channel-integrity/prd.md", "reason": "需求与 AC 本体：错误响应不得重启、streak 清零、id 唯一、业务请求 deadline、终态单写者"}
+{"file": ".trellis/tasks/11-12-lsp-request-channel-integrity/design.md", "reason": "技术设计：RequestFailure 分类表、重启必须先关闭、streak 规则、id allocator、超时/写失败清理路径"}
+{"file": ".trellis/tasks/11-12-lsp-request-channel-integrity/implement.md", "reason": "执行计划 S1-S6 与 Gate A-E（每一步的判据测试名）"}
+{"file": ".trellis/tasks/archive/2026-11/11-12-lsp-graceful-shutdown/research/audit-channel.md", "reason": "缺陷证据 D2/D4/D5/D6/D13（行号 + 最短反例）"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "LSP 域既有契约：诊断归属、请求超时预算、能力声明、关闭序列（不得回退）"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "红线 3：阻塞只落 spawn_blocking；有界等待的实现约定"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 单测确定性要求；进程级全局状态与真实源断言的边界"}

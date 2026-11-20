@@ -85,6 +85,16 @@ impl InflightRequestTracker {
             self.by_bucket.remove(bucket);
         }
     }
+
+    /// Number of buckets that still hold an in-flight request id.
+    ///
+    /// 可观测面（泄漏检测的判据）：写失败 / 超时路径若漏了 `complete`，这个数会
+    /// 一直涨 —— 而泄漏的桶只会在**下一次同类请求**到来时被发现（并把陈旧 id 当成
+    /// 「前一条在途」发 `$/cancelRequest`），否则要等 reader 退出才回收。
+    #[must_use]
+    pub fn pending_buckets(&self) -> usize {
+        self.by_bucket.len()
+    }
 }
 
 #[cfg(test)]

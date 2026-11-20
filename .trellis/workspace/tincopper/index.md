@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-9.md` | ~1436 | Active |
+| `journal-9.md` | ~1505 | Active |
 | `journal-8.md` | ~2348 | Archived |
 | `journal-7.md` | ~2009 | Archived |
 | `journal-6.md` | ~2069 | Archived |
@@ -60,11 +60,18 @@
 | 467 | 2026-11-15 | team 分配流程梳理与收尾：关账 assignee-and-graph、修正过时文档 | `e26b749b`, `4e8a41ad`, `50bf95e2` | `feat-team` |
 | 466 | 2026-11-13 | 第3轮：只启动被指派到的成员（assignee 必填/计划成员/spawn 人数护栏/队长禁 claim），并收口第2轮视口抽取 | - | `feat-team` |
 | 465 | 2026-11-13 | 团队任务板：assignee（派活即指派）+ 分配图去认领边；规划 handoff-by-reference / task-actions | - | `feat-team` |
+| 464 | 2026-11-12 | File drop: insert ports replace guessed pane identity | `f480da09` | `main` |
+| 463 | 2026-11-12 | LSP install lifecycle: probe where the binary lands, tear down on project removal | `3993f6ef` | `main` |
+| 462 | 2026-11-12 | LSP IPC budget, dropped capability claim, cross-stack event guard | `faaab45e` | `main` |
+| 461 | 2026-11-12 | LSP document identity: restart keeps registry and ownership | `4947b13c` | `main` |
+| 460 | 2026-11-12 | LSP request channel: typed failure classification, streak, bounded waits | `9bc2bc69` | `main` |
+| 459 | 2026-11-12 | LSP close protocol: single sequence, bounded waits, audit-driven T0 | `a4375c9e` | `main` |
 | 458 | 2026-11-12 | 修复 codex 成员：MCP 鉴权形状不一致（403 → 无工具面）+ Pty 投递被 paste-burst 吞回车 | - | `feat-team` |
 | 457 | 2026-11-11 | S3 历史按身份归属：ProjectScope + team workspace_worktree(v23) | - | `feat-team` |
 | 456 | 2026-11-11 | S2 团队会话恢复：resume argv + team_resume + 五态入口 | - | `feat-team` |
 | 455 | 2026-11-11 | 团队会话恢复 S1：身份与进程资源分家（v22） | - | `feat-team` |
 | 454 | 2026-11-11 | 修复任务详情 tab 白屏：TaskDetail 跨栈字段名漂移（steps → events） | - | `feat-team` |
+| 453 | 2026-11-11 | fileless sub-session gate for agent hook status | `d9d839dc` | `main` |
 | 452 | 2026-11-11 | multi-agent merge into feat-team archived | `6979d429` | `feat-team` |
 | 451 | 2026-11-11 | merge multi-agent into feat-team with mainline as the baseline | `ca2861bf` | `feat-team` |
 | 450 | 2026-11-11 | Service-layer suites without OS watchers | `783793a6` | `main` |

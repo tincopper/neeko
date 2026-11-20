@@ -151,17 +151,29 @@ pub struct LspServerTuning {
     /// （对齐 VSCode `java.jdt.ls.java.home` 的 "Tooling JDK" 语义：服务器启动器
     /// 默认可能取最新版 JDK，超出其支持范围会导致 JDK 源码映射失效）。
     pub java_home_from_path: bool,
+    /// 发出 `exit` 后等待服务器**自行退出**的宽限（毫秒）。
+    ///
+    /// 为什么必须可声明：`exit` 之后的收尾是服务器自己的活（Eclipse 在这一段
+    /// checkpoint 整棵资源树），SIGKILL 会把它截断到半写状态 —— 下次启动就在
+    /// `SaveManager.restore()` 抛异常并直接 `Application error` 退出。
+    /// 一般服务器立即退，2s 足够吞掉包装器收尾；重量级（JVM / Eclipse）声明更大值。
+    pub shutdown_grace_ms: u32,
 }
 
 impl Default for LspServerTuning {
-    /// 通用默认：探测版本、不注入 `JAVA_HOME`。
+    /// 通用默认：探测版本、不注入 `JAVA_HOME`、退出宽限 2s。
     fn default() -> Self {
         Self {
             version_probe: true,
             java_home_from_path: false,
+            shutdown_grace_ms: DEFAULT_SHUTDOWN_GRACE_MS,
         }
     }
 }
+
+/// 未声明宽限的服务器走这个值：一般 LSP 服务器收到 `exit` 即退，2s 足够覆盖
+/// 包装器（`sh` / `node` / `python` 启动器）的收尾。
+pub const DEFAULT_SHUTDOWN_GRACE_MS: u32 = 2_000;
 
 /// 会话根的解析范围。
 ///
@@ -574,13 +586,17 @@ echo two"
         assert_eq!(script.describe(), "download script");
     }
 
-    /// 通用默认调优：探测版本、不注入 JAVA_HOME —— 未声明 tuning 的插件不受
-    /// jdtls 特判影响。
+    /// 通用默认调优：探测版本、不注入 JAVA_HOME、退出宽限为默认值 —— 未声明 tuning
+    /// 的插件不受 jdtls 特判影响。
     #[test]
     fn default_tuning_probes_version_without_java_home() {
         let t = LspServerTuning::default();
         assert!(t.version_probe);
         assert!(!t.java_home_from_path);
+        assert_eq!(
+            t.shutdown_grace_ms, DEFAULT_SHUTDOWN_GRACE_MS,
+            "未声明宽限的服务器走通用默认"
+        );
     }
 
     /// 请求超时是**插件数据**（红线 15）：冷启动慢的服务器自行声明，通用插件不声明
@@ -646,6 +662,7 @@ echo two"
         let p = LspPlugin::builtin("go", &["go"], "gopls", &["gopls"], None);
         assert!(p.tuning.version_probe);
         assert!(!p.tuning.java_home_from_path);
+        assert_eq!(p.tuning.shutdown_grace_ms, DEFAULT_SHUTDOWN_GRACE_MS);
         assert!(!p.is_custom);
     }
 
@@ -655,10 +672,12 @@ echo two"
             LspServerTuning {
                 version_probe: false,
                 java_home_from_path: true,
+                shutdown_grace_ms: 9_000,
             },
         );
         assert!(!p.tuning.version_probe);
         assert!(p.tuning.java_home_from_path);
+        assert_eq!(p.tuning.shutdown_grace_ms, 9_000);
     }
 
     /// M4：老 config.json 的 `lsp` 块缺 `importStrategy` → 回落 `auto`

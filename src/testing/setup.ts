@@ -40,6 +40,13 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
 }
 
+// jsdom 未实现 `document.elementFromPoint`（没有布局树）；文件拖拽的「指针落点」仲裁
+// （`shared/inputs/insertPorts.ts::resolvePortAtPoint`）依赖它。默认 stub 返回 null
+// （= 没有元素被命中，仲裁继续降级）；需要真命中的用例自己 `vi.spyOn` 覆写。
+if (typeof document !== 'undefined' && typeof document.elementFromPoint !== 'function') {
+  document.elementFromPoint = () => null;
+}
+
 // jsdom 未实现 Range 的几何测量；CodeMirror 的测量周期（scrollIntoView / 光标定位）会调用它。
 // 缺失时会在**异步测量周期**里抛 `textRange(...).getClientRects is not a function` ——
 // 表现为"用例通过但报 unhandled error"，还会污染后续断言的可信度。

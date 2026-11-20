@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{self, Read, Write};
-use std::sync::{mpsc, Arc, LazyLock, Mutex};
+use std::sync::{mpsc, Arc, Condvar, LazyLock, Mutex};
 
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc as tokio_mpsc;
@@ -21,8 +21,59 @@ pub struct LspProcess {
     stdout: Option<Box<dyn Read + Send>>,
     stderr: Option<Box<dyn Read + Send>>,
     kill: Option<Box<dyn FnOnce() + Send>>,
+    /// 有界等待进程**自行**退出；宽限期内退出返回 `true`（调用方据此免于强杀）。
+    ///
+    /// 退出信号门同时被 `kill` 读取：已退出的进程不再发 kill（PID 可能已被复用，
+    /// `kill_tree` 误杀别人是真实风险）。
+    gate: ExitGate,
     /// Best-effort OS / remote process id.
     pub pid: Option<u32>,
+}
+
+/// 进程退出信号：`bridge_exec_child` 的收尾任务置位，`kill` 与 `wait_exit` 共用。
+///
+/// 用 `Condvar` 而不是轮询：等待方在信号到达时被唤醒，超时则自己收口 ——
+/// 「等它退」与「超时后杀」之间不需要任何 sleep 猜测。
+type ExitGate = Arc<(Mutex<bool>, Condvar)>;
+
+fn new_exit_gate() -> ExitGate {
+    Arc::new((Mutex::new(false), Condvar::new()))
+}
+
+/// 置位「进程已退出」并唤醒全部等待者（幂等；锁中毒时放弃置位，等待方按超时收口）。
+fn mark_exited(gate: &ExitGate) {
+    let (lock, wake) = &**gate;
+    if let Ok(mut done) = lock.lock() {
+        *done = true;
+        wake.notify_all();
+    }
+}
+
+/// 有界等待退出信号：`true` = 已在 `grace` 内退出。
+///
+/// 锁中毒视同已退出：等待路径绝不能因为一个中毒的布尔值把关闭流程挂住。
+///
+/// **必须按截止时间循环**：`Condvar::wait_timeout` 可以**虚假唤醒**（POSIX 允许，
+/// macOS 实测会 `assert!(elapsed >= grace)` 失败）。单次调用后直接返回 `false`
+/// 会让调用方提前 kill —— 那正是本模块要修的「宽限期形同虚设」。
+fn wait_exited(gate: &ExitGate, grace: std::time::Duration) -> bool {
+    let (lock, wake) = &**gate;
+    let Ok(mut done) = lock.lock() else {
+        return true;
+    };
+    let deadline = std::time::Instant::now() + grace;
+    while !*done {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match wake.wait_timeout(done, remaining) {
+            // 虚假唤醒后继续等剩余额度，不得提前收口。
+            Ok((guard, _)) => done = guard,
+            Err(_) => return true,
+        }
+    }
+    *done
 }
 
 /// 从 `java -XshowSettings:properties -version` 输出解析 `java.home`。
@@ -418,10 +469,42 @@ impl LspProcess {
         Ok((stdin, stdout, stderr))
     }
 
+    /// 有界等待进程自行退出（LSP `exit` 之后的收尾窗口）。
+    ///
+    /// 返回 `false` = 宽限用尽仍存活，调用方据此 `kill()` 兜底。
+    pub fn wait_exit(&mut self, grace: std::time::Duration) -> bool {
+        wait_exited(&self.gate, grace)
+    }
+
     /// Kill the language server process (best-effort).
+    ///
+    /// 已退出的进程**不发** kill：`kill_tree` 面向 PID，而 PID 会被系统回收
+    /// （杀一个已退出的句柄只会空转，杀一个被复用的 PID 会误杀无辜进程）。
     pub fn kill(&mut self) {
+        if wait_exited(&self.gate, std::time::Duration::ZERO) {
+            self.kill = None;
+            return;
+        }
         if let Some(kill) = self.kill.take() {
             kill();
+        }
+    }
+
+    /// 无真实进程的测试替身：`exited` 决定退出门状态，`kill` 把「被杀过」记到 `killed`。
+    #[cfg(test)]
+    pub(crate) fn test_stub(exited: bool, killed: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        use std::sync::atomic::Ordering;
+        let gate = new_exit_gate();
+        if exited {
+            mark_exited(&gate);
+        }
+        Self {
+            stdin: None,
+            stdout: None,
+            stderr: None,
+            kill: Some(Box::new(move || killed.store(true, Ordering::SeqCst))),
+            gate,
+            pid: None,
         }
     }
 }
@@ -535,7 +618,8 @@ async fn bridge_exec_child(mut child: ExecChild) -> Result<LspProcess, String> {
     });
 
     // lifecycle: kill signal or natural exit
-    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let exit_gate = new_exit_gate();
+    let gate_for_lifecycle = Arc::clone(&exit_gate);
     tokio::spawn(async move {
         tokio::select! {
             _ = kill_rx => {
@@ -543,13 +627,17 @@ async fn bridge_exec_child(mut child: ExecChild) -> Result<LspProcess, String> {
             }
             _ = wait => {}
         }
-        let _ = done_tx.send(());
+        mark_exited(&gate_for_lifecycle);
     });
 
+    let gate_for_kill = Arc::clone(&exit_gate);
     let kill = Box::new(move || {
+        if wait_exited(&gate_for_kill, std::time::Duration::ZERO) {
+            return;
+        }
         let _ = kill_tx.send(());
         // Best-effort wait so pipes drain (avoid zombies on local/WSL).
-        let _ = done_rx.recv_timeout(std::time::Duration::from_secs(2));
+        let _ = wait_exited(&gate_for_kill, std::time::Duration::from_secs(2));
     });
 
     Ok(LspProcess {
@@ -557,6 +645,7 @@ async fn bridge_exec_child(mut child: ExecChild) -> Result<LspProcess, String> {
         stdout: Some(Box::new(ChannelReader::new(out_rx))),
         stderr: Some(Box::new(ChannelReader::new(err_rx))),
         kill: Some(kill),
+        gate: exit_gate,
         pid,
     })
 }
@@ -888,4 +977,118 @@ where
     });
     rx.recv()
         .map_err(|e| E::from(format!("blocking thread recv error: {e}")))?
+}
+
+#[cfg(test)]
+mod exit_gate_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, Instant};
+
+    /// 退出信号已置位 → 立即可观测（不靠轮询、不依赖真实进程）。
+    #[test]
+    fn wait_exit_is_true_when_signal_already_set() {
+        let gate = new_exit_gate();
+        mark_exited(&gate);
+        let started = Instant::now();
+        assert!(wait_exited(&gate, Duration::from_secs(5)));
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "已退出必须立即返回，不得走完整个宽限"
+        );
+    }
+
+    /// 进程不退出 → 有界返回 false（调用方据此兜底 kill）。
+    ///
+    /// 这是关闭序列「有界」的凭据：没有它，`kill_child` 之后永远不知道该等多久。
+    #[test]
+    fn wait_exit_times_out_without_signal() {
+        let gate = new_exit_gate();
+        let started = Instant::now();
+        assert!(
+            !wait_exited(&gate, Duration::from_millis(20)),
+            "未退出必须返回 false"
+        );
+        assert!(
+            started.elapsed() >= Duration::from_millis(20),
+            "必须真的等满宽限，而不是空转立刻返回 false"
+        );
+    }
+
+    /// 宽限期内退出 → 被唤醒（而不是干等满宽限）。
+    #[test]
+    fn wait_exit_wakes_on_late_signal() {
+        let gate = new_exit_gate();
+        let signaler = {
+            let gate = Arc::clone(&gate);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(10));
+                mark_exited(&gate);
+            })
+        };
+        let started = Instant::now();
+        assert!(
+            wait_exited(&gate, Duration::from_secs(5)),
+            "退出信号必须唤醒等待者"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "被唤醒不应等满 5s 宽限"
+        );
+        signaler.join().expect("signaler");
+    }
+
+    /// `LspProcess::wait_exit` 读退出门：单测不 spawn 真实服务器进程
+    /// （对齐 `check_unit_tests_spawn_real_binaries` 的判据）。
+    #[test]
+    fn process_wait_exit_observes_exit_gate() {
+        let killed = Arc::new(AtomicBool::new(false));
+        let mut process = LspProcess::test_stub(false, Arc::clone(&killed));
+
+        assert!(
+            !process.wait_exit(Duration::from_millis(1)),
+            "未退出应为 false"
+        );
+
+        mark_exited(&process.gate);
+        assert!(
+            process.wait_exit(Duration::from_millis(1)),
+            "退出门置位后应为 true"
+        );
+    }
+
+    /// 已退出的进程**不得**再被 kill（`Drop` 也会走这条）：PID 复用下 `kill_tree`
+    /// 会误杀无辜进程。
+    #[test]
+    fn kill_is_a_no_op_after_exit() {
+        let killed = Arc::new(AtomicBool::new(false));
+        let mut process = LspProcess::test_stub(true, Arc::clone(&killed));
+
+        process.kill();
+        drop(process);
+
+        assert!(
+            !killed.load(Ordering::SeqCst),
+            "已退出进程不得被 kill（含 Drop 兜底路径）"
+        );
+    }
+
+    /// 未退出时 kill 必须真的下去（否则关闭会留下孤儿持锁）。
+    #[test]
+    fn kill_fires_while_process_alive() {
+        let killed = Arc::new(AtomicBool::new(false));
+        let mut process = LspProcess::test_stub(false, Arc::clone(&killed));
+
+        process.kill();
+
+        assert!(killed.load(Ordering::SeqCst), "存活进程必须被 kill");
+    }
+
+    /// `kill` 之后 `wait_exit` 必须观测到退出，避免「杀完了还在等宽限」。
+    #[test]
+    fn wait_exit_observes_kill() {
+        let gate = new_exit_gate();
+        mark_exited(&gate);
+        assert!(wait_exited(&gate, Duration::from_secs(5)));
+    }
 }

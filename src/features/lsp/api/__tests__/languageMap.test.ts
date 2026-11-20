@@ -11,11 +11,50 @@ import {
   resolveLspLanguageId,
   applyBackendExtensionMap,
   lspRequestTimeoutMs,
+  toExtensionMapEntry,
   toFileUri,
 } from '../languageMap';
 import * as lspApi from '../lspApi';
 
 describe('languageMap', () => {
+  /**
+   * DTO → 条目的映射必须**零丢字段**。
+   *
+   * 事故形态：两处调用各自手写 5 字段里的 4 个，`requestTimeoutMs` 被静默丢掉 ⇒
+   * `lspClientTimeout()` 恒 15s ⇒ java（jdtls 冷启动）与 rust（首跳 95-98s）必然超时。
+   * 既有护栏直接给 `applyBackendExtensionMap` 传参，绕过了被破坏的 mapper，所以全绿。
+   */
+  it('maps every DTO field without silent drops', () => {
+    const dto = {
+      extension: '.foo',
+      languageId: 'foo',
+      serverName: 'foo-ls',
+      isCustom: true,
+      requestTimeoutMs: 120_000,
+    };
+
+    const entry = toExtensionMapEntry(dto);
+
+    expect(entry).toEqual(dto);
+    // 键集合相等 = DTO 新增字段而 mapper 没跟上时立刻红灯。
+    expect(Object.keys(entry).sort()).toEqual(Object.keys(dto).sort());
+  });
+
+  /** 端到端：声明的超时必须真的进到按语言的预算表里（否则消费侧拿不到）。 */
+  it('carries the declared request timeout into the per-language budget', () => {
+    applyBackendExtensionMap([
+      toExtensionMapEntry({
+        extension: '.java',
+        languageId: 'java',
+        serverName: 'jdtls',
+        isCustom: false,
+        requestTimeoutMs: 120_000,
+      }),
+    ]);
+
+    expect(lspRequestTimeoutMs('java')).toBe(120_000);
+  });
+
   beforeEach(() => {
     applyBackendExtensionMap([]);
     vi.restoreAllMocks();

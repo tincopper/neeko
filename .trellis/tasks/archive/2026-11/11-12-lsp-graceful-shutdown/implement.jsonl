@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/11-12-lsp-graceful-shutdown/prd.md", "reason": "需求与验收判据本体：R1 单一序列 / R2 有界 / R3 宽限期进插件数据 / AC1-AC6"}
+{"file": ".trellis/tasks/11-12-lsp-graceful-shutdown/design.md", "reason": "技术设计：退出门原语、看门狗超时、失败矩阵与权衡；改动边界就在这四类文件"}
+{"file": ".trellis/tasks/11-12-lsp-graceful-shutdown/research/jdtls-workspace-corruption.md", "reason": "根因证据：.metadata/.log 堆栈链、data 目录 basename 哈希、两条关闭路径的行号"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "LSP 域契约：三通道模型、诊断归属、插件数据承载语言差异（红线 15 的落点）"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "红线 3：阻塞 I/O 必须隔离到 spawn_blocking；有界等待不得占用 tokio worker"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 单测层级与确定性要求：假进程替身、禁真实秒级 sleep 堆墙钟"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "红线 9/10/15 与模块边界：新增原语落位、禁止语言名分支"}

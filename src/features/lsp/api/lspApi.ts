@@ -44,57 +44,6 @@ export function lspNotification(
   });
 }
 
-export function lspOpenDocument(
-  projectPath: string,
-  languageId: string,
-  uri: string,
-  text: string,
-  version: number,
-): Promise<void> {
-  return invoke('lsp_open_document', {
-    projectPath,
-    languageId,
-    uri,
-    text,
-    version,
-  });
-}
-
-export function lspChangeDocument(
-  projectPath: string,
-  languageId: string,
-  uri: string,
-  version: number,
-  changes: Array<{
-    range?: {
-      start: { line: number; character: number };
-      end: { line: number; character: number };
-    };
-    rangeLength?: number;
-    text: string;
-  }>,
-): Promise<void> {
-  return invoke('lsp_change_document', {
-    projectPath,
-    languageId,
-    uri,
-    version,
-    changes,
-  });
-}
-
-export function lspCloseDocument(
-  projectPath: string,
-  languageId: string,
-  uri: string,
-): Promise<void> {
-  return invoke('lsp_close_document', {
-    projectPath,
-    languageId,
-    uri,
-  });
-}
-
 export function lspCloseSession(projectPath: string, languageId: string): Promise<void> {
   return invoke('lsp_close_session', {
     projectPath,

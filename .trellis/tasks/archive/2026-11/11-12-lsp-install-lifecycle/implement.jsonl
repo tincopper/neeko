@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/11-12-lsp-install-lifecycle/prd.md", "reason": "需求与 AC 本体（含范围修正：显式安装入口与 exec env PATH 注入已拆出）"}
+{"file": ".trellis/tasks/11-12-lsp-install-lifecycle/design.md", "reason": "设计：绝对路径兜底、去重键含判别式、同键等待、remove_project 复用关闭入口"}
+{"file": ".trellis/tasks/11-12-lsp-install-lifecycle/implement.md", "reason": "执行计划 S1-S4 与 Gate A-C"}
+{"file": ".trellis/tasks/archive/2026-11/11-12-lsp-graceful-shutdown/research/audit-orchestration.md", "reason": "缺陷证据 #4（remove_project 不拆 LSP）/#5（远端判据与产物不同环境）/#7（去重键）"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "原则 2：可用性判据与消费点同环境（本次修正的就是这条）"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "线程/等待约定：有界轮询与 spawn_blocking 的边界"}

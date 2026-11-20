@@ -20,7 +20,7 @@
 | [质量指南](./quality-guidelines.md) | 代码规范、禁止模式 | 已填写 |
 | [类型安全](./type-safety.md) | 类型模式、校验 | 已填写 |
 | [API 层](./api-layer.md) | Tauri IPC 调用、事件监听、适配器模式 | 已填写 |
-| [交互模式](./interaction-patterns.md) | 拖拽排序、手势、Pointer Events 模式 | 已填写 |
+| [交互模式](./interaction-patterns.md) | 拖拽排序、手势、Pointer Events 模式；**拖拽投递的插入端口模型**（渲染方注册 + ①→⑦ 仲裁 + 禁止标签名启发式） | 已填写 |
 | [Git Graph](./git-graph.md) | Commit history DAG 渲染规范、布局算法、不变量 | 已填写 |
 | [StatusBar](./status-bar.md) | 状态栏 registry 机制、item 契约、互斥与 bridge 规范 | 已填写 |
 | [导航目标模型](./navigation-goal.md) | 用户意图跳转的 goal 状态、兑现器契约、三条不变量与生命周期 | 已填写 |

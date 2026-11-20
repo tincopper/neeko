@@ -578,6 +578,12 @@ The watcher event source became a composition-root construction parameter, so se
 **Date**: 2026-11-11
 **Task**: merge multi-agent into feat-team with mainline as the baseline
 **Branch**: `feat-team`
+## Session 453: fileless sub-session gate for agent hook status
+<!-- trellis-session: v=2 fp=c79c937a538c2549 -->
+
+**Date**: 2026-11-11
+**Task**: fileless sub-session gate for agent hook status
+**Branch**: `main`
 
 ### Summary
 
@@ -588,6 +594,7 @@ Session summary was not supplied.
 | Hash | Message |
 |------|---------|
 | `ca2861bf` | chore(merge): bring multi-agent into feat-team with the mainline as the baseline |
+| `d9d839dc` | docs(spec): record the fileless child-session gate |
 
 ### Status
 
@@ -715,6 +722,12 @@ Session summary was not supplied.
 **Date**: 2026-11-12
 **Task**: 修复 codex 成员：MCP 鉴权形状不一致（403 → 无工具面）+ Pty 投递被 paste-burst 吞回车
 **Branch**: `feat-team`
+## Session 459: LSP close protocol: single sequence, bounded waits, audit-driven T0
+<!-- trellis-session: v=2 fp=341c1ea00ad2a581 -->
+
+**Date**: 2026-11-12
+**Task**: LSP close protocol: single sequence, bounded waits, audit-driven T0
+**Branch**: `main`
 
 ### Summary
 
@@ -723,6 +736,9 @@ Session summary was not supplied.
 ### Git Commits
 
 (No commits - planning session)
+| Hash | Message |
+|------|---------|
+| `a4375c9e` | docs(task): record the LSP close protocol task and the audit backlog |
 
 ### Status
 
@@ -735,6 +751,12 @@ Session summary was not supplied.
 **Date**: 2026-11-13
 **Task**: 团队任务板：assignee（派活即指派）+ 分配图去认领边；规划 handoff-by-reference / task-actions
 **Branch**: `feat-team`
+## Session 460: LSP request channel: typed failure classification, streak, bounded waits
+<!-- trellis-session: v=2 fp=c53bc824b4a55c79 -->
+
+**Date**: 2026-11-12
+**Task**: LSP request channel: typed failure classification, streak, bounded waits
+**Branch**: `main`
 
 ### Summary
 
@@ -743,6 +765,9 @@ Session summary was not supplied.
 ### Git Commits
 
 (No commits - planning session)
+| Hash | Message |
+|------|---------|
+| `9bc2bc69` | docs(task): record the LSP request channel task |
 
 ### Status
 
@@ -755,6 +780,12 @@ Session summary was not supplied.
 **Date**: 2026-11-13
 **Task**: 第3轮：只启动被指派到的成员（assignee 必填/计划成员/spawn 人数护栏/队长禁 claim），并收口第2轮视口抽取
 **Branch**: `feat-team`
+## Session 461: LSP document identity: restart keeps registry and ownership
+<!-- trellis-session: v=2 fp=feea9fd81a96b49a -->
+
+**Date**: 2026-11-12
+**Task**: LSP document identity: restart keeps registry and ownership
+**Branch**: `main`
 
 ### Summary
 
@@ -898,6 +929,9 @@ Session summary was not supplied.
 
 - [OK] pnpm vitest run src/features/agent-team src/app/dock/wrappers src/features/agent-chat: 900 passed
 - [OK] pnpm check:quick: 15/15 护栏通过
+| Hash | Message |
+|------|---------|
+| `4947b13c` | docs(task): record the LSP document identity task |
 
 ### Status
 
@@ -1131,6 +1165,12 @@ TeamFlowGraph 头部只留标题，删掉「实线 = 派发 · 虚线 = 依赖�
 **Date**: 2026-11-17
 **Task**: review fixes: team rename projection / name validator / contract cleanup
 **Branch**: `feat-team`
+## Session 462: LSP IPC budget, dropped capability claim, cross-stack event guard
+<!-- trellis-session: v=2 fp=c824d5226f264872 -->
+
+**Date**: 2026-11-12
+**Task**: LSP IPC budget, dropped capability claim, cross-stack event guard
+**Branch**: `main`
 
 ### Summary
 
@@ -1147,6 +1187,11 @@ Session summary was not supplied.
 ### Testing
 
 - [OK] pnpm check:quick 28/28 绿；cargo test agent::team 501 passed；vitest features/agent-team + app/dock 384 passed
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `faaab45e` | docs(task): record the LSP cross-layer contract task |
 
 ### Status
 
@@ -1273,6 +1318,17 @@ TerminalViewBase 改 attach-only：探针失败不新建、不启写管线，显
 
 - turnView 三态（connecting/ready/attach-failed）；抽出 TerminalTurnOverlay 与 TerminalScrollToBottom；体积基线 542→537；改写旧 attach 用例
 
+## Session 463: LSP install lifecycle: probe where the binary lands, tear down on project removal
+<!-- trellis-session: v=2 fp=108da00689e6f3f4 -->
+
+**Date**: 2026-11-12
+**Task**: LSP install lifecycle: probe where the binary lands, tear down on project removal
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
 ### Git Commits
 
 | Hash | Message |
@@ -1282,6 +1338,7 @@ TerminalViewBase 改 attach-only：探针失败不新建、不启写管线，显
 ### Testing
 
 - [OK] vitest terminal/live-sessions/agent-team 663 通过；pnpm check:quick 42 护栏通过
+| `3993f6ef` | docs(task): record the LSP install lifecycle task |
 
 ### Status
 
@@ -1307,6 +1364,17 @@ TerminalViewBase 改 attach-only：探针失败不新建、不启写管线，显
 
 - 新增 utils/activateUnit + hooks/useActivateUnit；context 迁到 shared/contexts 并留门面；useActivateSession 收 selectProject 入参；两个消费者接上
 
+## Session 464: File drop: insert ports replace guessed pane identity
+<!-- trellis-session: v=2 fp=6169b45035f12071 -->
+
+**Date**: 2026-11-12
+**Task**: File drop: insert ports replace guessed pane identity
+**Branch**: `main`
+
+### Summary
+
+Session summary was not supplied.
+
 ### Git Commits
 
 | Hash | Message |
@@ -1316,6 +1384,7 @@ TerminalViewBase 改 attach-only：探针失败不新建、不启写管线，显
 ### Testing
 
 - [OK] vitest live-sessions/project/connection/agent-team/editor/app 2179 通过；pnpm check:quick 14 护栏通过；顺序不变量变异验证
+| `f480da09` | fix(file-drop): deliver dropped paths through insert ports |
 
 ### Status
 

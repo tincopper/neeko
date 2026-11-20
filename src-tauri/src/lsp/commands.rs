@@ -4,9 +4,19 @@ use serde_json::Value;
 use tauri::State;
 
 use crate::lsp::symbol::UnifiedLocation;
-use crate::lsp::types::LspSessionInfo;
+use crate::lsp::types::{enforce_response_bytes, LspSessionInfo};
 use crate::AppError;
 use crate::AppStateWrapper;
+
+/// `lsp_transport` 的**唯一成功出口**：把已序列化的响应体过一遍字节预算（红线 4）。
+///
+/// 所有分支（initialize 缓存能力 / shutdown / 请求响应 / 通知返回 `{}`）都必须经此
+/// 返回 —— 预算只在单出口生效，否则任何新增分支都会绕开它。量的是**已存在的
+/// `String` 长度**，零额外序列化成本。
+fn transport_response(method: &str, body: String) -> Result<String, AppError> {
+    enforce_response_bytes(method, body.len())?;
+    Ok(body)
+}
 
 /// jdtls 非标准类内容请求（`ClassfileContentHandler` 路由；`JDTLanguageServer`
 /// 本体字符串表实测，`java/classContents` 不存在）。
@@ -18,6 +28,23 @@ const JDT_CLASS_FILE_CONTENTS_METHOD: &str = "java/classFileContents";
 /// lookup string in one spot and makes future LSP-schema drift local.
 fn text_document_uri(params: &serde_json::Value) -> Option<&str> {
     params.pointer("/textDocument/uri").and_then(|v| v.as_str())
+}
+
+/// `textDocument/didChange` 的全量同步判定：`contentChanges` 里**没有 `range`**
+/// 时返回新全文，否则（增量同步）返回 `None`。
+///
+/// 为什么后端要区分：增量同步只给出 range + 片段，而 Neeko 没有编辑器缓冲区，
+/// 重建不出全文。伪造「新文本」会让重启重放（`reopen_documents`）拿错文本去
+/// didOpen，服务器按错位内容算出的诊断坐标与编辑器整体偏 —— 所以增量时只推版本、
+/// 文本留旧值并标记可能陈旧。
+#[must_use]
+pub(crate) fn did_change_full_text(params: &Value) -> Option<&str> {
+    let changes = params.get("contentChanges")?.as_array()?;
+    if changes.is_empty() || changes.iter().any(|c| c.get("range").is_some()) {
+        return None;
+    }
+    // 规范形态是单条 `{ text }`；畸形载荷取最后一条（服务器也是逐条应用，末尾即终态）。
+    changes.last()?.get("text")?.as_str()
 }
 
 /// Resolve project execution environment and record it on the LSP manager
@@ -91,10 +118,17 @@ pub async fn lsp_request(
         );
     }
 
-    state
+    let value = state
         .lsp_manager
         .send_request_async(&project_path, &language_id, &method, params, false)
-        .await
+        .await?;
+
+    // 预算判定必须自己再序列化一次（Tauri 随后还要再序列化一遍用于 IPC）：
+    // **多一次序列化是有意的** —— 不知道长度就无法判定，而把 50MB 丢进 IPC 的
+    // 代价（主线程 JSON clone / WebView eval）远大于 2MB 量级多几十毫秒。
+    let bytes = serde_json::to_vec(&value).map_err(AppError::from)?.len();
+    enforce_response_bytes(&method, bytes)?;
+    Ok(value)
 }
 
 #[tauri::command]
@@ -111,90 +145,6 @@ pub async fn lsp_notification(
     state
         .lsp_manager
         .send_notification(&project_path, &language_id, &method, params)
-}
-
-#[tauri::command]
-/// Open a document in an LSP session.
-pub async fn lsp_open_document(
-    project_path: String,
-    language_id: String,
-    uri: String,
-    text: String,
-    version: i64,
-    state: State<'_, AppStateWrapper>,
-) -> Result<(), AppError> {
-    // 会话创建含 spawn + initialize 握手（阻塞秒级）：必须走 spawn_blocking，
-    // 否则同步命令会占住主线程、async 命令会占住 tokio worker（红线 3）。
-    ensure_session_async(&state, &project_path, &language_id, Some(&uri)).await?;
-
-    state
-        .lsp_manager
-        .register_open_document(&project_path, &language_id, &uri, &text, version);
-
-    let params = serde_json::json!({
-        "textDocument": {
-            "uri": uri,
-            "languageId": language_id,
-            "version": version,
-            "text": text,
-        }
-    });
-
-    state
-        .lsp_manager
-        .send_notification(&project_path, &language_id, "textDocument/didOpen", params)
-}
-
-#[tauri::command]
-/// Send a didChange notification for an open document.
-pub fn lsp_change_document(
-    project_path: String,
-    language_id: String,
-    uri: String,
-    version: i64,
-    changes: Value,
-    state: State<AppStateWrapper>,
-) -> Result<(), AppError> {
-    let params = serde_json::json!({
-        "textDocument": {
-            "uri": uri,
-            "version": version,
-        },
-        "contentChanges": changes,
-    });
-
-    state.lsp_manager.send_notification(
-        &project_path,
-        &language_id,
-        "textDocument/didChange",
-        params,
-    )
-}
-
-#[tauri::command]
-/// Close a document in an LSP session.
-pub fn lsp_close_document(
-    project_path: String,
-    language_id: String,
-    uri: String,
-    state: State<AppStateWrapper>,
-) -> Result<(), AppError> {
-    state
-        .lsp_manager
-        .unregister_open_document(&project_path, &language_id, &uri);
-
-    let params = serde_json::json!({
-        "textDocument": {
-            "uri": uri,
-        }
-    });
-
-    state.lsp_manager.send_notification(
-        &project_path,
-        &language_id,
-        "textDocument/didClose",
-        params,
-    )
 }
 
 #[tauri::command]
@@ -224,11 +174,12 @@ pub async fn lsp_restart_session(
     language_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<LspSessionInfo, AppError> {
-    // Close existing session (sends shutdown + kills child).
-    // 静默关闭：重启是替换而非结束，不向状态栏宣告 `stopped`（否则 chip 闪断）。
-    let _ = state
+    // 静默关闭（重启是替换而非结束，不向状态栏宣告 `stopped`），并**等它收口**：
+    // 紧接着就要建新会话，而服务器共享磁盘上的会话数据目录（jdtls 的 `-data` 带锁）。
+    state
         .lsp_manager
-        .close_session_for_restart(&project_path, &language_id);
+        .close_session_for_restart(&project_path, &language_id)
+        .await;
 
     // Re-create session (triggers lazy init + reopen docs on next request).
     // 重建走统一的阻塞隔离路径 —— 状态栏「崩溃重试」一键触达，绝不允许在
@@ -302,10 +253,11 @@ pub async fn lsp_restart_all_sessions(
         .lsp_manager
         .session_language_ids_for_project(&project_path);
     for language_id in languages {
-        // 同上：重启路径静默关闭（不宣告 stopped），避免 chip 闪断。
-        let _ = state
+        // 同上：静默关闭 + 等收口（避免新会话与未退出的旧进程抢同一把 workspace 锁）。
+        state
             .lsp_manager
-            .close_session_for_restart(&project_path, &language_id);
+            .close_session_for_restart(&project_path, &language_id)
+            .await;
         ensure_session_async(&state, &project_path, &language_id, None).await?;
     }
     Ok(())
@@ -487,27 +439,33 @@ pub async fn lsp_transport(
             .lsp_manager
             .get_capabilities(&project_path, &language_id)
             .unwrap_or_else(|| serde_json::json!({}));
-        return serde_json::to_string(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": caps,
-        }))
-        .map_err(AppError::from);
+        return transport_response(
+            method,
+            serde_json::to_string(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": caps,
+            }))
+            .map_err(AppError::from)?,
+        );
     }
 
     // ── initialized: already sent by Rust, no-op ──────────────────────
     if method == "initialized" {
-        return Ok("{}".into());
+        return transport_response(method, "{}".into());
     }
 
     // ── shutdown / exit: handled gracefully ──────────────────────────
     if method == "shutdown" {
-        return serde_json::to_string(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": null,
-        }))
-        .map_err(AppError::from);
+        return transport_response(
+            method,
+            serde_json::to_string(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": null,
+            }))
+            .map_err(AppError::from)?,
+        );
     }
 
     // ── Request (has id): forward to LSP server, return response ─────
@@ -516,12 +474,15 @@ pub async fn lsp_transport(
             .lsp_manager
             .send_request_async(&project_path, &language_id, method, params, false)
             .await?;
-        return serde_json::to_string(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": result,
-        }))
-        .map_err(AppError::from);
+        return transport_response(
+            method,
+            serde_json::to_string(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": result,
+            }))
+            .map_err(AppError::from)?,
+        );
     }
 
     // ── Notification (no id)：didOpen 由唯一出口接管，其余原样转发 ──
@@ -553,7 +514,7 @@ pub async fn lsp_transport(
                 uri
             );
         }
-        return Ok("{}".into());
+        return transport_response(method, "{}".into());
     }
 
     if method == "textDocument/didClose" {
@@ -564,10 +525,32 @@ pub async fn lsp_transport(
         }
     }
 
+    if method == "textDocument/didChange" {
+        if let (Some(uri), Some(version)) = (
+            text_document_uri(&params),
+            params
+                .pointer("/textDocument/version")
+                .and_then(|v| v.as_i64()),
+        ) {
+            // 登记表与服务器同源：全量同步 → 文本 + 版本；增量 → 只推版本。
+            // 未登记的 uri 不造条目（登记表 = 我们确实 didOpen 过的文档）。
+            state.lsp_manager.record_document_change(
+                &project_path,
+                &language_id,
+                uri,
+                version,
+                did_change_full_text(&params),
+            );
+        } else {
+            // 畸形载荷：静默跳过会让登记表停在旧版本，重启重放随之陈旧。
+            log::warn!("[LSP] malformed textDocument/didChange: uri or version missing");
+        }
+    }
+
     state
         .lsp_manager
         .send_notification(&project_path, &language_id, method, params)?;
-    Ok("{}".into())
+    transport_response(method, "{}".into())
 }
 
 /// Optimized go-to-definition: returns the LSP result plus preloaded target file content
@@ -836,6 +819,59 @@ mod tests {
         assert!(!is_jdt_class_uri(""));
         // 少一杠的近似 scheme 不匹配（门控只认完整 jdt:// 前缀）
         assert!(!is_jdt_class_uri("jdt:/contents/java.base/System.class"));
+    }
+
+    /// 全量同步：`contentChanges` 无 `range` ⇒ 文本可信（登记表可以替换）。
+    #[test]
+    fn did_change_full_text_detects_full_sync() {
+        let params = serde_json::json!({
+            "textDocument": { "uri": "file:///a.rs", "version": 2 },
+            "contentChanges": [{ "text": "fn main() {}\n" }],
+        });
+        assert_eq!(did_change_full_text(&params), Some("fn main() {}\n"));
+    }
+
+    /// 增量同步（带 `range`）：后端重建不出全文 ⇒ `None`（只推版本，不伪造文本）。
+    #[test]
+    fn did_change_full_text_is_none_for_incremental() {
+        let params = serde_json::json!({
+            "textDocument": { "uri": "file:///a.rs", "version": 3 },
+            "contentChanges": [{
+                "range": {
+                    "start": { "line": 0, "character": 3 },
+                    "end": { "line": 0, "character": 6 },
+                },
+                "text": "foo",
+            }],
+        });
+        assert_eq!(did_change_full_text(&params), None);
+
+        // 混合（一条有 range、一条无）：整体按增量处理 —— 只推版本。
+        let mixed = serde_json::json!({
+            "contentChanges": [
+                { "range": { "start": {}, "end": {} }, "text": "x" },
+                { "text": "y" },
+            ],
+        });
+        assert_eq!(did_change_full_text(&mixed), None);
+    }
+
+    /// 畸形 / 空载荷不得被当成「全文为空」：返回 `None`（文本保持旧值）。
+    #[test]
+    fn did_change_full_text_is_none_for_malformed_payloads() {
+        assert_eq!(did_change_full_text(&serde_json::json!({})), None);
+        assert_eq!(
+            did_change_full_text(&serde_json::json!({ "contentChanges": [] })),
+            None
+        );
+        assert_eq!(
+            did_change_full_text(&serde_json::json!({ "contentChanges": [{ "rangeLength": 1 }] })),
+            None
+        );
+        assert_eq!(
+            did_change_full_text(&serde_json::json!({ "contentChanges": "nope" })),
+            None
+        );
     }
 
     #[test]
