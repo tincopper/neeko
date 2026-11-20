@@ -782,10 +782,21 @@ mod tests {
                 meta.file_type().is_symlink(),
                 "{entry} 必须是符号链接：复制会让凭据多一份拷贝"
             );
+            // 断**对象**而不是字符串形态：「链接目标必须规范化」在这里已经由
+            // `canonical_mirror_source` + `the_mirror_source_is_canonicalized` 钉住，
+            // 本断言要守的是「隔离目录看到的就是用户那份字节」（`auth.json` 只有一份）。
+            //
+            // 字符串相等在 Windows 上**恒不成立**，而那不是链接错了：`CreateSymbolicLink`
+            // 会把目标里的 `\\?\` verbatim 前缀归一掉（`read_link` 返回无前缀形态），
+            // 而 `canonicalize` 总是给带前缀形态 —— 比对字符串就是在断言平台
+            // （红线 13 的同族陷阱，同 `git/local/worktree.rs` 的同名判据）。
+            let linked = std::fs::canonicalize(&target)
+                .unwrap_or_else(|err| panic!("{entry} 的链接必须可解析：{err}"));
+            let expected = std::fs::canonicalize(source.join(entry))
+                .unwrap_or_else(|err| panic!("{entry} 的源必须可解析：{err}"));
             assert_eq!(
-                std::fs::read_link(&target).expect("read_link"),
-                source.join(entry),
-                "{entry} 必须指向**规范化后**的用户配置（红线 8）"
+                linked, expected,
+                "{entry} 必须指向**规范化后**的用户配置（红线 8）：解析出的对象必须是用户那份文件"
             );
         }
         assert!(
