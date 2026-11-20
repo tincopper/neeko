@@ -1265,6 +1265,27 @@ return (
 
 **反模式**：让纯展示组件 import `invoke` 或 `useGitStore`——会立刻丧失三端复用能力，把 wsl/remote 路径推回写另一份并行实现。
 
+**同一模式的第四个位置：tab 的导航态不能被组件持有**（2026-11-20）。「同一份快照怎么画」（如团队看板
+的 board / flow、分配图缩放之外的视图选择）是 tab 的**导航态**，与 tab 的地址、标题同一层 —— 它必须
+存在 **tab 数据**里，组件只渲染注入的 prop，切换经注入的 `onViewChange` 交给 adapter 落 `updateTab`。
+
+判据是生命周期：`PaneContent` 只渲染**当前激活**的那一个 tab（`switch (activeTab.data.kind)`），
+所以任何 tab 内容组件在切 tab 时都会**卸载**。用 `useState` 持有的导航态因此必然丢，用户看到的是
+「我的选择被重置了」。反例（实测）：
+
+```tsx
+// Wrong —— 导航态在组件 state 里：切走卸载、切回重挂载，只剩建 tab 那一刻的值
+const [view, setView] = useState(initialView);
+useEffect(() => { if (lastRef.current !== initialView) { lastRef.current = initialView; setView(initialView); } }, [initialView]);
+
+// Correct —— 真相在 tab 数据，组件只渲染 + 上报
+<TeamBoardCenterView view={activeTab.data.view} onViewChange={(v) => updateTab(key, tab.id, { kind: 'team-board', view: v })} />
+```
+
+配套两条：① `onViewChange` 是**必填** prop（没有它切换按钮就是死按钮，别用可选 prop 掩盖）；
+② **「打开」不得重置它** —— 已存在的 tab 重复打开只 `activateTab`，否则「回到我上次待的地方」在
+第二次点击时照样失效。
+
 **好坏对照**：
 
 ```tsx

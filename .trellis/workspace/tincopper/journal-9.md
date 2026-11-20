@@ -1324,3 +1324,37 @@ TerminalViewBase 改 attach-only：探针失败不新建、不启写管线，显
 ### Next Steps
 
 - spec + 任务归档
+
+
+## Session 485: 侧栏团队行去按钮 + 看板 tab 记住视图
+<!-- trellis-session: v=2 fp=b1366840b5b9e327 -->
+
+**Date**: 2026-11-20
+**Task**: 侧栏团队行去按钮 + 看板 tab 记住视图
+**Branch**: `feat-team`
+
+### Summary
+
+看板 board/flow 从组件 state 移到 tab 数据（切 tab 不丢）；重复打开只激活不改视图；侧栏团队行删掉 Board 按钮
+
+### Main Changes
+
+- TeamBoardCenterView 收 view/onViewChange；PaneContent 注入 updateTab；useTeamBoardTab 既存分支只激活；UnitTeamEntries / useTeamEntryActions 删 onOpenBoard
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `df475fc7` | feat(agent-team): let the board tab own its view, drop the sidebar button |
+
+### Testing
+
+- [OK] vitest agent-team/live-sessions/editor/app 1930 通过；pnpm check:quick 14 护栏通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- spec + 任务归档
