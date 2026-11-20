@@ -538,7 +538,17 @@ t1 摘要在「现根目」三个字处被截断，t2/t3 的硬约束整段丢�
    ③ `Registry::adopt` 拒绝团队成员作 `from` —— 那个条目可能 `Stopped` 但进程还活着
    （成员终端 tab 以「后台运行」关掉），放行就摘掉条目、进程变无主。
    归属（`SessionAttribution::TeamMember`）在**起进程那一刻**写入，因此三条守卫都不需要猜测。
-5. **归属上 wire，但只说「归谁管」**：`SessionView.attribution` = `{"kind":"user"}` |
+
+5. 团队是**容器**，不是地点：`workspace_worktree` 只回答「这个队跑在哪棵树里」，不表示团队
+   拥有那棵树（树的主人是项目 + git，团队的树也可能同时有用户自己的会话）。因此侧栏把团队渲染在
+   **项目层**（与单元平级、语义不同），而不是挂在某棵单元下。
+   **为什么这很重要**：成员会话的归属由 `SessionAttribution` 回答，与它跑在哪棵树无关；一旦成员
+   能有自己的 worktree，挂在任一单元下都会漏人或重复，而容器形状不用改。反过来，「团队平齐于
+   local / worktree」只在团队**独占**一棵树时才成立 —— 那时它其实就是一棵树（行首 `Users` 图标
+   表达身份，行形状与单元行同构），侧栏结构仍然不变。
+   成员**名字**只来自花名册（`TeamSnapshot.members`）：会话上只有 `memberId`（`w1@{team}`），
+   从它拆名字是第二套身份解析。侧栏因此「展开才按队读一次花名册」（`store/teamRosterStore`）。
+6. **归属上 wire，但只说「归谁管」**：`SessionView.attribution` = `{"kind":"user"}` |
    `{"kind":"teamMember", teamId, memberId}`（`SessionAttribution` 加 `Serialize` + `tag = "kind"`
    + **`rename_all_fields`** —— 少了最后那条，struct variant 的字段仍序列化成 `team_id` / `member_id`，
    TS 侧读 `undefined` 且不报错）。前端只用它把成员会话从侧栏会话列表里摘掉、并给团队行标「当前」。
@@ -549,7 +559,7 @@ t1 摘要在「现根目」三个字处被截断，t2/t3 的硬约束整段丢�
    `role: MemberRole` 会造出反向边，并把「谁是队长」变成会话层的一份会陈旧的副本。
    侧栏改为在 `TeamSummary.leadMemberId` 上读那个事实，再与归属按 `(teamId, memberId)` **求交**。
 
-6. **`TeamSummary` 带单元身份与队长行**：`projectId` / `workspaceWorktree`（`null` = 主 checkout）/
+7. **`TeamSummary` 带单元身份与队长行**：`projectId` / `workspaceWorktree`（`null` = 主 checkout）/
    `leadMemberId`（`null` = 该队没有队长行，数据缺陷）。前两者是单元身份的两半 —— 侧栏用
    `WorkspaceSession.of(projectId, workspaceWorktree).key` 落位，**不从 `projectPath` 拼前缀猜**
    （红线 12）；空 `projectId`（v16 之前的旧行）前端不渲染。`lead_member_id` 与关闭路径的审计

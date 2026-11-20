@@ -2355,7 +2355,7 @@ hasUserInput && isNamedSession &&
 
 单元角标与子列表同源（`sessionsByUnit` 是唯一分组入口，过滤在那里做），不会一个有一个没有。
 
-### 成员会话不进侧栏，团队行是**团队派生**的（2026-11-17）
+### 成员会话不归单元，团队行是**团队派生**的（2026-11-17）
 
 `isListedSession` 回答的是「有没有真标题 / 用户用没用过」，**不是**「归谁管」。接上团队域之后
 侧栏多了一条与它正交的判据：`isTeamMemberSession(session)` = `SessionView.attribution.kind ===
@@ -2363,14 +2363,14 @@ hasUserInput && isNamedSession &&
 
 | 消费者 | 成员会话 | 理由 |
 | --- | --- | --- |
-| `sessionsByUnit`（侧栏子列表） | **跳过** | 它归花名册管（六态 / 租约 / 待批队列只在团队面板），而一行「图标 + 标题 + 时间」表达不了团队状态，只会让用户以为它和自己的会话同类 |
+| `sessionsByUnit`（单元的子列表） | **跳过** | 成员会话挂在**团队容器**下（见下），不归单元。两处都出现才是回归 |
 | `selectLatestSessionForUnit`（点种类图标「接回上一次」） | **跳过** | 点是用户的动作；接回一个成员的 PTY 等于让用户接管了他管不着的会话（生命周期只由团队域结束） |
-| `unitsWithListedActiveSession`（父行让出选中底） | **照常计入，且不看 `hasUserInput`** | 代表成员会话的是**团队行**，不是会话子行：刚接管那一刻 `hasUserInput` 还是 `false`（接管只是 attach），按 `isListedSession` 卡住会让父行与团队行**同时**高亮（侧栏两条「当前」）。判据落地：`isTeamMemberSession(found) \|\| isListedSession(found)` |
+| `unitsWithListedActiveSession`（父行让出选中底） | **不计入** | 团队行已升到项目层，单元里没有它的子项；计入会让单元亮着而里面没有任何高亮 |
 | `foregroundTeamId(refs, sessions)` | **就是它的输入** | 前台会话的归属 → 团队 id，侧栏**团队行**据此标「当前」 |
 
 **团队行不能用会话派生**：以「队长会话」为身份的方案在队长进程死了 / 重启之后**刚好没有行**，
-而那正是最需要入口的时刻。它由 `team_list` 的一行派生（`teamsByUnit`，单元归属只做
-`WorkspaceSession.of(projectId, workspaceWorktree).key` 的相等比较，红线 12），队长的 PTY 只是它
+而那正是最需要入口的时刻。它由 `team_list` 的一行派生（`teamsOfProject` 按 `projectId` 分组 ——
+**不按单元**，理由见下节），队长的 PTY 只是它
 的一个**动作**：活 ⇒ 接管（`openExistingTerminalTab`，不新建进程）；不活 ⇒ 把团队面板切到该队，
 由花名册的五态判据（`utils/memberTerminal.ts`）给出可行动作。侧栏**不重算**那五档 —— 它缺
 `resumable` / `sealed` 两列，重算必然造出第二套判据，而错分的症状是「以为在恢复，其实起了个
@@ -2379,6 +2379,45 @@ hasUserInput && isNamedSession &&
 两侧数据**互不镜像**（红线 17）：队名 / 状态 / 任务计数只来自 `team_list`；队长会话活没活只来自
 live 快照的 `state` + 归属；「谁是队长」只来自 `TeamSummary.leadMemberId`（`team_member.role`
 的投影）——`SessionAttribution` 里刻意**没有** `role`。
+
+#### 团队是**跨单元容器**，不是地点（2026-11-20）
+
+上一版把团队行放在单元内部（与会话并列）。那在「成员各自一棵树」之后必然坏：归属由
+`SessionAttribution`（`{kind:'teamMember', teamId, memberId}`）回答，**与它跑在哪棵树无关**；
+挂在某棵单元下会漏掉别的树里的成员，挂在每棵下则重复。所以团队升到**项目层**：
+
+```
+▾ 项目
+    ▾ local / ▾ wt/…          ← 地点（单元）：我的会话
+    ▾ [Users] refactor · 2/5   ← 容器（团队）：成员及其会话
+```
+
+七条判据：
+
+1. **两种二级行的语义不同，形状相同**：单元 = 「在这棵树里开终端」；团队 = 「那个队长/成员在
+   干什么」。团队行因此是 `SessionRow kind="team"` 的薄适配器 —— 同一份行高 / 内距 / 图标位 /
+   展开状态机，只有行首图标（`Users`，与 Team dock 同源）与右侧计数不同。**不**用 `⟦team⟧`
+   文字标记，也**不**在行里放状态文字（`open` / `Closing` 在 260px 列宽里要吃掉 40–60px，而它
+   回答的问题只在点进去看时才成立）；状态徽标仍在面板头与团队列表页。
+2. **成员名只来自花名册**（`TeamSnapshot.members`），会话只带 `memberId`。从 `w1@tm_1` 里拆名字
+   是第二套身份解析（红线 12 同族），会与改名漂移。所以折叠态不列成员，展开才按队读一次花名册。
+3. **花名册按队缓存**（`store/teamRosterStore`），**不复用 `teamStore.snapshot`** —— 那一位是
+   「面板当前打开的那个队」，侧栏展开 A 队不能把面板切走。缓存的是后端读接口的响应，
+   失效走既有团队脉冲（仍是唯一 `listen`）。
+4. **「第二级的当前行」只有一个派生点**：`utils/teamRowSelection::currentTeamIdOf` =
+   `foregroundTeamId(refs, sessions)` ∪ `workspaceStore.activeTeam`（带 `projectId`，且必须仍在
+   本项目清单里）。团队行用它要 id，单元行用它的布尔（`useTeamRowSelected`）决定让出高亮 ——
+   **两个消费者各算半个判据就是双亮 / 「当前」消失的全部成因**（2026-11 连坐两轮）。
+5. **`activeTeam` 只记用户动作**（点过哪一行），不参与判定；带项目分量使「A 项目的队选中而
+   B 项目的单元行全体让出」在状态里不可表达。它由 `setActiveWorkspace` / `clearActiveWorkspace`
+   清空（「用户选了某个单元」的全部入口）。
+6. **团队占用的工作树：冗余才隐藏**。判据是团队 `(projectId, workspaceWorktree)` 与该单元的
+   **身份**（`WorkspaceSession.of(...).key`，不是路径前缀）相等；但那一行只要有**用户自己的**
+   会话、或它正是**当前单元**，就必须留着 —— 隐藏它等于删掉那棵树唯一的入口（开终端 / 我的
+   会话 / 删除 / 重命名），也会让第二级没有任何一行是「当前」。
+7. **花名册复用 `team_snapshot`** 是已声明的取舍（成员 + ≤200 任务卡片，红线 4 的单次上限内）。
+   若实测有压力，换 `team_roster`（**删**这条路径，不并行两条）。
+
 
 **团队清单只有一个 store**（`features/agent-team/store/teamListStore.ts`）：侧栏常驻而面板不常驻，
 各拉一份就是同一资源两套轮询 + 两份「上次成功的结果」。请求口径是**全部项目**
