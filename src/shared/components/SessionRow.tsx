@@ -1,12 +1,32 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import { ChevronRightIcon, TerminalIcon, FolderGitIcon } from '@/shared/components/icons';
+import { ChevronRightIcon, TerminalIcon, FolderGitIcon, Users } from '@/shared/components/icons';
 import SessionChips from '@/shared/components/SessionChips';
 
 import HoverActionSlot from './HoverActionSlot';
 
-type SessionKind = 'local' | 'worktree';
+/**
+ * 二级行的三种身份 —— **只决定行首图标**，不决定任何行为。
+ *
+ * | kind | 语义 | 子项 |
+ * | --- | --- | --- |
+ * | `local` / `worktree` | **地点**（执行单元）：「在这棵树里开终端」 | 我的会话 |
+ * | `team` | **容器**（团队）：「看那个队长在干什么」 | 团队成员 |
+ *
+ * 团队行**不是执行单元**：它没有自己的终端、不随某棵树生灭，身份是 `teamId` 而不是
+ * `WorkspaceKey`。放在同一个组件里是为了「一种几何只有一份实现」（行高 / 内距 / 图标位 /
+ * 展开箭头 / 自动展开规则），不是为了把两者当成同一层语义 —— 需要区分的分支请按 `kind`
+ * 显式写，不要假设「行 = 一棵树」。
+ */
+export type SessionKind = 'local' | 'worktree' | 'team';
+
+/** 行首图标（唯一映射点）。三者的形状差异就是用户区分这两层的唯一线索。 */
+const KIND_ICON: Record<SessionKind, typeof TerminalIcon> = {
+  local: TerminalIcon,
+  worktree: FolderGitIcon,
+  team: Users,
+};
 
 /** 28px = 展开箭头 20px（px-1 + 12px icon） + 右槽 gap-2 8px；覆盖槽让开箭头，避免重叠。 */
 const ACTION_OFFSET_WITH_CHEVRON = 'right-7';
@@ -16,13 +36,21 @@ interface SessionRowProps {
   label: string;
   isActive?: boolean;
   /**
-   * 单元下的会话子列表（`SessionList`）。给出时行尾出现展开箭头。
+   * 子列表（单元 = 会话子行 `SessionList`；团队 = 成员子行 `TeamMemberRows`）。
+   * 给出时行尾出现展开箭头。
    *
-   * 已有会话时首次渲染默认展开；折叠时子节点根本**不渲染** —— 挂载即订阅 + 每单元
-   * 可能的几十行会话在侧栏里全是白付的成本。后续只在会话数增长时自动展开，尊重用户
-   * 的手动折叠。
+   * 已有子项时首次渲染默认展开；折叠时子节点根本**不渲染** —— 挂载即订阅 + 每单元
+   * 可能的几十行会话（或每个团队一次花名册请求）在侧栏里全是白付的成本。后续只在子项数
+   * 增长时自动展开，尊重用户的手动折叠。
    */
   children?: React.ReactNode;
+  /**
+   * 展开箭头的可访问宾语（`Expand {childrenLabel}` / `Collapse {childrenLabel}`）。
+   *
+   * 默认 `sessions` —— 单元行的子项确实叫会话。团队行传 `team members`：读屏用户不该听到
+   * 「展开会话」然后看到一串人。只影响 a11y 文案，不影响几何。
+   */
+  childrenLabel?: string;
   /**
    * 该单元内**有会话被选中**（前台 tab 是它的一条会话）。
    *
@@ -32,12 +60,23 @@ interface SessionRowProps {
    */
   childActive?: boolean;
   /**
-   * 子列表当前条数（`SessionList` 的会话数）。
+   * 子列表当前条数（单元 = 会话数；团队 = 成员行数）。
    *
-   * 用于「**新会话出现就自动展开**」：条数比上一次多 ⇒ 展开；条数不变则尊重用户的手动
+   * 用于「**新子项出现就自动展开**」：条数比上一次多 ⇒ 展开；条数不变则尊重用户的手动
    * 折叠（否则用户刚收起，下一次轮询/状态刷新又把它弹开）。`undefined` = 不自动展开。
    */
   childCount?: number;
+  /**
+   * 首次渲染时是否展开（默认：`childCount > 0`）。
+   *
+   * 团队行传 `false` —— **不是因为几何不同，而是因为展开要发请求**：单元行的子项来自已经在
+   * 内存里的会话快照（展开是纯渲染），团队行的子项来自按队懒加载的花名册（展开 = 一次
+   * `team_snapshot`）。让「有成员就首帧展开」成立，会让侧栏每次挂载都为每个队各拉一次花名册
+   * —— 而用户可能整场都不看任何一个队。
+   *
+   * 「子项增长 ⇒ 自动展开」的规则仍然对团队行生效（成员数变了是真实变化，值得一次请求）。
+   */
+  defaultExpanded?: boolean;
   /**
    * 待 push 提交数（相对 `@{upstream}`）。**只在激活行展示**（`isActive`）——
    * 该数字的值只有激活单元才会被写入 store（见 `useAheadBehindSync` / `useGitStatusEventsSync`），
@@ -61,12 +100,26 @@ interface SessionRowProps {
   labelTitle?: string;
   /** 删除中：整行播放淡出并把交互关掉（`wt-deleting`）。 */
   deleting?: boolean;
+  /**
+   * label 右侧的**身份徽标**（行内、主体按钮里、始终可见）。
+   *
+   * 为什么是一个插槽而不是字符串：徽标的样式与可访问文本属于产出它的域
+   * （团队状态徽标 = `features/agent-team` 的 `TeamStateBadge`），而 `shared/` 不认识
+   * `features/` —— 与 `trailing` / `children` 同一条分层：本组件只说「这一行里能放什么」。
+   *
+   * 注意与 `trailing` 的分工：`labelBadge` **常驻**，`trailing` 是 hover 覆盖槽（会盖住
+   * label 尾巴，也不参与 tab 顺序）。需要用户随时看到的身份/计数放这里。
+   */
+  labelBadge?: React.ReactNode;
   /** 行尾 hover 覆盖槽（worktree 的 trash 按钮 / spinner）；绝对定位，不占 flex 宽度。 */
   trailing?: React.ReactNode;
 }
 
 /**
- * 侧栏的一个「执行单元」行（主 checkout / linked worktree）。
+ * 侧栏的**二级行**（地点：主 checkout / linked worktree；容器：团队）。
+ *
+ * 三种 `kind` 共用同一份几何与同一个展开状态机（见 `SessionKind` 的文档）：团队行是
+ * 「第二级的第三种行」，不是第三种层级的特殊实现。
  *
  * # 交互结构（a11y）
  *
@@ -78,6 +131,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
   kind,
   label,
   isActive = false,
+  childrenLabel = 'sessions',
   ahead,
   shortcut,
   title,
@@ -87,16 +141,19 @@ const SessionRow: React.FC<SessionRowProps> = ({
   labelTitle,
   deleting = false,
   trailing,
+  labelBadge,
   children,
   childCount,
+  defaultExpanded,
   childActive = false,
 }) => {
-  const Icon = kind === 'worktree' ? FolderGitIcon : TerminalIcon;
+  const Icon = KIND_ICON[kind];
   const hasChildren = children !== undefined && children !== null;
 
-  // 首次渲染就展开「本来就有会话」的单元（用初值而不是 effect：否则首帧是收起的，
+  // 首次渲染就展开「本来就有子项」的行（用初值而不是 effect：否则首帧是收起的，
   // 第二帧才弹开 —— 侧栏会在每次面板重挂载时闪一下）。
-  const [expanded, setExpanded] = useState(() => (childCount ?? 0) > 0);
+  // `defaultExpanded` 是给「展开有代价」的行（团队行要拉花名册）的显式退出。
+  const [expanded, setExpanded] = useState(() => defaultExpanded ?? (childCount ?? 0) > 0);
 
   // 之后只认**增长**：新会话出现 ⇒ 自动展开；条数不变则尊重用户的手动折叠。
   const previousCount = useRef(childCount ?? 0);
@@ -164,11 +221,14 @@ const SessionRow: React.FC<SessionRowProps> = ({
         ) : (
           <button
             type="button"
+            // 「当前」的无障碍表达与视觉填充同一个判据（`isActive`），三种 kind 一致。
+            aria-current={isActive ? 'true' : undefined}
             className="flex flex-1 min-w-0 items-center gap-2.5 bg-transparent border-none p-0 text-left cursor-pointer"
             onClick={onClick}
           >
             {leading}
             {labelBlock}
+            {labelBadge}
           </button>
         )}
         <div className="flex items-center gap-2 shrink-0">
@@ -183,7 +243,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
               type="button"
               data-no-drag
               aria-expanded={expanded}
-              aria-label={expanded ? 'Collapse sessions' : 'Expand sessions'}
+              aria-label={`${expanded ? 'Collapse' : 'Expand'} ${childrenLabel}`}
               className="bg-transparent border-none text-text-muted cursor-pointer px-1 py-0.5 rounded flex items-center transition-colors hover:bg-bg-hover hover:text-text-primary"
               onClick={(e) => {
                 // 行本身的点击语义是「打开该单元终端」—— 展开是另一件事，不能顺便切过去

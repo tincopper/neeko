@@ -42,6 +42,53 @@ describe('SessionRow', () => {
     expect(screen.queryByText(/⌘|Ctrl\+/)).not.toBeInTheDocument();
   });
 
+  it('kind=worktree ⇒ 行首图标是 FolderGit（地点 = 一棵树）', () => {
+    const { container } = render(<SessionRow kind="worktree" label="feature-a" />);
+    // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container -- 断言的是「行首图标是哪一个」，图标没有可访问名（无 role / label），只能按 lucide 的 class 断言（同 DiagnosticsPanel 的写法）
+    const icon = container.querySelector('svg.lucide-folder-git-2');
+    expect(icon).not.toBeNull();
+  });
+
+  /**
+   * 团队行是**第二级的第三种行**，与 local / worktree 同构，只换行首图标。
+   * 用户反馈：「team 还是用 icon 图标展示」——它不能再靠文字标记辨认自己。
+   */
+  it('kind=team ⇒ 行首图标是 Users（容器 = 一个团队，不是一棵树）', () => {
+    const { container } = render(<SessionRow kind="team" label="refactor" />);
+    // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container -- 同上：图标没有可访问名，唯一可观测的差异就是 lucide 的 class
+    const face = container.querySelector('[data-testid="unit-face"]');
+    expect(face).not.toBeNull();
+    // eslint-disable-next-line testing-library/no-node-access -- 见上
+    expect(face?.querySelector('svg.lucide-users')).not.toBeNull();
+    // 三种 kind 共用同一个图标槽：团队行不多画一个方块，也不把图标换成文字
+    // eslint-disable-next-line testing-library/no-node-access -- 见上
+    expect(face?.querySelector('svg.lucide-terminal')).toBeNull();
+    // eslint-disable-next-line testing-library/no-node-access -- 见上
+    expect(face?.querySelector('svg.lucide-folder-git-2')).toBeNull();
+  });
+
+  it('展开箭头的宾语可由调用方指定（团队行的子项是成员，不是会话）', () => {
+    render(
+      <SessionRow kind="team" label="refactor" childrenLabel="team members">
+        <span data-testid="team-members">成员</span>
+      </SessionRow>,
+    );
+
+    fireEvent.click(screen.getByLabelText('Expand team members'));
+    expect(screen.getByTestId('team-members')).toBeInTheDocument();
+    // 默认值仍是 sessions（单元行的既有 a11y 文案不受影响）
+    expect(screen.queryByLabelText('Expand sessions')).not.toBeInTheDocument();
+  });
+
+  it('active 行给主按钮 aria-current（三种 kind 同一判据）', () => {
+    render(<SessionRow kind="team" label="refactor" isActive />);
+    // 无子列表 ⇒ 行上唯一的按钮就是主体按钮
+    expect(screen.getByRole('button', { name: 'refactor' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+  });
+
   it('worktree kind 的 trailing 是 hover 覆盖槽，不占 flex 宽度', () => {
     render(
       <SessionRow
