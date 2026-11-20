@@ -2,22 +2,51 @@
 
 use super::invalidate_caches;
 use crate::common::executor::factory::ExecTarget;
-use crate::common::git::transport::GitTransport;
+use crate::common::git::transport::{ErrorKind, GitExecError, GitTransport};
 use crate::project::types::Worktree;
 use anyhow::Result;
 
-/// 移除指定 linked worktree。
+/// `git worktree remove` 对「该路径不在登记表里」的唯一失败文案（git 2.54 实测）。
+///
+/// **为什么靠文本**：这条与「主工作树」(`is a main working tree`)、「验证失败」
+/// (`validation failed, cannot remove working tree`) 的退出码**同为 128**（都走 `die()`
+/// 路径），确定性字段区分不了 —— 与 `has_head` 的 exit-1 场景不同（见
+/// `.trellis/spec/backend/git-domain.md` §11 的例外说明）。
+const NOT_A_WORKING_TREE: &str = "is not a working tree";
+
+/// 移除指定 linked worktree（幂等）。
+///
+/// **幂等是契约，不是兜底**：工作树行的来源是 `git worktree list`，一个已经不在登记表里的
+/// 路径 ⇒ 目标状态已达成。最常见的现场是「命令超时了但删除其实跑完」（墙钟只停止等待、
+/// 不杀进程，见 `transport::run_spawn_streaming`）：用户重试时 git 只能说
+/// `fatal: '<path>' is not a working tree`，把它当失败就是对着一个已经完成的删除报错，
+/// 并连带跳过 `release_workspace` / 刷新主仓（调用方的成功收尾）。
+///
+/// 真错误必须继续上抛：主工作树、验证失败、非仓库（见 `remove_tests`）。
 pub async fn remove_worktree(
     transport: &dyn GitTransport,
     work_dir: &str,
     worktree_path: &str,
 ) -> Result<()> {
-    transport
+    match transport
         .run_git(&["worktree", "remove", "--force", worktree_path], work_dir)
-        .await?;
+        .await
+    {
+        Ok(_) => {}
+        Err(e) if is_already_unregistered(&e) => {}
+        Err(e) => return Err(e),
+    }
     invalidate_caches(work_dir);
     invalidate_caches(worktree_path);
     Ok(())
+}
+
+/// 该失败是否等价于「这个路径本来就不是（已登记的）工作树」。
+///
+/// 收紧到 `ErrorKind::Other`：一旦 git 把它归成认证 / 网络类，就不是本函数的语义。
+fn is_already_unregistered(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<GitExecError>()
+        .is_some_and(|e| e.kind == ErrorKind::Other && e.stderr.contains(NOT_A_WORKING_TREE))
 }
 
 /// Rename a worktree: `git worktree move <old_path> <new_path>`
@@ -201,6 +230,9 @@ pub(crate) fn parse_worktree_list(output: &str, target: &ExecTarget) -> Vec<Work
     }
     worktrees
 }
+
+#[cfg(test)]
+mod remove_tests;
 
 #[cfg(test)]
 mod tests;
