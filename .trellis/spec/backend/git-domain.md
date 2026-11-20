@@ -784,7 +784,7 @@ poke 打对单元、编辑即推送、未挂载兄弟单元零泄漏、pull 不�
 **并发挂载同单元 ⇒ 只建一套 watcher**、**反复切换 20 次挂载集合恒等于声明**（无累积）
 （`repeated_switches_keep_only_the_declared_unit`）。
 
-## 13. 长操作超时策略与 Console 可见性（push / fetch / pull / commit）
+## 13. 长操作超时策略与 Console 可见性（push / fetch / pull / commit / worktree）
 
 **判据**：墙钟超时的正当用途是防「卡死」，而 push / fetch / pull / commit 的耗时由
 pre-push/pre-commit hook 与网络决定、**没有上界**（pre-push 在本仓是分钟级：三套测试 + 全目标静态检查）。
@@ -803,6 +803,31 @@ pre-push/pre-commit hook 与网络决定、**没有上界**（pre-push 在本仓
 - 无界期间的挂死防护不是调大上限，而是**取消通道**；SSH 交互式凭据/指纹提示仍会挂起
   （`BatchMode` 未设，与 VS Code 的 askpass 是已知差距）。
 - `pull` 内嵌的 `merge --ff-only` 保留上界：纯本地毫秒级操作，不满足「没有上界」的判据。
+
+### 13.1 工作树内容操作同属无上界（2026-11-20）
+
+判据的第二类来源是**文件系统规模**，不只是 hook 与网络：`git worktree add`（整棵 checkout）
+与 `git worktree remove`（递归删除整棵工作树）的耗时由工作树体积决定，本仓实测同目录兄弟项
+`~/.neeko/worktrees/feat-team` = **58 GB / 143,975 个文件**。
+
+- `git_command_timeout` 的分类：`["worktree", "add" | "remove"]` ⇒ `None`；
+  其余 worktree 子命令（`list` / `prune` / `lock` / `unlock` / `repair`）**保留**上界 ——
+  它们只碰元数据，且 `ProjectScope::resolve` 依赖 `worktree list`（卡住的轮询不应占死调用方）。
+- **事故形态（2026-11-20）**：30s 上限到点 ⇒ 前端弹「Failed to remove worktree」，
+  而删除进程继续跑完（超时只停止等待、不杀进程）⇒ 目录与 `.git/worktrees/<name>` 都没了、
+  `git worktree list` 也不再列它。用户重试只能得到 `fatal: '<path>' is not a working tree`。
+- **幂等契约**：`operations::remove_worktree` 把该文案（`is not a working tree`）视为
+  **目标状态已达成**的成功路径，仍执行 `invalidate_caches` 与调用方的 `release_workspace` /
+  主仓刷新 —— 否则超时后那次「其实成功」的删除会永久泄漏该单元的 status 槽与 watcher。
+  真错误（`is a main working tree` / `validation failed…` / 非仓库）继续上抛。
+- **文本匹配是 §11 的例外，理由可证**：上述三种失败**同为 exit 128**（都走 `die()` 路径），
+  确定性字段区分不了；不像 `has_head` 有 exit-1 这个确定信号。因此三条文案由
+  `operations/worktree/remove_tests.rs` 逐条钉住，换 git 版本时该文件先红。
+- **已知缺口**：`worktree remove` 没有 per-op 取消通道（`operations::remove_worktree` 走
+  `GitRunHooks::none()`，也不占 `GitSyncSlots`）。无界 + 不可取消意味着挂死的工作树操作
+  只能等操作系统返回或退出应用（退出路径的 `kill_all_live` 仍覆盖它）。要补就按上方取消通道
+  接 `begin_git_run`，但侧栏删除不是 Console 运行、没有对应的 Cancel 出口，故本次**不**接 ——
+  记在这里作为例外，不要当成「已经可取消」。
 
 **取消通道（Workspace单飞 + 目标限定）**：`AppStateWrapper.git_sync` 是 `GitSyncSlots`
 注册表（`Mutex<HashMap<WorkspaceRef::key(), GitSyncEntry>>`，`GitSyncHandle` 是 watch 通道，
