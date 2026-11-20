@@ -747,3 +747,26 @@ assert_eq!(
 判据：断言两侧都有办法归一（`canonicalize`、`Path::components`、对象级身份）时，
 比对象；只在**形态本身才是被测行为**（如守住 `\\?\` 前缀、分隔符归一）时才比字符串，
 且必须写明“本条就是断言该形态”。
+
+### 11. 断言依赖未规定的遍历顺序（read_dir / 计划序，跨平台必挂）
+
+`read_dir` 的返回顺序是**文件系统细节**（ext4 hash 序 / APFS B-tree 序各不相同），
+消费它的 SUT 又常再反一次（栈式 DFS 的同层顺序 = 反 read_dir 序）—— 两层都未规定。
+当被测对象的“成功数 / 解除数”取决于这个顺序时，硬编码计数就是赌本机顺序：本地绿、
+CI（另一套文件系统）红。
+
+```rust
+// ❌ 2026-11-20 CI：Linux 上第 8 次失败落在第二个 ok 之前，left=2、right=3
+assert_eq!(watcher.unwatched.lock().unwrap().len(), 3, "root + ok0 + ok1");
+
+// ✅ 断不变量：降级解除的集合 ≡ 降级前成功注册的集合（drain 语义，与顺序无关）
+let unwatched: HashSet<_> = watcher.unwatched.lock().unwrap().iter().cloned().collect();
+let watched: HashSet<_> = /* 成功的 NonRecursive watch 集合 */;
+assert_eq!(unwatched, watched);
+```
+
+同族先例：`git/operations/tests.rs` 的「断对象不断字符串形态」、§10（路径拼写）。
+与它们同一条元规则：**先问被测契约是什么**——契约是“解除全部已注册”就断集合等价，
+契约才是“恰好 3 个”时才能计数，且那时必须让顺序可控（自己构造清单/固定序输入），
+而不是从 read_dir 间接拿顺序。确定性顺序的需求由 `WatchManifest::compute` 文档
+（“同层顺序不保证”）明示，测试不得反悔它。
