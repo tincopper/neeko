@@ -23,11 +23,31 @@ import TeamTaskBoard from './TeamTaskBoard';
  * `openTeam` 把它拉回来（面板同步切过去）；store 的快照 / 脉冲刷新两者共享，
  * **没有第二份快照**。队伍被关闭（store 回 `null`）时给一张可操作的说明卡，
  * 不渲染空板 —— 「看不出来为什么是空的」比空更糟。
+ *
+ * # 导航态（board / flow）住在 tab 数据里，不在本组件
+ *
+ * 视图是「同一份快照怎么画」，与 tab 的地址 / 标题同一层 —— 所以它归 tab 数据，
+ * 而本组件只渲染「tab 现在要的那个视图」（`view` prop），切换时调注入的 `onViewChange`。
+ * 反过来做（`useState`）会在**切 tab 时丢**：`PaneContent` 只渲染当前激活的那个 tab，
+ * 切走即卸载，切回来重新挂载就只剩建 tab 那一刻写的值 —— 用户看到的是「我的选择被重置了」。
  */
 interface TeamBoardCenterViewProps {
   teamId: string;
-  /** tab data 里的默认视图；切换是 tab 内部 state（切 tab 回来保留由 data 不变兜底）。 */
+  /**
+   * **要画哪个视图** —— 来自 tab 数据（`activeTab.data.view`），本组件不持有副本。
+   *
+   * 视图是 tab 的**导航态**（同一份快照怎么画），与地址 / 标题同一层。放组件 state 会在
+   * 切 tab 时丢：`PaneContent` 只渲染当前激活的 tab，切走即卸载，切回来重新挂载只剩建 tab
+   * 时写的那一个值（红线 17：一份事实一份真相）。
+   */
   view: 'board' | 'flow';
+  /**
+   * 用户在本 tab 内切换视图 —— **由 `PaneContent` 注入**，写入落 `editorStore.updateTab`。
+   *
+   * 必填而不是可选：没有它，头部两个按钮就是死按钮。也不由本组件直接调 `updateTab`
+   * —— `editorStore` 是编辑器域，团队域自己写它就是跨域直改内部实现（导入防火墙）。
+   */
+  onViewChange: (view: 'board' | 'flow') => void;
   /**
    * 本 tab 所属项目身份（由 `PaneContent` 从 tab 的 workspace scope 投影）。
    *
@@ -47,11 +67,10 @@ const ZOOM_BUTTON_STEP = 0.25;
 const FLOW_HEIGHT = 'calc(100vh - 220px)';
 
 const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
-  ({ teamId, view: initialView, projectId }) => {
+  ({ teamId, view, projectId, onViewChange }) => {
     const { teamId: storeTeamId, snapshot, loading, error } = useTeamPanel();
     const openTeam = useTeamStore((s) => s.openTeam);
     const refresh = useTeamStore((s) => s.refresh);
-    const [view, setView] = React.useState<'board' | 'flow'>(initialView);
     const [zoom, setZoom] = React.useState(1);
     const { openTaskTab } = useTeamTaskTab();
     // 看板卡片上的「重试」：判据在 canRetry（卡片内部判），这里只接动作与错误可见面。
@@ -62,15 +81,6 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
       },
       [retryTaskAction],
     );
-
-    // tab data 的 view 变了（用户从面板再点一次「在中间打开」，`mergeTabData` 合并了
-    // view）→ 本组件要跟着切。只在 prop 真的变化时同步，不覆盖用户在本 tab 内的切换。
-    const lastPropView = React.useRef(initialView);
-    React.useEffect(() => {
-      if (lastPropView.current === initialView) return;
-      lastPropView.current = initialView;
-      setView(initialView);
-    }, [initialView]);
 
     // store 不在这支队上（面板切走了 / 首次挂载）→ 拉回来。
     useEffect(() => {
@@ -109,7 +119,7 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
             <button
               type="button"
               aria-pressed={view === 'board'}
-              onClick={() => setView('board')}
+              onClick={() => onViewChange('board')}
               className={cn(
                 'flex items-center gap-1 rounded px-2 py-1 text-micro font-semibold',
                 'focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',
@@ -124,7 +134,7 @@ const TeamBoardCenterView: React.FC<TeamBoardCenterViewProps> = React.memo(
             <button
               type="button"
               aria-pressed={view === 'flow'}
-              onClick={() => setView('flow')}
+              onClick={() => onViewChange('flow')}
               className={cn(
                 'flex items-center gap-1 rounded px-2 py-1 text-micro font-semibold',
                 'focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none',

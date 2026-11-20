@@ -88,7 +88,6 @@ const UnitSessionList: React.FC<UnitSessionListProps> = ({ workspaceKey, onRevea
         workspaceKey={workspaceKey}
         onOpenLead={teamActions.onOpenLead}
         onOpenTeamPanel={teamActions.onOpenTeamPanel}
-        onOpenBoard={teamActions.onOpenBoard}
       />
       <SessionList
         sessions={unitSessions}

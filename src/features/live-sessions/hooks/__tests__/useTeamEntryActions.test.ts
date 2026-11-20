@@ -27,7 +27,7 @@ import { invoke } from '@/testing/tauriCore';
 import { useTeamEntryActions } from '../useTeamEntryActions';
 
 /**
- * 侧栏团队行的三个动作（编排层）。
+ * 侧栏团队行的两个动作（编排层）。
  *
  * 组件测试只证明「回调被调用」，真正的接线在**这里**：
  *
@@ -35,7 +35,9 @@ import { useTeamEntryActions } from '../useTeamEntryActions';
  * - 「先切项目 + 切单元，再激活 tab / 开面板」的顺序 —— 反过来会先切 tab 再切视图，
  *   中间那一帧是白屏，用户看到的却是「点了没反应」；跨项目时顺序还决定单元**是否被
  *   切换序列擦掉**（序列内部会清空各项目激活单元）；
- * - 看板按 `teamId` 去重（同队重复点击只是激活既有 tab）。
+ *
+ * 侧栏**没有**「直接开看板」这个动作：团队行本身是唯一入口，看板在团队面板里
+ * （面板头上有它自己的「在中间打开」）。
  *
  * 终端域被整块 mock（端口断言）：本文件是编排，终端 tab 怎么造是终端域的事。
  */
@@ -170,59 +172,12 @@ describe('useTeamEntryActions — 交回团队面板', () => {
   });
 });
 
-describe('useTeamEntryActions — 看板', () => {
-  it('打开该队的 team-board tab，重复点击只激活既有 tab（去重按 teamId）', async () => {
-    useWorkspaceStore.getState().setActiveWorkspace(WT.projectId, WT.worktreePath, 'dev');
-    const { result } = renderEntryActions();
-
-    await act(async () => {
-      result.current.onOpenBoard(team());
-    });
-    await act(async () => {
-      result.current.onOpenBoard(team());
-    });
-
-    const tabs = useEditorStore.getState().tabs[WT.key]?.tabs ?? [];
-    expect(tabs).toHaveLength(1);
-    expect(tabs[0].data.kind).toBe('team-board');
-    expect(tabs[0].data.kind === 'team-board' && tabs[0].data.teamId).toBe('tm_1');
-    expect(tabs[0].data.kind === 'team-board' && tabs[0].data.view).toBe('board');
-    // 看板是中央 tab，不是终端会话
-    expect(openExistingTerminalTab).not.toHaveBeenCalled();
-    expect(addTab).not.toHaveBeenCalled();
-  });
-
-  /**
-   * 从一条**工作树**团队行点看板，tab 必须落进**那个工作树**的 tab 空间。
-   *
-   * `useTeamBoardTab` 按 `activeWorkspaceSession(projectId)` 落键，而那是「该项目当前激活的
-   * 单元」—— 不先切单元的话，tab 会登记到主仓（或另一个工作树）下：进程与数据显示都对，
-   * 只是关 / 恢复 / 分屏时才显形。`activateUnit` 因此也在这个动作里。
-   */
-  it('当前激活的是别的单元 ⇒ 看板 tab 仍落在团队自己的单元下', async () => {
-    // 用户此刻看的是**主仓**，而团队在工作树里。
-    useWorkspaceStore.getState().setActiveWorkspace(WT.projectId, null, 'dev');
-    const { result } = renderEntryActions();
-
-    await act(async () => {
-      result.current.onOpenBoard(team());
-    });
-
-    const mainTabs =
-      useEditorStore.getState().tabs[WorkspaceSession.of('p1', null).key]?.tabs ?? [];
-    expect(mainTabs).toHaveLength(0);
-    const wtTabs = useEditorStore.getState().tabs[WT.key]?.tabs ?? [];
-    expect(wtTabs).toHaveLength(1);
-    expect(wtTabs[0].data.kind).toBe('team-board');
-  });
-});
-
 /**
  * 跨项目：侧栏列出**所有**项目的团队行，点 B 项目的行必须让 B 成为当前项目。
  *
  * 只切单元不切项目的表现就是「点了没反应」：tab 在 B 的 tab 空间里被激活，中心视图还在 A。
  * 顺序断言钉住 R4 —— 单元必须在切换序列**结算之后**落回（序列内部会清空各项目激活单元，
- * 先落 = 自己擦掉自己），后续动作（接管 / 开面板 / 开看板）都排在两者之后。
+ * 先落 = 自己擦掉自己），后续动作（接管 / 开面板）都排在两者之后。
  */
 describe('useTeamEntryActions — 跨项目团队行', () => {
   const OTHER = 'p2' as ProjectId;
@@ -279,44 +234,13 @@ describe('useTeamEntryActions — 跨项目团队行', () => {
     expect(useTeamStore.getState().teamId).toBe('tm_1');
   });
 
-  it('开看板：先切项目、再落单元，看板 tab 落在**团队自己的**单元下', async () => {
-    const order: string[] = [];
-    recordUnits(order);
-    const addTab = useEditorStore.getState().addTab;
-    useEditorStore.setState({
-      addTab: (tab, slot) => {
-        order.push('board-tab');
-        addTab(tab, slot);
-      },
-    });
-    useProjectStore.setState({ activeProjectId: OTHER });
-
-    const { result } = renderEntryActions({ onSelectProject: recordSelect(order) });
-    await act(async () => {
-      result.current.onOpenBoard(team());
-    });
-
-    expect(order).toEqual(['select:p1', 'unit:/repo/wt', 'board-tab']);
-    expect(useProjectStore.getState().activeProjectId).toBe(P1);
-    const wtTabs = useEditorStore.getState().tabs[WT.key]?.tabs ?? [];
-    expect(wtTabs).toHaveLength(1);
-    expect(wtTabs[0].data.kind === 'team-board' && wtTabs[0].data.teamId).toBe('tm_1');
-    // 别的项目 / 主仓的 tab 空间都没被污染
-    expect(useEditorStore.getState().tabs[WorkspaceSession.of(P1, null).key]?.tabs ?? []).toEqual(
-      [],
-    );
-    expect(
-      useEditorStore.getState().tabs[WorkspaceSession.of(OTHER, null).key]?.tabs ?? [],
-    ).toEqual([]);
-  });
-
   it('已激活同一项目 ⇒ 零切换（重复点击不擦掉刚点的单元）', async () => {
     useWorkspaceStore.getState().setActiveWorkspace(P1, WT.worktreePath, 'dev');
     const onSelectProject = vi.fn();
     const { result } = renderEntryActions({ onSelectProject });
 
     await act(async () => {
-      result.current.onOpenBoard(team());
+      result.current.onOpenTeamPanel(team());
     });
 
     expect(onSelectProject).not.toHaveBeenCalled();

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 
 import { AgentChatTabView } from '@/features/agent-chat';
 import { TeamBoardCenterView, TeamTaskCenterView } from '@/features/agent-team';
@@ -61,6 +61,26 @@ function PaneContent({
   onSetSplitVertical,
   onSetClosePane,
 }: PaneContentProps) {
+  /**
+   * 看板 tab 的 board/flow 选择**写回 tab 数据**（`activeTab.data.view`）。
+   *
+   * 由本层注入而不是让 `TeamBoardCenterView` 自己写 store：团队组件属于
+   * `features/agent-team`，`editorStore` 属于编辑器域 —— 跨域直写是导入防火墙要挡的那类耦合。
+   * `PaneContent` 本来就是「tab 数据 → 视图 props」的适配层，且它已经握着 tab 空间键与 tab id。
+   *
+   * 注入的函数必须身份稳定（`TeamBoardCenterView` 是 `React.memo`）：内联箭头会在每次渲染
+   * 造一个新闭包，把 memo 白掉。依赖只有 `activeTab`（tab 数据变了本来就要重渲染）。
+   */
+  const handleTeamBoardViewChange = useCallback(
+    (view: 'board' | 'flow') => {
+      if (!activeTab) return;
+      useEditorStore
+        .getState()
+        .updateTab(tabSpaceKeyOf(activeTab.scope), activeTab.id, { kind: 'team-board', view });
+    },
+    [activeTab],
+  );
+
   if (!activeTab) return null;
 
   // 以下各 kind 的 props 均要求必有项目（这些 tab 只在 workspace 空间创建）——
@@ -209,6 +229,7 @@ function PaneContent({
           teamId={activeTab.data.teamId}
           view={activeTab.data.view}
           projectId={projectId}
+          onViewChange={handleTeamBoardViewChange}
         />
       );
     case 'team-task':

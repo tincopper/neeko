@@ -26,8 +26,9 @@ import UnitTeamEntries from '../UnitTeamEntries';
  *    「Lead not running」），而不是「没有行」；
  * 2. **归属只认单元 key**：团队挂在 `(projectId, workspaceWorktree)` 经
  *    `WorkspaceSession.key()` 铸造的那个单元下，工作树团队**不**出现在主 checkout 下；
- * 3. **两个动作各只有一条路径**：有活队长 ⇒ 接管那条 PTY（`onOpenLead`）；否则交回团队
- *    面板（`onOpenTeamPanel`）—— 侧栏不猜「为什么开不了」。
+ * 3. **只有一个动作、一条路径**：有活队长 ⇒ 接管那条 PTY（`onOpenLead`）；否则交回团队
+ *    面板（`onOpenTeamPanel`）—— 侧栏不猜「为什么开不了」。行本身是入口，所以行上只有
+ *    一个按钮（没有常驻的「Board」文字按钮：看板在团队面板里，一条路）。
  */
 const MAIN = WorkspaceSession.of('p1', null);
 const WT = WorkspaceSession.of('p1', '/repo/wt');
@@ -42,7 +43,7 @@ function teamRow(name: string): HTMLElement {
   return row;
 }
 
-/** 行主按钮（第一个按钮 = 点击区；看板按钮是它的兄弟节点，见行结构）。 */
+/** 行主按钮（行上**唯一**的按钮 = 点击区）。 */
 function mainButton(row: HTMLElement): HTMLElement {
   const [first] = within(row).getAllByRole('button');
   return first;
@@ -101,7 +102,6 @@ function renderEntries(workspaceKey: string = MAIN.key) {
   const handlers = {
     onOpenLead: vi.fn(),
     onOpenTeamPanel: vi.fn(),
-    onOpenBoard: vi.fn(),
   };
   const view = render(<UnitTeamEntries workspaceKey={workspaceKey} {...handlers} />);
   return { ...handlers, view };
@@ -229,18 +229,6 @@ describe('UnitTeamEntries — 两个动作（AC4 / AC5）', () => {
     expect(onOpenLead).not.toHaveBeenCalled();
   });
 
-  it('行尾看板按钮 ⇒ onOpenBoard(团队)，且不触发行主动作', () => {
-    seedTeams(team({ name: 'refactor' }));
-    seedSessions(session());
-    const { onOpenBoard, onOpenLead, onOpenTeamPanel } = renderEntries();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open board for team refactor' }));
-
-    expect(onOpenBoard).toHaveBeenCalledWith(expect.objectContaining({ teamId: 'tm_1' }));
-    expect(onOpenLead).not.toHaveBeenCalled();
-    expect(onOpenTeamPanel).not.toHaveBeenCalled();
-  });
-
   it('前台是队长的会话 ⇒ 团队行标「当前」（aria-current + row-current）', () => {
     seedTeams(team());
     seedSessions(session());
@@ -272,15 +260,34 @@ describe('UnitTeamEntries — 两个动作（AC4 / AC5）', () => {
     expect(row).not.toHaveClass('row-current');
   });
 
-  it('行上只有「打开」与「看板」两个按钮：没有改名 / 删除（团队生命周期在面板里）', () => {
+  it('行上只有行主按钮：没有改名 / 删除 / 常驻入口（团队生命周期在面板里）', () => {
     seedTeams(team());
     renderEntries();
 
     const row = teamRow('refactor');
-    expect(within(row).getAllByRole('button')).toHaveLength(2);
+    expect(within(row).getAllByRole('button')).toHaveLength(1);
     expect(
-      within(row).queryByRole('button', { name: /rename|delete|close/i }),
+      within(row).queryByRole('button', { name: /rename|delete|close|board/i }),
     ).not.toBeInTheDocument();
     expect(within(row).queryByRole('textbox')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * 行本身就是入口（R1）：去掉了行尾那个常驻的 `Board` 文字按钮。
+ *
+ * 它当时存在的理由是「看板要一键到达」，而团队行已经是团队唯一入口 —— 面板里就有看板。
+ * 一个常驻按钮只是一行里第二块可点区域（在 260px 宽的侧栏里还挤掉队名）。
+ */
+describe('UnitTeamEntries — 只有一个动作（AC1）', () => {
+  it('行上恰好一个按钮，且没有 Board 文案', () => {
+    seedTeams(team());
+    seedSessions(session());
+    renderEntries();
+
+    const row = teamRow('refactor');
+    expect(within(row).getAllByRole('button')).toHaveLength(1);
+    expect(within(row).queryByText('Board')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /board/i })).not.toBeInTheDocument();
   });
 });

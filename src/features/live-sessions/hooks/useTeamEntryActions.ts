@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 
-import { useTeamBoardTab } from '@/features/agent-team';
 import { useTeamStore } from '@/features/agent-team/store/teamStore';
 import { useTerminalTabs } from '@/features/terminal';
 import { panelView } from '@/shared/dock';
@@ -12,7 +11,7 @@ import { WorkspaceSession, type ProjectId } from '@/shared/utils/workspaceRef';
 import { useActivateUnit } from './useActivateUnit';
 
 /**
- * 侧栏**团队行**的三个动作（点击行 / 点击看板）。
+ * 侧栏**团队行**的两个动作（点击行：接管活队长 / 交回团队面板）。
  *
  * # 为什么在这里而不是在团队域组件里
  *
@@ -21,13 +20,13 @@ import { useActivateUnit } from './useActivateUnit';
  * 能力的实现由宿主注入 —— 与 `TeamPanel`（回调注入）同一条分层，不新造一条反向依赖。
  *
  * 本文件是 `UnitSessionList` 的装配件（它本来就是 `features/live-sessions` 里唯一同时认识
- * 终端域与团队域门面的地方），于是 `UnitSessionList` 的 JSX 不必被三个 handler 淹没。
+ * 终端域与团队域门面的地方），于是 `UnitSessionList` 的 JSX 不必被两个 handler 淹没。
  *
  * # 顺序：先「切项目 + 切单元」，再激活 tab / 开面板
  *
  * 与 `useActivateSession` 同一顺序，且判据只有一处：`utils/activateUnit`
- * （同项目零切换、单元在切换序列**结算之后**落回）。这里不再自己解释一遍 —— 三个动作都
- * 接在它的 Promise 之后，所以「先项目、后单元、再落 tab」对三者是同一条不变量。
+ * （同项目零切换、单元在切换序列**结算之后**落回）。这里不再自己解释一遍 —— 两个动作都
+ * 接在它的 Promise 之后，所以「先项目、后单元、再落 tab」对两者是同一条不变量。
  *
  * 每一个后续动作仍按**团队自己的** `projectId` 落键（不是「当前激活项目」）：
  * 团队属于哪个项目是团队的事实，不由「用户此刻在看哪个项目」决定。
@@ -39,14 +38,18 @@ import { useActivateUnit } from './useActivateUnit';
  * 归 `team_resume`（它铸新的 terminal id 并重建团队配置）—— 在侧栏按会话重建会造出一个
  * **没有团队 MCP 端点 / 凭证 / 隔离配置目录**的裸 CLI。这条边界刻意留给团队面板的五态判据
  * （`utils/memberTerminal.ts`）：侧栏只回答「有没有活会话」。
+ *
+ * # 为什么没有「直接开看板」这个动作
+ *
+ * 侧栏曾经有一个行尾常驻的看板按钮（它带着一个只为本行服务的开 tab 回调）。团队行本身
+ * 就是那个入口：面板里有看板，面板头上有「在中间打开」。侧栏再造一个快捷入口 = 同一个
+ * 团队的第二块可点区域，且得在 260px 里挤掉队名。
  */
 export interface TeamEntryActions {
   /** 有活队长会话 ⇒ 接管那条 PTY（不新建进程）。 */
   onOpenLead: (team: TeamSummary, session: SessionView) => void;
   /** 队长没有活会话 ⇒ 把团队面板切到该队，由花名册给出可行动作。 */
   onOpenTeamPanel: (team: TeamSummary) => void;
-  /** 打开 / 激活该队的看板 tab（同队幂等）。 */
-  onOpenBoard: (team: TeamSummary) => void;
 }
 
 /**
@@ -71,7 +74,6 @@ function teamUnit(team: TeamSummary): WorkspaceSession {
 
 export function useTeamEntryActions(): TeamEntryActions {
   const { openExistingTerminalTab } = useTerminalTabs();
-  const { openBoardTab } = useTeamBoardTab();
   const activateUnit = useActivateUnit();
 
   const onOpenLead = useCallback(
@@ -102,23 +104,5 @@ export function useTeamEntryActions(): TeamEntryActions {
     [activateUnit],
   );
 
-  const onOpenBoard = useCallback(
-    (team: TeamSummary) => {
-      // 看板 tab 的 key 由 `activeWorkspaceSession(projectId)` 铸，而那是「该项目**当前激活**
-      // 的单元」—— 必须等单元真的落回再开，否则从一条**工作树**团队行点看板时 tab 会登记到
-      // 主仓（进程和数据显示都对，只是关/恢复/分屏时才显形）。
-      void activateUnit(teamUnit(team)).then(() => {
-        // 落键 / 去重（按 teamId）/ 激活都在 `useTeamBoardTab` 一处：同队重复点击只是激活既有 tab。
-        openBoardTab({
-          teamId: team.teamId,
-          teamName: team.name,
-          projectId: teamProjectId(team),
-          view: 'board',
-        });
-      });
-    },
-    [activateUnit, openBoardTab],
-  );
-
-  return { onOpenLead, onOpenTeamPanel, onOpenBoard };
+  return { onOpenLead, onOpenTeamPanel };
 }
