@@ -720,3 +720,30 @@ spawn 的那个。`common/executor/local.rs` 的四个用例都会 spawn 子进�
   fixture 打印的一行，「收口」= 管道 EOF（两者的写端都关闭）。超时值只是**失败预算**
   （5s），不是调度窗口 —— 健康路径是毫秒级。用 `kill(pid, 0)` 轮询 + `sleep` 既慢又会把
   「zombie 未被 reap」误判成活着的竞态。变异验证：摘掉 `.with_kill_tree()` → 用例必须红。
+
+### 10. 断言路径的字符串形态（Windows CI 必挂）
+
+同一份文件在不同平台上有**多种合法拼法**：`canonicalize` 在 Windows 恒返回 verbatim 形态
+（`\\?\C:\…`），而其他 API 会在自己那一侧归一掉它 —— 例如 `CreateSymbolicLink` 存进 reparse
+点的目标就没有 `\\?\` 前缀（`read_link` 读出无前缀形态）。两边都是「那份文件」，字符串却不相等。
+
+```rust
+// ❌ Windows 恒挂：canonicalize 给 `\\?\C:\…\auth.json`，read_link 给 `C:\…\auth.json`
+// （2026-11-20 CI：mirror_links_the_user_config_and_skips_missing_entries，
+//   left/right 只差那个前缀）
+assert_eq!(std::fs::read_link(&target).unwrap(), source.join(entry));
+
+// ✅ 断对象：链接**解析出的**文件必须就是用户那份
+assert_eq!(
+    std::fs::canonicalize(&target).expect("link must resolve"),
+    std::fs::canonicalize(source.join(entry)).expect("source must resolve")
+);
+```
+
+同族先例（照拄即可）：`git/local/worktree.rs`、`git/operations/tests.rs`、
+`git/workspace_ref.rs` 的「身份渲染必须指向同一对象」。与红线 13（夹具路径平台无关）
+同一族：红线 13 管**夹具从哪来**，本节管**断言怎么比**。
+
+判据：断言两侧都有办法归一（`canonicalize`、`Path::components`、对象级身份）时，
+比对象；只在**形态本身才是被测行为**（如守住 `\\?\` 前缀、分隔符归一）时才比字符串，
+且必须写明“本条就是断言该形态”。
