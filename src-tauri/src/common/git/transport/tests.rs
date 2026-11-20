@@ -104,6 +104,35 @@ fn git_command_timeout_leaves_long_ops_unbounded() {
     assert_eq!(git_command_timeout(&[]), Some(LOCAL_GIT_TIMEOUT));
 }
 
+/// `worktree add` / `worktree remove` 的耗时由**文件系统规模**决定（大工作树的 checkout 与
+/// 递归删除是分钟级），与 push / fetch 同属「正常慢」—— 墙钟只会把成功报成失败，
+/// 而且**不杀进程**（超时只停止等待）⇒ 删除其实完成了、UI 却说失败。
+///
+/// 元数据类子命令（`list` / `prune` / `lock` …）不碰工作树内容，保留上界：
+/// 一个卡住的轮询不应占死调用方（`ProjectScope::resolve` 依赖它）。
+#[test]
+fn git_command_timeout_treats_worktree_content_ops_as_unbounded() {
+    assert_eq!(
+        git_command_timeout(&["worktree", "remove", "--force", "/tmp/wt"]),
+        None,
+        "递归删除整棵工作树没有上界（58G 的 feat-team 实测远超 30s）"
+    );
+    assert_eq!(
+        git_command_timeout(&["worktree", "add", "-b", "feat", "/tmp/wt"]),
+        None,
+        "`worktree add` 是完整 checkout，同样没有上界"
+    );
+    // 元数据类子命令保留上界
+    assert_eq!(
+        git_command_timeout(&["worktree", "list", "--porcelain"]),
+        Some(LOCAL_GIT_TIMEOUT)
+    );
+    assert_eq!(
+        git_command_timeout(&["worktree", "prune"]),
+        Some(LOCAL_GIT_TIMEOUT)
+    );
+}
+
 // ── run_git_opts 空 work_dir 纵深防御 ─────────────────────────────────
 
 #[tokio::test]

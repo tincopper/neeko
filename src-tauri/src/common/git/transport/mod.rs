@@ -35,6 +35,16 @@ pub(crate) const LOCAL_GIT_TIMEOUT: Duration = Duration::from_secs(30);
 pub(crate) fn git_command_timeout(args: &[&str]) -> Option<Duration> {
     match args.first().copied() {
         Some("push" | "fetch" | "pull" | "commit") => None,
+        // `worktree add` / `worktree remove` 的耗时由**文件系统规模**决定：大工作树的 checkout
+        // 与递归删除都是分钟级、无上界 —— 判据同 push/fetch，故同样不设墙钟。
+        // 这里设墙钟的后果有实测形态：超时只停止等待、**不杀进程** ⇒ 删除在墙钟之后跑完，
+        // 而 UI 已经报了「失败」（2026-11-20 `multi-agent` 事故，58G 级工作树）。
+        // 元数据类子命令（`list` / `prune` / `lock` …）不碰工作树内容，仍保留上界：
+        // `ProjectScope::resolve` 依赖 `worktree list`，卡住的轮询不应占死调用方。
+        Some("worktree") => match args.get(1).copied() {
+            Some("add" | "remove") => None,
+            _ => Some(LOCAL_GIT_TIMEOUT),
+        },
         _ => Some(LOCAL_GIT_TIMEOUT),
     }
 }
