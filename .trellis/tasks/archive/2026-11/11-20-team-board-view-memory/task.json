@@ -3,7 +3,7 @@
   "name": "team-board-view-memory",
   "title": "侧栏团队行去按钮 + 看板 tab 记住视图",
   "description": "去掉侧栏团队行的 Board 文字按钮；团队看板中央 tab 的 board/flow 选择写进 tab 数据（切 tab 回来仍在原视图），重复打开不再覆盖用户的选择",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-11-20",
-  "completedAt": null,
+  "completedAt": "2026-11-20",
   "branch": "feat-team",
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,7 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "commit": "df475fc7"
+  }
 }
