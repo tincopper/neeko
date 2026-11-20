@@ -148,11 +148,19 @@ fn register_selective_degrades_after_repeated_failures() {
 }
 
 /// 部分成功 + 连续失败阈值 → 降级时先解除已成功注册的目录（drain 语义）
+///
+/// **不断言计数与顺序**：`WatchManifest::compute` 用栈式 DFS，同层顺序 = 反 read_dir 序，
+/// 而 read_dir 的返回序是文件系统细节（APFS / ext4 hash 各异）。2026-11-20 CI 实测：
+/// Linux 上第 8 次失败落在第二个 ok 之前 ⇒ 降级时 registered = {root, ok0}，
+/// `unwatched.len() == 3` 在本地（macOS）绿、CI 红。真正的语义是不变量：
+/// **降级解除的集合 ≡ 降级前成功注册的集合**（每个成功 watch 都进 registered，
+/// degrade 时 drain 掉全部），与顺序无关。root 恒在清单首且恒成功 ⇒ 必被解除
+/// （这条是确定性的，单独钉住：整树 Recursive 之前必须先解除 root 的单目录注册）。
 #[test]
 fn register_selective_degrade_unwatches_partially_registered() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
-    // 2 个可成功目录 + MAX_WATCH_FAILURES 个连续失败目录（顺序计划：先成功后失败）
+    // 2 个可成功目录 + MAX_WATCH_FAILURES 个连续失败目录
     for i in 0..2 {
         std::fs::create_dir_all(root.join(format!("ok{i}"))).unwrap();
     }
@@ -176,10 +184,23 @@ fn register_selective_degrade_unwatches_partially_registered() {
         1,
         "降级整树 Recursive 注册一次"
     );
+    let unwatched: HashSet<PathBuf> = watcher.unwatched.lock().unwrap().iter().cloned().collect();
+    let watched_plain: HashSet<PathBuf> = watcher
+        .watched
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, recursive)| !recursive)
+        .map(|(path, _)| path.clone())
+        .collect();
+    assert!(!watched_plain.is_empty(), "root 恒成功，夹具必须有部分成功");
     assert_eq!(
-        watcher.unwatched.lock().unwrap().len(),
-        3,
-        "降级时解除全部已成功注册目录（root + ok0 + ok1）"
+        unwatched, watched_plain,
+        "降级解除的必须恰好是降级前成功注册的目录（drain 语义，与顺序无关）"
+    );
+    assert!(
+        unwatched.contains(root),
+        "root 必须被解除：整树 Recursive 之前不得残留单目录注册"
     );
 }
 
